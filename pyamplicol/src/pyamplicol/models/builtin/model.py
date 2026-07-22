@@ -17,6 +17,7 @@ from ..base import (
     RecurrenceLCColorComponentKind,
     RecurrenceLCColorOperation,
     RecurrenceLCColorShapeKind,
+    RecurrenceLCColorSourceSeedContract,
     RecurrenceLCColorTransitionContract,
     RecurrenceLCColorWitnessContract,
     RecurrenceQuantumFlowContract,
@@ -120,6 +121,16 @@ class BuiltinModel(Model):
             chirality,
         )
 
+    def recurrence_lc_source_color_contract(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> RecurrenceLCColorSourceSeedContract:
+        return self._standard_recurrence_lc_source_color_contract(
+            particle_id,
+            chirality,
+        )
+
     def recurrence_lc_color_transition_contract(
         self,
         vertex: Vertex,
@@ -131,14 +142,26 @@ class BuiltinModel(Model):
             self.color_rep(particle) for particle in vertex.particles
         )
         if closure:
+            if all(abs(value) == 1 for value in representations[:2]):
+                closure_kind = None
+            elif {representations[0], representations[1]} == {3, -3}:
+                closure_kind = "open-string"
+            elif representations[0] == representations[1] == 8:
+                closure_kind = "trace"
+            else:
+                raise ValueError(
+                    "built-in recurrence closure has unsupported color inputs "
+                    f"{representations[:2]!r}"
+                )
             return RecurrenceLCColorTransitionContract(
                 rule_kind,
                 (
                     RecurrenceLCColorWitnessContract(
-                        (0, 1),
-                        0,
-                        "close",
-                        None,
+                        input_permutation=(0, 1),
+                        reverse_parent_mask=0,
+                        component_operation="close",
+                        result_component_kind=closure_kind,
+                        result_component_role="none",
                     ),
                 ),
             )
@@ -149,12 +172,21 @@ class BuiltinModel(Model):
             result_component: RecurrenceLCColorComponentKind | None,
             factor: tuple[float, float] = (1.0, 0.0),
         ) -> RecurrenceLCColorWitnessContract:
+            result_role = (
+                "passive"
+                if operation == "concatenate-join" and abs(representations[2]) == 1
+                else "active"
+                if operation
+                in {"concatenate-join", "inherit-left", "inherit-right"}
+                else "none"
+            )
             return RecurrenceLCColorWitnessContract(
-                permutation,
-                0,
-                operation,
-                result_component,
-                factor,
+                input_permutation=permutation,
+                reverse_parent_mask=0,
+                component_operation=operation,
+                result_component_kind=result_component,
+                result_component_role=result_role,
+                exact_factor=factor,
             )
 
         if rule_kind == "adjoint-structure-constant":

@@ -18,6 +18,7 @@ def _term() -> CompiledLCColorTransitionTerm:
         reverse_parent_mask=1,
         component_operation="concatenate-join",
         result_component_kind="open-string",
+        result_component_role="active",
         input_shape_kinds=("adjoint-segment", "fundamental-open-string"),
         result_shape_kind="fundamental-open-string",
         exact_factor_expression="-1/2",
@@ -76,6 +77,7 @@ def test_compiled_lc_color_transition_term_round_trips_through_model_ir() -> Non
             ["source", "exact-symbolica-projection-v1"],
         ],
         "result_component_kind": "open-string",
+        "result_component_role": "active",
         "result_shape_kind": "fundamental-open-string",
         "reverse_parent_mask": 1,
     }
@@ -105,8 +107,10 @@ def test_compiled_lc_color_transition_term_rejects_invalid_contracts() -> None:
         replace(term, reverse_parent_mask=4)
     with pytest.raises(ValueError, match="component operation"):
         replace(term, component_operation="append")
-    with pytest.raises(ValueError, match="only compiled LC color joins"):
+    with pytest.raises(ValueError, match="joins require a result kind"):
         replace(term, result_component_kind=None)
+    with pytest.raises(ValueError, match="result component role"):
+        replace(term, result_component_role="unknown")
     with pytest.raises(ValueError, match="supported input shape"):
         replace(term, input_shape_kinds=("unknown", "adjoint-segment"))
     with pytest.raises(ValueError, match="supported result shape"):

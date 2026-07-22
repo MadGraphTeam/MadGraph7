@@ -111,9 +111,7 @@ class RecurrenceSourceStateV1:
         )
         _checked_u32(self.source_template_id, "source template ID")
         if self.momentum_sign not in {-1, 1}:
-            raise RecurrenceColumnarInputError(
-                "source momentum sign must be -1 or 1"
-            )
+            raise RecurrenceColumnarInputError("source momentum sign must be -1 or 1")
         if not isinstance(self.crossing_phase, ExactComplexRationalV1):
             raise RecurrenceColumnarInputError(
                 "source crossing phase must be an exact complex rational"
@@ -129,6 +127,7 @@ class RecurrenceExternalLegV1:
     physical_pdg: int
     outgoing_pdg: int
     is_initial: bool
+    is_fermionic: bool
     source_states: tuple[RecurrenceSourceStateV1, ...]
     momentum_mask: int
     support_mask: int
@@ -141,6 +140,10 @@ class RecurrenceExternalLegV1:
         if type(self.is_initial) is not bool:
             raise RecurrenceColumnarInputError(
                 "external initial-state marker must be boolean"
+            )
+        if type(self.is_fermionic) is not bool:
+            raise RecurrenceColumnarInputError(
+                "external fermionic-state marker must be boolean"
             )
         _validate_nonnegative_mask(self.momentum_mask, "external momentum mask")
         _validate_nonnegative_mask(self.support_mask, "external support mask")
@@ -186,6 +189,9 @@ class RecurrencePhysicalLCSectorV1:
     sector_id: int
     public_id: str
     kind: LCColorSectorKind
+    closure_source_slot: int
+    closure_proof_algorithm: str
+    closure_proof_digest: str
     open_strings: tuple[RecurrenceLCOpenStringV1, ...] = ()
     trace_source_slots: tuple[int, ...] = ()
     singlet_source_slots: tuple[int, ...] = ()
@@ -199,6 +205,9 @@ class RecurrencePhysicalLCSectorV1:
             raise RecurrenceColumnarInputError(
                 f"unsupported physical LC sector kind {self.kind!r}"
             )
+        _checked_u32(self.closure_source_slot, "LC closure source slot")
+        _nonempty_text(self.closure_proof_algorithm, "LC closure proof algorithm")
+        _sha256_bytes(self.closure_proof_digest, "LC closure proof digest")
         _validate_u32_sequence(self.trace_source_slots, "trace source slots")
         _validate_u32_sequence(self.singlet_source_slots, "singlet source slots")
         _validate_u32_sequence(self.word_source_slots, "colour-word source slots")
@@ -540,6 +549,7 @@ _TABLE_SCHEMAS: Final[dict[str, tuple[_ColumnSpec, ...]]] = {
         ("physical_pdg", ()),
         ("outgoing_pdg", ()),
         ("is_initial", ()),
+        ("is_fermionic", ()),
         ("source_state_start", ()),
         ("source_state_count", ()),
         ("momentum_mask_id", ()),
@@ -585,6 +595,9 @@ _TABLE_SCHEMAS: Final[dict[str, tuple[_ColumnSpec, ...]]] = {
         ("sector_id", ()),
         ("public_id_string_id", ()),
         ("kind", ()),
+        ("closure_source_slot", ()),
+        ("closure_proof_algorithm_string_id", ()),
+        ("closure_proof_digest_id", ()),
         ("open_string_start", ()),
         ("open_string_count", ()),
         ("trace_sequence_id", ()),
@@ -652,6 +665,7 @@ _U8_COLUMN_KEYS: Final = frozenset(
         ("header", "selected_flow_mode"),
         ("header", "selected_source_mode"),
         ("external_legs", "is_initial"),
+        ("external_legs", "is_fermionic"),
         ("physical_lc_sectors", "kind"),
         ("string_bytes", "value"),
     }
@@ -853,7 +867,10 @@ class RecurrenceBuilderInputV1:
                     "imag_denominator_string_id",
                 ),
             ),
-            (self.table("physical_lc_sectors"), ("public_id_string_id",)),
+            (
+                self.table("physical_lc_sectors"),
+                ("public_id_string_id", "closure_proof_algorithm_string_id"),
+            ),
             (self.table("public_lc_flows"), ("public_id_string_id",)),
             (self.table("replay_partitions"), ("proof_algorithm_string_id",)),
             (self.table("semantic_template_references"), ("kind_string_id",)),
@@ -864,6 +881,7 @@ class RecurrenceBuilderInputV1:
 
         for table, columns in (
             (self.table("header_digests"), ("digest_id",)),
+            (self.table("physical_lc_sectors"), ("closure_proof_digest_id",)),
             (self.table("replay_partitions"), ("proof_digest_id",)),
             (self.table("semantic_template_references"), ("semantic_digest_id",)),
             (self.table("normalization"), ("semantic_digest_id",)),
@@ -938,6 +956,7 @@ class RecurrenceBuilderInputV1:
             ),
             (self.table("source_states"), ("source_slot",)),
             (self.table("selected_source_coverage"), ("source_slot",)),
+            (self.table("physical_lc_sectors"), ("closure_source_slot",)),
         ):
             _validate_bounded_columns(table, columns, external_count)
 
@@ -1036,9 +1055,7 @@ class RecurrenceBuilderInputV1:
 
         selected_flows = self.table("selected_public_flow_coverage").row_count
         selected_sources = self.table("selected_source_coverage").row_count
-        if bool(int(header.column("selected_flow_mode")[0])) != bool(
-            selected_flows
-        ):
+        if bool(int(header.column("selected_flow_mode")[0])) != bool(selected_flows):
             raise RecurrenceColumnarInputError(
                 "selected-flow header mode disagrees with its coverage table"
             )
@@ -1296,9 +1313,7 @@ def build_recurrence_builder_input_v1(
     )
     all_factors.extend(flow.reduction_weight for flow in public_flows)
     all_factors.extend(
-        state.crossing_phase
-        for leg in external_legs
-        for state in leg.source_states
+        state.crossing_phase for leg in external_legs for state in leg.source_states
     )
     factor_catalog = _FactorCatalog(all_factors)
 
@@ -1309,6 +1324,7 @@ def build_recurrence_builder_input_v1(
     ]
     string_values.extend(item.role for item in digests)
     string_values.extend(item.public_id for item in sectors)
+    string_values.extend(item.closure_proof_algorithm for item in sectors)
     string_values.extend(item.public_id for item in public_flows)
     string_values.extend(partition.proof_algorithm for partition in partitions)
     string_values.extend(limit.name for limit in coupling_limits)
@@ -1319,6 +1335,7 @@ def build_recurrence_builder_input_v1(
     strings = _StringCatalog(string_values)
 
     digest_values = [item.digest for item in digests]
+    digest_values.extend(sector.closure_proof_digest for sector in sectors)
     digest_values.extend(partition.proof_digest for partition in partitions)
     digest_values.extend(item.semantic_digest for item in template_refs)
     digest_values.append(logical.normalization.semantic_digest)
@@ -1388,13 +1405,12 @@ def build_recurrence_builder_input_v1(
     sector_table, open_string_table = _build_sector_tables(
         sectors,
         strings,
+        digest_catalog,
         sequences,
         bitsets,
     )
     tables.extend((sector_table, open_string_table))
-    tables.append(
-        _build_public_flows(public_flows, strings, sequences, factor_catalog)
-    )
+    tables.append(_build_public_flows(public_flows, strings, sequences, factor_catalog))
     tables.append(
         _build_normalization(
             logical.normalization,
@@ -1464,9 +1480,7 @@ def _validate_logical_relations(
         )
     flow_ids = tuple(flow.flow_id for flow in public_flows)
     if flow_ids != tuple(range(len(flow_ids))):
-        raise RecurrenceColumnarInputError(
-            "public LC flow IDs must be dense from zero"
-        )
+        raise RecurrenceColumnarInputError("public LC flow IDs must be dense from zero")
     public_flow_ids = tuple(flow.public_id for flow in public_flows)
     if not public_flows or len(set(public_flow_ids)) != len(public_flow_ids):
         raise RecurrenceColumnarInputError(
@@ -1483,9 +1497,7 @@ def _validate_logical_relations(
             len(external_legs),
             "public flow source-slot permutation",
         )
-        construction_word = sectors[
-            flow.construction_sector_id
-        ].word_source_slots
+        construction_word = sectors[flow.construction_sector_id].word_source_slots
         mapped_word = tuple(
             flow.source_slot_permutation[source_slot]
             for source_slot in construction_word
@@ -1548,6 +1560,37 @@ def _validate_logical_relations(
             )
 
     for sector in sectors:
+        _require_index(
+            sector.closure_source_slot,
+            len(external_legs),
+            "LC closure source slot",
+        )
+        if sector.word_source_slots:
+            if sector.closure_source_slot != sector.word_source_slots[-1]:
+                raise RecurrenceColumnarInputError(
+                    "LC closure source slot must be the terminal colour-word endpoint"
+                )
+        elif sector.kind != "singlet":
+            raise RecurrenceColumnarInputError(
+                "an LC sector without a colour word must be all-singlet"
+            )
+        elif tuple(sorted(sector.singlet_source_slots)) != tuple(
+            range(len(external_legs))
+        ):
+            raise RecurrenceColumnarInputError(
+                "an all-singlet LC sector must cover every external source"
+            )
+        else:
+            fermionic_slots = tuple(
+                leg.source_slot for leg in external_legs if leg.is_fermionic
+            )
+            expected_anchor = min(fermionic_slots) if fermionic_slots else 0
+            if sector.closure_source_slot != expected_anchor:
+                raise RecurrenceColumnarInputError(
+                    "an all-singlet LC sector must use the smallest fermionic "
+                    "source slot, or the smallest source slot when no fermion "
+                    "is present"
+                )
         referenced_slots: list[int] = [
             *sector.trace_source_slots,
             *sector.singlet_source_slots,
@@ -1580,6 +1623,9 @@ def _validate_logical_relations(
         representative_word = sectors[
             partition.representative_sector_id
         ].word_source_slots
+        representative_anchor = sectors[
+            partition.representative_sector_id
+        ].closure_source_slot
         for target in sorted(partition.targets, key=lambda item: item.sector_id):
             _require_index(target.sector_id, len(sectors), "replay target sector")
             if target.sector_id in covered_targets:
@@ -1613,6 +1659,12 @@ def _validate_logical_relations(
             if mapped_word != sectors[target.sector_id].word_source_slots:
                 raise RecurrenceColumnarInputError(
                     "replay target word does not match its gather permutation"
+                )
+            mapped_anchor = target.source_slot_permutation[representative_anchor]
+            if mapped_anchor != sectors[target.sector_id].closure_source_slot:
+                raise RecurrenceColumnarInputError(
+                    "replay target permutation does not map the representative "
+                    "closure anchor onto the target anchor"
                 )
 
     if selected_flows is not None:
@@ -1650,6 +1702,7 @@ def _validate_logical_relations(
                     state_count,
                     "selected source-state index",
                 )
+
 
 def _build_header(
     logical: RecurrenceBuilderLogicalInputV1,
@@ -1733,6 +1786,7 @@ def _build_external_tables(
         physical_pdg=_I32,
         outgoing_pdg=_I32,
         is_initial=_U8,
+        is_fermionic=_U8,
         source_state_start=_U64,
         source_state_count=_U64,
         momentum_mask_id=_U32,
@@ -1758,6 +1812,7 @@ def _build_external_tables(
         legs["physical_pdg"][row] = value.physical_pdg
         legs["outgoing_pdg"][row] = value.outgoing_pdg
         legs["is_initial"][row] = int(value.is_initial)
+        legs["is_fermionic"][row] = int(value.is_fermionic)
         legs["source_state_start"][row] = cursor
         legs["source_state_count"][row] = len(value.source_states)
         legs["momentum_mask_id"][row] = bitsets.id(value.momentum_mask)
@@ -1786,6 +1841,7 @@ def _build_external_tables(
 def _build_sector_tables(
     values: tuple[RecurrencePhysicalLCSectorV1, ...],
     strings: _StringCatalog,
+    digests: _DigestCatalog,
     sequences: _U32SequenceCatalog,
     bitsets: _BitsetCatalog,
 ) -> tuple[RecurrenceColumnarTable, RecurrenceColumnarTable]:
@@ -1794,6 +1850,9 @@ def _build_sector_tables(
         sector_id=_U32,
         public_id_string_id=_U32,
         kind=_U8,
+        closure_source_slot=_U32,
+        closure_proof_algorithm_string_id=_U32,
+        closure_proof_digest_id=_U32,
         open_string_start=_U64,
         open_string_count=_U64,
         trace_sequence_id=_U32,
@@ -1816,6 +1875,11 @@ def _build_sector_tables(
         sectors["sector_id"][row] = value.sector_id
         sectors["public_id_string_id"][row] = strings.id(value.public_id)
         sectors["kind"][row] = _SECTOR_KIND_CODES[value.kind]
+        sectors["closure_source_slot"][row] = value.closure_source_slot
+        sectors["closure_proof_algorithm_string_id"][row] = strings.id(
+            value.closure_proof_algorithm
+        )
+        sectors["closure_proof_digest_id"][row] = digests.id(value.closure_proof_digest)
         sectors["open_string_start"][row] = cursor
         sectors["open_string_count"][row] = len(value.open_strings)
         sectors["trace_sequence_id"][row] = sequences.id(value.trace_source_slots)
@@ -1865,9 +1929,7 @@ def _build_public_flows(
         columns["source_slot_permutation_sequence_id"][row] = sequences.id(
             value.source_slot_permutation
         )
-        columns["reduction_weight_factor_id"][row] = factors.id(
-            value.reduction_weight
-        )
+        columns["reduction_weight_factor_id"][row] = factors.id(value.reduction_weight)
     return _freeze_table("public_lc_flows", columns)
 
 

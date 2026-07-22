@@ -61,6 +61,8 @@ RecurrenceLCColorShapeKind = Literal[
     "adjoint-segment",
 ]
 RecurrenceLCColorComponentKind = Literal["open-string", "adjoint-segment", "trace"]
+RecurrenceLCColorComponentRole = Literal["active", "passive", "none"]
+RecurrenceLCColorSourceSeedOperation = Literal["empty", "singleton"]
 RecurrenceLCColorOperation = Literal[
     "concatenate-join",
     "concatenate-keep",
@@ -125,6 +127,74 @@ class RecurrenceQuantumFlowContract:
 
 
 @dataclass(frozen=True)
+class RecurrenceLCColorSourceSeedContract:
+    """Compiler-owned LC forest seed for one external source current."""
+
+    operation: RecurrenceLCColorSourceSeedOperation
+    output_shape_kind: RecurrenceLCColorShapeKind
+    component_kind: RecurrenceLCColorComponentKind | None
+    component_role: RecurrenceLCColorComponentRole
+    proof_digest: str | None = None
+    provenance: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.operation not in {"empty", "singleton"}:
+            raise ValueError(
+                f"unsupported recurrence LC source operation {self.operation!r}"
+            )
+        if self.output_shape_kind not in {
+            "singlet-forest",
+            "fundamental-open-string",
+            "antifundamental-open-string",
+            "adjoint-segment",
+        }:
+            raise ValueError(
+                f"unsupported recurrence LC source shape {self.output_shape_kind!r}"
+            )
+        if self.component_role not in {"active", "passive", "none"}:
+            raise ValueError(
+                f"unsupported recurrence LC source role {self.component_role!r}"
+            )
+        if self.operation == "empty":
+            if self.component_kind is not None or self.component_role != "none":
+                raise ValueError(
+                    "an empty recurrence LC source cannot declare a component"
+                )
+        elif self.component_kind is None or self.component_role == "none":
+            raise ValueError(
+                "a singleton recurrence LC source requires component kind and role"
+            )
+        expected = {
+            "singlet-forest": ("empty", None, "none"),
+            "fundamental-open-string": ("singleton", "open-string", "active"),
+            "antifundamental-open-string": (
+                "singleton",
+                "open-string",
+                "active",
+            ),
+            "adjoint-segment": ("singleton", "adjoint-segment", "active"),
+        }[self.output_shape_kind]
+        if (self.operation, self.component_kind, self.component_role) != expected:
+            raise ValueError(
+                "recurrence LC source seed does not match its output shape"
+            )
+        if self.proof_digest is not None and (
+            len(self.proof_digest) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.proof_digest
+            )
+        ):
+            raise ValueError(
+                "recurrence LC source proof digest must be lowercase SHA-256"
+            )
+        if self.provenance != tuple(sorted(set(self.provenance))):
+            raise ValueError(
+                "recurrence LC source provenance must be sorted and unique"
+            )
+
+
+@dataclass(frozen=True)
 class RecurrenceLCColorWitnessContract:
     """One exact ordered-word term in a model-owned LC transition contract."""
 
@@ -132,6 +202,7 @@ class RecurrenceLCColorWitnessContract:
     reverse_parent_mask: int
     component_operation: RecurrenceLCColorOperation
     result_component_kind: RecurrenceLCColorComponentKind | None
+    result_component_role: RecurrenceLCColorComponentRole
     exact_factor: tuple[float, float] = (1.0, 0.0)
     proof_digest: str | None = None
     provenance: tuple[tuple[str, str], ...] = ()
@@ -155,11 +226,35 @@ class RecurrenceLCColorWitnessContract:
                 "unsupported recurrence LC color operation "
                 f"{self.component_operation!r}"
             )
-        if (self.component_operation == "concatenate-join") != (
+        if self.result_component_role not in {"active", "passive", "none"}:
+            raise ValueError(
+                f"unsupported recurrence LC result role {self.result_component_role!r}"
+            )
+        if self.component_operation == "concatenate-join":
+            if (
+                self.result_component_kind is None
+                or self.result_component_role == "none"
+            ):
+                raise ValueError(
+                    "an LC join requires a result component kind and "
+                    "active/passive role"
+                )
+        elif self.component_operation == "close":
+            if self.result_component_role != "none":
+                raise ValueError(
+                    "an LC closure cannot declare a recurrence result component"
+                )
+        elif (
             self.result_component_kind is not None
+            or self.result_component_role
+            != (
+                "active"
+                if self.component_operation in {"inherit-left", "inherit-right"}
+                else "none"
+            )
         ):
             raise ValueError(
-                "only recurrence LC color joins declare a result component kind"
+                "LC non-join result roles must match their exact component operation"
             )
         if self.exact_factor == (0.0, 0.0):
             raise ValueError("recurrence LC color witness factor must be nonzero")
@@ -825,6 +920,56 @@ class Model:
             "model does not declare recurrence LC color-shape contracts"
         )
 
+    def recurrence_lc_source_color_contract(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> RecurrenceLCColorSourceSeedContract:
+        """Declare the exact LC forest seeded by one external source."""
+
+        del particle_id, chirality
+        raise NotImplementedError(
+            "model does not declare recurrence LC source-color contracts"
+        )
+
+    def _standard_recurrence_lc_source_color_contract(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> RecurrenceLCColorSourceSeedContract:
+        shape = self._standard_recurrence_lc_color_shape_contract(
+            particle_id,
+            chirality,
+        )
+        representation = int(self.color_rep(int(particle_id)))
+        provenance = tuple(
+            sorted(
+                (
+                    ("contract", "standard-lc-source-seed-v1"),
+                    ("color-representation", str(representation)),
+                    ("shape", shape),
+                )
+            )
+        )
+        if shape == "singlet-forest":
+            return RecurrenceLCColorSourceSeedContract(
+                "empty",
+                shape,
+                None,
+                "none",
+                provenance=provenance,
+            )
+        component_kind: RecurrenceLCColorComponentKind = (
+            "adjoint-segment" if shape == "adjoint-segment" else "open-string"
+        )
+        return RecurrenceLCColorSourceSeedContract(
+            "singleton",
+            shape,
+            component_kind,
+            "active",
+            provenance=provenance,
+        )
+
     def _standard_recurrence_lc_color_shape_contract(
         self,
         particle_id: int,
@@ -888,10 +1033,11 @@ class Model:
                 rule_kind,
                 (
                     RecurrenceLCColorWitnessContract(
-                        (0, 1),
-                        0,
-                        "close",
-                        None,
+                        input_permutation=(0, 1),
+                        reverse_parent_mask=0,
+                        component_operation="close",
+                        result_component_kind=None,
+                        result_component_role="none",
                     ),
                 ),
             )
@@ -905,10 +1051,11 @@ class Model:
                 rule_kind,
                 (
                     RecurrenceLCColorWitnessContract(
-                        (0, 1),
-                        0,
-                        "empty",
-                        None,
+                        input_permutation=(0, 1),
+                        reverse_parent_mask=0,
+                        component_operation="empty",
+                        result_component_kind=None,
+                        result_component_role="none",
                     ),
                 ),
             )
@@ -1257,8 +1404,11 @@ __all__ = [
     "QuantumNumberFlow",
     "RecurrenceFlavourFlowOperation",
     "RecurrenceLCColorComponentKind",
+    "RecurrenceLCColorComponentRole",
     "RecurrenceLCColorOperation",
     "RecurrenceLCColorShapeKind",
+    "RecurrenceLCColorSourceSeedContract",
+    "RecurrenceLCColorSourceSeedOperation",
     "RecurrenceLCColorTransitionContract",
     "RecurrenceLCColorWitnessContract",
     "RecurrenceQuantumFlowContract",

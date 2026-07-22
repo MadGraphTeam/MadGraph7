@@ -55,6 +55,8 @@ LCColorShapeKindV1: TypeAlias = Literal[
 LCColorComponentKindV1: TypeAlias = Literal[
     "open-string", "adjoint-segment", "trace"
 ]
+LCColorComponentRoleV1: TypeAlias = Literal["active", "passive", "none"]
+LCColorSourceSeedOperationV1: TypeAlias = Literal["empty", "singleton"]
 LCColorComponentOperationV1: TypeAlias = Literal[
     "concatenate-join",
     "concatenate-keep",
@@ -112,6 +114,8 @@ _LC_COLOR_SHAPE_KINDS = frozenset(
 _LC_COLOR_COMPONENT_KINDS = frozenset(
     {"open-string", "adjoint-segment", "trace"}
 )
+_LC_COLOR_COMPONENT_ROLES = frozenset({"active", "passive", "none"})
+_LC_COLOR_SOURCE_SEED_OPERATIONS = frozenset({"empty", "singleton"})
 _LC_COLOR_COMPONENT_OPERATIONS = frozenset(
     {
         "concatenate-join",
@@ -713,6 +717,73 @@ class CurrentStateTemplateV1(_SemanticRecord):
 
 
 @dataclass(frozen=True, slots=True)
+class LCColorSourceSeedV1:
+    """Authenticated LC color forest seeded by one source template."""
+
+    operation: LCColorSourceSeedOperationV1
+    output_shape_kind: LCColorShapeKindV1
+    component_kind: LCColorComponentKindV1 | None
+    component_role: LCColorComponentRoleV1
+    proof_digest: str
+    provenance: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.operation not in _LC_COLOR_SOURCE_SEED_OPERATIONS:
+            raise RecurrenceTemplateError(
+                f"unsupported LC source seed operation {self.operation!r}"
+            )
+        if self.output_shape_kind not in _LC_COLOR_SHAPE_KINDS:
+            raise RecurrenceTemplateError(
+                f"unsupported LC source seed shape {self.output_shape_kind!r}"
+            )
+        if self.component_role not in _LC_COLOR_COMPONENT_ROLES:
+            raise RecurrenceTemplateError(
+                f"unsupported LC source seed role {self.component_role!r}"
+            )
+        if self.operation == "empty":
+            if self.component_kind is not None or self.component_role != "none":
+                raise RecurrenceTemplateError(
+                    "an empty LC source seed cannot declare a component"
+                )
+        elif (
+            self.component_kind not in _LC_COLOR_COMPONENT_KINDS
+            or self.component_role == "none"
+        ):
+            raise RecurrenceTemplateError(
+                "a singleton LC source seed requires component kind and role"
+            )
+        expected = {
+            "singlet-forest": ("empty", None, "none"),
+            "fundamental-open-string": ("singleton", "open-string", "active"),
+            "antifundamental-open-string": (
+                "singleton",
+                "open-string",
+                "active",
+            ),
+            "adjoint-segment": ("singleton", "adjoint-segment", "active"),
+        }[self.output_shape_kind]
+        if (self.operation, self.component_kind, self.component_role) != expected:
+            raise RecurrenceTemplateError(
+                "LC source seed does not match its certified output shape"
+            )
+        _require_sha256("LC source seed proof digest", self.proof_digest)
+        if self.provenance != tuple(sorted(set(self.provenance))):
+            raise RecurrenceTemplateError(
+                "LC source seed provenance must be sorted and unique"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "component_kind": self.component_kind,
+            "component_role": self.component_role,
+            "operation": self.operation,
+            "output_shape_kind": self.output_shape_kind,
+            "proof_digest": self.proof_digest,
+            "provenance": [list(item) for item in self.provenance],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class SourceTemplateV1(_SemanticRecord):
     _record_kind: ClassVar[str] = "source"
 
@@ -724,6 +795,7 @@ class SourceTemplateV1(_SemanticRecord):
     spin_state: int
     flavour_flow: FlavourFlowV1
     quantum_number_flow: QuantumNumberFlowV1
+    lc_color_seed: LCColorSourceSeedV1
     wavefunction_expression_digest: str
     evaluator_resolver_key: str
     mass_parameter_id: str | None = None
@@ -744,6 +816,10 @@ class SourceTemplateV1(_SemanticRecord):
         _require_quantum_number_flow(
             "source quantum-number flow", self.quantum_number_flow
         )
+        if not isinstance(self.lc_color_seed, LCColorSourceSeedV1):
+            raise RecurrenceTemplateError(
+                "source template requires an authenticated LC color seed"
+            )
         _require_sha256(
             "source wavefunction_expression_digest",
             self.wavefunction_expression_digest,
@@ -765,6 +841,7 @@ class SourceTemplateV1(_SemanticRecord):
             "quantum_number_flow": [
                 list(item) for item in self.quantum_number_flow
             ],
+            "lc_color_seed": self.lc_color_seed.to_dict(),
             "spin_state": self.spin_state,
             "state_template_id": self.state_template_id,
             "template_id": self.template_id,
@@ -1233,6 +1310,7 @@ class LCColorTransitionWitnessV1:
     reverse_parent_mask: int
     component_operation: LCColorComponentOperationV1
     result_component_kind: LCColorComponentKindV1 | None
+    result_component_role: LCColorComponentRoleV1
     result_shape_kind: LCColorShapeKindV1 | None
     exact_factor: ExactComplexRationalV1
     proof_digest: str
@@ -1264,11 +1342,36 @@ class LCColorTransitionWitnessV1:
             raise RecurrenceTemplateError(
                 "unsupported LC color witness result component kind"
             )
-        if (self.component_operation == "concatenate-join") != (
+        if self.result_component_role not in _LC_COLOR_COMPONENT_ROLES:
+            raise RecurrenceTemplateError(
+                "unsupported LC color witness result component role"
+            )
+        if self.component_operation == "concatenate-join":
+            if (
+                self.result_component_kind is None
+                or self.result_component_role == "none"
+            ):
+                raise RecurrenceTemplateError(
+                    "an LC join requires a result component kind and role"
+                )
+        elif self.component_operation == "close":
+            if (
+                self.result_component_role != "none"
+            ):
+                raise RecurrenceTemplateError(
+                    "an LC closure cannot declare a recurrence result component"
+                )
+        elif (
             self.result_component_kind is not None
+            or self.result_component_role
+            != (
+                "active"
+                if self.component_operation in {"inherit-left", "inherit-right"}
+                else "none"
+            )
         ):
             raise RecurrenceTemplateError(
-                "only LC color join witnesses declare a result component kind"
+                "LC non-join result role does not match its component operation"
             )
         if self.component_operation == "close":
             if self.result_shape_kind is not None:
@@ -1310,6 +1413,7 @@ class LCColorTransitionWitnessV1:
             "proof_digest": self.proof_digest,
             "provenance": [list(item) for item in self.provenance],
             "result_component_kind": self.result_component_kind,
+            "result_component_role": self.result_component_role,
             "result_shape_kind": self.result_shape_kind,
             "reverse_parent_mask": self.reverse_parent_mask,
         }
@@ -1805,7 +1909,16 @@ class RecurrenceTemplateCatalog:
                 "current width parameter", state.width_parameter_id, parameters
             )
         for source in self.sources:
-            _require_reference("source state", source.state_template_id, states)
+            source_state = _require_reference(
+                "source state", source.state_template_id, states
+            )
+            if (
+                source.lc_color_seed.output_shape_kind
+                != source_state.lc_color_shape_kind
+            ):
+                raise RecurrenceTemplateError(
+                    "source LC color seed shape does not match its current state"
+                )
             _require_optional_reference(
                 "source mass parameter", source.mass_parameter_id, parameters
             )
@@ -2412,6 +2525,7 @@ def _source_from_dict(payload: Mapping[str, object]) -> SourceTemplateV1:
             "spin_state",
             "flavour_flow",
             "quantum_number_flow",
+            "lc_color_seed",
             "wavefunction_expression_digest",
             "evaluator_resolver_key",
             "mass_parameter_id",
@@ -2436,6 +2550,7 @@ def _source_from_dict(payload: Mapping[str, object]) -> SourceTemplateV1:
         quantum_number_flow=_decode_quantum_number_flow(
             "source quantum-number flow", value["quantum_number_flow"]
         ),
+        lc_color_seed=_lc_color_source_seed_from_dict(value["lc_color_seed"]),
         wavefunction_expression_digest=_require_sha256(
             "source wavefunction expression", value["wavefunction_expression_digest"]
         ),
@@ -2449,6 +2564,45 @@ def _source_from_dict(payload: Mapping[str, object]) -> SourceTemplateV1:
             "source width parameter", value["width_parameter_id"]
         ),
         semantic_digest=value["semantic_digest"],  # type: ignore[arg-type]
+    )
+
+
+def _lc_color_source_seed_from_dict(payload: object) -> LCColorSourceSeedV1:
+    value = _require_mapping("LC color source seed", payload)
+    _require_exact_keys(
+        "LC color source seed",
+        value,
+        frozenset(
+            {
+                "component_kind",
+                "component_role",
+                "operation",
+                "output_shape_kind",
+                "proof_digest",
+                "provenance",
+            }
+        ),
+    )
+    return LCColorSourceSeedV1(
+        operation=_require_nonempty(
+            "LC color source seed operation", value["operation"]
+        ),  # type: ignore[arg-type]
+        output_shape_kind=_require_nonempty(
+            "LC color source seed output shape", value["output_shape_kind"]
+        ),  # type: ignore[arg-type]
+        component_kind=_decode_optional_string(
+            "LC color source seed component kind", value["component_kind"]
+        ),  # type: ignore[arg-type]
+        component_role=_require_nonempty(
+            "LC color source seed component role", value["component_role"]
+        ),  # type: ignore[arg-type]
+        proof_digest=_require_sha256(
+            "LC color source seed proof digest", value["proof_digest"]
+        ),
+        provenance=_decode_string_pairs(
+            "LC color source seed provenance",
+            value["provenance"],
+        ),
     )
 
 
@@ -2788,6 +2942,7 @@ def _lc_color_witness_from_dict(payload: object) -> LCColorTransitionWitnessV1:
                 "proof_digest",
                 "provenance",
                 "result_component_kind",
+                "result_component_role",
                 "result_shape_kind",
                 "reverse_parent_mask",
             }
@@ -2811,6 +2966,10 @@ def _lc_color_witness_from_dict(payload: object) -> LCColorTransitionWitnessV1:
         ),  # type: ignore[arg-type]
         result_component_kind=_decode_optional_string(
             "LC color witness result component", value["result_component_kind"]
+        ),  # type: ignore[arg-type]
+        result_component_role=_require_nonempty(
+            "LC color witness result component role",
+            value["result_component_role"],
         ),  # type: ignore[arg-type]
         result_shape_kind=_decode_optional_string(
             "LC color witness result shape", value["result_shape_kind"]
@@ -2952,7 +3111,10 @@ __all__ = [
     "FlavourFlowOperationV1",
     "LCColorComponentKindV1",
     "LCColorComponentOperationV1",
+    "LCColorComponentRoleV1",
     "LCColorShapeKindV1",
+    "LCColorSourceSeedOperationV1",
+    "LCColorSourceSeedV1",
     "LCColorTransitionWitnessV1",
     "ParameterTemplate",
     "ParameterTemplateV1",

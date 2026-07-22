@@ -264,6 +264,11 @@ class _ScalarModel(Model):
             particle_id, chirality
         )
 
+    def recurrence_lc_source_color_contract(self, particle_id, chirality=0):
+        return self._standard_recurrence_lc_source_color_contract(
+            particle_id, chirality
+        )
+
     def recurrence_lc_color_transition_contract(self, vertex, *, closure):
         return self._standard_recurrence_lc_color_transition_contract(
             vertex, closure=closure
@@ -646,10 +651,11 @@ class _UnsupportedColorModel(_ScalarModel):
             "opaque-model-tensor",
             (
                 RecurrenceLCColorWitnessContract(
-                    (0, 1),
-                    0,
-                    "concatenate-keep",
-                    None,
+                    input_permutation=(0, 1),
+                    reverse_parent_mask=0,
+                    component_operation="concatenate-keep",
+                    result_component_kind=None,
+                    result_component_role="none",
                 ),
             ),
         )

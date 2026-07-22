@@ -481,6 +481,7 @@ class CompiledLCColorTransitionTerm:
     reverse_parent_mask: int
     component_operation: str
     result_component_kind: str | None
+    result_component_role: str
     input_shape_kinds: tuple[str, str]
     result_shape_kind: str | None
     exact_factor_expression: str
@@ -533,11 +534,34 @@ class CompiledLCColorTransitionTerm:
             self.result_component_kind not in supported_component_kinds
         ):
             raise ValueError("unsupported compiled LC color result component kind")
-        if (self.component_operation == "concatenate-join") != (
+        if self.result_component_role not in {"active", "passive", "none"}:
+            raise ValueError("unsupported compiled LC color result component role")
+        if self.component_operation == "concatenate-join":
+            if (
+                self.result_component_kind is None
+                or self.result_component_role == "none"
+            ):
+                raise ValueError(
+                    "compiled LC joins require a result kind and active/passive role"
+                )
+        elif self.component_operation == "close":
+            if (
+                self.result_component_role != "none"
+            ):
+                raise ValueError(
+                    "compiled LC closures cannot declare a recurrence result component"
+                )
+        elif (
             self.result_component_kind is not None
+            or self.result_component_role
+            != (
+                "active"
+                if self.component_operation in {"inherit-left", "inherit-right"}
+                else "none"
+            )
         ):
             raise ValueError(
-                "only compiled LC color joins declare a result component kind"
+                "compiled LC non-join result role does not match its operation"
             )
 
         supported_shape_kinds = {
@@ -623,6 +647,7 @@ class CompiledLCColorTransitionTerm:
             "proof_digest": self.proof_digest,
             "provenance": [list(item) for item in self.provenance],
             "result_component_kind": self.result_component_kind,
+            "result_component_role": self.result_component_role,
             "result_shape_kind": self.result_shape_kind,
             "reverse_parent_mask": self.reverse_parent_mask,
         }
@@ -649,7 +674,7 @@ class CompiledLCColorTransitionTerm:
             raise ValueError(
                 f"compiled LC color transition term is missing required fields: {names}"
             )
-        unknown = fields - required - {"provenance"}
+        unknown = fields - required - {"provenance", "result_component_role"}
         if unknown:
             names = ", ".join(sorted(str(name) for name in unknown))
             raise ValueError(
@@ -709,6 +734,18 @@ class CompiledLCColorTransitionTerm:
             raise TypeError(
                 "compiled LC color result shape kind must be a string or null"
             )
+        result_component_role = payload.get("result_component_role")
+        if result_component_role is None:
+            operation = payload["component_operation"]
+            result_component_role = (
+                "passive"
+                if operation == "concatenate-join"
+                and result_shape_kind == "singlet-forest"
+                else "active"
+                if operation
+                in {"concatenate-join", "inherit-left", "inherit-right"}
+                else "none"
+            )
         return cls(
             input_permutation=(
                 _strict_integer(
@@ -727,6 +764,10 @@ class CompiledLCColorTransitionTerm:
                 "compiled LC color component operation",
             ),
             result_component_kind=result_component_kind,
+            result_component_role=_strict_string(
+                result_component_role,
+                "compiled LC color result component role",
+            ),
             input_shape_kinds=(
                 _strict_string(input_shape_kinds[0], "compiled LC color input shape"),
                 _strict_string(input_shape_kinds[1], "compiled LC color input shape"),

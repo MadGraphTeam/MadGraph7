@@ -23,7 +23,7 @@ from ..models.recurrence_template import (
     RecurrenceTemplateCatalog,
     SourceTemplateV1,
 )
-from ..processes.ir import CanonicalProcessIR
+from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .recurrence_columnar import (
     ExactComplexRationalV1,
     RecurrenceBuilderLogicalInputV1,
@@ -54,6 +54,7 @@ _TEMPLATE_SECTIONS: Final = (
     ("color-contraction", "color_contractions"),
     ("symmetry-proof", "symmetry_proofs"),
 )
+_CLOSURE_ANCHOR_PROOF_ALGORITHM: Final = "canonical-lc-closure-anchor-v1"
 
 
 class RecurrenceProjectionError(ValueError):
@@ -69,9 +70,7 @@ class RecurrenceGenerationSliceV1:
 
     def __post_init__(self) -> None:
         if self.selected_public_flow_ids is not None:
-            flows = tuple(
-                sorted(int(value) for value in self.selected_public_flow_ids)
-            )
+            flows = tuple(sorted(int(value) for value in self.selected_public_flow_ids))
             if not flows or len(flows) != len(set(flows)):
                 raise RecurrenceProjectionError(
                     "selected recurrence public flows must be nonempty and unique"
@@ -135,6 +134,7 @@ def project_recurrence_process_v1(
     physical_sectors, public_flows = _project_physical_sectors(
         color_plan,
         process,
+        external_legs,
         process_support_mask,
     )
     selected_flows = selection.selected_public_flow_ids
@@ -152,6 +152,7 @@ def project_recurrence_process_v1(
     replay_partitions = _project_replay_partitions(
         process,
         color_plan,
+        physical_sectors,
         topology_replay,
         layout,
     )
@@ -297,6 +298,7 @@ def _project_external_legs(
     external: list[RecurrenceExternalLegV1] = []
     selected_coverage: list[RecurrenceSelectedSourceCoverageV1] = []
     for source_slot, leg in enumerate(process.legs):
+        is_fermionic = _is_fermionic_process_leg(leg)
         if leg.pdg is None or leg.outgoing_pdg is None:
             raise RecurrenceProjectionError(
                 f"external leg {leg.label} has no concrete physical/outgoing PDG"
@@ -388,6 +390,7 @@ def _project_external_legs(
                 physical_pdg=int(leg.pdg),
                 outgoing_pdg=int(leg.outgoing_pdg),
                 is_initial=bool(leg.is_initial),
+                is_fermionic=is_fermionic,
                 source_states=source_states,
                 momentum_mask=1 << source_slot,
                 support_mask=support_mask,
@@ -422,6 +425,34 @@ def _project_external_legs(
         tuple(external),
         None if selected_helicities is None else tuple(selected_coverage),
     )
+
+
+def _is_fermionic_process_leg(leg: ProcessLegIR) -> bool:
+    concrete_statistics = {"auxiliary", "boson", "fermion", "ghost"}
+    concrete_families = {
+        "auxiliary",
+        "fermion",
+        "ghost",
+        "scalar",
+        "spin2",
+        "vector",
+    }
+    if (
+        leg.statistics not in concrete_statistics
+        or leg.wavefunction_family not in concrete_families
+    ):
+        raise RecurrenceProjectionError(
+            "recurrence closure-anchor classification requires concrete external "
+            f"statistics and spin metadata for leg {leg.label}"
+        )
+    statistics_is_fermionic = leg.statistics == "fermion"
+    family_is_fermionic = leg.wavefunction_family == "fermion"
+    if statistics_is_fermionic != family_is_fermionic:
+        raise RecurrenceProjectionError(
+            "recurrence closure-anchor classification found inconsistent "
+            f"statistics and spin metadata for leg {leg.label}"
+        )
+    return statistics_is_fermionic
 
 
 def _crossing_contract(
@@ -466,6 +497,7 @@ def _crossing_contract(
 def _project_physical_sectors(
     color_plan: GenericColorPlan,
     process: CanonicalProcessIR,
+    external_legs: tuple[RecurrenceExternalLegV1, ...],
     support_mask: int,
 ) -> tuple[
     tuple[RecurrencePhysicalLCSectorV1, ...],
@@ -515,15 +547,28 @@ def _project_physical_sectors(
             )
             for line in sector.open_color_lines
         )
+        trace_source_slots = slots(sector.trace_labels, "LC trace")
+        singlet_source_slots = slots(sector.singlet_labels, "LC singlets")
+        word_source_slots = slots(word, "LC color word")
+        closure_source_slot, closure_proof_digest = _closure_anchor_contract(
+            sector_id=int(sector.id),
+            sector_kind=sector.kind,
+            word_source_slots=word_source_slots,
+            singlet_source_slots=singlet_source_slots,
+            external_legs=external_legs,
+        )
         result.append(
             RecurrencePhysicalLCSectorV1(
                 sector_id=int(sector.id),
                 public_id=public_id,
                 kind=sector.kind,
+                closure_source_slot=closure_source_slot,
+                closure_proof_algorithm=_CLOSURE_ANCHOR_PROOF_ALGORITHM,
+                closure_proof_digest=closure_proof_digest,
                 open_strings=open_strings,
-                trace_source_slots=slots(sector.trace_labels, "LC trace"),
-                singlet_source_slots=slots(sector.singlet_labels, "LC singlets"),
-                word_source_slots=slots(word, "LC color word"),
+                trace_source_slots=trace_source_slots,
+                singlet_source_slots=singlet_source_slots,
+                word_source_slots=word_source_slots,
                 support_mask=support_mask,
             )
         )
@@ -567,9 +612,60 @@ def _project_physical_sectors(
     return tuple(result), tuple(public_flows)
 
 
+def _closure_anchor_contract(
+    *,
+    sector_id: int,
+    sector_kind: str,
+    word_source_slots: tuple[int, ...],
+    singlet_source_slots: tuple[int, ...],
+    external_legs: tuple[RecurrenceExternalLegV1, ...],
+) -> tuple[int, str]:
+    external_source_count = len(external_legs)
+    if external_source_count <= 0:
+        raise RecurrenceProjectionError(
+            "a physical LC sector requires at least one external source"
+        )
+    if word_source_slots:
+        policy = "terminal-colour-word-endpoint"
+        closure_source_slot = word_source_slots[-1]
+    else:
+        if sector_kind != "singlet" or tuple(sorted(singlet_source_slots)) != tuple(
+            range(external_source_count)
+        ):
+            raise RecurrenceProjectionError(
+                "an LC sector without a colour word must be an all-singlet sector"
+            )
+        fermionic_source_slots = tuple(
+            leg.source_slot for leg in external_legs if leg.is_fermionic
+        )
+        if fermionic_source_slots:
+            policy = "minimum-fermionic-source-slot"
+            closure_source_slot = min(fermionic_source_slots)
+        else:
+            policy = "minimum-source-slot"
+            closure_source_slot = min(leg.source_slot for leg in external_legs)
+    proof_digest = _digest(
+        {
+            "algorithm": _CLOSURE_ANCHOR_PROOF_ALGORITHM,
+            "closure_source_slot": closure_source_slot,
+            "external_source_count": external_source_count,
+            "fermionic_source_slots": tuple(
+                leg.source_slot for leg in external_legs if leg.is_fermionic
+            ),
+            "policy": policy,
+            "sector_id": sector_id,
+            "sector_kind": sector_kind,
+            "singlet_source_slots": singlet_source_slots,
+            "word_source_slots": word_source_slots,
+        }
+    )
+    return closure_source_slot, proof_digest
+
+
 def _project_replay_partitions(
     process: CanonicalProcessIR,
     color_plan: GenericColorPlan,
+    physical_sectors: tuple[RecurrencePhysicalLCSectorV1, ...],
     replay: LCColorTopologyReplayPlan | None,
     layout: RecurrenceLCFlowLayout,
 ) -> tuple[RecurrenceReplayPartitionV1, ...]:
@@ -587,6 +683,7 @@ def _project_replay_partitions(
         int(leg.label): source_slot for source_slot, leg in enumerate(process.legs)
     }
     labels = set(source_slot_by_label)
+    physical_sector_by_id = {sector.sector_id: sector for sector in physical_sectors}
     partitions: list[RecurrenceReplayPartitionV1] = []
     for partition in replay.partitions:
         if partition.proof_algorithm is None or partition.proof_digest is None:
@@ -594,6 +691,9 @@ def _project_replay_partitions(
                 "topology replay partition lacks an exact proof certificate"
             )
         targets: list[RecurrenceReplayTargetV1] = []
+        representative_anchor = physical_sector_by_id[
+            int(partition.representative_sector_id)
+        ].closure_source_slot
         for sector_id, raw_mapping, weight, sign in zip(
             partition.active_sector_ids,
             partition.label_permutations,
@@ -637,6 +737,12 @@ def _project_replay_partitions(
                 raise RecurrenceProjectionError(
                     "topology replay carries an unsupported non-public-flow "
                     f"multiplicity {weight!r} for sector {sector_id}"
+                )
+            target_anchor = physical_sector_by_id[int(sector_id)].closure_source_slot
+            if permutation[representative_anchor] != target_anchor:
+                raise RecurrenceProjectionError(
+                    "topology replay does not map the representative closure "
+                    "anchor onto the target sector anchor"
                 )
             targets.append(
                 RecurrenceReplayTargetV1(

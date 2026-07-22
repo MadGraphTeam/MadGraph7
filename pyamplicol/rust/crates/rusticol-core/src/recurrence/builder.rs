@@ -43,6 +43,7 @@ impl AuthenticatedRecurrenceBuilderInput {
         for reference in process.template_references() {
             authenticate_template_reference(reference, &template_index)?;
         }
+        authenticate_singlet_closure_anchors(&process, &template)?;
 
         Ok(Self { process, template })
     }
@@ -63,6 +64,94 @@ impl AuthenticatedRecurrenceBuilderInput {
     ) {
         (self.process, self.template)
     }
+}
+
+fn authenticate_singlet_closure_anchors(
+    process: &ValidatedRecurrenceProcessInput,
+    template: &ValidatedRecurrenceTemplateInput,
+) -> RusticolResult<()> {
+    let process_input = process.input();
+    let template_input = template.input();
+    let mut fermionic_source_slots = Vec::new();
+
+    for leg in &process_input.external_legs {
+        let declared_fermionic = match leg.is_fermionic {
+            0 => false,
+            1 => true,
+            value => {
+                return Err(invalid(format!(
+                    "source slot {} has invalid fermionic marker {value}",
+                    leg.source_slot
+                )));
+            }
+        };
+        let state_range = leg.source_state_range.as_usize_range(
+            process_input.source_states.len(),
+            "external source states during closure-anchor authentication",
+        )?;
+        let mut statistics = None;
+        for source_state in &process_input.source_states[state_range] {
+            let state = template_input
+                .current_states
+                .get(source_state.current_state_template_id as usize)
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "source slot {} references absent current-state template {}",
+                        leg.source_slot, source_state.current_state_template_id
+                    ))
+                })?;
+            match statistics {
+                None => statistics = Some(state.statistics),
+                Some(previous) if previous == state.statistics => {}
+                Some(previous) => {
+                    return Err(invalid(format!(
+                        "source slot {} mixes particle statistics {previous} and {}",
+                        leg.source_slot, state.statistics
+                    )));
+                }
+            }
+        }
+        let template_fermionic = statistics == Some(1);
+        if template_fermionic != declared_fermionic {
+            return Err(invalid(format!(
+                "source slot {} fermionic marker does not match its authenticated current-state templates",
+                leg.source_slot
+            )));
+        }
+        if declared_fermionic {
+            fermionic_source_slots.push(leg.source_slot);
+        }
+    }
+
+    let expected_singlet_anchor = fermionic_source_slots.first().copied().unwrap_or(0);
+    for sector in &process_input.physical_lc_sectors {
+        let word = process_u32_sequence(
+            process_input,
+            sector.word_sequence_id,
+            "physical LC color word during closure-anchor authentication",
+        )?;
+        if word.is_empty() && sector.closure_source_slot != expected_singlet_anchor {
+            return Err(invalid(format!(
+                "all-singlet LC sector {} uses closure source slot {}, expected first fermionic source slot (or first source) {expected_singlet_anchor}",
+                sector.sector_id, sector.closure_source_slot
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn process_u32_sequence<'a>(
+    input: &'a super::process::OwnedRecurrenceProcessInput,
+    sequence_id: u32,
+    label: &str,
+) -> RusticolResult<&'a [u32]> {
+    let range = input
+        .u32_sequence_ranges
+        .get(sequence_id as usize)
+        .copied()
+        .ok_or_else(|| invalid(format!("{label} references absent sequence {sequence_id}")))?;
+    let range = range.as_usize_range(input.u32_sequence_values.len(), label)?;
+    Ok(&input.u32_sequence_values[range])
 }
 
 fn authenticate_template_reference(

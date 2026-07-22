@@ -13,7 +13,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    CheckedTableRange, ExactComplexRational, RECURRENCE_TEMPLATE_ABI, SemanticDigest,
+    CheckedTableRange, ExactComplexRational, LCColorComponentKind, LCColorComponentRole,
+    LCColorSourceSeed, LCColorSourceSeedOperation, RECURRENCE_TEMPLATE_ABI, SemanticDigest,
     validate_packed_ranges, validate_u32_references,
 };
 use crate::{RusticolError, RusticolResult};
@@ -280,6 +281,12 @@ pub struct SourceRow {
     pub spin_state: i32,
     pub flavour_flow_id: u32,
     pub quantum_number_flow_id: u32,
+    pub lc_color_seed_operation: u8,
+    pub lc_color_seed_shape_string_id: u32,
+    pub lc_color_seed_component_kind: u8,
+    pub lc_color_seed_component_role: u8,
+    pub lc_color_seed_proof_digest_id: u32,
+    pub lc_color_seed_provenance_sequence_id: u32,
     pub wavefunction_expression_digest_id: u32,
     pub evaluator_binding_id: u32,
     pub mass_parameter_id: u32,
@@ -397,6 +404,7 @@ pub struct LCColorTransitionWitnessRow {
     pub reverse_parent_mask: u8,
     pub component_operation: u8,
     pub result_component_kind: u8,
+    pub result_component_role: u8,
     pub result_shape_string_id: u32,
     pub exact_factor_id: u32,
     pub proof_digest_id: u32,
@@ -1405,6 +1413,77 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 self.quantum_number_flow_ranges.len(),
                 "source quantum-number flow",
             )?;
+            let state = self.current_states[row.state_template_id as usize];
+            if row.lc_color_seed_shape_string_id != state.lc_color_shape_string_id {
+                return Err(invalid(
+                    "source LC color seed shape does not match its current state",
+                ));
+            }
+            let seed_shape = required_string(
+                &catalogs.strings,
+                row.lc_color_seed_shape_string_id,
+                "source LC color seed shape",
+            )?;
+            validate_lc_color_shape(
+                seed_shape,
+                state.color_representation,
+                "source LC color seed",
+            )?;
+            let seed_operation = LCColorSourceSeedOperation::try_from(row.lc_color_seed_operation)?;
+            let seed_component_kind = if row.lc_color_seed_component_kind == u8::MAX {
+                None
+            } else {
+                Some(LCColorComponentKind::try_from(
+                    row.lc_color_seed_component_kind,
+                )?)
+            };
+            let seed_component_role =
+                LCColorComponentRole::try_from(row.lc_color_seed_component_role)?;
+            let expected_seed = match seed_shape {
+                "singlet-forest" => (
+                    LCColorSourceSeedOperation::Empty,
+                    None,
+                    LCColorComponentRole::None,
+                ),
+                "fundamental-open-string" | "antifundamental-open-string" => (
+                    LCColorSourceSeedOperation::Singleton,
+                    Some(LCColorComponentKind::OpenString),
+                    LCColorComponentRole::Active,
+                ),
+                "adjoint-segment" => (
+                    LCColorSourceSeedOperation::Singleton,
+                    Some(LCColorComponentKind::AdjointSegment),
+                    LCColorComponentRole::Active,
+                ),
+                _ => unreachable!("validated LC color shape"),
+            };
+            if (seed_operation, seed_component_kind, seed_component_role) != expected_seed {
+                return Err(invalid(
+                    "source LC color seed does not match its certified output shape",
+                ));
+            }
+            let seed_proof = required_digest(
+                &catalogs.digests,
+                row.lc_color_seed_proof_digest_id,
+                "source LC color seed proof",
+            )?;
+            LCColorSourceSeed::new(
+                seed_operation,
+                row.lc_color_seed_shape_string_id,
+                seed_component_kind,
+                seed_component_role,
+                seed_proof,
+            )?;
+            let seed_provenance = u32_sequence(
+                self,
+                row.lc_color_seed_provenance_sequence_id,
+                "source LC color seed provenance",
+            )?;
+            validate_string_pair_sequence(
+                &catalogs.strings,
+                seed_provenance,
+                "source LC color seed provenance",
+            )?;
             optional_reference(
                 row.mass_parameter_id,
                 self.parameters.len(),
@@ -1723,17 +1802,69 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                         witness.component_operation
                     )));
                 }
+                let component_kind = if witness.result_component_kind == u8::MAX {
+                    None
+                } else {
+                    Some(LCColorComponentKind::try_from(
+                        witness.result_component_kind,
+                    )?)
+                };
+                let component_role = LCColorComponentRole::try_from(witness.result_component_role)?;
                 if is_join {
-                    if witness.result_component_kind > 2 {
-                        return Err(invalid(format!(
-                            "LC color join witness has invalid component kind {}",
-                            witness.result_component_kind
-                        )));
+                    if component_kind.is_none() || component_role == LCColorComponentRole::None {
+                        return Err(invalid(
+                            "LC color join witness requires component kind and role",
+                        ));
                     }
-                } else if witness.result_component_kind != u8::MAX {
-                    return Err(invalid(format!(
-                        "only LC color join witnesses may declare a result component kind"
-                    )));
+                    let expected_role = if row.output_representation.abs() == 1 {
+                        LCColorComponentRole::Passive
+                    } else {
+                        LCColorComponentRole::Active
+                    };
+                    if component_role != expected_role {
+                        return Err(invalid(
+                            "LC color join role does not match its output representation",
+                        ));
+                    }
+                } else if is_close {
+                    if component_role != LCColorComponentRole::None {
+                        return Err(invalid("LC color closure result role must be none"));
+                    }
+                    let expected_kind = match input_representations {
+                        [left, right] if left.abs() == 1 && right.abs() == 1 => None,
+                        [left, right]
+                            if (*left == 3 && *right == -3) || (*left == -3 && *right == 3) =>
+                        {
+                            Some(LCColorComponentKind::OpenString)
+                        }
+                        [8, 8] => Some(LCColorComponentKind::Trace),
+                        _ => {
+                            return Err(invalid(
+                                "LC color closure has unsupported input representations",
+                            ));
+                        }
+                    };
+                    if component_kind != expected_kind {
+                        return Err(invalid(
+                            "LC color closure component kind does not match its inputs",
+                        ));
+                    }
+                } else {
+                    if component_kind.is_some() {
+                        return Err(invalid(
+                            "only LC color join/closure witnesses may declare a component kind",
+                        ));
+                    }
+                    let expected_role = if matches!(witness.component_operation, 2 | 3) {
+                        LCColorComponentRole::Active
+                    } else {
+                        LCColorComponentRole::None
+                    };
+                    if component_role != expected_role {
+                        return Err(invalid(
+                            "LC color witness result role does not match its operation",
+                        ));
+                    }
                 }
                 if is_close {
                     if has_output || witness.result_shape_string_id != MISSING_U32 {
@@ -1776,30 +1907,11 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                     witness.provenance_sequence_id,
                     "LC color witness provenance",
                 )?;
-                if provenance.len() % 2 != 0 {
-                    return Err(invalid(
-                        "LC color witness provenance must contain key/value pairs",
-                    ));
-                }
-                let mut previous_key = None;
-                for pair in provenance.chunks_exact(2) {
-                    let key = required_string(
-                        &catalogs.strings,
-                        pair[0],
-                        "LC color witness provenance key",
-                    )?;
-                    required_string(
-                        &catalogs.strings,
-                        pair[1],
-                        "LC color witness provenance value",
-                    )?;
-                    if previous_key.is_some_and(|previous| previous >= key) {
-                        return Err(invalid(
-                            "LC color witness provenance keys must be sorted and unique",
-                        ));
-                    }
-                    previous_key = Some(key);
-                }
+                validate_string_pair_sequence(
+                    &catalogs.strings,
+                    provenance,
+                    "LC color witness provenance",
+                )?;
             }
             required_factor(
                 &catalogs.factors,
@@ -2973,6 +3085,26 @@ fn required_digest(
         .get(required_reference(id, digests.len(), label)?)
         .copied()
         .ok_or_else(|| invalid(format!("{label} is absent")))
+}
+
+fn validate_string_pair_sequence(
+    strings: &[&str],
+    values: &[u32],
+    label: &str,
+) -> RusticolResult<()> {
+    if values.len() % 2 != 0 {
+        return Err(invalid(format!("{label} must contain key/value pairs")));
+    }
+    let mut previous_key = None;
+    for pair in values.chunks_exact(2) {
+        let key = required_string(strings, pair[0], &format!("{label} key"))?;
+        required_string(strings, pair[1], &format!("{label} value"))?;
+        if previous_key.is_some_and(|previous| previous >= key) {
+            return Err(invalid(format!("{label} keys must be sorted and unique")));
+        }
+        previous_key = Some(key);
+    }
+    Ok(())
 }
 
 fn optional_digest(

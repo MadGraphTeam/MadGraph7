@@ -50,6 +50,7 @@ def _input() -> RecurrenceBuilderInputV1:
                 physical_pdg=1,
                 outgoing_pdg=1,
                 is_initial=True,
+                is_fermionic=True,
                 source_states=(
                     RecurrenceSourceStateV1(0, -1, 0, -1, 10, 20),
                 ),
@@ -62,6 +63,7 @@ def _input() -> RecurrenceBuilderInputV1:
                 physical_pdg=-1,
                 outgoing_pdg=-1,
                 is_initial=True,
+                is_fermionic=True,
                 source_states=(
                     RecurrenceSourceStateV1(0, 1, 0, 1, 11, 21),
                 ),
@@ -74,6 +76,9 @@ def _input() -> RecurrenceBuilderInputV1:
                 sector_id=0,
                 public_id="flow:1,2",
                 kind="open-lines",
+                closure_source_slot=1,
+                closure_proof_algorithm="canonical-lc-closure-anchor-v1",
+                closure_proof_digest=_sha256("closure-anchor:flow:1,2"),
                 open_strings=(RecurrenceLCOpenStringV1(0, 1),),
                 word_source_slots=(0, 1),
                 support_mask=0b11,

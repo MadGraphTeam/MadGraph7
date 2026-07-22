@@ -58,6 +58,8 @@ _LC_COLOR_COMPONENT_OPERATION = {
     "close": 5,
 }
 _LC_COLOR_COMPONENT_KIND = {"open-string": 0, "adjoint-segment": 1, "trace": 2}
+_LC_COLOR_COMPONENT_ROLE = {"active": 0, "passive": 1, "none": 2}
+_LC_COLOR_SOURCE_SEED_OPERATION = {"empty": 0, "singleton": 1}
 _I128_MAX = (1 << 127) - 1
 _I128_MIN = -_I128_MAX
 
@@ -274,6 +276,7 @@ def build_recurrence_template_input_v1(
             digests,
             flavour_flows,
             quantum_number_flows,
+            u32_sequences,
         ),
         _string_tables(strings)[0],
         _string_tables(strings)[1],
@@ -350,7 +353,11 @@ def _all_strings(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
             record.crossing,
             record.wavefunction_family,
             record.evaluator_resolver_key,
+            record.lc_color_seed.output_shape_kind,
         )
+        for key, value in record.lc_color_seed.provenance:
+            yield key
+            yield value
         for name, expression in record.quantum_number_flow:
             yield name
             yield expression
@@ -438,6 +445,7 @@ def _all_digests(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
         yield from _present(record.exact_expression_digest)
     for record in catalog.sources:
         yield record.wavefunction_expression_digest
+        yield record.lc_color_seed.proof_digest
     for record in catalog.quantum_flows:
         yield record.predicate_digest
     for record in catalog.propagators:
@@ -507,6 +515,12 @@ def _all_u32_sequences(
         )
     for record in catalog.current_states:
         yield tuple(strings.id(value) for value in record.tensor_ordering)
+    for record in catalog.sources:
+        yield tuple(
+            strings.id(item)
+            for pair in record.lc_color_seed.provenance
+            for item in pair
+        )
     for record in catalog.quantum_flows:
         yield tuple(
             ids["current_states"][value] for value in record.input_state_template_ids
@@ -717,6 +731,7 @@ def _sources_table(
     digests,
     flavour_flows,
     quantum_number_flows,
+    sequences,
 ):
     parameter_ids = ids["parameters"]
     rows = []
@@ -732,6 +747,24 @@ def _sources_table(
                 record.spin_state,
                 flavour_flows.id(record.flavour_flow),
                 quantum_number_flows.id(record.quantum_number_flow),
+                _LC_COLOR_SOURCE_SEED_OPERATION[record.lc_color_seed.operation],
+                strings.id(record.lc_color_seed.output_shape_kind),
+                (
+                    255
+                    if record.lc_color_seed.component_kind is None
+                    else _LC_COLOR_COMPONENT_KIND[
+                        record.lc_color_seed.component_kind
+                    ]
+                ),
+                _LC_COLOR_COMPONENT_ROLE[record.lc_color_seed.component_role],
+                digests.id(record.lc_color_seed.proof_digest),
+                sequences.id(
+                    tuple(
+                        strings.id(item)
+                        for pair in record.lc_color_seed.provenance
+                        for item in pair
+                    )
+                ),
                 digests.id(record.wavefunction_expression_digest),
                 ids["evaluator_bindings"][record.evaluator_resolver_key],
                 _optional_reference(record.mass_parameter_id, parameter_ids),
@@ -752,6 +785,12 @@ def _sources_table(
             ("spin_state", _I32),
             ("flavour_flow_id", _U32),
             ("quantum_number_flow_id", _U32),
+            ("lc_color_seed_operation", _U8),
+            ("lc_color_seed_shape_string_id", _U32),
+            ("lc_color_seed_component_kind", _U8),
+            ("lc_color_seed_component_role", _U8),
+            ("lc_color_seed_proof_digest_id", _U32),
+            ("lc_color_seed_provenance_sequence_id", _U32),
             ("wavefunction_expression_digest_id", _U32),
             ("evaluator_binding_id", _U32),
             ("mass_parameter_id", _U32),
@@ -1090,6 +1129,7 @@ def _lc_color_transition_witnesses_table(
                         if witness.result_component_kind is None
                         else _LC_COLOR_COMPONENT_KIND[witness.result_component_kind]
                     ),
+                    _LC_COLOR_COMPONENT_ROLE[witness.result_component_role],
                     strings.id(witness.result_shape_kind),
                     factors.id(witness.exact_factor),
                     digests.id(witness.proof_digest),
@@ -1114,6 +1154,7 @@ def _lc_color_transition_witnesses_table(
             ("reverse_parent_mask", _U8),
             ("component_operation", _U8),
             ("result_component_kind", _U8),
+            ("result_component_role", _U8),
             ("result_shape_string_id", _U32),
             ("exact_factor_id", _U32),
             ("proof_digest_id", _U32),

@@ -12,6 +12,7 @@ from .base import (
     RecurrenceLCColorComponentKind,
     RecurrenceLCColorOperation,
     RecurrenceLCColorShapeKind,
+    RecurrenceLCColorSourceSeedContract,
     RecurrenceLCColorTransitionContract,
     RecurrenceLCColorWitnessContract,
     RecurrenceQuantumFlowContract,
@@ -242,6 +243,16 @@ class ExternalModelCatalogMixin:
             chirality,
         )
 
+    def recurrence_lc_source_color_contract(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> RecurrenceLCColorSourceSeedContract:
+        return self._standard_recurrence_lc_source_color_contract(
+            particle_id,
+            chirality,
+        )
+
     def recurrence_lc_color_transition_contract(
         self,
         vertex: Vertex,
@@ -287,16 +298,20 @@ class ExternalModelCatalogMixin:
                 )
             witnesses.append(
                 RecurrenceLCColorWitnessContract(
-                    term.input_permutation,
-                    term.reverse_parent_mask,
-                    cast(RecurrenceLCColorOperation, term.component_operation),
-                    cast(
+                    input_permutation=term.input_permutation,
+                    reverse_parent_mask=term.reverse_parent_mask,
+                    component_operation=cast(
+                        RecurrenceLCColorOperation,
+                        term.component_operation,
+                    ),
+                    result_component_kind=cast(
                         RecurrenceLCColorComponentKind | None,
                         term.result_component_kind,
                     ),
-                    factor,
-                    term.proof_digest,
-                    term.provenance,
+                    result_component_role=term.result_component_role,
+                    exact_factor=factor,
+                    proof_digest=term.proof_digest,
+                    provenance=term.provenance,
                 )
             )
         return RecurrenceLCColorTransitionContract(

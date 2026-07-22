@@ -226,6 +226,7 @@ pub struct ProcessExternalLegRow {
     pub physical_pdg: i32,
     pub outgoing_pdg: i32,
     pub is_initial: u8,
+    pub is_fermionic: u8,
     pub source_state_range: CheckedTableRange,
     pub momentum_mask_id: u32,
     pub support_mask_id: u32,
@@ -309,6 +310,9 @@ pub struct ProcessPhysicalLCSectorRow {
     pub sector_id: u32,
     pub public_id_string_id: u32,
     pub kind: u8,
+    pub closure_source_slot: u32,
+    pub closure_proof_algorithm_string_id: u32,
+    pub closure_proof_digest_id: u32,
     pub open_string_range: CheckedTableRange,
     pub trace_sequence_id: u32,
     pub singlet_sequence_id: u32,
@@ -1047,7 +1051,12 @@ impl<'a> RecurrenceProcessInputView<'a> {
             &self
                 .physical_lc_sectors
                 .iter()
-                .map(|row| row.public_id_string_id)
+                .flat_map(|row| {
+                    [
+                        row.public_id_string_id,
+                        row.closure_proof_algorithm_string_id,
+                    ]
+                })
                 .chain(
                     self.public_lc_flows
                         .iter()
@@ -1071,6 +1080,16 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 .collect::<Vec<_>>(),
             string_count,
             "process string references",
+        )?;
+
+        validate_u32_references(
+            &self
+                .physical_lc_sectors
+                .iter()
+                .map(|row| row.closure_proof_digest_id)
+                .collect::<Vec<_>>(),
+            catalogs.digests.len(),
+            "physical LC closure proof digests",
         )?;
 
         let sequence_count = self.u32_sequence_ranges.len();
@@ -1190,6 +1209,7 @@ impl<'a> RecurrenceProcessInputView<'a> {
         let mut public_labels = BTreeSet::new();
         for (source_slot, leg) in self.external_legs.iter().copied().enumerate() {
             decode_bool(leg.is_initial, "external_legs.is_initial")?;
+            decode_bool(leg.is_fermionic, "external_legs.is_fermionic")?;
             if !public_labels.insert(leg.public_label) {
                 return Err(invalid(format!(
                     "external leg {source_slot} repeats public label {}",
@@ -1300,6 +1320,22 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 )));
             }
             let kind = sector.kind()?;
+            required_reference(
+                sector.closure_source_slot,
+                self.external_legs.len(),
+                "physical LC closure source slot",
+            )?;
+            require_string_value(
+                &catalogs.strings,
+                sector.closure_proof_algorithm_string_id,
+                "canonical-lc-closure-anchor-v1",
+                "physical LC closure-anchor proof algorithm",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                sector.closure_proof_digest_id,
+                "physical LC closure-anchor proof digest",
+            )?;
             let trace = self.sequence(
                 sector.trace_sequence_id,
                 &format!("physical LC sector {sector_index} trace"),
@@ -1327,6 +1363,18 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 self.external_legs.len(),
                 &format!("physical LC sector {sector_index} word"),
             )?;
+            if let Some(expected_anchor) = word.last().copied() {
+                if sector.closure_source_slot != expected_anchor {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} closure source slot {} does not match terminal color-word endpoint {expected_anchor}",
+                        sector.closure_source_slot
+                    )));
+                }
+            } else if kind != ProcessLCSectorKind::Singlet {
+                return Err(invalid(format!(
+                    "non-singlet LC sector {sector_index} has no color word for its closure anchor"
+                )));
+            }
 
             match kind {
                 ProcessLCSectorKind::OpenLines if sector.open_string_range.count == 0 => {
@@ -1509,6 +1557,9 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 representative_word_id,
                 &format!("replay partition {partition_index} representative word"),
             )?;
+            let representative_anchor = self.physical_lc_sectors
+                [partition.representative_sector_id as usize]
+                .closure_source_slot;
             let rows = partition.target_range.as_usize_range(
                 self.replay_targets.len(),
                 &format!("replay partition {partition_index} targets"),
@@ -1576,6 +1627,18 @@ impl<'a> RecurrenceProcessInputView<'a> {
                     target_word,
                     &format!("replay target row {row_index}"),
                 )?;
+                let target_anchor =
+                    self.physical_lc_sectors[target.sector_id as usize].closure_source_slot;
+                let mapped_anchor = *source_permutation
+                    .get(representative_anchor as usize)
+                    .ok_or_else(|| {
+                        invalid("replay representative closure anchor is out of range")
+                    })?;
+                if mapped_anchor != target_anchor {
+                    return Err(invalid(format!(
+                        "replay target row {row_index} maps representative closure anchor {representative_anchor} to {mapped_anchor}, expected {target_anchor}"
+                    )));
+                }
             }
             if !contains_representative {
                 return Err(invalid(format!(

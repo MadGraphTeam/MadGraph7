@@ -39,6 +39,7 @@ from .recurrence_template import (
     EvaluatorBindingV1,
     ExactComplexRationalV1,
     FlavourFlowOperationV1,
+    LCColorSourceSeedV1,
     LCColorTransitionWitnessV1,
     ParameterTemplateV1,
     PropagatorTemplateV1,
@@ -875,6 +876,12 @@ def _build_sources(
                 parameter_ids,
                 "source width parameter",
             )
+            lc_color_seed = _source_color_seed(
+                model,
+                prepared_state.particle_id,
+                prepared_state.chirality,
+                state_template_id=state_ids[state_key],
+            )
             source_semantics = {
                 "abi": "rusticol-source-fill-v1",
                 "state": state_ids[state_key],
@@ -890,6 +897,7 @@ def _build_sources(
                 "quantum_number_flow": [
                     list(item) for item in canonical_quantum_number_flow
                 ],
+                "lc_color_seed": lc_color_seed.to_dict(),
                 "mass_parameter_id": mass_parameter_id,
                 "width_parameter_id": width_parameter_id,
             }
@@ -912,6 +920,7 @@ def _build_sources(
                 spin_state=int(state.spin_state),
                 flavour_flow=flavour_flow,
                 quantum_number_flow=canonical_quantum_number_flow,
+                lc_color_seed=lc_color_seed,
                 wavefunction_expression_digest=callable_signature,
                 evaluator_resolver_key=resolver_key,
                 mass_parameter_id=mass_parameter_id,
@@ -950,6 +959,74 @@ def _build_sources(
                 )
             )
     return tuple(records), tuple(bindings)
+
+
+def _source_color_seed(
+    model: Model,
+    particle_id: int,
+    chirality: int,
+    *,
+    state_template_id: str,
+) -> LCColorSourceSeedV1:
+    model_type = type(model)
+    mro = model_type.__mro__
+    shape_owner = next(
+        owner for owner in mro if "recurrence_lc_color_shape_contract" in owner.__dict__
+    )
+    seed_owner = next(
+        owner
+        for owner in mro
+        if "recurrence_lc_source_color_contract" in owner.__dict__
+    )
+    if mro.index(seed_owner) > mro.index(shape_owner):
+        raise RecurrenceTemplateError(
+            f"{model_type.__name__}.recurrence_lc_color_shape_contract overrides "
+            "the LC source shape without declaring a matching source-color seed "
+            "contract"
+        )
+
+    def evaluate() -> Any:
+        return model.recurrence_lc_source_color_contract(particle_id, chirality)
+
+    contract = _stable_callback(
+        f"LC source-color seed for particle {particle_id} chirality {chirality}",
+        evaluate,
+        serializer=lambda value: _canonical_json(
+            {
+                "operation": value.operation,
+                "output_shape_kind": value.output_shape_kind,
+                "component_kind": value.component_kind,
+                "component_role": value.component_role,
+                "proof_digest": value.proof_digest,
+                "provenance": list(value.provenance),
+            }
+        ),
+    )
+    expected_shape = model.recurrence_lc_color_shape_contract(particle_id, chirality)
+    if contract.output_shape_kind != expected_shape:
+        raise RecurrenceTemplateError(
+            "LC source-color seed output shape does not match its current-state "
+            f"contract: {contract.output_shape_kind!r} != {expected_shape!r}"
+        )
+    payload = {
+        "abi": "pyamplicol-recurrence-lc-source-seed-v1",
+        "state_template_id": state_template_id,
+        "particle_id": int(particle_id),
+        "chirality": int(chirality),
+        "operation": contract.operation,
+        "output_shape_kind": contract.output_shape_kind,
+        "component_kind": contract.component_kind,
+        "component_role": contract.component_role,
+        "provenance": [list(item) for item in contract.provenance],
+    }
+    return LCColorSourceSeedV1(
+        operation=contract.operation,
+        output_shape_kind=contract.output_shape_kind,
+        component_kind=contract.component_kind,
+        component_role=contract.component_role,
+        proof_digest=contract.proof_digest or _digest(payload),
+        provenance=contract.provenance,
+    )
 
 
 def _canonical_crossing(crossing: Any) -> str:
@@ -1650,6 +1727,7 @@ def _color_template(
             reverse_parent_mask=witness.reverse_parent_mask,
             component_operation=witness.component_operation,
             result_component_kind=witness.result_component_kind,
+            result_component_role=witness.result_component_role,
             result_shape_kind=result_shape,
             exact_factor=_exact_pair(
                 witness.exact_factor,
@@ -1669,6 +1747,7 @@ def _color_template(
                         "reverse_parent_mask": witness.reverse_parent_mask,
                         "operation": witness.component_operation,
                         "result_component_kind": witness.result_component_kind,
+                        "result_component_role": witness.result_component_role,
                         "factor": _exact_pair(
                             witness.exact_factor,
                             f"vertex kind {vertex.kind} LC color witness proof factor",
@@ -2146,6 +2225,17 @@ def _direct_closure_color_template(
         "rule_kind": "direct-pairing",
         "input_representations": representations,
     }
+    if all(abs(value) == 1 for value in representations):
+        closure_component_kind = None
+    elif set(representations) == {3, -3}:
+        closure_component_kind = "open-string"
+    elif representations == (8, 8):
+        closure_component_kind = "trace"
+    else:
+        raise RecurrenceTemplateError(
+            "direct current contraction has unsupported LC closure components "
+            f"{representations!r}"
+        )
     witness = LCColorTransitionWitnessV1(
         input_shape_kinds=(
             model.recurrence_lc_color_shape_contract(left_particle_id),
@@ -2154,7 +2244,8 @@ def _direct_closure_color_template(
         input_permutation=(0, 1),
         reverse_parent_mask=0,
         component_operation="close",
-        result_component_kind=None,
+        result_component_kind=closure_component_kind,
+        result_component_role="none",
         result_shape_kind=None,
         exact_factor=ExactComplexRationalV1.one(),
         proof_digest=_digest({**payload, "operation": "close"}),

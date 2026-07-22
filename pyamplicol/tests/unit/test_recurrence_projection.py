@@ -30,6 +30,7 @@ from pyamplicol.models.recurrence_template import (
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
     ExactComplexRationalV1,
+    LCColorSourceSeedV1,
     ParameterTemplateV1,
     RecurrenceTemplateCatalog,
     SourceTemplateV1,
@@ -37,7 +38,9 @@ from pyamplicol.models.recurrence_template import (
 from pyamplicol.processes.ir import (
     CanonicalProcessIR,
     ColorEndpointSummary,
+    ParticleStatistics,
     ProcessLegIR,
+    WavefunctionFamily,
 )
 
 
@@ -94,9 +97,7 @@ def _state(
         dimension=dimension,
         chirality=0,
         lc_color_shape_kind=(
-            "adjoint-segment"
-            if particle_id == 21
-            else "fundamental-open-string"
+            "adjoint-segment" if particle_id == 21 else "fundamental-open-string"
         ),
         auxiliary_kind=None,
         mass_parameter_id=None,
@@ -122,6 +123,18 @@ def _source(
         spin_state=helicity,
         flavour_flow=(state.particle_id,),
         quantum_number_flow=(),
+        lc_color_seed=LCColorSourceSeedV1(
+            operation="singleton",
+            output_shape_kind=state.lc_color_shape_kind,
+            component_kind=(
+                "adjoint-segment"
+                if state.lc_color_shape_kind == "adjoint-segment"
+                else "open-string"
+            ),
+            component_role="active",
+            proof_digest=_sha(f"source-seed:{state.template_id}"),
+            provenance=(("test-fixture", "model-generic-source-contract"),),
+        ),
         wavefunction_expression_digest=signature,
         evaluator_resolver_key=resolver,
     )
@@ -132,9 +145,7 @@ def _source(
         resolver_key=resolver,
         prepared_kernel_id=None,
         callable_kind="rusticol-template",
-        runtime_template=(
-            f"rusticol.source-fill.{family}.v1:{signature[:24]}"
-        ),
+        runtime_template=(f"rusticol.source-fill.{family}.v1:{signature[:24]}"),
         contract_kind="source",
         callable_signature=signature,
         input_state_template_ids=(),
@@ -269,6 +280,26 @@ def _pure_gluon_process() -> CanonicalProcessIR:
     )
 
 
+def _all_singlet_process() -> CanonicalProcessIR:
+    process = _process()
+    return replace(
+        process,
+        key="all_singlet_process",
+        legs=tuple(replace(leg, color_role="singlet") for leg in process.legs),
+        color_endpoints=ColorEndpointSummary(0, 0, 0),
+    )
+
+
+def _all_singlet_boson_process() -> CanonicalProcessIR:
+    process = _pure_gluon_process()
+    return replace(
+        process,
+        key="all_singlet_boson_process",
+        legs=tuple(replace(leg, color_role="singlet") for leg in process.legs),
+        color_endpoints=ColorEndpointSummary(0, 0, 0),
+    )
+
+
 def _color_plan(
     process: CanonicalProcessIR,
     *,
@@ -373,6 +404,19 @@ def test_topology_replay_projects_exact_axes_and_generation_coverage() -> None:
         "flow:2,3,4,1",
         "flow:2,4,3,1",
     )
+    assert tuple(sector.closure_source_slot for sector in logical.physical_sectors) == (
+        0,
+        0,
+    )
+    assert {sector.closure_proof_algorithm for sector in logical.physical_sectors} == {
+        "canonical-lc-closure-anchor-v1"
+    }
+    assert all(
+        len(sector.closure_proof_digest) == 64 for sector in logical.physical_sectors
+    )
+    assert (
+        len({sector.closure_proof_digest for sector in logical.physical_sectors}) == 2
+    )
     assert len(logical.replay_partitions) == 1
     replayed = sorted(
         logical.replay_partitions[0].targets,
@@ -405,6 +449,143 @@ def test_all_flow_union_retains_all_sectors_without_replay_partitions() -> None:
     assert tuple(sector.sector_id for sector in logical.physical_sectors) == (0, 1)
     assert logical.replay_partitions == ()
     assert len(build_recurrence_builder_input_v1(logical).canonical_digest) == 64
+
+
+def test_all_singlet_sector_uses_smallest_fermionic_source_as_closure_anchor() -> None:
+    process = _all_singlet_process()
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="lc",
+        sectors=(
+            LCColorSector(
+                id=0,
+                kind="singlet",
+                singlet_labels=tuple(leg.label for leg in process.legs),
+            ),
+        ),
+    )
+    logical = project_recurrence_process_v1(
+        process,
+        plan,
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+    )
+
+    sector = logical.physical_sectors[0]
+    assert sector.word_source_slots == ()
+    assert sector.closure_source_slot == 0
+    assert sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v1"
+    assert len(sector.closure_proof_digest) == 64
+
+
+def test_all_singlet_boson_sector_uses_smallest_source_as_closure_anchor() -> None:
+    process = _all_singlet_boson_process()
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="lc",
+        sectors=(
+            LCColorSector(
+                id=0,
+                kind="singlet",
+                singlet_labels=tuple(leg.label for leg in process.legs),
+            ),
+        ),
+    )
+    logical = project_recurrence_process_v1(
+        process,
+        plan,
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+    )
+
+    assert logical.physical_sectors[0].closure_source_slot == 0
+
+
+@pytest.mark.parametrize(
+    ("statistics", "wavefunction_family", "message"),
+    [
+        ("inclusive", "inclusive", "requires concrete"),
+        ("boson", "fermion", "inconsistent"),
+    ],
+)
+def test_closure_anchor_fails_closed_for_ambiguous_leg_spin_metadata(
+    statistics: ParticleStatistics,
+    wavefunction_family: WavefunctionFamily,
+    message: str,
+) -> None:
+    process = _all_singlet_process()
+    process = replace(
+        process,
+        legs=(
+            replace(
+                process.legs[0],
+                statistics=statistics,
+                wavefunction_family=wavefunction_family,
+            ),
+            *process.legs[1:],
+        ),
+    )
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="lc",
+        sectors=(
+            LCColorSector(
+                id=0,
+                kind="singlet",
+                singlet_labels=tuple(leg.label for leg in process.legs),
+            ),
+        ),
+    )
+
+    with pytest.raises(RecurrenceProjectionError, match=message):
+        project_recurrence_process_v1(
+            process,
+            plan,
+            _catalog(),
+            layout="all-flow-union",
+            normalization=_normalization(),
+        )
+
+
+def test_projection_rejects_replay_that_moves_all_singlet_closure_anchor() -> None:
+    process = _all_singlet_process()
+    labels = tuple(leg.label for leg in process.legs)
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="lc",
+        sectors=tuple(
+            LCColorSector(id=sector_id, kind="singlet", singlet_labels=labels)
+            for sector_id in range(2)
+        ),
+    )
+    replay = LCColorTopologyReplayPlan(
+        physical_sector_ids=(0, 1),
+        partitions=(
+            LCColorSectorReplayPartition(
+                representative_sector_id=0,
+                materialized_sector_id=0,
+                active_sector_ids=(0, 1),
+                label_permutations=((), ((1, 2), (2, 1))),
+                replay_weights=(1.0, 1.0),
+                replay_signs=(1, 1),
+                proof_algorithm="canonical-recurrence-replay-witness-v1",
+                proof_digest=_sha("singlet-replay-proof"),
+            ),
+        ),
+        residual_sector_ids=(),
+    )
+
+    with pytest.raises(RecurrenceProjectionError, match="closure anchor"):
+        project_recurrence_process_v1(
+            process,
+            plan,
+            _catalog(),
+            layout="topology-replay",
+            topology_replay=replay,
+            normalization=_normalization(),
+        )
 
 
 def test_folded_trace_reflection_remains_a_public_runtime_flow() -> None:

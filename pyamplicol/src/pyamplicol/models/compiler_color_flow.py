@@ -51,6 +51,13 @@ def compile_lc_color_transition_terms(
         result_component_kind: str | None,
         exact_factor_expression: str = "1",
     ) -> CompiledLCColorTransitionTerm:
+        result_component_role = (
+            "passive"
+            if operation == "concatenate-join" and abs(output_representation) == 1
+            else "active"
+            if operation in {"concatenate-join", "inherit-left", "inherit-right"}
+            else "none"
+        )
         payload = {
             "color_expression": kernel.color_expression,
             "color_source": kernel.color_source,
@@ -62,6 +69,7 @@ def compile_lc_color_transition_terms(
             "oriented_representations": list(oriented_representations),
             "proof_source": proof_source,
             "result_component_kind": result_component_kind,
+            "result_component_role": result_component_role,
             "result_shape_kind": result_shape,
             "source_particle_legs": list(kernel.source_particle_legs),
             "structure": structure,
@@ -87,6 +95,7 @@ def compile_lc_color_transition_terms(
             reverse_parent_mask=0,
             component_operation=operation,
             result_component_kind=result_component_kind,
+            result_component_role=result_component_role,
             input_shape_kinds=(shapes[0], shapes[1]),
             result_shape_kind=result_shape,
             exact_factor_expression=exact_factor_expression,

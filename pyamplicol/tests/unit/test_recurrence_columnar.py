@@ -66,6 +66,7 @@ def _logical_input(
             physical_pdg=1,
             outgoing_pdg=1,
             is_initial=True,
+            is_fermionic=True,
             source_states=(
                 RecurrenceSourceStateV1(0, -1, 0, -1, 10, 20),
                 RecurrenceSourceStateV1(1, 1, 0, 1, 10, 21),
@@ -79,6 +80,7 @@ def _logical_input(
             physical_pdg=-1,
             outgoing_pdg=-1,
             is_initial=True,
+            is_fermionic=True,
             source_states=(
                 RecurrenceSourceStateV1(0, -1, 0, -1, 11, 22),
                 RecurrenceSourceStateV1(1, 1, 0, 1, 11, 23),
@@ -92,6 +94,7 @@ def _logical_input(
             physical_pdg=21,
             outgoing_pdg=21,
             is_initial=False,
+            is_fermionic=False,
             source_states=(
                 RecurrenceSourceStateV1(0, -1, 0, -1, 12, 24),
                 RecurrenceSourceStateV1(1, 1, 0, 1, 12, 25),
@@ -105,6 +108,7 @@ def _logical_input(
             physical_pdg=21,
             outgoing_pdg=21,
             is_initial=False,
+            is_fermionic=False,
             source_states=(
                 RecurrenceSourceStateV1(0, -1, 0, -1, 13, 26),
                 RecurrenceSourceStateV1(1, 1, 0, 1, 13, 27),
@@ -118,6 +122,9 @@ def _logical_input(
             sector_id=0,
             public_id="flow:1,3,4,2",
             kind="open-lines",
+            closure_source_slot=1,
+            closure_proof_algorithm="canonical-lc-closure-anchor-v1",
+            closure_proof_digest=_sha256("closure-anchor:0"),
             open_strings=(RecurrenceLCOpenStringV1(0, 1, (2, 3)),),
             word_source_slots=(0, 2, 3, 1),
             support_mask=0b1111,
@@ -126,6 +133,9 @@ def _logical_input(
             sector_id=1,
             public_id="flow:1,4,3,2",
             kind="open-lines",
+            closure_source_slot=1,
+            closure_proof_algorithm="canonical-lc-closure-anchor-v1",
+            closure_proof_digest=_sha256("closure-anchor:1"),
             open_strings=(RecurrenceLCOpenStringV1(0, 1, (3, 2)),),
             word_source_slots=(0, 3, 2, 1),
             support_mask=0b1111,
@@ -318,6 +328,16 @@ def test_contract_has_owned_read_only_little_endian_tables(
     assert expected <= {table.name for table in columnar_input.tables}
     header = columnar_input.table("header")
     assert int(header.column("public_flow_count")[0]) == 2
+    sectors = columnar_input.table("physical_lc_sectors")
+    assert tuple(int(value) for value in sectors.column("closure_source_slot")) == (
+        1,
+        1,
+    )
+    assert sectors.column("closure_proof_digest_id").dtype.str == "<u4"
+    assert tuple(
+        int(value)
+        for value in columnar_input.table("external_legs").column("is_fermionic")
+    ) == (1, 1, 0, 0)
     for table in columnar_input.tables:
         for column in table.columns:
             assert column.values.dtype != np.dtype("O")
@@ -340,6 +360,18 @@ def test_digest_and_bytes_ignore_nonsemantic_record_order() -> None:
     first.require_digest(first.canonical_digest)
     with pytest.raises(RecurrenceColumnarInputError, match="does not match"):
         first.require_digest(_sha256("stale"))
+
+    changed_sector = replace(
+        _logical_input().physical_sectors[0],
+        closure_proof_digest=_sha256("different-closure-anchor-proof"),
+    )
+    changed = build_recurrence_builder_input_v1(
+        replace(
+            _logical_input(),
+            physical_sectors=(changed_sector, *_logical_input().physical_sectors[1:]),
+        )
+    )
+    assert changed.canonical_digest != first.canonical_digest
 
 
 def test_multiword_masks_are_flat_little_endian_u64(
@@ -514,6 +546,15 @@ def test_logical_cross_references_fail_closed(
             replace(logical_input, selected_public_flow_ids=(99,))
         )
 
+    bad_anchor = replace(logical_input.physical_sectors[0], closure_source_slot=99)
+    with pytest.raises(RecurrenceColumnarInputError, match="closure source slot"):
+        build_recurrence_builder_input_v1(
+            replace(
+                logical_input,
+                physical_sectors=(bad_anchor, *logical_input.physical_sectors[1:]),
+            )
+        )
+
     bad_target = replace(
         logical_input.replay_partitions[0].targets[0],
         external_permutation=(0, 1, 2, 2),
@@ -568,6 +609,7 @@ def test_replay_permutations_use_documented_gather_orientation(
     target_sector = replace(
         logical_input.physical_sectors[1],
         word_source_slots=target_word,
+        closure_source_slot=target_word[-1],
     )
     target_flow = replace(
         logical_input.public_flows[1],
@@ -610,6 +652,50 @@ def test_replay_permutations_use_documented_gather_orientation(
                 logical,
                 replay_partitions=(
                     replace(logical.replay_partitions[0], targets=wrong_targets),
+                ),
+            )
+        )
+
+
+def test_replay_permutation_must_transport_all_singlet_closure_anchor(
+    logical_input: RecurrenceBuilderLogicalInputV1,
+) -> None:
+    singlet_sectors = tuple(
+        replace(
+            sector,
+            kind="singlet",
+            closure_source_slot=0,
+            open_strings=(),
+            singlet_source_slots=(0, 1, 2, 3),
+            word_source_slots=(),
+        )
+        for sector in logical_input.physical_sectors
+    )
+    singlet_flows = tuple(
+        replace(flow, word_source_slots=()) for flow in logical_input.public_flows
+    )
+    targets = tuple(
+        replace(
+            target,
+            external_permutation=(1, 0, 2, 3),
+            source_slot_permutation=(1, 0, 2, 3),
+        )
+        if target.sector_id == 1
+        else target
+        for target in logical_input.replay_partitions[0].targets
+    )
+
+    with pytest.raises(
+        RecurrenceColumnarInputError,
+        match="representative closure anchor",
+    ):
+        build_recurrence_builder_input_v1(
+            replace(
+                logical_input,
+                physical_sectors=singlet_sectors,
+                public_flows=singlet_flows,
+                replay_partitions=(
+                    replace(logical_input.replay_partitions[0], targets=targets),
                 ),
             )
         )

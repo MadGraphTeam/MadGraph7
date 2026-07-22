@@ -19,6 +19,130 @@ pub enum LCColorComponentKind {
     Trace = 2,
 }
 
+impl TryFrom<u8> for LCColorComponentKind {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::OpenString),
+            1 => Ok(Self::AdjointSegment),
+            2 => Ok(Self::Trace),
+            _ => Err(invalid(format!(
+                "unsupported LC color component kind {value}"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum LCColorComponentRole {
+    Active = 0,
+    Passive = 1,
+    None = 2,
+}
+
+impl TryFrom<u8> for LCColorComponentRole {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Active),
+            1 => Ok(Self::Passive),
+            2 => Ok(Self::None),
+            _ => Err(invalid(format!(
+                "unsupported LC color component role {value}"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum LCColorSourceSeedOperation {
+    Empty = 0,
+    Singleton = 1,
+}
+
+impl TryFrom<u8> for LCColorSourceSeedOperation {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Empty),
+            1 => Ok(Self::Singleton),
+            _ => Err(invalid(format!(
+                "unsupported LC source seed operation {value}"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct LCColorSourceSeed {
+    operation: LCColorSourceSeedOperation,
+    output_color_shape_id: u32,
+    component_kind: Option<LCColorComponentKind>,
+    component_role: LCColorComponentRole,
+    proof_digest: SemanticDigest,
+}
+
+impl LCColorSourceSeed {
+    pub fn new(
+        operation: LCColorSourceSeedOperation,
+        output_color_shape_id: u32,
+        component_kind: Option<LCColorComponentKind>,
+        component_role: LCColorComponentRole,
+        proof_digest: SemanticDigest,
+    ) -> RusticolResult<Self> {
+        match operation {
+            LCColorSourceSeedOperation::Empty
+                if component_kind.is_some() || component_role != LCColorComponentRole::None =>
+            {
+                return Err(invalid(
+                    "an empty LC source seed cannot declare a component",
+                ));
+            }
+            LCColorSourceSeedOperation::Singleton
+                if component_kind.is_none() || component_role == LCColorComponentRole::None =>
+            {
+                return Err(invalid(
+                    "a singleton LC source seed requires component kind and role",
+                ));
+            }
+            _ => {}
+        }
+        Ok(Self {
+            operation,
+            output_color_shape_id,
+            component_kind,
+            component_role,
+            proof_digest,
+        })
+    }
+
+    pub fn instantiate(self, source_slot: u32) -> RusticolResult<DynamicLCColorState> {
+        match self.operation {
+            LCColorSourceSeedOperation::Empty => {
+                DynamicLCColorState::new(self.output_color_shape_id, None, Vec::new())
+            }
+            LCColorSourceSeedOperation::Singleton => {
+                let component = LCColorComponent::new(
+                    self.component_kind
+                        .expect("validated singleton component kind"),
+                    vec![source_slot],
+                )?;
+                let active = (self.component_role == LCColorComponentRole::Active).then_some(0);
+                DynamicLCColorState::new(self.output_color_shape_id, active, vec![component])
+            }
+        }
+    }
+
+    pub const fn proof_digest(self) -> SemanticDigest {
+        self.proof_digest
+    }
+}
+
 /// Canonical ordered colored-source word for one LC component.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct LCColorComponent {
@@ -196,6 +320,7 @@ pub struct LCColorTransitionWitness {
     reverse_parent_mask: u8,
     operation: LCColorComponentOperation,
     result_component_kind: Option<LCColorComponentKind>,
+    result_component_role: LCColorComponentRole,
     result_color_shape_id: Option<u32>,
     exact_factor: ExactComplexRational,
     proof_digest: SemanticDigest,
@@ -208,6 +333,7 @@ impl LCColorTransitionWitness {
         reverse_parent_mask: u8,
         operation: LCColorComponentOperation,
         result_component_kind: Option<LCColorComponentKind>,
+        result_component_role: LCColorComponentRole,
         result_color_shape_id: Option<u32>,
         exact_factor: ExactComplexRational,
         proof_digest: SemanticDigest,
@@ -229,23 +355,41 @@ impl LCColorTransitionWitness {
         }
         match operation {
             LCColorComponentOperation::Close => {
-                if result_component_kind.is_some() || result_color_shape_id.is_some() {
+                if result_component_role != LCColorComponentRole::None
+                    || result_color_shape_id.is_some()
+                {
                     return Err(invalid(
-                        "an LC closure witness cannot declare a result color state",
+                        "an LC closure witness cannot declare an active result color state",
                     ));
                 }
             }
             LCColorComponentOperation::ConcatenateJoin => {
-                if result_component_kind.is_none() || result_color_shape_id.is_none() {
+                if result_component_kind.is_none()
+                    || result_component_role == LCColorComponentRole::None
+                    || result_color_shape_id.is_none()
+                {
                     return Err(invalid(
-                        "an LC join witness requires result component and shape contracts",
+                        "an LC join witness requires result component, role, and shape contracts",
+                    ));
+                }
+            }
+            LCColorComponentOperation::InheritLeft | LCColorComponentOperation::InheritRight => {
+                if result_component_kind.is_some()
+                    || result_component_role != LCColorComponentRole::Active
+                    || result_color_shape_id.is_none()
+                {
+                    return Err(invalid(
+                        "an LC inheritance witness requires an active result role and shape",
                     ));
                 }
             }
             _ => {
-                if result_component_kind.is_some() || result_color_shape_id.is_none() {
+                if result_component_kind.is_some()
+                    || result_component_role != LCColorComponentRole::None
+                    || result_color_shape_id.is_none()
+                {
                     return Err(invalid(
-                        "a non-join LC witness requires only a result shape contract",
+                        "a passive LC witness requires only a result shape contract",
                     ));
                 }
             }
@@ -255,6 +399,7 @@ impl LCColorTransitionWitness {
             reverse_parent_mask,
             operation,
             result_component_kind,
+            result_component_role,
             result_color_shape_id,
             exact_factor,
             proof_digest,
@@ -292,7 +437,8 @@ impl LCColorTransitionWitness {
             LCColorComponentOperation::ConcatenateJoin => {
                 let components =
                     concatenate_join(left, right, self.result_component_kind.unwrap())?;
-                let active = Some(components.len() as u32 - 1);
+                let active = (self.result_component_role == LCColorComponentRole::Active)
+                    .then_some(components.len() as u32 - 1);
                 (components, active)
             }
             LCColorComponentOperation::ConcatenateKeep => {
@@ -343,8 +489,19 @@ impl LCColorTransitionWitness {
         let left = &parents[first as usize];
         let right = &parents[second as usize];
         match (left.active_component(), right.active_component()) {
-            (Some(_), Some(_)) => concatenate_join(left, right, LCColorComponentKind::Trace),
-            (None, None) => Ok(canonical_passive_union(left, right)),
+            (Some(_), Some(_)) => concatenate_join(
+                left,
+                right,
+                self.result_component_kind.ok_or_else(|| {
+                    invalid("a colored LC closure requires a certified result component kind")
+                })?,
+            ),
+            (None, None) if self.result_component_kind.is_none() => {
+                Ok(canonical_passive_union(left, right))
+            }
+            (None, None) => Err(invalid(
+                "a passive LC closure cannot declare a joined component kind",
+            )),
             _ => Err(invalid(
                 "an LC closure must consume either two active components or two passive forests",
             )),
