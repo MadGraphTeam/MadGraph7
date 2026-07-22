@@ -2420,8 +2420,69 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'me_matrix_ic_decl': '',
             })
             return
-        raise NotImplementedError(
-            'madevent crossing ON path is added in the next slice')
+
+        # ON path. The crossing routines must not collide across the matrix<i>.f
+        # files linked into one group executable, so they are named with a
+        # per-proc_id qualifier (GET_CROSS_PERM stays prefix-less in standalone).
+        nflav = self._build_flav_table_flat(matrix_element)[0]
+        cp = 'CR%s_' % pid
+        crossing_template = pjoin(_file_path, 'iolibs', 'template_files',
+                                  'matrix_standalone_crossing_v4.inc')
+        crossing_routines = open(crossing_template).read() % {
+            'proc_prefix': cp,
+            'nflav': nflav,
+            'iden_cross_lines': self.get_iden_cross_lines(matrix_element)}
+        replace_dict.update({
+            'smatrix_me_cross_decl': (
+                '      INTEGER NFLAV\n'
+                '      PARAMETER (NFLAV=%(nflav)d)\n'
+                '      INTEGER FLAV_USE, CROSSUSE, IDENUSE, XKCR\n'
+                '      INTEGER IC(NEXTERNAL), IC0(NEXTERNAL)\n'
+                '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
+                '      INTEGER NHELUSE(NEXTERNAL,NCOMB)\n'
+                '      INTEGER %(cp)sGET_SPINCOL_CROSS\n'
+                '      INTEGER %(cp)sGET_IDENT_CROSS'
+                ) % {'nflav': nflav, 'cp': cp},
+            # Decode the crossing and build the crossed P/NHEL/IC once, before the
+            # helicity loop. An unusable crossing (spin*color = 0) has a zero ME.
+            'smatrix_me_cross_decode': (
+                '      CROSSUSE = (IFLAV-1) / NFLAV\n'
+                '      IDENUSE = %(cp)sGET_SPINCOL_CROSS(CROSSUSE)\n'
+                '      IF (IDENUSE.EQ.0) THEN\n'
+                '        ANS = 0D0\n'
+                '        IHEL = 1\n'
+                '        ICOL = 1\n'
+                '        RETURN\n'
+                '      ENDIF\n'
+                '      DO XKCR=1,NEXTERNAL\n'
+                '        IC0(XKCR) = 1\n'
+                '      ENDDO\n'
+                '      CALL %(cp)sAPPLY_CROSSING_TABLE(IFLAV, NCOMB, P, NHEL,\n'
+                '     &   IC0, PUSE, NHELUSE, IC, FLAV_USE)'
+                ) % {'cp': cp},
+            'me_flav_key': 'FLAV_USE',
+            # A crossing permutes/flips helicities, so the shared GOODHEL filter
+            # (keyed by the reduced flavor) no longer gates its rows; compute
+            # every helicity for a crossing-enabled ME (optimise with a remap
+            # later). For CROSS=0 the crossed arrays equal the originals.
+            'smatrix_me_goodhel_or': ' .OR. .TRUE.',
+            'me_matrix_args':
+                'PUSE ,NHELUSE(1,I),IC,FLAV_USE,I,AMP2, JAMP2, IVEC',
+            # Uncrossed keeps IDEN/BROKEN_SYM; crossed rebuilds the denominator
+            # as initial spin*color (per crossing) times the identical-final
+            # factor of the actual flavors (per flavor).
+            'smatrix_me_iden_line': (
+                '      IF (CROSSUSE.EQ.0) THEN\n'
+                '        ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(pid)s(FLAVOR_FOR_SYM)\n'
+                '      ELSE\n'
+                '        ANS=ANS/DBLE(IDENUSE*%(cp)sGET_IDENT_CROSS(CROSSUSE,\n'
+                '     &   FLAVOR_FOR_SYM))\n'
+                '      ENDIF'
+                ) % {'pid': pid, 'cp': cp},
+            'crossing_routines_me': crossing_routines,
+            'me_matrix_ic_param': 'IC,',
+            'me_matrix_ic_decl': '    INTEGER IC(NEXTERNAL)',
+        })
 
     # (decl, decode, apply) for GET_PDG_FOR_FLAVOR without crossing: FLAV_IDX_IN
     # is a bare flavor index, so there is nothing to permute or conjugate.
@@ -7025,11 +7086,17 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                         'flavor_mask_decl':'',
                         'flavor_mask_setup':''}
 
-        # Crossing holes of matrix_madevent_group_v4.inc. Only the fortran
-        # standalone can currently decode the extended FLAV_IDX, so the madevent
-        # exporter always takes the OFF path for now (byte-identical output);
-        # the ON path is wired in once the group ME evaluates crossings.
-        me_use_crossing = False
+        # Crossing holes of matrix_madevent_group_v4.inc: the group SMATRIX
+        # decodes the extended FLAV_IDX and evaluates the crossed process through
+        # a runtime IC. Only that template carries the holes (the single-process
+        # matrix_madevent_v4.inc does not), and a process whose definition pins a
+        # specific s-channel has its crossings generated separately, so it stays
+        # on the plain path. When off the fills reproduce the historical code.
+        me_use_crossing = (
+            self.opt.get('use_crossing', False)
+            and self.matrix_file == 'matrix_madevent_group_v4.inc'
+            and not any(self.breaks_crossing_symmetry(proc)
+                        for proc in matrix_element.get('processes')))
         self.fill_crossing_replace_dict_me(matrix_element, replace_dict,
                                            me_use_crossing, proc_id)
 
@@ -7042,12 +7109,17 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         fortran_model.use_flavor_mask = (n_flavors > 0)
         fortran_model.me_n_flavors = n_flavors
         fortran_model.me_active_flavor_mask = active_flavor_mask
+        # With crossing on, the external wavefunction NSF/NSV flag is multiplied
+        # by IC(i) so a leg crossed between the initial and final state flips
+        # (the crossed P/NHEL/IC are built by APPLY_CROSSING in SMATRIX).
+        fortran_model.use_crossing_ic = me_use_crossing
         try:
             helas_calls = fortran_model.get_matrix_element_calls(matrix_element)
         finally:
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
             fortran_model.me_active_flavor_mask = None
+            fortran_model.use_crossing_ic = False
         if fortran_model.width_tchannel_set_tozero and not ProcessExporterFortranME.done_warning_tchannel:
             logger.info("Some T-channel width have been set to zero [new since 2.8.0]\n if you want to keep this width please set \"zerowidth_tchannel\" to False", '$MG:BOLD')
             ProcessExporterFortranME.done_warning_tchannel = True
