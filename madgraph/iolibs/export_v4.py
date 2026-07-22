@@ -2431,7 +2431,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # ON path. The crossing routines must not collide across the matrix<i>.f
         # files linked into one group executable, so they are named with a
         # per-proc_id qualifier (GET_CROSS_PERM stays prefix-less in standalone).
-        nflav = self._build_flav_table_flat(matrix_element)[0]
+        #
+        # NFLAV must be the count that the madevent GET_FLAVOR table is sized by,
+        # i.e. get_external_flavors_with_iden() (== replace_dict 'max_flavor',
+        # what MAXFLAVPERPROC/FLAVOR(NEXTERNAL,max_flavor) use), NOT the standalone
+        # _build_flav_table_flat() (compute_flavor_masks): for a merged group ME
+        # the two differ (e.g. Q Q~ > g g: iden 1 vs masks 4), and the extended
+        # FLAV_IDX decode CROSS=(IFLAV-1)/NFLAV, FLAV=mod(IFLAV-1,NFLAV)+1 must
+        # land FLAV in [1, max_flavor]. This also matches compute_crossing_pdg_
+        # entries (used by partition_crossing_classes), so the routed FLAV_IDX
+        # decodes the same way here.
+        nflav = len(matrix_element.get_external_flavors_with_iden())
         cp = 'CR%s_' % pid
         crossing_template = pjoin(_file_path, 'iolibs', 'template_files',
                                   'matrix_standalone_crossing_v4.inc')
