@@ -30,6 +30,7 @@ from pyamplicol.models.prepared import (
     prepared_output_contract_digest,
     write_prepared_model_bundle,
 )
+from pyamplicol.models.recurrence_template import RecurrenceTemplateCatalog
 
 
 def _kernel(
@@ -132,14 +133,10 @@ def _block_variant(kernel: PreparedKernelRecord) -> PreparedKernelVariantRecord:
         input_lane_stride=kernel.input_arity,
         output_lane_stride=kernel.output_arity,
         input_layout=tuple(
-            f"lane:{lane}:{item}"
-            for lane in range(4)
-            for item in kernel.input_layout
+            f"lane:{lane}:{item}" for lane in range(4) for item in kernel.input_layout
         ),
         output_layout=tuple(
-            f"lane:{lane}:{item}"
-            for lane in range(4)
-            for item in kernel.output_layout
+            f"lane:{lane}:{item}" for lane in range(4) for item in kernel.output_layout
         ),
         f64_evaluator_manifest={
             "kind": "symjit-application-evaluator",
@@ -262,11 +259,48 @@ def test_prepared_model_bundle_round_trip_and_payload_copy(tmp_path: Path) -> No
     assert manifest["schema_version"] == PREPARED_MODEL_BUNDLE_SCHEMA_VERSION
     assert manifest["eager_kernel_abi"] == EAGER_KERNEL_ABI
     assert manifest["kernel_pack"]["backend"] == "jit"
+    assert "recurrence_template" not in manifest["kernel_pack"]
     assert {record["path"] for record in manifest["members"]} == {
         PREPARED_MODEL_COMPILED_MODEL_PATH,
         "kernels/0/application.symjit",
         "kernels/0/exact.evaluator.bin",
     }
+
+
+def test_prepared_model_bundle_round_trips_optional_recurrence_template(
+    tmp_path: Path,
+) -> None:
+    kernel = _kernel()
+    catalog = RecurrenceTemplateCatalog.create(compiled_model_digest="a" * 64)
+    pack = replace(_pack(kernel), recurrence_template=catalog.to_dict())
+
+    path = write_prepared_model_bundle(
+        tmp_path / "recurrence-ready",
+        compiled_model=_compiled_model(),
+        kernel_pack=pack,
+        payloads=_payloads(kernel),
+    )
+    loaded = load_prepared_model_bundle(path)
+
+    assert loaded.kernel_pack.recurrence_template is not None
+    decoded = loaded.kernel_pack.recurrence_template_catalog
+    assert decoded is not None
+    assert decoded.catalog_digest == catalog.catalog_digest
+    with zipfile.ZipFile(path, "r") as archive:
+        manifest = json.loads(archive.read(PREPARED_MODEL_MANIFEST_PATH))
+    assert (
+        manifest["kernel_pack"]["recurrence_template"]["header"]["catalog_digest"]
+        == catalog.catalog_digest
+    )
+
+
+def test_prepared_kernel_pack_rejects_stale_recurrence_template() -> None:
+    catalog = RecurrenceTemplateCatalog.create(compiled_model_digest="a" * 64)
+    payload = catalog.to_dict()
+    payload["header"]["catalog_digest"] = "b" * 64
+
+    with pytest.raises(PreparedModelBundleError, match="stale recurrence"):
+        replace(_pack(_kernel()), recurrence_template=payload)
 
 
 def test_prepared_block_variant_round_trip_and_payload_index(tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ mod engine;
 mod error;
 mod metadata;
 pub mod pacbin;
+pub mod recurrence;
 
 pub use artifact::{
     ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,

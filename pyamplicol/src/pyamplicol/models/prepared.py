@@ -19,7 +19,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, cast
+
+if TYPE_CHECKING:
+    from .recurrence_template import RecurrenceTemplateCatalog
 
 PREPARED_MODEL_BUNDLE_KIND = "pyamplicol-prepared-model"
 PREPARED_MODEL_BUNDLE_SCHEMA_VERSION = 1
@@ -874,6 +877,7 @@ class PreparedKernelPack:
     resolver_manifest: Mapping[str, object]
     kernels: tuple[PreparedKernelRecord, ...]
     kernel_variants: tuple[PreparedKernelVariantRecord, ...] = ()
+    recurrence_template: Mapping[str, object] | None = None
     _referenced_payload_paths: tuple[str, ...] = field(
         init=False,
         repr=False,
@@ -981,6 +985,29 @@ class PreparedKernelPack:
                     "for JIT packs"
                 )
         object.__setattr__(self, "kernel_variants", variants)
+        recurrence_template = self.recurrence_template
+        if recurrence_template is not None:
+            # Keep the prepared-bundle container independent from recurrence
+            # construction while still rejecting stale or incomplete semantic
+            # catalogs at the publication boundary.
+            from .recurrence_template import RecurrenceTemplateCatalog
+
+            try:
+                catalog = RecurrenceTemplateCatalog.from_dict(
+                    _mapping(recurrence_template, "kernel_pack.recurrence_template")
+                )
+            except ValueError as exc:
+                raise PreparedModelBundleError(
+                    f"invalid kernel_pack.recurrence_template: {exc}"
+                ) from exc
+            object.__setattr__(
+                self,
+                "recurrence_template",
+                _freeze_mapping(
+                    catalog.to_dict(),
+                    "kernel_pack.recurrence_template",
+                ),
+            )
         object.__setattr__(
             self,
             "_referenced_payload_paths",
@@ -999,8 +1026,22 @@ class PreparedKernelPack:
     def referenced_payload_paths(self) -> tuple[str, ...]:
         return self._referenced_payload_paths
 
+    @property
+    def recurrence_template_catalog(self) -> RecurrenceTemplateCatalog | None:
+        """Return the validated semantic companion as its typed catalog."""
+
+        recurrence_template = self.recurrence_template
+        if recurrence_template is None:
+            return None
+        from .recurrence_template import RecurrenceTemplateCatalog
+
+        thawed = _thaw_json(recurrence_template)
+        return RecurrenceTemplateCatalog.from_dict(
+            _mapping(thawed, "kernel_pack.recurrence_template")
+        )
+
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "backend": self.backend,
             "optimization_settings": _thaw_json(self.optimization_settings),
             "producer": _thaw_json(self.producer),
@@ -1011,11 +1052,17 @@ class PreparedKernelPack:
             "kernels": [kernel.to_dict() for kernel in self.kernels],
             "kernel_variants": [variant.to_dict() for variant in self.kernel_variants],
         }
+        # Omitting this optional companion preserves the byte-for-byte manifest
+        # shape of prepared bundles produced before recurrence execution.
+        if self.recurrence_template is not None:
+            payload["recurrence_template"] = _thaw_json(self.recurrence_template)
+        return payload
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> PreparedKernelPack:
         normalized = dict(value)
         normalized.setdefault("kernel_variants", ())
+        normalized.setdefault("recurrence_template", None)
         expected = frozenset(
             (
                 "backend",
@@ -1027,6 +1074,7 @@ class PreparedKernelPack:
                 "resolver_manifest",
                 "kernels",
                 "kernel_variants",
+                "recurrence_template",
             )
         )
         _require_exact_keys(normalized, "kernel_pack", expected)
@@ -1061,9 +1109,7 @@ class PreparedKernelPack:
                 normalized.get("dependency_abis"),
                 "kernel_pack.dependency_abis",
             ),
-            provenance=_mapping(
-                normalized.get("provenance"), "kernel_pack.provenance"
-            ),
+            provenance=_mapping(normalized.get("provenance"), "kernel_pack.provenance"),
             target=_mapping(normalized.get("target"), "kernel_pack.target"),
             resolver_manifest=_mapping(
                 normalized.get("resolver_manifest"),
@@ -1071,6 +1117,14 @@ class PreparedKernelPack:
             ),
             kernels=kernels,
             kernel_variants=kernel_variants,
+            recurrence_template=(
+                None
+                if normalized.get("recurrence_template") is None
+                else _mapping(
+                    normalized.get("recurrence_template"),
+                    "kernel_pack.recurrence_template",
+                )
+            ),
         )
 
 
