@@ -465,6 +465,9 @@ def _write_current_report_artifact(
     artifact_dir: Path,
     *,
     layout: str | None = None,
+    producer_version: str = "current",
+    process_artifact_schema: int = report.PROCESS_ARTIFACT_SCHEMA_VERSION,
+    compiled_model_schema: int = 9,
 ) -> None:
     _write_current_effective_config(artifact_dir)
     if layout is not None:
@@ -475,13 +478,25 @@ def _write_current_report_artifact(
             encoding="utf-8",
         )
     (artifact_dir / "artifact.json").write_text(
-        json.dumps({"producer": {"version": "current"}}),
+        json.dumps(
+            {
+                "producer": {
+                    "version": producer_version,
+                    "versions": {
+                        "process_artifact": process_artifact_schema,
+                        "compiled_model": compiled_model_schema,
+                    },
+                }
+            }
+        ),
         encoding="utf-8",
     )
     model_dir = artifact_dir / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
     (model_dir / "compiled-model.json").write_text(
-        json.dumps({"schema_version": 9, "model_compiler_version": 13}),
+        json.dumps(
+            {"schema_version": compiled_model_schema, "model_compiler_version": 13}
+        ),
         encoding="utf-8",
     )
 
@@ -1432,15 +1447,26 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
         is None
     )
 
-    (artifact_dir / "model").mkdir(parents=True)
-    _write_current_effective_config(artifact_dir)
-    (artifact_dir / "artifact.json").write_text(
-        json.dumps({"producer": {"version": "old"}}),
-        encoding="utf-8",
+    _write_current_report_artifact(
+        artifact_dir,
+        producer_version="0.1.0.dev0+candidate.previous",
+        compiled_model_schema=9,
     )
-    (artifact_dir / "model" / "compiled-model.json").write_text(
-        json.dumps({"schema_version": 9, "model_compiler_version": 10}),
-        encoding="utf-8",
+
+    assert (
+        report._reusable_pyamplicol_generation_seconds(
+            builtin_cell,
+            artifact_dir,
+            previous,
+        )
+        == 12.5
+    )
+
+    _write_current_report_artifact(
+        artifact_dir,
+        producer_version="current",
+        process_artifact_schema=2,
+        compiled_model_schema=9,
     )
 
     assert (
@@ -1452,9 +1478,10 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
         is None
     )
 
-    (artifact_dir / "artifact.json").write_text(
-        json.dumps({"producer": {"version": "current"}}),
-        encoding="utf-8",
+    _write_current_report_artifact(
+        artifact_dir,
+        producer_version="current",
+        compiled_model_schema=9,
     )
 
     assert (

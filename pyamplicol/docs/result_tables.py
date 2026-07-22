@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
 REPORT_VERSION = "0.1.0"
 CACHE_SCHEMA_VERSION = 2
+PROCESS_ARTIFACT_SCHEMA_VERSION = 3
 SPDX_LICENSE = "0BSD"
 NA_STATUS = "not_available"
 DEFAULT_ARTIFACT_ROOT = Path(".artifacts/performance-report")
@@ -5920,7 +5921,23 @@ def _artifact_producer_version_current(artifact_path: Path) -> bool:
     producer = payload.get("producer")
     if not isinstance(producer, Mapping):
         return False
-    return producer.get("version") == _current_pyamplicol_version()
+    versions = producer.get("versions")
+    if not isinstance(versions, Mapping):
+        return producer.get("version") == _current_pyamplicol_version()
+    process_artifact = versions.get("process_artifact")
+    compiled_model = versions.get("compiled_model")
+    if (
+        isinstance(process_artifact, bool)
+        or not isinstance(process_artifact, int)
+        or process_artifact != PROCESS_ARTIFACT_SCHEMA_VERSION
+    ):
+        return False
+    schema_version, _compiler_version = _current_compiled_model_contract()
+    return not (
+        isinstance(compiled_model, bool)
+        or not isinstance(compiled_model, int)
+        or compiled_model != schema_version
+    )
 
 
 def _legacy_measurement_revision_current(
