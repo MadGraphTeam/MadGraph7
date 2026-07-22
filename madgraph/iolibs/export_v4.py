@@ -8686,28 +8686,119 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     #===========================================================================
     # write_matrix_router_file
     #===========================================================================
+    def _module_color_flows(self, matrix_element):
+        """Return the colour-flow decomposition (leshouche ICOLUP) of an ME as a
+        list, one entry per flow, of (colour, anticolour) per leg in leg order.
+        None if the ME has no colour basis."""
+        if not matrix_element.get('color_basis'):
+            return None
+        proc = matrix_element.get('processes')[0]
+        legs = proc.get_legs_with_decays()
+        ninitial = matrix_element.get_nexternal_ninitial()[1]
+        repr_dict = {l.get('number'):
+                     proc.get('model').get_particle(l.get('id')).get_color()
+                     * (-1) ** (1 + l.get('state')) for l in legs}
+        flows = matrix_element.get('color_basis').color_flow_decomposition(
+            repr_dict, ninitial)
+        return [[tuple(cf[l.get('number')]) for l in legs] for cf in flows]
+
+    def _router_colmap(self, router_me, base_me, cross):
+        """Map each base colour-flow index to this subprocess's flow index.
+
+        The base picks a colour flow in its own basis and events are written
+        through this subprocess's ICOLUP, whose flow ORDER can differ (the
+        crossed colour reps decompose the shared colour basis in another order).
+        Crossing a base flow (leg j <- base flow leg perm^-1(j), colour <->
+        anticolour when that leg swapped initial/final) gives the physical flow;
+        it is matched to the local flow of the same topology (label independent).
+        Returns a 1-based list indexed by the base flow; identity if unmatchable.
+        """
+        bflows = self._module_color_flows(base_me)
+        rflows = self._module_color_flows(router_me)
+        if not bflows or not rflows or len(bflows) != len(rflows):
+            return list(range(1, len(rflows or []) + 1))
+        nx = router_me.get_nexternal_ninitial()[0]
+        rstates = [l.get('state') for l in
+                   router_me.get('processes')[0].get_legs_with_decays()]
+        perm, ic, _valid = self.get_crossing_permutation(cross, nx)
+        inv = [0] * nx
+        for s, leg in enumerate(perm):
+            inv[leg] = s
+
+        def canon(flow):
+            # Topology (label independent): pair each label's colour leg with its
+            # anticolour leg, incoming legs swapping the two roles.
+            col, anti = {}, {}
+            for leg, (c, a) in enumerate(flow):
+                if rstates[leg] is False:
+                    c, a = a, c
+                if c:
+                    col.setdefault(c, []).append(leg)
+                if a:
+                    anti.setdefault(a, []).append(leg)
+            conns = set()
+            for lbl in set(list(col) + list(anti)):
+                for cc, aa in zip(sorted(col.get(lbl, [])),
+                                  sorted(anti.get(lbl, []))):
+                    conns.add((cc, aa))
+            return frozenset(conns)
+
+        rindex = {}
+        for j, fl in enumerate(rflows):
+            rindex.setdefault(canon(fl), j + 1)
+        colmap = []
+        for icol, bf in enumerate(bflows):
+            crossed = []
+            for j in range(nx):
+                c, a = bf[inv[j]]
+                if ic[inv[j]] == -1:
+                    c, a = a, c
+                crossed.append((c, a))
+            colmap.append(rindex.get(canon(crossed), icol + 1))
+        return colmap
+
     def write_matrix_router_file(self, writer, matrix_element, fortran_model,
                                  proc_id="", config_map=[], subproc_number="",
-                                 routing=None):
+                                 routing=None, matrix_elements=None):
         """Write a light matrix<i>.f for a crossed subprocess that shares a base
         subprocess's matrix element. It keeps only GET_FLAVOR<i> (for the PDF)
         and a router SMATRIX<i> that, per flavor, calls the base SMATRIX with the
         crossed FLAV_IDX from partition_crossing_classes; the heavy MATRIX<i> is
-        not emitted. get_nhel<i> lives in auto_dsig<i>.f, so it is unaffected."""
+        not emitted. get_nhel<i> lives in auto_dsig<i>.f, so it is unaffected.
+
+        The base returns the selected colour flow in the base's flow order; a
+        per-flavor COLMAP maps it to this subprocess's flow (same topology) so
+        the event's ICOLUP is right (see _router_colmap). Momenta, PDGs and the
+        helicity index already come out in this subprocess's own convention."""
         # Reuse the full builder (writer=None) to get the flavor table and the
         # info/process/nexternal/max_flavor holes; nothing heavy is written.
         replace_dict = self.write_matrix_element_v4(
             None, matrix_element, fortran_model, proc_id=proc_id,
             config_map=config_map, subproc_number=subproc_number)
         dispatch = []
+        decl = []
         for flav0, (base_index, iflav) in enumerate(routing):
+            base_me = matrix_elements[base_index]
+            nflav_base = len(base_me.get_external_flavors_with_iden())
+            cross = (iflav - 1) // nflav_base
+            colmap = self._router_colmap(matrix_element, base_me, cross)
             kw = 'IF' if flav0 == 0 else 'ELSE IF'
             dispatch.append('      %s (IFLAV.EQ.%d) THEN' % (kw, flav0 + 1))
             dispatch.append(
                 '        CALL SMATRIX%d(P, %d, RHEL, RCOL, channel, IVEC, ANS,'
                 ' IHEL, ICOL)' % (base_index + 1, iflav))
+            # A non-identity colmap has to be applied; skip it when it is the
+            # identity (single flow, or the flow orders already agree).
+            if colmap and colmap != list(range(1, len(colmap) + 1)):
+                cname = 'COLMAP_%s_%d' % (proc_id, flav0 + 1)
+                decl.append('      INTEGER %s(%d)' % (cname, len(colmap)))
+                decl.append('      DATA %s /%s/' % (
+                    cname, ','.join(str(x) for x in colmap)))
+                dispatch.append('        IF (ICOL.GE.1.AND.ICOL.LE.%d)'
+                                ' ICOL = %s(ICOL)' % (len(colmap), cname))
         if dispatch:
             dispatch.append('      ENDIF')
+        replace_dict['smatrix_router_decl'] = '\n'.join(decl)
         replace_dict['smatrix_router_dispatch'] = '\n'.join(dispatch)
         tpl = open(pjoin(_file_path, 'iolibs', 'template_files',
                          'matrix_madevent_group_router_v4.inc')).read()
@@ -8819,7 +8910,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                     fortran_model, proc_id=str(ime+1),
                     config_map=subproc_group.get('diagram_maps')[ime],
                     subproc_number=group_number,
-                    routing=crossing_routing[ime])
+                    routing=crossing_routing[ime],
+                    matrix_elements=matrix_elements)
             elif self.opt['hel_recycling']:
                 filename = 'matrix%d_orig.f' % (ime+1)
                 replace_dict = self.write_matrix_element_v4(None, 
