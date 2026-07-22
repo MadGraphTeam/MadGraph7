@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.metadata
 import os
 import tempfile
@@ -17,6 +18,7 @@ from .._internal.versions import (
     SYMBOLICA_SERIALIZATION_ABI,
     SYMJIT_APPLICATION_ABI,
     package_version,
+    verify_native_module,
 )
 from ..config import EvaluatorConfig
 from ..evaluators.symbolica_compile import _compile_symbolica_outputs
@@ -37,8 +39,10 @@ from .prepared import (
     prepared_compiled_model_digest,
     prepared_expression_digest,
     prepared_input_contract_digest,
+    prepared_kernel_pack_identity,
     prepared_optimization_settings_digest,
     prepared_output_contract_digest,
+    prepared_payload_identity_records,
     write_prepared_model_bundle,
 )
 from .prepared_catalog import (
@@ -52,6 +56,7 @@ from .prepared_target import (
     symjit_storage_v3_target,
 )
 from .recurrence_catalog_builder import build_recurrence_template_catalog
+from .recurrence_template import RecurrenceTemplateCatalog
 
 PreparedModelProgress = Callable[[str, int, int], None]
 _PATH_FIELDS = frozenset(
@@ -64,6 +69,7 @@ _PATH_FIELDS = frozenset(
     )
 )
 _PATH_LIST_FIELDS = frozenset(("payload_paths",))
+_RECURRENCE_PREFLIGHT_PACK_DIGEST = "0" * 63 + "1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +88,141 @@ class _IndependentBlockContract:
     output_layout: tuple[str, ...]
 
 
+def _validate_native_recurrence_template_input_v1(
+    catalog: RecurrenceTemplateCatalog,
+    authenticated_kernel_ids: Sequence[int],
+) -> Mapping[str, object]:
+    """Validate the fixed-width model projection with the installed Rust core."""
+
+    from ..generation.recurrence_template_columnar import (
+        RECURRENCE_TEMPLATE_INPUT_ABI,
+        RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION,
+        build_recurrence_template_input_v1,
+    )
+
+    kernel_ids = tuple(authenticated_kernel_ids)
+    if kernel_ids != tuple(sorted(set(kernel_ids))) or any(
+        type(kernel_id) is not int or kernel_id < 0 for kernel_id in kernel_ids
+    ):
+        raise PreparedModelBundleError(
+            "authenticated prepared-kernel IDs must be sorted, unique, "
+            "nonnegative integers"
+        )
+    template_input = build_recurrence_template_input_v1(catalog)
+    try:
+        module = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(module)
+    except (ImportError, RuntimeError) as exc:
+        raise PreparedModelBundleError(
+            "recurrence template preparation requires the matching installed "
+            "pyamplicol._rusticol extension"
+        ) from exc
+    candidate = getattr(module, "_validate_recurrence_template_input_v1", None)
+    if not callable(candidate):
+        raise PreparedModelBundleError(
+            "the installed pyamplicol._rusticol extension does not provide "
+            "_validate_recurrence_template_input_v1"
+        )
+    try:
+        raw = candidate(
+            template_input,
+            list(kernel_ids),
+        )
+    except Exception as exc:
+        raise PreparedModelBundleError(
+            f"native recurrence template validation failed: {exc}"
+        ) from exc
+    if not isinstance(raw, Mapping):
+        raise PreparedModelBundleError(
+            "native recurrence template validation returned a non-object result"
+        )
+    expected = {
+        "kind": "pyamplicol-recurrence-template-validation-result",
+        "schema_version": 1,
+        "validation_status": "validated",
+        "template_input_abi": RECURRENCE_TEMPLATE_INPUT_ABI,
+        "template_input_schema_version": RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION,
+        "template_input_sha256": template_input.canonical_digest,
+        "catalog_digest": catalog.catalog_digest,
+        "compiled_model_digest": catalog.header.compiled_model_digest,
+        "prepared_kernel_pack_digest": (
+            catalog.header.prepared_kernel_pack_digest
+        ),
+        "prepared_kernel_inventory_verified": True,
+        "prepared_kernel_inventory_count": len(kernel_ids),
+    }
+    for name, expected_value in expected.items():
+        actual_value = raw.get(name)
+        if type(actual_value) is not type(expected_value) or (
+            actual_value != expected_value
+        ):
+            raise PreparedModelBundleError(
+                "native recurrence template validation returned inconsistent "
+                f"{name}: expected {expected_value!r}, found {actual_value!r}"
+            )
+    counts = raw.get("counts")
+    if not isinstance(counts, Mapping):
+        raise PreparedModelBundleError(
+            "native recurrence template validation omitted its count summary"
+        )
+    expected_counts = {
+        "parameters": len(catalog.parameters),
+        "current_states": len(catalog.current_states),
+        "sources": len(catalog.sources),
+        "quantum_flows": len(catalog.quantum_flows),
+        "transitions": len(catalog.transitions),
+        "propagators": len(catalog.propagators),
+        "closures": len(catalog.closures),
+        "color_contractions": len(catalog.color_contractions),
+        "symmetry_proofs": len(catalog.symmetry_proofs),
+        "evaluator_bindings": len(catalog.evaluator_bindings),
+        "prepared_kernels": len(
+            {
+                binding.prepared_kernel_id
+                for binding in catalog.evaluator_bindings
+                if binding.prepared_kernel_id is not None
+            }
+        ),
+        "referenced_prepared_kernels": len(
+            {
+                binding.prepared_kernel_id
+                for binding in catalog.evaluator_bindings
+                if binding.prepared_kernel_id is not None
+            }
+        ),
+    }
+    for name, expected_value in expected_counts.items():
+        actual_value = counts.get(name)
+        if type(actual_value) is not int or actual_value != expected_value:
+            raise PreparedModelBundleError(
+                "native recurrence template validation returned inconsistent "
+                f"{name} count: expected {expected_value}, found {actual_value!r}"
+            )
+    return raw
+
+
+def _rebind_recurrence_template_pack_digest(
+    catalog: RecurrenceTemplateCatalog,
+    prepared_kernel_pack_digest: str,
+) -> RecurrenceTemplateCatalog:
+    """Rebind an already-proven semantic catalog to final evaluator payloads."""
+
+    return RecurrenceTemplateCatalog.create(
+        compiled_model_digest=catalog.header.compiled_model_digest,
+        prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+        parameters=catalog.parameters,
+        current_states=catalog.current_states,
+        sources=catalog.sources,
+        quantum_flows=catalog.quantum_flows,
+        transitions=catalog.transitions,
+        propagators=catalog.propagators,
+        closures=catalog.closures,
+        color_contractions=catalog.color_contractions,
+        symmetry_proofs=catalog.symmetry_proofs,
+        evaluator_bindings=catalog.evaluator_bindings,
+    )
+
+
 def prepare_model_bundle(
     compiled_model: CompiledModel,
     output: Path,
@@ -97,21 +238,25 @@ def prepare_model_bundle(
     catalog = build_prepared_kernel_catalog(model)
     catalog_seconds = time.perf_counter() - catalog_started
     compiled_model_payload = compiled_model.to_dict()
+    compiled_model_digest = prepared_compiled_model_digest(compiled_model_payload)
     recurrence_catalog_started = time.perf_counter()
-    recurrence_catalog = build_recurrence_template_catalog(
+    provisional_recurrence_catalog = build_recurrence_template_catalog(
         model,
         catalog,
-        compiled_model_digest=prepared_compiled_model_digest(
-            compiled_model_payload
-        ),
+        compiled_model_digest=compiled_model_digest,
+        prepared_kernel_pack_digest=_RECURRENCE_PREFLIGHT_PACK_DIGEST,
     )
     recurrence_catalog_seconds = time.perf_counter() - recurrence_catalog_started
+    recurrence_preflight_started = time.perf_counter()
+    _validate_native_recurrence_template_input_v1(
+        provisional_recurrence_catalog,
+        tuple(kernel.kernel_id for kernel in catalog.kernels),
+    )
+    recurrence_preflight_seconds = time.perf_counter() - recurrence_preflight_started
     settings = prepared_symbolica_settings(evaluator)
     backend = cast(PreparedBackend, str(evaluator.backend))
     optimization_metadata = _optimization_metadata(settings)
-    optimization_digest = prepared_optimization_settings_digest(
-        optimization_metadata
-    )
+    optimization_digest = prepared_optimization_settings_digest(optimization_metadata)
     payloads: dict[str, bytes | Path] = {}
     records: list[PreparedKernelRecord] = []
     variants: list[PreparedKernelVariantRecord] = []
@@ -144,7 +289,7 @@ def prepare_model_bundle(
             payloads.update(kernel_payloads)
 
         compile_seconds = time.perf_counter() - compile_started
-        pack = PreparedKernelPack(
+        base_pack = PreparedKernelPack(
             backend=backend,
             optimization_settings=optimization_metadata,
             producer={
@@ -166,13 +311,54 @@ def prepare_model_bundle(
                 ),
                 "catalog_kernel_count": len(catalog.kernels),
                 "unsupported_variant_count": len(catalog.unsupported_variants),
-                "recurrence_template_abi": recurrence_catalog.header.abi,
-                "recurrence_template_digest": recurrence_catalog.catalog_digest,
             },
             target=_prepared_target(backend, evaluator),
             resolver_manifest=catalog.resolver_manifest(),
             kernels=tuple(records),
             kernel_variants=tuple(variants),
+        )
+        pack_identity = prepared_kernel_pack_identity(
+            base_pack,
+            prepared_payload_identity_records(payloads),
+        )
+        recurrence_binding_started = time.perf_counter()
+        recurrence_catalog = _rebind_recurrence_template_pack_digest(
+            provisional_recurrence_catalog,
+            prepared_kernel_pack_digest=pack_identity.pack_digest,
+        )
+        recurrence_binding_seconds = time.perf_counter() - recurrence_binding_started
+        authenticated_pack = replace(
+            base_pack,
+            provenance={
+                **dict(base_pack.provenance),
+                "prepared_kernel_contract_digest": pack_identity.contract_digest,
+                "prepared_kernel_payload_digest": pack_identity.payload_digest,
+                "prepared_kernel_pack_digest": pack_identity.pack_digest,
+                "recurrence_template_abi": recurrence_catalog.header.abi,
+                "recurrence_template_digest": recurrence_catalog.catalog_digest,
+            },
+            recurrence_template=recurrence_catalog.to_dict(),
+        )
+        recurrence_validation_started = time.perf_counter()
+        recurrence_validation = _validate_native_recurrence_template_input_v1(
+            authenticated_pack.recurrence_template_catalog
+            or recurrence_catalog,  # constructor invariant, kept explicit for typing
+            tuple(kernel.kernel_id for kernel in authenticated_pack.kernels),
+        )
+        recurrence_validation_seconds = (
+            time.perf_counter() - recurrence_validation_started
+        )
+        pack = replace(
+            authenticated_pack,
+            provenance={
+                **dict(authenticated_pack.provenance),
+                "recurrence_template_input_digest": recurrence_validation[
+                    "template_input_sha256"
+                ],
+                "recurrence_template_native_validation_kind": (
+                    recurrence_validation["kind"]
+                ),
+            },
             recurrence_template=recurrence_catalog.to_dict(),
         )
         bundle_path = write_prepared_model_bundle(
@@ -186,6 +372,9 @@ def prepare_model_bundle(
     timings = {
         "catalog": catalog_seconds,
         "recurrence_catalog": recurrence_catalog_seconds,
+        "recurrence_template_preflight": recurrence_preflight_seconds,
+        "recurrence_template_binding": recurrence_binding_seconds,
+        "recurrence_template_validation": recurrence_validation_seconds,
         "kernel_compilation": compile_seconds,
         "total": time.perf_counter() - started,
     }
@@ -229,9 +418,7 @@ def prepared_symbolica_settings(
         max_common_pair_distance=optimization.max_common_pair_distance,
         collect_factors=collect_factors,
         compiled_inline_asm="default" if backend == "asm" else "none",
-        compiled_optimization_level=_cpp_optimization_level(
-            evaluator.cpp.optimization
-        ),
+        compiled_optimization_level=_cpp_optimization_level(evaluator.cpp.optimization),
         compiled_native=evaluator.cpp.native_arch,
         compiler_path=evaluator.cpp.compiler,
         compiler_flags=evaluator.cpp.extra_flags,
@@ -310,9 +497,7 @@ def _compile_kernel(
         canonical_signature=kernel.canonical_signature,
         input_arity=kernel.input_arity,
         output_arity=kernel.output_dimension,
-        input_layout=tuple(
-            f"{item.role}:{item.component}" for item in kernel.inputs
-        ),
+        input_layout=tuple(f"{item.role}:{item.component}" for item in kernel.inputs),
         input_contracts=tuple(item.to_dict() for item in kernel.inputs),
         output_layout=kernel.output_layout,
         exact_expressions=kernel.exact_expressions,
@@ -321,10 +506,7 @@ def _compile_kernel(
         f64_evaluator_manifest=manifest,
     )
     variants: tuple[PreparedKernelVariantRecord, ...] = ()
-    if (
-        backend == "jit"
-        and PREPARED_INDEPENDENT_BLOCK_PROOF in kernel.proof_classes
-    ):
+    if backend == "jit" and PREPARED_INDEPENDENT_BLOCK_PROOF in kernel.proof_classes:
         variant, variant_payloads = _compile_independent_block_variant(
             kernel,
             settings=settings,
@@ -415,9 +597,7 @@ def _independent_block_contract(
         input_layout.extend(
             f"lane:{lane}:{item}" for item in _kernel_input_layout(kernel)
         )
-        output_layout.extend(
-            f"lane:{lane}:{item}" for item in kernel.output_layout
-        )
+        output_layout.extend(f"lane:{lane}:{item}" for item in kernel.output_layout)
     return _IndependentBlockContract(
         parameters=tuple(parameters),
         outputs=tuple(outputs),
@@ -468,9 +648,7 @@ def _compile_independent_block_variant(
             lane_layout="lane-major",
             base_kernel_id=kernel.kernel_id,
             base_canonical_signature=kernel.canonical_signature,
-            base_expression_digest=prepared_expression_digest(
-                kernel.exact_expressions
-            ),
+            base_expression_digest=prepared_expression_digest(kernel.exact_expressions),
             base_input_contract_digest=prepared_input_contract_digest(
                 _kernel_input_layout(kernel),
                 tuple(item.to_dict() for item in kernel.inputs),
@@ -588,8 +766,7 @@ def _validate_backend_manifest(
     for key, value in expected.items():
         if manifest.get(key) != value:
             raise PreparedModelBundleError(
-                f"prepared JIT evaluator has incompatible {key}: "
-                f"{manifest.get(key)!r}"
+                f"prepared JIT evaluator has incompatible {key}: {manifest.get(key)!r}"
             )
     if manifest.get("required_defuns") != []:
         raise PreparedModelBundleError(
@@ -611,9 +788,7 @@ def _prepared_target(
     try:
         if backend == "jit":
             return symjit_storage_v3_target()
-        return native_prepared_target(
-            include_cpu_features=evaluator.cpp.native_arch
-        )
+        return native_prepared_target(include_cpu_features=evaluator.cpp.native_arch)
     except PreparedTargetError as error:
         raise PreparedModelBundleError(str(error)) from error
 

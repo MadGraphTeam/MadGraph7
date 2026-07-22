@@ -4,6 +4,8 @@
 mod eager_lowering;
 #[cfg(feature = "numpy")]
 mod recurrence;
+#[cfg(feature = "numpy")]
+mod recurrence_template;
 
 #[cfg(feature = "numpy")]
 use numpy::{PyReadonlyArray3, PyUntypedArrayMethods};
@@ -1424,6 +1426,11 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     #[cfg(feature = "numpy")]
     module.add_function(wrap_pyfunction!(
         recurrence::_validate_recurrence_builder_input_v1,
+        module
+    )?)?;
+    #[cfg(feature = "numpy")]
+    module.add_function(wrap_pyfunction!(
+        recurrence_template::_validate_recurrence_template_input_v1,
         module
     )?)?;
     Ok(())

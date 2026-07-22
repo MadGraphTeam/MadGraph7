@@ -222,17 +222,29 @@ class BuiltinModel(Model):
                 mass_class="massless",
                 description="massless Weyl fermion propagator",
             )
-        if self.is_fermion(particle_id) and self.mass(particle_id) != 0.0:
+        if self.is_fermion(particle_id) and (
+            self.mass(particle_id) != 0.0 or chirality == 0
+        ):
             return PropagatorLoweringRule(
                 particle_id=particle_id,
                 chirality=chirality,
                 backend="symbolica",
                 full_tensor_network_ready=True,
                 applies_propagator=True,
-                kernel="massive_dirac_fermion",
+                kernel=(
+                    "massive_dirac_fermion"
+                    if self.mass(particle_id) != 0.0
+                    else "massless_dirac_fermion"
+                ),
                 kind="dirac-fermion",
-                mass_class="massive",
-                description="massive Dirac fermion propagator",
+                mass_class=(
+                    "massive" if self.mass(particle_id) != 0.0 else "massless"
+                ),
+                description=(
+                    "massive Dirac fermion propagator"
+                    if self.mass(particle_id) != 0.0
+                    else "massless full-Dirac fermion propagator"
+                ),
             )
         if self.is_higgs(particle_id):
             return PropagatorLoweringRule(

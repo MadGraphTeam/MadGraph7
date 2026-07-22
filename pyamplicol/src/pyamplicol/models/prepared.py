@@ -30,6 +30,7 @@ PREPARED_MODEL_BUNDLE_SUFFIX = ".pyamplicol-model"
 EAGER_KERNEL_ABI = "pyamplicol-eager-kernel-v1"
 EAGER_KERNEL_ABI_VERSION = 1
 PREPARED_KERNEL_VARIANT_ABI = "pyamplicol-prepared-kernel-variant-v1"
+PREPARED_KERNEL_PACK_IDENTITY_ABI = "pyamplicol-prepared-kernel-pack-identity-v1"
 PREPARED_INDEPENDENT_BLOCK_SIZE = 4
 
 PREPARED_MODEL_MANIFEST_PATH = "manifest.json"
@@ -249,6 +250,68 @@ def prepared_optimization_settings_digest(
     """Digest the backend optimization contract bound to a variant payload."""
 
     return _mapping_digest(settings)
+
+
+def _recurrence_input_contract_layout(
+    contracts: Sequence[Mapping[str, object]],
+) -> tuple[str, ...]:
+    """Return the canonical input contract used by recurrence bindings."""
+
+    return tuple(
+        json.dumps(
+            cast(dict[str, object], _thaw_json(contract)),
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        for contract in contracts
+    )
+
+
+def _validate_recurrence_kernel_bindings(
+    catalog: RecurrenceTemplateCatalog,
+    kernels: Sequence[PreparedKernelRecord],
+) -> None:
+    """Authenticate every recurrence callable against its prepared kernel."""
+
+    by_id = {kernel.kernel_id: kernel for kernel in kernels}
+    for binding in catalog.evaluator_bindings:
+        if binding.callable_kind != "prepared-kernel":
+            continue
+        kernel_id = binding.prepared_kernel_id
+        assert kernel_id is not None  # EvaluatorBindingV1 invariant.
+        kernel = by_id.get(kernel_id)
+        if kernel is None:
+            raise PreparedModelBundleError(
+                "recurrence evaluator binding references unknown prepared kernel "
+                f"ID {kernel_id}"
+            )
+        context = f"recurrence evaluator {binding.resolver_key!r}"
+        expected = {
+            "contract kind": kernel.contract_kind,
+            "callable signature": kernel.canonical_signature,
+            "input layout": _recurrence_input_contract_layout(
+                kernel.input_contracts
+            ),
+            "output layout": kernel.output_layout,
+            "exact expression digests": tuple(
+                hashlib.sha256(expression.encode("utf-8")).hexdigest()
+                for expression in kernel.exact_expressions
+            ),
+        }
+        actual = {
+            "contract kind": binding.contract_kind,
+            "callable signature": binding.callable_signature,
+            "input layout": binding.input_layout,
+            "output layout": binding.output_layout,
+            "exact expression digests": binding.exact_expression_digests,
+        }
+        for name, expected_value in expected.items():
+            if actual[name] != expected_value:
+                raise PreparedModelBundleError(
+                    f"{context} {name} does not match prepared kernel {kernel_id}"
+                )
 
 
 def prepared_compiled_model_digest(compiled_model: Mapping[str, object]) -> str:
@@ -1000,13 +1063,18 @@ class PreparedKernelPack:
             from .recurrence_template import RecurrenceTemplateCatalog
 
             try:
+                recurrence_payload = _thaw_json(recurrence_template)
                 catalog = RecurrenceTemplateCatalog.from_dict(
-                    _mapping(recurrence_template, "kernel_pack.recurrence_template")
+                    _mapping(
+                        recurrence_payload,
+                        "kernel_pack.recurrence_template",
+                    )
                 )
             except ValueError as exc:
                 raise PreparedModelBundleError(
                     f"invalid kernel_pack.recurrence_template: {exc}"
                 ) from exc
+            _validate_recurrence_kernel_bindings(catalog, kernels)
             object.__setattr__(
                 self,
                 "recurrence_template",
@@ -1133,6 +1201,104 @@ class PreparedKernelPack:
                 )
             ),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedKernelPackIdentity:
+    """Non-circular identity of callable contracts and payload contents."""
+
+    contract_digest: str
+    payload_digest: str
+    pack_digest: str
+    abi: str = PREPARED_KERNEL_PACK_IDENTITY_ABI
+
+    def __post_init__(self) -> None:
+        if self.abi != PREPARED_KERNEL_PACK_IDENTITY_ABI:
+            raise PreparedModelBundleError(
+                f"unsupported prepared pack identity ABI {self.abi!r}"
+            )
+        for name in ("contract_digest", "payload_digest", "pack_digest"):
+            _valid_sha256(getattr(self, name), f"prepared_pack_identity.{name}")
+
+
+def prepared_kernel_pack_identity(
+    kernel_pack: PreparedKernelPack,
+    payload_records: Mapping[str, tuple[int, str]],
+) -> PreparedKernelPackIdentity:
+    """Authenticate one backend pack without including its recurrence companion."""
+
+    normalized_records: dict[str, tuple[int, str]] = {}
+    for raw_path, raw_record in payload_records.items():
+        member_path = _normalized_member_path(
+            raw_path, "prepared payload identity path"
+        )
+        if (
+            not isinstance(raw_record, tuple)
+            or len(raw_record) != 2
+            or type(raw_record[0]) is not int
+            or raw_record[0] < 0
+        ):
+            raise PreparedModelBundleError(
+                f"prepared payload identity record for {member_path!r} is malformed"
+            )
+        normalized_records[member_path] = (
+            raw_record[0],
+            _valid_sha256(
+                raw_record[1],
+                f"prepared payload identity digest for {member_path!r}",
+            ),
+        )
+    referenced = set(kernel_pack.referenced_payload_paths)
+    supplied = set(normalized_records)
+    if supplied != referenced:
+        missing = sorted(referenced - supplied)
+        unexpected = sorted(supplied - referenced)
+        details: list[str] = []
+        if missing:
+            details.append("missing: " + ", ".join(missing))
+        if unexpected:
+            details.append("unreferenced: " + ", ".join(unexpected))
+        raise PreparedModelBundleError(
+            "prepared payload identity does not match kernel references ("
+            + "; ".join(details)
+            + ")"
+        )
+
+    contract_payload = {
+        "abi": PREPARED_KERNEL_PACK_IDENTITY_ABI,
+        "eager_kernel_abi": EAGER_KERNEL_ABI,
+        "backend": kernel_pack.backend,
+        "optimization_settings": _thaw_json(kernel_pack.optimization_settings),
+        "dependency_abis": _thaw_json(kernel_pack.dependency_abis),
+        "target": _thaw_json(kernel_pack.target),
+        "resolver_manifest": _thaw_json(kernel_pack.resolver_manifest),
+        "kernels": [kernel.to_dict() for kernel in kernel_pack.kernels],
+        "kernel_variants": [
+            variant.to_dict() for variant in kernel_pack.kernel_variants
+        ],
+    }
+    contract_digest = _mapping_digest(contract_payload)
+    payload_digest = _mapping_digest(
+        {
+            "abi": PREPARED_KERNEL_PACK_IDENTITY_ABI,
+            "payloads": [
+                {"path": path, "size": size, "sha256": digest}
+                for path, (size, digest) in sorted(normalized_records.items())
+            ],
+        }
+    )
+    pack_digest = _mapping_digest(
+        {
+            "abi": PREPARED_KERNEL_PACK_IDENTITY_ABI,
+            "contract_digest": contract_digest,
+            "payload_digest": payload_digest,
+        }
+    )
+    return PreparedKernelPackIdentity(
+        contract_digest=contract_digest,
+        payload_digest=payload_digest,
+        pack_digest=pack_digest,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1272,6 +1438,23 @@ def _read_payload_source(source: PayloadSource, context: str) -> bytes:
     raise PreparedModelBundleError(f"{context} has an unsupported payload source")
 
 
+def prepared_payload_identity_records(
+    payloads: Mapping[str, PayloadSource],
+) -> dict[str, tuple[int, str]]:
+    """Read payload sources once into stable size/digest identity records."""
+
+    records: dict[str, tuple[int, str]] = {}
+    for raw_path, source in payloads.items():
+        member_path = _normalized_member_path(raw_path, "payload identity path")
+        if member_path in records:
+            raise PreparedModelBundleError(
+                f"duplicate payload identity path {member_path!r}"
+            )
+        data = _read_payload_source(source, f"payload {member_path!r}")
+        records[member_path] = (len(data), _sha256(data))
+    return records
+
+
 def _bundle_output_path(path: Path) -> Path:
     text = str(path)
     if not text.endswith(PREPARED_MODEL_BUNDLE_SUFFIX):
@@ -1363,6 +1546,22 @@ def write_prepared_model_bundle(
             + "; ".join(details)
             + ")"
         )
+    if recurrence_catalog is not None:
+        identity = prepared_kernel_pack_identity(
+            kernel_pack,
+            {
+                member_path: (len(data), _sha256(data))
+                for member_path, data in payload_data.items()
+            },
+        )
+        if (
+            identity.pack_digest
+            != recurrence_catalog.header.prepared_kernel_pack_digest
+        ):
+            raise PreparedModelBundleError(
+                "recurrence template prepared-pack digest does not match the "
+                "published evaluator payloads"
+            )
     hashed_members = {
         PREPARED_MODEL_COMPILED_MODEL_PATH: _canonical_json(frozen_model),
         **payload_data,
@@ -1544,6 +1743,23 @@ def load_prepared_model_bundle(path: Path) -> PreparedModelBundle:
                     + "; ".join(details)
                     + ")"
                 )
+            recurrence_catalog = kernel_pack.recurrence_template_catalog
+            if recurrence_catalog is not None:
+                identity = prepared_kernel_pack_identity(
+                    kernel_pack,
+                    {
+                        member_path: records[member_path]
+                        for member_path in referenced_paths
+                    },
+                )
+                if (
+                    identity.pack_digest
+                    != recurrence_catalog.header.prepared_kernel_pack_digest
+                ):
+                    raise PreparedModelBundleError(
+                        "recurrence template prepared-pack digest does not match "
+                        "the loaded evaluator payloads"
+                    )
             compiled_model = _load_json_member(
                 archive,
                 PREPARED_MODEL_COMPILED_MODEL_PATH,
@@ -1575,6 +1791,7 @@ __all__ = [
     "EAGER_KERNEL_ABI",
     "EAGER_KERNEL_ABI_VERSION",
     "PREPARED_INDEPENDENT_BLOCK_SIZE",
+    "PREPARED_KERNEL_PACK_IDENTITY_ABI",
     "PREPARED_KERNEL_VARIANT_ABI",
     "PREPARED_MODEL_BUNDLE_KIND",
     "PREPARED_MODEL_BUNDLE_SCHEMA_VERSION",
@@ -1582,6 +1799,7 @@ __all__ = [
     "PREPARED_MODEL_COMPILED_MODEL_PATH",
     "PREPARED_MODEL_MANIFEST_PATH",
     "PreparedKernelPack",
+    "PreparedKernelPackIdentity",
     "PreparedKernelRecord",
     "PreparedKernelVariantRecord",
     "PreparedModelBundle",
@@ -1590,8 +1808,10 @@ __all__ = [
     "prepared_compiled_model_digest",
     "prepared_expression_digest",
     "prepared_input_contract_digest",
+    "prepared_kernel_pack_identity",
     "prepared_optimization_settings_digest",
     "prepared_output_contract_digest",
+    "prepared_payload_identity_records",
     "read_prepared_model_bundle",
     "write_prepared_model_bundle",
 ]

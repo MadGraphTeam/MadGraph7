@@ -46,6 +46,10 @@ def test_model_builtin_lowering_metadata_uses_owned_symbol_names() -> None:
     assert model.propagator_lowering_rule(125).description.endswith(
         "the built-in-SM model"
     )
+    full_bottom = model.propagator_lowering_rule(5, chirality=0)
+    assert full_bottom.kind == "dirac-fermion"
+    assert full_bottom.mass_class == "massless"
+    assert full_bottom.kernel == "massless_dirac_fermion"
 
 
 def test_builtin_yang_mills_kernel_evaluation_relations_are_exact() -> None:

@@ -9,6 +9,7 @@
 mod exact;
 mod input;
 mod layout;
+pub mod template;
 
 pub use exact::{ExactComplexRational, ExactRational};
 pub use input::{

@@ -27,22 +27,29 @@ from pyamplicol.models.prepared import (
     prepared_compiled_model_digest,
     prepared_expression_digest,
     prepared_input_contract_digest,
+    prepared_kernel_pack_identity,
     prepared_optimization_settings_digest,
     prepared_output_contract_digest,
+    prepared_payload_identity_records,
     write_prepared_model_bundle,
 )
-from pyamplicol.models.recurrence_template import RecurrenceTemplateCatalog
+from pyamplicol.models.recurrence_template import (
+    EvaluatorBindingV1,
+    ParameterTemplateV1,
+    RecurrenceTemplateCatalog,
+)
 
 
 def _kernel(
     kernel_id: int = 0,
     *,
     signature: str = "vertex:q-qbar-g:v1",
+    contract_kind: str = "vertex",
 ) -> PreparedKernelRecord:
     root = f"kernels/{kernel_id}"
     return PreparedKernelRecord(
         kernel_id=kernel_id,
-        contract_kind="vertex",
+        contract_kind=contract_kind,  # type: ignore[arg-type]
         canonical_signature=signature,
         input_arity=2,
         output_arity=1,
@@ -167,6 +174,93 @@ def _payloads(*kernels: PreparedKernelRecord) -> dict[str, bytes]:
     return result
 
 
+def _recurrence_catalog(
+    pack: PreparedKernelPack,
+    payloads: Mapping[str, bytes],
+    *,
+    compiled_model_digest: str | None = None,
+) -> RecurrenceTemplateCatalog:
+    identity = prepared_kernel_pack_identity(
+        pack,
+        prepared_payload_identity_records(payloads),
+    )
+    return RecurrenceTemplateCatalog.create(
+        compiled_model_digest=(
+            prepared_compiled_model_digest(_compiled_model())
+            if compiled_model_digest is None
+            else compiled_model_digest
+        ),
+        prepared_kernel_pack_digest=identity.pack_digest,
+    )
+
+
+def _pack_with_bound_recurrence_kernel(
+    *,
+    prepared_kernel_id: int = 0,
+    callable_signature: str | None = None,
+    input_layout: tuple[str, ...] | None = None,
+    output_layout: tuple[str, ...] | None = None,
+    exact_expression_digests: tuple[str, ...] | None = None,
+) -> PreparedKernelPack:
+    signature = "a" * 64
+    kernel = _kernel(signature=signature, contract_kind="model-parameter")
+    pack = _pack(kernel)
+    payloads = _payloads(kernel)
+    expression_digest = hashlib.sha256(
+        kernel.exact_expressions[0].encode("utf-8")
+    ).hexdigest()
+    parameter = ParameterTemplateV1(
+        template_id="parameter:derived",
+        name="derived",
+        parameter_kind="derived",
+        value_type="real",
+        mutable=False,
+        default_value=None,
+        exact_expression_digest=expression_digest,
+        dependency_parameter_ids=(),
+        prepared_parameter_id=0,
+    )
+    canonical_inputs = tuple(
+        json.dumps(
+            dict(contract),
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        for contract in kernel.input_contracts
+    )
+    binding = EvaluatorBindingV1(
+        resolver_key="evaluator:model-parameter:derived",
+        prepared_kernel_id=prepared_kernel_id,
+        contract_kind="model-parameter",
+        callable_signature=(
+            signature if callable_signature is None else callable_signature
+        ),
+        input_state_template_ids=(),
+        output_state_template_id=None,
+        input_layout=canonical_inputs if input_layout is None else input_layout,
+        output_layout=kernel.output_layout if output_layout is None else output_layout,
+        exact_expression_digests=(
+            (expression_digest,)
+            if exact_expression_digests is None
+            else exact_expression_digests
+        ),
+        semantic_template_ids=(parameter.template_id,),
+    )
+    identity = prepared_kernel_pack_identity(
+        pack,
+        prepared_payload_identity_records(payloads),
+    )
+    catalog = RecurrenceTemplateCatalog.create(
+        compiled_model_digest=prepared_compiled_model_digest(_compiled_model()),
+        prepared_kernel_pack_digest=identity.pack_digest,
+        parameters=(parameter,),
+        evaluator_bindings=(binding,),
+    )
+    return replace(pack, recurrence_template=catalog.to_dict())
+
+
 def _variant_payloads(
     *variants: PreparedKernelVariantRecord,
 ) -> dict[str, bytes]:
@@ -272,16 +366,16 @@ def test_prepared_model_bundle_round_trips_optional_recurrence_template(
     tmp_path: Path,
 ) -> None:
     kernel = _kernel()
-    catalog = RecurrenceTemplateCatalog.create(
-        compiled_model_digest=prepared_compiled_model_digest(_compiled_model())
-    )
-    pack = replace(_pack(kernel), recurrence_template=catalog.to_dict())
+    base_pack = _pack(kernel)
+    payloads = _payloads(kernel)
+    catalog = _recurrence_catalog(base_pack, payloads)
+    pack = replace(base_pack, recurrence_template=catalog.to_dict())
 
     path = write_prepared_model_bundle(
         tmp_path / "recurrence-ready",
         compiled_model=_compiled_model(),
         kernel_pack=pack,
-        payloads=_payloads(kernel),
+        payloads=payloads,
     )
     loaded = load_prepared_model_bundle(path)
 
@@ -298,30 +392,122 @@ def test_prepared_model_bundle_round_trips_optional_recurrence_template(
 
 
 def test_prepared_kernel_pack_rejects_stale_recurrence_template() -> None:
-    catalog = RecurrenceTemplateCatalog.create(
-        compiled_model_digest=prepared_compiled_model_digest(_compiled_model())
-    )
+    kernel = _kernel()
+    base_pack = _pack(kernel)
+    catalog = _recurrence_catalog(base_pack, _payloads(kernel))
     payload = catalog.to_dict()
     payload["header"]["catalog_digest"] = "b" * 64
 
     with pytest.raises(PreparedModelBundleError, match="stale recurrence"):
-        replace(_pack(_kernel()), recurrence_template=payload)
+        replace(base_pack, recurrence_template=payload)
+
+
+def test_prepared_kernel_pack_authenticates_recurrence_callable_contract() -> None:
+    pack = _pack_with_bound_recurrence_kernel()
+
+    catalog = pack.recurrence_template_catalog
+    assert catalog is not None
+    assert catalog.evaluator_bindings[0].prepared_kernel_id == 0
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    (
+        ({"prepared_kernel_id": 7}, "unknown prepared kernel ID 7"),
+        ({"callable_signature": "b" * 64}, "callable signature"),
+        ({"input_layout": ("stale", "layout")}, "input layout"),
+        ({"output_layout": ("stale",)}, "output layout"),
+        ({"exact_expression_digests": ("c" * 64,)}, "exact expression digests"),
+    ),
+)
+def test_prepared_kernel_pack_rejects_stale_recurrence_callable_contract(
+    overrides: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(PreparedModelBundleError, match=message):
+        _pack_with_bound_recurrence_kernel(**overrides)  # type: ignore[arg-type]
 
 
 def test_prepared_bundle_rejects_recurrence_template_for_another_model(
     tmp_path: Path,
 ) -> None:
     kernel = _kernel()
-    catalog = RecurrenceTemplateCatalog.create(compiled_model_digest="f" * 64)
-    pack = replace(_pack(kernel), recurrence_template=catalog.to_dict())
+    base_pack = _pack(kernel)
+    payloads = _payloads(kernel)
+    catalog = _recurrence_catalog(
+        base_pack,
+        payloads,
+        compiled_model_digest="f" * 64,
+    )
+    pack = replace(base_pack, recurrence_template=catalog.to_dict())
 
     with pytest.raises(PreparedModelBundleError, match="compiled-model digest"):
         write_prepared_model_bundle(
             tmp_path / "wrong-model",
             compiled_model=_compiled_model(),
             kernel_pack=pack,
-            payloads=_payloads(kernel),
+            payloads=payloads,
         )
+
+
+def test_prepared_bundle_rejects_recurrence_template_for_changed_payloads(
+    tmp_path: Path,
+) -> None:
+    kernel = _kernel()
+    base_pack = _pack(kernel)
+    payloads = _payloads(kernel)
+    catalog = _recurrence_catalog(base_pack, payloads)
+    pack = replace(base_pack, recurrence_template=catalog.to_dict())
+    changed_payloads = dict(payloads)
+    changed_payloads["kernels/0/application.symjit"] = b"changed application"
+
+    with pytest.raises(PreparedModelBundleError, match="prepared-pack digest"):
+        write_prepared_model_bundle(
+            tmp_path / "changed-payload",
+            compiled_model=_compiled_model(),
+            kernel_pack=pack,
+            payloads=changed_payloads,
+        )
+
+
+def test_reader_rejects_rehashed_payload_outside_recurrence_identity(
+    tmp_path: Path,
+) -> None:
+    kernel = _kernel()
+    base_pack = _pack(kernel)
+    payloads = _payloads(kernel)
+    catalog = _recurrence_catalog(base_pack, payloads)
+    pack = replace(base_pack, recurrence_template=catalog.to_dict())
+    path = write_prepared_model_bundle(
+        tmp_path / "rehashed-payload",
+        compiled_model=_compiled_model(),
+        kernel_pack=pack,
+        payloads=payloads,
+    )
+
+    payload_path = "kernels/0/application.symjit"
+    changed_payload = b"changed and rehashed application"
+    entries = _entries(path)
+    updated: list[tuple[zipfile.ZipInfo, bytes]] = []
+    for info, data in entries:
+        if info.filename == payload_path:
+            data = changed_payload
+        elif info.filename == PREPARED_MODEL_MANIFEST_PATH:
+            manifest = json.loads(data)
+            assert isinstance(manifest, dict)
+            members = manifest["members"]
+            assert isinstance(members, list)
+            record = next(item for item in members if item["path"] == payload_path)
+            record["size"] = len(changed_payload)
+            record["sha256"] = hashlib.sha256(changed_payload).hexdigest()
+            data = (
+                json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+            ).encode("ascii")
+        updated.append((info, data))
+    _rewrite(path, updated)
+
+    with pytest.raises(PreparedModelBundleError, match="prepared-pack digest"):
+        load_prepared_model_bundle(path)
 
 
 def test_prepared_block_variant_round_trip_and_payload_index(tmp_path: Path) -> None:

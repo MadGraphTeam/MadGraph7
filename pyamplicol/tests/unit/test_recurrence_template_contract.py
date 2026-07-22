@@ -7,6 +7,10 @@ from fractions import Fraction
 
 import pytest
 
+from pyamplicol.generation.recurrence_template_columnar import (
+    RecurrenceColumnarInputError,
+    build_recurrence_template_input_v1,
+)
 from pyamplicol.models.recurrence_template import (
     ClosureTemplateV1,
     ColorContractionTemplateV1,
@@ -25,6 +29,7 @@ from pyamplicol.models.recurrence_template import (
 )
 
 _COMPILED_MODEL_DIGEST = "a" * 64
+_PREPARED_PACK_DIGEST = "c" * 64
 _EXPRESSION_A = "1" * 64
 _EXPRESSION_B = "2" * 64
 _EXPRESSION_C = "3" * 64
@@ -157,12 +162,16 @@ def _flow_template() -> QuantumFlowTemplateV1:
         template_id="flow:matter-adjoint-to-matter",
         input_state_template_ids=("state:matter", "state:adjoint"),
         input_spin_states=(1, 1),
-        input_flavour_flows=("matter", "neutral"),
-        input_quantum_number_flows=("fundamental", "adjoint"),
+        input_flavour_flows=((1,), (21,)),
+        input_quantum_number_flows=(
+            (("electric_charge", "-1/3"),),
+            (("electric_charge", "0"),),
+        ),
         coupling_orders=(("QCD", 1),),
         result_state_template_id="state:matter",
-        result_flavour_flow="matter",
-        result_quantum_number_flow="fundamental",
+        result_flavour_flow=(1, 21),
+        result_quantum_number_flow=(("electric_charge", "-1/3"),),
+        exact_coupling=ExactComplexRationalV1.one(),
         predicate_digest=_PREDICATE,
     )
 
@@ -179,7 +188,11 @@ def _transition() -> TransitionTemplateV1:
         coupling_parameter_ids=("parameter:coupling",),
         coupling_orders=(("QCD", 1),),
         color_contraction_template_id="color:matter-adjoint",
+        binding_coupling=ExactComplexRationalV1.one(),
         exact_factor=ExactComplexRationalV1.one(),
+        output_factor_source="none",
+        equivalence_class="ordered-matter-adjoint",
+        input_exchange_factor=None,
         output_projection="weyl-chiral:+1",
     )
 
@@ -208,7 +221,11 @@ def _closure() -> ClosureTemplateV1:
         coupling_parameter_ids=(),
         coupling_orders=(),
         color_contraction_template_id="color:matter-adjoint",
+        binding_coupling=ExactComplexRationalV1.one(),
         exact_factor=ExactComplexRationalV1.one(),
+        output_factor_source="none",
+        equivalence_class="ordered-matter-pair",
+        input_exchange_factor=None,
         projection="scalar",
     )
 
@@ -299,6 +316,7 @@ def _evaluator_bindings() -> tuple[EvaluatorBindingV1, ...]:
 def _catalog(**overrides: object) -> RecurrenceTemplateCatalog:
     values: dict[str, object] = {
         "compiled_model_digest": _COMPILED_MODEL_DIGEST,
+        "prepared_kernel_pack_digest": _PREPARED_PACK_DIGEST,
         "parameters": _parameter_templates(),
         "current_states": _state_templates(),
         "sources": _source_templates(),
@@ -362,6 +380,106 @@ def test_catalog_round_trip_is_canonical_and_content_addressed() -> None:
         catalog.current_states[0].dimension = 3  # type: ignore[misc]
 
 
+def test_extended_recurrence_records_round_trip_exactly() -> None:
+    catalog = _catalog()
+    restored = RecurrenceTemplateCatalog.from_dict(catalog.to_dict())
+
+    assert restored.quantum_flows[0].input_flavour_flows == ((1,), (21,))
+    assert restored.quantum_flows[0].input_quantum_number_flows == (
+        (("electric_charge", "-1/3"),),
+        (("electric_charge", "0"),),
+    )
+    assert restored.quantum_flows[0].exact_coupling == ExactComplexRationalV1.one()
+    assert restored.transitions[0].equivalence_class == "ordered-matter-adjoint"
+    assert restored.transitions[0].output_factor_source == "none"
+    assert restored.closures[0].equivalence_class == "ordered-matter-pair"
+    assert restored.closures[0].input_exchange_factor is None
+
+    payload = json.loads(catalog.canonical_json)
+    flow = payload["quantum_flows"][0]
+    assert flow["input_flavour_flows"] == [[1], [21]]
+    assert flow["input_quantum_number_flows"][0] == [["electric_charge", "-1/3"]]
+
+
+@pytest.mark.parametrize(
+    ("record_name", "field", "value"),
+    [
+        ("quantum_flows", "exact_coupling", ExactComplexRationalV1.zero()),
+        ("transitions", "binding_coupling", ExactComplexRationalV1.zero()),
+        ("transitions", "output_factor_source", "coupling-real"),
+        ("transitions", "equivalence_class", "another-proof"),
+        (
+            "transitions",
+            "input_exchange_factor",
+            ExactComplexRationalV1.from_fractions(-1),
+        ),
+        ("closures", "binding_coupling", ExactComplexRationalV1.zero()),
+        ("closures", "output_factor_source", "coupling-imag"),
+        ("closures", "equivalence_class", "another-closure-proof"),
+        (
+            "closures",
+            "input_exchange_factor",
+            ExactComplexRationalV1.from_fractions(-1),
+        ),
+    ],
+)
+def test_extended_fields_affect_semantic_and_catalog_digests(
+    record_name: str,
+    field: str,
+    value: object,
+) -> None:
+    catalog = _catalog()
+    records = getattr(catalog, record_name)
+    updated = replace(records[0], **{field: value, "semantic_digest": ""})
+    changed = _catalog(**{record_name: (updated,)})
+
+    assert updated.semantic_digest != records[0].semantic_digest
+    assert changed.catalog_digest != catalog.catalog_digest
+
+
+def test_model_wide_columnar_projection_preserves_typed_contracts() -> None:
+    projected = build_recurrence_template_input_v1(_catalog())
+    tables = {table.name: table for table in projected.tables}
+
+    assert projected.canonical_digest == projected.digest
+    assert tables["flavour_flow_ranges"].row_count == 3
+    assert tables["quantum_number_flow_ranges"].row_count == 2
+    assert tables["quantum_flows"].row_count == 1
+    assert tables["transitions"].row_count == 1
+    assert tables["closures"].row_count == 1
+    assert "exact_coupling_factor_id" in {
+        column.name for column in tables["quantum_flows"].columns
+    }
+    assert "binding_coupling_factor_id" in {
+        column.name for column in tables["transitions"].columns
+    }
+
+
+@pytest.mark.parametrize("numerator", (1 << 127, -(1 << 127)))
+def test_model_wide_columnar_projection_rejects_i128_overflow(numerator: int) -> None:
+    transition = replace(
+        _transition(),
+        binding_coupling=ExactComplexRationalV1.from_fractions(numerator),
+        semantic_digest="",
+    )
+    catalog = _catalog(transitions=(transition,))
+
+    with pytest.raises(RecurrenceColumnarInputError, match=r"cannot cross.*i128"):
+        build_recurrence_template_input_v1(catalog)
+
+
+def test_model_wide_columnar_projection_rejects_fixed_width_overflow() -> None:
+    states = list(_state_templates())
+    states[0] = replace(states[0], particle_id=1 << 31, semantic_digest="")
+    catalog = _catalog(current_states=tuple(states))
+
+    with pytest.raises(
+        RecurrenceColumnarInputError,
+        match=r"current_states\.particle_id row 0.*does not fit <i4",
+    ):
+        build_recurrence_template_input_v1(catalog)
+
+
 def test_runtime_template_evaluator_binding_round_trips() -> None:
     bindings = list(_evaluator_bindings())
     source_index = next(
@@ -373,7 +491,10 @@ def test_runtime_template_evaluator_binding_round_trips() -> None:
         bindings[source_index],
         prepared_kernel_id=None,
         callable_kind="rusticol-template",
-        runtime_template="rusticol.source-fill.vector.v1",
+        runtime_template=(
+            f"rusticol.source-fill.vector.v1:"
+            f"{bindings[source_index].callable_signature[:24]}"
+        ),
         semantic_digest="",
     )
 
@@ -381,8 +502,25 @@ def test_runtime_template_evaluator_binding_round_trips() -> None:
     restored = RecurrenceTemplateCatalog.from_dict(catalog.to_dict())
     binding = restored.evaluator_bindings[source_index]
     assert binding.callable_kind == "rusticol-template"
-    assert binding.runtime_template == "rusticol.source-fill.vector.v1"
+    assert binding.runtime_template == (
+        f"rusticol.source-fill.vector.v1:{binding.callable_signature[:24]}"
+    )
     assert binding.prepared_kernel_id is None
+
+
+def test_runtime_template_evaluator_binding_rejects_unregistered_contract() -> None:
+    binding = next(
+        item for item in _evaluator_bindings() if item.contract_kind == "source"
+    )
+
+    with pytest.raises(RecurrenceTemplateError, match="authenticated"):
+        replace(
+            binding,
+            prepared_kernel_id=None,
+            callable_kind="rusticol-template",
+            runtime_template="rusticol.source-fill.vector.v1:stale",
+            semantic_digest="",
+        )
 
 
 @pytest.mark.parametrize(

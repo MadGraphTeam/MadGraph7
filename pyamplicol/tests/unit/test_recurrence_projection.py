@@ -125,7 +125,9 @@ def _source(
         resolver_key=resolver,
         prepared_kernel_id=None,
         callable_kind="rusticol-template",
-        runtime_template=f"rusticol.source-fill.{token}",
+        runtime_template=(
+            f"rusticol.source-fill.{family}.v1:{signature[:24]}"
+        ),
         contract_kind="source",
         callable_signature=signature,
         input_state_template_ids=(),
@@ -168,6 +170,7 @@ def _catalog(*, omit_particle: int | None = None) -> RecurrenceTemplateCatalog:
     )
     return RecurrenceTemplateCatalog.create(
         compiled_model_digest=_sha("compiled-model"),
+        prepared_kernel_pack_digest=_sha("prepared-kernel-pack"),
         parameters=(parameter,),
         current_states=states,
         sources=tuple(pair[0] for pair in source_pairs),
@@ -353,8 +356,7 @@ def test_topology_replay_projects_exact_axes_and_generation_coverage() -> None:
         for state in logical.external_legs[0].source_states
     )
     assert all(
-        state.momentum_sign == -1
-        for state in logical.external_legs[0].source_states
+        state.momentum_sign == -1 for state in logical.external_legs[0].source_states
     )
     assert logical.selected_public_flow_ids == (1,)
     assert logical.selected_source_coverage is not None
@@ -464,9 +466,7 @@ def test_folded_trace_flows_can_be_specialized_independently(flow_id: int) -> No
     assert tuple(flow.flow_id for flow in logical.public_flows) == (0, 1)
     assert tuple(
         int(value)
-        for value in columns.table("selected_public_flow_coverage").column(
-            "flow_id"
-        )
+        for value in columns.table("selected_public_flow_coverage").column("flow_id")
     ) == (flow_id,)
 
 
@@ -484,6 +484,7 @@ def test_crossed_source_carries_effective_momentum_transform_and_phase() -> None
     )
     catalog = RecurrenceTemplateCatalog.create(
         compiled_model_digest=base.header.compiled_model_digest,
+        prepared_kernel_pack_digest=base.header.prepared_kernel_pack_digest,
         parameters=base.parameters,
         current_states=base.current_states,
         sources=tuple(changed if item == source else item for item in base.sources),
@@ -502,10 +503,9 @@ def test_crossed_source_carries_effective_momentum_transform_and_phase() -> None
         item
         for item in logical.external_legs[0].source_states
         if item.source_template_id
-        == sorted(
-            template.template_id
-            for template in catalog.sources
-        ).index(changed.template_id)
+        == sorted(template.template_id for template in catalog.sources).index(
+            changed.template_id
+        )
     )
     assert crossed.momentum_sign == 1
     assert crossed.crossing_phase == BuilderExact(0, 1, 1, 1)
@@ -597,9 +597,7 @@ def test_union_rejects_generation_selected_flow() -> None:
             _catalog(),
             layout="all-flow-union",
             normalization=_normalization(),
-            generation_slice=RecurrenceGenerationSliceV1(
-                selected_public_flow_ids=(0,)
-            ),
+            generation_slice=RecurrenceGenerationSliceV1(selected_public_flow_ids=(0,)),
         )
 
 
@@ -657,6 +655,7 @@ def test_complex_parameters_use_authoritative_prepared_slots() -> None:
     )
     catalog = RecurrenceTemplateCatalog.create(
         compiled_model_digest=base.header.compiled_model_digest,
+        prepared_kernel_pack_digest=base.header.prepared_kernel_pack_digest,
         parameters=(*base.parameters, complex_parameter),
         current_states=base.current_states,
         sources=base.sources,

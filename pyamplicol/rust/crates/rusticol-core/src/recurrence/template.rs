@@ -1,0 +1,2757 @@
+// SPDX-License-Identifier: 0BSD
+
+//! Checked model-wide input for the compact recurrence builder.
+//!
+//! The Python producer projects a semantic recurrence-template catalog into
+//! fixed-width primitive columns.  A Python decoder can zip those columns
+//! directly into the row types below, construct [`OwnedRecurrenceTemplateInput`],
+//! and call [`OwnedRecurrenceTemplateInput::validate`].  Validation resolves no
+//! model-specific assumptions: it checks canonical catalogs, exact factors,
+//! references, evaluator contracts, and propagator coverage before the state
+//! builder is allowed to consume the input.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use super::{
+    CheckedTableRange, ExactComplexRational, RECURRENCE_TEMPLATE_ABI, SemanticDigest,
+    validate_packed_ranges, validate_u32_references,
+};
+use crate::{RusticolError, RusticolResult};
+
+pub const RECURRENCE_TEMPLATE_INPUT_ABI: &str = "pyamplicol-recurrence-template-input-v1";
+pub const RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION: u32 = 1;
+pub const RECURRENCE_TEMPLATE_CANONICALIZATION_ABI: &str = "pyamplicol-canonical-json-v1";
+pub const RECURRENCE_TEMPLATE_EXACT_SCALAR_ABI: &str = "pyamplicol-exact-complex-rational-v1";
+pub const MISSING_U32: u32 = u32::MAX;
+
+fn invalid(message: impl Into<String>) -> RusticolError {
+    RusticolError::invalid_argument(message)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ParameterKind {
+    External = 0,
+    Derived = 1,
+    Constant = 2,
+}
+
+impl TryFrom<u8> for ParameterKind {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::External),
+            1 => Ok(Self::Derived),
+            2 => Ok(Self::Constant),
+            _ => Err(invalid(format!("unsupported parameter kind {value}"))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ParameterValueType {
+    Real = 0,
+    Complex = 1,
+}
+
+impl TryFrom<u8> for ParameterValueType {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Real),
+            1 => Ok(Self::Complex),
+            _ => Err(invalid(format!("unsupported parameter value type {value}"))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum CurrentOrientation {
+    Particle = 0,
+    Antiparticle = 1,
+    SelfConjugate = 2,
+}
+
+impl TryFrom<u8> for CurrentOrientation {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Particle),
+            1 => Ok(Self::Antiparticle),
+            2 => Ok(Self::SelfConjugate),
+            _ => Err(invalid(format!("unsupported current orientation {value}"))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ParticleStatistics {
+    Boson = 0,
+    Fermion = 1,
+}
+
+impl TryFrom<u8> for ParticleStatistics {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Boson),
+            1 => Ok(Self::Fermion),
+            _ => Err(invalid(format!("unsupported particle statistics {value}"))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum EvaluatorContractKind {
+    Source = 0,
+    Vertex = 1,
+    Propagator = 2,
+    Closure = 3,
+    ModelParameter = 4,
+}
+
+impl TryFrom<u8> for EvaluatorContractKind {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Source),
+            1 => Ok(Self::Vertex),
+            2 => Ok(Self::Propagator),
+            3 => Ok(Self::Closure),
+            4 => Ok(Self::ModelParameter),
+            _ => Err(invalid(format!(
+                "unsupported evaluator contract kind {value}"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum EvaluatorCallableKind {
+    PreparedKernel = 0,
+    RusticolTemplate = 1,
+}
+
+impl TryFrom<u8> for EvaluatorCallableKind {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::PreparedKernel),
+            1 => Ok(Self::RusticolTemplate),
+            _ => Err(invalid(format!(
+                "unsupported evaluator callable kind {value}"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum OutputFactorSource {
+    None = 0,
+    CouplingReal = 1,
+    CouplingImag = 2,
+}
+
+impl TryFrom<u8> for OutputFactorSource {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::None),
+            1 => Ok(Self::CouplingReal),
+            2 => Ok(Self::CouplingImag),
+            _ => Err(invalid(format!("unsupported output-factor source {value}"))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IndexedRangeRow {
+    pub id: u32,
+    pub range: CheckedTableRange,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CatalogHeaderRow {
+    pub schema_version: u32,
+    pub abi_string_id: u32,
+    pub canonicalization_abi_string_id: u32,
+    pub exact_scalar_abi_string_id: u32,
+    pub compiled_model_digest_id: u32,
+    pub prepared_kernel_pack_digest_id: u32,
+    pub catalog_digest_id: u32,
+    pub parameter_count: u32,
+    pub current_state_count: u32,
+    pub source_count: u32,
+    pub quantum_flow_count: u32,
+    pub transition_count: u32,
+    pub propagator_count: u32,
+    pub closure_count: u32,
+    pub color_contraction_count: u32,
+    pub symmetry_proof_count: u32,
+    pub evaluator_binding_count: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CouplingOrderTermRow {
+    pub set_id: u32,
+    pub name_string_id: u32,
+    pub power: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DigestCatalogRow {
+    pub id: u32,
+    pub value: [u8; 32],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExactFactorRow {
+    pub id: u32,
+    pub real_numerator_string_id: u32,
+    pub real_denominator_string_id: u32,
+    pub imag_numerator_string_id: u32,
+    pub imag_denominator_string_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QuantumNumberFlowTermRow {
+    pub flow_id: u32,
+    pub name_string_id: u32,
+    pub expression_string_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ParameterRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub name_string_id: u32,
+    pub kind: u8,
+    pub value_type: u8,
+    pub mutable: u8,
+    pub default_factor_id: u32,
+    pub exact_expression_digest_id: u32,
+    pub dependency_sequence_id: u32,
+    pub prepared_parameter_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CurrentStateRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub particle_id: i32,
+    pub anti_particle_id: i32,
+    pub species_string_id: u32,
+    pub orientation: u8,
+    pub statistics: u8,
+    pub color_representation: i32,
+    pub basis_string_id: u32,
+    pub tensor_ordering_sequence_id: u32,
+    pub dimension: u32,
+    pub chirality: i32,
+    pub auxiliary_kind_string_id: u32,
+    pub mass_parameter_id: u32,
+    pub width_parameter_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub state_template_id: u32,
+    pub crossing_string_id: u32,
+    pub wavefunction_family_string_id: u32,
+    pub helicity: i32,
+    pub spin_state: i32,
+    pub wavefunction_expression_digest_id: u32,
+    pub evaluator_binding_id: u32,
+    pub mass_parameter_id: u32,
+    pub width_parameter_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QuantumFlowRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub input_state_sequence_id: u32,
+    pub input_spin_sequence_id: u32,
+    pub input_flavour_sequence_id: u32,
+    pub input_quantum_sequence_id: u32,
+    pub coupling_order_set_id: u32,
+    pub result_state_template_id: u32,
+    pub result_flavour_flow_id: u32,
+    pub result_quantum_number_flow_id: u32,
+    pub exact_coupling_factor_id: u32,
+    pub predicate_digest_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TransitionRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub input_state_sequence_id: u32,
+    pub result_state_template_id: u32,
+    pub quantum_flow_template_id: u32,
+    pub evaluator_binding_id: u32,
+    pub canonical_input_order_sequence_id: u32,
+    pub momentum_convention_sequence_id: u32,
+    pub coupling_parameter_sequence_id: u32,
+    pub coupling_order_set_id: u32,
+    pub color_contraction_template_id: u32,
+    pub binding_coupling_factor_id: u32,
+    pub exact_factor_id: u32,
+    pub output_factor_source: u8,
+    pub equivalence_class_string_id: u32,
+    pub input_exchange_factor_id: u32,
+    pub output_projection_string_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PropagatorRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub state_template_id: u32,
+    pub applies_propagator: u8,
+    pub evaluator_binding_id: u32,
+    pub numerator_expression_digest_id: u32,
+    pub denominator_expression_digest_id: u32,
+    pub mass_parameter_id: u32,
+    pub width_parameter_id: u32,
+    pub gauge_string_id: u32,
+    pub linearity_proof_template_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClosureRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub input_state_sequence_id: u32,
+    pub evaluator_binding_id: u32,
+    pub canonical_input_order_sequence_id: u32,
+    pub coupling_parameter_sequence_id: u32,
+    pub coupling_order_set_id: u32,
+    pub color_contraction_template_id: u32,
+    pub binding_coupling_factor_id: u32,
+    pub exact_factor_id: u32,
+    pub output_factor_source: u8,
+    pub equivalence_class_string_id: u32,
+    pub input_exchange_factor_id: u32,
+    pub projection_string_id: u32,
+    pub component_coefficient_sequence_id: u32,
+    pub chirality_relation_string_id: u32,
+    pub metric_signature_string_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ColorContractionRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub rule_kind_string_id: u32,
+    pub input_representation_sequence_id: u32,
+    pub has_output_representation: u8,
+    pub output_representation: i32,
+    pub ordered_open_string_arity: u32,
+    pub exact_coefficient_factor_id: u32,
+    pub nc_term_start: u64,
+    pub nc_term_count: u64,
+    pub expression_digest_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ColorNcTermRow {
+    pub color_contraction_id: u32,
+    pub exponent: i32,
+    pub factor_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SymmetryProofRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub proof_algorithm_string_id: u32,
+    pub subject_template_sequence_id: u32,
+    pub input_permutation_sequence_id: u32,
+    pub exact_phase_factor_id: u32,
+    pub expression_digest_sequence_id: u32,
+    pub witness_digest_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EvaluatorBindingRow {
+    pub id: u32,
+    pub resolver_key_string_id: u32,
+    pub prepared_kernel_id: u32,
+    pub contract_kind: u8,
+    pub callable_signature_digest_id: u32,
+    pub input_state_sequence_id: u32,
+    pub output_state_template_id: u32,
+    pub input_layout_sequence_id: u32,
+    pub output_layout_sequence_id: u32,
+    pub exact_expression_digest_sequence_id: u32,
+    pub semantic_template_sequence_id: u32,
+    pub callable_kind: u8,
+    pub runtime_template_string_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+macro_rules! define_template_inputs {
+    ($( $field:ident : $item:ty ),+ $(,)?) => {
+        #[derive(Clone, Copy, Debug)]
+        pub struct RecurrenceTemplateInputView<'a> {
+            pub input_abi: &'a str,
+            pub catalog_digest: SemanticDigest,
+            pub compiled_model_digest: SemanticDigest,
+            pub prepared_kernel_pack_digest: SemanticDigest,
+            $(pub $field: &'a [$item],)+
+        }
+
+        #[derive(Clone, Debug)]
+        pub struct OwnedRecurrenceTemplateInput {
+            pub input_abi: String,
+            pub catalog_digest: SemanticDigest,
+            pub compiled_model_digest: SemanticDigest,
+            pub prepared_kernel_pack_digest: SemanticDigest,
+            $(pub $field: Vec<$item>,)+
+        }
+
+        impl OwnedRecurrenceTemplateInput {
+            pub fn as_view(&self) -> RecurrenceTemplateInputView<'_> {
+                RecurrenceTemplateInputView {
+                    input_abi: &self.input_abi,
+                    catalog_digest: self.catalog_digest,
+                    compiled_model_digest: self.compiled_model_digest,
+                    prepared_kernel_pack_digest: self.prepared_kernel_pack_digest,
+                    $($field: &self.$field,)+
+                }
+            }
+
+            pub fn validate(self) -> RusticolResult<ValidatedRecurrenceTemplateInput> {
+                let summary = self.as_view().validate()?;
+                Ok(ValidatedRecurrenceTemplateInput { input: self, summary })
+            }
+        }
+    };
+}
+
+define_template_inputs! {
+    catalog_header: CatalogHeaderRow,
+    coupling_order_ranges: IndexedRangeRow,
+    coupling_order_terms: CouplingOrderTermRow,
+    current_states: CurrentStateRow,
+    digest_catalog: DigestCatalogRow,
+    evaluator_bindings: EvaluatorBindingRow,
+    exact_factors: ExactFactorRow,
+    flavour_flow_ranges: IndexedRangeRow,
+    flavour_flow_values: i32,
+    i32_sequence_ranges: IndexedRangeRow,
+    i32_sequence_values: i32,
+    parameters: ParameterRow,
+    propagators: PropagatorRow,
+    quantum_flows: QuantumFlowRow,
+    quantum_number_flow_ranges: IndexedRangeRow,
+    quantum_number_flow_terms: QuantumNumberFlowTermRow,
+    sources: SourceRow,
+    string_ranges: CheckedTableRange,
+    string_bytes: u8,
+    symmetry_proofs: SymmetryProofRow,
+    transitions: TransitionRow,
+    closures: ClosureRow,
+    color_contractions: ColorContractionRow,
+    color_nc_terms: ColorNcTermRow,
+    u32_sequence_ranges: IndexedRangeRow,
+    u32_sequence_values: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecurrenceTemplateValidationSummary {
+    pub catalog_digest: SemanticDigest,
+    pub compiled_model_digest: SemanticDigest,
+    pub prepared_kernel_pack_digest: SemanticDigest,
+    pub parameter_count: u32,
+    pub current_state_count: u32,
+    pub source_count: u32,
+    pub quantum_flow_count: u32,
+    pub transition_count: u32,
+    pub propagator_count: u32,
+    pub closure_count: u32,
+    pub color_contraction_count: u32,
+    pub symmetry_proof_count: u32,
+    pub evaluator_binding_count: u32,
+    pub prepared_kernel_count: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct ValidatedRecurrenceTemplateInput {
+    input: OwnedRecurrenceTemplateInput,
+    summary: RecurrenceTemplateValidationSummary,
+}
+
+impl ValidatedRecurrenceTemplateInput {
+    pub const fn summary(&self) -> RecurrenceTemplateValidationSummary {
+        self.summary
+    }
+
+    pub const fn input(&self) -> &OwnedRecurrenceTemplateInput {
+        &self.input
+    }
+
+    pub fn into_input(self) -> OwnedRecurrenceTemplateInput {
+        self.input
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemplateKind {
+    Parameter,
+    CurrentState,
+    Source,
+    QuantumFlow,
+    Transition,
+    Propagator,
+    Closure,
+    ColorContraction,
+    SymmetryProof,
+}
+
+impl TemplateKind {
+    const fn evaluator_contract(self) -> Option<EvaluatorContractKind> {
+        match self {
+            Self::Parameter => Some(EvaluatorContractKind::ModelParameter),
+            Self::Source => Some(EvaluatorContractKind::Source),
+            Self::Transition => Some(EvaluatorContractKind::Vertex),
+            Self::Propagator => Some(EvaluatorContractKind::Propagator),
+            Self::Closure => Some(EvaluatorContractKind::Closure),
+            Self::CurrentState
+            | Self::QuantumFlow
+            | Self::ColorContraction
+            | Self::SymmetryProof => None,
+        }
+    }
+}
+
+struct ValidatedCatalogs<'a> {
+    strings: Vec<&'a str>,
+    digests: Vec<SemanticDigest>,
+    factors: Vec<ExactComplexRational>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct CallableContractKey {
+    contract_kind: EvaluatorContractKind,
+    callable_signature_digest_id: u32,
+    input_layout: Vec<u32>,
+    output_layout: Vec<u32>,
+    exact_expression_digests: Vec<u32>,
+}
+
+impl<'a> RecurrenceTemplateInputView<'a> {
+    pub fn validate(self) -> RusticolResult<RecurrenceTemplateValidationSummary> {
+        if self.input_abi != RECURRENCE_TEMPLATE_INPUT_ABI {
+            return Err(RusticolError::compatibility(format!(
+                "unsupported recurrence template input ABI {:?}; expected {:?}",
+                self.input_abi, RECURRENCE_TEMPLATE_INPUT_ABI
+            )));
+        }
+        let catalogs = self.validate_catalogs()?;
+        self.validate_header(&catalogs)?;
+
+        let mut template_kinds = BTreeMap::new();
+        let mut semantic_digests = BTreeSet::new();
+        self.validate_parameters(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_current_states(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_sources_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_quantum_flows(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_color_contractions(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_symmetry_proofs_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_transitions_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_propagators_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_closures_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        let prepared_kernel_count =
+            self.validate_evaluators(&catalogs, &template_kinds, &mut semantic_digests)?;
+        self.validate_proof_subjects(&template_kinds)?;
+        self.validate_evaluator_state_contracts(&template_kinds)?;
+
+        Ok(RecurrenceTemplateValidationSummary {
+            catalog_digest: self.catalog_digest,
+            compiled_model_digest: self.compiled_model_digest,
+            prepared_kernel_pack_digest: self.prepared_kernel_pack_digest,
+            parameter_count: checked_len(self.parameters.len(), "parameters")?,
+            current_state_count: checked_len(self.current_states.len(), "current states")?,
+            source_count: checked_len(self.sources.len(), "sources")?,
+            quantum_flow_count: checked_len(self.quantum_flows.len(), "quantum flows")?,
+            transition_count: checked_len(self.transitions.len(), "transitions")?,
+            propagator_count: checked_len(self.propagators.len(), "propagators")?,
+            closure_count: checked_len(self.closures.len(), "closures")?,
+            color_contraction_count: checked_len(
+                self.color_contractions.len(),
+                "color contractions",
+            )?,
+            symmetry_proof_count: checked_len(self.symmetry_proofs.len(), "symmetry proofs")?,
+            evaluator_binding_count: checked_len(
+                self.evaluator_bindings.len(),
+                "evaluator bindings",
+            )?,
+            prepared_kernel_count,
+        })
+    }
+
+    fn validate_catalogs(self) -> RusticolResult<ValidatedCatalogs<'a>> {
+        validate_packed_ranges(
+            "string catalog",
+            self.string_ranges,
+            self.string_bytes.len(),
+        )?;
+        let mut strings = Vec::with_capacity(self.string_ranges.len());
+        let mut previous = None;
+        for (index, range) in self.string_ranges.iter().copied().enumerate() {
+            let bytes = &self.string_bytes
+                [range.as_usize_range(self.string_bytes.len(), &format!("string {index}"))?];
+            let value = std::str::from_utf8(bytes)
+                .map_err(|error| invalid(format!("string {index} is not UTF-8: {error}")))?;
+            if value.is_empty() {
+                return Err(invalid(format!("string catalog row {index} is empty")));
+            }
+            if let Some(previous) = previous
+                && previous >= value
+            {
+                return Err(invalid(format!(
+                    "string catalog is not in strict canonical order at row {index}"
+                )));
+            }
+            previous = Some(value);
+            strings.push(value);
+        }
+
+        validate_canonical_ids(
+            "digest catalog",
+            self.digest_catalog.iter().map(|row| row.id),
+        )?;
+        let mut digests = Vec::with_capacity(self.digest_catalog.len());
+        let mut previous = None;
+        for (index, row) in self.digest_catalog.iter().enumerate() {
+            let value = SemanticDigest::new(row.value).map_err(|error| {
+                invalid(format!("digest catalog row {index} is invalid: {error}"))
+            })?;
+            if let Some(previous) = previous
+                && previous >= value
+            {
+                return Err(invalid(format!(
+                    "digest catalog is not in strict canonical order at row {index}"
+                )));
+            }
+            previous = Some(value);
+            digests.push(value);
+        }
+
+        self.validate_sequence_catalogs(&strings)?;
+        let factors = self.validate_exact_factors(&strings)?;
+        Ok(ValidatedCatalogs {
+            strings,
+            digests,
+            factors,
+        })
+    }
+
+    fn validate_sequence_catalogs(self, strings: &[&str]) -> RusticolResult<()> {
+        validate_sequence_catalog(
+            "u32 sequence catalog",
+            self.u32_sequence_ranges,
+            self.u32_sequence_values,
+            false,
+        )?;
+        validate_sequence_catalog(
+            "i32 sequence catalog",
+            self.i32_sequence_ranges,
+            self.i32_sequence_values,
+            false,
+        )?;
+        validate_sequence_catalog(
+            "flavour-flow catalog",
+            self.flavour_flow_ranges,
+            self.flavour_flow_values,
+            true,
+        )?;
+        self.validate_coupling_order_catalog(strings)?;
+        self.validate_quantum_number_flow_catalog(strings)?;
+        Ok(())
+    }
+
+    fn validate_coupling_order_catalog(self, strings: &[&str]) -> RusticolResult<()> {
+        validate_indexed_ranges(
+            "coupling-order catalog",
+            self.coupling_order_ranges,
+            self.coupling_order_terms.len(),
+        )?;
+        let mut previous: Option<Vec<(u32, u32)>> = None;
+        for (set_index, range) in self.coupling_order_ranges.iter().enumerate() {
+            let terms = &self.coupling_order_terms[range
+                .range
+                .as_usize_range(self.coupling_order_terms.len(), "coupling-order set")?];
+            let mut current = Vec::with_capacity(terms.len());
+            let mut previous_name = None;
+            for term in terms {
+                if term.set_id as usize != set_index {
+                    return Err(invalid(format!(
+                        "coupling-order term names set {}, expected {set_index}",
+                        term.set_id
+                    )));
+                }
+                required_string(strings, term.name_string_id, "coupling-order name")?;
+                if let Some(previous_name) = previous_name
+                    && previous_name >= term.name_string_id
+                {
+                    return Err(invalid(format!(
+                        "coupling-order set {set_index} is not strictly name ordered"
+                    )));
+                }
+                previous_name = Some(term.name_string_id);
+                current.push((term.name_string_id, term.power));
+            }
+            if let Some(previous) = previous.as_ref()
+                && previous.as_slice() >= current.as_slice()
+            {
+                return Err(invalid(format!(
+                    "coupling-order catalog is not in strict canonical order at set {set_index}"
+                )));
+            }
+            previous = Some(current);
+        }
+        Ok(())
+    }
+
+    fn validate_quantum_number_flow_catalog(self, strings: &[&str]) -> RusticolResult<()> {
+        validate_indexed_ranges(
+            "quantum-number-flow catalog",
+            self.quantum_number_flow_ranges,
+            self.quantum_number_flow_terms.len(),
+        )?;
+        let mut previous: Option<Vec<(u32, u32)>> = None;
+        for (flow_index, range) in self.quantum_number_flow_ranges.iter().enumerate() {
+            let terms = &self.quantum_number_flow_terms[range
+                .range
+                .as_usize_range(self.quantum_number_flow_terms.len(), "quantum-number flow")?];
+            let mut current = Vec::with_capacity(terms.len());
+            let mut previous_name = None;
+            for term in terms {
+                if term.flow_id as usize != flow_index {
+                    return Err(invalid(format!(
+                        "quantum-number-flow term names flow {}, expected {flow_index}",
+                        term.flow_id
+                    )));
+                }
+                required_string(strings, term.name_string_id, "quantum-number name")?;
+                required_string(
+                    strings,
+                    term.expression_string_id,
+                    "quantum-number expression",
+                )?;
+                if let Some(previous_name) = previous_name
+                    && previous_name >= term.name_string_id
+                {
+                    return Err(invalid(format!(
+                        "quantum-number flow {flow_index} is not strictly name ordered"
+                    )));
+                }
+                previous_name = Some(term.name_string_id);
+                current.push((term.name_string_id, term.expression_string_id));
+            }
+            if let Some(previous) = previous.as_ref()
+                && previous.as_slice() >= current.as_slice()
+            {
+                return Err(invalid(format!(
+                    "quantum-number-flow catalog is not in strict canonical order at flow {flow_index}"
+                )));
+            }
+            previous = Some(current);
+        }
+        Ok(())
+    }
+
+    fn validate_exact_factors(self, strings: &[&str]) -> RusticolResult<Vec<ExactComplexRational>> {
+        validate_canonical_ids(
+            "exact-factor catalog",
+            self.exact_factors.iter().map(|row| row.id),
+        )?;
+        let mut factors = Vec::with_capacity(self.exact_factors.len());
+        let mut previous = None;
+        for (index, row) in self.exact_factors.iter().enumerate() {
+            let real_numerator = required_string(
+                strings,
+                row.real_numerator_string_id,
+                "exact real numerator",
+            )?;
+            let real_denominator = required_string(
+                strings,
+                row.real_denominator_string_id,
+                "exact real denominator",
+            )?;
+            let imag_numerator = required_string(
+                strings,
+                row.imag_numerator_string_id,
+                "exact imaginary numerator",
+            )?;
+            let imag_denominator = required_string(
+                strings,
+                row.imag_denominator_string_id,
+                "exact imaginary denominator",
+            )?;
+            let raw_key = (
+                parse_canonical_i128(real_numerator, false, "exact real numerator")?,
+                parse_canonical_i128(real_denominator, true, "exact real denominator")?,
+                parse_canonical_i128(imag_numerator, false, "exact imaginary numerator")?,
+                parse_canonical_i128(imag_denominator, true, "exact imaginary denominator")?,
+            );
+            let factor = ExactComplexRational::parse_parts(
+                real_numerator,
+                real_denominator,
+                imag_numerator,
+                imag_denominator,
+            )
+            .map_err(|error| invalid(format!("exact factor {index} is invalid: {error}")))?;
+            if factor.real().numerator() != raw_key.0
+                || factor.real().denominator() != raw_key.1
+                || factor.imag().numerator() != raw_key.2
+                || factor.imag().denominator() != raw_key.3
+            {
+                return Err(invalid(format!(
+                    "exact factor {index} is not reduced canonically"
+                )));
+            }
+            if let Some(previous) = previous
+                && previous >= raw_key
+            {
+                return Err(invalid(format!(
+                    "exact-factor catalog is not in strict canonical order at row {index}"
+                )));
+            }
+            previous = Some(raw_key);
+            factors.push(factor);
+        }
+        Ok(factors)
+    }
+
+    fn validate_header(self, catalogs: &ValidatedCatalogs<'_>) -> RusticolResult<()> {
+        if self.catalog_header.len() != 1 {
+            return Err(invalid(format!(
+                "catalog_header must contain one row, found {}",
+                self.catalog_header.len()
+            )));
+        }
+        let header = self.catalog_header[0];
+        if header.schema_version != RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION {
+            return Err(RusticolError::compatibility(format!(
+                "unsupported recurrence template input schema {}; expected {}",
+                header.schema_version, RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION
+            )));
+        }
+        require_string_value(
+            &catalogs.strings,
+            header.abi_string_id,
+            RECURRENCE_TEMPLATE_ABI,
+            "recurrence template ABI",
+        )?;
+        require_string_value(
+            &catalogs.strings,
+            header.canonicalization_abi_string_id,
+            RECURRENCE_TEMPLATE_CANONICALIZATION_ABI,
+            "recurrence canonicalization ABI",
+        )?;
+        require_string_value(
+            &catalogs.strings,
+            header.exact_scalar_abi_string_id,
+            RECURRENCE_TEMPLATE_EXACT_SCALAR_ABI,
+            "recurrence exact-scalar ABI",
+        )?;
+        if required_digest(
+            &catalogs.digests,
+            header.compiled_model_digest_id,
+            "compiled-model digest",
+        )? != self.compiled_model_digest
+        {
+            return Err(invalid(
+                "compiled-model digest does not match the input envelope",
+            ));
+        }
+        if required_digest(
+            &catalogs.digests,
+            header.prepared_kernel_pack_digest_id,
+            "prepared-kernel-pack digest",
+        )? != self.prepared_kernel_pack_digest
+        {
+            return Err(invalid(
+                "prepared-kernel-pack digest does not match the input envelope",
+            ));
+        }
+        if required_digest(
+            &catalogs.digests,
+            header.catalog_digest_id,
+            "catalog digest",
+        )? != self.catalog_digest
+        {
+            return Err(invalid("catalog digest does not match the input envelope"));
+        }
+
+        let expected = [
+            ("parameters", header.parameter_count, self.parameters.len()),
+            (
+                "current states",
+                header.current_state_count,
+                self.current_states.len(),
+            ),
+            ("sources", header.source_count, self.sources.len()),
+            (
+                "quantum flows",
+                header.quantum_flow_count,
+                self.quantum_flows.len(),
+            ),
+            (
+                "transitions",
+                header.transition_count,
+                self.transitions.len(),
+            ),
+            (
+                "propagators",
+                header.propagator_count,
+                self.propagators.len(),
+            ),
+            ("closures", header.closure_count, self.closures.len()),
+            (
+                "color contractions",
+                header.color_contraction_count,
+                self.color_contractions.len(),
+            ),
+            (
+                "symmetry proofs",
+                header.symmetry_proof_count,
+                self.symmetry_proofs.len(),
+            ),
+            (
+                "evaluator bindings",
+                header.evaluator_binding_count,
+                self.evaluator_bindings.len(),
+            ),
+        ];
+        for (label, declared, actual) in expected {
+            if usize::try_from(declared).ok() != Some(actual) {
+                return Err(invalid(format!(
+                    "catalog header declares {declared} {label}, found {actual}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_parameters(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "parameter",
+            self.parameters.iter().map(|row| row.id),
+            self.parameters.iter().map(|row| row.template_string_id),
+        )?;
+        for (index, row) in self.parameters.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::Parameter,
+                "parameter",
+            )?;
+            register_semantic_digest(semantic_digests, row.semantic_digest_id, "parameter")?;
+            required_string(
+                &catalogs.strings,
+                row.template_string_id,
+                "parameter template",
+            )?;
+            required_string(&catalogs.strings, row.name_string_id, "parameter name")?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "parameter semantic digest",
+            )?;
+            let kind = ParameterKind::try_from(row.kind)?;
+            let value_type = ParameterValueType::try_from(row.value_type)?;
+            validate_bool(row.mutable, "parameter mutable")?;
+            let default = optional_factor(
+                &catalogs.factors,
+                row.default_factor_id,
+                "parameter default",
+            )?;
+            optional_digest(
+                &catalogs.digests,
+                row.exact_expression_digest_id,
+                "parameter exact expression",
+            )?;
+            let dependencies =
+                u32_sequence(self, row.dependency_sequence_id, "parameter dependencies")?;
+            validate_strict_u32(dependencies, "parameter dependencies")?;
+            validate_u32_references(
+                dependencies,
+                self.parameters.len(),
+                "parameter dependencies",
+            )?;
+            if dependencies.contains(&(index as u32)) {
+                return Err(invalid(format!(
+                    "parameter {index} depends directly on itself"
+                )));
+            }
+            match kind {
+                ParameterKind::Derived => {
+                    if row.exact_expression_digest_id == MISSING_U32 {
+                        return Err(invalid(format!(
+                            "derived parameter {index} has no exact expression digest"
+                        )));
+                    }
+                }
+                ParameterKind::External | ParameterKind::Constant => {
+                    if default.is_none() {
+                        return Err(invalid(format!(
+                            "external/constant parameter {index} has no exact default"
+                        )));
+                    }
+                }
+            }
+            if value_type == ParameterValueType::Real
+                && default.is_some_and(|value| !value.imag().is_zero())
+            {
+                return Err(invalid(format!(
+                    "real parameter {index} has a complex default"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_current_states(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "current state",
+            self.current_states.iter().map(|row| row.id),
+            self.current_states.iter().map(|row| row.template_string_id),
+        )?;
+        for (index, row) in self.current_states.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::CurrentState,
+                "current state",
+            )?;
+            register_semantic_digest(semantic_digests, row.semantic_digest_id, "current state")?;
+            for (id, label) in [
+                (row.template_string_id, "current-state template"),
+                (row.species_string_id, "current-state species"),
+                (row.basis_string_id, "current-state basis"),
+            ] {
+                required_string(&catalogs.strings, id, label)?;
+            }
+            optional_string(
+                &catalogs.strings,
+                row.auxiliary_kind_string_id,
+                "current-state auxiliary kind",
+            )?;
+            CurrentOrientation::try_from(row.orientation)?;
+            ParticleStatistics::try_from(row.statistics)?;
+            if row.dimension == 0 {
+                return Err(invalid(format!("current state {index} has zero dimension")));
+            }
+            let tensor_ordering = u32_sequence(
+                self,
+                row.tensor_ordering_sequence_id,
+                "current tensor ordering",
+            )?;
+            if tensor_ordering.len() != row.dimension as usize {
+                return Err(invalid(format!(
+                    "current state {index} dimension {} does not match tensor ordering length {}",
+                    row.dimension,
+                    tensor_ordering.len()
+                )));
+            }
+            for string_id in tensor_ordering {
+                required_string(&catalogs.strings, *string_id, "current tensor label")?;
+            }
+            optional_reference(
+                row.mass_parameter_id,
+                self.parameters.len(),
+                "current mass parameter",
+            )?;
+            optional_reference(
+                row.width_parameter_id,
+                self.parameters.len(),
+                "current width parameter",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "current-state semantic digest",
+            )?;
+        }
+        Ok(())
+    }
+
+    fn validate_sources_basic(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "source",
+            self.sources.iter().map(|row| row.id),
+            self.sources.iter().map(|row| row.template_string_id),
+        )?;
+        for row in self.sources {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::Source,
+                "source",
+            )?;
+            register_semantic_digest(semantic_digests, row.semantic_digest_id, "source")?;
+            required_reference(
+                row.state_template_id,
+                self.current_states.len(),
+                "source state",
+            )?;
+            required_reference(
+                row.evaluator_binding_id,
+                self.evaluator_bindings.len(),
+                "source evaluator",
+            )?;
+            optional_reference(
+                row.mass_parameter_id,
+                self.parameters.len(),
+                "source mass parameter",
+            )?;
+            optional_reference(
+                row.width_parameter_id,
+                self.parameters.len(),
+                "source width parameter",
+            )?;
+            required_string(&catalogs.strings, row.template_string_id, "source template")?;
+            required_string(&catalogs.strings, row.crossing_string_id, "source crossing")?;
+            let family = required_string(
+                &catalogs.strings,
+                row.wavefunction_family_string_id,
+                "source wavefunction family",
+            )?;
+            if !matches!(
+                family,
+                "scalar" | "fermion" | "vector" | "spin2" | "ghost" | "auxiliary"
+            ) {
+                return Err(invalid(format!(
+                    "unsupported source wavefunction family {family:?}"
+                )));
+            }
+            required_digest(
+                &catalogs.digests,
+                row.wavefunction_expression_digest_id,
+                "source wavefunction expression",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "source semantic digest",
+            )?;
+        }
+        Ok(())
+    }
+
+    fn validate_quantum_flows(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "quantum flow",
+            self.quantum_flows.iter().map(|row| row.id),
+            self.quantum_flows.iter().map(|row| row.template_string_id),
+        )?;
+        for (index, row) in self.quantum_flows.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::QuantumFlow,
+                "quantum flow",
+            )?;
+            register_semantic_digest(semantic_digests, row.semantic_digest_id, "quantum flow")?;
+            required_string(
+                &catalogs.strings,
+                row.template_string_id,
+                "quantum-flow template",
+            )?;
+            let states = u32_sequence(
+                self,
+                row.input_state_sequence_id,
+                "quantum-flow input states",
+            )?;
+            if states.is_empty() {
+                return Err(invalid(format!("quantum flow {index} has no inputs")));
+            }
+            validate_u32_references(
+                states,
+                self.current_states.len(),
+                "quantum-flow input states",
+            )?;
+            let spins = i32_sequence(self, row.input_spin_sequence_id, "quantum-flow spins")?;
+            let flavour_ids = u32_sequence(
+                self,
+                row.input_flavour_sequence_id,
+                "quantum-flow flavour flows",
+            )?;
+            let quantum_ids = u32_sequence(
+                self,
+                row.input_quantum_sequence_id,
+                "quantum-flow quantum-number flows",
+            )?;
+            if states.len() != spins.len()
+                || states.len() != flavour_ids.len()
+                || states.len() != quantum_ids.len()
+            {
+                return Err(invalid(format!(
+                    "quantum flow {index} input contract columns have different arity"
+                )));
+            }
+            validate_u32_references(
+                flavour_ids,
+                self.flavour_flow_ranges.len(),
+                "quantum-flow flavour flows",
+            )?;
+            validate_u32_references(
+                quantum_ids,
+                self.quantum_number_flow_ranges.len(),
+                "quantum-flow quantum-number flows",
+            )?;
+            required_reference(
+                row.result_state_template_id,
+                self.current_states.len(),
+                "quantum-flow result state",
+            )?;
+            required_reference(
+                row.result_flavour_flow_id,
+                self.flavour_flow_ranges.len(),
+                "quantum-flow result flavour flow",
+            )?;
+            required_reference(
+                row.result_quantum_number_flow_id,
+                self.quantum_number_flow_ranges.len(),
+                "quantum-flow result quantum-number flow",
+            )?;
+            required_reference(
+                row.coupling_order_set_id,
+                self.coupling_order_ranges.len(),
+                "quantum-flow coupling-order set",
+            )?;
+            required_factor(
+                &catalogs.factors,
+                row.exact_coupling_factor_id,
+                "quantum-flow exact coupling",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.predicate_digest_id,
+                "quantum-flow predicate",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "quantum-flow semantic digest",
+            )?;
+        }
+        Ok(())
+    }
+
+    fn validate_color_contractions(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "color contraction",
+            self.color_contractions.iter().map(|row| row.id),
+            self.color_contractions
+                .iter()
+                .map(|row| row.template_string_id),
+        )?;
+        let ranges: Vec<_> = self
+            .color_contractions
+            .iter()
+            .map(|row| CheckedTableRange::new(row.nc_term_start, row.nc_term_count))
+            .collect();
+        validate_packed_ranges("color Nc polynomial", &ranges, self.color_nc_terms.len())?;
+        for (index, row) in self.color_contractions.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::ColorContraction,
+                "color contraction",
+            )?;
+            register_semantic_digest(
+                semantic_digests,
+                row.semantic_digest_id,
+                "color contraction",
+            )?;
+            required_string(&catalogs.strings, row.template_string_id, "color template")?;
+            required_string(
+                &catalogs.strings,
+                row.rule_kind_string_id,
+                "color rule kind",
+            )?;
+            let input_representations = i32_sequence(
+                self,
+                row.input_representation_sequence_id,
+                "color input representations",
+            )?;
+            validate_color_contract_shape(
+                index,
+                input_representations,
+                row.has_output_representation,
+                row.output_representation,
+                row.ordered_open_string_arity,
+            )?;
+            required_factor(
+                &catalogs.factors,
+                row.exact_coefficient_factor_id,
+                "color exact coefficient",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.expression_digest_id,
+                "color expression",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "color semantic digest",
+            )?;
+            let terms = &self.color_nc_terms
+                [ranges[index].as_usize_range(self.color_nc_terms.len(), "color Nc terms")?];
+            let mut previous_exponent = None;
+            for term in terms {
+                if term.color_contraction_id as usize != index {
+                    return Err(invalid(format!(
+                        "color Nc term names contraction {}, expected {index}",
+                        term.color_contraction_id
+                    )));
+                }
+                if term.exponent < 0 {
+                    return Err(invalid(format!(
+                        "color contraction {index} has a negative Nc exponent"
+                    )));
+                }
+                if let Some(previous_exponent) = previous_exponent
+                    && previous_exponent >= term.exponent
+                {
+                    return Err(invalid(format!(
+                        "color contraction {index} Nc powers are not strictly ordered"
+                    )));
+                }
+                let coefficient =
+                    required_factor(&catalogs.factors, term.factor_id, "color Nc coefficient")?;
+                if *coefficient == ExactComplexRational::ZERO {
+                    return Err(invalid(format!(
+                        "color contraction {index} retains an exact-zero Nc term"
+                    )));
+                }
+                previous_exponent = Some(term.exponent);
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_symmetry_proofs_basic(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "symmetry proof",
+            self.symmetry_proofs.iter().map(|row| row.id),
+            self.symmetry_proofs
+                .iter()
+                .map(|row| row.template_string_id),
+        )?;
+        for (index, row) in self.symmetry_proofs.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::SymmetryProof,
+                "symmetry proof",
+            )?;
+            register_semantic_digest(semantic_digests, row.semantic_digest_id, "symmetry proof")?;
+            required_string(&catalogs.strings, row.template_string_id, "proof template")?;
+            let algorithm = required_string(
+                &catalogs.strings,
+                row.proof_algorithm_string_id,
+                "proof algorithm",
+            )?;
+            if !is_supported_proof_algorithm(algorithm) {
+                return Err(invalid(format!(
+                    "symmetry proof {index} uses unsupported algorithm {algorithm:?}"
+                )));
+            }
+            let subjects = u32_sequence(self, row.subject_template_sequence_id, "proof subjects")?;
+            if subjects.is_empty() {
+                return Err(invalid(format!("symmetry proof {index} has no subjects")));
+            }
+            for subject in subjects {
+                required_string(&catalogs.strings, *subject, "proof subject template")?;
+            }
+            validate_permutation(
+                u32_sequence(
+                    self,
+                    row.input_permutation_sequence_id,
+                    "proof input permutation",
+                )?,
+                "proof input permutation",
+            )?;
+            let phase = required_factor(
+                &catalogs.factors,
+                row.exact_phase_factor_id,
+                "proof exact phase",
+            )?;
+            if *phase == ExactComplexRational::ZERO {
+                return Err(invalid(format!("symmetry proof {index} has zero phase")));
+            }
+            let expressions = u32_sequence(
+                self,
+                row.expression_digest_sequence_id,
+                "proof expression digests",
+            )?;
+            if expressions.is_empty() {
+                return Err(invalid(format!(
+                    "symmetry proof {index} has no expression digests"
+                )));
+            }
+            validate_u32_references(
+                expressions,
+                catalogs.digests.len(),
+                "proof expression digests",
+            )?;
+            required_digest(&catalogs.digests, row.witness_digest_id, "proof witness")?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "proof semantic digest",
+            )?;
+        }
+        Ok(())
+    }
+
+    fn validate_transitions_basic(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "transition",
+            self.transitions.iter().map(|row| row.id),
+            self.transitions.iter().map(|row| row.template_string_id),
+        )?;
+        for (index, row) in self.transitions.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::Transition,
+                "transition",
+            )?;
+            register_semantic_digest(semantic_digests, row.semantic_digest_id, "transition")?;
+            required_string(
+                &catalogs.strings,
+                row.template_string_id,
+                "transition template",
+            )?;
+            let inputs =
+                u32_sequence(self, row.input_state_sequence_id, "transition input states")?;
+            if inputs.is_empty() {
+                return Err(invalid(format!("transition {index} has no inputs")));
+            }
+            validate_u32_references(inputs, self.current_states.len(), "transition input states")?;
+            required_reference(
+                row.result_state_template_id,
+                self.current_states.len(),
+                "transition result state",
+            )?;
+            required_reference(
+                row.quantum_flow_template_id,
+                self.quantum_flows.len(),
+                "transition quantum flow",
+            )?;
+            required_reference(
+                row.evaluator_binding_id,
+                self.evaluator_bindings.len(),
+                "transition evaluator",
+            )?;
+            let permutation = u32_sequence(
+                self,
+                row.canonical_input_order_sequence_id,
+                "transition canonical input order",
+            )?;
+            validate_permutation_of(
+                permutation,
+                inputs.len(),
+                "transition canonical input order",
+            )?;
+            let momentum = u32_sequence(
+                self,
+                row.momentum_convention_sequence_id,
+                "transition momentum convention",
+            )?;
+            if momentum.len() != inputs.len() {
+                return Err(invalid(format!(
+                    "transition {index} momentum convention does not cover every input"
+                )));
+            }
+            for string_id in momentum {
+                required_string(
+                    &catalogs.strings,
+                    *string_id,
+                    "transition momentum convention",
+                )?;
+            }
+            let parameters = u32_sequence(
+                self,
+                row.coupling_parameter_sequence_id,
+                "transition coupling parameters",
+            )?;
+            validate_strict_u32(parameters, "transition coupling parameters")?;
+            validate_u32_references(
+                parameters,
+                self.parameters.len(),
+                "transition coupling parameters",
+            )?;
+            required_reference(
+                row.coupling_order_set_id,
+                self.coupling_order_ranges.len(),
+                "transition coupling-order set",
+            )?;
+            required_reference(
+                row.color_contraction_template_id,
+                self.color_contractions.len(),
+                "transition color contraction",
+            )?;
+            required_factor(
+                &catalogs.factors,
+                row.binding_coupling_factor_id,
+                "transition binding coupling",
+            )?;
+            required_factor(
+                &catalogs.factors,
+                row.exact_factor_id,
+                "transition exact factor",
+            )?;
+            OutputFactorSource::try_from(row.output_factor_source)?;
+            required_string(
+                &catalogs.strings,
+                row.equivalence_class_string_id,
+                "transition equivalence class",
+            )?;
+            if let Some(factor) = optional_factor(
+                &catalogs.factors,
+                row.input_exchange_factor_id,
+                "transition input-exchange factor",
+            )? && *factor == ExactComplexRational::ZERO
+            {
+                return Err(invalid(format!(
+                    "transition {index} has a zero input-exchange factor"
+                )));
+            }
+            required_string(
+                &catalogs.strings,
+                row.output_projection_string_id,
+                "transition output projection",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "transition semantic digest",
+            )?;
+
+            let flow = self.quantum_flows[row.quantum_flow_template_id as usize];
+            let flow_inputs = u32_sequence(
+                self,
+                flow.input_state_sequence_id,
+                "quantum-flow input states",
+            )?;
+            if inputs != flow_inputs
+                || row.result_state_template_id != flow.result_state_template_id
+            {
+                return Err(invalid(format!(
+                    "transition {index} and quantum-flow state contracts do not match"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_propagators_basic(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "propagator",
+            self.propagators.iter().map(|row| row.id),
+            self.propagators.iter().map(|row| row.template_string_id),
+        )?;
+        let mut state_owners = vec![None; self.current_states.len()];
+        for (index, row) in self.propagators.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::Propagator,
+                "propagator",
+            )?;
+            register_semantic_digest(semantic_digests, row.semantic_digest_id, "propagator")?;
+            required_string(
+                &catalogs.strings,
+                row.template_string_id,
+                "propagator template",
+            )?;
+            let state = required_reference(
+                row.state_template_id,
+                self.current_states.len(),
+                "propagator state",
+            )?;
+            if let Some(previous) = state_owners[state].replace(index) {
+                return Err(invalid(format!(
+                    "current state {state} has propagator rows {previous} and {index}"
+                )));
+            }
+            let active = validate_bool(row.applies_propagator, "applies_propagator")?;
+            let evaluator = optional_reference(
+                row.evaluator_binding_id,
+                self.evaluator_bindings.len(),
+                "propagator evaluator",
+            )?;
+            let numerator = optional_digest(
+                &catalogs.digests,
+                row.numerator_expression_digest_id,
+                "propagator numerator",
+            )?;
+            let denominator = optional_digest(
+                &catalogs.digests,
+                row.denominator_expression_digest_id,
+                "propagator denominator",
+            )?;
+            if active {
+                if evaluator.is_none() || numerator.is_none() || denominator.is_none() {
+                    return Err(invalid(format!(
+                        "active propagator {index} requires evaluator, numerator, and denominator"
+                    )));
+                }
+            } else if evaluator.is_some() || numerator.is_some() || denominator.is_some() {
+                return Err(invalid(format!(
+                    "identity propagator {index} carries evaluator or expression metadata"
+                )));
+            }
+            optional_reference(
+                row.mass_parameter_id,
+                self.parameters.len(),
+                "propagator mass parameter",
+            )?;
+            optional_reference(
+                row.width_parameter_id,
+                self.parameters.len(),
+                "propagator width parameter",
+            )?;
+            optional_string(&catalogs.strings, row.gauge_string_id, "propagator gauge")?;
+            optional_reference(
+                row.linearity_proof_template_id,
+                self.symmetry_proofs.len(),
+                "propagator linearity proof",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "propagator semantic digest",
+            )?;
+        }
+        if let Some((state, _)) = state_owners
+            .iter()
+            .enumerate()
+            .find(|(_, owner)| owner.is_none())
+        {
+            return Err(invalid(format!(
+                "current state {state} has no active or identity propagator"
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_closures_basic(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "closure",
+            self.closures.iter().map(|row| row.id),
+            self.closures.iter().map(|row| row.template_string_id),
+        )?;
+        for (index, row) in self.closures.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::Closure,
+                "closure",
+            )?;
+            register_semantic_digest(semantic_digests, row.semantic_digest_id, "closure")?;
+            required_string(
+                &catalogs.strings,
+                row.template_string_id,
+                "closure template",
+            )?;
+            let inputs = u32_sequence(self, row.input_state_sequence_id, "closure input states")?;
+            if inputs.is_empty() {
+                return Err(invalid(format!("closure {index} has no inputs")));
+            }
+            validate_u32_references(inputs, self.current_states.len(), "closure input states")?;
+            required_reference(
+                row.evaluator_binding_id,
+                self.evaluator_bindings.len(),
+                "closure evaluator",
+            )?;
+            validate_permutation_of(
+                u32_sequence(
+                    self,
+                    row.canonical_input_order_sequence_id,
+                    "closure canonical input order",
+                )?,
+                inputs.len(),
+                "closure canonical input order",
+            )?;
+            let parameters = u32_sequence(
+                self,
+                row.coupling_parameter_sequence_id,
+                "closure coupling parameters",
+            )?;
+            validate_strict_u32(parameters, "closure coupling parameters")?;
+            validate_u32_references(
+                parameters,
+                self.parameters.len(),
+                "closure coupling parameters",
+            )?;
+            required_reference(
+                row.coupling_order_set_id,
+                self.coupling_order_ranges.len(),
+                "closure coupling-order set",
+            )?;
+            required_reference(
+                row.color_contraction_template_id,
+                self.color_contractions.len(),
+                "closure color contraction",
+            )?;
+            required_factor(
+                &catalogs.factors,
+                row.binding_coupling_factor_id,
+                "closure binding coupling",
+            )?;
+            required_factor(
+                &catalogs.factors,
+                row.exact_factor_id,
+                "closure exact factor",
+            )?;
+            OutputFactorSource::try_from(row.output_factor_source)?;
+            required_string(
+                &catalogs.strings,
+                row.equivalence_class_string_id,
+                "closure equivalence class",
+            )?;
+            if let Some(factor) = optional_factor(
+                &catalogs.factors,
+                row.input_exchange_factor_id,
+                "closure input-exchange factor",
+            )? && *factor == ExactComplexRational::ZERO
+            {
+                return Err(invalid(format!(
+                    "closure {index} has a zero input-exchange factor"
+                )));
+            }
+            required_string(
+                &catalogs.strings,
+                row.projection_string_id,
+                "closure projection",
+            )?;
+            let coefficients = u32_sequence(
+                self,
+                row.component_coefficient_sequence_id,
+                "closure component coefficients",
+            )?;
+            validate_u32_references(
+                coefficients,
+                catalogs.factors.len(),
+                "closure component coefficients",
+            )?;
+            let chirality = required_string(
+                &catalogs.strings,
+                row.chirality_relation_string_id,
+                "closure chirality relation",
+            )?;
+            if !matches!(chirality, "any" | "equal" | "opposite") {
+                return Err(invalid(format!(
+                    "closure {index} has unsupported chirality relation {chirality:?}"
+                )));
+            }
+            optional_string(
+                &catalogs.strings,
+                row.metric_signature_string_id,
+                "closure metric signature",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "closure semantic digest",
+            )?;
+        }
+        Ok(())
+    }
+
+    fn validate_evaluators(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<u32> {
+        validate_record_ids(
+            "evaluator binding",
+            self.evaluator_bindings.iter().map(|row| row.id),
+            self.evaluator_bindings
+                .iter()
+                .map(|row| row.resolver_key_string_id),
+        )?;
+        let mut prepared_contracts = BTreeMap::new();
+        let mut runtime_contracts = BTreeMap::new();
+        let mut semantic_owners = BTreeMap::new();
+        let mut prepared_ids = BTreeSet::new();
+        for (index, row) in self.evaluator_bindings.iter().enumerate() {
+            register_semantic_digest(
+                semantic_digests,
+                row.semantic_digest_id,
+                "evaluator binding",
+            )?;
+            required_string(
+                &catalogs.strings,
+                row.resolver_key_string_id,
+                "evaluator resolver key",
+            )?;
+            let contract_kind = EvaluatorContractKind::try_from(row.contract_kind)?;
+            let callable_kind = EvaluatorCallableKind::try_from(row.callable_kind)?;
+            required_digest(
+                &catalogs.digests,
+                row.callable_signature_digest_id,
+                "evaluator callable signature",
+            )?;
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "evaluator semantic digest",
+            )?;
+            let inputs = u32_sequence(self, row.input_state_sequence_id, "evaluator input states")?;
+            validate_u32_references(inputs, self.current_states.len(), "evaluator input states")?;
+            let output = optional_reference(
+                row.output_state_template_id,
+                self.current_states.len(),
+                "evaluator output state",
+            )?;
+            let input_layout =
+                u32_sequence(self, row.input_layout_sequence_id, "evaluator input layout")?;
+            let output_layout = u32_sequence(
+                self,
+                row.output_layout_sequence_id,
+                "evaluator output layout",
+            )?;
+            let exact_expressions = u32_sequence(
+                self,
+                row.exact_expression_digest_sequence_id,
+                "evaluator exact expressions",
+            )?;
+            if input_layout.is_empty() || output_layout.is_empty() || exact_expressions.is_empty() {
+                return Err(invalid(format!(
+                    "evaluator binding {index} has an empty layout or expression contract"
+                )));
+            }
+            validate_u32_references(
+                input_layout,
+                catalogs.strings.len(),
+                "evaluator input layout",
+            )?;
+            validate_u32_references(
+                output_layout,
+                catalogs.strings.len(),
+                "evaluator output layout",
+            )?;
+            validate_u32_references(
+                exact_expressions,
+                catalogs.digests.len(),
+                "evaluator exact expressions",
+            )?;
+            if output_layout.len() != exact_expressions.len() {
+                return Err(invalid(format!(
+                    "evaluator binding {index} output layout and exact expressions do not align"
+                )));
+            }
+            if let Some(output) = output
+                && output_layout.len() != self.current_states[output].dimension as usize
+            {
+                return Err(invalid(format!(
+                    "evaluator binding {index} output layout does not match state dimension"
+                )));
+            }
+            match contract_kind {
+                EvaluatorContractKind::Source
+                | EvaluatorContractKind::Vertex
+                | EvaluatorContractKind::Propagator => {
+                    if output.is_none() {
+                        return Err(invalid(format!(
+                            "evaluator binding {index} requires an output state"
+                        )));
+                    }
+                }
+                EvaluatorContractKind::Closure | EvaluatorContractKind::ModelParameter => {
+                    if output.is_some() {
+                        return Err(invalid(format!(
+                            "evaluator binding {index} cannot produce a current state"
+                        )));
+                    }
+                }
+            }
+            match callable_kind {
+                EvaluatorCallableKind::PreparedKernel => {
+                    if row.prepared_kernel_id == MISSING_U32
+                        || row.runtime_template_string_id != MISSING_U32
+                    {
+                        return Err(invalid(format!(
+                            "prepared-kernel evaluator binding {index} has invalid callable identity"
+                        )));
+                    }
+                    prepared_ids.insert(row.prepared_kernel_id);
+                }
+                EvaluatorCallableKind::RusticolTemplate => {
+                    if row.prepared_kernel_id != MISSING_U32
+                        || row.runtime_template_string_id == MISSING_U32
+                    {
+                        return Err(invalid(format!(
+                            "Rusticol-template evaluator binding {index} has invalid callable identity"
+                        )));
+                    }
+                    required_string(
+                        &catalogs.strings,
+                        row.runtime_template_string_id,
+                        "evaluator runtime template",
+                    )?;
+                    validate_rusticol_runtime_template(catalogs, row, contract_kind, index)?;
+                }
+            }
+
+            let semantic_templates = u32_sequence(
+                self,
+                row.semantic_template_sequence_id,
+                "evaluator semantic templates",
+            )?;
+            if semantic_templates.is_empty() {
+                return Err(invalid(format!(
+                    "evaluator binding {index} has no semantic templates"
+                )));
+            }
+            validate_strict_u32(semantic_templates, "evaluator semantic templates")?;
+            for template in semantic_templates {
+                let template_kind = template_kinds.get(template).ok_or_else(|| {
+                    invalid(format!(
+                        "evaluator binding {index} references unknown semantic template string id {template}"
+                    ))
+                })?;
+                if template_kind.evaluator_contract() != Some(contract_kind) {
+                    return Err(invalid(format!(
+                        "evaluator binding {index} contract kind does not match semantic template {template}"
+                    )));
+                }
+                if let Some(previous) = semantic_owners.insert(*template, index)
+                    && previous != index
+                {
+                    return Err(invalid(format!(
+                        "semantic template {template} belongs to evaluator bindings {previous} and {index}"
+                    )));
+                }
+            }
+
+            let callable_contract = CallableContractKey {
+                contract_kind,
+                callable_signature_digest_id: row.callable_signature_digest_id,
+                input_layout: input_layout.to_vec(),
+                output_layout: output_layout.to_vec(),
+                exact_expression_digests: exact_expressions.to_vec(),
+            };
+            let (owner, previous) = match callable_kind {
+                EvaluatorCallableKind::PreparedKernel => (
+                    "prepared kernel ID",
+                    prepared_contracts.insert(row.prepared_kernel_id, callable_contract.clone()),
+                ),
+                EvaluatorCallableKind::RusticolTemplate => (
+                    "Rusticol runtime template",
+                    runtime_contracts
+                        .insert(row.runtime_template_string_id, callable_contract.clone()),
+                ),
+            };
+            if previous.is_some_and(|previous| previous != callable_contract) {
+                return Err(invalid(format!(
+                    "{owner} has inconsistent evaluator callable contracts"
+                )));
+            }
+        }
+        checked_len(prepared_ids.len(), "prepared kernels")
+    }
+
+    fn validate_proof_subjects(
+        self,
+        template_kinds: &BTreeMap<u32, TemplateKind>,
+    ) -> RusticolResult<()> {
+        for (index, proof) in self.symmetry_proofs.iter().enumerate() {
+            let subjects =
+                u32_sequence(self, proof.subject_template_sequence_id, "proof subjects")?;
+            for subject in subjects {
+                if !template_kinds.contains_key(subject) {
+                    return Err(invalid(format!(
+                        "symmetry proof {index} references unknown template string id {subject}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_evaluator_state_contracts(
+        self,
+        _template_kinds: &BTreeMap<u32, TemplateKind>,
+    ) -> RusticolResult<()> {
+        for source in self.sources {
+            self.validate_evaluator_contract(
+                source.evaluator_binding_id,
+                EvaluatorContractKind::Source,
+                &[],
+                Some(source.state_template_id),
+                source.template_string_id,
+            )?;
+        }
+        for transition in self.transitions {
+            self.validate_evaluator_contract(
+                transition.evaluator_binding_id,
+                EvaluatorContractKind::Vertex,
+                u32_sequence(
+                    self,
+                    transition.input_state_sequence_id,
+                    "transition states",
+                )?,
+                Some(transition.result_state_template_id),
+                transition.template_string_id,
+            )?;
+        }
+        for propagator in self.propagators {
+            if propagator.evaluator_binding_id != MISSING_U32 {
+                self.validate_evaluator_contract(
+                    propagator.evaluator_binding_id,
+                    EvaluatorContractKind::Propagator,
+                    &[propagator.state_template_id],
+                    Some(propagator.state_template_id),
+                    propagator.template_string_id,
+                )?;
+            }
+        }
+        for closure in self.closures {
+            self.validate_evaluator_contract(
+                closure.evaluator_binding_id,
+                EvaluatorContractKind::Closure,
+                u32_sequence(self, closure.input_state_sequence_id, "closure states")?,
+                None,
+                closure.template_string_id,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn validate_evaluator_contract(
+        self,
+        evaluator_id: u32,
+        expected_kind: EvaluatorContractKind,
+        expected_inputs: &[u32],
+        expected_output: Option<u32>,
+        semantic_template_string_id: u32,
+    ) -> RusticolResult<()> {
+        let evaluator = self
+            .evaluator_bindings
+            .get(evaluator_id as usize)
+            .ok_or_else(|| invalid(format!("unknown evaluator binding {evaluator_id}")))?;
+        if EvaluatorContractKind::try_from(evaluator.contract_kind)? != expected_kind {
+            return Err(invalid(format!(
+                "semantic template string id {semantic_template_string_id} uses the wrong evaluator contract kind"
+            )));
+        }
+        let inputs = u32_sequence(self, evaluator.input_state_sequence_id, "evaluator states")?;
+        if inputs != expected_inputs {
+            return Err(invalid(format!(
+                "semantic template string id {semantic_template_string_id} evaluator input states do not match"
+            )));
+        }
+        if optional_id(evaluator.output_state_template_id) != expected_output {
+            return Err(invalid(format!(
+                "semantic template string id {semantic_template_string_id} evaluator output state does not match"
+            )));
+        }
+        let templates = u32_sequence(
+            self,
+            evaluator.semantic_template_sequence_id,
+            "evaluator semantic templates",
+        )?;
+        if templates
+            .binary_search(&semantic_template_string_id)
+            .is_err()
+        {
+            return Err(invalid(format!(
+                "semantic template string id {semantic_template_string_id} is absent from its evaluator binding"
+            )));
+        }
+        Ok(())
+    }
+}
+
+fn validate_rusticol_runtime_template(
+    catalogs: &ValidatedCatalogs<'_>,
+    row: &EvaluatorBindingRow,
+    contract_kind: EvaluatorContractKind,
+    index: usize,
+) -> RusticolResult<()> {
+    let runtime_template = required_string(
+        &catalogs.strings,
+        row.runtime_template_string_id,
+        "evaluator runtime template",
+    )?;
+    let signature = required_digest(
+        &catalogs.digests,
+        row.callable_signature_digest_id,
+        "evaluator callable signature",
+    )?
+    .to_string();
+    let signature_suffix = &signature[..24];
+    match contract_kind {
+        EvaluatorContractKind::Source => {
+            const PREFIX: &str = "rusticol.source-fill.";
+            let suffix = format!(".v1:{signature_suffix}");
+            let family = runtime_template
+                .strip_prefix(PREFIX)
+                .and_then(|value| value.strip_suffix(&suffix))
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "Rusticol source evaluator binding {index} has an unauthenticated runtime template"
+                    ))
+                })?;
+            if !matches!(
+                family,
+                "scalar" | "fermion" | "vector" | "spin2" | "ghost" | "auxiliary"
+            ) {
+                return Err(invalid(format!(
+                    "Rusticol source evaluator binding {index} has unsupported family {family:?}"
+                )));
+            }
+        }
+        EvaluatorContractKind::Closure => {
+            let expected = format!("rusticol.closure-reduce.v1:{signature_suffix}");
+            if runtime_template != expected {
+                return Err(invalid(format!(
+                    "Rusticol closure evaluator binding {index} has an unauthenticated runtime template"
+                )));
+            }
+        }
+        _ => {
+            return Err(invalid(format!(
+                "Rusticol runtime templates are not registered for evaluator binding {index} contract {contract_kind:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_indexed_ranges(
+    label: &str,
+    ranges: &[IndexedRangeRow],
+    value_len: usize,
+) -> RusticolResult<()> {
+    validate_canonical_ids(label, ranges.iter().map(|row| row.id))?;
+    let checked: Vec<_> = ranges.iter().map(|row| row.range).collect();
+    validate_packed_ranges(label, &checked, value_len)
+}
+
+fn validate_sequence_catalog<T: Ord>(
+    label: &str,
+    ranges: &[IndexedRangeRow],
+    values: &[T],
+    require_nonempty: bool,
+) -> RusticolResult<()> {
+    validate_indexed_ranges(label, ranges, values.len())?;
+    let mut previous: Option<&[T]> = None;
+    for (index, row) in ranges.iter().enumerate() {
+        let sequence = &values[row.range.as_usize_range(values.len(), label)?];
+        if require_nonempty && sequence.is_empty() {
+            return Err(invalid(format!("{label} row {index} is empty")));
+        }
+        if let Some(previous) = previous
+            && previous >= sequence
+        {
+            return Err(invalid(format!(
+                "{label} is not in strict canonical order at row {index}"
+            )));
+        }
+        previous = Some(sequence);
+    }
+    Ok(())
+}
+
+fn validate_canonical_ids(label: &str, ids: impl IntoIterator<Item = u32>) -> RusticolResult<()> {
+    for (index, id) in ids.into_iter().enumerate() {
+        if usize::try_from(id).ok() != Some(index) {
+            return Err(invalid(format!(
+                "{label} row {index} has noncanonical id {id}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_record_ids(
+    label: &str,
+    ids: impl IntoIterator<Item = u32>,
+    identity_string_ids: impl IntoIterator<Item = u32>,
+) -> RusticolResult<()> {
+    validate_canonical_ids(label, ids)?;
+    let mut previous = None;
+    for (index, id) in identity_string_ids.into_iter().enumerate() {
+        if let Some(previous) = previous
+            && previous >= id
+        {
+            return Err(invalid(format!(
+                "{label} records are not in strict semantic-identity order at row {index}"
+            )));
+        }
+        previous = Some(id);
+    }
+    Ok(())
+}
+
+fn validate_bool(value: u8, label: &str) -> RusticolResult<bool> {
+    match value {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(invalid(format!(
+            "{label} must be encoded as 0 or 1, found {value}"
+        ))),
+    }
+}
+
+fn validate_color_contract_shape(
+    row: usize,
+    input_representations: &[i32],
+    has_output_representation: u8,
+    output_representation: i32,
+    ordered_open_string_arity: u32,
+) -> RusticolResult<()> {
+    let has_output = validate_bool(
+        has_output_representation,
+        "color output-representation presence",
+    )?;
+    if !has_output && output_representation != 0 {
+        return Err(invalid(format!(
+            "color contraction {row} has no output representation but carries nonzero payload {output_representation}"
+        )));
+    }
+
+    // Every ordered open string has two endpoints. This slot-count bound is
+    // representation independent and therefore also applies to external
+    // models using an otherwise unknown representation encoding.
+    let endpoint_slots = input_representations
+        .len()
+        .checked_add(usize::from(has_output))
+        .ok_or_else(|| invalid("color endpoint-slot count exceeds usize"))?;
+    let arity = usize::try_from(ordered_open_string_arity)
+        .map_err(|_| invalid("color open-string arity exceeds usize"))?;
+    if arity > endpoint_slots / 2 {
+        return Err(invalid(format!(
+            "color contraction {row} declares {arity} ordered open strings but has only {endpoint_slots} endpoint slots"
+        )));
+    }
+
+    let representations_are_standard = input_representations
+        .iter()
+        .copied()
+        .chain(has_output.then_some(output_representation))
+        .all(|value| matches!(value, -3 | 1 | 3 | 8));
+    if representations_are_standard {
+        let fundamental_endpoints = input_representations
+            .iter()
+            .copied()
+            .chain(has_output.then_some(output_representation))
+            .filter(|value| matches!(value, -3 | 3))
+            .count();
+        if arity > fundamental_endpoints / 2 {
+            return Err(invalid(format!(
+                "color contraction {row} declares {arity} ordered open strings but its standard representations provide only {fundamental_endpoints} fundamental endpoints"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn checked_len(length: usize, label: &str) -> RusticolResult<u32> {
+    u32::try_from(length).map_err(|_| invalid(format!("{label} count {length} exceeds u32")))
+}
+
+fn required_reference(value: u32, target_len: usize, label: &str) -> RusticolResult<usize> {
+    let value =
+        usize::try_from(value).map_err(|_| invalid(format!("{label} id {value} exceeds usize")))?;
+    if value >= target_len {
+        return Err(invalid(format!(
+            "{label} id {value} exceeds target length {target_len}"
+        )));
+    }
+    Ok(value)
+}
+
+fn optional_reference(value: u32, target_len: usize, label: &str) -> RusticolResult<Option<usize>> {
+    if value == MISSING_U32 {
+        Ok(None)
+    } else {
+        required_reference(value, target_len, label).map(Some)
+    }
+}
+
+const fn optional_id(value: u32) -> Option<u32> {
+    if value == MISSING_U32 {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn required_string<'a>(strings: &[&'a str], id: u32, label: &str) -> RusticolResult<&'a str> {
+    strings
+        .get(required_reference(id, strings.len(), label)?)
+        .copied()
+        .ok_or_else(|| invalid(format!("{label} is absent")))
+}
+
+fn optional_string<'a>(
+    strings: &[&'a str],
+    id: u32,
+    label: &str,
+) -> RusticolResult<Option<&'a str>> {
+    optional_reference(id, strings.len(), label)?
+        .map(|index| {
+            strings
+                .get(index)
+                .copied()
+                .ok_or_else(|| invalid(format!("{label} is absent")))
+        })
+        .transpose()
+}
+
+fn require_string_value(
+    strings: &[&str],
+    id: u32,
+    expected: &str,
+    label: &str,
+) -> RusticolResult<()> {
+    let actual = required_string(strings, id, label)?;
+    if actual != expected {
+        return Err(RusticolError::compatibility(format!(
+            "unsupported {label} {actual:?}; expected {expected:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn required_digest(
+    digests: &[SemanticDigest],
+    id: u32,
+    label: &str,
+) -> RusticolResult<SemanticDigest> {
+    digests
+        .get(required_reference(id, digests.len(), label)?)
+        .copied()
+        .ok_or_else(|| invalid(format!("{label} is absent")))
+}
+
+fn optional_digest(
+    digests: &[SemanticDigest],
+    id: u32,
+    label: &str,
+) -> RusticolResult<Option<SemanticDigest>> {
+    optional_reference(id, digests.len(), label)?
+        .map(|index| {
+            digests
+                .get(index)
+                .copied()
+                .ok_or_else(|| invalid(format!("{label} is absent")))
+        })
+        .transpose()
+}
+
+fn required_factor<'a>(
+    factors: &'a [ExactComplexRational],
+    id: u32,
+    label: &str,
+) -> RusticolResult<&'a ExactComplexRational> {
+    factors
+        .get(required_reference(id, factors.len(), label)?)
+        .ok_or_else(|| invalid(format!("{label} is absent")))
+}
+
+fn optional_factor<'a>(
+    factors: &'a [ExactComplexRational],
+    id: u32,
+    label: &str,
+) -> RusticolResult<Option<&'a ExactComplexRational>> {
+    optional_reference(id, factors.len(), label)?
+        .map(|index| {
+            factors
+                .get(index)
+                .ok_or_else(|| invalid(format!("{label} is absent")))
+        })
+        .transpose()
+}
+
+fn sequence<'a, T>(
+    ranges: &[IndexedRangeRow],
+    values: &'a [T],
+    id: u32,
+    label: &str,
+) -> RusticolResult<&'a [T]> {
+    let row = ranges
+        .get(required_reference(id, ranges.len(), label)?)
+        .ok_or_else(|| invalid(format!("{label} range is absent")))?;
+    let range = row.range.as_usize_range(values.len(), label)?;
+    Ok(&values[range])
+}
+
+fn u32_sequence<'a>(
+    input: RecurrenceTemplateInputView<'a>,
+    id: u32,
+    label: &str,
+) -> RusticolResult<&'a [u32]> {
+    sequence(
+        input.u32_sequence_ranges,
+        input.u32_sequence_values,
+        id,
+        label,
+    )
+}
+
+fn i32_sequence<'a>(
+    input: RecurrenceTemplateInputView<'a>,
+    id: u32,
+    label: &str,
+) -> RusticolResult<&'a [i32]> {
+    sequence(
+        input.i32_sequence_ranges,
+        input.i32_sequence_values,
+        id,
+        label,
+    )
+}
+
+fn validate_strict_u32(values: &[u32], label: &str) -> RusticolResult<()> {
+    for (index, pair) in values.windows(2).enumerate() {
+        if pair[0] >= pair[1] {
+            return Err(invalid(format!(
+                "{label} is not strictly ordered at item {}",
+                index + 1
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_permutation(values: &[u32], label: &str) -> RusticolResult<()> {
+    validate_permutation_of(values, values.len(), label)
+}
+
+fn validate_permutation_of(values: &[u32], arity: usize, label: &str) -> RusticolResult<()> {
+    if values.len() != arity {
+        return Err(invalid(format!(
+            "{label} length {} does not match arity {arity}",
+            values.len()
+        )));
+    }
+    let mut seen = vec![false; arity];
+    for value in values {
+        let index = usize::try_from(*value)
+            .map_err(|_| invalid(format!("{label} item {value} exceeds usize")))?;
+        if index >= arity || seen[index] {
+            return Err(invalid(format!(
+                "{label} is not a permutation of 0..{arity}"
+            )));
+        }
+        seen[index] = true;
+    }
+    Ok(())
+}
+
+fn register_template(
+    templates: &mut BTreeMap<u32, TemplateKind>,
+    string_id: u32,
+    kind: TemplateKind,
+    label: &str,
+) -> RusticolResult<()> {
+    if let Some(previous) = templates.insert(string_id, kind) {
+        return Err(invalid(format!(
+            "{label} reuses global template string id {string_id} already owned by {previous:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn register_semantic_digest(
+    digests: &mut BTreeSet<u32>,
+    digest_id: u32,
+    label: &str,
+) -> RusticolResult<()> {
+    if !digests.insert(digest_id) {
+        return Err(invalid(format!(
+            "{label} reuses semantic digest id {digest_id}"
+        )));
+    }
+    Ok(())
+}
+
+fn parse_canonical_i128(value: &str, positive: bool, label: &str) -> RusticolResult<i128> {
+    let parsed = value
+        .parse::<i128>()
+        .map_err(|_| invalid(format!("{label} {value:?} is outside the i128 domain")))?;
+    if parsed.to_string() != value {
+        return Err(invalid(format!(
+            "{label} {value:?} is not a canonical decimal integer"
+        )));
+    }
+    if parsed == i128::MIN {
+        return Err(invalid(format!(
+            "{label} cannot use i128::MIN in the symmetric exact-rational domain"
+        )));
+    }
+    if positive && parsed <= 0 {
+        return Err(invalid(format!("{label} must be positive")));
+    }
+    Ok(parsed)
+}
+
+fn is_supported_proof_algorithm(value: &str) -> bool {
+    matches!(
+        value,
+        "canonical-crossing-bijection-v1"
+            | "canonical-current-word-reversal-v1"
+            | "canonical-kernel-input-exchange-v1"
+            | "canonical-model-contract-label-equivariance-v1"
+            | "canonical-recurrence-replay-witness-v1"
+            | "canonical-recurrence-union-witness-v1"
+            | "canonical-source-transition-dependency-shape-v1"
+            | "canonical-trace-amplitude-reversal-v1"
+            | "exact-expression-identity-v1"
+            | "prepared-kernel-homogeneous-complex-linear-current-v1"
+            | "prepared-kernel-independent-current-block-v1"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_canonical_input() -> OwnedRecurrenceTemplateInput {
+        let mut strings = vec![
+            RECURRENCE_TEMPLATE_INPUT_ABI,
+            RECURRENCE_TEMPLATE_ABI,
+            RECURRENCE_TEMPLATE_CANONICALIZATION_ABI,
+            RECURRENCE_TEMPLATE_EXACT_SCALAR_ABI,
+        ];
+        strings.sort_unstable();
+        strings.dedup();
+        let string_id =
+            |value: &str| u32::try_from(strings.binary_search(&value).unwrap()).unwrap();
+        let mut string_ranges = Vec::new();
+        let mut string_bytes = Vec::new();
+        for value in &strings {
+            string_ranges.push(CheckedTableRange::new(
+                string_bytes.len() as u64,
+                value.len() as u64,
+            ));
+            string_bytes.extend_from_slice(value.as_bytes());
+        }
+
+        let compiled_model_digest = SemanticDigest::new([1; 32]).unwrap();
+        let prepared_kernel_pack_digest = SemanticDigest::new([2; 32]).unwrap();
+        let catalog_digest = SemanticDigest::new([3; 32]).unwrap();
+        OwnedRecurrenceTemplateInput {
+            input_abi: RECURRENCE_TEMPLATE_INPUT_ABI.to_owned(),
+            catalog_digest,
+            compiled_model_digest,
+            prepared_kernel_pack_digest,
+            catalog_header: vec![CatalogHeaderRow {
+                schema_version: RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION,
+                abi_string_id: string_id(RECURRENCE_TEMPLATE_ABI),
+                canonicalization_abi_string_id: string_id(RECURRENCE_TEMPLATE_CANONICALIZATION_ABI),
+                exact_scalar_abi_string_id: string_id(RECURRENCE_TEMPLATE_EXACT_SCALAR_ABI),
+                compiled_model_digest_id: 0,
+                prepared_kernel_pack_digest_id: 1,
+                catalog_digest_id: 2,
+                parameter_count: 0,
+                current_state_count: 0,
+                source_count: 0,
+                quantum_flow_count: 0,
+                transition_count: 0,
+                propagator_count: 0,
+                closure_count: 0,
+                color_contraction_count: 0,
+                symmetry_proof_count: 0,
+                evaluator_binding_count: 0,
+            }],
+            coupling_order_ranges: vec![IndexedRangeRow {
+                id: 0,
+                range: CheckedTableRange::new(0, 0),
+            }],
+            coupling_order_terms: vec![],
+            current_states: vec![],
+            digest_catalog: vec![
+                DigestCatalogRow {
+                    id: 0,
+                    value: [1; 32],
+                },
+                DigestCatalogRow {
+                    id: 1,
+                    value: [2; 32],
+                },
+                DigestCatalogRow {
+                    id: 2,
+                    value: [3; 32],
+                },
+            ],
+            evaluator_bindings: vec![],
+            exact_factors: vec![],
+            flavour_flow_ranges: vec![],
+            flavour_flow_values: vec![],
+            i32_sequence_ranges: vec![IndexedRangeRow {
+                id: 0,
+                range: CheckedTableRange::new(0, 0),
+            }],
+            i32_sequence_values: vec![],
+            parameters: vec![],
+            propagators: vec![],
+            quantum_flows: vec![],
+            quantum_number_flow_ranges: vec![],
+            quantum_number_flow_terms: vec![],
+            sources: vec![],
+            string_ranges,
+            string_bytes,
+            symmetry_proofs: vec![],
+            transitions: vec![],
+            closures: vec![],
+            color_contractions: vec![],
+            color_nc_terms: vec![],
+            u32_sequence_ranges: vec![IndexedRangeRow {
+                id: 0,
+                range: CheckedTableRange::new(0, 0),
+            }],
+            u32_sequence_values: vec![],
+        }
+    }
+
+    #[test]
+    fn output_factor_source_is_closed() {
+        assert_eq!(
+            OutputFactorSource::try_from(0).unwrap(),
+            OutputFactorSource::None
+        );
+        assert!(OutputFactorSource::try_from(3).is_err());
+    }
+
+    #[test]
+    fn canonical_i128_rejects_aliases_and_asymmetric_minimum() {
+        assert_eq!(parse_canonical_i128("-17", false, "value").unwrap(), -17);
+        assert!(parse_canonical_i128("+17", false, "value").is_err());
+        assert!(parse_canonical_i128("017", false, "value").is_err());
+        assert!(parse_canonical_i128(&i128::MIN.to_string(), false, "value").is_err());
+    }
+
+    #[test]
+    fn permutations_are_checked_exactly() {
+        validate_permutation_of(&[2, 0, 1], 3, "test permutation").unwrap();
+        assert!(validate_permutation_of(&[0, 0, 1], 3, "test permutation").is_err());
+        assert!(validate_permutation_of(&[0, 1], 3, "test permutation").is_err());
+    }
+
+    #[test]
+    fn canonical_sequence_order_rejects_duplicates() {
+        let ranges = [
+            IndexedRangeRow {
+                id: 0,
+                range: CheckedTableRange::new(0, 1),
+            },
+            IndexedRangeRow {
+                id: 1,
+                range: CheckedTableRange::new(1, 1),
+            },
+        ];
+        assert!(validate_sequence_catalog("test", &ranges, &[4_u32, 4], false).is_err());
+    }
+
+    #[test]
+    fn absent_color_output_requires_zero_sentinel() {
+        validate_color_contract_shape(0, &[3, -3], 0, 0, 1).unwrap();
+        assert!(validate_color_contract_shape(0, &[3, -3], 0, 8, 1).is_err());
+        assert!(validate_color_contract_shape(0, &[3, -3], 2, 0, 1).is_err());
+    }
+
+    #[test]
+    fn color_open_string_arity_respects_available_endpoints() {
+        validate_color_contract_shape(0, &[3, 8], 1, 3, 1).unwrap();
+        assert!(validate_color_contract_shape(0, &[3, 8], 1, 3, 2).is_err());
+        assert!(validate_color_contract_shape(0, &[8, 8], 1, 8, 1).is_err());
+
+        // Unknown representation encodings retain the generic endpoint-slot
+        // bound without acquiring a model-specific fundamental-role rule.
+        validate_color_contract_shape(0, &[41, -41], 0, 0, 1).unwrap();
+    }
+
+    #[test]
+    fn empty_model_catalog_validates_end_to_end() {
+        let validated = empty_canonical_input().validate().unwrap();
+        assert_eq!(validated.summary().current_state_count, 0);
+        assert_eq!(validated.summary().prepared_kernel_count, 0);
+    }
+}

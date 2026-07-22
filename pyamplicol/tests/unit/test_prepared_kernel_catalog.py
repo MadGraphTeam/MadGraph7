@@ -154,6 +154,12 @@ def test_builtin_chirality_dimensions_and_propagator_coverage(
         expected.update(
             PropagatorKernelKey(particle_id, chirality) for chirality in chiralities
         )
+    expected.update(
+        PropagatorKernelKey(state.particle_id, state.chirality)
+        for binding in catalog.vertex_bindings
+        for state in (binding.left_state, binding.right_state, binding.result_state)
+        if model.source_wavefunction_kind(state.particle_id) != "ghost"
+    )
     assert {binding.key for binding in catalog.propagator_bindings} == expected
     assert all(
         (binding.kernel_id is not None) == binding.applies_propagator
@@ -170,6 +176,14 @@ def test_builtin_chirality_dimensions_and_propagator_coverage(
         for kernel in catalog.kernels
         if kernel.contract_kind != "propagator"
     )
+    full_bottom = next(
+        binding
+        for binding in catalog.propagator_bindings
+        if binding.key == PropagatorKernelKey(5, 0)
+    )
+    assert full_bottom.applies_propagator
+    assert full_bottom.propagator_kind == "dirac-fermion"
+    assert full_bottom.mass_class == "massless"
 
 
 def test_direct_contractions_remain_native_while_vertex_closures_are_catalogued(

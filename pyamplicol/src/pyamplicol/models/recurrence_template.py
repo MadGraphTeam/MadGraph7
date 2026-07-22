@@ -32,6 +32,13 @@ EvaluatorContractKind: TypeAlias = Literal[
     "model-parameter",
 ]
 EvaluatorCallableKind: TypeAlias = Literal["prepared-kernel", "rusticol-template"]
+PreparedOutputFactorSource: TypeAlias = Literal[
+    "none",
+    "coupling-real",
+    "coupling-imag",
+]
+FlavourFlowV1: TypeAlias = tuple[int, ...]
+QuantumNumberFlowV1: TypeAlias = tuple[tuple[str, str], ...]
 
 SUPPORTED_SYMMETRY_PROOF_ALGORITHMS = frozenset(
     {
@@ -60,11 +67,48 @@ _EVALUATOR_CONTRACT_KINDS = frozenset(
     {"source", "vertex", "propagator", "closure", "model-parameter"}
 )
 _EVALUATOR_CALLABLE_KINDS = frozenset({"prepared-kernel", "rusticol-template"})
+_OUTPUT_FACTOR_SOURCES = frozenset({"none", "coupling-real", "coupling-imag"})
 _HEX = frozenset("0123456789abcdef")
 
 
 class RecurrenceTemplateError(ValueError):
     """Raised when a recurrence semantic catalog is not canonical or complete."""
+
+
+def _validate_rusticol_runtime_template(
+    contract_kind: EvaluatorContractKind,
+    runtime_template: str,
+    callable_signature: str,
+) -> None:
+    suffix = f":{callable_signature[:24]}"
+    if contract_kind == "source":
+        prefix = "rusticol.source-fill."
+        version = ".v1"
+        if not runtime_template.startswith(prefix) or not runtime_template.endswith(
+            version + suffix
+        ):
+            raise RecurrenceTemplateError(
+                "source Rusticol template must use the authenticated "
+                "rusticol.source-fill.<family>.v1:<signature> contract"
+            )
+        family = runtime_template[
+            len(prefix) : -len(version + suffix)
+        ]
+        if family not in _WAVEFUNCTION_FAMILIES:
+            raise RecurrenceTemplateError(
+                f"unsupported Rusticol source-fill family {family!r}"
+            )
+        return
+    if contract_kind == "closure":
+        expected = f"rusticol.closure-reduce.v1{suffix}"
+        if runtime_template != expected:
+            raise RecurrenceTemplateError(
+                "closure Rusticol template does not match its callable signature"
+            )
+        return
+    raise RecurrenceTemplateError(
+        f"Rusticol template callable is not registered for {contract_kind!r}"
+    )
 
 
 def _canonical_json(payload: object) -> str:
@@ -199,6 +243,78 @@ def _decode_int_tuple(name: str, value: object) -> tuple[int, ...]:
     if not isinstance(value, list) or any(type(item) is not int for item in value):
         raise RecurrenceTemplateError(f"{name} must be a JSON integer array")
     return tuple(value)
+
+
+def _require_flavour_flow(name: str, value: object) -> FlavourFlowV1:
+    result = _require_int_tuple(name, value, nonempty=True)
+    return tuple(result)
+
+
+def _require_quantum_number_flow(
+    name: str,
+    value: object,
+) -> QuantumNumberFlowV1:
+    items = _require_tuple(name, value)
+    result: list[tuple[str, str]] = []
+    for item in items:
+        if not isinstance(item, tuple) or len(item) != 2:
+            raise RecurrenceTemplateError(
+                f"{name} must contain immutable (name, expression) pairs"
+            )
+        quantum_name = _require_nonempty(f"{name} name", item[0])
+        expression = _require_nonempty(f"{name} expression", item[1])
+        result.append((quantum_name, expression))
+    normalized = tuple(result)
+    names = tuple(item[0] for item in normalized)
+    if names != tuple(sorted(set(names))):
+        raise RecurrenceTemplateError(f"{name} names must be sorted and unique")
+    return normalized
+
+
+def _decode_flavour_flow(name: str, value: object) -> FlavourFlowV1:
+    if not isinstance(value, list):
+        raise RecurrenceTemplateError(f"{name} must be a JSON integer array")
+    return _require_flavour_flow(name, tuple(value))
+
+
+def _decode_flavour_flows(
+    name: str,
+    value: object,
+) -> tuple[FlavourFlowV1, ...]:
+    if not isinstance(value, list):
+        raise RecurrenceTemplateError(f"{name} must be a JSON array")
+    return tuple(
+        _decode_flavour_flow(f"{name}[{index}]", item)
+        for index, item in enumerate(value)
+    )
+
+
+def _decode_quantum_number_flow(
+    name: str,
+    value: object,
+) -> QuantumNumberFlowV1:
+    if not isinstance(value, list):
+        raise RecurrenceTemplateError(f"{name} must be a JSON pair array")
+    pairs: list[tuple[object, object]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, list) or len(item) != 2:
+            raise RecurrenceTemplateError(
+                f"{name}[{index}] must be a JSON [name, expression] pair"
+            )
+        pairs.append((item[0], item[1]))
+    return _require_quantum_number_flow(name, tuple(pairs))
+
+
+def _decode_quantum_number_flows(
+    name: str,
+    value: object,
+) -> tuple[QuantumNumberFlowV1, ...]:
+    if not isinstance(value, list):
+        raise RecurrenceTemplateError(f"{name} must be a JSON array")
+    return tuple(
+        _decode_quantum_number_flow(f"{name}[{index}]", item)
+        for index, item in enumerate(value)
+    )
 
 
 def _decode_optional_string(name: str, value: object) -> str | None:
@@ -540,8 +656,7 @@ class SourceTemplateV1(_SemanticRecord):
         _require_nonempty("source crossing", self.crossing)
         if self.wavefunction_family not in _WAVEFUNCTION_FAMILIES:
             raise RecurrenceTemplateError(
-                f"unsupported source wavefunction family "
-                f"{self.wavefunction_family!r}"
+                f"unsupported source wavefunction family {self.wavefunction_family!r}"
             )
         _require_int("source helicity", self.helicity)
         _require_int("source spin_state", self.spin_state)
@@ -578,12 +693,13 @@ class QuantumFlowTemplateV1(_SemanticRecord):
     template_id: str
     input_state_template_ids: tuple[str, ...]
     input_spin_states: tuple[int, ...]
-    input_flavour_flows: tuple[str, ...]
-    input_quantum_number_flows: tuple[str, ...]
+    input_flavour_flows: tuple[FlavourFlowV1, ...]
+    input_quantum_number_flows: tuple[QuantumNumberFlowV1, ...]
     coupling_orders: tuple[tuple[str, int], ...]
     result_state_template_id: str
-    result_flavour_flow: str
-    result_quantum_number_flow: str
+    result_flavour_flow: FlavourFlowV1
+    result_quantum_number_flow: QuantumNumberFlowV1
+    exact_coupling: ExactComplexRationalV1
     predicate_digest: str
     semantic_digest: str = ""
 
@@ -595,11 +711,19 @@ class QuantumFlowTemplateV1(_SemanticRecord):
             nonempty=True,
         )
         _require_int_tuple("quantum-flow spin states", self.input_spin_states)
-        _require_string_tuple("quantum-flow flavour flows", self.input_flavour_flows)
-        _require_string_tuple(
+        flavour_flows = _require_tuple(
+            "quantum-flow flavour flows", self.input_flavour_flows
+        )
+        for index, flow in enumerate(flavour_flows):
+            _require_flavour_flow(f"quantum-flow flavour flow {index}", flow)
+        quantum_number_flows = _require_tuple(
             "quantum-flow quantum-number flows",
             self.input_quantum_number_flows,
         )
+        for index, flow in enumerate(quantum_number_flows):
+            _require_quantum_number_flow(
+                f"quantum-flow quantum-number flow {index}", flow
+            )
         arity = len(self.input_state_template_ids)
         if not all(
             len(values) == arity
@@ -614,24 +738,36 @@ class QuantumFlowTemplateV1(_SemanticRecord):
             )
         _validate_coupling_orders(self.coupling_orders)
         _require_nonempty("quantum-flow result state", self.result_state_template_id)
-        _require_nonempty("quantum-flow result flavour flow", self.result_flavour_flow)
-        _require_nonempty(
+        _require_flavour_flow(
+            "quantum-flow result flavour flow", self.result_flavour_flow
+        )
+        _require_quantum_number_flow(
             "quantum-flow result quantum-number flow",
             self.result_quantum_number_flow,
         )
+        if not isinstance(self.exact_coupling, ExactComplexRationalV1):
+            raise RecurrenceTemplateError(
+                "quantum-flow coupling must be an exact complex rational"
+            )
         _require_sha256("quantum-flow predicate_digest", self.predicate_digest)
         self._finish_semantic_record()
 
     def _semantic_fields(self) -> dict[str, object]:
         return {
             "coupling_orders": [list(item) for item in self.coupling_orders],
-            "input_flavour_flows": list(self.input_flavour_flows),
-            "input_quantum_number_flows": list(self.input_quantum_number_flows),
+            "exact_coupling": self.exact_coupling.to_dict(),
+            "input_flavour_flows": [list(flow) for flow in self.input_flavour_flows],
+            "input_quantum_number_flows": [
+                [list(item) for item in flow]
+                for flow in self.input_quantum_number_flows
+            ],
             "input_spin_states": list(self.input_spin_states),
             "input_state_template_ids": list(self.input_state_template_ids),
             "predicate_digest": self.predicate_digest,
-            "result_flavour_flow": self.result_flavour_flow,
-            "result_quantum_number_flow": self.result_quantum_number_flow,
+            "result_flavour_flow": list(self.result_flavour_flow),
+            "result_quantum_number_flow": [
+                list(item) for item in self.result_quantum_number_flow
+            ],
             "result_state_template_id": self.result_state_template_id,
             "template_id": self.template_id,
         }
@@ -670,7 +806,11 @@ class TransitionTemplateV1(_SemanticRecord):
     coupling_parameter_ids: tuple[str, ...]
     coupling_orders: tuple[tuple[str, int], ...]
     color_contraction_template_id: str
+    binding_coupling: ExactComplexRationalV1
     exact_factor: ExactComplexRationalV1
+    output_factor_source: PreparedOutputFactorSource
+    equivalence_class: str
+    input_exchange_factor: ExactComplexRationalV1 | None
     output_projection: str
     semantic_digest: str = ""
 
@@ -707,24 +847,51 @@ class TransitionTemplateV1(_SemanticRecord):
         _require_nonempty(
             "transition color contraction", self.color_contraction_template_id
         )
+        if not isinstance(self.binding_coupling, ExactComplexRationalV1):
+            raise RecurrenceTemplateError(
+                "transition binding coupling must be an exact complex rational"
+            )
         if not isinstance(self.exact_factor, ExactComplexRationalV1):
             raise RecurrenceTemplateError(
                 "transition exact factor must be an exact complex rational"
             )
+        if self.output_factor_source not in _OUTPUT_FACTOR_SOURCES:
+            raise RecurrenceTemplateError(
+                f"unsupported transition output factor source "
+                f"{self.output_factor_source!r}"
+            )
+        _require_nonempty("transition equivalence class", self.equivalence_class)
+        if self.input_exchange_factor is not None:
+            if not isinstance(self.input_exchange_factor, ExactComplexRationalV1):
+                raise RecurrenceTemplateError(
+                    "transition input-exchange factor must be an exact complex rational"
+                )
+            if self.input_exchange_factor == ExactComplexRationalV1.zero():
+                raise RecurrenceTemplateError(
+                    "transition input-exchange factor must be nonzero"
+                )
         _require_nonempty("transition output projection", self.output_projection)
         self._finish_semantic_record()
 
     def _semantic_fields(self) -> dict[str, object]:
         return {
             "canonical_input_order": list(self.canonical_input_order),
+            "binding_coupling": self.binding_coupling.to_dict(),
             "color_contraction_template_id": self.color_contraction_template_id,
             "coupling_orders": [list(item) for item in self.coupling_orders],
             "coupling_parameter_ids": list(self.coupling_parameter_ids),
             "evaluator_resolver_key": self.evaluator_resolver_key,
+            "equivalence_class": self.equivalence_class,
             "exact_factor": self.exact_factor.to_dict(),
+            "input_exchange_factor": (
+                None
+                if self.input_exchange_factor is None
+                else self.input_exchange_factor.to_dict()
+            ),
             "input_state_template_ids": list(self.input_state_template_ids),
             "momentum_convention": list(self.momentum_convention),
             "output_projection": self.output_projection,
+            "output_factor_source": self.output_factor_source,
             "quantum_flow_template_id": self.quantum_flow_template_id,
             "result_state_template_id": self.result_state_template_id,
             "template_id": self.template_id,
@@ -810,7 +977,11 @@ class ClosureTemplateV1(_SemanticRecord):
     coupling_parameter_ids: tuple[str, ...]
     coupling_orders: tuple[tuple[str, int], ...]
     color_contraction_template_id: str
+    binding_coupling: ExactComplexRationalV1
     exact_factor: ExactComplexRationalV1
+    output_factor_source: PreparedOutputFactorSource
+    equivalence_class: str
+    input_exchange_factor: ExactComplexRationalV1 | None
     projection: str
     component_coefficients: tuple[ExactComplexRationalV1, ...] = ()
     chirality_relation: str = "any"
@@ -837,10 +1008,29 @@ class ClosureTemplateV1(_SemanticRecord):
         _require_nonempty(
             "closure color contraction", self.color_contraction_template_id
         )
+        if not isinstance(self.binding_coupling, ExactComplexRationalV1):
+            raise RecurrenceTemplateError(
+                "closure binding coupling must be an exact complex rational"
+            )
         if not isinstance(self.exact_factor, ExactComplexRationalV1):
             raise RecurrenceTemplateError(
                 "closure exact factor must be an exact complex rational"
             )
+        if self.output_factor_source not in _OUTPUT_FACTOR_SOURCES:
+            raise RecurrenceTemplateError(
+                f"unsupported closure output factor source "
+                f"{self.output_factor_source!r}"
+            )
+        _require_nonempty("closure equivalence class", self.equivalence_class)
+        if self.input_exchange_factor is not None:
+            if not isinstance(self.input_exchange_factor, ExactComplexRationalV1):
+                raise RecurrenceTemplateError(
+                    "closure input-exchange factor must be an exact complex rational"
+                )
+            if self.input_exchange_factor == ExactComplexRationalV1.zero():
+                raise RecurrenceTemplateError(
+                    "closure input-exchange factor must be nonzero"
+                )
         _require_nonempty("closure projection", self.projection)
         coefficients = _require_tuple(
             "closure component coefficients", self.component_coefficients
@@ -863,6 +1053,7 @@ class ClosureTemplateV1(_SemanticRecord):
     def _semantic_fields(self) -> dict[str, object]:
         return {
             "canonical_input_order": list(self.canonical_input_order),
+            "binding_coupling": self.binding_coupling.to_dict(),
             "chirality_relation": self.chirality_relation,
             "color_contraction_template_id": self.color_contraction_template_id,
             "component_coefficients": [
@@ -871,10 +1062,17 @@ class ClosureTemplateV1(_SemanticRecord):
             "coupling_orders": [list(item) for item in self.coupling_orders],
             "coupling_parameter_ids": list(self.coupling_parameter_ids),
             "evaluator_resolver_key": self.evaluator_resolver_key,
+            "equivalence_class": self.equivalence_class,
             "exact_factor": self.exact_factor.to_dict(),
+            "input_exchange_factor": (
+                None
+                if self.input_exchange_factor is None
+                else self.input_exchange_factor.to_dict()
+            ),
             "input_state_template_ids": list(self.input_state_template_ids),
             "metric_signature": self.metric_signature,
             "projection": self.projection,
+            "output_factor_source": self.output_factor_source,
             "template_id": self.template_id,
         }
 
@@ -1052,6 +1250,13 @@ class EvaluatorBindingV1(_SemanticRecord):
                 f"unsupported evaluator contract kind {self.contract_kind!r}"
             )
         _require_sha256("evaluator callable_signature", self.callable_signature)
+        if self.callable_kind == "rusticol-template":
+            assert self.runtime_template is not None
+            _validate_rusticol_runtime_template(
+                self.contract_kind,
+                self.runtime_template,
+                self.callable_signature,
+            )
         _require_string_tuple("evaluator input states", self.input_state_template_ids)
         if self.output_state_template_id is not None:
             _require_nonempty("evaluator output state", self.output_state_template_id)
@@ -1112,6 +1317,7 @@ class EvaluatorBindingV1(_SemanticRecord):
 @dataclass(frozen=True, slots=True)
 class RecurrenceTemplateCatalogHeaderV1:
     compiled_model_digest: str
+    prepared_kernel_pack_digest: str
     catalog_digest: str
     abi: str = RECURRENCE_TEMPLATE_ABI
     canonicalization_abi: str = RECURRENCE_TEMPLATE_CANONICALIZATION_ABI
@@ -1131,6 +1337,7 @@ class RecurrenceTemplateCatalogHeaderV1:
                 "unsupported recurrence template exact-scalar ABI"
             )
         _require_sha256("compiled_model_digest", self.compiled_model_digest)
+        _require_sha256("prepared_kernel_pack_digest", self.prepared_kernel_pack_digest)
         _require_sha256("catalog_digest", self.catalog_digest)
 
     def digest_payload(self) -> dict[str, object]:
@@ -1139,6 +1346,7 @@ class RecurrenceTemplateCatalogHeaderV1:
             "canonicalization_abi": self.canonicalization_abi,
             "compiled_model_digest": self.compiled_model_digest,
             "exact_scalar_abi": self.exact_scalar_abi,
+            "prepared_kernel_pack_digest": self.prepared_kernel_pack_digest,
         }
 
     def to_dict(self) -> dict[str, object]:
@@ -1223,6 +1431,7 @@ class RecurrenceTemplateCatalog:
         cls,
         *,
         compiled_model_digest: str,
+        prepared_kernel_pack_digest: str,
         parameters: Sequence[ParameterTemplateV1] = (),
         current_states: Sequence[CurrentStateTemplateV1] = (),
         sources: Sequence[SourceTemplateV1] = (),
@@ -1235,6 +1444,7 @@ class RecurrenceTemplateCatalog:
         evaluator_bindings: Sequence[EvaluatorBindingV1] = (),
     ) -> RecurrenceTemplateCatalog:
         _require_sha256("compiled_model_digest", compiled_model_digest)
+        _require_sha256("prepared_kernel_pack_digest", prepared_kernel_pack_digest)
         sorted_sections = {
             "parameters": tuple(sorted(parameters, key=_record_identity)),
             "current_states": tuple(sorted(current_states, key=_record_identity)),
@@ -1256,6 +1466,7 @@ class RecurrenceTemplateCatalog:
             "canonicalization_abi": RECURRENCE_TEMPLATE_CANONICALIZATION_ABI,
             "compiled_model_digest": compiled_model_digest,
             "exact_scalar_abi": RECURRENCE_TEMPLATE_EXACT_SCALAR_ABI,
+            "prepared_kernel_pack_digest": prepared_kernel_pack_digest,
         }
         digest_payload = {
             "header": provisional_header,
@@ -1266,6 +1477,7 @@ class RecurrenceTemplateCatalog:
         }
         header = RecurrenceTemplateCatalogHeaderV1(
             compiled_model_digest=compiled_model_digest,
+            prepared_kernel_pack_digest=prepared_kernel_pack_digest,
             catalog_digest=_digest(digest_payload),
         )
         return cls(header=header, **sorted_sections)
@@ -1581,6 +1793,7 @@ class RecurrenceTemplateCatalog:
                     "canonicalization_abi",
                     "compiled_model_digest",
                     "exact_scalar_abi",
+                    "prepared_kernel_pack_digest",
                     "catalog_digest",
                 }
             ),
@@ -1588,6 +1801,10 @@ class RecurrenceTemplateCatalog:
         header = RecurrenceTemplateCatalogHeaderV1(
             compiled_model_digest=_require_sha256(
                 "compiled_model_digest", header_payload["compiled_model_digest"]
+            ),
+            prepared_kernel_pack_digest=_require_sha256(
+                "prepared_kernel_pack_digest",
+                header_payload["prepared_kernel_pack_digest"],
             ),
             catalog_digest=_require_sha256(
                 "catalog_digest", header_payload["catalog_digest"]
@@ -1702,6 +1919,15 @@ def _decode_ratio(name: str, value: object) -> ExactComplexRationalV1:
     return ExactComplexRationalV1.from_dict(_require_mapping(name, value))
 
 
+def _decode_optional_ratio(
+    name: str,
+    value: object,
+) -> ExactComplexRationalV1 | None:
+    if value is None:
+        return None
+    return _decode_ratio(name, value)
+
+
 def _decode_ratio_array(
     name: str,
     value: object,
@@ -1709,8 +1935,7 @@ def _decode_ratio_array(
     if not isinstance(value, list):
         raise RecurrenceTemplateError(f"{name} must be an array")
     return tuple(
-        _decode_ratio(f"{name}[{index}]", item)
-        for index, item in enumerate(value)
+        _decode_ratio(f"{name}[{index}]", item) for index, item in enumerate(value)
     )
 
 
@@ -1880,6 +2105,7 @@ def _quantum_flow_from_dict(payload: Mapping[str, object]) -> QuantumFlowTemplat
             "result_state_template_id",
             "result_flavour_flow",
             "result_quantum_number_flow",
+            "exact_coupling",
             "predicate_digest",
         }
     )
@@ -1892,10 +2118,10 @@ def _quantum_flow_from_dict(payload: Mapping[str, object]) -> QuantumFlowTemplat
         input_spin_states=_decode_int_tuple(
             "flow spin states", value["input_spin_states"]
         ),
-        input_flavour_flows=_decode_string_tuple(
+        input_flavour_flows=_decode_flavour_flows(
             "flow flavour inputs", value["input_flavour_flows"]
         ),
-        input_quantum_number_flows=_decode_string_tuple(
+        input_quantum_number_flows=_decode_quantum_number_flows(
             "flow quantum-number inputs", value["input_quantum_number_flows"]
         ),
         coupling_orders=_decode_coupling_orders(
@@ -1904,12 +2130,13 @@ def _quantum_flow_from_dict(payload: Mapping[str, object]) -> QuantumFlowTemplat
         result_state_template_id=_require_nonempty(
             "flow result state", value["result_state_template_id"]
         ),
-        result_flavour_flow=_require_nonempty(
+        result_flavour_flow=_decode_flavour_flow(
             "flow result flavour", value["result_flavour_flow"]
         ),
-        result_quantum_number_flow=_require_nonempty(
+        result_quantum_number_flow=_decode_quantum_number_flow(
             "flow result quantum number", value["result_quantum_number_flow"]
         ),
+        exact_coupling=_decode_ratio("flow exact coupling", value["exact_coupling"]),
         predicate_digest=_require_sha256(
             "flow predicate digest", value["predicate_digest"]
         ),
@@ -1930,7 +2157,11 @@ def _transition_from_dict(payload: Mapping[str, object]) -> TransitionTemplateV1
             "coupling_parameter_ids",
             "coupling_orders",
             "color_contraction_template_id",
+            "binding_coupling",
             "exact_factor",
+            "output_factor_source",
+            "equivalence_class",
+            "input_exchange_factor",
             "output_projection",
         }
     )
@@ -1964,7 +2195,19 @@ def _transition_from_dict(payload: Mapping[str, object]) -> TransitionTemplateV1
         color_contraction_template_id=_require_nonempty(
             "transition color", value["color_contraction_template_id"]
         ),
+        binding_coupling=_decode_ratio(
+            "transition binding coupling", value["binding_coupling"]
+        ),
         exact_factor=_decode_ratio("transition exact factor", value["exact_factor"]),
+        output_factor_source=_require_nonempty(
+            "transition output factor source", value["output_factor_source"]
+        ),  # type: ignore[arg-type]
+        equivalence_class=_require_nonempty(
+            "transition equivalence class", value["equivalence_class"]
+        ),
+        input_exchange_factor=_decode_optional_ratio(
+            "transition input-exchange factor", value["input_exchange_factor"]
+        ),
         output_projection=_require_nonempty(
             "transition projection", value["output_projection"]
         ),
@@ -2027,10 +2270,14 @@ def _closure_from_dict(payload: Mapping[str, object]) -> ClosureTemplateV1:
             "coupling_parameter_ids",
             "coupling_orders",
             "color_contraction_template_id",
+            "binding_coupling",
             "component_coefficients",
             "chirality_relation",
+            "equivalence_class",
             "exact_factor",
+            "input_exchange_factor",
             "metric_signature",
+            "output_factor_source",
             "projection",
         }
     )
@@ -2055,7 +2302,19 @@ def _closure_from_dict(payload: Mapping[str, object]) -> ClosureTemplateV1:
         color_contraction_template_id=_require_nonempty(
             "closure color", value["color_contraction_template_id"]
         ),
+        binding_coupling=_decode_ratio(
+            "closure binding coupling", value["binding_coupling"]
+        ),
         exact_factor=_decode_ratio("closure exact factor", value["exact_factor"]),
+        output_factor_source=_require_nonempty(
+            "closure output factor source", value["output_factor_source"]
+        ),  # type: ignore[arg-type]
+        equivalence_class=_require_nonempty(
+            "closure equivalence class", value["equivalence_class"]
+        ),
+        input_exchange_factor=_decode_optional_ratio(
+            "closure input-exchange factor", value["input_exchange_factor"]
+        ),
         component_coefficients=_decode_ratio_array(
             "closure component coefficients", value["component_coefficients"]
         ),

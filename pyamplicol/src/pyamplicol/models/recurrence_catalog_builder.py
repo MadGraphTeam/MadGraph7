@@ -65,6 +65,7 @@ def build_recurrence_template_catalog(
     prepared_catalog: PreparedKernelCatalog,
     *,
     compiled_model_digest: str,
+    prepared_kernel_pack_digest: str,
 ) -> RecurrenceTemplateCatalog:
     """Project one model and its exact prepared kernels into recurrence v1.
 
@@ -76,6 +77,7 @@ def build_recurrence_template_catalog(
     """
 
     _require_digest(compiled_model_digest, "compiled model digest")
+    _require_digest(prepared_kernel_pack_digest, "prepared kernel pack digest")
     _validate_prepared_catalog_identity(model, prepared_catalog)
     kernels = _validated_kernels(prepared_catalog)
     recurrence_catalog = _recurrence_prepared_catalog(model, prepared_catalog)
@@ -151,6 +153,7 @@ def build_recurrence_template_catalog(
     }
     return RecurrenceTemplateCatalog.create(
         compiled_model_digest=compiled_model_digest,
+        prepared_kernel_pack_digest=prepared_kernel_pack_digest,
         parameters=parameters,
         current_states=current_states,
         sources=sources,
@@ -496,8 +499,7 @@ def _build_parameters(
         previous = names_by_prepared_id.setdefault(index, name)
         if previous != name:
             raise RecurrenceTemplateError(
-                f"prepared parameter index {index} names both {previous!r} and "
-                f"{name!r}"
+                f"prepared parameter index {index} names both {previous!r} and {name!r}"
             )
 
     def add_default(name: object, value: object, *, kind: str) -> None:
@@ -1033,6 +1035,7 @@ def _build_transitions(
                 result_state_template_id=result_state_id,
                 result_flavour_flow=variant["result_flavour_flow"],
                 result_quantum_number_flow=variant["result_quantum_number_flow"],
+                exact_coupling=ExactComplexRationalV1.from_dict(variant["coupling"]),
                 predicate_digest=_digest(variant),
             )
             flows_by_id.setdefault(flow.template_id, flow)
@@ -1062,9 +1065,23 @@ def _build_transitions(
                 coupling_parameter_ids=coupling_parameters,
                 coupling_orders=coupling_orders,
                 color_contraction_template_id=color.template_id,
+                binding_coupling=_exact_pair(
+                    binding.key.coupling,
+                    f"vertex kind {vertex.kind} binding coupling",
+                ),
                 exact_factor=_exact_pair(
                     binding.equivalence_factor,
                     f"vertex kind {vertex.kind} equivalence factor",
+                ),
+                output_factor_source=binding.output_factor_source,
+                equivalence_class=binding.equivalence_class,
+                input_exchange_factor=(
+                    None
+                    if binding.input_exchange_factor is None
+                    else _exact_pair(
+                        binding.input_exchange_factor,
+                        f"vertex kind {vertex.kind} input-exchange factor",
+                    )
                 ),
                 output_projection=f"{binding.result_state.basis}:chirality={binding.result_state.chirality}",
             )
@@ -1167,20 +1184,27 @@ def _probe_quantum_flows(
                         {
                             "input_spin_states": (left_spin, right_spin),
                             "input_flavour_flows": (
-                                _canonical_json(list(left.flavour_flow)),
-                                _canonical_json(list(right.flavour_flow)),
+                                tuple(int(value) for value in left.flavour_flow),
+                                tuple(int(value) for value in right.flavour_flow),
                             ),
                             "input_quantum_number_flows": (
-                                _canonical_json(list(left.quantum_number_flow)),
-                                _canonical_json(list(right.quantum_number_flow)),
+                                tuple(
+                                    (str(name), str(expression))
+                                    for name, expression in left.quantum_number_flow
+                                ),
+                                tuple(
+                                    (str(name), str(expression))
+                                    for name, expression in right.quantum_number_flow
+                                ),
                             ),
                             "result_chirality": int(flow.chirality),
                             "result_spin_state": int(flow.spin_state),
-                            "result_flavour_flow": _canonical_json(
-                                list(flow.flavour_flow)
+                            "result_flavour_flow": tuple(
+                                int(value) for value in flow.flavour_flow
                             ),
-                            "result_quantum_number_flow": _canonical_json(
-                                list(flow.quantum_number_flow)
+                            "result_quantum_number_flow": tuple(
+                                (str(name), str(expression))
+                                for name, expression in flow.quantum_number_flow
                             ),
                             "coupling": _exact_pair(
                                 flow.coupling,
@@ -1529,9 +1553,23 @@ def _build_closures(
                 f"closure kind {vertex.kind} coupling orders",
             ),
             color_contraction_template_id=color.template_id,
+            binding_coupling=_exact_pair(
+                binding.key.coupling,
+                f"closure kind {vertex.kind} binding coupling",
+            ),
             exact_factor=_exact_pair(
                 binding.equivalence_factor,
                 f"closure kind {vertex.kind} equivalence factor",
+            ),
+            output_factor_source=binding.output_factor_source,
+            equivalence_class=binding.equivalence_class,
+            input_exchange_factor=(
+                None
+                if binding.input_exchange_factor is None
+                else _exact_pair(
+                    binding.input_exchange_factor,
+                    f"closure kind {vertex.kind} input-exchange factor",
+                )
             ),
             projection=binding.projection,
         )
@@ -1581,13 +1619,9 @@ def _build_direct_closures(
             continue
         contraction = _stable_callback(
             f"direct contraction for states {key!r}",
-            lambda key=key: model.direct_contraction_ir(
-                key[0], key[2], key[1], key[3]
-            ),
+            lambda key=key: model.direct_contraction_ir(key[0], key[2], key[1], key[3]),
             serializer=lambda value: (
-                "null"
-                if value is None
-                else _canonical_json(value.to_json_dict())
+                "null" if value is None else _canonical_json(value.to_json_dict())
             ),
         )
         if contraction is None:
@@ -1604,9 +1638,10 @@ def _build_direct_closures(
                 f"direct contraction {contraction.name!r} basis does not match "
                 f"states {key!r}"
             )
-        if left_state.dimension != right_state.dimension or len(
-            contraction.coefficients
-        ) != left_state.dimension:
+        if (
+            left_state.dimension != right_state.dimension
+            or len(contraction.coefficients) != left_state.dimension
+        ):
             raise RecurrenceTemplateError(
                 f"direct contraction {contraction.name!r} component count does "
                 f"not match states {key!r}"
@@ -1658,7 +1693,11 @@ def _build_direct_closures(
             coupling_parameter_ids=(),
             coupling_orders=(),
             color_contraction_template_id=color.template_id,
+            binding_coupling=ExactComplexRationalV1.one(),
             exact_factor=ExactComplexRationalV1.one(),
+            output_factor_source="none",
+            equivalence_class="direct-contraction",
+            input_exchange_factor=None,
             projection=contraction.name,
             component_coefficients=exact_coefficients,
             chirality_relation=contraction.chirality_relation,
@@ -1714,9 +1753,7 @@ def _direct_closure_color_template(
         rule_kind="direct-pairing",
         input_representations=representations,
         output_representation=None,
-        ordered_open_string_arity=(
-            1 if abs(representations[0]) == 3 else 0
-        ),
+        ordered_open_string_arity=(1 if abs(representations[0]) == 3 else 0),
         exact_coefficient=ExactComplexRationalV1.one(),
         nc_polynomial=((0, ExactComplexRationalV1.one()),),
         expression_digest=_digest(payload),

@@ -38,6 +38,7 @@ from pyamplicol.models.recurrence_template import (
 )
 
 _MODEL_DIGEST = "a" * 64
+_PACK_DIGEST = "b" * 64
 _PREPARED_ABI = "pyamplicol-prepared-kernel-catalog-v1"
 
 
@@ -123,10 +124,16 @@ def _parameter_catalog(*, parameter_index: int = 0) -> PreparedKernelCatalog:
 def test_parameter_catalog_is_deterministic_and_binary64_exact() -> None:
     model = _ParameterModel()
     first = build_recurrence_template_catalog(
-        model, _parameter_catalog(), compiled_model_digest=_MODEL_DIGEST
+        model,
+        _parameter_catalog(),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
     )
     second = build_recurrence_template_catalog(
-        model, _parameter_catalog(), compiled_model_digest=_MODEL_DIGEST
+        model,
+        _parameter_catalog(),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
     )
 
     assert first == second
@@ -147,6 +154,7 @@ def test_catalog_round_trip_preserves_builder_output() -> None:
         _ParameterModel(),
         _parameter_catalog(),
         compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
     )
     loaded = RecurrenceTemplateCatalog.from_dict(json.loads(catalog.canonical_json))
     assert loaded == catalog
@@ -169,6 +177,7 @@ def test_complex_parameter_retains_authoritative_prepared_kernel_index() -> None
         _ComplexParameterModel(),
         _parameter_catalog(parameter_index=17),
         compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
     )
 
     alpha = next(item for item in catalog.parameters if item.name == "alpha")
@@ -181,7 +190,10 @@ def test_model_identity_mismatch_is_rejected() -> None:
     catalog = replace(_parameter_catalog(), model_name="different-model")
     with pytest.raises(PreparedKernelCatalogError, match="model identity"):
         build_recurrence_template_catalog(
-            _ParameterModel(), catalog, compiled_model_digest=_MODEL_DIGEST
+            _ParameterModel(),
+            catalog,
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
         )
 
 
@@ -191,7 +203,10 @@ def test_stale_prepared_kernel_signature_is_rejected() -> None:
     mutated = replace(catalog, kernels=(stale,))
     with pytest.raises(PreparedKernelCatalogError, match="stale canonical signature"):
         build_recurrence_template_catalog(
-            _ParameterModel(), mutated, compiled_model_digest=_MODEL_DIGEST
+            _ParameterModel(),
+            mutated,
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
         )
 
 
@@ -361,6 +376,7 @@ def test_model_generic_scalar_catalog_covers_source_flow_color_and_propagator() 
         model,
         _scalar_catalog(model),  # type: ignore[arg-type]
         compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
     )
 
     assert len(catalog.current_states) == 1
@@ -385,6 +401,7 @@ def test_source_fill_uses_a_generic_runtime_template() -> None:
         model,
         _scalar_catalog(model),  # type: ignore[arg-type]
         compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
     )
 
     source = next(
@@ -455,6 +472,7 @@ def test_ghost_only_bindings_are_excluded_from_recurrence_semantics() -> None:
         model,
         prepared,  # type: ignore[arg-type]
         compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
     )
 
     assert {state.particle_id for state in catalog.current_states} == {101}
@@ -477,6 +495,7 @@ def test_direct_contraction_uses_exact_runtime_closure_template() -> None:
         model,
         _scalar_catalog(model),  # type: ignore[arg-type]
         compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
     )
 
     assert len(catalog.closures) == 1
@@ -504,6 +523,7 @@ def test_mutated_vertex_equivalence_factor_is_rejected() -> None:
             model,
             catalog,  # type: ignore[arg-type]
             compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
         )
 
 
@@ -533,6 +553,7 @@ def test_nondeterministic_quantum_flow_callback_fails_closed() -> None:
             model,
             _scalar_catalog(model),  # type: ignore[arg-type]
             compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
         )
 
 
@@ -549,4 +570,5 @@ def test_unsupported_color_semantics_fail_closed() -> None:
             model,
             _scalar_catalog(model),  # type: ignore[arg-type]
             compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
         )

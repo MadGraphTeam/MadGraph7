@@ -210,36 +210,37 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
                         )
                         closure_pending.append((closure, closure_ir.name))
 
-    for particle_id in _oriented_particle_ids(model):
-        for chirality in _state_chiralities(model, particle_id):
-            state = _particle_state(model, particle_id, chirality)
-            try:
-                metadata = model._propagator_ir(particle_id, chirality)
-            except (NotImplementedError, ValueError) as error:
-                raise PreparedKernelCatalogError(
-                    "prepared catalog cannot lower admitted propagator "
-                    f"particle={particle_id}, chirality={chirality}: {error}"
-                ) from error
-            candidate = (
-                _propagator_candidate(
-                    model,
-                    state,
-                    metadata,
-                    parameter_indices=parameter_indices,
-                )
-                if metadata.applies_propagator
-                else None
+    propagator_states = _required_propagator_states(model, vertex_pending)
+    for state in propagator_states:
+        particle_id = state.particle_id
+        chirality = state.chirality
+        try:
+            metadata = model._propagator_ir(particle_id, chirality)
+        except (NotImplementedError, ValueError) as error:
+            raise PreparedKernelCatalogError(
+                "prepared catalog cannot lower admitted propagator "
+                f"particle={particle_id}, chirality={chirality}: {error}"
+            ) from error
+        candidate = (
+            _propagator_candidate(
+                model,
+                state,
+                metadata,
+                parameter_indices=parameter_indices,
             )
-            if candidate is not None:
-                _register_candidate(candidates, proof_classes, candidate)
-            propagator_pending.append(
-                (
-                    PropagatorKernelKey(particle_id, chirality),
-                    state,
-                    metadata,
-                    candidate,
-                )
+            if metadata.applies_propagator
+            else None
+        )
+        if candidate is not None:
+            _register_candidate(candidates, proof_classes, candidate)
+        propagator_pending.append(
+            (
+                PropagatorKernelKey(particle_id, chirality),
+                state,
+                metadata,
+                candidate,
             )
+        )
 
     model_parameter_candidate = _model_parameter_candidate(
         model,
@@ -374,6 +375,42 @@ def _oriented_particle_ids(model: Model) -> tuple[int, ...]:
         model.anti_particle(particle_id) for particle_id in tuple(particle_ids)
     )
     return tuple(sorted(particle_ids))
+
+
+def _required_propagator_states(
+    model: Model,
+    vertex_candidates: Sequence[_VertexCandidateResult],
+) -> tuple[PreparedParticleState, ...]:
+    """Return every source or transition-reachable current state.
+
+    Source spin states do not necessarily span the internal current basis.  A
+    massless fermion, for example, has chiral external wavefunctions but may be
+    produced as a full Dirac current by a transition involving a massive
+    fermion.  Prepared propagators must therefore cover vertex states as well
+    as source states.
+    """
+
+    states: dict[tuple[int, int], PreparedParticleState] = {}
+
+    def add(state: PreparedParticleState) -> None:
+        if model.source_wavefunction_kind(int(state.particle_id)) == "ghost":
+            return
+        key = (int(state.particle_id), int(state.chirality))
+        previous = states.setdefault(key, state)
+        if previous != state:
+            raise PreparedKernelCatalogError(
+                "prepared vertex and source contracts disagree on current-state "
+                f"semantics for particle={key[0]}, chirality={key[1]}"
+            )
+
+    for particle_id in _oriented_particle_ids(model):
+        for chirality in _state_chiralities(model, particle_id):
+            add(_particle_state(model, particle_id, chirality))
+    for candidate in vertex_candidates:
+        add(candidate.left_state)
+        add(candidate.right_state)
+        add(candidate.result_state)
+    return tuple(states[key] for key in sorted(states))
 
 
 def _state_chiralities(model: Model, particle_id: int) -> tuple[int, ...]:
