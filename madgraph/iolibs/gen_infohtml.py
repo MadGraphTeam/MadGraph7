@@ -244,10 +244,14 @@ class make_info_html:
         if not os.path.exists(path):
             path = os.path.join(self.dir, 'SubProcesses', proc, 'matrix%s_orig.f' % id)
         text = open(path).read()
+        match = None
         for match in re.finditer(pat, text):
             pass
-        nb_diag += int(match.groups()[0])
-        
+        # A crossing-router matrix<i>.f shares a base subprocess's diagrams and
+        # holds none of its own, so it has no diagram-number comment: count 0.
+        if match is not None:
+            nb_diag += int(match.groups()[0])
+
         return nb_diag
             
             

@@ -8671,14 +8671,52 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
 
     matrix_file = "matrix_madevent_group_v4.inc"
     grouped_mode = 'madevent'
+    # The group SMATRIX decodes an extended FLAV_IDX (M0) and the router lets
+    # crossed subprocesses share a base's matrix element, so this exporter can
+    # honour --use_crossing (the _check_crossing_support gate lets it through).
+    supports_crossing = True
     default_opt = {'clean': False, 'complex_mass':False,
                         'export_format':'madevent', 'mp': False,
                         'v5_model': True,
                         'output_options':{},
                         'hel_recycling': True
                         }
-    
-    
+
+
+    #===========================================================================
+    # write_matrix_router_file
+    #===========================================================================
+    def write_matrix_router_file(self, writer, matrix_element, fortran_model,
+                                 proc_id="", config_map=[], subproc_number="",
+                                 routing=None):
+        """Write a light matrix<i>.f for a crossed subprocess that shares a base
+        subprocess's matrix element. It keeps only GET_FLAVOR<i> (for the PDF)
+        and a router SMATRIX<i> that, per flavor, calls the base SMATRIX with the
+        crossed FLAV_IDX from partition_crossing_classes; the heavy MATRIX<i> is
+        not emitted. get_nhel<i> lives in auto_dsig<i>.f, so it is unaffected."""
+        # Reuse the full builder (writer=None) to get the flavor table and the
+        # info/process/nexternal/max_flavor holes; nothing heavy is written.
+        replace_dict = self.write_matrix_element_v4(
+            None, matrix_element, fortran_model, proc_id=proc_id,
+            config_map=config_map, subproc_number=subproc_number)
+        dispatch = []
+        for flav0, (base_index, iflav) in enumerate(routing):
+            kw = 'IF' if flav0 == 0 else 'ELSE IF'
+            dispatch.append('      %s (IFLAV.EQ.%d) THEN' % (kw, flav0 + 1))
+            dispatch.append(
+                '        CALL SMATRIX%d(P, %d, RHEL, RCOL, channel, IVEC, ANS,'
+                ' IHEL, ICOL)' % (base_index + 1, iflav))
+        if dispatch:
+            dispatch.append('      ENDIF')
+        replace_dict['smatrix_router_dispatch'] = '\n'.join(dispatch)
+        tpl = open(pjoin(_file_path, 'iolibs', 'template_files',
+                         'matrix_madevent_group_router_v4.inc')).read()
+        writer.writelines(misc.apply_template(tpl, replace_dict))
+        # Router adds no new matrix-element calls; report the module's own color
+        # count so the group's maxflow sizing stays an upper bound.
+        calls, ncolor = replace_dict['return_value']
+        return 0, ncolor
+
     #===========================================================================
     # generate_subprocess_directory
     #===========================================================================
@@ -8750,9 +8788,43 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         except KeyError:
             self.proc_characteristic['hel_recycling'] = False
             self.opt['hel_recycling'] = False
+
+        # Crossing merge: partition the group's matrix elements so that a base
+        # subprocess keeps its own (crossing-aware) matrix element and the others
+        # -- whose every flavor is a crossing of a base flavor -- get only a
+        # light router matrix<i>.f that dispatches to the base SMATRIX with the
+        # crossed FLAV_IDX (see partition_crossing_classes / the router template).
+        group_use_crossing = (
+            self.opt.get('use_crossing', False)
+            and not any(self.breaks_crossing_symmetry(proc)
+                        for me in matrix_elements
+                        for proc in me.get('processes')))
+        if group_use_crossing:
+            crossing_bases, crossing_routing = \
+                self.partition_crossing_classes(matrix_elements)
+            crossing_bases = set(crossing_bases)
+            # The router writes static matrix<i>.f, but helicity recycling builds
+            # matrix<i>_optim.f at run time and the makefile globs one or the
+            # other. Mixing recycled bases and static routers needs build-system
+            # work, so a merged group compiles the direct matrix<i>.f throughout
+            # for now (recycling stays available for non-merged crossing output).
+            if self.opt['hel_recycling']:
+                self.opt['hel_recycling'] = False
+                self.proc_characteristic['hel_recycling'] = False
+        else:
+            crossing_bases, crossing_routing = None, None
+
         for ime, matrix_element in \
                 enumerate(matrix_elements):
-            if self.opt['hel_recycling']:
+            if crossing_routing is not None and ime not in crossing_bases:
+                filename = 'matrix%d.f' % (ime+1)
+                calls, ncolor = self.write_matrix_router_file(
+                    writers.FortranWriter(filename), matrix_element,
+                    fortran_model, proc_id=str(ime+1),
+                    config_map=subproc_group.get('diagram_maps')[ime],
+                    subproc_number=group_number,
+                    routing=crossing_routing[ime])
+            elif self.opt['hel_recycling']:
                 filename = 'matrix%d_orig.f' % (ime+1)
                 replace_dict = self.write_matrix_element_v4(None, 
                                 matrix_element,
