@@ -696,6 +696,12 @@ class ProcessExporterFortran(VirtualExporter):
                 logger.info('Cross-group crossing: %d subprocess(es) will reuse '
                             'a base group\'s matrix element via crossing.'
                             % len({k[0] for k in self._crossgroup}))
+                # A shared matrix element now spans physically distinct (crossed)
+                # initial states, so a per-beam property is ill-defined. Tag it so
+                # check_card_consistency blocks beam polarisation / EVA (same guard
+                # as the within-group case; see fill of 'limitations' there).
+                if 'crossing' not in self.proc_characteristic['limitations']:
+                    self.proc_characteristic['limitations'].append('crossing')
 
             for (group_number, me_group) in enumerate(matrix_elements):
                 calls = calls + self.generate_subprocess_directory(\
