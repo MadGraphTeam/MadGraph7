@@ -262,6 +262,7 @@ pub struct CurrentStateRow {
     pub tensor_ordering_sequence_id: u32,
     pub dimension: u32,
     pub chirality: i32,
+    pub lc_color_shape_string_id: u32,
     pub auxiliary_kind_string_id: u32,
     pub mass_parameter_id: u32,
     pub width_parameter_id: u32,
@@ -294,6 +295,8 @@ pub struct QuantumFlowRow {
     pub input_spin_sequence_id: u32,
     pub input_flavour_sequence_id: u32,
     pub input_quantum_sequence_id: u32,
+    pub flavour_flow_operation_string_id: u32,
+    pub quantum_number_flow_operation_string_id: u32,
     pub coupling_order_set_id: u32,
     pub result_state_template_id: u32,
     pub result_spin_state: i32,
@@ -347,6 +350,7 @@ pub struct ClosureRow {
     pub id: u32,
     pub template_string_id: u32,
     pub input_state_sequence_id: u32,
+    pub result_state_template_id: u32,
     pub evaluator_binding_id: u32,
     pub canonical_input_order_sequence_id: u32,
     pub coupling_parameter_sequence_id: u32,
@@ -375,10 +379,28 @@ pub struct ColorContractionRow {
     pub output_representation: i32,
     pub ordered_open_string_arity: u32,
     pub exact_coefficient_factor_id: u32,
+    pub witness_start: u64,
+    pub witness_count: u64,
     pub nc_term_start: u64,
     pub nc_term_count: u64,
     pub expression_digest_id: u32,
     pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LCColorTransitionWitnessRow {
+    pub color_contraction_id: u32,
+    pub ordinal: u32,
+    pub left_shape_string_id: u32,
+    pub right_shape_string_id: u32,
+    pub input_permutation: u8,
+    pub reverse_parent_mask: u8,
+    pub component_operation: u8,
+    pub result_component_kind: u8,
+    pub result_shape_string_id: u32,
+    pub exact_factor_id: u32,
+    pub proof_digest_id: u32,
+    pub provenance_sequence_id: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -482,6 +504,7 @@ define_template_inputs! {
     transitions: TransitionRow,
     closures: ClosureRow,
     color_contractions: ColorContractionRow,
+    lc_color_transition_witnesses: LCColorTransitionWitnessRow,
     color_nc_terms: ColorNcTermRow,
     u32_sequence_ranges: IndexedRangeRow,
     u32_sequence_values: u32,
@@ -500,6 +523,7 @@ pub struct RecurrenceTemplateValidationSummary {
     pub propagator_count: u32,
     pub closure_count: u32,
     pub color_contraction_count: u32,
+    pub lc_color_transition_witness_count: u32,
     pub symmetry_proof_count: u32,
     pub evaluator_binding_count: u32,
     pub prepared_kernel_count: u32,
@@ -509,6 +533,88 @@ pub struct RecurrenceTemplateValidationSummary {
 pub struct ValidatedRecurrenceTemplateInput {
     input: OwnedRecurrenceTemplateInput,
     summary: RecurrenceTemplateValidationSummary,
+}
+
+/// Stable semantic section names used by process/template cross-authentication.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum RecurrenceSemanticTemplateKind {
+    Parameter,
+    CurrentState,
+    Source,
+    QuantumFlow,
+    Transition,
+    Propagator,
+    Closure,
+    ColorContraction,
+    SymmetryProof,
+}
+
+impl RecurrenceSemanticTemplateKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Parameter => "parameter",
+            Self::CurrentState => "current-state",
+            Self::Source => "source",
+            Self::QuantumFlow => "quantum-flow",
+            Self::Transition => "transition",
+            Self::Propagator => "propagator",
+            Self::Closure => "closure",
+            Self::ColorContraction => "color-contraction",
+            Self::SymmetryProof => "symmetry-proof",
+        }
+    }
+
+    pub fn parse(value: &str) -> RusticolResult<Self> {
+        match value {
+            "parameter" => Ok(Self::Parameter),
+            "current-state" => Ok(Self::CurrentState),
+            "source" => Ok(Self::Source),
+            "quantum-flow" => Ok(Self::QuantumFlow),
+            "transition" => Ok(Self::Transition),
+            "propagator" => Ok(Self::Propagator),
+            "closure" => Ok(Self::Closure),
+            "color-contraction" => Ok(Self::ColorContraction),
+            "symmetry-proof" => Ok(Self::SymmetryProof),
+            _ => Err(invalid(format!(
+                "unsupported recurrence semantic-template kind {value:?}"
+            ))),
+        }
+    }
+}
+
+/// One authenticated model-wide semantic record addressable by process input.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecurrenceSemanticTemplateIdentity {
+    pub kind: RecurrenceSemanticTemplateKind,
+    pub template_id: u32,
+    pub semantic_digest: SemanticDigest,
+    pub prepared_kernel_id: Option<u32>,
+}
+
+/// Bounded index used to bind one process input to its prepared model catalog.
+#[derive(Clone, Debug)]
+pub struct RecurrenceTemplateSemanticIndex {
+    pub compiled_model_digest: SemanticDigest,
+    pub catalog_digest: SemanticDigest,
+    records: BTreeMap<(RecurrenceSemanticTemplateKind, u32), RecurrenceSemanticTemplateIdentity>,
+}
+
+impl RecurrenceTemplateSemanticIndex {
+    pub fn record(
+        &self,
+        kind: RecurrenceSemanticTemplateKind,
+        template_id: u32,
+    ) -> Option<RecurrenceSemanticTemplateIdentity> {
+        self.records.get(&(kind, template_id)).copied()
+    }
+
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
 }
 
 impl ValidatedRecurrenceTemplateInput {
@@ -522,6 +628,92 @@ impl ValidatedRecurrenceTemplateInput {
 
     pub fn into_input(self) -> OwnedRecurrenceTemplateInput {
         self.input
+    }
+
+    pub fn semantic_index(&self) -> RusticolResult<RecurrenceTemplateSemanticIndex> {
+        let input = self.input.as_view();
+        let catalogs = input.validate_catalogs()?;
+
+        let mut prepared_kernel_by_template_string_id = BTreeMap::new();
+        for binding in input.evaluator_bindings {
+            let prepared_kernel_id =
+                (binding.prepared_kernel_id != MISSING_U32).then_some(binding.prepared_kernel_id);
+            for template_string_id in u32_sequence(
+                input,
+                binding.semantic_template_sequence_id,
+                "evaluator semantic templates",
+            )? {
+                if let Some(previous) = prepared_kernel_by_template_string_id
+                    .insert(*template_string_id, prepared_kernel_id)
+                    && previous != prepared_kernel_id
+                {
+                    return Err(invalid(
+                        "one semantic template has inconsistent prepared-kernel ownership",
+                    ));
+                }
+            }
+        }
+
+        let mut records = BTreeMap::new();
+        macro_rules! register {
+            ($kind:expr, $rows:expr) => {
+                for row in $rows {
+                    let semantic_digest = *catalogs
+                        .digests
+                        .get(row.semantic_digest_id as usize)
+                        .ok_or_else(|| invalid("semantic-template digest ID is out of range"))?;
+                    let identity = RecurrenceSemanticTemplateIdentity {
+                        kind: $kind,
+                        template_id: row.id,
+                        semantic_digest,
+                        prepared_kernel_id: prepared_kernel_by_template_string_id
+                            .get(&row.template_string_id)
+                            .copied()
+                            .flatten(),
+                    };
+                    if records.insert(($kind, row.id), identity).is_some() {
+                        return Err(invalid(format!(
+                            "duplicate {} recurrence template ID {}",
+                            $kind.as_str(),
+                            row.id
+                        )));
+                    }
+                }
+            };
+        }
+        register!(RecurrenceSemanticTemplateKind::Parameter, input.parameters);
+        register!(
+            RecurrenceSemanticTemplateKind::CurrentState,
+            input.current_states
+        );
+        register!(RecurrenceSemanticTemplateKind::Source, input.sources);
+        register!(
+            RecurrenceSemanticTemplateKind::QuantumFlow,
+            input.quantum_flows
+        );
+        register!(
+            RecurrenceSemanticTemplateKind::Transition,
+            input.transitions
+        );
+        register!(
+            RecurrenceSemanticTemplateKind::Propagator,
+            input.propagators
+        );
+        register!(RecurrenceSemanticTemplateKind::Closure, input.closures);
+        register!(
+            RecurrenceSemanticTemplateKind::ColorContraction,
+            input.color_contractions
+        );
+        register!(
+            RecurrenceSemanticTemplateKind::SymmetryProof,
+            input.symmetry_proofs
+        );
+
+        Ok(RecurrenceTemplateSemanticIndex {
+            compiled_model_digest: self.summary.compiled_model_digest,
+            catalog_digest: self.summary.catalog_digest,
+            records,
+        })
     }
 }
 
@@ -610,6 +802,10 @@ impl<'a> RecurrenceTemplateInputView<'a> {
             color_contraction_count: checked_len(
                 self.color_contractions.len(),
                 "color contractions",
+            )?,
+            lc_color_transition_witness_count: checked_len(
+                self.lc_color_transition_witnesses.len(),
+                "LC color transition witnesses",
             )?,
             symmetry_proof_count: checked_len(self.symmetry_proofs.len(), "symmetry proofs")?,
             evaluator_binding_count: checked_len(
@@ -1116,6 +1312,16 @@ impl<'a> RecurrenceTemplateInputView<'a> {
             ] {
                 required_string(&catalogs.strings, id, label)?;
             }
+            let color_shape = required_string(
+                &catalogs.strings,
+                row.lc_color_shape_string_id,
+                "current-state LC color shape",
+            )?;
+            validate_lc_color_shape(
+                color_shape,
+                row.color_representation,
+                &format!("current state {index}"),
+            )?;
             optional_string(
                 &catalogs.strings,
                 row.auxiliary_kind_string_id,
@@ -1249,6 +1455,7 @@ impl<'a> RecurrenceTemplateInputView<'a> {
             self.quantum_flows.iter().map(|row| row.id),
             self.quantum_flows.iter().map(|row| row.template_string_id),
         )?;
+        let mut static_quantum_flows = BTreeMap::<u32, u32>::new();
         for (index, row) in self.quantum_flows.iter().enumerate() {
             register_template(
                 template_kinds,
@@ -1267,8 +1474,10 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.input_state_sequence_id,
                 "quantum-flow input states",
             )?;
-            if states.is_empty() {
-                return Err(invalid(format!("quantum flow {index} has no inputs")));
+            if states.len() != 2 {
+                return Err(invalid(format!(
+                    "quantum flow {index} must have binary input arity"
+                )));
             }
             validate_u32_references(
                 states,
@@ -1304,6 +1513,32 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 self.quantum_number_flow_ranges.len(),
                 "quantum-flow quantum-number flows",
             )?;
+            let operation = required_string(
+                &catalogs.strings,
+                row.flavour_flow_operation_string_id,
+                "quantum-flow flavour operation",
+            )?;
+            if !matches!(
+                operation,
+                "constant-result"
+                    | "append-left-result"
+                    | "append-right-result"
+                    | "concat-left-right-result"
+            ) {
+                return Err(invalid(format!(
+                    "quantum flow {index} has unsupported flavour operation {operation:?}"
+                )));
+            }
+            let quantum_operation = required_string(
+                &catalogs.strings,
+                row.quantum_number_flow_operation_string_id,
+                "quantum-flow quantum-number operation",
+            )?;
+            if quantum_operation != "particle-static-result" {
+                return Err(invalid(format!(
+                    "quantum flow {index} has unsupported quantum-number operation {quantum_operation:?}"
+                )));
+            }
             required_reference(
                 row.result_state_template_id,
                 self.current_states.len(),
@@ -1318,6 +1553,22 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.result_quantum_number_flow_id,
                 self.quantum_number_flow_ranges.len(),
                 "quantum-flow result quantum-number flow",
+            )?;
+            let previous_quantum_flow = static_quantum_flows
+                .entry(row.result_state_template_id)
+                .or_insert(row.result_quantum_number_flow_id);
+            if *previous_quantum_flow != row.result_quantum_number_flow_id {
+                return Err(invalid(format!(
+                    "quantum flow {index} violates particle-static quantum-number flow"
+                )));
+            }
+            validate_flavour_flow_witness(
+                self,
+                index,
+                operation,
+                flavour_ids,
+                row.result_state_template_id,
+                row.result_flavour_flow_id,
             )?;
             required_reference(
                 row.coupling_order_set_id,
@@ -1362,6 +1613,16 @@ impl<'a> RecurrenceTemplateInputView<'a> {
             .map(|row| CheckedTableRange::new(row.nc_term_start, row.nc_term_count))
             .collect();
         validate_packed_ranges("color Nc polynomial", &ranges, self.color_nc_terms.len())?;
+        let witness_ranges: Vec<_> = self
+            .color_contractions
+            .iter()
+            .map(|row| CheckedTableRange::new(row.witness_start, row.witness_count))
+            .collect();
+        validate_packed_ranges(
+            "LC color transition witnesses",
+            &witness_ranges,
+            self.lc_color_transition_witnesses.len(),
+        )?;
         for (index, row) in self.color_contractions.iter().enumerate() {
             register_template(
                 template_kinds,
@@ -1392,6 +1653,154 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.output_representation,
                 row.ordered_open_string_arity,
             )?;
+            let witnesses = &self.lc_color_transition_witnesses[witness_ranges[index]
+                .as_usize_range(
+                    self.lc_color_transition_witnesses.len(),
+                    "LC color transition witnesses",
+                )?];
+            if witnesses.is_empty() {
+                return Err(invalid(format!(
+                    "color contraction {index} has no executable LC transition witness"
+                )));
+            }
+            let has_output = row.has_output_representation == 1;
+            for (ordinal, witness) in witnesses.iter().enumerate() {
+                if witness.color_contraction_id as usize != index {
+                    return Err(invalid(format!(
+                        "LC color witness names contraction {}, expected {index}",
+                        witness.color_contraction_id
+                    )));
+                }
+                if witness.ordinal as usize != ordinal {
+                    return Err(invalid(format!(
+                        "LC color witness for contraction {index} has ordinal {}, expected {ordinal}",
+                        witness.ordinal
+                    )));
+                }
+                let left_shape = required_string(
+                    &catalogs.strings,
+                    witness.left_shape_string_id,
+                    "LC color witness left shape",
+                )?;
+                let right_shape = required_string(
+                    &catalogs.strings,
+                    witness.right_shape_string_id,
+                    "LC color witness right shape",
+                )?;
+                validate_lc_color_shape_name(left_shape, "LC color witness left shape")?;
+                validate_lc_color_shape_name(right_shape, "LC color witness right shape")?;
+                if input_representations.len() != 2 {
+                    return Err(invalid(format!(
+                        "LC color witness for contraction {index} requires exactly two input representations"
+                    )));
+                }
+                match witness.input_permutation {
+                    0 | 1 => {}
+                    value => {
+                        return Err(invalid(format!(
+                            "LC color witness input permutation must be 0 or 1, found {value}"
+                        )));
+                    }
+                }
+                for (shape, input) in [left_shape, right_shape].into_iter().zip([0usize, 1usize]) {
+                    validate_lc_color_shape(
+                        shape,
+                        input_representations[input],
+                        "LC color witness input",
+                    )?;
+                }
+                if witness.reverse_parent_mask > 3 {
+                    return Err(invalid(format!(
+                        "LC color witness reverse-parent mask {} exceeds two inputs",
+                        witness.reverse_parent_mask
+                    )));
+                }
+                let is_join = witness.component_operation == 0;
+                let is_close = witness.component_operation == 5;
+                if witness.component_operation > 5 {
+                    return Err(invalid(format!(
+                        "LC color witness operation {} is not supported",
+                        witness.component_operation
+                    )));
+                }
+                if is_join {
+                    if witness.result_component_kind > 2 {
+                        return Err(invalid(format!(
+                            "LC color join witness has invalid component kind {}",
+                            witness.result_component_kind
+                        )));
+                    }
+                } else if witness.result_component_kind != u8::MAX {
+                    return Err(invalid(format!(
+                        "only LC color join witnesses may declare a result component kind"
+                    )));
+                }
+                if is_close {
+                    if has_output || witness.result_shape_string_id != MISSING_U32 {
+                        return Err(invalid(format!(
+                            "LC color closure witness must have neither an output representation nor a result shape"
+                        )));
+                    }
+                } else {
+                    if !has_output {
+                        return Err(invalid(format!(
+                            "non-closure LC color witness requires an output representation"
+                        )));
+                    }
+                    let result_shape = required_string(
+                        &catalogs.strings,
+                        witness.result_shape_string_id,
+                        "LC color witness result shape",
+                    )?;
+                    validate_lc_color_shape(
+                        result_shape,
+                        row.output_representation,
+                        "LC color witness result",
+                    )?;
+                }
+                let factor = required_factor(
+                    &catalogs.factors,
+                    witness.exact_factor_id,
+                    "LC color witness factor",
+                )?;
+                if *factor == ExactComplexRational::ZERO {
+                    return Err(invalid("LC color witness factor must be nonzero"));
+                }
+                required_digest(
+                    &catalogs.digests,
+                    witness.proof_digest_id,
+                    "LC color witness proof",
+                )?;
+                let provenance = u32_sequence(
+                    self,
+                    witness.provenance_sequence_id,
+                    "LC color witness provenance",
+                )?;
+                if provenance.len() % 2 != 0 {
+                    return Err(invalid(
+                        "LC color witness provenance must contain key/value pairs",
+                    ));
+                }
+                let mut previous_key = None;
+                for pair in provenance.chunks_exact(2) {
+                    let key = required_string(
+                        &catalogs.strings,
+                        pair[0],
+                        "LC color witness provenance key",
+                    )?;
+                    required_string(
+                        &catalogs.strings,
+                        pair[1],
+                        "LC color witness provenance value",
+                    )?;
+                    if previous_key.is_some_and(|previous| previous >= key) {
+                        return Err(invalid(
+                            "LC color witness provenance keys must be sorted and unique",
+                        ));
+                    }
+                    previous_key = Some(key);
+                }
+            }
             required_factor(
                 &catalogs.factors,
                 row.exact_coefficient_factor_id,
@@ -1660,9 +2069,10 @@ impl<'a> RecurrenceTemplateInputView<'a> {
             )?;
             if inputs != flow_inputs
                 || row.result_state_template_id != flow.result_state_template_id
+                || row.coupling_order_set_id != flow.coupling_order_set_id
             {
                 return Err(invalid(format!(
-                    "transition {index} and quantum-flow state contracts do not match"
+                    "transition {index} and quantum-flow state/coupling contracts do not match"
                 )));
             }
         }
@@ -1794,6 +2204,11 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 return Err(invalid(format!("closure {index} has no inputs")));
             }
             validate_u32_references(inputs, self.current_states.len(), "closure input states")?;
+            let result_state = optional_reference(
+                row.result_state_template_id,
+                self.current_states.len(),
+                "closure result state",
+            )?;
             required_reference(
                 row.evaluator_binding_id,
                 self.evaluator_bindings.len(),
@@ -1835,6 +2250,30 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 self.quantum_flows.len(),
                 "closure eligible quantum flows",
             )?;
+            let evaluator = &self.evaluator_bindings[row.evaluator_binding_id as usize];
+            match EvaluatorCallableKind::try_from(evaluator.callable_kind)? {
+                EvaluatorCallableKind::PreparedKernel if eligible_flows.is_empty() => {
+                    return Err(invalid(format!(
+                        "prepared closure {index} has no eligible quantum-flow witness"
+                    )));
+                }
+                EvaluatorCallableKind::RusticolTemplate if !eligible_flows.is_empty() => {
+                    return Err(invalid(format!(
+                        "direct Rusticol closure {index} carries prepared quantum-flow witnesses"
+                    )));
+                }
+                EvaluatorCallableKind::PreparedKernel if result_state.is_none() => {
+                    return Err(invalid(format!(
+                        "prepared closure {index} has no result-state contract"
+                    )));
+                }
+                EvaluatorCallableKind::RusticolTemplate if result_state.is_some() => {
+                    return Err(invalid(format!(
+                        "direct Rusticol closure {index} carries a result-state contract"
+                    )));
+                }
+                _ => {}
+            }
             for flow_id in eligible_flows {
                 let flow = &self.quantum_flows[*flow_id as usize];
                 let flow_inputs = u32_sequence(
@@ -1845,6 +2284,11 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 if flow_inputs != inputs {
                     return Err(invalid(format!(
                         "closure {index} and eligible quantum flow {flow_id} have different input-state contracts"
+                    )));
+                }
+                if Some(flow.result_state_template_id as usize) != result_state {
+                    return Err(invalid(format!(
+                        "closure {index} and eligible quantum flow {flow_id} have different result-state contracts"
                     )));
                 }
                 if flow.coupling_order_set_id != row.coupling_order_set_id {
@@ -2415,6 +2859,43 @@ fn validate_color_contract_shape(
     Ok(())
 }
 
+fn validate_lc_color_shape_name(value: &str, label: &str) -> RusticolResult<()> {
+    if matches!(
+        value,
+        "singlet-forest"
+            | "fundamental-open-string"
+            | "antifundamental-open-string"
+            | "adjoint-segment"
+    ) {
+        Ok(())
+    } else {
+        Err(invalid(format!(
+            "{label} has unsupported LC color shape {value:?}"
+        )))
+    }
+}
+
+fn validate_lc_color_shape(value: &str, representation: i32, label: &str) -> RusticolResult<()> {
+    validate_lc_color_shape_name(value, label)?;
+    let expected = match representation {
+        1 => "singlet-forest",
+        3 => "fundamental-open-string",
+        -3 => "antifundamental-open-string",
+        8 => "adjoint-segment",
+        other => {
+            return Err(invalid(format!(
+                "{label} uses unsupported LC representation {other}"
+            )));
+        }
+    };
+    if value != expected {
+        return Err(invalid(format!(
+            "{label} maps LC representation {representation} to {value:?}, expected {expected:?}"
+        )));
+    }
+    Ok(())
+}
+
 fn checked_len(length: usize, label: &str) -> RusticolResult<u32> {
     u32::try_from(length).map_err(|_| invalid(format!("{label} count {length} exceeds u32")))
 }
@@ -2570,6 +3051,68 @@ fn i32_sequence<'a>(
         id,
         label,
     )
+}
+
+fn validate_flavour_flow_witness(
+    input: RecurrenceTemplateInputView<'_>,
+    row: usize,
+    operation: &str,
+    input_flavour_ids: &[u32],
+    result_state_id: u32,
+    result_flavour_id: u32,
+) -> RusticolResult<()> {
+    if input_flavour_ids.len() != 2 {
+        return Err(invalid(format!(
+            "quantum flow {row} must have two flavour-flow inputs"
+        )));
+    }
+    let left = sequence(
+        input.flavour_flow_ranges,
+        input.flavour_flow_values,
+        input_flavour_ids[0],
+        "quantum-flow left flavour flow",
+    )?;
+    let right = sequence(
+        input.flavour_flow_ranges,
+        input.flavour_flow_values,
+        input_flavour_ids[1],
+        "quantum-flow right flavour flow",
+    )?;
+    let result = sequence(
+        input.flavour_flow_ranges,
+        input.flavour_flow_values,
+        result_flavour_id,
+        "quantum-flow result flavour flow",
+    )?;
+    let result_particle = input.current_states[result_state_id as usize].particle_id;
+    let mut expected = Vec::with_capacity(left.len() + right.len() + 1);
+    match operation {
+        "constant-result" => expected.push(result_particle),
+        "append-left-result" => {
+            expected.extend_from_slice(left);
+            if left.last().copied() != Some(result_particle) {
+                expected.push(result_particle);
+            }
+        }
+        "append-right-result" => {
+            expected.extend_from_slice(right);
+            if right.last().copied() != Some(result_particle) {
+                expected.push(result_particle);
+            }
+        }
+        "concat-left-right-result" => {
+            expected.extend_from_slice(left);
+            expected.extend_from_slice(right);
+            expected.push(result_particle);
+        }
+        _ => return Err(invalid("unsupported flavour-flow operation")),
+    }
+    if result != expected {
+        return Err(invalid(format!(
+            "quantum flow {row} flavour operation does not reproduce its stored result witness"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_strict_u32(values: &[u32], label: &str) -> RusticolResult<()> {
@@ -2766,6 +3309,7 @@ mod tests {
             transitions: vec![],
             closures: vec![],
             color_contractions: vec![],
+            lc_color_transition_witnesses: vec![],
             color_nc_terms: vec![],
             u32_sequence_ranges: vec![IndexedRangeRow {
                 id: 0,
@@ -2837,6 +3381,16 @@ mod tests {
         let validated = empty_canonical_input().validate().unwrap();
         assert_eq!(validated.summary().current_state_count, 0);
         assert_eq!(validated.summary().prepared_kernel_count, 0);
+        let semantic_index = validated.semantic_index().unwrap();
+        assert!(semantic_index.is_empty());
+        assert_eq!(
+            semantic_index.compiled_model_digest,
+            validated.summary().compiled_model_digest
+        );
+        assert_eq!(
+            semantic_index.catalog_digest,
+            validated.summary().catalog_digest
+        );
     }
 
     #[test]

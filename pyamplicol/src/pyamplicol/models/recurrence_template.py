@@ -39,6 +39,30 @@ PreparedOutputFactorSource: TypeAlias = Literal[
 ]
 FlavourFlowV1: TypeAlias = tuple[int, ...]
 QuantumNumberFlowV1: TypeAlias = tuple[tuple[str, str], ...]
+FlavourFlowOperationV1: TypeAlias = Literal[
+    "constant-result",
+    "append-left-result",
+    "append-right-result",
+    "concat-left-right-result",
+]
+QuantumNumberFlowOperationV1: TypeAlias = Literal["particle-static-result"]
+LCColorShapeKindV1: TypeAlias = Literal[
+    "singlet-forest",
+    "fundamental-open-string",
+    "antifundamental-open-string",
+    "adjoint-segment",
+]
+LCColorComponentKindV1: TypeAlias = Literal[
+    "open-string", "adjoint-segment", "trace"
+]
+LCColorComponentOperationV1: TypeAlias = Literal[
+    "concatenate-join",
+    "concatenate-keep",
+    "inherit-left",
+    "inherit-right",
+    "empty",
+    "close",
+]
 
 SUPPORTED_SYMMETRY_PROOF_ALGORITHMS = frozenset(
     {
@@ -68,6 +92,36 @@ _EVALUATOR_CONTRACT_KINDS = frozenset(
 )
 _EVALUATOR_CALLABLE_KINDS = frozenset({"prepared-kernel", "rusticol-template"})
 _OUTPUT_FACTOR_SOURCES = frozenset({"none", "coupling-real", "coupling-imag"})
+_FLAVOUR_FLOW_OPERATIONS = frozenset(
+    {
+        "constant-result",
+        "append-left-result",
+        "append-right-result",
+        "concat-left-right-result",
+    }
+)
+_QUANTUM_NUMBER_FLOW_OPERATIONS = frozenset({"particle-static-result"})
+_LC_COLOR_SHAPE_KINDS = frozenset(
+    {
+        "singlet-forest",
+        "fundamental-open-string",
+        "antifundamental-open-string",
+        "adjoint-segment",
+    }
+)
+_LC_COLOR_COMPONENT_KINDS = frozenset(
+    {"open-string", "adjoint-segment", "trace"}
+)
+_LC_COLOR_COMPONENT_OPERATIONS = frozenset(
+    {
+        "concatenate-join",
+        "concatenate-keep",
+        "inherit-left",
+        "inherit-right",
+        "empty",
+        "close",
+    }
+)
 _HEX = frozenset("0123456789abcdef")
 
 
@@ -241,6 +295,26 @@ def _decode_int_tuple(name: str, value: object) -> tuple[int, ...]:
     if not isinstance(value, list) or any(type(item) is not int for item in value):
         raise RecurrenceTemplateError(f"{name} must be a JSON integer array")
     return tuple(value)
+
+
+def _decode_string_pairs(
+    name: str,
+    value: object,
+) -> tuple[tuple[str, str], ...]:
+    if not isinstance(value, list):
+        raise RecurrenceTemplateError(f"{name} must be a JSON array")
+    result: list[tuple[str, str]] = []
+    for index, item in enumerate(value):
+        if (
+            not isinstance(item, list)
+            or len(item) != 2
+            or any(not isinstance(part, str) or not part for part in item)
+        ):
+            raise RecurrenceTemplateError(
+                f"{name} row {index} must contain two nonempty strings"
+            )
+        result.append((item[0], item[1]))
+    return tuple(result)
 
 
 def _require_flavour_flow(name: str, value: object) -> FlavourFlowV1:
@@ -576,6 +650,7 @@ class CurrentStateTemplateV1(_SemanticRecord):
     tensor_ordering: tuple[str, ...]
     dimension: int
     chirality: int
+    lc_color_shape_kind: LCColorShapeKindV1
     auxiliary_kind: str | None
     mass_parameter_id: str | None
     width_parameter_id: str | None
@@ -605,6 +680,10 @@ class CurrentStateTemplateV1(_SemanticRecord):
                 "current tensor ordering must name every output component"
             )
         _require_int("current chirality", self.chirality)
+        if self.lc_color_shape_kind not in _LC_COLOR_SHAPE_KINDS:
+            raise RecurrenceTemplateError(
+                f"unsupported current LC color shape {self.lc_color_shape_kind!r}"
+            )
         if self.auxiliary_kind is not None:
             _require_nonempty("current auxiliary_kind", self.auxiliary_kind)
         if self.mass_parameter_id is not None:
@@ -619,6 +698,7 @@ class CurrentStateTemplateV1(_SemanticRecord):
             "auxiliary_kind": self.auxiliary_kind,
             "basis": self.basis,
             "chirality": self.chirality,
+            "lc_color_shape_kind": self.lc_color_shape_kind,
             "color_representation": self.color_representation,
             "dimension": self.dimension,
             "mass_parameter_id": self.mass_parameter_id,
@@ -703,6 +783,8 @@ class QuantumFlowTemplateV1(_SemanticRecord):
     input_spin_states: tuple[int, ...]
     input_flavour_flows: tuple[FlavourFlowV1, ...]
     input_quantum_number_flows: tuple[QuantumNumberFlowV1, ...]
+    flavour_flow_operation: FlavourFlowOperationV1
+    quantum_number_flow_operation: QuantumNumberFlowOperationV1
     coupling_orders: tuple[tuple[str, int], ...]
     result_state_template_id: str
     result_spin_state: int
@@ -733,7 +815,21 @@ class QuantumFlowTemplateV1(_SemanticRecord):
             _require_quantum_number_flow(
                 f"quantum-flow quantum-number flow {index}", flow
             )
+        if self.flavour_flow_operation not in _FLAVOUR_FLOW_OPERATIONS:
+            raise RecurrenceTemplateError(
+                "unsupported quantum-flow flavour operation "
+                f"{self.flavour_flow_operation!r}"
+            )
+        if self.quantum_number_flow_operation not in _QUANTUM_NUMBER_FLOW_OPERATIONS:
+            raise RecurrenceTemplateError(
+                "unsupported quantum-flow quantum-number operation "
+                f"{self.quantum_number_flow_operation!r}"
+            )
         arity = len(self.input_state_template_ids)
+        if arity != 2:
+            raise RecurrenceTemplateError(
+                "recurrence quantum-flow templates must have binary input arity"
+            )
         if not all(
             len(values) == arity
             for values in (
@@ -766,6 +862,7 @@ class QuantumFlowTemplateV1(_SemanticRecord):
         return {
             "coupling_orders": [list(item) for item in self.coupling_orders],
             "exact_coupling": self.exact_coupling.to_dict(),
+            "flavour_flow_operation": self.flavour_flow_operation,
             "input_flavour_flows": [list(flow) for flow in self.input_flavour_flows],
             "input_quantum_number_flows": [
                 [list(item) for item in flow]
@@ -774,6 +871,7 @@ class QuantumFlowTemplateV1(_SemanticRecord):
             "input_spin_states": list(self.input_spin_states),
             "input_state_template_ids": list(self.input_state_template_ids),
             "predicate_digest": self.predicate_digest,
+            "quantum_number_flow_operation": self.quantum_number_flow_operation,
             "result_flavour_flow": list(self.result_flavour_flow),
             "result_quantum_number_flow": [
                 list(item) for item in self.result_quantum_number_flow
@@ -782,6 +880,31 @@ class QuantumFlowTemplateV1(_SemanticRecord):
             "result_spin_state": self.result_spin_state,
             "template_id": self.template_id,
         }
+
+
+def _apply_flavour_flow_operation(
+    operation: FlavourFlowOperationV1,
+    left: FlavourFlowV1,
+    right: FlavourFlowV1,
+    result_particle: int,
+) -> FlavourFlowV1:
+    if operation == "constant-result":
+        return (result_particle,)
+    if operation == "append-left-result":
+        return (
+            left
+            if left and left[-1] == result_particle
+            else (*left, result_particle)
+        )
+    if operation == "append-right-result":
+        return (
+            right
+            if right and right[-1] == result_particle
+            else (*right, result_particle)
+        )
+    if operation == "concat-left-right-result":
+        return (*left, *right, result_particle)
+    raise AssertionError(f"unknown flavour-flow operation {operation!r}")
 
 
 def _validate_coupling_orders(value: object) -> tuple[tuple[str, int], ...]:
@@ -983,6 +1106,7 @@ class ClosureTemplateV1(_SemanticRecord):
 
     template_id: str
     input_state_template_ids: tuple[str, ...]
+    result_state_template_id: str | None
     evaluator_resolver_key: str
     canonical_input_order: tuple[int, ...]
     coupling_parameter_ids: tuple[str, ...]
@@ -1005,6 +1129,8 @@ class ClosureTemplateV1(_SemanticRecord):
         _require_string_tuple(
             "closure input states", self.input_state_template_ids, nonempty=True
         )
+        if self.result_state_template_id is not None:
+            _require_nonempty("closure result state", self.result_state_template_id)
         _require_nonempty("closure evaluator resolver", self.evaluator_resolver_key)
         _require_permutation(
             "closure canonical input order",
@@ -1090,10 +1216,102 @@ class ClosureTemplateV1(_SemanticRecord):
                 else self.input_exchange_factor.to_dict()
             ),
             "input_state_template_ids": list(self.input_state_template_ids),
+            "result_state_template_id": self.result_state_template_id,
             "metric_signature": self.metric_signature,
             "projection": self.projection,
             "output_factor_source": self.output_factor_source,
             "template_id": self.template_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class LCColorTransitionWitnessV1:
+    """One exact executable ordered-word term in an LC color contraction."""
+
+    input_shape_kinds: tuple[LCColorShapeKindV1, LCColorShapeKindV1]
+    input_permutation: tuple[int, int]
+    reverse_parent_mask: int
+    component_operation: LCColorComponentOperationV1
+    result_component_kind: LCColorComponentKindV1 | None
+    result_shape_kind: LCColorShapeKindV1 | None
+    exact_factor: ExactComplexRationalV1
+    proof_digest: str
+    provenance: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.input_shape_kinds) != 2 or any(
+            value not in _LC_COLOR_SHAPE_KINDS for value in self.input_shape_kinds
+        ):
+            raise RecurrenceTemplateError(
+                "LC color witness requires two supported input shape kinds"
+            )
+        if self.input_permutation not in {(0, 1), (1, 0)}:
+            raise RecurrenceTemplateError(
+                "LC color witness input permutation must be (0, 1) or (1, 0)"
+            )
+        _require_int("LC color witness reverse-parent mask", self.reverse_parent_mask)
+        if self.reverse_parent_mask not in range(4):
+            raise RecurrenceTemplateError(
+                "LC color witness reverse-parent mask must fit two inputs"
+            )
+        if self.component_operation not in _LC_COLOR_COMPONENT_OPERATIONS:
+            raise RecurrenceTemplateError(
+                f"unsupported LC color witness operation {self.component_operation!r}"
+            )
+        if self.result_component_kind is not None and (
+            self.result_component_kind not in _LC_COLOR_COMPONENT_KINDS
+        ):
+            raise RecurrenceTemplateError(
+                "unsupported LC color witness result component kind"
+            )
+        if (self.component_operation == "concatenate-join") != (
+            self.result_component_kind is not None
+        ):
+            raise RecurrenceTemplateError(
+                "only LC color join witnesses declare a result component kind"
+            )
+        if self.component_operation == "close":
+            if self.result_shape_kind is not None:
+                raise RecurrenceTemplateError(
+                    "LC color closure witness cannot declare a result shape"
+                )
+        elif self.result_shape_kind not in _LC_COLOR_SHAPE_KINDS:
+            raise RecurrenceTemplateError(
+                "non-closure LC color witness requires a supported result shape"
+            )
+        if not isinstance(self.exact_factor, ExactComplexRationalV1):
+            raise RecurrenceTemplateError(
+                "LC color witness factor must be an exact complex rational"
+            )
+        if self.exact_factor == ExactComplexRationalV1.zero():
+            raise RecurrenceTemplateError("LC color witness factor must be nonzero")
+        _require_sha256("LC color witness proof digest", self.proof_digest)
+        if self.provenance != tuple(sorted(set(self.provenance))):
+            raise RecurrenceTemplateError(
+                "LC color witness provenance must be sorted and unique"
+            )
+        if any(
+            not isinstance(key, str)
+            or not key
+            or not isinstance(value, str)
+            or not value
+            for key, value in self.provenance
+        ):
+            raise RecurrenceTemplateError(
+                "LC color witness provenance requires nonempty string pairs"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "component_operation": self.component_operation,
+            "exact_factor": self.exact_factor.to_dict(),
+            "input_permutation": list(self.input_permutation),
+            "input_shape_kinds": list(self.input_shape_kinds),
+            "proof_digest": self.proof_digest,
+            "provenance": [list(item) for item in self.provenance],
+            "result_component_kind": self.result_component_kind,
+            "result_shape_kind": self.result_shape_kind,
+            "reverse_parent_mask": self.reverse_parent_mask,
         }
 
 
@@ -1109,6 +1327,7 @@ class ColorContractionTemplateV1(_SemanticRecord):
     exact_coefficient: ExactComplexRationalV1
     nc_polynomial: tuple[tuple[int, ExactComplexRationalV1], ...]
     expression_digest: str
+    transition_witnesses: tuple[LCColorTransitionWitnessV1, ...]
     semantic_digest: str = ""
 
     def __post_init__(self) -> None:
@@ -1148,6 +1367,13 @@ class ColorContractionTemplateV1(_SemanticRecord):
                 "color Nc polynomial powers must be sorted and unique"
             )
         _require_sha256("color expression_digest", self.expression_digest)
+        if not self.transition_witnesses or any(
+            not isinstance(value, LCColorTransitionWitnessV1)
+            for value in self.transition_witnesses
+        ):
+            raise RecurrenceTemplateError(
+                "color contraction requires exact LC transition witnesses"
+            )
         self._finish_semantic_record()
 
     def _semantic_fields(self) -> dict[str, object]:
@@ -1163,6 +1389,9 @@ class ColorContractionTemplateV1(_SemanticRecord):
             "output_representation": self.output_representation,
             "rule_kind": self.rule_kind,
             "template_id": self.template_id,
+            "transition_witnesses": [
+                witness.to_dict() for witness in self.transition_witnesses
+            ],
         }
 
 
@@ -1555,6 +1784,7 @@ class RecurrenceTemplateCatalog:
             if not isinstance(record, EvaluatorBindingV1)
         }
         evaluators = {record.resolver_key: record for record in self.evaluator_bindings}
+        static_quantum_flows: dict[str, QuantumNumberFlowV1] = {}
 
         for parameter in self.parameters:
             _require_references(
@@ -1596,9 +1826,29 @@ class RecurrenceTemplateCatalog:
             _require_references(
                 "quantum-flow input states", flow.input_state_template_ids, states
             )
-            _require_reference(
+            result_state = _require_reference(
                 "quantum-flow result state", flow.result_state_template_id, states
             )
+            expected_flavour = _apply_flavour_flow_operation(
+                flow.flavour_flow_operation,
+                flow.input_flavour_flows[0],
+                flow.input_flavour_flows[1],
+                result_state.particle_id,
+            )
+            if flow.result_flavour_flow != expected_flavour:
+                raise RecurrenceTemplateError(
+                    "quantum-flow flavour operation does not reproduce its stored "
+                    "result witness"
+                )
+            previous_quantum_flow = static_quantum_flows.setdefault(
+                flow.result_state_template_id,
+                flow.result_quantum_number_flow,
+            )
+            if flow.result_quantum_number_flow != previous_quantum_flow:
+                raise RecurrenceTemplateError(
+                    "particle-static quantum-number flow differs for one result "
+                    "state"
+                )
         for transition in self.transitions:
             _require_references(
                 "transition input states",
@@ -1618,9 +1868,11 @@ class RecurrenceTemplateCatalog:
             if (
                 flow.input_state_template_ids != transition.input_state_template_ids
                 or flow.result_state_template_id != transition.result_state_template_id
+                or flow.coupling_orders != transition.coupling_orders
             ):
                 raise RecurrenceTemplateError(
-                    "transition and quantum-flow state contracts do not match"
+                    "transition and quantum-flow state/coupling contracts do not "
+                    "match"
                 )
             _require_references(
                 "transition coupling parameters",
@@ -1676,6 +1928,9 @@ class RecurrenceTemplateCatalog:
             _require_references(
                 "closure input states", closure.input_state_template_ids, states
             )
+            _require_optional_reference(
+                "closure result state", closure.result_state_template_id, states
+            )
             eligible_flows = tuple(
                 _require_reference(
                     "closure eligible quantum flow", flow_id, quantum_flows
@@ -1684,12 +1939,14 @@ class RecurrenceTemplateCatalog:
             )
             if any(
                 flow.input_state_template_ids != closure.input_state_template_ids
+                or flow.result_state_template_id
+                != closure.result_state_template_id
                 or flow.coupling_orders != closure.coupling_orders
                 for flow in eligible_flows
             ):
                 raise RecurrenceTemplateError(
-                    "closure and eligible quantum-flow state/coupling contracts "
-                    "do not match"
+                    "closure and eligible quantum-flow input/result/coupling "
+                    "contracts do not match"
                 )
             _require_references(
                 "closure coupling parameters",
@@ -1704,6 +1961,30 @@ class RecurrenceTemplateCatalog:
             evaluator = _require_reference(
                 "closure evaluator", closure.evaluator_resolver_key, evaluators
             )
+            if evaluator.callable_kind == "prepared-kernel" and not eligible_flows:
+                raise RecurrenceTemplateError(
+                    "prepared closure must carry at least one eligible quantum-flow "
+                    "witness"
+                )
+            if evaluator.callable_kind == "rusticol-template" and eligible_flows:
+                raise RecurrenceTemplateError(
+                    "direct Rusticol closure cannot carry prepared quantum-flow "
+                    "witnesses"
+                )
+            if (
+                evaluator.callable_kind == "prepared-kernel"
+                and closure.result_state_template_id is None
+            ):
+                raise RecurrenceTemplateError(
+                    "prepared closure must carry a result-state contract"
+                )
+            if (
+                evaluator.callable_kind == "rusticol-template"
+                and closure.result_state_template_id is not None
+            ):
+                raise RecurrenceTemplateError(
+                    "direct Rusticol closure cannot carry a result-state contract"
+                )
             _validate_evaluator_contract(
                 evaluator,
                 kind="closure",
@@ -2081,6 +2362,7 @@ def _current_state_from_dict(payload: Mapping[str, object]) -> CurrentStateTempl
             "tensor_ordering",
             "dimension",
             "chirality",
+            "lc_color_shape_kind",
             "auxiliary_kind",
             "mass_parameter_id",
             "width_parameter_id",
@@ -2103,6 +2385,9 @@ def _current_state_from_dict(payload: Mapping[str, object]) -> CurrentStateTempl
         ),
         dimension=_require_int("dimension", value["dimension"]),
         chirality=_require_int("chirality", value["chirality"]),
+        lc_color_shape_kind=_require_nonempty(
+            "LC color shape kind", value["lc_color_shape_kind"]
+        ),  # type: ignore[arg-type]
         auxiliary_kind=_decode_optional_string(
             "auxiliary_kind", value["auxiliary_kind"]
         ),
@@ -2175,6 +2460,8 @@ def _quantum_flow_from_dict(payload: Mapping[str, object]) -> QuantumFlowTemplat
             "input_spin_states",
             "input_flavour_flows",
             "input_quantum_number_flows",
+            "flavour_flow_operation",
+            "quantum_number_flow_operation",
             "coupling_orders",
             "result_state_template_id",
             "result_spin_state",
@@ -2199,6 +2486,13 @@ def _quantum_flow_from_dict(payload: Mapping[str, object]) -> QuantumFlowTemplat
         input_quantum_number_flows=_decode_quantum_number_flows(
             "flow quantum-number inputs", value["input_quantum_number_flows"]
         ),
+        flavour_flow_operation=_require_nonempty(
+            "flow flavour operation", value["flavour_flow_operation"]
+        ),  # type: ignore[arg-type]
+        quantum_number_flow_operation=_require_nonempty(
+            "flow quantum-number operation",
+            value["quantum_number_flow_operation"],
+        ),  # type: ignore[arg-type]
         coupling_orders=_decode_coupling_orders(
             "flow coupling orders", value["coupling_orders"]
         ),
@@ -2343,6 +2637,7 @@ def _closure_from_dict(payload: Mapping[str, object]) -> ClosureTemplateV1:
         {
             "template_id",
             "input_state_template_ids",
+            "result_state_template_id",
             "evaluator_resolver_key",
             "canonical_input_order",
             "coupling_parameter_ids",
@@ -2365,6 +2660,9 @@ def _closure_from_dict(payload: Mapping[str, object]) -> ClosureTemplateV1:
         template_id=_require_nonempty("closure template_id", value["template_id"]),
         input_state_template_ids=_decode_string_tuple(
             "closure input states", value["input_state_template_ids"]
+        ),
+        result_state_template_id=_decode_optional_string(
+            "closure result state", value["result_state_template_id"]
         ),
         evaluator_resolver_key=_require_nonempty(
             "closure evaluator", value["evaluator_resolver_key"]
@@ -2423,6 +2721,7 @@ def _color_from_dict(payload: Mapping[str, object]) -> ColorContractionTemplateV
             "exact_coefficient",
             "nc_polynomial",
             "expression_digest",
+            "transition_witnesses",
         }
     )
     value = _record_payload(
@@ -2444,6 +2743,9 @@ def _color_from_dict(payload: Mapping[str, object]) -> ColorContractionTemplateV
             )
         )
     output_representation = value["output_representation"]
+    raw_witnesses = value["transition_witnesses"]
+    if not isinstance(raw_witnesses, list):
+        raise RecurrenceTemplateError("LC color transition witnesses must be an array")
     return ColorContractionTemplateV1(
         template_id=_require_nonempty("color template_id", value["template_id"]),
         rule_kind=_require_nonempty("color rule kind", value["rule_kind"]),
@@ -2465,7 +2767,62 @@ def _color_from_dict(payload: Mapping[str, object]) -> ColorContractionTemplateV
         expression_digest=_require_sha256(
             "color expression digest", value["expression_digest"]
         ),
+        transition_witnesses=tuple(
+            _lc_color_witness_from_dict(witness) for witness in raw_witnesses
+        ),
         semantic_digest=value["semantic_digest"],  # type: ignore[arg-type]
+    )
+
+
+def _lc_color_witness_from_dict(payload: object) -> LCColorTransitionWitnessV1:
+    value = _require_mapping("LC color transition witness", payload)
+    _require_exact_keys(
+        "LC color transition witness",
+        value,
+        frozenset(
+            {
+                "component_operation",
+                "exact_factor",
+                "input_permutation",
+                "input_shape_kinds",
+                "proof_digest",
+                "provenance",
+                "result_component_kind",
+                "result_shape_kind",
+                "reverse_parent_mask",
+            }
+        ),
+    )
+    input_shapes = _decode_string_tuple(
+        "LC color witness input shapes", value["input_shape_kinds"]
+    )
+    if len(input_shapes) != 2:
+        raise RecurrenceTemplateError("LC color witness requires two input shapes")
+    return LCColorTransitionWitnessV1(
+        input_shape_kinds=(input_shapes[0], input_shapes[1]),  # type: ignore[arg-type]
+        input_permutation=_decode_int_tuple(
+            "LC color witness input permutation", value["input_permutation"]
+        ),  # type: ignore[arg-type]
+        reverse_parent_mask=_require_int(
+            "LC color witness reverse-parent mask", value["reverse_parent_mask"]
+        ),
+        component_operation=_require_nonempty(
+            "LC color witness operation", value["component_operation"]
+        ),  # type: ignore[arg-type]
+        result_component_kind=_decode_optional_string(
+            "LC color witness result component", value["result_component_kind"]
+        ),  # type: ignore[arg-type]
+        result_shape_kind=_decode_optional_string(
+            "LC color witness result shape", value["result_shape_kind"]
+        ),  # type: ignore[arg-type]
+        exact_factor=_decode_ratio("LC color witness factor", value["exact_factor"]),
+        proof_digest=_require_sha256(
+            "LC color witness proof digest", value["proof_digest"]
+        ),
+        provenance=_decode_string_pairs(
+            "LC color witness provenance",
+            value["provenance"],
+        ),
     )
 
 
@@ -2592,12 +2949,18 @@ __all__ = [
     "EvaluatorBindingV1",
     "EvaluatorCallableKind",
     "ExactComplexRationalV1",
+    "FlavourFlowOperationV1",
+    "LCColorComponentKindV1",
+    "LCColorComponentOperationV1",
+    "LCColorShapeKindV1",
+    "LCColorTransitionWitnessV1",
     "ParameterTemplate",
     "ParameterTemplateV1",
     "PropagatorTemplate",
     "PropagatorTemplateV1",
     "QuantumFlowTemplate",
     "QuantumFlowTemplateV1",
+    "QuantumNumberFlowOperationV1",
     "RecurrenceTemplateCatalog",
     "RecurrenceTemplateCatalogHeaderV1",
     "RecurrenceTemplateCatalogV1",

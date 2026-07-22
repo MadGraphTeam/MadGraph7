@@ -10,7 +10,10 @@ from dataclasses import replace
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
-from .compiler_color_flow import synthesize_fundamental_fierz_auxiliaries
+from .compiler_color_flow import (
+    compile_lc_color_transition_terms,
+    synthesize_fundamental_fierz_auxiliaries,
+)
 from .compiler_contact_trees import (
     _compile_color_singlet_contact_trees,
     _deduplicate_contact_partials,
@@ -359,16 +362,28 @@ def _annotate_oriented_kernel_color_projections(
                     f"compiler-generated kernel {kernel.vertex!r} has no proven "
                     "color-flow projection"
                 )
-        annotated.append(
-            replace(
-                kernel,
-                color_projection_structure=structure,
-                color_projection_coefficient=(
-                    float(coefficient.real),
-                    float(coefficient.imag),
+        annotated_kernel = replace(
+            kernel,
+            color_projection_structure=structure,
+            color_projection_coefficient=(
+                float(coefficient.real),
+                float(coefficient.imag),
+            ),
+        )
+        if term is not None and term.valence == 3 and kernel.vertex == term.vertex:
+            annotated_kernel = replace(
+                annotated_kernel,
+                lc_color_transition_terms=compile_lc_color_transition_terms(
+                    annotated_kernel,
+                    tuple(
+                        particle_by_name[name].color
+                        for name in annotated_kernel.particles
+                    ),
+                    proof_source="exact-trilinear-symbolica-projection-v1",
+                    provenance=(("vertex-term-id", str(term.id)),),
                 ),
             )
-        )
+        annotated.append(annotated_kernel)
     return tuple(annotated)
 
 
@@ -794,9 +809,9 @@ def _compile_four_point_contact_kernels(
                     model_symbols.model_name,
                     term.id,
                 )
-                final_prefactor = _sym.E(
-                    orientation.scalar_prefactor
-                ) * derived_coupling
+                final_prefactor = (
+                    _sym.E(orientation.scalar_prefactor) * derived_coupling
+                )
                 combined_color_source = (
                     f"{split.outer_color_source}*{split.final_color_source}"
                     if split.decomposition_kind == "two-structure-constants"

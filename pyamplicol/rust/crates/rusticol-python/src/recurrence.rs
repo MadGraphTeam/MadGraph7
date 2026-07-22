@@ -11,16 +11,17 @@ use numpy::{PyReadonlyArrayDyn, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList};
+use rusticol_core::recurrence::process;
+use rusticol_core::recurrence::template;
 use rusticol_core::recurrence::{
-    CheckedTableRange, ExactComplexRational, MultiwordMaskCatalogView,
-    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_BUILDER_RESULT_ABI, RECURRENCE_LC_COLOR_CAPABILITY,
-    RECURRENCE_PLAN_ABI, RECURRENCE_RUNTIME_CAPABILITY, RECURRENCE_RUNTIME_KIND,
-    RECURRENCE_RUNTIME_LAYOUT_ABI, RECURRENCE_TEMPLATE_ABI, RecurrenceStrategy, checked_u32_len,
-    checked_usize, validate_packed_ranges, validate_u32_references,
+    AuthenticatedRecurrenceBuilderInput, CheckedTableRange, RECURRENCE_BUILDER_INPUT_ABI,
+    RECURRENCE_BUILDER_RESULT_ABI, RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI,
+    RECURRENCE_RUNTIME_CAPABILITY, RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_TEMPLATE_ABI, RecurrenceStrategy, SemanticDigest, checked_usize,
 };
 use rusticol_core::{RusticolError, RusticolResult};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::python_error;
 
@@ -43,6 +44,16 @@ impl PrimitiveKind {
             Self::U32 => "<u4",
             Self::U64 => "<u8",
             Self::I32 => "<i4",
+        }
+    }
+
+    fn from_dtype(value: &str) -> Option<Self> {
+        match value {
+            "|u1" => Some(Self::U8),
+            "<u4" => Some(Self::U32),
+            "<u8" => Some(Self::U64),
+            "<i4" => Some(Self::I32),
+            _ => None,
         }
     }
 }
@@ -376,6 +387,10 @@ struct OwnedTable {
 }
 
 impl OwnedTable {
+    fn row_count(&self) -> RusticolResult<usize> {
+        checked_usize(self.row_count, &format!("{} row count", self.name))
+    }
+
     fn column(&self, name: &str) -> RusticolResult<&OwnedColumn> {
         let index = self.column_by_name.get(name).ok_or_else(|| {
             invalid(format!(
@@ -384,6 +399,30 @@ impl OwnedTable {
             ))
         })?;
         Ok(&self.columns[*index])
+    }
+
+    fn u8(&self, column: &str) -> RusticolResult<&[u8]> {
+        self.column(column)?
+            .values
+            .as_u8(&format!("{}.{column}", self.name))
+    }
+
+    fn u32(&self, column: &str) -> RusticolResult<&[u32]> {
+        self.column(column)?
+            .values
+            .as_u32(&format!("{}.{column}", self.name))
+    }
+
+    fn u64(&self, column: &str) -> RusticolResult<&[u64]> {
+        self.column(column)?
+            .values
+            .as_u64(&format!("{}.{column}", self.name))
+    }
+
+    fn i32(&self, column: &str) -> RusticolResult<&[i32]> {
+        self.column(column)?
+            .values
+            .as_i32(&format!("{}.{column}", self.name))
     }
 }
 
@@ -433,6 +472,74 @@ impl OwnedInput {
     }
 }
 
+const TEMPLATE_TABLE_INVENTORY: &[(&str, usize)] = &[
+    ("catalog_header", 17),
+    ("closures", 20),
+    ("color_contractions", 14),
+    ("color_nc_terms", 3),
+    ("coupling_order_ranges", 3),
+    ("coupling_order_terms", 3),
+    ("current_states", 17),
+    ("digest_catalog", 2),
+    ("evaluator_bindings", 14),
+    ("exact_factors", 5),
+    ("flavour_flow_ranges", 3),
+    ("flavour_flow_values", 1),
+    ("i32_sequence_ranges", 3),
+    ("i32_sequence_values", 1),
+    ("lc_color_transition_witnesses", 12),
+    ("parameters", 11),
+    ("propagators", 12),
+    ("quantum_flows", 16),
+    ("quantum_number_flow_ranges", 3),
+    ("quantum_number_flow_terms", 3),
+    ("sources", 14),
+    ("string_bytes", 1),
+    ("string_ranges", 2),
+    ("symmetry_proofs", 9),
+    ("transitions", 18),
+    ("u32_sequence_ranges", 3),
+    ("u32_sequence_values", 1),
+];
+
+struct PreparedTemplateInput {
+    input: OwnedInput,
+    canonical_digest_property: String,
+    catalog_digest: SemanticDigest,
+    compiled_model_digest: SemanticDigest,
+    prepared_kernel_pack_digest: SemanticDigest,
+}
+
+impl PreparedTemplateInput {
+    fn canonical_digest(&self) -> RusticolResult<String> {
+        let mut digest = Sha256::new();
+        hash_text(&mut digest, &self.input.abi)?;
+        digest.update(self.catalog_digest.as_bytes());
+        digest.update(self.compiled_model_digest.as_bytes());
+        digest.update(self.prepared_kernel_pack_digest.as_bytes());
+        hash_tables(&mut digest, &self.input.tables)?;
+        Ok(hex_digest(digest.finalize()))
+    }
+
+    fn into_core(self) -> RusticolResult<template::OwnedRecurrenceTemplateInput> {
+        let actual_digest = self.canonical_digest()?;
+        if actual_digest != self.input.declared_digest
+            || actual_digest != self.canonical_digest_property
+        {
+            return Err(invalid(format!(
+                "recurrence template input digest mismatch: declared {}, found {actual_digest}",
+                self.input.declared_digest
+            )));
+        }
+        decode_template_input(
+            &self.input,
+            self.catalog_digest,
+            self.compiled_model_digest,
+            self.prepared_kernel_pack_digest,
+        )
+    }
+}
+
 struct NativeValidationResult {
     digest: String,
     process_id: String,
@@ -457,16 +564,25 @@ struct NativeValidationResult {
     maximum_mask_bit: Option<u64>,
     template_reference_count: usize,
     parameter_projection_count: usize,
+    composite_authenticated: bool,
+    template_catalog_digest: Option<SemanticDigest>,
+    compiled_model_digest: Option<SemanticDigest>,
+    prepared_kernel_pack_digest: Option<SemanticDigest>,
+    prepared_template_count: Option<usize>,
 }
 
-#[pyfunction]
+#[pyfunction(signature = (builder_input, prepared_template_input=None))]
 pub(crate) fn _validate_recurrence_builder_input_v1(
     py: Python<'_>,
     builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let owned = parse_input(builder_input)?;
+    let prepared_template = prepared_template_input
+        .map(parse_prepared_template_input)
+        .transpose()?;
     let native = py
-        .detach(move || validate_input(owned))
+        .detach(move || validate_input(owned, prepared_template))
         .map_err(python_error)?;
     result_mapping(py, native)
 }
@@ -602,6 +718,138 @@ fn parse_input(input: &Bound<'_, PyAny>) -> PyResult<OwnedInput> {
     })
 }
 
+fn parse_prepared_template_input(input: &Bound<'_, PyAny>) -> PyResult<PreparedTemplateInput> {
+    if cfg!(not(target_endian = "little")) {
+        return Err(PyValueError::new_err(
+            "recurrence template input v1 requires a little-endian target",
+        ));
+    }
+    let abi = required_string(input, "abi")?;
+    if abi != template::RECURRENCE_TEMPLATE_INPUT_ABI {
+        return Err(PyValueError::new_err(format!(
+            "unsupported recurrence template input ABI {abi:?}"
+        )));
+    }
+    let declared_digest = required_string(input, "digest")?;
+    validate_sha256_text(&declared_digest, "recurrence template input digest")?;
+    let canonical_digest_property = required_string(input, "canonical_digest")?;
+    validate_sha256_text(
+        &canonical_digest_property,
+        "recurrence template canonical digest",
+    )?;
+    let catalog_digest = semantic_digest_python_attribute(input, "catalog_digest")?;
+    let compiled_model_digest = semantic_digest_python_attribute(input, "compiled_model_digest")?;
+    let prepared_kernel_pack_digest =
+        semantic_digest_python_attribute(input, "prepared_kernel_pack_digest")?;
+
+    let table_objects = iterable_attribute(input, "tables", "recurrence template tables")?;
+    if table_objects.len() != TEMPLATE_TABLE_INVENTORY.len() {
+        return Err(PyValueError::new_err(format!(
+            "recurrence template table inventory has {} tables, expected {}",
+            table_objects.len(),
+            TEMPLATE_TABLE_INVENTORY.len()
+        )));
+    }
+
+    let mut tables = Vec::with_capacity(TEMPLATE_TABLE_INVENTORY.len());
+    let mut table_by_name = BTreeMap::new();
+    for (table_object, (expected_name, expected_column_count)) in
+        table_objects.into_iter().zip(TEMPLATE_TABLE_INVENTORY)
+    {
+        let table_name = required_nonempty_string(&table_object, "name", "table name")?;
+        if table_name != *expected_name {
+            return Err(PyValueError::new_err(format!(
+                "recurrence template table inventory mismatch: found {table_name:?}, expected {expected_name:?}"
+            )));
+        }
+        let row_count = table_object
+            .getattr("row_count")?
+            .extract::<u64>()
+            .map_err(|_| {
+                PyTypeError::new_err(format!(
+                    "recurrence template table {table_name:?} row_count must be u64"
+                ))
+            })?;
+        let column_objects = iterable_attribute(
+            &table_object,
+            "columns",
+            &format!("recurrence template table {table_name:?} columns"),
+        )?;
+        if column_objects.len() != *expected_column_count {
+            return Err(PyValueError::new_err(format!(
+                "recurrence template table {table_name:?} has {} columns, expected {expected_column_count}",
+                column_objects.len()
+            )));
+        }
+
+        let mut columns = Vec::with_capacity(*expected_column_count);
+        let mut column_by_name = BTreeMap::new();
+        for column_object in column_objects {
+            let column_name = required_nonempty_string(&column_object, "name", "column name")?;
+            if column_by_name.contains_key(&column_name) {
+                return Err(PyValueError::new_err(format!(
+                    "recurrence template table {table_name:?} repeats column {column_name:?}"
+                )));
+            }
+            let context = format!("{table_name}.{column_name}");
+            let values_object = column_object.getattr("values")?;
+            let dtype = values_object
+                .getattr("dtype")?
+                .getattr("str")?
+                .extract::<String>()?;
+            let kind = PrimitiveKind::from_dtype(&dtype).ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "{context} has unsupported recurrence-template dtype {dtype:?}"
+                ))
+            })?;
+            let flags = values_object.getattr("flags")?;
+            if flags.getattr("writeable")?.extract::<bool>()? {
+                return Err(PyValueError::new_err(format!(
+                    "{context} must be read-only"
+                )));
+            }
+            if !flags.getattr("owndata")?.extract::<bool>()? {
+                return Err(PyValueError::new_err(format!(
+                    "{context} must own its storage"
+                )));
+            }
+            let (values, shape) = extract_owned_values(&values_object, kind, &context)?;
+            if shape.first().copied() != Some(row_count) {
+                return Err(PyValueError::new_err(format!(
+                    "{context} first dimension does not match row_count {row_count}"
+                )));
+            }
+            column_by_name.insert(column_name.clone(), columns.len());
+            columns.push(OwnedColumn {
+                name: column_name,
+                dtype: kind.dtype(),
+                shape,
+                values,
+            });
+        }
+        table_by_name.insert(table_name.clone(), tables.len());
+        tables.push(OwnedTable {
+            name: table_name,
+            row_count,
+            columns,
+            column_by_name,
+        });
+    }
+
+    Ok(PreparedTemplateInput {
+        input: OwnedInput {
+            abi,
+            declared_digest,
+            tables,
+            table_by_name,
+        },
+        canonical_digest_property,
+        catalog_digest,
+        compiled_model_digest,
+        prepared_kernel_pack_digest,
+    })
+}
+
 fn extract_owned_values(
     value: &Bound<'_, PyAny>,
     kind: PrimitiveKind,
@@ -647,7 +895,10 @@ fn extract_owned_values(
     })
 }
 
-fn validate_input(input: OwnedInput) -> RusticolResult<NativeValidationResult> {
+fn validate_input(
+    input: OwnedInput,
+    prepared_template: Option<PreparedTemplateInput>,
+) -> RusticolResult<NativeValidationResult> {
     validate_inventory(&input)?;
     let actual_digest = canonical_digest(&input)?;
     if actual_digest != input.declared_digest {
@@ -655,35 +906,6 @@ fn validate_input(input: OwnedInput) -> RusticolResult<NativeValidationResult> {
             "recurrence builder input digest mismatch: declared {}, found {actual_digest}",
             input.declared_digest
         )));
-    }
-
-    let strings = validate_flat_catalogs(&input)?;
-    let strategy = validate_header(&input, &strings)?;
-    validate_dense_ids_and_references(&input)?;
-    validate_exact_factors(&input, &strings)?;
-    validate_parent_ranges(&input)?;
-    validate_source_and_template_contracts(&input, &strings)?;
-    validate_replay_signs(&input)?;
-
-    let bitset_ranges = checked_ranges(&input, "bitset_ranges", "start", "count")?;
-    let bitset_populations = input.u64("bitset_ranges", "bit_count")?;
-    let bitset_words = input.u64("bitset_words", "value")?;
-    let masks = MultiwordMaskCatalogView {
-        ranges: &bitset_ranges,
-        populations: bitset_populations,
-        words: bitset_words,
-    };
-    masks.validate(true)?;
-    let maximum_mask_bit = maximum_mask_bit(&bitset_ranges, bitset_words)?;
-
-    let process_id = string_at(
-        &strings,
-        input.u32("header", "process_id_string_id")?[0],
-        "header.process_id_string_id",
-    )?
-    .to_owned();
-    if process_id.is_empty() {
-        return Err(invalid("recurrence process id must not be empty"));
     }
 
     let mut total_row_count = 0_u64;
@@ -717,31 +939,719 @@ fn validate_input(input: OwnedInput) -> RusticolResult<NativeValidationResult> {
         }
     }
 
+    let validated_process = decode_process_input(&input)?.validate()?;
+    let process_summary = validated_process.summary().clone();
+    let process_input = validated_process.input();
+    let bitset_ranges = process_input
+        .bitset_ranges
+        .iter()
+        .map(|row| row.range)
+        .collect::<Vec<_>>();
+    let maximum_mask_bit = maximum_mask_bit(&bitset_ranges, &process_input.bitset_words)?;
+    let string_count = process_input.string_ranges.len();
+    let semantic_digest_count = process_input.digest_catalog.len();
+    let exact_factor_count = process_input.exact_factors.len();
+    let open_string_count = process_input.lc_open_strings.len();
+    let selector_mask_count = process_input.bitset_ranges.len();
+    let selector_mask_word_count = process_input.bitset_words.len();
+    let parameter_projection_count = process_input.parameter_projection.len();
+
+    let (
+        composite_authenticated,
+        template_catalog_digest,
+        compiled_model_digest,
+        prepared_kernel_pack_digest,
+        prepared_template_count,
+    ) = if let Some(prepared_template) = prepared_template {
+        let validated_template = prepared_template.into_core()?.validate()?;
+        let authenticated =
+            AuthenticatedRecurrenceBuilderInput::new(validated_process, validated_template)?;
+        let template_summary = authenticated.template().summary();
+        (
+            true,
+            Some(template_summary.catalog_digest),
+            Some(template_summary.compiled_model_digest),
+            Some(template_summary.prepared_kernel_pack_digest),
+            Some(
+                template_summary.parameter_count as usize
+                    + template_summary.current_state_count as usize
+                    + template_summary.source_count as usize
+                    + template_summary.quantum_flow_count as usize
+                    + template_summary.transition_count as usize
+                    + template_summary.propagator_count as usize
+                    + template_summary.closure_count as usize
+                    + template_summary.color_contraction_count as usize
+                    + template_summary.symmetry_proof_count as usize,
+            ),
+        )
+    } else {
+        (false, None, None, None, None)
+    };
+
     Ok(NativeValidationResult {
         digest: actual_digest,
-        process_id,
-        strategy,
+        process_id: process_summary.process_id().to_owned(),
+        strategy: process_summary.strategy(),
         table_count: input.tables.len(),
         column_count,
         total_row_count,
         primitive_element_count,
         primitive_byte_count,
-        string_count: strings.len(),
-        semantic_digest_count: row_count(&input, "digest_catalog")?,
-        exact_factor_count: row_count(&input, "exact_factors")?,
-        external_leg_count: row_count(&input, "external_legs")?,
-        source_state_count: row_count(&input, "source_states")?,
-        physical_sector_count: row_count(&input, "physical_lc_sectors")?,
-        public_flow_count: row_count(&input, "public_lc_flows")?,
-        open_string_count: row_count(&input, "lc_open_strings")?,
-        replay_partition_count: row_count(&input, "replay_partitions")?,
-        replay_target_count: row_count(&input, "replay_targets")?,
-        selector_mask_count: bitset_ranges.len(),
-        selector_mask_word_count: bitset_words.len(),
+        string_count,
+        semantic_digest_count,
+        exact_factor_count,
+        external_leg_count: process_summary.external_leg_count() as usize,
+        source_state_count: process_summary.source_state_count() as usize,
+        physical_sector_count: process_summary.physical_sector_count() as usize,
+        public_flow_count: process_summary.public_flow_count() as usize,
+        open_string_count,
+        replay_partition_count: process_summary.replay_partition_count() as usize,
+        replay_target_count: process_summary.replay_target_count() as usize,
+        selector_mask_count,
+        selector_mask_word_count,
         maximum_mask_bit,
-        template_reference_count: row_count(&input, "semantic_template_references")?,
-        parameter_projection_count: row_count(&input, "parameter_projection")?,
+        template_reference_count: process_summary.template_reference_count() as usize,
+        parameter_projection_count,
+        composite_authenticated,
+        template_catalog_digest,
+        compiled_model_digest,
+        prepared_kernel_pack_digest,
+        prepared_template_count,
     })
+}
+
+fn decode_process_input(
+    input: &OwnedInput,
+) -> RusticolResult<process::OwnedRecurrenceProcessInput> {
+    let bitset_ranges = decode_process_rows(input, "bitset_ranges", |row| {
+        Ok(process::ProcessBitsetRangeRow {
+            id: input.u32("bitset_ranges", "id")?[row],
+            range: CheckedTableRange {
+                start: input.u64("bitset_ranges", "start")?[row],
+                count: input.u64("bitset_ranges", "count")?[row],
+            },
+            bit_count: input.u64("bitset_ranges", "bit_count")?[row],
+        })
+    })?;
+    let coupling_limits = decode_process_rows(input, "coupling_limits", |row| {
+        Ok(process::ProcessCouplingLimitRow {
+            name_string_id: input.u32("coupling_limits", "name_string_id")?[row],
+            minimum: input.u32("coupling_limits", "minimum")?[row],
+            maximum: input.u32("coupling_limits", "maximum")?[row],
+        })
+    })?;
+    let digest_values = input.u8("digest_catalog", "value")?;
+    let digest_catalog = decode_process_rows(input, "digest_catalog", |row| {
+        let start = row
+            .checked_mul(32)
+            .ok_or_else(|| invalid("process digest catalog offset exceeds usize"))?;
+        let value = digest_values
+            .get(start..start + 32)
+            .ok_or_else(|| invalid("process digest catalog row is truncated"))?
+            .try_into()
+            .map_err(|_| invalid("process digest catalog row must contain 32 bytes"))?;
+        Ok(process::ProcessDigestCatalogRow {
+            id: input.u32("digest_catalog", "id")?[row],
+            value,
+        })
+    })?;
+    let exact_factors = decode_process_rows(input, "exact_factors", |row| {
+        Ok(process::ProcessExactFactorRow {
+            id: input.u32("exact_factors", "id")?[row],
+            real_numerator_string_id: input.u32("exact_factors", "real_numerator_string_id")?[row],
+            real_denominator_string_id: input.u32("exact_factors", "real_denominator_string_id")?
+                [row],
+            imag_numerator_string_id: input.u32("exact_factors", "imag_numerator_string_id")?[row],
+            imag_denominator_string_id: input.u32("exact_factors", "imag_denominator_string_id")?
+                [row],
+        })
+    })?;
+    let external_legs = decode_process_rows(input, "external_legs", |row| {
+        Ok(process::ProcessExternalLegRow {
+            source_slot: input.u32("external_legs", "source_slot")?[row],
+            public_label: input.u32("external_legs", "public_label")?[row],
+            physical_pdg: input.i32("external_legs", "physical_pdg")?[row],
+            outgoing_pdg: input.i32("external_legs", "outgoing_pdg")?[row],
+            is_initial: input.u8("external_legs", "is_initial")?[row],
+            source_state_range: CheckedTableRange {
+                start: input.u64("external_legs", "source_state_start")?[row],
+                count: input.u64("external_legs", "source_state_count")?[row],
+            },
+            momentum_mask_id: input.u32("external_legs", "momentum_mask_id")?[row],
+            support_mask_id: input.u32("external_legs", "support_mask_id")?[row],
+        })
+    })?;
+    let header = decode_process_rows(input, "header", |row| {
+        Ok(process::ProcessHeaderRow {
+            schema_version: input.u32("header", "schema_version")?[row],
+            abi_string_id: input.u32("header", "abi_string_id")?[row],
+            process_id_string_id: input.u32("header", "process_id_string_id")?[row],
+            layout: input.u8("header", "layout")?[row],
+            selected_flow_mode: input.u8("header", "selected_flow_mode")?[row],
+            selected_source_mode: input.u8("header", "selected_source_mode")?[row],
+            external_leg_count: input.u32("header", "external_leg_count")?[row],
+            physical_sector_count: input.u32("header", "physical_sector_count")?[row],
+            public_flow_count: input.u32("header", "public_flow_count")?[row],
+            replay_partition_count: input.u32("header", "replay_partition_count")?[row],
+            coupling_limit_count: input.u32("header", "coupling_limit_count")?[row],
+            parameter_projection_count: input.u32("header", "parameter_projection_count")?[row],
+            process_support_mask_id: input.u32("header", "process_support_mask_id")?[row],
+        })
+    })?;
+    let header_digests = decode_process_rows(input, "header_digests", |row| {
+        Ok(process::ProcessHeaderDigestRow {
+            role_string_id: input.u32("header_digests", "role_string_id")?[row],
+            digest_id: input.u32("header_digests", "digest_id")?[row],
+        })
+    })?;
+    let lc_open_strings = decode_process_rows(input, "lc_open_strings", |row| {
+        Ok(process::ProcessLCOpenStringRow {
+            sector_id: input.u32("lc_open_strings", "sector_id")?[row],
+            ordinal: input.u32("lc_open_strings", "ordinal")?[row],
+            fundamental_source_slot: input.u32("lc_open_strings", "fundamental_source_slot")?[row],
+            antifundamental_source_slot: input
+                .u32("lc_open_strings", "antifundamental_source_slot")?[row],
+            adjoint_sequence_id: input.u32("lc_open_strings", "adjoint_sequence_id")?[row],
+            singlet_sequence_id: input.u32("lc_open_strings", "singlet_sequence_id")?[row],
+        })
+    })?;
+    let normalization = decode_process_rows(input, "normalization", |row| {
+        Ok(process::ProcessNormalizationRow {
+            factor_id: input.u32("normalization", "factor_id")?[row],
+            convention_string_id: input.u32("normalization", "convention_string_id")?[row],
+            semantic_digest_id: input.u32("normalization", "semantic_digest_id")?[row],
+        })
+    })?;
+    let parameter_projection = decode_process_rows(input, "parameter_projection", |row| {
+        Ok(process::ProcessParameterProjectionRow {
+            runtime_slot: input.u32("parameter_projection", "runtime_slot")?[row],
+            runtime_name_string_id: input.u32("parameter_projection", "runtime_name_string_id")?
+                [row],
+            parameter_template_id: input.u32("parameter_projection", "parameter_template_id")?[row],
+            prepared_parameter_id: input.u32("parameter_projection", "prepared_parameter_id")?[row],
+            component: input.u32("parameter_projection", "component")?[row],
+        })
+    })?;
+    let physical_lc_sectors = decode_process_rows(input, "physical_lc_sectors", |row| {
+        Ok(process::ProcessPhysicalLCSectorRow {
+            sector_id: input.u32("physical_lc_sectors", "sector_id")?[row],
+            public_id_string_id: input.u32("physical_lc_sectors", "public_id_string_id")?[row],
+            kind: input.u8("physical_lc_sectors", "kind")?[row],
+            open_string_range: CheckedTableRange {
+                start: input.u64("physical_lc_sectors", "open_string_start")?[row],
+                count: input.u64("physical_lc_sectors", "open_string_count")?[row],
+            },
+            trace_sequence_id: input.u32("physical_lc_sectors", "trace_sequence_id")?[row],
+            singlet_sequence_id: input.u32("physical_lc_sectors", "singlet_sequence_id")?[row],
+            word_sequence_id: input.u32("physical_lc_sectors", "word_sequence_id")?[row],
+            support_mask_id: input.u32("physical_lc_sectors", "support_mask_id")?[row],
+        })
+    })?;
+    let public_lc_flows = decode_process_rows(input, "public_lc_flows", |row| {
+        Ok(process::ProcessPublicLCFlowRow {
+            flow_id: input.u32("public_lc_flows", "flow_id")?[row],
+            public_id_string_id: input.u32("public_lc_flows", "public_id_string_id")?[row],
+            construction_sector_id: input.u32("public_lc_flows", "construction_sector_id")?[row],
+            word_sequence_id: input.u32("public_lc_flows", "word_sequence_id")?[row],
+            source_slot_permutation_sequence_id: input
+                .u32("public_lc_flows", "source_slot_permutation_sequence_id")?[row],
+            reduction_weight_factor_id: input
+                .u32("public_lc_flows", "reduction_weight_factor_id")?[row],
+        })
+    })?;
+    let replay_partitions = decode_process_rows(input, "replay_partitions", |row| {
+        Ok(process::ProcessReplayPartitionRow {
+            partition_id: input.u32("replay_partitions", "partition_id")?[row],
+            representative_sector_id: input.u32("replay_partitions", "representative_sector_id")?
+                [row],
+            materialized_sector_id: input.u32("replay_partitions", "materialized_sector_id")?[row],
+            target_range: CheckedTableRange {
+                start: input.u64("replay_partitions", "target_start")?[row],
+                count: input.u64("replay_partitions", "target_count")?[row],
+            },
+            proof_algorithm_string_id: input
+                .u32("replay_partitions", "proof_algorithm_string_id")?[row],
+            proof_digest_id: input.u32("replay_partitions", "proof_digest_id")?[row],
+        })
+    })?;
+    let replay_targets = decode_process_rows(input, "replay_targets", |row| {
+        Ok(process::ProcessReplayTargetRow {
+            partition_id: input.u32("replay_targets", "partition_id")?[row],
+            sector_id: input.u32("replay_targets", "sector_id")?[row],
+            external_permutation_sequence_id: input
+                .u32("replay_targets", "external_permutation_sequence_id")?[row],
+            source_slot_permutation_sequence_id: input
+                .u32("replay_targets", "source_slot_permutation_sequence_id")?[row],
+            amplitude_phase_factor_id: input.u32("replay_targets", "amplitude_phase_factor_id")?
+                [row],
+            fermion_sign: input.i32("replay_targets", "fermion_sign")?[row],
+        })
+    })?;
+    let selected_public_flow_coverage =
+        decode_process_rows(input, "selected_public_flow_coverage", |row| {
+            Ok(process::ProcessSelectedPublicFlowRow {
+                flow_id: input.u32("selected_public_flow_coverage", "flow_id")?[row],
+            })
+        })?;
+    let selected_source_coverage = decode_process_rows(input, "selected_source_coverage", |row| {
+        Ok(process::ProcessSelectedSourceStateRow {
+            source_slot: input.u32("selected_source_coverage", "source_slot")?[row],
+            source_state_index: input.u32("selected_source_coverage", "source_state_index")?[row],
+        })
+    })?;
+    let semantic_template_references =
+        decode_process_rows(input, "semantic_template_references", |row| {
+            Ok(process::ProcessSemanticTemplateReferenceRow {
+                kind_string_id: input.u32("semantic_template_references", "kind_string_id")?[row],
+                template_id: input.u32("semantic_template_references", "template_id")?[row],
+                semantic_digest_id: input
+                    .u32("semantic_template_references", "semantic_digest_id")?[row],
+                prepared_kernel_id: input
+                    .u32("semantic_template_references", "prepared_kernel_id")?[row],
+            })
+        })?;
+    let source_states = decode_process_rows(input, "source_states", |row| {
+        Ok(process::ProcessSourceStateRow {
+            source_slot: input.u32("source_states", "source_slot")?[row],
+            state_index: input.u32("source_states", "state_index")?[row],
+            public_helicity: input.i32("source_states", "public_helicity")?[row],
+            chirality: input.i32("source_states", "chirality")?[row],
+            spin_state: input.i32("source_states", "spin_state")?[row],
+            current_state_template_id: input.u32("source_states", "current_state_template_id")?
+                [row],
+            source_template_id: input.u32("source_states", "source_template_id")?[row],
+            momentum_sign: input.i32("source_states", "momentum_sign")?[row],
+            crossing_phase_factor_id: input.u32("source_states", "crossing_phase_factor_id")?[row],
+        })
+    })?;
+
+    Ok(process::OwnedRecurrenceProcessInput {
+        input_abi: input.abi.clone(),
+        declared_input_digest: semantic_digest_from_hex(
+            &input.declared_digest,
+            "recurrence process input digest",
+        )?,
+        bitset_ranges,
+        bitset_words: input.u64("bitset_words", "value")?.to_vec(),
+        coupling_limits,
+        digest_catalog,
+        exact_factors,
+        external_legs,
+        header,
+        header_digests,
+        lc_open_strings,
+        normalization,
+        parameter_projection,
+        physical_lc_sectors,
+        public_lc_flows,
+        replay_partitions,
+        replay_targets,
+        selected_public_flow_coverage,
+        selected_source_coverage,
+        semantic_template_references,
+        source_states,
+        string_ranges: plain_ranges(input, "string_ranges")?,
+        string_bytes: input.u8("string_bytes", "value")?.to_vec(),
+        u32_sequence_ranges: plain_ranges(input, "u32_sequence_ranges")?,
+        u32_sequence_values: input.u32("u32_sequence_values", "value")?.to_vec(),
+    })
+}
+
+fn decode_process_rows<T>(
+    input: &OwnedInput,
+    table_name: &str,
+    mut decode: impl FnMut(usize) -> RusticolResult<T>,
+) -> RusticolResult<Vec<T>> {
+    let row_count = checked_usize(
+        input.table(table_name)?.row_count,
+        &format!("{table_name} row count"),
+    )?;
+    (0..row_count).map(&mut decode).collect()
+}
+
+fn plain_ranges(input: &OwnedInput, table_name: &str) -> RusticolResult<Vec<CheckedTableRange>> {
+    decode_process_rows(input, table_name, |row| {
+        Ok(CheckedTableRange {
+            start: input.u64(table_name, "start")?[row],
+            count: input.u64(table_name, "count")?[row],
+        })
+    })
+}
+
+fn decode_template_input(
+    input: &OwnedInput,
+    catalog_digest: SemanticDigest,
+    compiled_model_digest: SemanticDigest,
+    prepared_kernel_pack_digest: SemanticDigest,
+) -> RusticolResult<template::OwnedRecurrenceTemplateInput> {
+    use template::{
+        CatalogHeaderRow, ClosureRow, ColorContractionRow, ColorNcTermRow, CouplingOrderTermRow,
+        CurrentStateRow, EvaluatorBindingRow, ExactFactorRow, LCColorTransitionWitnessRow,
+        OwnedRecurrenceTemplateInput, ParameterRow, PropagatorRow, QuantumFlowRow,
+        QuantumNumberFlowTermRow, SourceRow, SymmetryProofRow, TransitionRow,
+    };
+    let catalog_header = decode_template_rows(input.table("catalog_header")?, |table, row| {
+        Ok(CatalogHeaderRow {
+            schema_version: table.u32("schema_version")?[row],
+            abi_string_id: table.u32("abi_string_id")?[row],
+            canonicalization_abi_string_id: table.u32("canonicalization_abi_string_id")?[row],
+            exact_scalar_abi_string_id: table.u32("exact_scalar_abi_string_id")?[row],
+            compiled_model_digest_id: table.u32("compiled_model_digest_id")?[row],
+            prepared_kernel_pack_digest_id: table.u32("prepared_kernel_pack_digest_id")?[row],
+            catalog_digest_id: table.u32("catalog_digest_id")?[row],
+            parameter_count: table.u32("parameter_count")?[row],
+            current_state_count: table.u32("current_state_count")?[row],
+            source_count: table.u32("source_count")?[row],
+            quantum_flow_count: table.u32("quantum_flow_count")?[row],
+            transition_count: table.u32("transition_count")?[row],
+            propagator_count: table.u32("propagator_count")?[row],
+            closure_count: table.u32("closure_count")?[row],
+            color_contraction_count: table.u32("color_contraction_count")?[row],
+            symmetry_proof_count: table.u32("symmetry_proof_count")?[row],
+            evaluator_binding_count: table.u32("evaluator_binding_count")?[row],
+        })
+    })?;
+    let coupling_order_ranges = template_indexed_ranges(input.table("coupling_order_ranges")?)?;
+    let coupling_order_terms =
+        decode_template_rows(input.table("coupling_order_terms")?, |table, row| {
+            Ok(CouplingOrderTermRow {
+                set_id: table.u32("set_id")?[row],
+                name_string_id: table.u32("name_string_id")?[row],
+                power: table.u32("power")?[row],
+            })
+        })?;
+    let current_states = decode_template_rows(input.table("current_states")?, |table, row| {
+        Ok(CurrentStateRow {
+            id: table.u32("id")?[row],
+            template_string_id: table.u32("template_string_id")?[row],
+            particle_id: table.i32("particle_id")?[row],
+            anti_particle_id: table.i32("anti_particle_id")?[row],
+            species_string_id: table.u32("species_string_id")?[row],
+            orientation: table.u8("orientation")?[row],
+            statistics: table.u8("statistics")?[row],
+            color_representation: table.i32("color_representation")?[row],
+            basis_string_id: table.u32("basis_string_id")?[row],
+            tensor_ordering_sequence_id: table.u32("tensor_ordering_sequence_id")?[row],
+            dimension: table.u32("dimension")?[row],
+            chirality: table.i32("chirality")?[row],
+            lc_color_shape_string_id: table.u32("lc_color_shape_string_id")?[row],
+            auxiliary_kind_string_id: table.u32("auxiliary_kind_string_id")?[row],
+            mass_parameter_id: table.u32("mass_parameter_id")?[row],
+            width_parameter_id: table.u32("width_parameter_id")?[row],
+            semantic_digest_id: table.u32("semantic_digest_id")?[row],
+        })
+    })?;
+    let digest_catalog = decode_template_digest_catalog(input.table("digest_catalog")?)?;
+    let evaluator_bindings =
+        decode_template_rows(input.table("evaluator_bindings")?, |table, row| {
+            Ok(EvaluatorBindingRow {
+                id: table.u32("id")?[row],
+                resolver_key_string_id: table.u32("resolver_key_string_id")?[row],
+                prepared_kernel_id: table.u32("prepared_kernel_id")?[row],
+                contract_kind: table.u8("contract_kind")?[row],
+                callable_signature_digest_id: table.u32("callable_signature_digest_id")?[row],
+                input_state_sequence_id: table.u32("input_state_sequence_id")?[row],
+                output_state_template_id: table.u32("output_state_template_id")?[row],
+                input_layout_sequence_id: table.u32("input_layout_sequence_id")?[row],
+                output_layout_sequence_id: table.u32("output_layout_sequence_id")?[row],
+                exact_expression_digest_sequence_id: table
+                    .u32("exact_expression_digest_sequence_id")?[row],
+                semantic_template_sequence_id: table.u32("semantic_template_sequence_id")?[row],
+                callable_kind: table.u8("callable_kind")?[row],
+                runtime_template_string_id: table.u32("runtime_template_string_id")?[row],
+                semantic_digest_id: table.u32("semantic_digest_id")?[row],
+            })
+        })?;
+    let exact_factors = decode_template_rows(input.table("exact_factors")?, |table, row| {
+        Ok(ExactFactorRow {
+            id: table.u32("id")?[row],
+            real_numerator_string_id: table.u32("real_numerator_string_id")?[row],
+            real_denominator_string_id: table.u32("real_denominator_string_id")?[row],
+            imag_numerator_string_id: table.u32("imag_numerator_string_id")?[row],
+            imag_denominator_string_id: table.u32("imag_denominator_string_id")?[row],
+        })
+    })?;
+    let flavour_flow_ranges = template_indexed_ranges(input.table("flavour_flow_ranges")?)?;
+    let flavour_flow_values = input.table("flavour_flow_values")?.i32("value")?.to_vec();
+    let i32_sequence_ranges = template_indexed_ranges(input.table("i32_sequence_ranges")?)?;
+    let i32_sequence_values = input.table("i32_sequence_values")?.i32("value")?.to_vec();
+    let parameters = decode_template_rows(input.table("parameters")?, |table, row| {
+        Ok(ParameterRow {
+            id: table.u32("id")?[row],
+            template_string_id: table.u32("template_string_id")?[row],
+            name_string_id: table.u32("name_string_id")?[row],
+            kind: table.u8("kind")?[row],
+            value_type: table.u8("value_type")?[row],
+            mutable: table.u8("mutable")?[row],
+            default_factor_id: table.u32("default_factor_id")?[row],
+            exact_expression_digest_id: table.u32("exact_expression_digest_id")?[row],
+            dependency_sequence_id: table.u32("dependency_sequence_id")?[row],
+            prepared_parameter_id: table.u32("prepared_parameter_id")?[row],
+            semantic_digest_id: table.u32("semantic_digest_id")?[row],
+        })
+    })?;
+    let propagators = decode_template_rows(input.table("propagators")?, |table, row| {
+        Ok(PropagatorRow {
+            id: table.u32("id")?[row],
+            template_string_id: table.u32("template_string_id")?[row],
+            state_template_id: table.u32("state_template_id")?[row],
+            applies_propagator: table.u8("applies_propagator")?[row],
+            evaluator_binding_id: table.u32("evaluator_binding_id")?[row],
+            numerator_expression_digest_id: table.u32("numerator_expression_digest_id")?[row],
+            denominator_expression_digest_id: table.u32("denominator_expression_digest_id")?[row],
+            mass_parameter_id: table.u32("mass_parameter_id")?[row],
+            width_parameter_id: table.u32("width_parameter_id")?[row],
+            gauge_string_id: table.u32("gauge_string_id")?[row],
+            linearity_proof_template_id: table.u32("linearity_proof_template_id")?[row],
+            semantic_digest_id: table.u32("semantic_digest_id")?[row],
+        })
+    })?;
+    let quantum_flows = decode_template_rows(input.table("quantum_flows")?, |table, row| {
+        Ok(QuantumFlowRow {
+            id: table.u32("id")?[row],
+            template_string_id: table.u32("template_string_id")?[row],
+            input_state_sequence_id: table.u32("input_state_sequence_id")?[row],
+            input_spin_sequence_id: table.u32("input_spin_sequence_id")?[row],
+            input_flavour_sequence_id: table.u32("input_flavour_sequence_id")?[row],
+            input_quantum_sequence_id: table.u32("input_quantum_sequence_id")?[row],
+            flavour_flow_operation_string_id: table.u32("flavour_flow_operation_string_id")?[row],
+            quantum_number_flow_operation_string_id: table
+                .u32("quantum_number_flow_operation_string_id")?[row],
+            coupling_order_set_id: table.u32("coupling_order_set_id")?[row],
+            result_state_template_id: table.u32("result_state_template_id")?[row],
+            result_spin_state: table.i32("result_spin_state")?[row],
+            result_flavour_flow_id: table.u32("result_flavour_flow_id")?[row],
+            result_quantum_number_flow_id: table.u32("result_quantum_number_flow_id")?[row],
+            exact_coupling_factor_id: table.u32("exact_coupling_factor_id")?[row],
+            predicate_digest_id: table.u32("predicate_digest_id")?[row],
+            semantic_digest_id: table.u32("semantic_digest_id")?[row],
+        })
+    })?;
+    let quantum_number_flow_ranges =
+        template_indexed_ranges(input.table("quantum_number_flow_ranges")?)?;
+    let quantum_number_flow_terms =
+        decode_template_rows(input.table("quantum_number_flow_terms")?, |table, row| {
+            Ok(QuantumNumberFlowTermRow {
+                flow_id: table.u32("flow_id")?[row],
+                name_string_id: table.u32("name_string_id")?[row],
+                expression_string_id: table.u32("expression_string_id")?[row],
+            })
+        })?;
+    let sources = decode_template_rows(input.table("sources")?, |table, row| {
+        Ok(SourceRow {
+            id: table.u32("id")?[row],
+            template_string_id: table.u32("template_string_id")?[row],
+            state_template_id: table.u32("state_template_id")?[row],
+            crossing_string_id: table.u32("crossing_string_id")?[row],
+            wavefunction_family_string_id: table.u32("wavefunction_family_string_id")?[row],
+            helicity: table.i32("helicity")?[row],
+            spin_state: table.i32("spin_state")?[row],
+            flavour_flow_id: table.u32("flavour_flow_id")?[row],
+            quantum_number_flow_id: table.u32("quantum_number_flow_id")?[row],
+            wavefunction_expression_digest_id: table.u32("wavefunction_expression_digest_id")?[row],
+            evaluator_binding_id: table.u32("evaluator_binding_id")?[row],
+            mass_parameter_id: table.u32("mass_parameter_id")?[row],
+            width_parameter_id: table.u32("width_parameter_id")?[row],
+            semantic_digest_id: table.u32("semantic_digest_id")?[row],
+        })
+    })?;
+    let string_ranges = template_plain_ranges(input.table("string_ranges")?)?;
+    let string_bytes = input.table("string_bytes")?.u8("value")?.to_vec();
+    let symmetry_proofs = decode_template_rows(input.table("symmetry_proofs")?, |table, row| {
+        Ok(SymmetryProofRow {
+            id: table.u32("id")?[row],
+            template_string_id: table.u32("template_string_id")?[row],
+            proof_algorithm_string_id: table.u32("proof_algorithm_string_id")?[row],
+            subject_template_sequence_id: table.u32("subject_template_sequence_id")?[row],
+            input_permutation_sequence_id: table.u32("input_permutation_sequence_id")?[row],
+            exact_phase_factor_id: table.u32("exact_phase_factor_id")?[row],
+            expression_digest_sequence_id: table.u32("expression_digest_sequence_id")?[row],
+            witness_digest_id: table.u32("witness_digest_id")?[row],
+            semantic_digest_id: table.u32("semantic_digest_id")?[row],
+        })
+    })?;
+    let transitions = decode_template_rows(input.table("transitions")?, |table, row| {
+        Ok(TransitionRow {
+            id: table.u32("id")?[row],
+            template_string_id: table.u32("template_string_id")?[row],
+            input_state_sequence_id: table.u32("input_state_sequence_id")?[row],
+            result_state_template_id: table.u32("result_state_template_id")?[row],
+            quantum_flow_template_id: table.u32("quantum_flow_template_id")?[row],
+            evaluator_binding_id: table.u32("evaluator_binding_id")?[row],
+            canonical_input_order_sequence_id: table.u32("canonical_input_order_sequence_id")?[row],
+            momentum_convention_sequence_id: table.u32("momentum_convention_sequence_id")?[row],
+            coupling_parameter_sequence_id: table.u32("coupling_parameter_sequence_id")?[row],
+            coupling_order_set_id: table.u32("coupling_order_set_id")?[row],
+            color_contraction_template_id: table.u32("color_contraction_template_id")?[row],
+            binding_coupling_factor_id: table.u32("binding_coupling_factor_id")?[row],
+            exact_factor_id: table.u32("exact_factor_id")?[row],
+            output_factor_source: table.u8("output_factor_source")?[row],
+            equivalence_class_string_id: table.u32("equivalence_class_string_id")?[row],
+            input_exchange_factor_id: table.u32("input_exchange_factor_id")?[row],
+            output_projection_string_id: table.u32("output_projection_string_id")?[row],
+            semantic_digest_id: table.u32("semantic_digest_id")?[row],
+        })
+    })?;
+    let closures = decode_template_rows(input.table("closures")?, |table, row| {
+        Ok(ClosureRow {
+            id: table.u32("id")?[row],
+            template_string_id: table.u32("template_string_id")?[row],
+            input_state_sequence_id: table.u32("input_state_sequence_id")?[row],
+            result_state_template_id: table.u32("result_state_template_id")?[row],
+            evaluator_binding_id: table.u32("evaluator_binding_id")?[row],
+            canonical_input_order_sequence_id: table.u32("canonical_input_order_sequence_id")?[row],
+            coupling_parameter_sequence_id: table.u32("coupling_parameter_sequence_id")?[row],
+            coupling_order_set_id: table.u32("coupling_order_set_id")?[row],
+            eligible_quantum_flow_sequence_id: table.u32("eligible_quantum_flow_sequence_id")?[row],
+            color_contraction_template_id: table.u32("color_contraction_template_id")?[row],
+            binding_coupling_factor_id: table.u32("binding_coupling_factor_id")?[row],
+            exact_factor_id: table.u32("exact_factor_id")?[row],
+            output_factor_source: table.u8("output_factor_source")?[row],
+            equivalence_class_string_id: table.u32("equivalence_class_string_id")?[row],
+            input_exchange_factor_id: table.u32("input_exchange_factor_id")?[row],
+            projection_string_id: table.u32("projection_string_id")?[row],
+            component_coefficient_sequence_id: table.u32("component_coefficient_sequence_id")?[row],
+            chirality_relation_string_id: table.u32("chirality_relation_string_id")?[row],
+            metric_signature_string_id: table.u32("metric_signature_string_id")?[row],
+            semantic_digest_id: table.u32("semantic_digest_id")?[row],
+        })
+    })?;
+    let color_contractions =
+        decode_template_rows(input.table("color_contractions")?, |table, row| {
+            Ok(ColorContractionRow {
+                id: table.u32("id")?[row],
+                template_string_id: table.u32("template_string_id")?[row],
+                rule_kind_string_id: table.u32("rule_kind_string_id")?[row],
+                input_representation_sequence_id: table.u32("input_representation_sequence_id")?
+                    [row],
+                has_output_representation: table.u8("has_output_representation")?[row],
+                output_representation: table.i32("output_representation")?[row],
+                ordered_open_string_arity: table.u32("ordered_open_string_arity")?[row],
+                exact_coefficient_factor_id: table.u32("exact_coefficient_factor_id")?[row],
+                witness_start: table.u64("witness_start")?[row],
+                witness_count: table.u64("witness_count")?[row],
+                nc_term_start: table.u64("nc_term_start")?[row],
+                nc_term_count: table.u64("nc_term_count")?[row],
+                expression_digest_id: table.u32("expression_digest_id")?[row],
+                semantic_digest_id: table.u32("semantic_digest_id")?[row],
+            })
+        })?;
+    let lc_color_transition_witnesses = decode_template_rows(
+        input.table("lc_color_transition_witnesses")?,
+        |table, row| {
+            Ok(LCColorTransitionWitnessRow {
+                color_contraction_id: table.u32("color_contraction_id")?[row],
+                ordinal: table.u32("ordinal")?[row],
+                left_shape_string_id: table.u32("left_shape_string_id")?[row],
+                right_shape_string_id: table.u32("right_shape_string_id")?[row],
+                input_permutation: table.u8("input_permutation")?[row],
+                reverse_parent_mask: table.u8("reverse_parent_mask")?[row],
+                component_operation: table.u8("component_operation")?[row],
+                result_component_kind: table.u8("result_component_kind")?[row],
+                result_shape_string_id: table.u32("result_shape_string_id")?[row],
+                exact_factor_id: table.u32("exact_factor_id")?[row],
+                proof_digest_id: table.u32("proof_digest_id")?[row],
+                provenance_sequence_id: table.u32("provenance_sequence_id")?[row],
+            })
+        },
+    )?;
+    let color_nc_terms = decode_template_rows(input.table("color_nc_terms")?, |table, row| {
+        Ok(ColorNcTermRow {
+            color_contraction_id: table.u32("color_contraction_id")?[row],
+            exponent: table.i32("exponent")?[row],
+            factor_id: table.u32("factor_id")?[row],
+        })
+    })?;
+    let u32_sequence_ranges = template_indexed_ranges(input.table("u32_sequence_ranges")?)?;
+    let u32_sequence_values = input.table("u32_sequence_values")?.u32("value")?.to_vec();
+
+    Ok(OwnedRecurrenceTemplateInput {
+        input_abi: input.abi.clone(),
+        catalog_digest: catalog_digest,
+        compiled_model_digest: compiled_model_digest,
+        prepared_kernel_pack_digest: prepared_kernel_pack_digest,
+        catalog_header,
+        coupling_order_ranges,
+        coupling_order_terms,
+        current_states,
+        digest_catalog,
+        evaluator_bindings,
+        exact_factors,
+        flavour_flow_ranges,
+        flavour_flow_values,
+        i32_sequence_ranges,
+        i32_sequence_values,
+        parameters,
+        propagators,
+        quantum_flows,
+        quantum_number_flow_ranges,
+        quantum_number_flow_terms,
+        sources,
+        string_ranges,
+        string_bytes,
+        symmetry_proofs,
+        transitions,
+        closures,
+        color_contractions,
+        lc_color_transition_witnesses,
+        color_nc_terms,
+        u32_sequence_ranges,
+        u32_sequence_values,
+    })
+}
+
+fn decode_template_rows<T>(
+    table: &OwnedTable,
+    mut decode: impl FnMut(&OwnedTable, usize) -> RusticolResult<T>,
+) -> RusticolResult<Vec<T>> {
+    let row_count = table.row_count()?;
+    (0..row_count).map(|row| decode(table, row)).collect()
+}
+
+fn template_indexed_ranges(table: &OwnedTable) -> RusticolResult<Vec<template::IndexedRangeRow>> {
+    decode_template_rows(table, |table, row| {
+        Ok(template::IndexedRangeRow {
+            id: table.u32("id")?[row],
+            range: CheckedTableRange::new(table.u64("start")?[row], table.u64("count")?[row]),
+        })
+    })
+}
+
+fn template_plain_ranges(table: &OwnedTable) -> RusticolResult<Vec<CheckedTableRange>> {
+    decode_template_rows(table, |table, row| {
+        Ok(CheckedTableRange::new(
+            table.u64("start")?[row],
+            table.u64("count")?[row],
+        ))
+    })
+}
+
+fn decode_template_digest_catalog(
+    table: &OwnedTable,
+) -> RusticolResult<Vec<template::DigestCatalogRow>> {
+    let ids = table.u32("id")?;
+    let values = table.u8("value")?;
+    let row_count = table.row_count()?;
+    let expected = row_count
+        .checked_mul(32)
+        .ok_or_else(|| invalid("digest catalog byte count exceeds usize"))?;
+    if values.len() != expected {
+        return Err(invalid(format!(
+            "digest_catalog.value has {} bytes, expected {expected}",
+            values.len()
+        )));
+    }
+    (0..row_count)
+        .map(|row| {
+            let start = row * 32;
+            let mut value = [0_u8; 32];
+            value.copy_from_slice(&values[start..start + 32]);
+            Ok(template::DigestCatalogRow {
+                id: ids[row],
+                value,
+            })
+        })
+        .collect()
 }
 
 fn validate_inventory(input: &OwnedInput) -> RusticolResult<()> {
@@ -784,13 +1694,18 @@ fn validate_inventory(input: &OwnedInput) -> RusticolResult<()> {
 fn canonical_digest(input: &OwnedInput) -> RusticolResult<String> {
     let mut digest = Sha256::new();
     hash_text(&mut digest, &input.abi)?;
+    hash_tables(&mut digest, &input.tables)?;
+    Ok(hex_digest(digest.finalize()))
+}
+
+fn hash_tables(digest: &mut Sha256, tables: &[OwnedTable]) -> RusticolResult<()> {
     digest.update(
-        u64::try_from(input.tables.len())
+        u64::try_from(tables.len())
             .map_err(|_| invalid("recurrence table count exceeds u64"))?
             .to_le_bytes(),
     );
-    for table in &input.tables {
-        hash_text(&mut digest, &table.name)?;
+    for table in tables {
+        hash_text(digest, &table.name)?;
         digest.update(table.row_count.to_le_bytes());
         digest.update(
             u32::try_from(table.columns.len())
@@ -798,8 +1713,8 @@ fn canonical_digest(input: &OwnedInput) -> RusticolResult<String> {
                 .to_le_bytes(),
         );
         for column in &table.columns {
-            hash_text(&mut digest, &column.name)?;
-            hash_text(&mut digest, column.dtype)?;
+            hash_text(digest, &column.name)?;
+            hash_text(digest, column.dtype)?;
             digest.update(
                 u8::try_from(column.shape.len())
                     .map_err(|_| invalid("recurrence column rank exceeds u8"))?
@@ -811,831 +1726,7 @@ fn canonical_digest(input: &OwnedInput) -> RusticolResult<String> {
             digest.update(column.values.raw_bytes());
         }
     }
-    Ok(hex_digest(digest.finalize()))
-}
-
-fn validate_flat_catalogs(input: &OwnedInput) -> RusticolResult<Vec<String>> {
-    let string_ranges = checked_ranges(input, "string_ranges", "start", "count")?;
-    let string_bytes = input.u8("string_bytes", "value")?;
-    validate_packed_ranges("recurrence string", &string_ranges, string_bytes.len())?;
-    let mut strings = Vec::with_capacity(string_ranges.len());
-    for (index, range) in string_ranges.iter().copied().enumerate() {
-        let bytes = &string_bytes
-            [range.as_usize_range(string_bytes.len(), &format!("recurrence string {index}"))?];
-        let value = std::str::from_utf8(bytes)
-            .map_err(|error| invalid(format!("recurrence string {index} is not UTF-8: {error}")))?;
-        strings.push(value.to_owned());
-    }
-    if !strings.windows(2).all(|pair| pair[0] < pair[1]) {
-        return Err(invalid(
-            "recurrence string catalog must be unique and in canonical byte order",
-        ));
-    }
-
-    let sequence_ranges = checked_ranges(input, "u32_sequence_ranges", "start", "count")?;
-    validate_packed_ranges(
-        "recurrence u32 sequence",
-        &sequence_ranges,
-        input.u32("u32_sequence_values", "value")?.len(),
-    )?;
-
-    let bitset_ranges = checked_ranges(input, "bitset_ranges", "start", "count")?;
-    validate_packed_ranges(
-        "recurrence multiword mask",
-        &bitset_ranges,
-        input.u64("bitset_words", "value")?.len(),
-    )?;
-    Ok(strings)
-}
-
-fn validate_header(input: &OwnedInput, strings: &[String]) -> RusticolResult<RecurrenceStrategy> {
-    if row_count(input, "header")? != 1 {
-        return Err(invalid(
-            "recurrence builder header must contain exactly one row",
-        ));
-    }
-    if input.u32("header", "schema_version")?[0] != INPUT_SCHEMA_VERSION {
-        return Err(RusticolError::compatibility(format!(
-            "unsupported recurrence builder input schema version {}; expected {INPUT_SCHEMA_VERSION}",
-            input.u32("header", "schema_version")?[0]
-        )));
-    }
-    let abi = string_at(
-        strings,
-        input.u32("header", "abi_string_id")?[0],
-        "header.abi_string_id",
-    )?;
-    if abi != input.abi {
-        return Err(invalid(
-            "recurrence builder header ABI string does not match payload ABI",
-        ));
-    }
-    for column in ["selected_flow_mode", "selected_source_mode"] {
-        let value = input.u8("header", column)?[0];
-        if value > 1 {
-            return Err(invalid(format!("header.{column} must be zero or one")));
-        }
-    }
-    let strategy = RecurrenceStrategy::try_from(u32::from(input.u8("header", "layout")?[0]))?;
-    let expected_counts = [
-        ("external_leg_count", "external_legs"),
-        ("physical_sector_count", "physical_lc_sectors"),
-        ("public_flow_count", "public_lc_flows"),
-        ("replay_partition_count", "replay_partitions"),
-        ("coupling_limit_count", "coupling_limits"),
-        ("parameter_projection_count", "parameter_projection"),
-    ];
-    for (column, table) in expected_counts {
-        let expected = checked_u32_len(row_count(input, table)?, table)?;
-        let found = input.u32("header", column)?[0];
-        if found != expected {
-            return Err(invalid(format!(
-                "header.{column} is {found}, but table {table:?} contains {expected} rows"
-            )));
-        }
-    }
-
-    for column in ["is_initial"] {
-        for (row, value) in input
-            .u8("external_legs", column)?
-            .iter()
-            .copied()
-            .enumerate()
-        {
-            if value > 1 {
-                return Err(invalid(format!(
-                    "external_legs.{column} row {row} must be zero or one"
-                )));
-            }
-        }
-    }
-
-    let role_ids = input.u32("header_digests", "role_string_id")?;
-    let mut roles = BTreeSet::new();
-    for (row, role_id) in role_ids.iter().copied().enumerate() {
-        let role = string_at(strings, role_id, &format!("header_digests row {row} role"))?;
-        if !roles.insert(role) {
-            return Err(invalid(format!(
-                "recurrence header contains duplicate semantic digest role {role:?}"
-            )));
-        }
-    }
-    for required in ["process", "model-catalog", "prepared-catalog", "color-plan"] {
-        if !roles.contains(required) {
-            return Err(invalid(format!(
-                "recurrence header is missing semantic digest role {required:?}"
-            )));
-        }
-    }
-
-    let selected_flow_rows = row_count(input, "selected_public_flow_coverage")?;
-    let selected_source_rows = row_count(input, "selected_source_coverage")?;
-    if (input.u8("header", "selected_flow_mode")?[0] != 0) != (selected_flow_rows != 0) {
-        return Err(invalid(
-            "selected-flow header mode disagrees with its coverage table",
-        ));
-    }
-    if (input.u8("header", "selected_source_mode")?[0] != 0) != (selected_source_rows != 0) {
-        return Err(invalid(
-            "selected-source header mode disagrees with its coverage table",
-        ));
-    }
-    Ok(strategy)
-}
-
-fn validate_dense_ids_and_references(input: &OwnedInput) -> RusticolResult<()> {
-    for (table, column) in [
-        ("bitset_ranges", "id"),
-        ("digest_catalog", "id"),
-        ("exact_factors", "id"),
-        ("external_legs", "source_slot"),
-        ("physical_lc_sectors", "sector_id"),
-        ("public_lc_flows", "flow_id"),
-        ("replay_partitions", "partition_id"),
-        ("parameter_projection", "runtime_slot"),
-    ] {
-        validate_dense_ids(input.u32(table, column)?, &format!("{table}.{column}"))?;
-    }
-
-    let string_count = row_count(input, "string_ranges")?;
-    validate_reference_columns(
-        input,
-        &[
-            ("header", "abi_string_id"),
-            ("header", "process_id_string_id"),
-            ("header_digests", "role_string_id"),
-            ("coupling_limits", "name_string_id"),
-            ("exact_factors", "real_numerator_string_id"),
-            ("exact_factors", "real_denominator_string_id"),
-            ("exact_factors", "imag_numerator_string_id"),
-            ("exact_factors", "imag_denominator_string_id"),
-            ("physical_lc_sectors", "public_id_string_id"),
-            ("public_lc_flows", "public_id_string_id"),
-            ("replay_partitions", "proof_algorithm_string_id"),
-            ("semantic_template_references", "kind_string_id"),
-            ("normalization", "convention_string_id"),
-            ("parameter_projection", "runtime_name_string_id"),
-        ],
-        string_count,
-    )?;
-
-    let digest_count = row_count(input, "digest_catalog")?;
-    validate_reference_columns(
-        input,
-        &[
-            ("header_digests", "digest_id"),
-            ("replay_partitions", "proof_digest_id"),
-            ("semantic_template_references", "semantic_digest_id"),
-            ("normalization", "semantic_digest_id"),
-        ],
-        digest_count,
-    )?;
-    let digest_bytes = input.u8("digest_catalog", "value")?;
-    for (row, digest) in digest_bytes.chunks_exact(32).enumerate() {
-        if digest.iter().all(|byte| *byte == 0) {
-            return Err(invalid(format!(
-                "digest_catalog row {row} contains an all-zero semantic digest"
-            )));
-        }
-    }
-
-    let sequence_count = row_count(input, "u32_sequence_ranges")?;
-    validate_reference_columns(
-        input,
-        &[
-            ("lc_open_strings", "adjoint_sequence_id"),
-            ("lc_open_strings", "singlet_sequence_id"),
-            ("physical_lc_sectors", "trace_sequence_id"),
-            ("physical_lc_sectors", "singlet_sequence_id"),
-            ("physical_lc_sectors", "word_sequence_id"),
-            ("replay_targets", "external_permutation_sequence_id"),
-            ("replay_targets", "source_slot_permutation_sequence_id"),
-            ("public_lc_flows", "word_sequence_id"),
-            ("public_lc_flows", "source_slot_permutation_sequence_id"),
-        ],
-        sequence_count,
-    )?;
-
-    let bitset_count = row_count(input, "bitset_ranges")?;
-    validate_reference_columns(
-        input,
-        &[
-            ("header", "process_support_mask_id"),
-            ("external_legs", "momentum_mask_id"),
-            ("external_legs", "support_mask_id"),
-            ("physical_lc_sectors", "support_mask_id"),
-        ],
-        bitset_count,
-    )?;
-
-    let factor_count = row_count(input, "exact_factors")?;
-    validate_reference_columns(
-        input,
-        &[
-            ("replay_targets", "amplitude_phase_factor_id"),
-            ("public_lc_flows", "reduction_weight_factor_id"),
-            ("source_states", "crossing_phase_factor_id"),
-            ("normalization", "factor_id"),
-        ],
-        factor_count,
-    )?;
-
-    let external_count = row_count(input, "external_legs")?;
-    validate_reference_columns(
-        input,
-        &[
-            ("lc_open_strings", "fundamental_source_slot"),
-            ("lc_open_strings", "antifundamental_source_slot"),
-            ("source_states", "source_slot"),
-            ("selected_source_coverage", "source_slot"),
-        ],
-        external_count,
-    )?;
-
-    let sector_count = row_count(input, "physical_lc_sectors")?;
-    validate_reference_columns(
-        input,
-        &[
-            ("lc_open_strings", "sector_id"),
-            ("replay_partitions", "representative_sector_id"),
-            ("replay_partitions", "materialized_sector_id"),
-            ("replay_targets", "sector_id"),
-            ("public_lc_flows", "construction_sector_id"),
-        ],
-        sector_count,
-    )?;
-
-    let public_flow_count = row_count(input, "public_lc_flows")?;
-    validate_reference_columns(
-        input,
-        &[("selected_public_flow_coverage", "flow_id")],
-        public_flow_count,
-    )?;
-
-    let partition_count = row_count(input, "replay_partitions")?;
-    validate_reference_columns(
-        input,
-        &[("replay_targets", "partition_id")],
-        partition_count,
-    )?;
     Ok(())
-}
-
-fn validate_source_and_template_contracts(
-    input: &OwnedInput,
-    strings: &[String],
-) -> RusticolResult<()> {
-    let kind_ids = input.u32("semantic_template_references", "kind_string_id")?;
-    let template_ids = input.u32("semantic_template_references", "template_id")?;
-    let mut templates: BTreeMap<&str, BTreeSet<u32>> = BTreeMap::new();
-    for (row, (kind_id, template_id)) in kind_ids
-        .iter()
-        .copied()
-        .zip(template_ids.iter().copied())
-        .enumerate()
-    {
-        let kind = string_at(
-            strings,
-            kind_id,
-            &format!("semantic_template_references row {row} kind"),
-        )?;
-        if kind.is_empty() {
-            return Err(invalid(format!(
-                "semantic_template_references row {row} has an empty kind"
-            )));
-        }
-        if !templates.entry(kind).or_default().insert(template_id) {
-            return Err(invalid(format!(
-                "semantic_template_references contains duplicate typed ID ({kind:?}, {template_id})"
-            )));
-        }
-    }
-
-    let require_template = |kind: &str, template_id: u32, context: &str| -> RusticolResult<()> {
-        if !templates
-            .get(kind)
-            .is_some_and(|values| values.contains(&template_id))
-        {
-            return Err(invalid(format!(
-                "{context} references absent semantic template ({kind:?}, {template_id})"
-            )));
-        }
-        Ok(())
-    };
-
-    let source_slots = input.u32("source_states", "source_slot")?;
-    let state_indices = input.u32("source_states", "state_index")?;
-    let public_helicities = input.i32("source_states", "public_helicity")?;
-    let momentum_signs = input.i32("source_states", "momentum_sign")?;
-    let current_state_ids = input.u32("source_states", "current_state_template_id")?;
-    let source_template_ids = input.u32("source_states", "source_template_id")?;
-    let source_ranges = checked_ranges(
-        input,
-        "external_legs",
-        "source_state_start",
-        "source_state_count",
-    )?;
-    for (source_slot, range) in source_ranges.iter().copied().enumerate() {
-        let rows = range.as_usize_range(
-            source_slots.len(),
-            &format!("external_legs source-state range {source_slot}"),
-        )?;
-        if rows.is_empty() {
-            return Err(invalid(format!(
-                "external_legs row {source_slot} has no source states"
-            )));
-        }
-        let mut seen_helicities = BTreeSet::new();
-        for (local_index, row) in rows.enumerate() {
-            let expected_slot = u32::try_from(source_slot)
-                .map_err(|_| invalid("external source slot exceeds u32"))?;
-            if source_slots[row] != expected_slot {
-                return Err(invalid(format!(
-                    "source_states row {row} belongs to source slot {}, expected {expected_slot}",
-                    source_slots[row]
-                )));
-            }
-            let expected_index = u32::try_from(local_index)
-                .map_err(|_| invalid("source-state index exceeds u32"))?;
-            if state_indices[row] != expected_index {
-                return Err(invalid(format!(
-                    "source_states.state_index row {row} contains {}, expected {expected_index}",
-                    state_indices[row]
-                )));
-            }
-            if !seen_helicities.insert(public_helicities[row]) {
-                return Err(invalid(format!(
-                    "external source slot {source_slot} repeats public helicity {}",
-                    public_helicities[row]
-                )));
-            }
-            if !matches!(momentum_signs[row], -1 | 1) {
-                return Err(invalid(format!(
-                    "source_states.momentum_sign row {row} must be -1 or 1"
-                )));
-            }
-            require_template(
-                "current-state",
-                current_state_ids[row],
-                &format!("source_states.current_state_template_id row {row}"),
-            )?;
-            require_template(
-                "source",
-                source_template_ids[row],
-                &format!("source_states.source_template_id row {row}"),
-            )?;
-        }
-    }
-
-    for (row, template_id) in input
-        .u32("parameter_projection", "parameter_template_id")?
-        .iter()
-        .copied()
-        .enumerate()
-    {
-        require_template(
-            "parameter",
-            template_id,
-            &format!("parameter_projection.parameter_template_id row {row}"),
-        )?;
-    }
-
-    let external_count = row_count(input, "external_legs")?;
-    let sequence_ranges = checked_ranges(input, "u32_sequence_ranges", "start", "count")?;
-    let sequence_values = input.u32("u32_sequence_values", "value")?;
-    validate_permutation_references(
-        input,
-        &sequence_ranges,
-        sequence_values,
-        "replay_targets",
-        "external_permutation_sequence_id",
-        external_count,
-    )?;
-    validate_permutation_references(
-        input,
-        &sequence_ranges,
-        sequence_values,
-        "replay_targets",
-        "source_slot_permutation_sequence_id",
-        external_count,
-    )?;
-    validate_permutation_references(
-        input,
-        &sequence_ranges,
-        sequence_values,
-        "public_lc_flows",
-        "source_slot_permutation_sequence_id",
-        external_count,
-    )?;
-    validate_public_flow_words(input, &sequence_ranges, sequence_values)?;
-    validate_replay_words(input, &sequence_ranges, sequence_values)?;
-
-    let public_flow_ids = input.u32("public_lc_flows", "public_id_string_id")?;
-    if public_flow_ids.is_empty() {
-        return Err(invalid(
-            "recurrence builder input requires at least one public LC flow",
-        ));
-    }
-    let mut seen_public_flows = BTreeSet::new();
-    for (row, string_id) in public_flow_ids.iter().copied().enumerate() {
-        let public_id = string_at(
-            strings,
-            string_id,
-            &format!("public_lc_flows.public_id_string_id row {row}"),
-        )?;
-        if public_id.is_empty() || !seen_public_flows.insert(public_id) {
-            return Err(invalid(format!(
-                "public_lc_flows row {row} has an empty or duplicate public identifier {public_id:?}"
-            )));
-        }
-    }
-
-    let mut selected_flows = BTreeSet::new();
-    for (row, flow_id) in input
-        .u32("selected_public_flow_coverage", "flow_id")?
-        .iter()
-        .copied()
-        .enumerate()
-    {
-        if !selected_flows.insert(flow_id) {
-            return Err(invalid(format!(
-                "selected_public_flow_coverage row {row} repeats public flow {flow_id}"
-            )));
-        }
-    }
-
-    let selected_slots = input.u32("selected_source_coverage", "source_slot")?;
-    let selected_states = input.u32("selected_source_coverage", "source_state_index")?;
-    for (row, (source_slot, state_index)) in selected_slots
-        .iter()
-        .copied()
-        .zip(selected_states.iter().copied())
-        .enumerate()
-    {
-        let source_range = source_ranges.get(source_slot as usize).ok_or_else(|| {
-            invalid(format!(
-                "selected_source_coverage row {row} references absent source slot {source_slot}"
-            ))
-        })?;
-        if u64::from(state_index) >= source_range.count {
-            return Err(invalid(format!(
-                "selected_source_coverage row {row} references absent state {state_index} for source slot {source_slot}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn validate_public_flow_words(
-    input: &OwnedInput,
-    sequence_ranges: &[CheckedTableRange],
-    sequence_values: &[u32],
-) -> RusticolResult<()> {
-    let sector_word_ids = input.u32("physical_lc_sectors", "word_sequence_id")?;
-    let construction_sector_ids = input.u32("public_lc_flows", "construction_sector_id")?;
-    let public_word_ids = input.u32("public_lc_flows", "word_sequence_id")?;
-    let permutation_ids = input.u32("public_lc_flows", "source_slot_permutation_sequence_id")?;
-    for row in 0..construction_sector_ids.len() {
-        let sector_id = construction_sector_ids[row];
-        let sector_word_id = *sector_word_ids.get(sector_id as usize).ok_or_else(|| {
-            invalid(format!(
-                "public_lc_flows row {row} references absent construction sector {sector_id}"
-            ))
-        })?;
-        let construction_word = sequence_at(
-            sequence_ranges,
-            sequence_values,
-            sector_word_id,
-            &format!("public_lc_flows row {row} construction-sector word"),
-        )?;
-        let public_word = sequence_at(
-            sequence_ranges,
-            sequence_values,
-            public_word_ids[row],
-            &format!("public_lc_flows row {row} public word"),
-        )?;
-        let permutation = sequence_at(
-            sequence_ranges,
-            sequence_values,
-            permutation_ids[row],
-            &format!("public_lc_flows row {row} gather permutation"),
-        )?;
-        validate_mapped_word(
-            construction_word,
-            permutation,
-            public_word,
-            &format!("public_lc_flows row {row}"),
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_replay_words(
-    input: &OwnedInput,
-    sequence_ranges: &[CheckedTableRange],
-    sequence_values: &[u32],
-) -> RusticolResult<()> {
-    let sector_word_ids = input.u32("physical_lc_sectors", "word_sequence_id")?;
-    let representative_sector_ids = input.u32("replay_partitions", "representative_sector_id")?;
-    let partition_ids = input.u32("replay_targets", "partition_id")?;
-    let target_sector_ids = input.u32("replay_targets", "sector_id")?;
-    let external_permutation_ids =
-        input.u32("replay_targets", "external_permutation_sequence_id")?;
-    let source_permutation_ids =
-        input.u32("replay_targets", "source_slot_permutation_sequence_id")?;
-
-    for row in 0..partition_ids.len() {
-        let partition_id = partition_ids[row];
-        let representative_sector_id = *representative_sector_ids
-            .get(partition_id as usize)
-            .ok_or_else(|| {
-                invalid(format!(
-                    "replay_targets row {row} references absent partition {partition_id}"
-                ))
-            })?;
-        let target_sector_id = target_sector_ids[row];
-        let representative_word_id = *sector_word_ids
-            .get(representative_sector_id as usize)
-            .ok_or_else(|| {
-                invalid(format!(
-                    "replay partition {partition_id} references absent representative sector {representative_sector_id}"
-                ))
-            })?;
-        let target_word_id = *sector_word_ids
-            .get(target_sector_id as usize)
-            .ok_or_else(|| {
-                invalid(format!(
-                    "replay_targets row {row} references absent target sector {target_sector_id}"
-                ))
-            })?;
-        let external_permutation = sequence_at(
-            sequence_ranges,
-            sequence_values,
-            external_permutation_ids[row],
-            &format!("replay_targets row {row} external permutation"),
-        )?;
-        let source_permutation = sequence_at(
-            sequence_ranges,
-            sequence_values,
-            source_permutation_ids[row],
-            &format!("replay_targets row {row} source-slot permutation"),
-        )?;
-        if external_permutation != source_permutation {
-            return Err(invalid(format!(
-                "replay_targets row {row} has different external and source-slot permutations"
-            )));
-        }
-        let representative_word = sequence_at(
-            sequence_ranges,
-            sequence_values,
-            representative_word_id,
-            &format!("replay_targets row {row} representative-sector word"),
-        )?;
-        let target_word = sequence_at(
-            sequence_ranges,
-            sequence_values,
-            target_word_id,
-            &format!("replay_targets row {row} target-sector word"),
-        )?;
-        validate_mapped_word(
-            representative_word,
-            source_permutation,
-            target_word,
-            &format!("replay_targets row {row}"),
-        )?;
-    }
-    Ok(())
-}
-
-fn sequence_at<'a>(
-    ranges: &[CheckedTableRange],
-    values: &'a [u32],
-    sequence_id: u32,
-    context: &str,
-) -> RusticolResult<&'a [u32]> {
-    let range = ranges.get(sequence_id as usize).ok_or_else(|| {
-        invalid(format!(
-            "{context} references absent sequence id {sequence_id}"
-        ))
-    })?;
-    Ok(&values[range.as_usize_range(values.len(), context)?])
-}
-
-fn validate_mapped_word(
-    source_word: &[u32],
-    permutation: &[u32],
-    target_word: &[u32],
-    context: &str,
-) -> RusticolResult<()> {
-    if source_word.len() != target_word.len() {
-        return Err(invalid(format!(
-            "{context} maps a word of length {} onto a word of length {}",
-            source_word.len(),
-            target_word.len()
-        )));
-    }
-    for (position, (source_slot, expected_target)) in source_word
-        .iter()
-        .copied()
-        .zip(target_word.iter().copied())
-        .enumerate()
-    {
-        let actual_target = permutation.get(source_slot as usize).ok_or_else(|| {
-            invalid(format!(
-                "{context} word position {position} references out-of-range source slot {source_slot}"
-            ))
-        })?;
-        if *actual_target != expected_target {
-            return Err(invalid(format!(
-                "{context} gather permutation maps word position {position} to {actual_target}, expected {expected_target}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn validate_permutation_references(
-    input: &OwnedInput,
-    sequence_ranges: &[CheckedTableRange],
-    sequence_values: &[u32],
-    table: &str,
-    column: &str,
-    expected_len: usize,
-) -> RusticolResult<()> {
-    for (row, sequence_id) in input.u32(table, column)?.iter().copied().enumerate() {
-        let range = sequence_ranges.get(sequence_id as usize).ok_or_else(|| {
-            invalid(format!(
-                "{table}.{column} row {row} references absent sequence id {sequence_id}"
-            ))
-        })?;
-        let values = &sequence_values[range.as_usize_range(
-            sequence_values.len(),
-            &format!("{table}.{column} row {row}"),
-        )?];
-        if values.len() != expected_len {
-            return Err(invalid(format!(
-                "{table}.{column} row {row} has {} entries, expected {expected_len}",
-                values.len()
-            )));
-        }
-        let mut seen = vec![false; expected_len];
-        for value in values.iter().copied() {
-            let index = usize::try_from(value)
-                .map_err(|_| invalid(format!("{table}.{column} value exceeds usize")))?;
-            let slot = seen.get_mut(index).ok_or_else(|| {
-                invalid(format!(
-                    "{table}.{column} row {row} contains out-of-range source slot {value}"
-                ))
-            })?;
-            if *slot {
-                return Err(invalid(format!(
-                    "{table}.{column} row {row} repeats source slot {value}"
-                )));
-            }
-            *slot = true;
-        }
-    }
-    Ok(())
-}
-
-fn validate_exact_factors(input: &OwnedInput, strings: &[String]) -> RusticolResult<()> {
-    let numerator_real = input.u32("exact_factors", "real_numerator_string_id")?;
-    let denominator_real = input.u32("exact_factors", "real_denominator_string_id")?;
-    let numerator_imaginary = input.u32("exact_factors", "imag_numerator_string_id")?;
-    let denominator_imaginary = input.u32("exact_factors", "imag_denominator_string_id")?;
-    for row in 0..numerator_real.len() {
-        let real_numerator = string_at(strings, numerator_real[row], "exact real numerator")?;
-        let real_denominator = string_at(strings, denominator_real[row], "exact real denominator")?;
-        let imaginary_numerator = string_at(
-            strings,
-            numerator_imaginary[row],
-            "exact imaginary numerator",
-        )?;
-        let imaginary_denominator = string_at(
-            strings,
-            denominator_imaginary[row],
-            "exact imaginary denominator",
-        )?;
-        let factor = ExactComplexRational::parse_parts(
-            real_numerator,
-            real_denominator,
-            imaginary_numerator,
-            imaginary_denominator,
-        )
-        .map_err(|error| {
-            invalid(format!(
-                "exact_factors row {row} is not a canonical exact complex rational: {error}"
-            ))
-        })?;
-        if factor.real().numerator().to_string() != real_numerator
-            || factor.real().denominator().to_string() != real_denominator
-            || factor.imag().numerator().to_string() != imaginary_numerator
-            || factor.imag().denominator().to_string() != imaginary_denominator
-        {
-            return Err(invalid(format!(
-                "exact_factors row {row} is not in canonical reduced decimal form"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn validate_parent_ranges(input: &OwnedInput) -> RusticolResult<()> {
-    validate_parent_range(
-        input,
-        "external_legs",
-        "source_state_start",
-        "source_state_count",
-        "source_states",
-        "source_slot",
-    )?;
-    validate_parent_range(
-        input,
-        "physical_lc_sectors",
-        "open_string_start",
-        "open_string_count",
-        "lc_open_strings",
-        "sector_id",
-    )?;
-    validate_parent_range(
-        input,
-        "replay_partitions",
-        "target_start",
-        "target_count",
-        "replay_targets",
-        "partition_id",
-    )?;
-    Ok(())
-}
-
-fn validate_parent_range(
-    input: &OwnedInput,
-    parent_table: &str,
-    start_column: &str,
-    count_column: &str,
-    child_table: &str,
-    child_parent_column: &str,
-) -> RusticolResult<()> {
-    let ranges = checked_ranges(input, parent_table, start_column, count_column)?;
-    let child_count = row_count(input, child_table)?;
-    validate_packed_ranges(
-        &format!("{parent_table} to {child_table}"),
-        &ranges,
-        child_count,
-    )?;
-    let child_parent_ids = input.u32(child_table, child_parent_column)?;
-    for (parent_id, range) in ranges.iter().copied().enumerate() {
-        let expected = u32::try_from(parent_id)
-            .map_err(|_| invalid(format!("{parent_table} row index exceeds u32")))?;
-        for child_id in &child_parent_ids[range.as_usize_range(
-            child_parent_ids.len(),
-            &format!("{parent_table} row {parent_id}"),
-        )?] {
-            if *child_id != expected {
-                return Err(invalid(format!(
-                    "{child_table}.{child_parent_column} contains {child_id} inside parent row {parent_id}"
-                )));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_replay_signs(input: &OwnedInput) -> RusticolResult<()> {
-    for (row, sign) in input
-        .i32("replay_targets", "fermion_sign")?
-        .iter()
-        .copied()
-        .enumerate()
-    {
-        if !matches!(sign, -1 | 1) {
-            return Err(invalid(format!(
-                "replay_targets.fermion_sign row {row} must be -1 or 1"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn checked_ranges(
-    input: &OwnedInput,
-    table: &str,
-    start_column: &str,
-    count_column: &str,
-) -> RusticolResult<Vec<CheckedTableRange>> {
-    let starts = input.u64(table, start_column)?;
-    let counts = input.u64(table, count_column)?;
-    if starts.len() != counts.len() {
-        return Err(invalid(format!(
-            "{table} range columns have different lengths"
-        )));
-    }
-    Ok(starts
-        .iter()
-        .copied()
-        .zip(counts.iter().copied())
-        .map(|(start, count)| CheckedTableRange::new(start, count))
-        .collect())
 }
 
 fn maximum_mask_bit(ranges: &[CheckedTableRange], words: &[u64]) -> RusticolResult<Option<u64>> {
@@ -1656,58 +1747,42 @@ fn maximum_mask_bit(ranges: &[CheckedTableRange], words: &[u64]) -> RusticolResu
     Ok(maximum)
 }
 
-fn validate_dense_ids(values: &[u32], label: &str) -> RusticolResult<()> {
-    checked_u32_len(values.len(), label)?;
-    for (row, value) in values.iter().copied().enumerate() {
-        let expected =
-            u32::try_from(row).map_err(|_| invalid(format!("{label} row index exceeds u32")))?;
-        if value != expected {
-            return Err(invalid(format!(
-                "{label} row {row} contains id {value}, expected {expected}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn validate_reference_columns(
-    input: &OwnedInput,
-    columns: &[(&str, &str)],
-    target_count: usize,
-) -> RusticolResult<()> {
-    for (table, column) in columns {
-        validate_u32_references(
-            input.u32(table, column)?,
-            target_count,
-            &format!("{table}.{column}"),
-        )?;
-    }
-    Ok(())
-}
-
-fn row_count(input: &OwnedInput, table: &str) -> RusticolResult<usize> {
-    checked_usize(input.table(table)?.row_count, &format!("{table} row count"))
-}
-
-fn string_at<'a>(strings: &'a [String], id: u32, context: &str) -> RusticolResult<&'a str> {
-    strings
-        .get(id as usize)
-        .map(String::as_str)
-        .ok_or_else(|| invalid(format!("{context} references absent string id {id}")))
-}
-
 fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py<PyAny>> {
     let result = PyDict::new(py);
     result.set_item("kind", RESULT_KIND)?;
     result.set_item("schema_version", RESULT_SCHEMA_VERSION)?;
     result.set_item("execution_mode", "recurrence")?;
-    result.set_item("validation_status", "validated-identity-only")?;
+    result.set_item(
+        "validation_status",
+        if native.composite_authenticated {
+            "validated-composite-input"
+        } else {
+            "validated-identity-only"
+        },
+    )?;
     result.set_item("schedule_constructed", false)?;
+    result.set_item("composite_authenticated", native.composite_authenticated)?;
     result.set_item("builder_input_abi", RECURRENCE_BUILDER_INPUT_ABI)?;
     result.set_item("builder_input_schema_version", INPUT_SCHEMA_VERSION)?;
     result.set_item("builder_input_sha256", native.digest)?;
     result.set_item("builder_result_abi", RECURRENCE_BUILDER_RESULT_ABI)?;
     result.set_item("recurrence_template_abi", RECURRENCE_TEMPLATE_ABI)?;
+    result.set_item(
+        "template_catalog_digest",
+        native
+            .template_catalog_digest
+            .map(|value| value.to_string()),
+    )?;
+    result.set_item(
+        "compiled_model_digest",
+        native.compiled_model_digest.map(|value| value.to_string()),
+    )?;
+    result.set_item(
+        "prepared_kernel_pack_digest",
+        native
+            .prepared_kernel_pack_digest
+            .map(|value| value.to_string()),
+    )?;
     result.set_item("recurrence_plan_abi", RECURRENCE_PLAN_ABI)?;
     result.set_item("runtime_kind", RECURRENCE_RUNTIME_KIND)?;
     result.set_item("runtime_layout_abi", RECURRENCE_RUNTIME_LAYOUT_ABI)?;
@@ -1748,6 +1823,7 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
         "parameter_projection_count",
         native.parameter_projection_count,
     )?;
+    summary.set_item("prepared_template_count", native.prepared_template_count)?;
     result.set_item("inspection_summary", summary)?;
     Ok(result.into_any().unbind())
 }
@@ -1797,6 +1873,33 @@ fn validate_sha256_text(value: &str, context: &str) -> PyResult<()> {
         )));
     }
     Ok(())
+}
+
+fn semantic_digest_python_attribute(
+    value: &Bound<'_, PyAny>,
+    attribute: &str,
+) -> PyResult<SemanticDigest> {
+    let digest = required_string(value, attribute)?;
+    semantic_digest_from_hex(&digest, attribute).map_err(python_error)
+}
+
+fn semantic_digest_from_hex(value: &str, context: &str) -> RusticolResult<SemanticDigest> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    {
+        return Err(invalid(format!(
+            "{context} must be a lowercase SHA-256 digest"
+        )));
+    }
+    let mut result = [0_u8; 32];
+    for (index, byte) in result.iter_mut().enumerate() {
+        let offset = index * 2;
+        *byte = u8::from_str_radix(&value[offset..offset + 2], 16)
+            .map_err(|_| invalid(format!("{context} is not hexadecimal")))?;
+    }
+    SemanticDigest::new(result)
 }
 
 fn hash_text(digest: &mut Sha256, value: &str) -> RusticolResult<()> {

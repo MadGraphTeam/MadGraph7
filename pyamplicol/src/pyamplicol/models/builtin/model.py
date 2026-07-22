@@ -14,6 +14,12 @@ from ..base import (
     Model,
     PropagatorLoweringRule,
     QuantumNumberFlow,
+    RecurrenceLCColorComponentKind,
+    RecurrenceLCColorOperation,
+    RecurrenceLCColorShapeKind,
+    RecurrenceLCColorTransitionContract,
+    RecurrenceLCColorWitnessContract,
+    RecurrenceQuantumFlowContract,
     Vertex,
 )
 from .definitions import BuiltinSMDefinitionMixin
@@ -90,6 +96,170 @@ class BuiltinModel(Model):
             vertex,
             left_index,
             right_index,
+        )
+
+    def recurrence_quantum_flow_contract(
+        self,
+        vertex: Vertex,
+        left_particle_id: int,
+        right_particle_id: int,
+    ) -> RecurrenceQuantumFlowContract:
+        return self._standard_recurrence_quantum_flow_contract(
+            vertex,
+            left_particle_id,
+            right_particle_id,
+        )
+
+    def recurrence_lc_color_shape_contract(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> RecurrenceLCColorShapeKind:
+        return self._standard_recurrence_lc_color_shape_contract(
+            particle_id,
+            chirality,
+        )
+
+    def recurrence_lc_color_transition_contract(
+        self,
+        vertex: Vertex,
+        *,
+        closure: bool,
+    ) -> RecurrenceLCColorTransitionContract:
+        rule_kind = self.vertex_color_structure(vertex)
+        representations = tuple(
+            self.color_rep(particle) for particle in vertex.particles
+        )
+        if closure:
+            return RecurrenceLCColorTransitionContract(
+                rule_kind,
+                (
+                    RecurrenceLCColorWitnessContract(
+                        (0, 1),
+                        0,
+                        "close",
+                        None,
+                    ),
+                ),
+            )
+
+        def witness(
+            permutation: tuple[int, int],
+            operation: RecurrenceLCColorOperation,
+            result_component: RecurrenceLCColorComponentKind | None,
+            factor: tuple[float, float] = (1.0, 0.0),
+        ) -> RecurrenceLCColorWitnessContract:
+            return RecurrenceLCColorWitnessContract(
+                permutation,
+                0,
+                operation,
+                result_component,
+                factor,
+            )
+
+        if rule_kind == "adjoint-structure-constant":
+            return RecurrenceLCColorTransitionContract(
+                rule_kind,
+                (
+                    witness((0, 1), "concatenate-join", "adjoint-segment"),
+                    witness(
+                        (1, 0),
+                        "concatenate-join",
+                        "adjoint-segment",
+                        (-1.0, 0.0),
+                    ),
+                ),
+            )
+        if rule_kind == "fundamental-generator":
+            orientation = {
+                # The open color word is always fundamental -> adjoints ->
+                # antifundamental, independently of the Lorentz input order.
+                4: ((1, 0), "open-string"),
+                5: ((0, 1), "open-string"),
+                6: ((0, 1), "open-string"),
+                7: ((1, 0), "open-string"),
+                9: ((1, 0), "adjoint-segment"),
+            }.get(vertex.kind)
+            if orientation is None:
+                raise ValueError(
+                    f"built-in fundamental-generator kernel {vertex.kind} has no "
+                    "compiler-owned LC orientation"
+                )
+            permutation, result_component = orientation
+            return RecurrenceLCColorTransitionContract(
+                rule_kind,
+                (witness(permutation, "concatenate-join", result_component),),
+            )
+        if rule_kind == "color-identity":
+            colored_inputs = tuple(
+                index
+                for index, representation in enumerate(representations[:2])
+                if abs(representation) != 1
+            )
+            if len(colored_inputs) == 0:
+                operation = "empty"
+                permutation = (0, 1)
+                result_component = None
+            elif len(colored_inputs) == 1:
+                operation = (
+                    "inherit-left" if colored_inputs[0] == 0 else "inherit-right"
+                )
+                permutation = (0, 1)
+                result_component = None
+            elif len(colored_inputs) == 2 and abs(representations[2]) == 1:
+                operation = "concatenate-join"
+                permutation = (
+                    (0, 1)
+                    if representations[0] == 3 or representations[1] == -3
+                    else (1, 0)
+                )
+                result_component = "open-string"
+            else:
+                raise ValueError(
+                    "built-in color-identity kernel has unsupported recurrence "
+                    f"representations {representations!r}"
+                )
+            return RecurrenceLCColorTransitionContract(
+                rule_kind,
+                (witness(permutation, operation, result_component),),
+            )
+        if rule_kind == "singlet":
+            return RecurrenceLCColorTransitionContract(
+                rule_kind,
+                (witness((0, 1), "empty", None),),
+            )
+        raise ValueError(
+            f"built-in kernel {vertex.kind} has unsupported recurrence color rule "
+            f"{rule_kind!r}"
+        )
+
+    def vertex_color_structure(self, vertex: Vertex) -> str:
+        """Return the exact built-in tensor family for one oriented vertex."""
+
+        representations = tuple(
+            self.color_rep(particle) for particle in vertex.particles
+        )
+        absolute = tuple(abs(value) for value in representations)
+        if all(value == 1 for value in absolute):
+            return "singlet"
+        if all(value == 8 for value in representations):
+            if vertex.kind not in {0, 1, 2, 3}:
+                raise ValueError(
+                    f"built-in vertex kind {vertex.kind} has an unknown adjoint tensor"
+                )
+            return "adjoint-structure-constant"
+        if sorted(absolute) == [1, 3, 3]:
+            return "color-identity"
+        if sorted(absolute) == [3, 3, 8]:
+            if vertex.kind not in {4, 5, 6, 7, 9}:
+                raise ValueError(
+                    f"built-in vertex kind {vertex.kind} has an unknown "
+                    "quark-gluon tensor"
+                )
+            return "fundamental-generator"
+        raise ValueError(
+            f"built-in vertex kind {vertex.kind} has unsupported color representations "
+            f"{representations!r}"
         )
 
     def is_fundamental_colored_fermion(self, pdg: int) -> bool:
@@ -237,9 +407,7 @@ class BuiltinModel(Model):
                     else "massless_dirac_fermion"
                 ),
                 kind="dirac-fermion",
-                mass_class=(
-                    "massive" if self.mass(particle_id) != 0.0 else "massless"
-                ),
+                mass_class=("massive" if self.mass(particle_id) != 0.0 else "massless"),
                 description=(
                     "massive Dirac fermion propagator"
                     if self.mass(particle_id) != 0.0

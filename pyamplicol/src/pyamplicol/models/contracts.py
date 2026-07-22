@@ -474,6 +474,276 @@ class CompiledVertexTerm:
 
 
 @dataclass(frozen=True)
+class CompiledLCColorTransitionTerm:
+    """Compiler-certified executable term for an LC color-state transition."""
+
+    input_permutation: tuple[int, int]
+    reverse_parent_mask: int
+    component_operation: str
+    result_component_kind: str | None
+    input_shape_kinds: tuple[str, str]
+    result_shape_kind: str | None
+    exact_factor_expression: str
+    proof_digest: str
+    provenance: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.input_permutation, tuple) or any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in self.input_permutation
+        ):
+            raise TypeError("compiled LC color input permutation must be integer tuple")
+        if self.input_permutation not in {(0, 1), (1, 0)}:
+            raise ValueError(
+                "compiled LC color input permutation must be (0, 1) or (1, 0)"
+            )
+        if isinstance(self.reverse_parent_mask, bool) or not isinstance(
+            self.reverse_parent_mask, int
+        ):
+            raise TypeError("compiled LC color reverse-parent mask must be an integer")
+        if self.reverse_parent_mask not in range(4):
+            raise ValueError(
+                "compiled LC color reverse-parent mask must fit two inputs"
+            )
+
+        supported_operations = {
+            "concatenate-join",
+            "concatenate-keep",
+            "inherit-left",
+            "inherit-right",
+            "empty",
+            "close",
+        }
+        if not isinstance(self.component_operation, str):
+            raise TypeError("compiled LC color component operation must be a string")
+        if self.component_operation not in supported_operations:
+            raise ValueError(
+                "unsupported compiled LC color component operation "
+                f"{self.component_operation!r}"
+            )
+
+        supported_component_kinds = {"open-string", "adjoint-segment", "trace"}
+        if self.result_component_kind is not None and not isinstance(
+            self.result_component_kind, str
+        ):
+            raise TypeError(
+                "compiled LC color result component kind must be a string or null"
+            )
+        if self.result_component_kind is not None and (
+            self.result_component_kind not in supported_component_kinds
+        ):
+            raise ValueError("unsupported compiled LC color result component kind")
+        if (self.component_operation == "concatenate-join") != (
+            self.result_component_kind is not None
+        ):
+            raise ValueError(
+                "only compiled LC color joins declare a result component kind"
+            )
+
+        supported_shape_kinds = {
+            "singlet-forest",
+            "fundamental-open-string",
+            "antifundamental-open-string",
+            "adjoint-segment",
+        }
+        if (
+            not isinstance(self.input_shape_kinds, tuple)
+            or len(self.input_shape_kinds) != 2
+        ):
+            raise TypeError(
+                "compiled LC color input shapes must be a two-element tuple"
+            )
+        if any(not isinstance(value, str) for value in self.input_shape_kinds):
+            raise TypeError("compiled LC color input shapes must be strings")
+        if any(value not in supported_shape_kinds for value in self.input_shape_kinds):
+            raise ValueError(
+                "compiled LC color term requires two supported input shape kinds"
+            )
+        if self.result_shape_kind is not None and not isinstance(
+            self.result_shape_kind, str
+        ):
+            raise TypeError(
+                "compiled LC color result shape kind must be a string or null"
+            )
+        if self.component_operation == "close":
+            if self.result_shape_kind is not None:
+                raise ValueError(
+                    "compiled LC color closure term cannot declare a result shape"
+                )
+        elif self.result_shape_kind not in supported_shape_kinds:
+            raise ValueError(
+                "non-closure compiled LC color term requires a supported result shape"
+            )
+
+        if not isinstance(self.exact_factor_expression, str):
+            raise TypeError("compiled LC color exact factor must be a string")
+        if (
+            not self.exact_factor_expression
+            or self.exact_factor_expression != self.exact_factor_expression.strip()
+        ):
+            raise ValueError(
+                "compiled LC color exact factor must be a nonempty canonical string"
+            )
+        if not isinstance(self.proof_digest, str):
+            raise TypeError("compiled LC color proof digest must be a string")
+        if len(self.proof_digest) != 64 or any(
+            character not in "0123456789abcdef" for character in self.proof_digest
+        ):
+            raise ValueError("compiled LC color proof digest must be lowercase SHA256")
+
+        if not isinstance(self.provenance, tuple):
+            raise TypeError("compiled LC color provenance must be an immutable tuple")
+        for item in self.provenance:
+            if not isinstance(item, tuple) or len(item) != 2:
+                raise TypeError(
+                    "compiled LC color provenance entries must be key/value tuples"
+                )
+            key, value = item
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise TypeError(
+                    "compiled LC color provenance keys and values must be strings"
+                )
+            if not key or not value or key != key.strip() or value != value.strip():
+                raise ValueError(
+                    "compiled LC color provenance keys and values must be nonempty "
+                    "canonical strings"
+                )
+        provenance_keys = tuple(key for key, _value in self.provenance)
+        if provenance_keys != tuple(sorted(set(provenance_keys))):
+            raise ValueError(
+                "compiled LC color provenance keys must be sorted and unique"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "component_operation": self.component_operation,
+            "exact_factor_expression": self.exact_factor_expression,
+            "input_permutation": list(self.input_permutation),
+            "input_shape_kinds": list(self.input_shape_kinds),
+            "proof_digest": self.proof_digest,
+            "provenance": [list(item) for item in self.provenance],
+            "result_component_kind": self.result_component_kind,
+            "result_shape_kind": self.result_shape_kind,
+            "reverse_parent_mask": self.reverse_parent_mask,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, object],
+    ) -> CompiledLCColorTransitionTerm:
+        required = {
+            "component_operation",
+            "exact_factor_expression",
+            "input_permutation",
+            "input_shape_kinds",
+            "proof_digest",
+            "result_component_kind",
+            "result_shape_kind",
+            "reverse_parent_mask",
+        }
+        fields = set(payload)
+        missing = required - fields
+        if missing:
+            names = ", ".join(sorted(missing))
+            raise ValueError(
+                f"compiled LC color transition term is missing required fields: {names}"
+            )
+        unknown = fields - required - {"provenance"}
+        if unknown:
+            names = ", ".join(sorted(str(name) for name in unknown))
+            raise ValueError(
+                f"compiled LC color transition term has unknown fields: {names}"
+            )
+
+        input_permutation = _required_sequence_field(
+            payload,
+            "input_permutation",
+            context="compiled LC color transition term",
+        )
+        input_shape_kinds = _required_sequence_field(
+            payload,
+            "input_shape_kinds",
+            context="compiled LC color transition term",
+        )
+        if len(input_permutation) != 2:
+            raise ValueError(
+                "compiled LC color input permutation must contain two entries"
+            )
+        if len(input_shape_kinds) != 2:
+            raise ValueError("compiled LC color input shapes must contain two entries")
+
+        provenance_value = payload.get("provenance", ())
+        if isinstance(provenance_value, (str, bytes)) or not isinstance(
+            provenance_value, list | tuple
+        ):
+            raise TypeError("compiled LC color provenance must be an array")
+        provenance: list[tuple[str, str]] = []
+        for index, item in enumerate(provenance_value):
+            if isinstance(item, (str, bytes)) or not isinstance(item, list | tuple):
+                raise TypeError(
+                    "compiled LC color provenance item "
+                    f"{index} must be a key/value array"
+                )
+            if len(item) != 2:
+                raise ValueError(
+                    "compiled LC color provenance item "
+                    f"{index} must contain two entries"
+                )
+            provenance.append(
+                (
+                    _strict_string(item[0], "compiled LC color provenance key"),
+                    _strict_string(item[1], "compiled LC color provenance value"),
+                )
+            )
+
+        result_component_kind = payload["result_component_kind"]
+        if result_component_kind is not None and not isinstance(
+            result_component_kind, str
+        ):
+            raise TypeError(
+                "compiled LC color result component kind must be a string or null"
+            )
+        result_shape_kind = payload["result_shape_kind"]
+        if result_shape_kind is not None and not isinstance(result_shape_kind, str):
+            raise TypeError(
+                "compiled LC color result shape kind must be a string or null"
+            )
+        return cls(
+            input_permutation=(
+                _strict_integer(
+                    input_permutation[0], "compiled LC color input permutation"
+                ),
+                _strict_integer(
+                    input_permutation[1], "compiled LC color input permutation"
+                ),
+            ),
+            reverse_parent_mask=_strict_integer(
+                payload["reverse_parent_mask"],
+                "compiled LC color reverse-parent mask",
+            ),
+            component_operation=_strict_string(
+                payload["component_operation"],
+                "compiled LC color component operation",
+            ),
+            result_component_kind=result_component_kind,
+            input_shape_kinds=(
+                _strict_string(input_shape_kinds[0], "compiled LC color input shape"),
+                _strict_string(input_shape_kinds[1], "compiled LC color input shape"),
+            ),
+            result_shape_kind=result_shape_kind,
+            exact_factor_expression=_strict_string(
+                payload["exact_factor_expression"],
+                "compiled LC color exact factor",
+            ),
+            proof_digest=_strict_string(
+                payload["proof_digest"], "compiled LC color proof digest"
+            ),
+            provenance=tuple(provenance),
+        )
+
+
+@dataclass(frozen=True)
 class CompiledOrientedKernel:
     kind: int
     term_id: int
@@ -497,6 +767,21 @@ class CompiledOrientedKernel:
     evaluation_equivalence_verified: bool = False
     input_ordering_ids: tuple[str, ...] = ()
     output_ordering_id: str = ""
+    lc_color_transition_terms: tuple[CompiledLCColorTransitionTerm, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.lc_color_transition_terms, tuple):
+            raise TypeError(
+                "compiled oriented-kernel LC color transition terms must be a tuple"
+            )
+        if any(
+            not isinstance(item, CompiledLCColorTransitionTerm)
+            for item in self.lc_color_transition_terms
+        ):
+            raise TypeError(
+                "compiled oriented-kernel LC color transition terms must contain "
+                "typed records"
+            )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -530,6 +815,9 @@ class CompiledOrientedKernel:
             "evaluation_equivalence_verified": (self.evaluation_equivalence_verified),
             "input_ordering_ids": list(self.input_ordering_ids),
             "output_ordering_id": self.output_ordering_id,
+            "lc_color_transition_terms": [
+                item.to_dict() for item in self.lc_color_transition_terms
+            ],
         }
 
 
@@ -902,9 +1190,7 @@ class CompiledModelIR:
         particles = {particle.name: particle for particle in self.particles}
         parameters = {parameter.name: parameter for parameter in self.parameters}
         propagators = {propagator.name: propagator for propagator in self.propagators}
-        current_orderings: dict[
-            tuple[str, int], CompiledCurrentOrderingRecord
-        ] = {}
+        current_orderings: dict[tuple[str, int], CompiledCurrentOrderingRecord] = {}
         for record in self.current_orderings:
             if not isinstance(record, CompiledCurrentOrderingRecord):
                 raise TypeError(
@@ -966,9 +1252,7 @@ class CompiledModelIR:
                     f"current ordering {record.selector!r} result projection is invalid"
                 )
 
-        has_external_contract = any(
-            term.backend == "ufo" for term in self.vertex_terms
-        )
+        has_external_contract = any(term.backend == "ufo" for term in self.vertex_terms)
         if has_external_contract and (not orderings or not current_orderings):
             raise ValueError(
                 "compiled UFO model is missing explicit tensor ordering metadata"
@@ -1210,15 +1494,11 @@ class CompiledModelIR:
             "closure_contractions": [
                 item.to_dict() for item in self.closure_contractions
             ],
-            "tensor_orderings": [
-                item.to_json_dict() for item in self.tensor_orderings
-            ],
+            "tensor_orderings": [item.to_json_dict() for item in self.tensor_orderings],
             "current_orderings": [
                 item.to_json_dict() for item in self.current_orderings
             ],
-            "goldstone_partners": [
-                item.to_dict() for item in self.goldstone_partners
-            ],
+            "goldstone_partners": [item.to_dict() for item in self.goldstone_partners],
             "max_vertex_valence": self.max_vertex_valence,
         }
 
@@ -1430,6 +1710,11 @@ class CompiledModelIR:
                             context="compiled oriented kernel",
                         ),
                         "kernel output ordering ID",
+                    ),
+                    lc_color_transition_terms=(
+                        _compiled_lc_color_transition_terms(
+                            item.get("lc_color_transition_terms", ())
+                        )
                     ),
                 )
                 for item in _mappings(payload.get("oriented_kernels"))
@@ -1699,6 +1984,21 @@ def _mappings(value: object) -> list[dict[str, object]]:
     return [dict(item) for item in _sequence(value) if isinstance(item, Mapping)]
 
 
+def _compiled_lc_color_transition_terms(
+    value: object,
+) -> tuple[CompiledLCColorTransitionTerm, ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, list | tuple):
+        raise TypeError(
+            "compiled oriented-kernel LC color transition terms must be an array"
+        )
+    return tuple(
+        CompiledLCColorTransitionTerm.from_dict(
+            _strict_mapping(item, "compiled LC color transition term")
+        )
+        for item in value
+    )
+
+
 __all__ = [
     "SUPPORTED_COLOR_REPRESENTATIONS",
     "TENSOR_ORDERING_CONTRACT_VERSION",
@@ -1712,6 +2012,7 @@ __all__ = [
     "CompiledCouplingRecord",
     "CompiledCurrentOrderingRecord",
     "CompiledDirectContractionRecord",
+    "CompiledLCColorTransitionTerm",
     "CompiledModelIR",
     "CompiledOrientedKernel",
     "CompiledParameterRecord",

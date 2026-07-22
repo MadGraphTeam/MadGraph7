@@ -93,6 +93,11 @@ def _state(
         tensor_ordering=tuple(f"{family}:c{index}" for index in range(dimension)),
         dimension=dimension,
         chirality=0,
+        lc_color_shape_kind=(
+            "adjoint-segment"
+            if particle_id == 21
+            else "fundamental-open-string"
+        ),
         auxiliary_kind=None,
         mass_parameter_id=None,
         width_parameter_id=None,

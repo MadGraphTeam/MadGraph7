@@ -49,6 +49,15 @@ _CONTRACT_KIND = {
 }
 _CALLABLE_KIND = {"prepared-kernel": 0, "rusticol-template": 1}
 _OUTPUT_FACTOR_SOURCE = {"none": 0, "coupling-real": 1, "coupling-imag": 2}
+_LC_COLOR_COMPONENT_OPERATION = {
+    "concatenate-join": 0,
+    "concatenate-keep": 1,
+    "inherit-left": 2,
+    "inherit-right": 3,
+    "empty": 4,
+    "close": 5,
+}
+_LC_COLOR_COMPONENT_KIND = {"open-string": 0, "adjoint-segment": 1, "trace": 2}
 _I128_MAX = (1 << 127) - 1
 _I128_MIN = -_I128_MAX
 
@@ -288,6 +297,13 @@ def build_recurrence_template_input_v1(
             coupling_orders,
         ),
         _color_contractions_table(catalog, strings, digests, factors, i32_sequences),
+        _lc_color_transition_witnesses_table(
+            catalog,
+            strings,
+            digests,
+            factors,
+            u32_sequences,
+        ),
         _color_nc_terms_table(catalog, factors),
         *_flatten_sequence_tables("u32_sequence", u32_sequences, _U32),
     ]
@@ -322,6 +338,7 @@ def _all_strings(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
             record.template_id,
             record.species_id,
             record.basis,
+            record.lc_color_shape_kind,
             *record.tensor_ordering,
         )
         yield from _present(
@@ -339,6 +356,8 @@ def _all_strings(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
             yield expression
     for record in catalog.quantum_flows:
         yield record.template_id
+        yield record.flavour_flow_operation
+        yield record.quantum_number_flow_operation
         for flow in (
             *record.input_quantum_number_flows,
             record.result_quantum_number_flow,
@@ -373,6 +392,12 @@ def _all_strings(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
         yield from (name for name, _ in record.coupling_orders)
     for record in catalog.color_contractions:
         yield from (record.template_id, record.rule_kind)
+        for witness in record.transition_witnesses:
+            yield from witness.input_shape_kinds
+            yield from _present(witness.result_shape_kind)
+            for key, value in witness.provenance:
+                yield key
+                yield value
     for record in catalog.symmetry_proofs:
         yield from (
             record.template_id,
@@ -421,6 +446,7 @@ def _all_digests(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
         )
     for record in catalog.color_contractions:
         yield record.expression_digest
+        yield from (witness.proof_digest for witness in record.transition_witnesses)
     for record in catalog.symmetry_proofs:
         yield record.witness_digest
         yield from record.expression_digests
@@ -451,6 +477,7 @@ def _all_factors(
     for record in catalog.color_contractions:
         yield record.exact_coefficient
         yield from (factor for _, factor in record.nc_polynomial)
+        yield from (witness.exact_factor for witness in record.transition_witnesses)
     for record in catalog.symmetry_proofs:
         yield record.exact_phase
 
@@ -651,6 +678,7 @@ def _current_states_table(catalog, ids, strings, digests, sequences):
                 ),
                 record.dimension,
                 record.chirality,
+                strings.id(record.lc_color_shape_kind),
                 strings.id(record.auxiliary_kind),
                 _optional_reference(record.mass_parameter_id, parameter_ids),
                 _optional_reference(record.width_parameter_id, parameter_ids),
@@ -673,6 +701,7 @@ def _current_states_table(catalog, ids, strings, digests, sequences):
             ("tensor_ordering_sequence_id", _U32),
             ("dimension", _U32),
             ("chirality", _I32),
+            ("lc_color_shape_string_id", _U32),
             ("auxiliary_kind_string_id", _U32),
             ("mass_parameter_id", _U32),
             ("width_parameter_id", _U32),
@@ -768,6 +797,8 @@ def _quantum_flows_table(
                         for value in record.input_quantum_number_flows
                     )
                 ),
+                strings.id(record.flavour_flow_operation),
+                strings.id(record.quantum_number_flow_operation),
                 coupling_orders.id(record.coupling_orders),
                 ids["current_states"][record.result_state_template_id],
                 record.result_spin_state,
@@ -788,6 +819,8 @@ def _quantum_flows_table(
             ("input_spin_sequence_id", _U32),
             ("input_flavour_sequence_id", _U32),
             ("input_quantum_sequence_id", _U32),
+            ("flavour_flow_operation_string_id", _U32),
+            ("quantum_number_flow_operation_string_id", _U32),
             ("coupling_order_set_id", _U32),
             ("result_state_template_id", _U32),
             ("result_spin_state", _I32),
@@ -923,6 +956,9 @@ def _closures_table(
                         for value in record.input_state_template_ids
                     )
                 ),
+                _optional_reference(
+                    record.result_state_template_id, ids["current_states"]
+                ),
                 ids["evaluator_bindings"][record.evaluator_resolver_key],
                 sequences.id(record.canonical_input_order),
                 sequences.id(
@@ -960,6 +996,7 @@ def _closures_table(
             ("id", _U32),
             ("template_string_id", _U32),
             ("input_state_sequence_id", _U32),
+            ("result_state_template_id", _U32),
             ("evaluator_binding_id", _U32),
             ("canonical_input_order_sequence_id", _U32),
             ("coupling_parameter_sequence_id", _U32),
@@ -982,7 +1019,8 @@ def _closures_table(
 
 def _color_contractions_table(catalog, strings, digests, factors, i32_sequences):
     rows = []
-    offset = 0
+    witness_offset = 0
+    nc_offset = 0
     for index, record in enumerate(catalog.color_contractions):
         rows.append(
             (
@@ -996,13 +1034,16 @@ def _color_contractions_table(catalog, strings, digests, factors, i32_sequences)
                 else record.output_representation,
                 record.ordered_open_string_arity,
                 factors.id(record.exact_coefficient),
-                offset,
+                witness_offset,
+                len(record.transition_witnesses),
+                nc_offset,
                 len(record.nc_polynomial),
                 digests.id(record.expression_digest),
                 digests.id(record.semantic_digest),
             )
         )
-        offset += len(record.nc_polynomial)
+        witness_offset += len(record.transition_witnesses)
+        nc_offset += len(record.nc_polynomial)
     return _rows(
         "color_contractions",
         rows,
@@ -1015,10 +1056,68 @@ def _color_contractions_table(catalog, strings, digests, factors, i32_sequences)
             ("output_representation", _I32),
             ("ordered_open_string_arity", _U32),
             ("exact_coefficient_factor_id", _U32),
+            ("witness_start", _U64),
+            ("witness_count", _U64),
             ("nc_term_start", _U64),
             ("nc_term_count", _U64),
             ("expression_digest_id", _U32),
             ("semantic_digest_id", _U32),
+        ),
+    )
+
+
+def _lc_color_transition_witnesses_table(
+    catalog,
+    strings,
+    digests,
+    factors,
+    sequences,
+):
+    rows = []
+    for color_id, record in enumerate(catalog.color_contractions):
+        for ordinal, witness in enumerate(record.transition_witnesses):
+            rows.append(
+                (
+                    color_id,
+                    ordinal,
+                    strings.id(witness.input_shape_kinds[0]),
+                    strings.id(witness.input_shape_kinds[1]),
+                    0 if witness.input_permutation == (0, 1) else 1,
+                    witness.reverse_parent_mask,
+                    _LC_COLOR_COMPONENT_OPERATION[witness.component_operation],
+                    (
+                        255
+                        if witness.result_component_kind is None
+                        else _LC_COLOR_COMPONENT_KIND[witness.result_component_kind]
+                    ),
+                    strings.id(witness.result_shape_kind),
+                    factors.id(witness.exact_factor),
+                    digests.id(witness.proof_digest),
+                    sequences.id(
+                        tuple(
+                            strings.id(item)
+                            for pair in witness.provenance
+                            for item in pair
+                        )
+                    ),
+                )
+            )
+    return _rows(
+        "lc_color_transition_witnesses",
+        rows,
+        (
+            ("color_contraction_id", _U32),
+            ("ordinal", _U32),
+            ("left_shape_string_id", _U32),
+            ("right_shape_string_id", _U32),
+            ("input_permutation", _U8),
+            ("reverse_parent_mask", _U8),
+            ("component_operation", _U8),
+            ("result_component_kind", _U8),
+            ("result_shape_string_id", _U32),
+            ("exact_factor_id", _U32),
+            ("proof_digest_id", _U32),
+            ("provenance_sequence_id", _U32),
         ),
     )
 

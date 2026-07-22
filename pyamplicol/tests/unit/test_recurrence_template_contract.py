@@ -5,10 +5,29 @@ import json
 from dataclasses import FrozenInstanceError, replace
 from fractions import Fraction
 
+import numpy as np
 import pytest
 
+from pyamplicol import _rusticol
+from pyamplicol.generation.recurrence_columnar import (
+    ExactComplexRationalV1 as BuilderExactComplexRationalV1,
+)
+from pyamplicol.generation.recurrence_columnar import (
+    RecurrenceBuilderLogicalInputV1,
+    RecurrenceColumn,
+    RecurrenceExternalLegV1,
+    RecurrenceLCOpenStringV1,
+    RecurrenceNormalizationV1,
+    RecurrencePhysicalLCSectorV1,
+    RecurrencePublicLCFlowV1,
+    RecurrenceSemanticDigestV1,
+    RecurrenceSemanticTemplateReferenceV1,
+    RecurrenceSourceStateV1,
+    build_recurrence_builder_input_v1,
+)
 from pyamplicol.generation.recurrence_template_columnar import (
     RecurrenceColumnarInputError,
+    RecurrenceTemplateInputV1,
     build_recurrence_template_input_v1,
 )
 from pyamplicol.models.recurrence_template import (
@@ -18,6 +37,7 @@ from pyamplicol.models.recurrence_template import (
     EvaluatorBindingV1,
     EvaluatorCallableKind,
     ExactComplexRationalV1,
+    LCColorTransitionWitnessV1,
     ParameterTemplateV1,
     PropagatorTemplateV1,
     QuantumFlowTemplateV1,
@@ -83,6 +103,7 @@ def _state_templates() -> tuple[CurrentStateTemplateV1, ...]:
             tensor_ordering=("mu0", "mu1", "mu2", "mu3"),
             dimension=4,
             chirality=0,
+            lc_color_shape_kind="adjoint-segment",
             auxiliary_kind=None,
             mass_parameter_id=None,
             width_parameter_id=None,
@@ -99,6 +120,7 @@ def _state_templates() -> tuple[CurrentStateTemplateV1, ...]:
             tensor_ordering=("spin0", "spin1"),
             dimension=2,
             chirality=1,
+            lc_color_shape_kind="fundamental-open-string",
             auxiliary_kind=None,
             mass_parameter_id="parameter:mass",
             width_parameter_id=None,
@@ -116,6 +138,21 @@ def _color_template() -> ColorContractionTemplateV1:
         exact_coefficient=ExactComplexRationalV1.one(),
         nc_polynomial=((0, ExactComplexRationalV1.one()),),
         expression_digest=_EXPRESSION_A,
+        transition_witnesses=(
+            LCColorTransitionWitnessV1(
+                input_shape_kinds=(
+                    "fundamental-open-string",
+                    "adjoint-segment",
+                ),
+                input_permutation=(0, 1),
+                reverse_parent_mask=0,
+                component_operation="concatenate-join",
+                result_component_kind="open-string",
+                result_shape_kind="fundamental-open-string",
+                exact_factor=ExactComplexRationalV1.one(),
+                proof_digest=_WITNESS,
+            ),
+        ),
     )
 
 
@@ -171,10 +208,12 @@ def _flow_template() -> QuantumFlowTemplateV1:
             (("electric_charge", "-1/3"),),
             (("electric_charge", "0"),),
         ),
+        flavour_flow_operation="append-left-result",
+        quantum_number_flow_operation="particle-static-result",
         coupling_orders=(("QCD", 1),),
         result_state_template_id="state:matter",
         result_spin_state=1,
-        result_flavour_flow=(1, 21),
+        result_flavour_flow=(1, 9000001),
         result_quantum_number_flow=(("electric_charge", "-1/3"),),
         exact_coupling=ExactComplexRationalV1.one(),
         predicate_digest=_PREDICATE,
@@ -217,10 +256,26 @@ def _propagator() -> PropagatorTemplateV1:
     )
 
 
+def _identity_propagator() -> PropagatorTemplateV1:
+    return PropagatorTemplateV1(
+        template_id="propagator:adjoint:identity",
+        state_template_id="state:adjoint",
+        applies_propagator=False,
+        evaluator_resolver_key=None,
+        numerator_expression_digest=None,
+        denominator_expression_digest=None,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+        gauge=None,
+        linearity_proof_template_id=None,
+    )
+
+
 def _closure() -> ClosureTemplateV1:
     return ClosureTemplateV1(
         template_id="closure:matter-pair",
         input_state_template_ids=("state:matter", "state:adjoint"),
+        result_state_template_id="state:matter",
         evaluator_resolver_key="evaluator:closure:matter-pair",
         canonical_input_order=(0, 1),
         coupling_parameter_ids=(),
@@ -328,7 +383,7 @@ def _catalog(**overrides: object) -> RecurrenceTemplateCatalog:
         "sources": _source_templates(),
         "quantum_flows": (_flow_template(),),
         "transitions": (_transition(),),
-        "propagators": (_propagator(),),
+        "propagators": (_identity_propagator(), _propagator()),
         "closures": (_closure(),),
         "color_contractions": (_color_template(),),
         "symmetry_proofs": (_proof(),),
@@ -336,6 +391,40 @@ def _catalog(**overrides: object) -> RecurrenceTemplateCatalog:
     }
     values.update(overrides)
     return RecurrenceTemplateCatalog.create(**values)  # type: ignore[arg-type]
+
+
+def _mutated_projected_input(
+    table_name: str,
+    column_name: str,
+    value: int,
+    *,
+    row: int = 0,
+) -> RecurrenceTemplateInputV1:
+    projected = build_recurrence_template_input_v1(_catalog())
+    tables = list(projected.tables)
+    table_index = next(
+        index for index, table in enumerate(tables) if table.name == table_name
+    )
+    table = tables[table_index]
+    columns = list(table.columns)
+    column_index = next(
+        index for index, column in enumerate(columns) if column.name == column_name
+    )
+    values = np.array(columns[column_index].values, copy=True, order="C")
+    values[row] = value
+    values.flags.writeable = False
+    columns[column_index] = RecurrenceColumn(
+        name=columns[column_index].name,
+        values=values,
+    )
+    tables[table_index] = replace(table, columns=tuple(columns))
+    return RecurrenceTemplateInputV1(
+        abi=projected.abi,
+        catalog_digest=projected.catalog_digest,
+        compiled_model_digest=projected.compiled_model_digest,
+        prepared_kernel_pack_digest=projected.prepared_kernel_pack_digest,
+        tables=tuple(tables),
+    )
 
 
 def test_binary64_conversion_is_exact_and_distinguishes_sub_ulp_terms() -> None:
@@ -396,6 +485,7 @@ def test_extended_recurrence_records_round_trip_exactly() -> None:
         (("electric_charge", "0"),),
     )
     assert restored.quantum_flows[0].exact_coupling == ExactComplexRationalV1.one()
+    assert restored.quantum_flows[0].flavour_flow_operation == "append-left-result"
     assert restored.quantum_flows[0].result_spin_state == 1
     assert restored.sources[0].flavour_flow == (21,)
     assert restored.sources[0].quantum_number_flow == (("electric_charge", "0"),)
@@ -410,6 +500,7 @@ def test_extended_recurrence_records_round_trip_exactly() -> None:
     payload = json.loads(catalog.canonical_json)
     flow = payload["quantum_flows"][0]
     assert flow["input_flavour_flows"] == [[1], [21]]
+    assert flow["flavour_flow_operation"] == "append-left-result"
     assert flow["input_quantum_number_flows"][0] == [["electric_charge", "-1/3"]]
 
 
@@ -459,6 +550,7 @@ def test_model_wide_columnar_projection_preserves_typed_contracts() -> None:
     assert tables["quantum_flows"].row_count == 1
     assert tables["transitions"].row_count == 1
     assert tables["closures"].row_count == 1
+    assert tables["lc_color_transition_witnesses"].row_count == 1
     assert "exact_coupling_factor_id" in {
         column.name for column in tables["quantum_flows"].columns
     }
@@ -471,9 +563,115 @@ def test_model_wide_columnar_projection_preserves_typed_contracts() -> None:
     assert "result_spin_state" in {
         column.name for column in tables["quantum_flows"].columns
     }
+    assert "flavour_flow_operation_string_id" in {
+        column.name for column in tables["quantum_flows"].columns
+    }
     assert "eligible_quantum_flow_sequence_id" in {
         column.name for column in tables["closures"].columns
     }
+    assert "lc_color_shape_string_id" in {
+        column.name for column in tables["current_states"].columns
+    }
+    assert {"witness_start", "witness_count"} <= {
+        column.name for column in tables["color_contractions"].columns
+    }
+
+
+def test_native_builder_composite_authentication_is_warmup_only() -> None:
+    catalog = _catalog()
+    prepared = build_recurrence_template_input_v1(catalog)
+    matter_state = catalog.current_states[1]
+    matter_source = catalog.sources[1]
+    logical = RecurrenceBuilderLogicalInputV1(
+        process_id="synthetic_matter_pair",
+        layout="topology-replay",
+        semantic_digests=(
+            RecurrenceSemanticDigestV1("process", "d" * 64),
+            RecurrenceSemanticDigestV1(
+                "model-catalog", catalog.header.compiled_model_digest
+            ),
+            RecurrenceSemanticDigestV1(
+                "prepared-catalog", catalog.header.catalog_digest
+            ),
+            RecurrenceSemanticDigestV1("color-plan", "e" * 64),
+        ),
+        external_legs=tuple(
+            RecurrenceExternalLegV1(
+                source_slot=slot,
+                public_label=slot + 1,
+                physical_pdg=1 if slot == 0 else -1,
+                outgoing_pdg=1 if slot == 0 else -1,
+                is_initial=True,
+                source_states=(
+                    RecurrenceSourceStateV1(
+                        0,
+                        1,
+                        1,
+                        -1 if slot == 0 else 1,
+                        1,
+                        1,
+                    ),
+                ),
+                momentum_mask=1 << slot,
+                support_mask=1,
+            )
+            for slot in range(2)
+        ),
+        physical_sectors=(
+            RecurrencePhysicalLCSectorV1(
+                sector_id=0,
+                public_id="flow:1,2",
+                kind="open-lines",
+                open_strings=(RecurrenceLCOpenStringV1(0, 1),),
+                word_source_slots=(0, 1),
+                support_mask=1,
+            ),
+        ),
+        public_flows=(RecurrencePublicLCFlowV1(0, "flow:1,2", 0, (0, 1), (0, 1)),),
+        semantic_template_references=(
+            RecurrenceSemanticTemplateReferenceV1(
+                "current-state", 1, matter_state.semantic_digest
+            ),
+            RecurrenceSemanticTemplateReferenceV1(
+                "source", 1, matter_source.semantic_digest, prepared_kernel_id=0
+            ),
+        ),
+        normalization=RecurrenceNormalizationV1(
+            BuilderExactComplexRationalV1(1),
+            "synthetic-normalization-v1",
+            "f" * 64,
+        ),
+        process_support_mask=1,
+    )
+    process = build_recurrence_builder_input_v1(logical)
+
+    result = _rusticol._validate_recurrence_builder_input_v1(process, prepared)
+
+    assert result["validation_status"] == "validated-composite-input"
+    assert result["composite_authenticated"] is True
+    assert result["template_catalog_digest"] == catalog.header.catalog_digest
+    assert result["compiled_model_digest"] == catalog.header.compiled_model_digest
+    assert result["prepared_kernel_pack_digest"] == _PREPARED_PACK_DIGEST
+    assert result["schedule_constructed"] is False
+
+    stale_logical = replace(
+        logical,
+        semantic_digests=tuple(
+                RecurrenceSemanticDigestV1(
+                    role, "1" * 64 if role == "model-catalog" else digest
+                )
+            for role, digest in (
+                ("process", "d" * 64),
+                ("model-catalog", catalog.header.compiled_model_digest),
+                ("prepared-catalog", catalog.header.catalog_digest),
+                ("color-plan", "e" * 64),
+            )
+        ),
+    )
+    with pytest.raises(ValueError, match="model-catalog digest"):
+        _rusticol._validate_recurrence_builder_input_v1(
+            build_recurrence_builder_input_v1(stale_logical), prepared
+        )
 
 
 @pytest.mark.parametrize("numerator", (1 << 127, -(1 << 127)))
@@ -658,6 +856,99 @@ def test_catalog_rejects_unknown_state_reference() -> None:
         _catalog(transitions=(transition,))
 
 
+def test_catalog_rejects_transition_quantum_flow_coupling_mismatch() -> None:
+    transition = replace(
+        _transition(),
+        coupling_orders=(),
+        semantic_digest="",
+    )
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="transition and quantum-flow state/coupling contracts",
+    ):
+        _catalog(transitions=(transition,))
+
+
+def test_catalog_rejects_prepared_closure_without_quantum_flow_witness() -> None:
+    closure = replace(
+        _closure(),
+        eligible_quantum_flow_template_ids=(),
+        semantic_digest="",
+    )
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="prepared closure must carry at least one eligible quantum-flow",
+    ):
+        _catalog(closures=(closure,))
+
+
+@pytest.mark.parametrize(
+    ("table_name", "column_name", "value", "message"),
+    [
+        (
+            "quantum_flows",
+            "flavour_flow_operation_string_id",
+            0,
+            "unsupported flavour operation",
+        ),
+        (
+            "transitions",
+            "coupling_order_set_id",
+            0,
+            "state/coupling contracts do not match",
+        ),
+        (
+            "closures",
+            "eligible_quantum_flow_sequence_id",
+            0,
+            "prepared closure 0 has no eligible quantum-flow witness",
+        ),
+        (
+            "closures",
+            "result_state_template_id",
+            0,
+            "different result-state contracts",
+        ),
+        (
+            "evaluator_bindings",
+            "callable_kind",
+            1,
+            "direct Rusticol closure 0 carries prepared quantum-flow witnesses",
+        ),
+        (
+            "color_contractions",
+            "witness_count",
+            0,
+            "LC color transition witnesses",
+        ),
+        (
+            "lc_color_transition_witnesses",
+            "component_operation",
+            6,
+            "LC color witness operation 6 is not supported",
+        ),
+        (
+            "lc_color_transition_witnesses",
+            "result_component_kind",
+            255,
+            "LC color join witness has invalid component kind",
+        ),
+    ],
+)
+def test_native_catalog_validation_rejects_mutated_dynamic_contracts(
+    table_name: str,
+    column_name: str,
+    value: int,
+    message: str,
+) -> None:
+    projected = _mutated_projected_input(table_name, column_name, value)
+    with pytest.raises(ValueError, match=message):
+        _rusticol._validate_recurrence_template_input_v1(
+            projected,
+            [0, 1, 2, 3, 4],
+        )
+
+
 def test_catalog_rejects_closure_quantum_flow_state_mismatch() -> None:
     closure = replace(
         _closure(),
@@ -666,7 +957,20 @@ def test_catalog_rejects_closure_quantum_flow_state_mismatch() -> None:
     )
     with pytest.raises(
         RecurrenceTemplateError,
-        match="closure and eligible quantum-flow state/coupling contracts",
+        match="closure and eligible quantum-flow input/result/coupling contracts",
+    ):
+        _catalog(closures=(closure,))
+
+
+def test_catalog_rejects_closure_quantum_flow_result_state_mismatch() -> None:
+    closure = replace(
+        _closure(),
+        result_state_template_id="state:adjoint",
+        semantic_digest="",
+    )
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="closure and eligible quantum-flow input/result/coupling contracts",
     ):
         _catalog(closures=(closure,))
 
@@ -679,7 +983,7 @@ def test_catalog_rejects_closure_quantum_flow_coupling_mismatch() -> None:
     )
     with pytest.raises(
         RecurrenceTemplateError,
-        match="closure and eligible quantum-flow state/coupling contracts",
+        match="closure and eligible quantum-flow input/result/coupling contracts",
     ):
         _catalog(closures=(closure,))
 

@@ -100,9 +100,37 @@ identical.
 Source templates carry their canonical flavour and quantum-number flows in
 addition to helicity and spin state. Quantum-flow templates carry the result
 spin state and bind their input/result state tuple and coupling-order set into
-their predicate identity. Prepared closure templates reference the complete
-set of quantum-flow predicates that admit their input currents; each reference
-must have the same input-state and coupling-order contract as the closure.
+their predicate identity. They also carry one exactly certified flavour-flow
+operation from this finite set:
+
+```text
+constant-result
+append-left-result
+append-right-result
+concat-left-right-result
+```
+
+The model compiler owns the operation declaration. Template preparation then
+evaluates the live model callback on deterministic, distinct input-flow,
+quantum-number-flow, and coupling-order sentinels as an independent consistency
+check. Admission must be independent of those accumulated values, and the
+declared operation must reproduce every observed result exactly. These probes
+do not promote sampled behavior into a proof. A model that overrides the live
+flow predicate without also declaring its recurrence contract, or whose
+declaration and callback disagree, fails closed before process construction.
+The callback is never approximated in Rust.
+
+The v1 quantum-number-flow operation is `particle-static-result`: every
+transition to one current-state template must carry the same canonical result
+quantum-number flow. Both the declared flavour operation and this result-state
+invariant are revalidated against the stored witness columns in Python and
+Rust.
+
+Prepared closure templates reference the complete nonempty set of quantum-flow
+predicates that admit their input currents; each reference must have the same
+input-state, result-state, and coupling-order contract as the closure. Direct
+Rusticol closure templates carry neither a prepared quantum-flow witness nor a
+result-state contract.
 
 Unknown fields, duplicate semantic keys, duplicate evaluator resolver keys,
 stale digests, incomplete state contracts, or unsupported proof algorithms fail
@@ -145,13 +173,14 @@ CurrentCoreKey = (
   catalog_digest,
   node_kind,
   current_state_template_id,
+  interned_dynamic_lc_color_state_id,
   sorted_support_source_slots,
   canonical_momentum_linear_form,
-  spin_state,
+  layout_specific_helicity_identity,
   canonical_flavour_flow,
   interned_canonical_quantum_number_flow_id,
   coupling_order_vector,
-  source_template_id_or_null,
+  source_binding,
   propagator_template_id_or_null
 )
 
@@ -168,9 +197,46 @@ ContributionKey = (
 )
 ```
 
-Node IDs, allocation slots, physical sector IDs, selector IDs, and helicity
-ancestry are not value identities. Reuse is certified only after exact
-contribution vectors agree.
+`layout_specific_helicity_identity` is not an opaque selector ID. For
+`topology-replay` it contains the static result spin class and one ordered
+`(source_slot, source_state_index)` assignment for every source in the local
+current support. This is AmpliCol's local source ancestry: it shares a partial
+current across complete helicity configurations only when that partial current
+depends on the same local source states. A replay source binds one fixed source
+template.
+
+For `all-flow-union`, the identity contains only the static transition spin
+class. It contains no public or numerical helicity assignment. Source currents
+instead bind a runtime source-dispatch domain covering the retained states of
+their external leg. Non-source currents never carry source bindings. These
+constraints are checked when keys are constructed, preventing either layout
+from accidentally adopting the other's state multiplication.
+
+Node IDs, allocation slots, physical sector IDs, and selector IDs are not value
+identities. Reuse is certified only after exact contribution vectors agree.
+
+### Dynamic LC color state
+
+The interned dynamic state is an output color-shape ID plus an ordered forest of
+components. Components are open strings, adjoint segments, or traces and contain
+colored source slots in exact order. Color-singlet sources remain in current
+support and helicity ancestry but do not enter color identity. Physical sector
+IDs never enter current identity.
+
+Open strings, adjoint segments, and separate component blocks preserve their
+construction order. Traces are canonicalized only under cyclic rotation.
+Reversal, component permutation, and fermion-line exchange are aliases only when
+an exact proof supplies their phase/sign.
+
+The model compiler supplies executable LC transition witnesses. Each witness
+binds a prepared color contraction, input permutation, parent-reversal mask,
+closed component operation, result color-shape contract, nonzero exact factor,
+and proof digest. The closed operation set is concatenate-and-join,
+concatenate-and-keep, inherit-left/right from an empty color parent, empty, and
+closure. Rust applies these witnesses; it never infers an operation from
+`rule_kind`, particle IDs, model names, or representations. Applying a witness
+must conserve every colored source slot exactly once and produce a state admitted
+by the declared output shape.
 
 For each contribution key, Rust aggregates the complete exact coefficient:
 
@@ -195,7 +261,9 @@ construction. In particular, transition outcomes are keyed by the full input
 state contract, including spin state, chirality, flavor flow class, quantum
 number flow, result spin state, and coupling orders. Closure eligibility uses
 the same exact model callback predicates rather than particle-only matching.
-Caches may not omit fields visible to the model's transition predicate.
+Transition records and their quantum-flow witnesses must have identical input,
+result, and coupling-order contracts. Caches may not omit fields visible to the
+model's transition predicate.
 
 Built-in SM and compiled UFO models enter the same catalog encoder and Rust
 binding. Branching on model name, built-in identity, benchmark process, or

@@ -5,7 +5,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from ._physics_ir import (
     ContractionIR,
@@ -47,6 +47,28 @@ class Vertex:
 
 CouplingOrders = tuple[tuple[str, int], ...]
 QuantumNumberFlow = tuple[tuple[str, str], ...]
+RecurrenceFlavourFlowOperation = Literal[
+    "constant-result",
+    "append-left-result",
+    "append-right-result",
+    "concat-left-right-result",
+]
+RecurrenceQuantumNumberFlowOperation = Literal["particle-static-result"]
+RecurrenceLCColorShapeKind = Literal[
+    "singlet-forest",
+    "fundamental-open-string",
+    "antifundamental-open-string",
+    "adjoint-segment",
+]
+RecurrenceLCColorComponentKind = Literal["open-string", "adjoint-segment", "trace"]
+RecurrenceLCColorOperation = Literal[
+    "concatenate-join",
+    "concatenate-keep",
+    "inherit-left",
+    "inherit-right",
+    "empty",
+    "close",
+]
 
 
 @dataclass(frozen=True)
@@ -63,6 +85,111 @@ class QuantumFlow:
     flavour_flow: tuple[int, ...]
     quantum_number_flow: QuantumNumberFlow
     coupling: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class RecurrenceQuantumFlowContract:
+    """Declarative dynamic-flow contract consumed by recurrence generation."""
+
+    flavour_flow_operation: RecurrenceFlavourFlowOperation
+    quantum_number_flow_operation: RecurrenceQuantumNumberFlowOperation
+    admission_scope: Literal["static-input-contract"] = "static-input-contract"
+
+    def __post_init__(self) -> None:
+        if self.flavour_flow_operation not in {
+            "constant-result",
+            "append-left-result",
+            "append-right-result",
+            "concat-left-right-result",
+        }:
+            raise ValueError(
+                "unsupported recurrence flavour-flow operation "
+                f"{self.flavour_flow_operation!r}"
+            )
+        if self.quantum_number_flow_operation != "particle-static-result":
+            raise ValueError(
+                "unsupported recurrence quantum-number-flow operation "
+                f"{self.quantum_number_flow_operation!r}"
+            )
+        if self.admission_scope != "static-input-contract":
+            raise ValueError(
+                f"unsupported recurrence admission scope {self.admission_scope!r}"
+            )
+
+    def to_json_dict(self) -> dict[str, str]:
+        return {
+            "admission_scope": self.admission_scope,
+            "flavour_flow_operation": self.flavour_flow_operation,
+            "quantum_number_flow_operation": self.quantum_number_flow_operation,
+        }
+
+
+@dataclass(frozen=True)
+class RecurrenceLCColorWitnessContract:
+    """One exact ordered-word term in a model-owned LC transition contract."""
+
+    input_permutation: tuple[int, int]
+    reverse_parent_mask: int
+    component_operation: RecurrenceLCColorOperation
+    result_component_kind: RecurrenceLCColorComponentKind | None
+    exact_factor: tuple[float, float] = (1.0, 0.0)
+    proof_digest: str | None = None
+    provenance: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.input_permutation not in {(0, 1), (1, 0)}:
+            raise ValueError(
+                "recurrence LC color input permutation must be (0, 1) or (1, 0)"
+            )
+        if self.reverse_parent_mask not in range(4):
+            raise ValueError("recurrence LC color reversal mask must fit two inputs")
+        if self.component_operation not in {
+            "concatenate-join",
+            "concatenate-keep",
+            "inherit-left",
+            "inherit-right",
+            "empty",
+            "close",
+        }:
+            raise ValueError(
+                "unsupported recurrence LC color operation "
+                f"{self.component_operation!r}"
+            )
+        if (self.component_operation == "concatenate-join") != (
+            self.result_component_kind is not None
+        ):
+            raise ValueError(
+                "only recurrence LC color joins declare a result component kind"
+            )
+        if self.exact_factor == (0.0, 0.0):
+            raise ValueError("recurrence LC color witness factor must be nonzero")
+        if self.proof_digest is not None and (
+            len(self.proof_digest) != 64
+            or any(
+                character not in "0123456789abcdef" for character in self.proof_digest
+            )
+        ):
+            raise ValueError(
+                "recurrence LC color witness proof digest must be lowercase SHA-256"
+            )
+        if self.provenance != tuple(sorted(set(self.provenance))):
+            raise ValueError(
+                "recurrence LC color witness provenance must be sorted and unique"
+            )
+
+
+@dataclass(frozen=True)
+class RecurrenceLCColorTransitionContract:
+    """Closed, compiler-owned color-state contract for one local transition."""
+
+    rule_kind: str
+    witnesses: tuple[RecurrenceLCColorWitnessContract, ...]
+
+    def __post_init__(self) -> None:
+        if not self.rule_kind:
+            raise ValueError("recurrence LC color rule kind must be nonempty")
+        if not self.witnesses:
+            raise ValueError("recurrence LC color transition requires exact witnesses")
 
 
 @dataclass(frozen=True)
@@ -646,6 +773,147 @@ class Model:
 
         return {}
 
+    def recurrence_quantum_flow_contract(
+        self,
+        vertex: Vertex,
+        left_particle_id: int,
+        right_particle_id: int,
+    ) -> RecurrenceQuantumFlowContract:
+        """Declare the finite dynamic-flow law used by recurrence generation."""
+
+        del vertex, left_particle_id, right_particle_id
+        raise NotImplementedError(
+            "model does not declare a recurrence quantum-flow contract"
+        )
+
+    def _standard_recurrence_quantum_flow_contract(
+        self,
+        vertex: Vertex,
+        left_particle_id: int,
+        right_particle_id: int,
+    ) -> RecurrenceQuantumFlowContract:
+        """Return the exact contract implemented by ``combine_flavour_flow``."""
+
+        result_particle = int(vertex.particles[2])
+        left_particle = int(left_particle_id)
+        right_particle = int(right_particle_id)
+        if self.is_fermion(result_particle):
+            if self.is_fermion(left_particle):
+                operation: RecurrenceFlavourFlowOperation = "append-left-result"
+            elif self.is_fermion(right_particle):
+                operation = "append-right-result"
+            else:
+                operation = "constant-result"
+        elif self.is_fermion(left_particle) and self.is_fermion(right_particle):
+            operation = "concat-left-right-result"
+        else:
+            operation = "constant-result"
+        return RecurrenceQuantumFlowContract(
+            flavour_flow_operation=operation,
+            quantum_number_flow_operation="particle-static-result",
+        )
+
+    def recurrence_lc_color_shape_contract(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> RecurrenceLCColorShapeKind:
+        """Declare the ordered partial-color shape of one current state."""
+
+        del particle_id, chirality
+        raise NotImplementedError(
+            "model does not declare recurrence LC color-shape contracts"
+        )
+
+    def _standard_recurrence_lc_color_shape_contract(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> RecurrenceLCColorShapeKind:
+        del chirality
+        representation = int(self.color_rep(int(particle_id)))
+        if representation == 1:
+            return "singlet-forest"
+        if representation == 3:
+            return "fundamental-open-string"
+        if representation == -3:
+            return "antifundamental-open-string"
+        if representation == 8:
+            return "adjoint-segment"
+        raise NotImplementedError(
+            "standard recurrence LC color shapes support only representations "
+            f"1, 3, -3, and 8; got {representation}"
+        )
+
+    def recurrence_lc_color_transition_contract(
+        self,
+        vertex: Vertex,
+        *,
+        closure: bool,
+    ) -> RecurrenceLCColorTransitionContract:
+        """Declare exact ordered partial-color operations for one transition."""
+
+        del vertex, closure
+        raise NotImplementedError(
+            "model does not declare recurrence LC color-transition contracts"
+        )
+
+    def _standard_recurrence_lc_color_transition_contract(
+        self,
+        vertex: Vertex,
+        *,
+        closure: bool,
+    ) -> RecurrenceLCColorTransitionContract:
+        representations = tuple(
+            int(self.color_rep(particle)) for particle in vertex.particles
+        )
+        rule_kind = str(self.vertex_color_structure(vertex))
+        if rule_kind in {"model-defined", "generic-tensor"}:
+            absolute = tuple(abs(value) for value in representations)
+            if all(value == 1 for value in absolute):
+                rule_kind = "singlet"
+            else:
+                raise NotImplementedError(
+                    "colored recurrence tensors require an exact model-owned "
+                    "color projection; got an unresolved tensor for "
+                    f"representations {representations!r}"
+                )
+        if closure:
+            if any(abs(value) != 1 for value in representations):
+                raise NotImplementedError(
+                    "colored recurrence closures require compiler-owned LC "
+                    "closure terms"
+                )
+            return RecurrenceLCColorTransitionContract(
+                rule_kind,
+                (
+                    RecurrenceLCColorWitnessContract(
+                        (0, 1),
+                        0,
+                        "close",
+                        None,
+                    ),
+                ),
+            )
+        if rule_kind != "singlet":
+            raise NotImplementedError(
+                "colored recurrence transitions require compiler-owned ordered-word "
+                f"terms; generic rule {rule_kind!r} is validation metadata only"
+            )
+        if rule_kind == "singlet":
+            return RecurrenceLCColorTransitionContract(
+                rule_kind,
+                (
+                    RecurrenceLCColorWitnessContract(
+                        (0, 1),
+                        0,
+                        "empty",
+                        None,
+                    ),
+                ),
+            )
+        raise NotImplementedError(f"unsupported recurrence LC color rule {rule_kind!r}")
+
     def allowed_quantum_flows(
         self,
         vertex: Vertex,
@@ -987,6 +1255,14 @@ __all__ = [
     "PropagatorLoweringRule",
     "QuantumFlow",
     "QuantumNumberFlow",
+    "RecurrenceFlavourFlowOperation",
+    "RecurrenceLCColorComponentKind",
+    "RecurrenceLCColorOperation",
+    "RecurrenceLCColorShapeKind",
+    "RecurrenceLCColorTransitionContract",
+    "RecurrenceLCColorWitnessContract",
+    "RecurrenceQuantumFlowContract",
+    "RecurrenceQuantumNumberFlowOperation",
     "SourceSpinState",
     "Vertex",
     "VertexEvaluationEquivalence",

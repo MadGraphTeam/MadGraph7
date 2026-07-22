@@ -21,7 +21,7 @@ from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
 from typing import Any
 
-from .base import Model, Vertex
+from .base import Model, RecurrenceQuantumFlowContract, Vertex
 from .prepared_catalog import (
     PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF,
     PreparedClosureBinding,
@@ -38,6 +38,8 @@ from .recurrence_template import (
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
     ExactComplexRationalV1,
+    FlavourFlowOperationV1,
+    LCColorTransitionWitnessV1,
     ParameterTemplateV1,
     PropagatorTemplateV1,
     QuantumFlowTemplateV1,
@@ -768,6 +770,10 @@ def _build_current_states(
                 ),
                 dimension=state.dimension,
                 chirality=state.chirality,
+                lc_color_shape_kind=model.recurrence_lc_color_shape_contract(
+                    state.particle_id,
+                    state.chirality,
+                ),
                 auxiliary_kind=(
                     None if auxiliary_kind is None else str(auxiliary_kind)
                 ),
@@ -857,8 +863,7 @@ def _build_sources(
                 serializer=lambda value: _canonical_json(list(value)),
             )
             canonical_quantum_number_flow = tuple(
-                (str(name), str(expression))
-                for name, expression in quantum_number_flow
+                (str(name), str(expression)) for name, expression in quantum_number_flow
             )
             mass_parameter_id = _parameter_reference(
                 source_ir.mass_parameter,
@@ -1036,7 +1041,12 @@ def _build_transitions(
             output_dimension=binding.result_state.dimension,
             context=f"vertex kind {binding.key.kind}",
         )
-        color = _color_template(model, vertex, closure=False)
+        color = _color_template(
+            model,
+            vertex,
+            closure=False,
+            proof_subject=kernel.canonical_signature,
+        )
         colors.setdefault(color.template_id, color)
         flow_variants = _probe_quantum_flows(model, vertex, binding)
         if not flow_variants:
@@ -1141,6 +1151,8 @@ def _quantum_flow_template(
         input_spin_states=variant["input_spin_states"],
         input_flavour_flows=variant["input_flavour_flows"],
         input_quantum_number_flows=variant["input_quantum_number_flows"],
+        flavour_flow_operation=variant["flavour_flow_operation"],
+        quantum_number_flow_operation=variant["quantum_number_flow_operation"],
         coupling_orders=coupling_orders,
         result_state_template_id=result_state_id,
         result_spin_state=variant["result_spin_state"],
@@ -1197,6 +1209,16 @@ def _probe_quantum_flows(
     vertex: Vertex,
     binding: PreparedVertexBinding | PreparedClosureBinding,
 ) -> tuple[dict[str, Any], ...]:
+    contract = _recurrence_quantum_flow_contract(model, vertex, binding)
+    static_result_quantum_flow = tuple(
+        (str(name), str(expression))
+        for name, expression in _stable_callback(
+            f"quantum-number flow for result particle "
+            f"{binding.result_state.particle_id}",
+            lambda: model.quantum_number_flow(binding.result_state.particle_id),
+            serializer=lambda value: _canonical_json(list(value)),
+        )
+    )
     left_spins = _spin_states_for_chirality(
         model, binding.left_state.particle_id, binding.left_state.chirality
     )
@@ -1206,14 +1228,12 @@ def _probe_quantum_flows(
     variants: dict[str, dict[str, Any]] = {}
     for left_spin in left_spins:
         for right_spin in right_spins:
-            left = _flow_probe_index(model, binding.left_state, left_spin)
-            right = _flow_probe_index(model, binding.right_state, right_spin)
+            baseline_left = _flow_probe_index(model, binding.left_state, left_spin)
+            baseline_right = _flow_probe_index(model, binding.right_state, right_spin)
 
             def evaluate(
-                left: SimpleNamespace = left,
-                right: SimpleNamespace = right,
-                left_spin: int = left_spin,
-                right_spin: int = right_spin,
+                left: SimpleNamespace,
+                right: SimpleNamespace,
             ) -> tuple[dict[str, Any], ...]:
                 try:
                     flows = model.allowed_quantum_flows(vertex, left, right)
@@ -1235,7 +1255,10 @@ def _probe_quantum_flows(
                         )
                     rows.append(
                         {
-                            "input_spin_states": (left_spin, right_spin),
+                            "input_spin_states": (
+                                int(left.spin_state),
+                                int(right.spin_state),
+                            ),
                             "input_flavour_flows": (
                                 tuple(int(value) for value in left.flavour_flow),
                                 tuple(int(value) for value in right.flavour_flow),
@@ -1267,16 +1290,219 @@ def _probe_quantum_flows(
                     )
                 return tuple(sorted(rows, key=_canonical_json))
 
-            first = evaluate()
-            second = evaluate()
-            if _canonical_json(first) != _canonical_json(second):
-                raise RecurrenceTemplateError(
-                    "allowed_quantum_flows is nondeterministic for "
-                    f"vertex kind {vertex.kind}"
+            baseline = _stable_quantum_flow_probe(
+                evaluate,
+                baseline_left,
+                baseline_right,
+                vertex_kind=vertex.kind,
+            )
+            probe_pairs = (
+                (
+                    _flow_probe_index(
+                        model,
+                        binding.left_state,
+                        left_spin,
+                        flavour_flow=(1_870_001, 1_870_002),
+                        quantum_number_flow=(("__RECURRENCE_LEFT__", "17"),),
+                        coupling_orders=(("QCD", 2),),
+                    ),
+                    _flow_probe_index(
+                        model,
+                        binding.right_state,
+                        right_spin,
+                        flavour_flow=(1_871_001, 1_871_002),
+                        quantum_number_flow=(("__RECURRENCE_RIGHT__", "19"),),
+                        coupling_orders=(("QED", 1),),
+                    ),
+                ),
+                (
+                    _flow_probe_index(
+                        model,
+                        binding.left_state,
+                        left_spin,
+                        flavour_flow=(1_872_001, 1_872_002, 1_872_003),
+                        quantum_number_flow=(("electric_charge", "23/7"),),
+                        coupling_orders=(("__RECURRENCE_LEFT__", 1),),
+                    ),
+                    _flow_probe_index(
+                        model,
+                        binding.right_state,
+                        right_spin,
+                        flavour_flow=(1_873_001, 1_873_002, 1_873_003),
+                        quantum_number_flow=(("color_charge", "29/11"),),
+                        coupling_orders=(("__RECURRENCE_RIGHT__", 2),),
+                    ),
+                ),
+            )
+            probes = tuple(
+                _stable_quantum_flow_probe(
+                    evaluate,
+                    left,
+                    right,
+                    vertex_kind=vertex.kind,
                 )
-            for row in first:
-                variants.setdefault(_canonical_json(row), row)
+                for left, right in probe_pairs
+            )
+            baseline_by_key = _quantum_flow_rows_by_invariant_key(
+                baseline, vertex_kind=vertex.kind
+            )
+            probe_maps = tuple(
+                _quantum_flow_rows_by_invariant_key(rows, vertex_kind=vertex.kind)
+                for rows in probes
+            )
+            if any(set(rows) != set(baseline_by_key) for rows in probe_maps):
+                raise RecurrenceTemplateError(
+                    "recurrence-template-v1 requires quantum-flow admission to be "
+                    "independent of accumulated flavour, quantum-number, and "
+                    "coupling-order flows; "
+                    f"vertex kind {vertex.kind} violates that contract"
+                )
+            for key, row in baseline_by_key.items():
+                for left, right, rows in (
+                    (baseline_left, baseline_right, baseline_by_key),
+                    *(
+                        (left, right, rows)
+                        for (left, right), rows in zip(
+                            probe_pairs, probe_maps, strict=True
+                        )
+                    ),
+                ):
+                    expected = _apply_flavour_flow_operation(
+                        contract.flavour_flow_operation,
+                        tuple(int(value) for value in left.flavour_flow),
+                        tuple(int(value) for value in right.flavour_flow),
+                        binding.result_state.particle_id,
+                    )
+                    candidate = rows[key]
+                    if tuple(candidate["result_flavour_flow"]) != expected:
+                        raise RecurrenceTemplateError(
+                            "quantum-flow callback contradicts its declared "
+                            f"flavour operation for vertex kind {vertex.kind}"
+                        )
+                    if (
+                        tuple(candidate["result_quantum_number_flow"])
+                        != static_result_quantum_flow
+                    ):
+                        raise RecurrenceTemplateError(
+                            "quantum-flow callback contradicts its declared "
+                            "particle-static quantum-number operation for vertex "
+                            f"kind {vertex.kind}"
+                        )
+                enriched = dict(row)
+                enriched["flavour_flow_operation"] = contract.flavour_flow_operation
+                enriched["quantum_number_flow_operation"] = (
+                    contract.quantum_number_flow_operation
+                )
+                variants.setdefault(_canonical_json(enriched), enriched)
     return tuple(variants[key] for key in sorted(variants))
+
+
+def _stable_quantum_flow_probe(
+    evaluate: Any,
+    left: SimpleNamespace,
+    right: SimpleNamespace,
+    *,
+    vertex_kind: int,
+) -> tuple[dict[str, Any], ...]:
+    first = evaluate(left, right)
+    second = evaluate(left, right)
+    if _canonical_json(first) != _canonical_json(second):
+        raise RecurrenceTemplateError(
+            f"allowed_quantum_flows is nondeterministic for vertex kind {vertex_kind}"
+        )
+    return first
+
+
+def _quantum_flow_rows_by_invariant_key(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    vertex_kind: int,
+) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key_payload = {
+            name: value
+            for name, value in row.items()
+            if name
+            not in {
+                "input_flavour_flows",
+                "input_quantum_number_flows",
+                "result_flavour_flow",
+                "result_quantum_number_flow",
+            }
+        }
+        key = _canonical_json(key_payload)
+        if key in result:
+            raise RecurrenceTemplateError(
+                "recurrence-template-v1 cannot distinguish multiple quantum-flow "
+                f"branches for vertex kind {vertex_kind}"
+            )
+        result[key] = dict(row)
+    return result
+
+
+def _recurrence_quantum_flow_contract(
+    model: Model,
+    vertex: Vertex,
+    binding: PreparedVertexBinding | PreparedClosureBinding,
+) -> RecurrenceQuantumFlowContract:
+    model_type = type(model)
+    mro = model_type.__mro__
+    allowed_owner = next(
+        owner for owner in mro if "allowed_quantum_flows" in owner.__dict__
+    )
+    contract_owner = next(
+        owner for owner in mro if "recurrence_quantum_flow_contract" in owner.__dict__
+    )
+    if mro.index(contract_owner) > mro.index(allowed_owner):
+        raise RecurrenceTemplateError(
+            f"{model_type.__name__}.allowed_quantum_flows overrides the callback "
+            "without declaring a matching recurrence quantum-flow contract"
+        )
+    try:
+        contract = _stable_callback(
+            f"recurrence quantum-flow contract for vertex kind {vertex.kind}",
+            lambda: model.recurrence_quantum_flow_contract(
+                vertex,
+                binding.left_state.particle_id,
+                binding.right_state.particle_id,
+            ),
+            serializer=lambda value: _canonical_json(value.to_json_dict()),
+        )
+    except Exception as exc:
+        raise RecurrenceTemplateError(
+            "model does not provide a recurrence quantum-flow contract for "
+            f"vertex kind {vertex.kind}: {exc}"
+        ) from exc
+    if not isinstance(contract, RecurrenceQuantumFlowContract):
+        raise RecurrenceTemplateError(
+            "model recurrence quantum-flow contract must be a "
+            f"RecurrenceQuantumFlowContract for vertex kind {vertex.kind}"
+        )
+    return contract
+
+
+def _apply_flavour_flow_operation(
+    operation: FlavourFlowOperationV1 | str,
+    left: tuple[int, ...],
+    right: tuple[int, ...],
+    result_particle: int,
+) -> tuple[int, ...]:
+    if operation == "constant-result":
+        return (int(result_particle),)
+    if operation == "append-left-result":
+        return (
+            left if left and left[-1] == result_particle else (*left, result_particle)
+        )
+    if operation == "append-right-result":
+        return (
+            right
+            if right and right[-1] == result_particle
+            else (*right, result_particle)
+        )
+    if operation == "concat-left-right-result":
+        return (*left, *right, result_particle)
+    raise AssertionError(f"unknown flavour-flow operation {operation!r}")
 
 
 def _spin_states_for_chirality(
@@ -1302,13 +1528,12 @@ def _spin_states_for_chirality(
                 f"{state.spin_state!r}"
             )
         values.add(int(state.spin_state))
-    if not values:
-        result = model.result_spin_state(particle_id, chirality)
-        if not isinstance(result, int) or isinstance(result, bool):
-            raise RecurrenceTemplateError(
-                "recurrence-template-v1 cannot encode structured result spin state"
-            )
-        values.add(int(result))
+    result = model.result_spin_state(particle_id, chirality)
+    if not isinstance(result, int) or isinstance(result, bool):
+        raise RecurrenceTemplateError(
+            "recurrence-template-v1 cannot encode structured result spin state"
+        )
+    values.add(int(result))
     return tuple(sorted(values))
 
 
@@ -1316,20 +1541,28 @@ def _flow_probe_index(
     model: Model,
     state: PreparedParticleState,
     spin_state: int,
+    *,
+    flavour_flow: tuple[int, ...] | None = None,
+    quantum_number_flow: tuple[tuple[str, str], ...] | None = None,
+    coupling_orders: tuple[tuple[str, int], ...] = (),
 ) -> SimpleNamespace:
-    quantum_flow = _stable_callback(
-        f"quantum-number flow for particle {state.particle_id}",
-        lambda: model.quantum_number_flow(state.particle_id),
-        serializer=lambda value: _canonical_json(list(value)),
+    quantum_flow = (
+        _stable_callback(
+            f"quantum-number flow for particle {state.particle_id}",
+            lambda: model.quantum_number_flow(state.particle_id),
+            serializer=lambda value: _canonical_json(list(value)),
+        )
+        if quantum_number_flow is None
+        else quantum_number_flow
     )
     return SimpleNamespace(
         particle_id=state.particle_id,
         pdg=state.particle_id,
         chirality=state.chirality,
         spin_state=spin_state,
-        flavour_flow=(state.particle_id,),
+        flavour_flow=(state.particle_id,) if flavour_flow is None else flavour_flow,
         quantum_number_flow=quantum_flow,
-        coupling_orders=(),
+        coupling_orders=coupling_orders,
     )
 
 
@@ -1350,14 +1583,38 @@ def _color_template(
     vertex: Vertex,
     *,
     closure: bool,
+    proof_subject: str,
 ) -> ColorContractionTemplateV1:
-    def evaluate() -> tuple[str, tuple[int, ...], ExactComplexRationalV1]:
-        structure = str(model.vertex_color_structure(vertex))
+    model_type = type(model)
+    mro = model_type.__mro__
+    structure_owner = next(
+        owner for owner in mro if "vertex_color_structure" in owner.__dict__
+    )
+    contract_owner = next(
+        owner
+        for owner in mro
+        if "recurrence_lc_color_transition_contract" in owner.__dict__
+    )
+    if mro.index(contract_owner) > mro.index(structure_owner):
+        raise RecurrenceTemplateError(
+            f"{model_type.__name__}.vertex_color_structure overrides the color "
+            "tensor callback without declaring a matching recurrence LC color contract"
+        )
+
+    def evaluate() -> tuple[
+        str,
+        tuple[int, ...],
+        ExactComplexRationalV1,
+        tuple[Any, ...],
+    ]:
+        contract = model.recurrence_lc_color_transition_contract(
+            vertex,
+            closure=closure,
+        )
+        structure = str(contract.rule_kind)
         representations = tuple(
             int(model.color_rep(particle)) for particle in vertex.particles
         )
-        if structure in {"model-defined", "generic-tensor"}:
-            structure = _infer_model_defined_color_rule(representations)
         if structure not in _SUPPORTED_COLOR_RULES:
             raise RecurrenceTemplateError(
                 f"recurrence-template-v1 cannot encode color rule {structure!r} "
@@ -1367,7 +1624,7 @@ def _color_template(
             model.vertex_color_weight(vertex, color_accuracy="lc"),
             f"vertex kind {vertex.kind} LC color coefficient",
         )
-        return structure, representations, coefficient
+        return structure, representations, coefficient, tuple(contract.witnesses)
 
     first = evaluate()
     second = evaluate()
@@ -1375,13 +1632,60 @@ def _color_template(
         raise RecurrenceTemplateError(
             f"color callback is nondeterministic for vertex kind {vertex.kind}"
         )
-    structure, representations, coefficient = first
+    structure, representations, coefficient, witness_contracts = first
     output_representation = None if closure else representations[2]
+    input_shapes = tuple(
+        model.recurrence_lc_color_shape_contract(particle)
+        for particle in vertex.particles[:2]
+    )
+    result_shape = (
+        None
+        if closure
+        else model.recurrence_lc_color_shape_contract(vertex.particles[2])
+    )
+    witnesses = tuple(
+        LCColorTransitionWitnessV1(
+            input_shape_kinds=input_shapes,  # type: ignore[arg-type]
+            input_permutation=witness.input_permutation,
+            reverse_parent_mask=witness.reverse_parent_mask,
+            component_operation=witness.component_operation,
+            result_component_kind=witness.result_component_kind,
+            result_shape_kind=result_shape,
+            exact_factor=_exact_pair(
+                witness.exact_factor,
+                f"vertex kind {vertex.kind} LC color witness factor",
+            ),
+            proof_digest=(
+                witness.proof_digest
+                or _digest(
+                    {
+                        "proof_subject": proof_subject,
+                        "rule_kind": structure,
+                        "representations": representations,
+                        "closure": closure,
+                        "input_shapes": input_shapes,
+                        "result_shape": result_shape,
+                        "input_permutation": witness.input_permutation,
+                        "reverse_parent_mask": witness.reverse_parent_mask,
+                        "operation": witness.component_operation,
+                        "result_component_kind": witness.result_component_kind,
+                        "factor": _exact_pair(
+                            witness.exact_factor,
+                            f"vertex kind {vertex.kind} LC color witness proof factor",
+                        ).to_dict(),
+                    }
+                )
+            ),
+            provenance=witness.provenance,
+        )
+        for witness in witness_contracts
+    )
     payload = {
         "rule_kind": structure,
         "input_representations": representations[:2],
         "output_representation": output_representation,
         "coefficient": coefficient.to_dict(),
+        "transition_witnesses": [witness.to_dict() for witness in witnesses],
     }
     return ColorContractionTemplateV1(
         template_id=_token("color", payload),
@@ -1394,6 +1698,7 @@ def _color_template(
         exact_coefficient=coefficient,
         nc_polynomial=((0, ExactComplexRationalV1.one()),),
         expression_digest=_digest(payload),
+        transition_witnesses=witnesses,
     )
 
 
@@ -1581,7 +1886,12 @@ def _build_closures(
                 f"prepared closure binding for kind {vertex.kind} does not match "
                 "the live contraction contract"
             )
-        color = _color_template(model, vertex, closure=True)
+        color = _color_template(
+            model,
+            vertex,
+            closure=True,
+            proof_subject=kernel.canonical_signature,
+        )
         colors.setdefault(color.template_id, color)
         coupling_orders = _canonical_coupling_orders(
             model.vertex_coupling_orders(vertex),
@@ -1621,6 +1931,12 @@ def _build_closures(
         record = ClosureTemplateV1(
             template_id=template_id,
             input_state_template_ids=input_state_ids,
+            result_state_template_id=state_ids[
+                (
+                    binding.result_state.particle_id,
+                    binding.result_state.chirality,
+                )
+            ],
             evaluator_resolver_key=resolver_key,
             canonical_input_order=tuple(binding.canonical_input_order),
             coupling_parameter_ids=_kernel_parameter_ids(kernel, parameter_ids),
@@ -1768,6 +2084,7 @@ def _build_direct_closures(
         record = ClosureTemplateV1(
             template_id=_token("closure", closure_payload),
             input_state_template_ids=input_state_ids,
+            result_state_template_id=None,
             evaluator_resolver_key=resolver_key,
             canonical_input_order=(0, 1),
             coupling_parameter_ids=(),
@@ -1829,6 +2146,20 @@ def _direct_closure_color_template(
         "rule_kind": "direct-pairing",
         "input_representations": representations,
     }
+    witness = LCColorTransitionWitnessV1(
+        input_shape_kinds=(
+            model.recurrence_lc_color_shape_contract(left_particle_id),
+            model.recurrence_lc_color_shape_contract(right_particle_id),
+        ),
+        input_permutation=(0, 1),
+        reverse_parent_mask=0,
+        component_operation="close",
+        result_component_kind=None,
+        result_shape_kind=None,
+        exact_factor=ExactComplexRationalV1.one(),
+        proof_digest=_digest({**payload, "operation": "close"}),
+    )
+    payload["transition_witnesses"] = [witness.to_dict()]
     return ColorContractionTemplateV1(
         template_id=_token("color", payload),
         rule_kind="direct-pairing",
@@ -1838,6 +2169,7 @@ def _direct_closure_color_template(
         exact_coefficient=ExactComplexRationalV1.one(),
         nc_polynomial=((0, ExactComplexRationalV1.one()),),
         expression_digest=_digest(payload),
+        transition_witnesses=(witness,),
     )
 
 

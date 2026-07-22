@@ -53,7 +53,7 @@ def _input() -> RecurrenceBuilderInputV1:
                 source_states=(
                     RecurrenceSourceStateV1(0, -1, 0, -1, 10, 20),
                 ),
-                momentum_mask=(1 << 130) | (1 << 65) | 1,
+                momentum_mask=1,
                 support_mask=1,
             ),
             RecurrenceExternalLegV1(

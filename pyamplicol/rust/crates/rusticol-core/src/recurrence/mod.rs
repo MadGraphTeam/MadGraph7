@@ -6,11 +6,19 @@
 //! freezes the checked value and input contracts shared by the future Python
 //! column encoder and Rust recurrence builder.
 
+mod builder;
+mod color;
 mod exact;
 mod input;
 mod layout;
+pub mod process;
 pub mod template;
 
+pub use builder::AuthenticatedRecurrenceBuilderInput;
+pub use color::{
+    DynamicLCColorState, DynamicLCColorStateInterner, LCColorComponent, LCColorComponentKind,
+    LCColorComponentOperation, LCColorTransitionWitness,
+};
 pub use exact::{ExactComplexRational, ExactRational};
 pub use input::{
     CanonicalInputSection, CheckedTableRange, MultiwordMaskCatalogView,
@@ -19,8 +27,9 @@ pub use input::{
     validate_packed_ranges, validate_ranges_within, validate_u32_references,
 };
 pub use layout::{
-    CanonicalMomentumLinearForm, ContributionKey, CurrentCoreKey, MomentumTerm, RecurrenceNodeKind,
-    RecurrenceStrategy, SemanticDigest,
+    CanonicalMomentumLinearForm, ContributionKey, CurrentCoreKey, CurrentHelicityIdentity,
+    CurrentSourceBinding, DynamicLCColorStateId, LCColorWitnessTermId, MomentumTerm,
+    RecurrenceNodeKind, RecurrenceStrategy, SemanticDigest, SourceStateAssignment,
 };
 
 /// Semantic prepared-model companion ABI.

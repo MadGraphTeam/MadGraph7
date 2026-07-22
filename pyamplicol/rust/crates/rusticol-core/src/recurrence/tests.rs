@@ -277,10 +277,15 @@ fn strategy_and_digest_validation_fail_closed() {
 
 #[test]
 fn current_core_key_preserves_every_model_visible_axis() {
+    let ancestry = vec![
+        SourceStateAssignment::new(0, 1),
+        SourceStateAssignment::new(2, 0),
+    ];
     let key = CurrentCoreKey::new(
         digest(1),
         RecurrenceNodeKind::Current,
         7,
+        DynamicLCColorStateId::from_interner(13),
         vec![0, 2],
         CanonicalMomentumLinearForm::new(vec![
             MomentumTerm {
@@ -293,11 +298,11 @@ fn current_core_key_preserves_every_model_visible_axis() {
             },
         ])
         .unwrap(),
-        -1,
+        CurrentHelicityIdentity::topology_replay(-1, ancestry.clone()).unwrap(),
         vec![2, -2],
         3,
         vec![1, 2],
-        None,
+        CurrentSourceBinding::None,
         Some(9),
     )
     .unwrap();
@@ -305,13 +310,14 @@ fn current_core_key_preserves_every_model_visible_axis() {
         digest(1),
         RecurrenceNodeKind::Current,
         7,
+        DynamicLCColorStateId::from_interner(13),
         vec![0, 2],
         key.momentum().clone(),
-        1,
+        CurrentHelicityIdentity::topology_replay(1, ancestry.clone()).unwrap(),
         key.flavour_flow().to_vec(),
         key.quantum_number_flow_id(),
         key.coupling_orders().to_vec(),
-        None,
+        CurrentSourceBinding::None,
         Some(9),
     )
     .unwrap();
@@ -321,17 +327,217 @@ fn current_core_key_preserves_every_model_visible_axis() {
             digest(1),
             RecurrenceNodeKind::Current,
             7,
+            DynamicLCColorStateId::from_interner(13),
             vec![2, 0],
             momentum(0),
-            0,
+            CurrentHelicityIdentity::topology_replay(0, ancestry).unwrap(),
             vec![],
             0,
             vec![],
-            None,
+            CurrentSourceBinding::None,
             None,
         )
         .is_err()
     );
+}
+
+#[test]
+fn current_core_key_enforces_layout_specific_helicity_identity() {
+    let source_momentum = momentum(0);
+    let replay_source = CurrentCoreKey::new(
+        digest(1),
+        RecurrenceNodeKind::Source,
+        7,
+        DynamicLCColorStateId::from_interner(13),
+        vec![0],
+        source_momentum.clone(),
+        CurrentHelicityIdentity::topology_replay(-1, vec![SourceStateAssignment::new(0, 2)])
+            .unwrap(),
+        vec![1],
+        3,
+        vec![],
+        CurrentSourceBinding::FixedTemplate(11),
+        None,
+    )
+    .unwrap();
+    assert_eq!(replay_source.spin_state_class(), -1);
+    assert_eq!(
+        replay_source.helicity_identity().local_source_states()[0].state_index(),
+        2
+    );
+
+    let union_source = CurrentCoreKey::new(
+        digest(1),
+        RecurrenceNodeKind::Source,
+        7,
+        DynamicLCColorStateId::from_interner(13),
+        vec![0],
+        source_momentum.clone(),
+        CurrentHelicityIdentity::all_flow_union(0),
+        vec![1],
+        3,
+        vec![],
+        CurrentSourceBinding::RuntimeDispatchDomain(5),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        union_source.source_binding(),
+        CurrentSourceBinding::RuntimeDispatchDomain(5)
+    );
+    assert!(
+        union_source
+            .helicity_identity()
+            .local_source_states()
+            .is_empty()
+    );
+
+    assert!(
+        CurrentCoreKey::new(
+            digest(1),
+            RecurrenceNodeKind::Current,
+            7,
+            DynamicLCColorStateId::from_interner(13),
+            vec![0, 2],
+            source_momentum.clone(),
+            CurrentHelicityIdentity::topology_replay(0, vec![SourceStateAssignment::new(0, 1)],)
+                .unwrap(),
+            vec![],
+            3,
+            vec![],
+            CurrentSourceBinding::None,
+            None,
+        )
+        .is_err()
+    );
+    assert!(
+        CurrentCoreKey::new(
+            digest(1),
+            RecurrenceNodeKind::Source,
+            7,
+            DynamicLCColorStateId::from_interner(13),
+            vec![0],
+            source_momentum,
+            CurrentHelicityIdentity::all_flow_union(0),
+            vec![],
+            3,
+            vec![],
+            CurrentSourceBinding::FixedTemplate(11),
+            None,
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn dynamic_lc_color_states_preserve_order_and_only_fold_trace_rotations() {
+    let trace = LCColorComponent::new(LCColorComponentKind::Trace, vec![4, 7, 2]).unwrap();
+    assert_eq!(trace.source_slots(), &[2, 4, 7]);
+    let reversed = LCColorComponent::new(LCColorComponentKind::Trace, vec![2, 7, 4]).unwrap();
+    assert_ne!(trace, reversed);
+
+    let open = LCColorComponent::new(LCColorComponentKind::OpenString, vec![7, 2]).unwrap();
+    assert_eq!(open.source_slots(), &[7, 2]);
+    assert!(LCColorComponent::new(LCColorComponentKind::OpenString, vec![2, 2]).is_err());
+    assert!(DynamicLCColorState::new(1, None, vec![trace, open]).is_err());
+}
+
+#[test]
+fn dynamic_lc_color_state_ids_are_issued_only_by_the_interner() {
+    let state = DynamicLCColorState::new(
+        1,
+        Some(0),
+        vec![LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![0]).unwrap()],
+    )
+    .unwrap();
+    let mut interner = DynamicLCColorStateInterner::default();
+    let first = interner.intern(state.clone()).unwrap();
+    let second = interner.intern(state).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first.get(), 0);
+    assert_eq!(interner.len(), 1);
+    assert_eq!(interner.get(first).unwrap().output_color_shape_id(), 1);
+}
+
+#[test]
+fn compiler_certified_lc_color_witnesses_apply_exact_ordered_operations() {
+    let left = DynamicLCColorState::new(
+        1,
+        Some(0),
+        vec![LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![0]).unwrap()],
+    )
+    .unwrap();
+    let right = DynamicLCColorState::new(
+        1,
+        Some(0),
+        vec![LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![1, 2]).unwrap()],
+    )
+    .unwrap();
+    let witness = LCColorTransitionWitness::new(
+        [1, 0],
+        0b10,
+        LCColorComponentOperation::ConcatenateJoin,
+        Some(LCColorComponentKind::AdjointSegment),
+        Some(2),
+        ExactComplexRational::new(ExactRational::ONE, ExactRational::ZERO),
+        digest(9),
+    )
+    .unwrap();
+    let result = witness.apply(&left, &right).unwrap().unwrap();
+    assert_eq!(result.output_color_shape_id(), 2);
+    assert_eq!(result.components().len(), 1);
+    assert_eq!(result.components()[0].source_slots(), &[2, 1, 0]);
+    assert_eq!(witness.proof_digest(), digest(9));
+
+    assert!(
+        LCColorTransitionWitness::new(
+            [0, 0],
+            0,
+            LCColorComponentOperation::ConcatenateKeep,
+            None,
+            Some(2),
+            ExactComplexRational::new(ExactRational::ONE, ExactRational::ZERO),
+            digest(9),
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn lc_color_join_uses_declared_active_components_in_multi_line_forests() {
+    let left = DynamicLCColorState::new(
+        1,
+        Some(1),
+        vec![
+            LCColorComponent::new(LCColorComponentKind::OpenString, vec![7, 8]).unwrap(),
+            LCColorComponent::new(LCColorComponentKind::OpenString, vec![0, 1]).unwrap(),
+        ],
+    )
+    .unwrap();
+    let right = DynamicLCColorState::new(
+        1,
+        Some(0),
+        vec![
+            LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![2]).unwrap(),
+            LCColorComponent::new(LCColorComponentKind::OpenString, vec![5, 6]).unwrap(),
+        ],
+    )
+    .unwrap();
+    let witness = LCColorTransitionWitness::new(
+        [0, 1],
+        0,
+        LCColorComponentOperation::ConcatenateJoin,
+        Some(LCColorComponentKind::OpenString),
+        Some(2),
+        ExactComplexRational::new(ExactRational::ONE, ExactRational::ZERO),
+        digest(11),
+    )
+    .unwrap();
+    let result = witness.apply(&left, &right).unwrap().unwrap();
+    assert_eq!(result.active_component_index(), Some(2));
+    assert_eq!(result.components()[0].source_slots(), &[5, 6]);
+    assert_eq!(result.components()[1].source_slots(), &[7, 8]);
+    assert_eq!(result.components()[2].source_slots(), &[0, 1, 2]);
 }
 
 #[test]
@@ -343,7 +549,7 @@ fn contribution_key_validates_aligned_parent_contracts() {
         vec![momentum(0), momentum(1)],
         6,
         7,
-        8,
+        LCColorWitnessTermId::new(8, 0),
         digest(9),
         10,
     )
@@ -357,7 +563,7 @@ fn contribution_key_validates_aligned_parent_contracts() {
             vec![momentum(0), momentum(1)],
             6,
             7,
-            8,
+            LCColorWitnessTermId::new(8, 0),
             digest(9),
             10,
         )

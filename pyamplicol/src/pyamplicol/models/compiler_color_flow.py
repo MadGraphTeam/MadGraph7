@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Sequence
+from dataclasses import replace
 
 from .._internal.physics.symbols import ModelSymbolRegistry
 from . import compiler_symbolica as _sym
@@ -12,6 +15,7 @@ from .compiler_kernels import (
     _remap_kernel_symbols,
 )
 from .contracts import (
+    CompiledLCColorTransitionTerm,
     CompiledOrientedKernel,
     CompiledParticleRecord,
     CompiledPropagatorRecord,
@@ -20,6 +24,189 @@ from .contracts import (
 from .tensors import normalize_color_expression
 
 _U1_SUBTRACTION_AUXILIARY = "u1-subtraction-color-flow-vector"
+
+
+def compile_lc_color_transition_terms(
+    kernel: CompiledOrientedKernel,
+    oriented_representations: tuple[int, int, int],
+    *,
+    proof_source: str,
+    provenance: tuple[tuple[str, str], ...] = (),
+) -> tuple[CompiledLCColorTransitionTerm, ...]:
+    """Compile exact ordered-word operations from a certified local tensor.
+
+    This function is part of model compilation. Runtime and recurrence-builder
+    code consume its closed records and never repeat tensor-family inference.
+    """
+
+    structure = kernel.color_projection_structure
+    if structure is None:
+        raise ValueError(f"kernel {kernel.kind} has no certified color projection")
+    shapes = tuple(_lc_color_shape(value) for value in oriented_representations)
+    result_shape = shapes[2]
+
+    def term(
+        permutation: tuple[int, int],
+        operation: str,
+        result_component_kind: str | None,
+        exact_factor_expression: str = "1",
+    ) -> CompiledLCColorTransitionTerm:
+        payload = {
+            "color_expression": kernel.color_expression,
+            "color_source": kernel.color_source,
+            "exact_factor_expression": exact_factor_expression,
+            "input_permutation": list(permutation),
+            "input_shape_kinds": list(shapes[:2]),
+            "kernel_kind": kernel.kind,
+            "operation": operation,
+            "oriented_representations": list(oriented_representations),
+            "proof_source": proof_source,
+            "result_component_kind": result_component_kind,
+            "result_shape_kind": result_shape,
+            "source_particle_legs": list(kernel.source_particle_legs),
+            "structure": structure,
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        term_provenance = tuple(
+            sorted(
+                (
+                    ("compiler-proof-source", proof_source),
+                    ("kernel-kind", str(kernel.kind)),
+                    (
+                        "source-particle-legs",
+                        ",".join(str(value) for value in kernel.source_particle_legs),
+                    ),
+                    *provenance,
+                )
+            )
+        )
+        return CompiledLCColorTransitionTerm(
+            input_permutation=permutation,
+            reverse_parent_mask=0,
+            component_operation=operation,
+            result_component_kind=result_component_kind,
+            input_shape_kinds=(shapes[0], shapes[1]),
+            result_shape_kind=result_shape,
+            exact_factor_expression=exact_factor_expression,
+            proof_digest=digest,
+            provenance=term_provenance,
+        )
+
+    left_representation, right_representation, output_representation = (
+        oriented_representations
+    )
+    if structure == "singlet":
+        if oriented_representations != (1, 1, 1):
+            raise ValueError(
+                "a colored literal-singlet transition requires explicit contact "
+                f"provenance; kernel {kernel.kind} has {oriented_representations!r}"
+            )
+        return (term((0, 1), "empty", None),)
+    if structure == "color-identity":
+        colored_inputs = tuple(
+            index
+            for index, representation in enumerate(oriented_representations[:2])
+            if abs(representation) != 1
+        )
+        if len(colored_inputs) == 0:
+            return (term((0, 1), "empty", None),)
+        if len(colored_inputs) == 1:
+            operation = "inherit-left" if colored_inputs[0] == 0 else "inherit-right"
+            return (term((0, 1), operation, None),)
+        if len(colored_inputs) == 2 and abs(output_representation) == 1:
+            if {left_representation, right_representation} == {3, -3}:
+                permutation = (0, 1) if left_representation == 3 else (1, 0)
+                result_component = "open-string"
+            elif left_representation == right_representation == 8:
+                permutation = (0, 1)
+                result_component = "trace"
+            else:
+                raise ValueError(
+                    f"kernel {kernel.kind} has unsupported identity contraction "
+                    f"{oriented_representations!r}"
+                )
+            return (
+                term(
+                    permutation,
+                    "concatenate-join",
+                    result_component,
+                ),
+            )
+        raise ValueError(
+            f"kernel {kernel.kind} has unsupported color-identity orientation "
+            f"{oriented_representations!r}"
+        )
+    if structure == "fundamental-generator":
+        try:
+            fundamental = oriented_representations.index(3)
+            antifundamental = oriented_representations.index(-3)
+            adjoint = oriented_representations.index(8)
+        except ValueError as exc:
+            raise ValueError(
+                f"kernel {kernel.kind} fundamental generator has invalid oriented "
+                f"representations {oriented_representations!r}"
+            ) from exc
+        if output_representation == -3:
+            permutation = (fundamental, adjoint)
+            result_component = "open-string"
+        elif output_representation == 3:
+            permutation = (adjoint, antifundamental)
+            result_component = "open-string"
+        elif output_representation == 8:
+            permutation = (fundamental, antifundamental)
+            result_component = "adjoint-segment"
+        else:
+            raise ValueError(
+                f"kernel {kernel.kind} fundamental generator has unsupported output "
+                f"representation {output_representation}"
+            )
+        if set(permutation) != {0, 1}:
+            raise ValueError(
+                f"kernel {kernel.kind} fundamental generator output is not slot 2"
+            )
+        return (
+            term(
+                permutation,
+                "concatenate-join",
+                result_component,
+            ),
+        )
+    if structure == "adjoint-structure-constant":
+        if oriented_representations != (8, 8, 8):
+            raise ValueError(
+                f"kernel {kernel.kind} structure constant has representations "
+                f"{oriented_representations!r}"
+            )
+        return (
+            term((0, 1), "concatenate-join", "adjoint-segment"),
+            term(
+                (1, 0),
+                "concatenate-join",
+                "adjoint-segment",
+                "-1",
+            ),
+        )
+    raise ValueError(
+        f"kernel {kernel.kind} has unsupported recurrence color projection "
+        f"{structure!r}"
+    )
+
+
+def _lc_color_shape(representation: int) -> str:
+    return {
+        1: "singlet-forest",
+        3: "fundamental-open-string",
+        -3: "antifundamental-open-string",
+        8: "adjoint-segment",
+    }.get(representation) or _unsupported_lc_color_shape(representation)
+
+
+def _unsupported_lc_color_shape(representation: int) -> str:
+    raise ValueError(
+        f"recurrence LC color witnesses do not support representation {representation}"
+    )
 
 
 def synthesize_fundamental_fierz_auxiliaries(
@@ -150,36 +337,45 @@ def synthesize_fundamental_fierz_auxiliaries(
             coefficient /= fundamental_dimension
         source_legs = list(kernel.source_particle_legs)
         source_legs[source_slot] = -1
+        synthetic_kernel = CompiledOrientedKernel(
+            kind=kind,
+            term_id=kernel.term_id,
+            vertex=f"{kernel.vertex}::u1-subtraction",
+            particles=tuple(synthetic_particles),
+            source_particle_legs=tuple(source_legs),
+            component_expressions=tuple(
+                _canonicalize_oriented_kernel_component(
+                    _remap_kernel_symbols(
+                        _sym.E(component),
+                        old_kind=kernel.kind,
+                        new_kind=kind,
+                        model_symbols=model_symbols,
+                    )
+                ).to_canonical_string()
+                for component in kernel.component_expressions
+            ),
+            coupling_expression=kernel.coupling_expression,
+            coupling_orders=kernel.coupling_orders,
+            runtime_parameters=kernel.runtime_parameters,
+            color_source=color_source,
+            color_expression=color_expression,
+            color_projection_structure="color-identity",
+            color_projection_coefficient=(
+                float(coefficient.real),
+                float(coefficient.imag),
+            ),
+            lc_color_normalization_power=kernel.lc_color_normalization_power,
+            term_ids=kernel.term_ids,
+        )
         synthetic.append(
-            CompiledOrientedKernel(
-                kind=kind,
-                term_id=kernel.term_id,
-                vertex=f"{kernel.vertex}::u1-subtraction",
-                particles=tuple(synthetic_particles),
-                source_particle_legs=tuple(source_legs),
-                component_expressions=tuple(
-                    _canonicalize_oriented_kernel_component(
-                        _remap_kernel_symbols(
-                            _sym.E(component),
-                            old_kind=kernel.kind,
-                            new_kind=kind,
-                            model_symbols=model_symbols,
-                        )
-                    ).to_canonical_string()
-                    for component in kernel.component_expressions
+            replace(
+                synthetic_kernel,
+                lc_color_transition_terms=compile_lc_color_transition_terms(
+                    synthetic_kernel,
+                    synthetic_representations,  # type: ignore[arg-type]
+                    proof_source="fundamental-fierz-identity-v1",
+                    provenance=(("source-kernel-kind", str(kernel.kind)),),
                 ),
-                coupling_expression=kernel.coupling_expression,
-                coupling_orders=kernel.coupling_orders,
-                runtime_parameters=kernel.runtime_parameters,
-                color_source=color_source,
-                color_expression=color_expression,
-                color_projection_structure="color-identity",
-                color_projection_coefficient=(
-                    float(coefficient.real),
-                    float(coefficient.imag),
-                ),
-                lc_color_normalization_power=kernel.lc_color_normalization_power,
-                term_ids=kernel.term_ids,
             )
         )
 

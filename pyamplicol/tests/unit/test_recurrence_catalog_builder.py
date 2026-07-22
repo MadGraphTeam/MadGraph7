@@ -14,9 +14,12 @@ from pyamplicol.models.base import (
     Particle,
     PropagatorLoweringRule,
     QuantumFlow,
+    RecurrenceLCColorTransitionContract,
+    RecurrenceLCColorWitnessContract,
     Vertex,
     VertexEvaluationEquivalence,
 )
+from pyamplicol.models.builtin.model import BuiltinSMModel
 from pyamplicol.models.prepared_catalog import (
     PreparedKernelCatalog,
     PreparedKernelCatalogError,
@@ -248,6 +251,23 @@ class _ScalarModel(Model):
     def quantum_number_flow(self, particle_id):
         del particle_id
         return (("generic-charge", "0"),)
+
+    def recurrence_quantum_flow_contract(
+        self, vertex, left_particle_id, right_particle_id
+    ):
+        return self._standard_recurrence_quantum_flow_contract(
+            vertex, left_particle_id, right_particle_id
+        )
+
+    def recurrence_lc_color_shape_contract(self, particle_id, chirality=0):
+        return self._standard_recurrence_lc_color_shape_contract(
+            particle_id, chirality
+        )
+
+    def recurrence_lc_color_transition_contract(self, vertex, *, closure):
+        return self._standard_recurrence_lc_color_transition_contract(
+            vertex, closure=closure
+        )
 
     def vertex_evaluation_equivalence(self, kind):
         assert kind == 0
@@ -545,10 +565,68 @@ class _NondeterministicFlowModel(_ScalarModel):
             ),
         )
 
+    def recurrence_quantum_flow_contract(
+        self, vertex, left_particle_id, right_particle_id
+    ):
+        return super().recurrence_quantum_flow_contract(
+            vertex, left_particle_id, right_particle_id
+        )
+
 
 def test_nondeterministic_quantum_flow_callback_fails_closed() -> None:
     model = _NondeterministicFlowModel()
     with pytest.raises(RecurrenceTemplateError, match="nondeterministic"):
+        build_recurrence_template_catalog(
+            model,
+            _scalar_catalog(model),  # type: ignore[arg-type]
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
+        )
+
+
+class _UndeclaredDynamicFlowModel(_ScalarModel):
+    def allowed_quantum_flows(self, vertex, left_index, right_index):
+        return super().allowed_quantum_flows(vertex, left_index, right_index)
+
+
+def test_quantum_flow_override_requires_an_explicit_matching_contract() -> None:
+    model = _UndeclaredDynamicFlowModel()
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="overrides the callback without declaring a matching recurrence",
+    ):
+        build_recurrence_template_catalog(
+            model,
+            _scalar_catalog(model),  # type: ignore[arg-type]
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
+        )
+
+
+class _DynamicQuantumNumberFlowModel(_ScalarModel):
+    def allowed_quantum_flows(self, vertex, left_index, right_index):
+        flow = super().allowed_quantum_flows(vertex, left_index, right_index)[0]
+        return (
+            replace(
+                flow,
+                quantum_number_flow=tuple(left_index.quantum_number_flow),
+            ),
+        )
+
+    def recurrence_quantum_flow_contract(
+        self, vertex, left_particle_id, right_particle_id
+    ):
+        return super().recurrence_quantum_flow_contract(
+            vertex, left_particle_id, right_particle_id
+        )
+
+
+def test_dynamic_quantum_number_flow_contradicts_static_contract() -> None:
+    model = _DynamicQuantumNumberFlowModel()
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="particle-static quantum-number operation",
+    ):
         build_recurrence_template_catalog(
             model,
             _scalar_catalog(model),  # type: ignore[arg-type]
@@ -562,6 +640,40 @@ class _UnsupportedColorModel(_ScalarModel):
         del vertex
         return "opaque-model-tensor"
 
+    def recurrence_lc_color_transition_contract(self, vertex, *, closure):
+        del vertex, closure
+        return RecurrenceLCColorTransitionContract(
+            "opaque-model-tensor",
+            (
+                RecurrenceLCColorWitnessContract(
+                    (0, 1),
+                    0,
+                    "concatenate-keep",
+                    None,
+                ),
+            ),
+        )
+
+
+class _UndeclaredColorOverrideModel(_ScalarModel):
+    def vertex_color_structure(self, vertex):
+        del vertex
+        return "singlet"
+
+
+def test_color_callback_override_requires_matching_recurrence_contract() -> None:
+    model = _UndeclaredColorOverrideModel()
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="without declaring a matching recurrence LC color contract",
+    ):
+        build_recurrence_template_catalog(
+            model,
+            _scalar_catalog(model),  # type: ignore[arg-type]
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
+        )
+
 
 def test_unsupported_color_semantics_fail_closed() -> None:
     model = _UnsupportedColorModel()
@@ -572,3 +684,52 @@ def test_unsupported_color_semantics_fail_closed() -> None:
             compiled_model_digest=_MODEL_DIGEST,
             prepared_kernel_pack_digest=_PACK_DIGEST,
         )
+
+
+def test_builtin_color_tensor_families_are_model_owned() -> None:
+    model = BuiltinSMModel()
+    expected = {
+        (8, 8, 8): "adjoint-structure-constant",
+        (8, 3, 3): "fundamental-generator",
+        (3, 8, 3): "fundamental-generator",
+        (-3, 3, 8): "fundamental-generator",
+        (1, 3, 3): "color-identity",
+        (3, -3, 1): "color-identity",
+        (1, 1, 1): "singlet",
+    }
+    observed = {
+        representations: model.vertex_color_structure(vertex)
+        for vertex in model.vertices
+        if (representations := tuple(model.color_rep(p) for p in vertex.particles))
+        in expected
+    }
+    for representations, rule_kind in expected.items():
+        assert observed[representations] == rule_kind
+
+
+def test_builtin_fundamental_color_words_follow_kernel_orientation() -> None:
+    model = BuiltinSMModel()
+    expected = {
+        4: ((1, 0), "open-string"),
+        5: ((0, 1), "open-string"),
+        6: ((0, 1), "open-string"),
+        7: ((1, 0), "open-string"),
+        9: ((1, 0), "adjoint-segment"),
+    }
+    observed: dict[int, tuple[tuple[int, int], str | None]] = {}
+    for vertex in model.vertices:
+        if vertex.kind not in expected or vertex.kind in observed:
+            continue
+        contract = model.recurrence_lc_color_transition_contract(
+            vertex,
+            closure=False,
+        )
+        assert contract.rule_kind == "fundamental-generator"
+        assert len(contract.witnesses) == 1
+        witness = contract.witnesses[0]
+        assert witness.component_operation == "concatenate-join"
+        observed[vertex.kind] = (
+            witness.input_permutation,
+            witness.result_component_kind,
+        )
+    assert observed == expected

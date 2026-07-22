@@ -17,8 +17,8 @@ use pyo3::types::{PyAny, PyDict};
 use rusticol_core::recurrence::template::{
     CatalogHeaderRow, ClosureRow, ColorContractionRow, ColorNcTermRow, CouplingOrderTermRow,
     CurrentStateRow, DigestCatalogRow, EvaluatorBindingRow, ExactFactorRow, IndexedRangeRow,
-    MISSING_U32, OwnedRecurrenceTemplateInput, ParameterRow, PropagatorRow, QuantumFlowRow,
-    QuantumNumberFlowTermRow, RECURRENCE_TEMPLATE_INPUT_ABI,
+    LCColorTransitionWitnessRow, MISSING_U32, OwnedRecurrenceTemplateInput, ParameterRow,
+    PropagatorRow, QuantumFlowRow, QuantumNumberFlowTermRow, RECURRENCE_TEMPLATE_INPUT_ABI,
     RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION, SourceRow, SymmetryProofRow, TransitionRow,
 };
 use rusticol_core::recurrence::{CheckedTableRange, SemanticDigest, checked_usize};
@@ -111,6 +111,7 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("id", PrimitiveKind::U32),
             column("template_string_id", PrimitiveKind::U32),
             column("input_state_sequence_id", PrimitiveKind::U32),
+            column("result_state_template_id", PrimitiveKind::U32),
             column("evaluator_binding_id", PrimitiveKind::U32),
             column("canonical_input_order_sequence_id", PrimitiveKind::U32),
             column("coupling_parameter_sequence_id", PrimitiveKind::U32),
@@ -140,6 +141,8 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("output_representation", PrimitiveKind::I32),
             column("ordered_open_string_arity", PrimitiveKind::U32),
             column("exact_coefficient_factor_id", PrimitiveKind::U32),
+            column("witness_start", PrimitiveKind::U64),
+            column("witness_count", PrimitiveKind::U64),
             column("nc_term_start", PrimitiveKind::U64),
             column("nc_term_count", PrimitiveKind::U64),
             column("expression_digest_id", PrimitiveKind::U32),
@@ -185,6 +188,7 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("tensor_ordering_sequence_id", PrimitiveKind::U32),
             column("dimension", PrimitiveKind::U32),
             column("chirality", PrimitiveKind::I32),
+            column("lc_color_shape_string_id", PrimitiveKind::U32),
             column("auxiliary_kind_string_id", PrimitiveKind::U32),
             column("mass_parameter_id", PrimitiveKind::U32),
             column("width_parameter_id", PrimitiveKind::U32),
@@ -252,6 +256,23 @@ const TABLE_SPECS: &[TableSpec] = &[
         columns: &[column("value", PrimitiveKind::I32)],
     },
     TableSpec {
+        name: "lc_color_transition_witnesses",
+        columns: &[
+            column("color_contraction_id", PrimitiveKind::U32),
+            column("ordinal", PrimitiveKind::U32),
+            column("left_shape_string_id", PrimitiveKind::U32),
+            column("right_shape_string_id", PrimitiveKind::U32),
+            column("input_permutation", PrimitiveKind::U8),
+            column("reverse_parent_mask", PrimitiveKind::U8),
+            column("component_operation", PrimitiveKind::U8),
+            column("result_component_kind", PrimitiveKind::U8),
+            column("result_shape_string_id", PrimitiveKind::U32),
+            column("exact_factor_id", PrimitiveKind::U32),
+            column("proof_digest_id", PrimitiveKind::U32),
+            column("provenance_sequence_id", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
         name: "parameters",
         columns: &[
             column("id", PrimitiveKind::U32),
@@ -293,6 +314,11 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("input_spin_sequence_id", PrimitiveKind::U32),
             column("input_flavour_sequence_id", PrimitiveKind::U32),
             column("input_quantum_sequence_id", PrimitiveKind::U32),
+            column("flavour_flow_operation_string_id", PrimitiveKind::U32),
+            column(
+                "quantum_number_flow_operation_string_id",
+                PrimitiveKind::U32,
+            ),
             column("coupling_order_set_id", PrimitiveKind::U32),
             column("result_state_template_id", PrimitiveKind::U32),
             column("result_spin_state", PrimitiveKind::I32),
@@ -614,6 +640,7 @@ impl DecodedInput {
                 tensor_ordering_sequence_id: table.u32("tensor_ordering_sequence_id")?[row],
                 dimension: table.u32("dimension")?[row],
                 chirality: table.i32("chirality")?[row],
+                lc_color_shape_string_id: table.u32("lc_color_shape_string_id")?[row],
                 auxiliary_kind_string_id: table.u32("auxiliary_kind_string_id")?[row],
                 mass_parameter_id: table.u32("mass_parameter_id")?[row],
                 width_parameter_id: table.u32("width_parameter_id")?[row],
@@ -693,6 +720,10 @@ impl DecodedInput {
                 input_spin_sequence_id: table.u32("input_spin_sequence_id")?[row],
                 input_flavour_sequence_id: table.u32("input_flavour_sequence_id")?[row],
                 input_quantum_sequence_id: table.u32("input_quantum_sequence_id")?[row],
+                flavour_flow_operation_string_id: table.u32("flavour_flow_operation_string_id")?
+                    [row],
+                quantum_number_flow_operation_string_id: table
+                    .u32("quantum_number_flow_operation_string_id")?[row],
                 coupling_order_set_id: table.u32("coupling_order_set_id")?[row],
                 result_state_template_id: table.u32("result_state_template_id")?[row],
                 result_spin_state: table.i32("result_spin_state")?[row],
@@ -774,6 +805,7 @@ impl DecodedInput {
                 id: table.u32("id")?[row],
                 template_string_id: table.u32("template_string_id")?[row],
                 input_state_sequence_id: table.u32("input_state_sequence_id")?[row],
+                result_state_template_id: table.u32("result_state_template_id")?[row],
                 evaluator_binding_id: table.u32("evaluator_binding_id")?[row],
                 canonical_input_order_sequence_id: table
                     .u32("canonical_input_order_sequence_id")?[row],
@@ -806,12 +838,33 @@ impl DecodedInput {
                 output_representation: table.i32("output_representation")?[row],
                 ordered_open_string_arity: table.u32("ordered_open_string_arity")?[row],
                 exact_coefficient_factor_id: table.u32("exact_coefficient_factor_id")?[row],
+                witness_start: table.u64("witness_start")?[row],
+                witness_count: table.u64("witness_count")?[row],
                 nc_term_start: table.u64("nc_term_start")?[row],
                 nc_term_count: table.u64("nc_term_count")?[row],
                 expression_digest_id: table.u32("expression_digest_id")?[row],
                 semantic_digest_id: table.u32("semantic_digest_id")?[row],
             })
         })?;
+        let lc_color_transition_witnesses = decode_rows(
+            self.table("lc_color_transition_witnesses")?,
+            |table, row| {
+                Ok(LCColorTransitionWitnessRow {
+                    color_contraction_id: table.u32("color_contraction_id")?[row],
+                    ordinal: table.u32("ordinal")?[row],
+                    left_shape_string_id: table.u32("left_shape_string_id")?[row],
+                    right_shape_string_id: table.u32("right_shape_string_id")?[row],
+                    input_permutation: table.u8("input_permutation")?[row],
+                    reverse_parent_mask: table.u8("reverse_parent_mask")?[row],
+                    component_operation: table.u8("component_operation")?[row],
+                    result_component_kind: table.u8("result_component_kind")?[row],
+                    result_shape_string_id: table.u32("result_shape_string_id")?[row],
+                    exact_factor_id: table.u32("exact_factor_id")?[row],
+                    proof_digest_id: table.u32("proof_digest_id")?[row],
+                    provenance_sequence_id: table.u32("provenance_sequence_id")?[row],
+                })
+            },
+        )?;
         let color_nc_terms = decode_rows(self.table("color_nc_terms")?, |table, row| {
             Ok(ColorNcTermRow {
                 color_contraction_id: table.u32("color_contraction_id")?[row],
@@ -850,6 +903,7 @@ impl DecodedInput {
             transitions,
             closures,
             color_contractions,
+            lc_color_transition_witnesses,
             color_nc_terms,
             u32_sequence_ranges,
             u32_sequence_values,
@@ -876,6 +930,7 @@ struct NativeValidationResult {
     propagator_count: u32,
     closure_count: u32,
     color_contraction_count: u32,
+    lc_color_transition_witness_count: u32,
     symmetry_proof_count: u32,
     evaluator_binding_count: u32,
     prepared_kernel_count: u32,
@@ -1122,6 +1177,7 @@ fn validate_input(
         propagator_count: summary.propagator_count,
         closure_count: summary.closure_count,
         color_contraction_count: summary.color_contraction_count,
+        lc_color_transition_witness_count: summary.lc_color_transition_witness_count,
         symmetry_proof_count: summary.symmetry_proof_count,
         evaluator_binding_count: summary.evaluator_binding_count,
         prepared_kernel_count: summary.prepared_kernel_count,
@@ -1219,6 +1275,10 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
     counts.set_item("propagators", native.propagator_count)?;
     counts.set_item("closures", native.closure_count)?;
     counts.set_item("color_contractions", native.color_contraction_count)?;
+    counts.set_item(
+        "lc_color_transition_witnesses",
+        native.lc_color_transition_witness_count,
+    )?;
     counts.set_item("symmetry_proofs", native.symmetry_proof_count)?;
     counts.set_item("evaluator_bindings", native.evaluator_binding_count)?;
     counts.set_item("prepared_kernels", native.prepared_kernel_count)?;

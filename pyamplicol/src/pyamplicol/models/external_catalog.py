@@ -9,6 +9,12 @@ from .base import (
     Particle,
     QuantumFlow,
     QuantumNumberFlow,
+    RecurrenceLCColorComponentKind,
+    RecurrenceLCColorOperation,
+    RecurrenceLCColorShapeKind,
+    RecurrenceLCColorTransitionContract,
+    RecurrenceLCColorWitnessContract,
+    RecurrenceQuantumFlowContract,
     SourceSpinState,
     Vertex,
     VertexEvaluationEquivalence,
@@ -212,6 +218,90 @@ class ExternalModelCatalogMixin:
                 right_chirality,
                 result_chirality,
             )
+        )
+
+    def recurrence_quantum_flow_contract(
+        self,
+        vertex: Vertex,
+        left_particle_id: int,
+        right_particle_id: int,
+    ) -> RecurrenceQuantumFlowContract:
+        return self._standard_recurrence_quantum_flow_contract(
+            vertex,
+            left_particle_id,
+            right_particle_id,
+        )
+
+    def recurrence_lc_color_shape_contract(
+        self,
+        particle_id: int,
+        chirality: int = 0,
+    ) -> RecurrenceLCColorShapeKind:
+        return self._standard_recurrence_lc_color_shape_contract(
+            particle_id,
+            chirality,
+        )
+
+    def recurrence_lc_color_transition_contract(
+        self,
+        vertex: Vertex,
+        *,
+        closure: bool,
+    ) -> RecurrenceLCColorTransitionContract:
+        if closure:
+            raise NotImplementedError(
+                "external recurrence closures require compiler-owned LC closure "
+                "terms; recompile the model after recurrence closure ABI support lands"
+            )
+        kernel = self._kernel(vertex.kind)
+        if not kernel.lc_color_transition_terms:
+            raise NotImplementedError(
+                f"compiled kernel {kernel.kind} has no compiler-owned LC color "
+                "transition terms; recompile the UFO/JSON model with the current "
+                "pyAmpliCol compiler"
+            )
+        input_shapes = tuple(
+            self.recurrence_lc_color_shape_contract(particle)
+            for particle in vertex.particles[:2]
+        )
+        result_shape = self.recurrence_lc_color_shape_contract(vertex.particles[2])
+        witnesses = []
+        for term in kernel.lc_color_transition_terms:
+            if (
+                term.input_shape_kinds != input_shapes
+                or term.result_shape_kind != result_shape
+            ):
+                raise ValueError(
+                    f"compiled kernel {kernel.kind} LC color term does not match its "
+                    "live oriented particle-state shapes"
+                )
+            factor = {
+                "1": (1.0, 0.0),
+                "-1": (-1.0, 0.0),
+            }.get(term.exact_factor_expression)
+            if factor is None:
+                raise NotImplementedError(
+                    f"compiled kernel {kernel.kind} LC witness factor "
+                    f"{term.exact_factor_expression!r} is not supported by "
+                    "recurrence v1"
+                )
+            witnesses.append(
+                RecurrenceLCColorWitnessContract(
+                    term.input_permutation,
+                    term.reverse_parent_mask,
+                    cast(RecurrenceLCColorOperation, term.component_operation),
+                    cast(
+                        RecurrenceLCColorComponentKind | None,
+                        term.result_component_kind,
+                    ),
+                    factor,
+                    term.proof_digest,
+                    term.provenance,
+                )
+            )
+        return RecurrenceLCColorTransitionContract(
+            str(kernel.color_projection_structure),
+            tuple(witnesses),
         )
 
     def vertex_lowering_rule(self, kind: int) -> VertexLoweringRule:
