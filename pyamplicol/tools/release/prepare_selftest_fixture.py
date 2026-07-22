@@ -198,20 +198,101 @@ def _strip_symbolica_fallbacks(artifact: Path, manifest: dict[str, Any]) -> None
         payload["size_bytes"] = path.stat().st_size
     if not removed:
         raise RuntimeError("source artifact has no Symbolica fallback evaluator states")
+    removed_loose: set[str] = set()
     for relative in sorted(removed):
         path = artifact / relative
-        if not path.is_file():
-            raise RuntimeError(f"missing Symbolica fallback state: {relative}")
-        path.unlink()
+        if path.is_file():
+            path.unlink()
+            removed_loose.add(relative)
+    removed_packed = removed - removed_loose
+    if removed_packed:
+        _strip_packed_symbolica_fallbacks(artifact, manifest, removed_packed)
     manifest["payloads"] = [
         payload
         for payload in payloads
         if not (
             isinstance(payload, dict)
             and isinstance(payload.get("path"), str)
-            and payload["path"] in removed
+            and payload["path"] in removed_loose
         )
     ]
+
+
+def _strip_packed_symbolica_fallbacks(
+    artifact: Path,
+    manifest: dict[str, Any],
+    removed: set[str],
+) -> None:
+    """Remove exact fallback states from a packed evaluator container."""
+
+    from pyamplicol.generation.evaluator_container import (
+        PacbinMemberKind,
+        PacbinMemberSource,
+        PacbinReader,
+        write_pacbin_atomic,
+    )
+
+    extensions = manifest.get("extensions")
+    if not isinstance(extensions, dict):
+        raise RuntimeError("artifact extensions are invalid")
+    extension = extensions.get("evaluator_payload_container")
+    if not isinstance(extension, dict):
+        missing = ", ".join(sorted(removed))
+        raise RuntimeError(f"missing Symbolica fallback state: {missing}")
+    relative = extension.get("path")
+    if not isinstance(relative, str):
+        raise RuntimeError("evaluator payload container has no path")
+    container_path = artifact / relative
+
+    with PacbinReader.open(container_path, verify_payloads=True) as reader:
+        by_path = {member.logical_path: member for member in reader.members}
+        missing = sorted(removed - by_path.keys())
+        if missing:
+            raise RuntimeError(
+                "missing Symbolica fallback state: " + ", ".join(missing)
+            )
+        invalid = sorted(
+            path
+            for path in removed
+            if by_path[path].kind is not PacbinMemberKind.SYMBOLICA_EXACT_STATE
+        )
+        if invalid:
+            raise RuntimeError(
+                "Symbolica fallback state has an invalid packed kind: "
+                + ", ".join(invalid)
+            )
+        retained = tuple(
+            PacbinMemberSource(
+                member.logical_path,
+                member.kind,
+                reader.open_member_stream(member.logical_path),
+            )
+            for member in reader.members
+            if member.logical_path not in removed
+        )
+        if not retained:
+            raise RuntimeError("portable self-test evaluator container is empty")
+        index = write_pacbin_atomic(container_path, retained)
+
+    extension["member_count"] = len(index.members)
+    extension["unpacked_size_bytes"] = sum(
+        member.length for member in index.members
+    )
+    extension["index_sha256"] = index.index_sha256
+
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list):
+        raise RuntimeError("artifact payload inventory is invalid")
+    matches = [
+        payload
+        for payload in payloads
+        if isinstance(payload, dict) and payload.get("path") == relative
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("artifact must declare one evaluator payload container")
+    payload = matches[0]
+    payload["sha256"] = _sha256(container_path)
+    payload["size_bytes"] = container_path.stat().st_size
 
 
 def _sanitize_configuration_paths(artifact: Path, manifest: dict[str, Any]) -> None:

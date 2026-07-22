@@ -21,10 +21,11 @@ selected_color_sector_ids = []
 
 [color]
 accuracy = "lc"
+lc_flow_layout = "topology-replay"
 
 [generation]
 output = "."
-mode = "error"
+mode = "replace"
 workers = 1
 emit_api_bundle = true
 
@@ -80,7 +81,7 @@ color_flow_ids = []
 [output]
 format = "json"
 color = "auto"
-progress = "log"
+progress = "off"
 log_level = "info"
 
 [symbolica]

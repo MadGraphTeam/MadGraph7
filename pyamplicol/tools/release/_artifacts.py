@@ -7,6 +7,7 @@ from __future__ import annotations
 import base64
 import csv
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -881,10 +882,17 @@ def _contains_forbidden_path(data: bytes, marker: bytes) -> bool:
 
 
 def _scan_embedded_paths(
-    entries: dict[str, bytes], *, allow_local_rustup: bool = False
+    entries: dict[str, bytes],
+    *,
+    allow_local_rustup: bool = False,
+    allow_candidate_source_checkout: bool = False,
 ) -> None:
     for name, data in entries.items():
         scanned = data
+        if allow_candidate_source_checkout and name == "pyamplicol/_build_info.json":
+            build_info = _json_object(entries, name)
+            build_info.pop("source_checkout", None)
+            scanned = json.dumps(build_info, sort_keys=True).encode("utf-8")
         if name.lower().endswith(_NATIVE_MEMBER_SUFFIXES):
             scanned = _sanitized_native_bytes(
                 data, allow_local_rustup=allow_local_rustup
@@ -1138,6 +1146,13 @@ def _validate_selftest_fixture(
             )
         if payload.get("media_type") == "application/vnd.symjit.application":
             direct_symjit += 1
+    container = manifest.get("extensions", {}).get("evaluator_payload_container")
+    if container is not None:
+        direct_symjit += _validate_selftest_evaluator_container(
+            entries,
+            artifact_prefix=artifact_prefix,
+            container=container,
+        )
     actual = {
         name.removeprefix(artifact_prefix)
         for name in entries
@@ -1153,6 +1168,80 @@ def _validate_selftest_fixture(
         )
     if direct_symjit == 0:
         raise ArtifactError("wheel self-test artifact has no direct SymJIT application")
+
+
+@lru_cache(maxsize=1)
+def _evaluator_container_codec() -> Any:
+    """Load the source-tree pacbin codec without importing an installed package."""
+
+    source = (
+        ROOT
+        / "src"
+        / "pyamplicol"
+        / "generation"
+        / "evaluator_container.py"
+    )
+    name = "_pyamplicol_release_evaluator_container"
+    spec = importlib.util.spec_from_file_location(name, source)
+    if spec is None or spec.loader is None:
+        raise ArtifactError("could not load the evaluator container codec")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+def _validate_selftest_evaluator_container(
+    entries: dict[str, bytes],
+    *,
+    artifact_prefix: str,
+    container: object,
+) -> int:
+    if not isinstance(container, dict):
+        raise ArtifactError("wheel self-test evaluator container metadata is invalid")
+    relative = container.get("path")
+    if not isinstance(relative, str):
+        raise ArtifactError("wheel self-test evaluator container has no path")
+    data = entries.get(f"{artifact_prefix}{relative}")
+    if data is None:
+        raise ArtifactError("wheel self-test evaluator container is missing")
+
+    codec = _evaluator_container_codec()
+    try:
+        with codec.PacbinReader.open(io.BytesIO(data)) as reader:
+            index = reader.index
+            expected = {
+                "member_count": len(index.members),
+                "unpacked_size_bytes": sum(
+                    member.length for member in index.members
+                ),
+                "index_sha256": index.index_sha256,
+            }
+            if any(container.get(key) != value for key, value in expected.items()):
+                raise ArtifactError(
+                    "wheel self-test evaluator container metadata is inconsistent"
+                )
+            if any(
+                member.kind is codec.PacbinMemberKind.SYMBOLICA_EXACT_STATE
+                for member in index.members
+            ):
+                raise ArtifactError(
+                    "wheel self-test must not retain packed Symbolica fallback state"
+                )
+            return sum(
+                member.kind is codec.PacbinMemberKind.SYMJIT_APPLICATION
+                for member in index.members
+            )
+    except ArtifactError:
+        raise
+    except (OSError, TypeError, ValueError) as error:
+        raise ArtifactError(
+            f"wheel self-test evaluator container is invalid: {error}"
+        ) from error
 
 
 def _validate_wheel_inventory(
@@ -1587,7 +1676,11 @@ def audit_wheel(
         mode=mode,
     )
     _validate_record(entries, record_name)
-    _scan_embedded_paths(entries, allow_local_rustup=mode == "candidate")
+    _scan_embedded_paths(
+        entries,
+        allow_local_rustup=mode == "candidate",
+        allow_candidate_source_checkout=mode == "candidate",
+    )
 
     perform_native_scan = _host_matches(target) if native_scan is None else native_scan
     if perform_native_scan:

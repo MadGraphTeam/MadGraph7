@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 from types import ModuleType
@@ -213,6 +214,98 @@ def test_compiled_model_version_normalization_refreshes_payload(
     assert compiled["producer"]["pyamplicol"] == "0.1.0.dev0+candidate.test"
     assert payload["sha256"] == hashlib.sha256(data).hexdigest()
     assert payload["size_bytes"] == len(data)
+
+
+def test_symbolica_fallback_stripping_rewrites_packed_container(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    from pyamplicol.generation.evaluator_container import (
+        PacbinMemberKind,
+        PacbinMemberSource,
+        PacbinReader,
+        write_pacbin_atomic,
+    )
+
+    artifact = tmp_path / "artifact"
+    execution_path = artifact / "processes/example/execution.json"
+    execution_path.parent.mkdir(parents=True)
+    execution_path.write_text(
+        json.dumps(
+            {
+                "compiled": {
+                    "evaluator": {
+                        "kind": "symjit-application-evaluator",
+                        "evaluator_state_path": "chunk.evaluator.bin",
+                        "evaluator_state_runtime_capability": "symbolica",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    container_path = artifact / "evaluators.pacbin"
+    index = write_pacbin_atomic(
+        container_path,
+        (
+            PacbinMemberSource(
+                "processes/example/chunk.evaluator.bin",
+                PacbinMemberKind.SYMBOLICA_EXACT_STATE,
+                io.BytesIO(b"exact"),
+            ),
+            PacbinMemberSource(
+                "processes/example/chunk.symjit",
+                PacbinMemberKind.SYMJIT_APPLICATION,
+                io.BytesIO(b"runtime"),
+            ),
+        ),
+    )
+    manifest = {
+        "extensions": {
+            "evaluator_payload_container": {
+                "path": "evaluators.pacbin",
+                "member_count": 2,
+                "unpacked_size_bytes": 12,
+                "index_sha256": index.index_sha256,
+            }
+        },
+        "payloads": [
+            {
+                "path": "processes/example/execution.json",
+                "role": "evaluator-manifest",
+                "sha256": "stale",
+                "size_bytes": 0,
+            },
+            {
+                "path": "evaluators.pacbin",
+                "role": "evaluator-state",
+                "sha256": "stale",
+                "size_bytes": 0,
+            },
+        ],
+    }
+
+    module._strip_symbolica_fallbacks(artifact, manifest)
+
+    execution = json.loads(execution_path.read_text(encoding="utf-8"))
+    evaluator = execution["compiled"]["evaluator"]
+    assert evaluator["evaluator_state_path"] is None
+    assert evaluator["evaluator_state_runtime_capability"] is None
+    with PacbinReader.open(container_path) as reader:
+        assert [member.logical_path for member in reader.members] == [
+            "processes/example/chunk.symjit"
+        ]
+        extension = manifest["extensions"]["evaluator_payload_container"]
+        assert extension["member_count"] == 1
+        assert extension["unpacked_size_bytes"] == len(b"runtime")
+        assert extension["index_sha256"] == reader.index.index_sha256
+    payload = next(
+        payload
+        for payload in manifest["payloads"]
+        if payload["path"] == "evaluators.pacbin"
+    )
+    assert payload["sha256"] == hashlib.sha256(container_path.read_bytes()).hexdigest()
+    assert payload["size_bytes"] == container_path.stat().st_size
 
 
 def test_source_selftest_compiled_model_matches_active_compiler_sources() -> None:

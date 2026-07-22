@@ -555,7 +555,12 @@ def _wheel(
         ).read_bytes()
     if candidate:
         files["pyamplicol/_build_info.json"] = json.dumps(
-            {"schema_version": 1, "publishable": False, "version": version}
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "source_checkout": "/Users/developer/pyamplicol",
+                "version": version,
+            }
         ).encode()
     if extra_files is not None:
         files.update(extra_files)

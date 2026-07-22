@@ -130,7 +130,7 @@ def _runtime_contracts() -> RuntimeContracts:
     # auditor without installing pyAmpliCol or its native dependencies.
     from pyamplicol._internal.versions import (
         COMPILED_MODEL_SCHEMA_VERSION,
-        EAGER_DAG_F64_RUNTIME_CAPABILITY,
+        EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
         SYMBOLICA_SERIALIZATION_ABI,
         SYMJIT_APPLICATION_ABI,
         SYMJIT_F64_RUNTIME_CAPABILITY,
@@ -150,7 +150,7 @@ def _runtime_contracts() -> RuntimeContracts:
         symbolica_serialization_abi=SYMBOLICA_SERIALIZATION_ABI,
         symjit_application_abi=SYMJIT_APPLICATION_ABI,
         symjit_runtime_capability=SYMJIT_F64_RUNTIME_CAPABILITY,
-        eager_runtime_capability=EAGER_DAG_F64_RUNTIME_CAPABILITY,
+        eager_runtime_capability=EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
         package_version=package_version(),
     )
 
