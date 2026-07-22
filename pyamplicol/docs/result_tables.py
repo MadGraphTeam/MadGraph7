@@ -1107,9 +1107,12 @@ def _refresh_matrix_derived_fields(entry: dict[str, object]) -> None:
     if not bool(entry.get("applicable", False)):
         entry["status"] = NA_STATUS
         return
+    pyamplicol_status = _measurement_status(pyamplicol)
+    if _lc_measurement_has_explicit_lanes(pyamplicol):
+        pyamplicol_status = _lc_two_workload_status(pyamplicol)
     statuses = {
         _measurement_status(legacy),
-        _measurement_status(pyamplicol),
+        pyamplicol_status,
         str(validation.get("status", NA_STATUS)),
     }
     if ResultStatus.VALIDATION_FAILED.value in statuses:
@@ -1154,8 +1157,11 @@ def _refresh_eager_matrix_derived_fields(entry: dict[str, object]) -> None:
     if not bool(entry.get("applicable", False)):
         entry["status"] = NA_STATUS
         return
+    measurement_status = _measurement_status(measurement)
+    if _lc_measurement_has_explicit_lanes(measurement):
+        measurement_status = _lc_two_workload_status(measurement)
     statuses = {
-        _measurement_status(measurement),
+        measurement_status,
         str(validation.get("status", NA_STATUS)),
         str(selector_contract.get("status", NA_STATUS)),
     }
@@ -1227,6 +1233,10 @@ def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
         for raw_entry in entries:
             if not isinstance(raw_entry, dict):
                 continue
+            _migrate_known_eager_z_lane_out_of_reach_entry(
+                normalized,
+                raw_entry,
+            )
             raw_entry["measurement"] = _normalize_measurement(
                 raw_entry.get("measurement")
             )
@@ -2778,6 +2788,39 @@ def _matrix_scaled_old_value(
     return float(value) * scale
 
 
+def _matrix_old_lane_status(
+    measurement: Mapping[str, object],
+    status_key: str,
+) -> str:
+    fields = _measurement_old_matrix_fields(measurement)
+    if status_key in fields:
+        return _normalized_failure_status(
+            fields.get(status_key, NA_STATUS),
+            failure_message=fields.get("all_flow_error")
+            if status_key == "all_flow_status"
+            else measurement.get("failure_message"),
+        )
+    if status_key == "status":
+        return _measurement_status(measurement)
+    return NA_STATUS
+
+
+def _matrix_lane_status_fragment(
+    measurement: Mapping[str, object],
+    status_key: str,
+    *,
+    ratio: bool = False,
+) -> str | None:
+    status = _matrix_old_lane_status(measurement, status_key)
+    if status == ResultStatus.OK.value:
+        return None
+    if status == NA_STATUS:
+        return _matrix_missing_ratio() if ratio else _matrix_na()
+    return _matrix_failure_label(
+        {"status": status, "limit_gib": measurement.get("limit_gib")}
+    )
+
+
 def _matrix_reference_pair(
     measurement: Mapping[str, object],
     selected_key: str,
@@ -2787,8 +2830,20 @@ def _matrix_reference_pair(
     selected_fallback_key: str | None = None,
     selected_fallback_scale: float = 1.0,
 ) -> str:
-    if not _measurement_ok(measurement):
+    fields = _measurement_old_matrix_fields(measurement)
+    has_lane_fields = "all_flow_status" in fields or _lc_measurement_has_explicit_lanes(
+        measurement
+    )
+    if not _measurement_ok(measurement) and not has_lane_fields:
         return _matrix_failure_label(measurement)
+    selected_status = (
+        _matrix_lane_status_fragment(measurement, "status") if has_lane_fields else None
+    )
+    all_flow_status = (
+        _matrix_lane_status_fragment(measurement, "all_flow_status")
+        if has_lane_fields
+        else None
+    )
     selected = _matrix_scaled_old_value(
         measurement,
         selected_key,
@@ -2796,13 +2851,25 @@ def _matrix_reference_pair(
         fallback_scale=selected_fallback_scale,
     )
     all_flow = _matrix_old_value(measurement, all_flow_key)
-    if selected is None and all_flow is None:
+    selected_cell = selected_status or (
+        _matrix_na() if selected is None else formatter(selected)
+    )
+    all_flow_cell = all_flow_status or (
+        _matrix_na() if all_flow is None else formatter(all_flow)
+    )
+    if (
+        selected is None
+        and all_flow is None
+        and selected_status is None
+        and all_flow_status is None
+    ):
         return _matrix_na("ReportRed")
-    if selected is None:
-        return formatter(all_flow)
-    if all_flow is None:
-        return formatter(selected)
-    return rf"\matrixrefpair{{{formatter(selected)}}}{{{formatter(all_flow)}}}"
+    if not has_lane_fields:
+        if selected is None:
+            return formatter(all_flow)
+        if all_flow is None:
+            return formatter(selected)
+    return rf"\matrixrefpair{{{selected_cell}}}{{{all_flow_cell}}}"
 
 
 def _matrix_plain_number(value: object) -> str:
@@ -2859,9 +2926,17 @@ def _matrix_lc_generation_ratio(
     *,
     legacy_key: str,
     py_key: str,
+    py_status_key: str = "status",
     legacy_fallback_key: str | None = None,
     py_fallback_key: str | None = None,
 ) -> str:
+    unavailable = _matrix_lane_status_fragment(
+        pyamplicol,
+        py_status_key,
+        ratio=True,
+    )
+    if unavailable is not None:
+        return unavailable
     if not _measurement_ok(pyamplicol):
         return _matrix_failure_label(pyamplicol)
     reference = _matrix_old_value(legacy, legacy_key, legacy_fallback_key)
@@ -2873,8 +2948,12 @@ def _matrix_lc_generation_value(
     pyamplicol: Mapping[str, object],
     *,
     py_key: str,
+    py_status_key: str = "status",
     py_fallback_key: str | None = None,
 ) -> str:
+    unavailable = _matrix_lane_status_fragment(pyamplicol, py_status_key)
+    if unavailable is not None:
+        return unavailable
     if not _measurement_ok(pyamplicol):
         return _matrix_failure_label(pyamplicol)
     py_value = _matrix_old_value(pyamplicol, py_key, py_fallback_key)
@@ -2890,11 +2969,15 @@ def _matrix_lc_runtime_ratio(
     legacy_key: str,
     py_wall_key: str,
     py_eval_key: str,
+    py_status_key: str = "status",
     legacy_scale: float = 1.0e-6,
     py_scale: float = 1.0e-6,
     py_wall_fallback_key: str | None = None,
     py_eval_fallback_key: str | None = None,
 ) -> str:
+    unavailable = _matrix_lane_status_fragment(pyamplicol, py_status_key)
+    if unavailable is not None:
+        return unavailable
     if not _measurement_ok(pyamplicol):
         return _matrix_failure_label(pyamplicol)
     reference = _matrix_scaled_old_value(
@@ -2925,10 +3008,14 @@ def _matrix_lc_runtime_value(
     *,
     py_wall_key: str,
     py_eval_key: str,
+    py_status_key: str = "status",
     py_scale: float = 1.0e-6,
     py_wall_fallback_key: str | None = None,
     py_eval_fallback_key: str | None = None,
 ) -> str:
+    unavailable = _matrix_lane_status_fragment(pyamplicol, py_status_key)
+    if unavailable is not None:
+        return unavailable
     if not _measurement_ok(pyamplicol):
         return _matrix_failure_label(pyamplicol)
     py_wall = _matrix_scaled_old_value(
@@ -2997,6 +3084,7 @@ def _matrix_cell(
             generation_all_flow = _matrix_lc_generation_value(
                 pyamplicol,
                 py_key="all_flow_generation_s",
+                py_status_key="all_flow_status",
                 py_fallback_key="generation_seconds",
             )
             reference_runtime = rf"\matrixrefpair{{{_matrix_na()}}}{{{_matrix_na()}}}"
@@ -3011,6 +3099,7 @@ def _matrix_cell(
                 pyamplicol,
                 py_wall_key="all_flow_wall_us_per_point",
                 py_eval_key="all_flow_runtime_us_per_point",
+                py_status_key="all_flow_status",
             )
         else:
             reference_generation = (
@@ -3045,6 +3134,7 @@ def _matrix_cell(
                     "all_flow_generation_s" if reference_is_compiled else "generation_s"
                 ),
                 py_key="all_flow_generation_s",
+                py_status_key="all_flow_status",
                 legacy_fallback_key="generation_seconds",
                 py_fallback_key="generation_seconds",
             )
@@ -3087,6 +3177,7 @@ def _matrix_cell(
                 ),
                 py_wall_key="all_flow_wall_us_per_point",
                 py_eval_key="all_flow_runtime_us_per_point",
+                py_status_key="all_flow_status",
             )
         cell = (
             rf"\matrixcell{{{reference_generation}}}{{{generation_selected}}}"
@@ -4546,6 +4637,264 @@ def _eager_reference_digest(
 
 LC_TOPOLOGY_REPLAY_LAYOUT = "topology-replay"
 LC_ALL_FLOW_UNION_LAYOUT = "all-flow-union"
+LC_LANE_STATUS_POLICY = "lc_two_workload_lane_status_v1"
+LC_ALL_FLOW_UNION_OUT_OF_REACH_POLICY = (
+    "high_multiplicity_all_flow_union_out_of_reach_v1"
+)
+_KNOWN_EAGER_Z_UNION_OUT_OF_REACH: frozenset[tuple[str, int, str]] = frozenset(
+    {
+        ("z_builtin_sm", 8, "eager_jit_o3"),
+        ("z_builtin_sm", 9, "eager_jit_o3"),
+        ("z_external_sm", 8, "eager_jit_o3"),
+        ("z_external_sm", 9, "eager_jit_o3"),
+    }
+)
+
+
+def _lc_measurement_has_explicit_lanes(measurement: object) -> bool:
+    if not isinstance(measurement, Mapping):
+        return False
+    metadata = measurement.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return False
+    return isinstance(metadata.get("selected_flow_measurement"), Mapping) or isinstance(
+        metadata.get("all_flow_measurement"),
+        Mapping,
+    )
+
+
+def _lc_lane_measurements(
+    measurement: Mapping[str, object],
+) -> tuple[Mapping[str, object] | None, Mapping[str, object] | None]:
+    metadata = measurement.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None, None
+    selected = metadata.get("selected_flow_measurement")
+    all_flow = metadata.get("all_flow_measurement")
+    return (
+        selected if isinstance(selected, Mapping) else None,
+        all_flow if isinstance(all_flow, Mapping) else None,
+    )
+
+
+def _lc_lane_statuses(measurement: Mapping[str, object]) -> tuple[str, str]:
+    selected, all_flow = _lc_lane_measurements(measurement)
+    fields = _measurement_old_matrix_fields(measurement)
+    selected_status = (
+        _measurement_status(selected)
+        if isinstance(selected, Mapping)
+        else _normalized_failure_status(
+            fields.get("status", measurement.get("status", NA_STATUS)),
+            failure_kind=measurement.get("failure_kind"),
+            failure_message=measurement.get("failure_message"),
+        )
+    )
+    all_flow_status = (
+        _measurement_status(all_flow)
+        if isinstance(all_flow, Mapping)
+        else _normalized_failure_status(
+            fields.get("all_flow_status", NA_STATUS),
+            failure_message=fields.get("all_flow_error"),
+        )
+    )
+    return selected_status, all_flow_status
+
+
+def _lc_status_pair_to_cell_status(
+    selected_status: str,
+    all_flow_status: str,
+    *,
+    extra_statuses: Iterable[object] = (),
+) -> str:
+    statuses = {
+        selected_status,
+        all_flow_status,
+        *(str(status) for status in extra_statuses),
+    }
+    if ResultStatus.VALIDATION_FAILED.value in statuses:
+        return ResultStatus.VALIDATION_FAILED.value
+    for status in (
+        ResultStatus.MEMORY_LIMIT.value,
+        ResultStatus.TIMEOUT.value,
+        ResultStatus.ERROR.value,
+        ResultStatus.FAILED.value,
+        ResultStatus.UNSUPPORTED.value,
+    ):
+        if status in statuses:
+            return (
+                ResultStatus.ERROR.value
+                if status == ResultStatus.FAILED.value
+                else status
+            )
+    lane_statuses = {selected_status, all_flow_status}
+    if lane_statuses == {ResultStatus.OUT_OF_REACH.value}:
+        return ResultStatus.OUT_OF_REACH.value
+    if lane_statuses <= {ResultStatus.OK.value, ResultStatus.OUT_OF_REACH.value}:
+        return ResultStatus.OK.value
+    if NA_STATUS in lane_statuses:
+        return NA_STATUS
+    if ResultStatus.OUT_OF_REACH.value in lane_statuses:
+        return ResultStatus.OUT_OF_REACH.value
+    return NA_STATUS
+
+
+def _lc_two_workload_status(
+    measurement: Mapping[str, object],
+    *,
+    extra_statuses: Iterable[object] = (),
+) -> str:
+    selected_status, all_flow_status = _lc_lane_statuses(measurement)
+    return _lc_status_pair_to_cell_status(
+        selected_status,
+        all_flow_status,
+        extra_statuses=extra_statuses,
+    )
+
+
+def _lc_lane_terminal_current(
+    measurement: object,
+    *,
+    expected_layout: str,
+    role: str,
+) -> bool:
+    if not isinstance(measurement, Mapping):
+        return False
+    if _measurement_status(measurement) != ResultStatus.OUT_OF_REACH.value:
+        return False
+    metadata = measurement.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return False
+    return (
+        metadata.get("lane_status_policy") == LC_LANE_STATUS_POLICY
+        and metadata.get("runtime_selector_role") == role
+        and metadata.get("lc_flow_layout") == expected_layout
+    )
+
+
+def _lc_lane_satisfied_current(
+    cell: CampaignCell,
+    measurement: object,
+    *,
+    expected_layout: str,
+    execution_mode: str,
+    role: str,
+) -> bool:
+    return _lc_nested_measurement_current(
+        cell,
+        measurement,
+        expected_layout=expected_layout,
+        execution_mode=execution_mode,
+    ) or _lc_lane_terminal_current(
+        measurement,
+        expected_layout=expected_layout,
+        role=role,
+    )
+
+
+def _lc_lane_out_of_reach_measurement(
+    source: Mapping[str, object],
+    *,
+    layout: str,
+    role: str,
+) -> dict[str, object]:
+    lane = _normalize_measurement(source)
+    metadata_value = lane.get("metadata")
+    metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+    metadata.update(
+        {
+            "lane_status_policy": LC_LANE_STATUS_POLICY,
+            "lane_terminal_policy": LC_ALL_FLOW_UNION_OUT_OF_REACH_POLICY,
+            "runtime_selector_role": role,
+            "lc_flow_layout": layout,
+        }
+    )
+    lane["metadata"] = metadata
+    return lane
+
+
+def _lc_lane_missing_measurement(
+    source: Mapping[str, object],
+    *,
+    layout: str,
+    role: str,
+) -> dict[str, object]:
+    lane = _empty_measurement()
+    metadata_value = source.get("metadata")
+    source_metadata = (
+        dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+    )
+    lane["metadata"] = {
+        "cell": source_metadata.get("cell"),
+        "source_provenance": source_metadata.get("source_provenance"),
+        "lane_status_policy": LC_LANE_STATUS_POLICY,
+        "runtime_selector_role": role,
+        "lc_flow_layout": layout,
+    }
+    return lane
+
+
+def _migrate_known_eager_z_lane_out_of_reach_entry(
+    payload: Mapping[str, object],
+    entry: dict[str, object],
+) -> None:
+    dataset_id = str(payload.get("dataset_id"))
+    n_final = entry.get("n_final")
+    variant = entry.get("variant")
+    if (
+        not isinstance(n_final, int)
+        or not isinstance(variant, str)
+        or (dataset_id, n_final, variant) not in _KNOWN_EAGER_Z_UNION_OUT_OF_REACH
+    ):
+        return
+    raw_measurement = entry.get("measurement")
+    if not isinstance(raw_measurement, Mapping):
+        return
+    measurement = _normalize_measurement(raw_measurement)
+    if _measurement_status(measurement) != ResultStatus.OUT_OF_REACH.value:
+        return
+    metadata_value = measurement.get("metadata")
+    metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+    classification = metadata.get("campaign_classification")
+    if not isinstance(classification, Mapping):
+        return
+    if classification.get("policy") != "high_multiplicity_out_of_reach_v1":
+        return
+    selected = _lc_lane_missing_measurement(
+        measurement,
+        layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        role="selected-flow-helicity-sum",
+    )
+    all_flow = _lc_lane_out_of_reach_measurement(
+        measurement,
+        layout=LC_ALL_FLOW_UNION_LAYOUT,
+        role="all-flows-fixed-helicity",
+    )
+    old_fields = {
+        "status": NA_STATUS,
+        "generation_s": None,
+        "selected_generation_s": None,
+        "runtime_us_per_point": None,
+        "wall_us_per_point": None,
+        "all_flow_status": ResultStatus.OUT_OF_REACH.value,
+        "all_flow_generation_s": None,
+        "all_flow_runtime_us_per_point": None,
+        "all_flow_wall_us_per_point": None,
+        "all_flow_matrix_element": None,
+        "all_flow_error": measurement.get("failure_message"),
+    }
+    migrated = _empty_measurement()
+    migrated["metadata"] = {
+        "cell": metadata.get("cell"),
+        "source_provenance": metadata.get("source_provenance"),
+        "campaign_classification": dict(classification),
+        "lane_status_policy": LC_LANE_STATUS_POLICY,
+        "runtime_selector_policy": "complete_lc_runtime_selectors_v2",
+        "old_matrix_format": old_fields,
+        "selected_flow_measurement": selected,
+        "all_flow_measurement": all_flow,
+    }
+    entry["measurement"] = migrated
+    entry["status"] = NA_STATUS
 
 
 def _measurement_lc_flow_layout(measurement: Mapping[str, object]) -> str:
@@ -4678,31 +5027,56 @@ def _lc_combined_measurement_current(
         return False
     selected = metadata.get("selected_flow_measurement")
     all_flow = metadata.get("all_flow_measurement")
-    if not _lc_nested_measurement_current(
+    selected_current = _lc_nested_measurement_current(
         cell,
         selected,
         expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
         execution_mode=execution_mode,
-    ) or not _lc_nested_measurement_current(
+    )
+    selected_terminal = _lc_lane_terminal_current(
+        selected,
+        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        role="selected-flow-helicity-sum",
+    )
+    all_flow_current = _lc_nested_measurement_current(
         cell,
         all_flow,
         expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
         execution_mode=execution_mode,
+    )
+    all_flow_terminal = _lc_lane_terminal_current(
+        all_flow,
+        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+        role="all-flows-fixed-helicity",
+    )
+    if not (selected_current or selected_terminal) or not (
+        all_flow_current or all_flow_terminal
     ):
         return False
     selected_contract = _cached_lc_selector_contract(selected)
     all_flow_contract = _cached_lc_selector_contract(all_flow)
     combined_contract = _cached_lc_selector_contract(measurement)
-    if (
-        selected_contract is None
-        or selected_contract != all_flow_contract
-        or selected_contract != combined_contract
-    ):
+    current_contracts = [
+        contract
+        for current, contract in (
+            (selected_current, selected_contract),
+            (all_flow_current, all_flow_contract),
+        )
+        if current
+    ]
+    if not current_contracts:
+        return selected_terminal and all_flow_terminal
+    first_contract = current_contracts[0]
+    if first_contract is None:
+        return False
+    if any(contract != first_contract for contract in current_contracts):
+        return False
+    if combined_contract is not None and combined_contract != first_contract:
         return False
     if reference_measurement is None:
         return False
     current_reference_digest = _eager_reference_digest(cell, reference_measurement)
-    return selected_contract.get("reference_digest") == current_reference_digest
+    return first_contract.get("reference_digest") == current_reference_digest
 
 
 def _eager_measurement_current(
@@ -4760,11 +5134,13 @@ def _campaign_cell_needs_measurement(
             if not bool(entry.get("applicable", False)):
                 return False
             status = str(entry.get("status", NA_STATUS))
-            if _campaign_status_is_terminal(status):
+            measurement = entry.get("eager_jit_o3")
+            if _campaign_status_is_terminal(
+                status
+            ) and not _lc_measurement_has_explicit_lanes(measurement):
                 return False
             if status != ResultStatus.OK.value:
                 return True
-            measurement = entry.get("eager_jit_o3")
             selector_contract = entry.get("selector_contract")
             reference = _eager_reference_measurement(cell, caches)
             if not (
@@ -4793,7 +5169,10 @@ def _campaign_cell_needs_measurement(
             if not bool(entry.get("applicable", False)):
                 return False
             status = str(entry.get("status", NA_STATUS))
-            if _campaign_status_is_terminal(status):
+            pyamplicol = entry.get("pyamplicol_jit_o3")
+            if _campaign_status_is_terminal(
+                status
+            ) and not _lc_measurement_has_explicit_lanes(pyamplicol):
                 return False
             if status == NA_STATUS:
                 return True
@@ -4822,7 +5201,6 @@ def _campaign_cell_needs_measurement(
             ):
                 return True
             if cell.dataset_id.endswith("_lc"):
-                pyamplicol = entry.get("pyamplicol_jit_o3")
                 return not (
                     isinstance(legacy, Mapping)
                     and isinstance(pyamplicol, Mapping)
@@ -4866,7 +5244,9 @@ def _campaign_cell_needs_measurement(
             if not isinstance(measurement, Mapping):
                 return True
             status = str(measurement.get("status", NA_STATUS))
-            if _campaign_status_is_terminal(status):
+            if _campaign_status_is_terminal(
+                status
+            ) and not _lc_measurement_has_explicit_lanes(measurement):
                 return False
             if status == NA_STATUS:
                 return True
@@ -7151,7 +7531,7 @@ def _measure_pyamplicol_eager_lc_two_workloads(
         "prepared_model": dict(preparation),
         "prepared_model_creation_excluded_from_generation": True,
     }
-    if _lc_nested_measurement_current(
+    selected_is_current = _lc_nested_measurement_current(
         cell,
         previous_selected,
         expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
@@ -7159,7 +7539,13 @@ def _measure_pyamplicol_eager_lc_two_workloads(
     ) and _lc_selector_contract_matches_reference(
         previous_selected,
         current_reference_digest,
-    ):
+    )
+    selected_is_terminal = _lc_lane_terminal_current(
+        previous_selected,
+        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        role="selected-flow-helicity-sum",
+    )
+    if selected_is_current or selected_is_terminal:
         assert isinstance(previous_selected, Mapping)
         selected = dict(previous_selected)
         selected_contract = _cached_lc_selector_contract(selected)
@@ -7185,7 +7571,7 @@ def _measure_pyamplicol_eager_lc_two_workloads(
             model_source_override=prepared_source,
             extra_metadata=eager_metadata,
         )
-    if _lc_nested_measurement_current(
+    all_flow_is_current = _lc_nested_measurement_current(
         cell,
         previous_all_flow,
         expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
@@ -7193,7 +7579,13 @@ def _measure_pyamplicol_eager_lc_two_workloads(
     ) and _lc_selector_contract_matches_reference(
         previous_all_flow,
         current_reference_digest,
-    ):
+    )
+    all_flow_is_terminal = _lc_lane_terminal_current(
+        previous_all_flow,
+        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+        role="all-flows-fixed-helicity",
+    )
+    if all_flow_is_current or all_flow_is_terminal:
         assert isinstance(previous_all_flow, Mapping)
         all_flow = dict(previous_all_flow)
         all_flow_contract = _cached_lc_selector_contract(all_flow)
@@ -7251,7 +7643,7 @@ def _measure_pyamplicol_eager_lc_two_workloads(
             all_flow = dict(all_flow)
             all_flow["status"] = ResultStatus.VALIDATION_FAILED.value
 
-    combined = dict(selected)
+    combined = dict(selected if _measurement_ok(selected) else all_flow)
     metadata = dict(
         combined.get("metadata")
         if isinstance(combined.get("metadata"), Mapping)
@@ -7307,6 +7699,10 @@ def _measure_pyamplicol_eager_lc_two_workloads(
     metadata["cross_artifact_validation"] = cross_validation
     metadata["runtime_selector_policy"] = "complete_lc_runtime_selectors_v2"
     combined["metadata"] = metadata
+    combined["status"] = _lc_status_pair_to_cell_status(
+        _measurement_status(selected),
+        _measurement_status(all_flow),
+    )
     if cross_validation.get("status") in {
         ResultStatus.ERROR.value,
         ResultStatus.VALIDATION_FAILED.value,
@@ -7679,7 +8075,12 @@ def _measure_pyamplicol_lc_two_workloads(
         previous_selected,
         current_reference_digest,
     )
-    if selected_is_current:
+    selected_is_terminal = _lc_lane_terminal_current(
+        previous_selected,
+        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        role="selected-flow-helicity-sum",
+    )
+    if selected_is_current or selected_is_terminal:
         assert isinstance(previous_selected, Mapping)
         selected = dict(previous_selected)
         selected_points = points
@@ -7713,7 +8114,12 @@ def _measure_pyamplicol_lc_two_workloads(
         previous_all_flow,
         current_reference_digest,
     )
-    if all_flow_is_current:
+    all_flow_is_terminal = _lc_lane_terminal_current(
+        previous_all_flow,
+        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+        role="all-flows-fixed-helicity",
+    )
+    if all_flow_is_current or all_flow_is_terminal:
         assert isinstance(previous_all_flow, Mapping)
         all_flow = dict(previous_all_flow)
         all_flow_contract = _cached_lc_selector_contract(all_flow)
@@ -7794,7 +8200,7 @@ def _measure_pyamplicol_lc_two_workloads(
             all_flow = dict(all_flow)
             all_flow["status"] = ResultStatus.VALIDATION_FAILED.value
 
-    combined = dict(selected)
+    combined = dict(selected if _measurement_ok(selected) else all_flow)
     metadata = dict(
         combined.get("metadata")
         if isinstance(combined.get("metadata"), Mapping)
@@ -7854,6 +8260,10 @@ def _measure_pyamplicol_lc_two_workloads(
     metadata["cross_artifact_validation"] = cross_validation
     metadata["runtime_selector_policy"] = "complete_lc_runtime_selectors_v2"
     combined["metadata"] = metadata
+    combined["status"] = _lc_status_pair_to_cell_status(
+        _measurement_status(selected),
+        _measurement_status(all_flow),
+    )
     if cross_validation.get("status") in {
         ResultStatus.ERROR.value,
         ResultStatus.VALIDATION_FAILED.value,
@@ -10028,6 +10438,17 @@ def _pointwise_validation(
         legacy_status != ResultStatus.OK.value
         or pyamplicol_status != ResultStatus.OK.value
     ):
+        if ResultStatus.OUT_OF_REACH.value in {legacy_status, pyamplicol_status}:
+            payload.update(
+                {
+                    "all_flow_status": ResultStatus.OUT_OF_REACH.value,
+                    "message": (
+                        "all-flow validation skipped because the all-flow lane "
+                        "is out of reach"
+                    ),
+                }
+            )
+            return payload
         payload.update(
             {
                 "status": ResultStatus.ERROR.value,
@@ -10144,6 +10565,37 @@ def _eager_pointwise_validation(
         return payload
     compiled_fields = _measurement_old_matrix_fields(compiled)
     eager_fields = _measurement_old_matrix_fields(eager)
+    compiled_all_status = str(compiled_fields.get("all_flow_status", NA_STATUS))
+    eager_all_status = str(eager_fields.get("all_flow_status", NA_STATUS))
+    if (
+        compiled_all_status != ResultStatus.OK.value
+        or eager_all_status != ResultStatus.OK.value
+    ):
+        if ResultStatus.OUT_OF_REACH.value in {
+            compiled_all_status,
+            eager_all_status,
+        }:
+            payload.update(
+                {
+                    "all_flow_status": ResultStatus.OUT_OF_REACH.value,
+                    "message": (
+                        "all-flow validation skipped because the all-flow lane "
+                        "is out of reach"
+                    ),
+                }
+            )
+            return payload
+        payload.update(
+            {
+                "status": ResultStatus.ERROR.value,
+                "all_flow_status": ResultStatus.ERROR.value,
+                "message": (
+                    "eager/compiled all-flow measurement is unavailable: "
+                    f"compiled={compiled_all_status}, eager={eager_all_status}"
+                ),
+            }
+        )
+        return payload
     reference_all_flow = compiled_fields.get("all_flow_matrix_element")
     eager_all_flow = eager_fields.get("all_flow_matrix_element")
     if reference_all_flow is None or eager_all_flow is None:
@@ -10784,6 +11236,22 @@ def _refresh_performance_ladder_validation(
             or compiled_validation_failed
         ):
             updated["status"] = ResultStatus.VALIDATION_FAILED.value
+        elif _lc_measurement_has_explicit_lanes(measurement):
+            extra_statuses: list[object] = [
+                validation.get("status", NA_STATUS),
+                validation.get("all_flow_status", NA_STATUS),
+            ]
+            if isinstance(compiled_validation, Mapping):
+                extra_statuses.extend(
+                    [
+                        compiled_validation.get("status", NA_STATUS),
+                        compiled_validation.get("all_flow_status", NA_STATUS),
+                    ]
+                )
+            updated["status"] = _lc_two_workload_status(
+                measurement,
+                extra_statuses=extra_statuses,
+            )
         else:
             updated["status"] = measurement.get("status", NA_STATUS)
         entries[index] = updated
