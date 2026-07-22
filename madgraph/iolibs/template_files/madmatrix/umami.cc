@@ -100,17 +100,31 @@ namespace
     const double* diagram_random_in,
     const double* alpha_s_in,
     const unsigned int* flavor_indices_in,
+    const int* invariant_masks_in,
+    const double* invariant_masses_in,
     fptype* momenta,
     fptype* helicity_random,
     fptype* color_random,
     fptype* diagram_random,
     fptype* g_s,
     unsigned int* flavor_indices,
+    int* inv_masks,
+    fptype_invmass* inv_masses,
+    int ninvar,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
   {
     std::size_t i_event = blockDim.x * blockIdx.x + threadIdx.x;
+
+    // repack [component][event] layout into [ievt*ninvar + k]
+    for( int k = 0; k < ninvar; ++k )
+    {
+      const bool real_event = i_event < count;
+      inv_masks[i_event * ninvar + k] = real_event ? invariant_masks_in[stride * k + i_event + offset] : 0;
+      inv_masses[i_event * ninvar + k] = real_event ? static_cast<fptype_invmass>( invariant_masses_in[stride * k + i_event + offset] ) : 0;
+    }
+
     if( i_event >= count ) return;
 
     transpose_momenta( &momenta_in[offset], momenta, i_event, i_event, stride );
@@ -213,8 +227,8 @@ extern "C"
   UmamiStatus umami_supported_inputs( bool const** supported, int* count )
   {
     // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
-    // HELICITY_INDEX=false, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
-    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, false, true };
+    // HELICITY_INDEX=false, DIAGRAM_INDEX=true, CHANNEL_INDEX=false, INVARIANT_* keys
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, false, true, false, true, true, true, true };
     *supported = data;
     *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
@@ -291,6 +305,9 @@ extern "C"
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
     [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
+    const unsigned int* invariant_count_in = nullptr; 
+    const int* invariant_masks_in = nullptr;    
+    const double* invariant_masses_in = nullptr; 
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -321,10 +338,16 @@ extern "C"
           diagram_in = static_cast<const int*>( input );
           break;
         case UMAMI_IN_INVARIANT_COUNT:
+          invariant_count_in = static_cast<const unsigned int*>( input );
+          break;
         case UMAMI_IN_INVARIANT_PIDS_AND_MASKS:
+          invariant_masks_in = static_cast<const int*>( input );
+          break;
         case UMAMI_IN_INVARIANT_MASSES:
+          invariant_masses_in = static_cast<const double*>( input );
+          break;
         case UMAMI_IN_INVARIANT_VIRTUALITIES:
-          // accept, but ignore externally supplied invariants
+          // accepted but unused
           break;
         default:
           return UMAMI_ERROR_UNSUPPORTED_INPUT;
@@ -379,9 +402,22 @@ extern "C"
     fptype *matrix_elements, *numerators, *denominators, *ghel_matrix_elements, *ghel_jamps;
     int *helicity_index, *color_index;
     unsigned int *flavor_indices, *diagram_index;
+    int* inv_masks;
+    fptype_invmass* inv_masses;
+
+    int ninvar = 0;
+    if( invariant_count_in && invariant_masks_in && invariant_masses_in )
+    {
+      unsigned int ninvar_h = 0;
+      gpuMemcpy( &ninvar_h, invariant_count_in, sizeof( unsigned int ), gpuMemcpyDeviceToHost );
+      ninvar = static_cast<int>( ninvar_h );
+    }
+    const std::size_t ninvar_alloc = ( ninvar > 0 ? ninvar : 1 );
 
     std::size_t n_coup = mg5amcGpu::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 18> ptrs_and_sizes = {{
+        {reinterpret_cast<void**>(&inv_masks), rounded_count * ninvar_alloc * sizeof( int )},
+        {reinterpret_cast<void**>(&inv_masses), rounded_count * ninvar_alloc * sizeof( fptype_invmass )},
         {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -422,12 +458,17 @@ extern "C"
       random_diagram_in,
       alpha_s_in,
       flavor_indices_in,
+      invariant_masks_in,
+      invariant_masses_in,
       momenta,
       helicity_random,
       color_random,
       diagram_random,
       g_s,
       flavor_indices,
+      inv_masks,
+      inv_masses,
+      ninvar,
       count,
       stride,
       offset );
@@ -446,9 +487,9 @@ extern "C"
       momenta,
       couplings,
       flavor_indices,
-      nullptr,
-      nullptr,
-      0,         //jsut for compile test
+      ninvar > 0 ? inv_masks : nullptr,
+      ninvar > 0 ? inv_masses : nullptr,
+      ninvar,
       helicity_random,
       color_random,
       nullptr,
@@ -539,6 +580,24 @@ extern "C"
     HostBufferBase<fptype, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
+
+    // repack [component][event] layout into [ievt*ninvar + k]
+    const int ninvar = ( invariant_count_in && invariant_masks_in && invariant_masses_in )
+                         ? static_cast<int>( invariant_count_in[0] ) : 0;
+
+    const std::size_t inv_size = rounded_count * static_cast<std::size_t>( ninvar );
+
+    HostBufferBase<int, false> inv_masks( inv_size ? inv_size : 1 );
+    HostBufferBase<fptype_invmass, false> inv_masses( inv_size ? inv_size : 1 );
+
+    auto copy_invariants = [&]( std::size_t i_event, std::size_t i_dest ) {
+      for( int k = 0; k < ninvar; ++k )
+      {
+        inv_masks[i_dest * ninvar + k] = invariant_masks_in[stride * k + i_event + offset];
+        inv_masses[i_dest * ninvar + k] = static_cast<fptype_invmass>( invariant_masses_in[stride * k + i_event + offset] );
+      }
+    };
+
     if ( sort_flavors ) {
       for( std::size_t i_event = 0; i_event < count; ++i_event )
       {
@@ -548,6 +607,7 @@ extern "C"
         color_random[i_sorted] = random_color_in ? random_color_in[i_event + offset] : 0.5;
         diagram_random[i_sorted] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
         g_s[i_sorted] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
+        copy_invariants( i_event, i_sorted );
       }
     } else {
       for( std::size_t i_event = 0; i_event < count; ++i_event )
@@ -558,6 +618,7 @@ extern "C"
         diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
         g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
         flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
+        copy_invariants( i_event, i_event );
       }
       for ( std::size_t i_event = count; i_event < rounded_count; ++i_event ) {
         flavor_indices[i_event] = 0;
@@ -583,9 +644,9 @@ extern "C"
       momenta.data(),
       couplings.data(),
       flavor_indices.data(),
-      nullptr,
-      nullptr,
-      0,          //jsut for compile test
+      ninvar > 0 ? inv_masks.data() : nullptr,
+      ninvar > 0 ? inv_masses.data() : nullptr,
+      ninvar,
       helicity_random.data(),
       color_random.data(),
       nullptr,
