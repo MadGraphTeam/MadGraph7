@@ -932,8 +932,9 @@ class GenerationBackend:
                     "Planning processes",
                     total=len(processes.requests),
                 )
-            )
+        )
         try:
+            self._validate_recurrence_request()
             license_state = self._detect_symbolica_license()
             self._apply_symbolica_resource_policy(license_state)
             resolved_model = self._resolve_model_for_plan(source)
@@ -1017,6 +1018,7 @@ class GenerationBackend:
         )
         generation_started = time.perf_counter()
         try:
+            self._validate_recurrence_request()
             license_state = self._detect_symbolica_license()
             self._apply_symbolica_resource_policy(license_state)
             source = model or self._configured_model_source()
@@ -2520,6 +2522,27 @@ class GenerationBackend:
         return run is not None and str(run.evaluator.execution_mode) == "eager"
 
     @property
+    def _recurrence_execution_enabled(self) -> bool:
+        run = self._run_config
+        return run is not None and str(run.evaluator.execution_mode) == "recurrence"
+
+    def _validate_recurrence_request(self) -> None:
+        """Keep recurrence requests out of compiled/eager generation lanes."""
+
+        if not self._recurrence_execution_enabled:
+            return
+        if self._color_accuracy != "lc":
+            raise GenerationError(
+                "recurrence execution is available only for LC generation; "
+                "use --execution-mode compiled or --execution-mode eager for "
+                f"color.accuracy={self._color_accuracy!r}"
+            )
+        raise GenerationError(
+            "recurrence execution is not available in this development milestone: "
+            "prepared recurrence-template-v1 construction has not been installed"
+        )
+
+    @property
     def _all_flow_union_enabled(self) -> bool:
         run = self._run_config
         if run is None:
@@ -2988,6 +3011,7 @@ class GenerationBackend:
         *,
         progress_callback: Callable[[Mapping[str, str | int]], None] | None = None,
     ) -> tuple[GenericDAG, dict[str, object]]:
+        self._validate_recurrence_request()
         selection = self._process_selection
         self._validate_lc_flow_layout(selection)
         if (

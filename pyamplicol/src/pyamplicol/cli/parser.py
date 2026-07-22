@@ -336,7 +336,7 @@ def _add_evaluator_options(
         parser.add_argument(
             "--execution-mode",
             dest="evaluator.execution_mode",
-            choices=("compiled", "eager"),
+            choices=("compiled", "eager", "recurrence"),
             default=argparse.SUPPRESS,
         )
         parser.add_argument(

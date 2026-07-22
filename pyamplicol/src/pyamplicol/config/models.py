@@ -55,6 +55,7 @@ class EvaluatorBackend(StrEnum):
 class EvaluatorExecutionMode(StrEnum):
     COMPILED = "compiled"
     EAGER = "eager"
+    RECURRENCE = "recurrence"
 
 
 _PORTABLE_CPP_EXTRA_FLAGS = frozenset({"-fno-math-errno"})
@@ -645,6 +646,32 @@ class EagerEvaluatorConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class RecurrenceEvaluatorConfig:
+    point_tile_size: int = field(default=1024, metadata=_setting("int"))
+    workspace_mib: int = field(default=256, metadata=_setting("int"))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "point_tile_size",
+            _integer(
+                self.point_tile_size,
+                "evaluator.recurrence.point_tile_size",
+                minimum=1,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "workspace_mib",
+            _integer(
+                self.workspace_mib,
+                "evaluator.recurrence.workspace_mib",
+                minimum=1,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluatorConfig:
     backend: EvaluatorBackend = field(
         default=EvaluatorBackend.JIT,
@@ -665,6 +692,9 @@ class EvaluatorConfig:
     cpp: CppConfig = field(default_factory=CppConfig, metadata=_section())
     eager: EagerEvaluatorConfig = field(
         default_factory=EagerEvaluatorConfig, metadata=_section()
+    )
+    recurrence: RecurrenceEvaluatorConfig = field(
+        default_factory=RecurrenceEvaluatorConfig, metadata=_section()
     )
 
     def __post_init__(self) -> None:
@@ -702,6 +732,10 @@ class EvaluatorConfig:
             raise ConfigurationError("evaluator.cpp must be a CppConfig")
         if not isinstance(self.eager, EagerEvaluatorConfig):
             raise ConfigurationError("evaluator.eager must be an EagerEvaluatorConfig")
+        if not isinstance(self.recurrence, RecurrenceEvaluatorConfig):
+            raise ConfigurationError(
+                "evaluator.recurrence must be a RecurrenceEvaluatorConfig"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -914,6 +948,7 @@ __all__ = [
     "ProcessConfig",
     "ProcessEntry",
     "ProgressMode",
+    "RecurrenceEvaluatorConfig",
     "RunConfig",
     "SymbolicaConfig",
 ]

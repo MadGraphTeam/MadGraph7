@@ -56,16 +56,40 @@ def test_generate_accepts_jit_compression_override(
     assert config.evaluator.jit.compress is expected
 
 
+def test_generate_accepts_recurrence_execution_mode_override() -> None:
+    config = (
+        parse_cli(("generate", "--execution-mode", "recurrence"))
+        .resolve()
+        .effective
+    )
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
+
+
+def test_generate_accepts_recurrence_schema_overrides() -> None:
+    config = (
+        parse_cli(
+            (
+                "generate",
+                "--set",
+                "evaluator.execution_mode=recurrence",
+                "--set",
+                "evaluator.recurrence.point_tile_size=2048",
+                "--set",
+                "evaluator.recurrence.workspace_mib=384",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
+    assert config.evaluator.recurrence.point_tile_size == 2048
+    assert config.evaluator.recurrence.workspace_mib == 384
+
+
 def test_generate_accepts_lc_flow_layout_override() -> None:
-    resolution = parse_cli(
-        ("generate", "--lc-flow-layout", "all-flow-union")
-    ).resolve()
-    assert (
-        resolution.requested.color.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
-    )
-    assert (
-        resolution.effective.color.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
-    )
+    resolution = parse_cli(("generate", "--lc-flow-layout", "all-flow-union")).resolve()
+    assert resolution.requested.color.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
+    assert resolution.effective.color.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
 
 
 def test_generate_force_is_an_alias_for_atomic_replace(tmp_path: Path) -> None:

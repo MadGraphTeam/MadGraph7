@@ -172,6 +172,7 @@ Execution mode and evaluator backend are independent choices:
 | --- | --- |
 | `compiled` | Default. Compiles process-wide stage evaluators during generation. |
 | `eager` | Uses a prepared model's local kernels and writes compact DAG invocation tables. |
+| `recurrence` | Uses prepared local kernels through compact recurrence schedules. |
 
 | Backend | Use |
 | --- | --- |
@@ -206,6 +207,17 @@ SymJIT loading. A future SymJIT storage ABI may widen this contract.
 runtime reduces it as needed to keep reusable storage within
 `evaluator.eager.workspace_mib`, which defaults to 256 MiB. Arbitrarily large
 input batches are processed through those fixed-size tiles.
+
+Recurrence is opt-in and can be selected through the schema-aware CLI override:
+
+```console
+pyamplicol generate --card run.toml \
+  --set evaluator.execution_mode=recurrence
+```
+
+`evaluator.recurrence.point_tile_size` defaults to 1024, and
+`evaluator.recurrence.workspace_mib` defaults to 256 MiB. As with eager mode,
+the runtime may reduce the tile size to stay within the workspace limit.
 
 The default batch size is 128 and the default output chunk size is 512.
 Optimization defaults are 10

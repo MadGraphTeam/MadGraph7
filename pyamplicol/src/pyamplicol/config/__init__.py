@@ -31,6 +31,7 @@ from .models import (
     ProcessConfig,
     ProcessEntry,
     ProgressMode,
+    RecurrenceEvaluatorConfig,
     RunConfig,
     SymbolicaConfig,
 )
@@ -91,6 +92,7 @@ __all__ = [
     "ProcessEntry",
     "ProgressMode",
     "PyAmpliColError",
+    "RecurrenceEvaluatorConfig",
     "RunConfig",
     "SymbolicaConfig",
     "config_to_dict",

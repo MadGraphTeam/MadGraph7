@@ -147,6 +147,34 @@ def test_jit_compression_card_and_dotted_override_round_trip() -> None:
     assert resolve_config(tomllib.loads(serialized)).effective == config
 
 
+def test_recurrence_evaluator_card_and_dotted_overrides_round_trip() -> None:
+    pytest.importorskip("tomli_w")
+    config = resolve_config(
+        {
+            "action": "generate",
+            "evaluator": {
+                "execution_mode": "recurrence",
+                "recurrence": {"point_tile_size": 2048, "workspace_mib": 384},
+            },
+        },
+        overrides=("evaluator.recurrence.workspace_mib=512",),
+    ).effective
+
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
+    assert config.evaluator.recurrence.point_tile_size == 2048
+    assert config.evaluator.recurrence.workspace_mib == 512
+    plain = config_to_dict(config)
+    assert plain["evaluator"]["recurrence"] == {  # type: ignore[index]
+        "point_tile_size": 2048,
+        "workspace_mib": 512,
+    }
+    assert resolve_config(plain).effective == config
+    serialized = config_to_toml(config)
+    assert 'execution_mode = "recurrence"' in serialized
+    assert "[evaluator.recurrence]" in serialized
+    assert resolve_config(tomllib.loads(serialized)).effective == config
+
+
 def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
     pytest.importorskip("tomli_w")
     config = resolve_config(
@@ -179,6 +207,18 @@ def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
 )
 def test_invalid_eager_evaluator_overrides_are_rejected(override: str) -> None:
     with pytest.raises(ConfigurationError, match="evaluator"):
+        resolve_config({"action": "generate"}, overrides=(override,))
+
+
+@pytest.mark.parametrize(
+    "override",
+    (
+        "evaluator.recurrence.point_tile_size=0",
+        "evaluator.recurrence.workspace_mib=-1",
+    ),
+)
+def test_invalid_recurrence_evaluator_overrides_are_rejected(override: str) -> None:
+    with pytest.raises(ConfigurationError, match=r"evaluator\.recurrence"):
         resolve_config({"action": "generate"}, overrides=(override,))
 
 

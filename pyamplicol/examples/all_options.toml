@@ -91,9 +91,9 @@ post_build_validation = true
 [evaluator]
 # evaluator.backend: "jit", "asm", or "cpp". Default jit.
 backend = "jit"
-# evaluator.execution_mode: "compiled" or "eager". Default compiled. Eager
-# built-in-sm uses the wheel-owned JIT O3 pack; other packs need an explicit
-# .pyamplicol-model source.
+# evaluator.execution_mode: "compiled", "eager", or "recurrence". Default
+# compiled. Eager and recurrence built-in-sm use the wheel-owned JIT O3 pack;
+# other packs need an explicit .pyamplicol-model source.
 execution_mode = "compiled"
 # evaluator.batch_size: Positive evaluation batch size. Default 128.
 batch_size = 128
@@ -105,6 +105,14 @@ output_chunk_size = 512
 # The runtime reduces this automatically when required. Default 1024.
 point_tile_size = 1024
 # evaluator.eager.workspace_mib: Maximum reusable eager workspace. Default 256.
+workspace_mib = 256
+
+[evaluator.recurrence]
+# evaluator.recurrence.point_tile_size: Maximum points per recurrence workspace
+# tile. The runtime may reduce this automatically. Default 1024.
+point_tile_size = 1024
+# evaluator.recurrence.workspace_mib: Maximum reusable recurrence workspace.
+# Default 256.
 workspace_mib = 256
 
 [evaluator.optimization]
