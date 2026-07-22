@@ -50,7 +50,7 @@ struct PendingClosureKey {
     parent_current_ids: Box<[u32]>,
 }
 
-struct TemplateCatalog<'a> {
+pub(super) struct TemplateCatalog<'a> {
     input: &'a OwnedRecurrenceTemplateInput,
     strings: Vec<&'a str>,
     digests: Vec<SemanticDigest>,
@@ -59,7 +59,7 @@ struct TemplateCatalog<'a> {
 }
 
 impl<'a> TemplateCatalog<'a> {
-    fn new(input: &'a OwnedRecurrenceTemplateInput) -> RusticolResult<Self> {
+    pub(super) fn new(input: &'a OwnedRecurrenceTemplateInput) -> RusticolResult<Self> {
         let strings = decode_strings(
             &input.string_ranges,
             &input.string_bytes,
@@ -98,14 +98,14 @@ impl<'a> TemplateCatalog<'a> {
             .ok_or_else(|| invalid(format!("{label} digest {id} is absent")))
     }
 
-    fn factor(&self, id: u32, label: &str) -> RusticolResult<ExactComplexRational> {
+    pub(super) fn factor(&self, id: u32, label: &str) -> RusticolResult<ExactComplexRational> {
         self.factors
             .get(id as usize)
             .copied()
             .ok_or_else(|| invalid(format!("{label} factor {id} is absent")))
     }
 
-    fn u32_sequence(&self, id: u32, label: &str) -> RusticolResult<&'a [u32]> {
+    pub(super) fn u32_sequence(&self, id: u32, label: &str) -> RusticolResult<&'a [u32]> {
         indexed_sequence(
             &self.input.u32_sequence_ranges,
             &self.input.u32_sequence_values,
@@ -254,13 +254,12 @@ impl<'a> ProcessCatalog<'a> {
 }
 
 pub(super) fn build_recurrence_program(
-    authenticated: AuthenticatedRecurrenceBuilderInput,
+    authenticated: &AuthenticatedRecurrenceBuilderInput,
 ) -> RusticolResult<RecurrenceProgram> {
     let strategy = authenticated.process().summary().strategy();
     let catalog_digest = authenticated.template().summary().catalog_digest;
-    let (process, template) = authenticated.into_parts();
-    let process_input = process.input();
-    let template_input = template.input();
+    let process_input = authenticated.process().input();
+    let template_input = authenticated.template().input();
     let process_catalog = ProcessCatalog::new(process_input)?;
     let template_catalog = TemplateCatalog::new(template_input)?;
     let coupling_limits = coupling_limits(&process_catalog, &template_catalog)?;
@@ -335,28 +334,21 @@ fn build_sources(
                 .sources
                 .get(process_state.source_template_id as usize)
                 .ok_or_else(|| invalid("source template is absent"))?;
-            if source.state_template_id != process_state.current_state_template_id {
-                return Err(invalid(format!(
-                    "source template {} targets current-state template {}, but the process source row targets {}",
-                    process_state.source_template_id,
-                    source.state_template_id,
-                    process_state.current_state_template_id,
-                )));
-            }
+            validate_crossed_source_state(leg.is_initial != 0, process_state, source, template)?;
             let dynamic_state = template_catalog
                 .source_seed(source)?
                 .instantiate(leg.source_slot)?;
             let color_id = color_states.intern(dynamic_state)?;
             let helicity_identity = match strategy {
                 RecurrenceStrategy::TopologyReplay => CurrentHelicityIdentity::topology_replay(
-                    source.spin_state,
+                    process_state.spin_state,
                     vec![SourceStateAssignment::new(
                         leg.source_slot,
                         process_state.state_index,
                     )],
                 )?,
                 RecurrenceStrategy::AllFlowUnion => {
-                    CurrentHelicityIdentity::all_flow_union(source.spin_state)
+                    CurrentHelicityIdentity::all_flow_union(process_state.spin_state)
                 }
             };
             let source_binding = match strategy {
@@ -411,6 +403,48 @@ fn build_sources(
             });
             currents_by_size[0].push(id);
         }
+    }
+    Ok(())
+}
+
+fn validate_crossed_source_state(
+    is_initial: bool,
+    process_state: &super::process::ProcessSourceStateRow,
+    source: SourceRow,
+    template: &OwnedRecurrenceTemplateInput,
+) -> RusticolResult<()> {
+    let canonical = template
+        .current_states
+        .get(source.state_template_id as usize)
+        .ok_or_else(|| invalid("source canonical current-state template is absent"))?;
+    let effective = template
+        .current_states
+        .get(process_state.current_state_template_id as usize)
+        .ok_or_else(|| invalid("source effective current-state template is absent"))?;
+    if effective.chirality != process_state.chirality {
+        return Err(invalid(format!(
+            "process source chirality {} does not match effective current-state chirality {}",
+            process_state.chirality, effective.chirality,
+        )));
+    }
+    let compatible = canonical.particle_id == effective.particle_id
+        && canonical.anti_particle_id == effective.anti_particle_id
+        && canonical.species_string_id == effective.species_string_id
+        && canonical.orientation == effective.orientation
+        && canonical.statistics == effective.statistics
+        && canonical.color_representation == effective.color_representation
+        && canonical.basis_string_id == effective.basis_string_id
+        && canonical.tensor_ordering_sequence_id == effective.tensor_ordering_sequence_id
+        && canonical.dimension == effective.dimension
+        && canonical.lc_color_shape_string_id == effective.lc_color_shape_string_id
+        && canonical.auxiliary_kind_string_id == effective.auxiliary_kind_string_id
+        && canonical.mass_parameter_id == effective.mass_parameter_id
+        && canonical.width_parameter_id == effective.width_parameter_id;
+    if !compatible || (!is_initial && canonical.id != effective.id) {
+        return Err(invalid(format!(
+            "source template {} and effective current-state template {} are not crossing-compatible",
+            process_state.source_template_id, process_state.current_state_template_id,
+        )));
     }
     Ok(())
 }
@@ -474,6 +508,7 @@ fn build_internal_currents(
                         catalog_digest,
                         *transition,
                         parent_ids,
+                        target_size + 1 < process.external_legs.len(),
                         template,
                         catalog,
                         coupling_limits,
@@ -495,6 +530,7 @@ fn add_transition_contributions(
     catalog_digest: SemanticDigest,
     transition: TransitionRow,
     parent_ids: [u32; 2],
+    propagate_result: bool,
     template: &OwnedRecurrenceTemplateInput,
     catalog: &TemplateCatalog<'_>,
     coupling_limits: &[Option<u32>],
@@ -591,10 +627,14 @@ fn add_transition_contributions(
             quantum.result_quantum_number_flow_id,
             coupling_orders.clone(),
             CurrentSourceBinding::None,
-            propagators
-                .get(&transition.result_state_template_id)
-                .copied()
-                .flatten(),
+            if propagate_result {
+                propagators
+                    .get(&transition.result_state_template_id)
+                    .copied()
+                    .flatten()
+            } else {
+                None
+            },
         )?;
         let result_id = if let Some(id) = current_ids.get(&key).copied() {
             id

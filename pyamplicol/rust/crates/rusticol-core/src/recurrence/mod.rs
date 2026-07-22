@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Model-generic compact recurrence ABI foundations.
-//!
-//! This module deliberately contains no runtime or artifact-writing code.  It
-//! freezes the checked value and input contracts shared by the future Python
-//! column encoder and Rust recurrence builder.
+//! Model-generic compact recurrence construction and execution.
 
 mod builder;
 mod color;
@@ -14,6 +10,7 @@ mod input;
 mod layout;
 pub mod process;
 mod program;
+mod runtime;
 pub mod template;
 
 pub use builder::AuthenticatedRecurrenceBuilderInput;
@@ -38,6 +35,7 @@ pub use program::{
     RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
     RecurrenceProgram,
 };
+pub use runtime::{RecurrenceExecutionPlan, RecurrenceExecutionRuntime, RecurrenceSourceLayout};
 
 /// Semantic prepared-model companion ABI.
 pub const RECURRENCE_TEMPLATE_ABI: &str = "pyamplicol-recurrence-template-v1";

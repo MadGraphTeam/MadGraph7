@@ -58,9 +58,7 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
         else:
             compiled = compile_model_source(
                 _UFO_SM_ROOT / "sm.json",
-                restriction=str(
-                    (_UFO_SM_ROOT / "restrict_default.json").resolve()
-                ),
+                restriction=str((_UFO_SM_ROOT / "restrict_default.json").resolve()),
                 use_cache=True,
             )
             model = CompiledUFOModel(compiled)
@@ -107,6 +105,12 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
         sources_by_numeric_id = tuple(
             sorted(recurrence_catalog.sources, key=lambda row: row.template_id)
         )
+        states_by_numeric_id = tuple(
+            sorted(recurrence_catalog.current_states, key=lambda row: row.template_id)
+        )
+        states_by_template_id = {
+            state.template_id: state for state in recurrence_catalog.current_states
+        }
         crossed_internal_spin_pairs = tuple(
             (
                 state.spin_state,
@@ -118,6 +122,27 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
         )
         assert any(
             public != canonical for public, canonical in crossed_internal_spin_pairs
+        )
+        crossed_internal_chirality_pairs = tuple(
+            (
+                states_by_numeric_id[state.current_state_template_id].chirality,
+                states_by_template_id[
+                    sources_by_numeric_id[state.source_template_id].state_template_id
+                ].chirality,
+            )
+            for leg in logical.external_legs
+            if leg.is_initial
+            for state in leg.source_states
+        )
+        assert any(
+            effective != canonical
+            for effective, canonical in crossed_internal_chirality_pairs
+        )
+        assert all(
+            state.chirality
+            == states_by_numeric_id[state.current_state_template_id].chirality
+            for leg in logical.external_legs
+            for state in leg.source_states
         )
 
         result = _rusticol._validate_recurrence_builder_input_v1(
@@ -135,6 +160,11 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
         assert schedule["contribution_count"] > 0
         assert len(schedule["referenced_quantum_flow_template_ids"]) >= 2
         assert schedule["finalization_count"] > 0
+        assert (
+            schedule["identity_finalization_count_by_support_size"][3]
+            == schedule["current_count_by_support_size"][3]
+        )
+        assert schedule["propagated_finalization_count_by_support_size"][3] == 0
         assert schedule["target_sector_count"] == color_plan.sector_count
         assert schedule["closure_term_count"] > 0
         summaries[model_source] = schedule
@@ -146,6 +176,8 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
         "current_count_by_support_size",
         "contribution_count",
         "finalization_count",
+        "identity_finalization_count_by_support_size",
+        "propagated_finalization_count_by_support_size",
         "target_sector_count",
         "closure_term_count",
     ):

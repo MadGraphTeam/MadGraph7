@@ -1868,15 +1868,15 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 }
                 if is_close {
                     if has_output || witness.result_shape_string_id != MISSING_U32 {
-                        return Err(invalid(format!(
-                            "LC color closure witness must have neither an output representation nor a result shape"
-                        )));
+                        return Err(invalid(
+                            "LC color closure witness must have neither an output representation nor a result shape",
+                        ));
                     }
                 } else {
                     if !has_output {
-                        return Err(invalid(format!(
-                            "non-closure LC color witness requires an output representation"
-                        )));
+                        return Err(invalid(
+                            "non-closure LC color witness requires an output representation",
+                        ));
                     }
                     let result_shape = required_string(
                         &catalogs.strings,

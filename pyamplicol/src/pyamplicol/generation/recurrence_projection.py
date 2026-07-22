@@ -282,6 +282,15 @@ def _project_external_legs(
         )
 
     states_by_id = {record.template_id: record for record in catalog.current_states}
+    states_by_execution_key: dict[tuple[object, ...], CurrentStateTemplateV1] = {}
+    for record in catalog.current_states:
+        key = _current_state_execution_key(record)
+        previous = states_by_execution_key.setdefault(key, record)
+        if previous.template_id != record.template_id:
+            raise RecurrenceProjectionError(
+                "recurrence current-state catalog contains duplicate execution "
+                f"contracts {previous.template_id!r} and {record.template_id!r}"
+            )
     source_rows: dict[
         int,
         list[tuple[SourceTemplateV1, CurrentStateTemplateV1]],
@@ -330,10 +339,22 @@ def _project_external_legs(
                 spin_state *= crossing[2]
                 momentum_sign = crossing[3]
                 phase = crossing[4]
+            execution_key = _current_state_execution_key(
+                current,
+                chirality=chirality,
+            )
+            try:
+                execution_current = states_by_execution_key[execution_key]
+            except KeyError as exc:
+                raise RecurrenceProjectionError(
+                    "recurrence template catalog has no current-state contract for "
+                    f"crossed source {source.template_id!r}: particle="
+                    f"{current.particle_id}, chirality={chirality}"
+                ) from exc
             projected.append(
                 (
                     source,
-                    current,
+                    execution_current,
                     helicity,
                     chirality,
                     spin_state,
@@ -424,6 +445,36 @@ def _project_external_legs(
     return (
         tuple(external),
         None if selected_helicities is None else tuple(selected_coverage),
+    )
+
+
+def _current_state_execution_key(
+    state: CurrentStateTemplateV1,
+    *,
+    chirality: int | None = None,
+) -> tuple[object, ...]:
+    """Identity of a current state after applying external crossing.
+
+    Crossing may change the chiral representation used by subsequent
+    recurrence transitions, but it does not change the model-owned particle,
+    basis, colour, tensor, or parameter contracts.
+    """
+
+    return (
+        state.particle_id,
+        state.anti_particle_id,
+        state.species_id,
+        state.orientation,
+        state.statistics,
+        state.color_representation,
+        state.basis,
+        state.tensor_ordering,
+        state.dimension,
+        state.chirality if chirality is None else chirality,
+        state.lc_color_shape_kind,
+        state.auxiliary_kind,
+        state.mass_parameter_id,
+        state.width_parameter_id,
     )
 
 

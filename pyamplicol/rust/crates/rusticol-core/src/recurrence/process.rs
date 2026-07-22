@@ -881,12 +881,12 @@ impl<'a> RecurrenceProcessInputView<'a> {
             self.bitset_ranges.len(),
             "process support mask",
         )?;
-        if selected_flow_mode != !self.selected_public_flow_coverage.is_empty() {
+        if selected_flow_mode == self.selected_public_flow_coverage.is_empty() {
             return Err(invalid(
                 "selected-flow header mode disagrees with process coverage rows",
             ));
         }
-        if selected_source_mode != !self.selected_source_coverage.is_empty() {
+        if selected_source_mode == self.selected_source_coverage.is_empty() {
             return Err(invalid(
                 "selected-source header mode disagrees with process coverage rows",
             ));

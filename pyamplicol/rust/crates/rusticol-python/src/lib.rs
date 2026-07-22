@@ -1430,6 +1430,11 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     #[cfg(feature = "numpy")]
     module.add_function(wrap_pyfunction!(
+        recurrence::_evaluate_recurrence_one_helicity_v1,
+        module
+    )?)?;
+    #[cfg(feature = "numpy")]
+    module.add_function(wrap_pyfunction!(
         recurrence_template::_validate_recurrence_template_input_v1,
         module
     )?)?;

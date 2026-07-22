@@ -49,7 +49,8 @@ pub use engine::{
     NativeEagerExactAttachment, NativeEagerExactClosure, NativeEagerExactCoupling,
     NativeEagerExactFinalization, NativeEagerExactInvocation, NativeEagerExactSections,
     NativeEagerExactStage, NativeExternalParticle, NativeHelicityConfiguration,
-    NativeModelParameter, NativeProfiledEvaluation, NativeResolvedEvaluation, NativeRuntime,
+    NativeModelParameter, NativeProfiledEvaluation, NativeRecurrenceKernelBackend,
+    NativeRecurrenceKernelBackendSummary, NativeResolvedEvaluation, NativeRuntime,
     NativeRuntimeMetadata, NativeRuntimeProfile, RuntimeCapability, preflight_prepared_kernel_pack,
     supported_runtime_capabilities,
 };

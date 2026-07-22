@@ -3185,6 +3185,11 @@ mod eager_backend;
 use eager_backend::*;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod recurrence_backend;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub use recurrence_backend::{NativeRecurrenceKernelBackend, NativeRecurrenceKernelBackendSummary};
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[allow(dead_code)]
 mod eager_manifest;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

@@ -14,14 +14,20 @@ use pyo3::types::{PyAny, PyDict, PyList};
 use rusticol_core::recurrence::process;
 use rusticol_core::recurrence::template;
 use rusticol_core::recurrence::{
-    AuthenticatedRecurrenceBuilderInput, CheckedTableRange, RECURRENCE_BUILDER_INPUT_ABI,
-    RECURRENCE_BUILDER_RESULT_ABI, RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI,
-    RECURRENCE_RUNTIME_CAPABILITY, RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI,
-    RECURRENCE_TEMPLATE_ABI, RecurrenceStrategy, SemanticDigest, checked_usize,
+    AuthenticatedRecurrenceBuilderInput, CheckedTableRange, CurrentSourceBinding,
+    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_BUILDER_RESULT_ABI, RECURRENCE_LC_COLOR_CAPABILITY,
+    RECURRENCE_PLAN_ABI, RECURRENCE_RUNTIME_CAPABILITY, RECURRENCE_RUNTIME_KIND,
+    RECURRENCE_RUNTIME_LAYOUT_ABI, RECURRENCE_TEMPLATE_ABI, RecurrenceStrategy, SemanticDigest,
+    checked_usize,
 };
-use rusticol_core::{RusticolError, RusticolResult};
+use rusticol_core::recurrence::{RecurrenceExecutionPlan, RecurrenceExecutionRuntime};
+use rusticol_core::{
+    EagerComplex64, NativeRecurrenceKernelBackend, NativeRecurrenceKernelBackendSummary,
+    RusticolError, RusticolResult,
+};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 use crate::python_error;
 
@@ -587,8 +593,20 @@ struct NativeScheduleSummary {
     contribution_count_by_quantum_flow_template_id: Vec<(u32, usize)>,
     referenced_quantum_flow_template_ids: Vec<u32>,
     finalization_count: usize,
+    identity_finalization_count_by_support_size: Vec<usize>,
+    propagated_finalization_count_by_support_size: Vec<usize>,
     target_sector_count: usize,
     closure_term_count: usize,
+    source_layout: Vec<NativeSourceLayout>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct NativeSourceLayout {
+    current_id: u32,
+    source_slot: u32,
+    source_template_id: u32,
+    component_start: usize,
+    component_count: usize,
 }
 
 #[pyfunction(signature = (builder_input, prepared_template_input=None, *, construct_schedule=false))]
@@ -606,6 +624,164 @@ pub(crate) fn _validate_recurrence_builder_input_v1(
         .detach(move || validate_input(owned, prepared_template, construct_schedule))
         .map_err(python_error)?;
     result_mapping(py, native)
+}
+
+#[pyfunction(
+    signature = (
+        builder_input,
+        prepared_template_input,
+        prepared_kernel_manifest,
+        prepared_kernel_pack_digest,
+        payload_root,
+        source_values,
+        external_momenta,
+        model_parameters,
+        *,
+        point_count,
+        point_tile_size=1024
+    )
+)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn _evaluate_recurrence_one_helicity_v1(
+    py: Python<'_>,
+    builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: &Bound<'_, PyAny>,
+    prepared_kernel_manifest: Vec<u8>,
+    prepared_kernel_pack_digest: String,
+    payload_root: PathBuf,
+    source_values: Vec<(f64, f64)>,
+    external_momenta: Vec<f64>,
+    model_parameters: Vec<(f64, f64)>,
+    point_count: usize,
+    point_tile_size: usize,
+) -> PyResult<Py<PyAny>> {
+    let owned = parse_input(builder_input)?;
+    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
+    let native = py
+        .detach(move || {
+            evaluate_one_helicity(
+                owned,
+                prepared_template,
+                &prepared_kernel_manifest,
+                &prepared_kernel_pack_digest,
+                &payload_root,
+                &source_values,
+                &external_momenta,
+                &model_parameters,
+                point_count,
+                point_tile_size,
+            )
+        })
+        .map_err(python_error)?;
+    recurrence_evaluation_mapping(py, native)
+}
+
+#[derive(Clone, Debug)]
+struct NativeRecurrenceEvaluation {
+    amplitudes: Vec<(f64, f64)>,
+    source_layout: Vec<rusticol_core::recurrence::RecurrenceSourceLayout>,
+    sector_count: usize,
+    backend: NativeRecurrenceKernelBackendSummary,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn evaluate_one_helicity(
+    input: OwnedInput,
+    prepared_template: PreparedTemplateInput,
+    prepared_kernel_manifest: &[u8],
+    prepared_kernel_pack_digest: &str,
+    payload_root: &std::path::Path,
+    source_values: &[(f64, f64)],
+    external_momenta: &[f64],
+    model_parameters: &[(f64, f64)],
+    point_count: usize,
+    point_tile_size: usize,
+) -> RusticolResult<NativeRecurrenceEvaluation> {
+    validate_inventory(&input)?;
+    let actual_digest = canonical_digest(&input)?;
+    if actual_digest != input.declared_digest {
+        return Err(invalid("recurrence builder input digest mismatch"));
+    }
+    let process = decode_process_input(&input)?.validate()?;
+    let template = prepared_template.into_core()?.validate()?;
+    let authenticated = AuthenticatedRecurrenceBuilderInput::new(process, template)?;
+    if authenticated
+        .template()
+        .summary()
+        .prepared_kernel_pack_digest
+        .to_string()
+        != prepared_kernel_pack_digest
+    {
+        return Err(RusticolError::integrity(
+            "recurrence prepared-kernel pack digest does not match the authenticated template",
+        ));
+    }
+    let program = authenticated.build()?;
+    let mut backend = NativeRecurrenceKernelBackend::load(prepared_kernel_manifest, payload_root)?;
+    let plan =
+        RecurrenceExecutionPlan::new(program, authenticated.template(), backend.kernel_specs())?;
+    let source_layout = plan.source_layout();
+    let sector_count = plan.sector_count();
+    let mut runtime = RecurrenceExecutionRuntime::new(plan, point_tile_size)?;
+    let source_values = source_values
+        .iter()
+        .map(|(real, imag)| EagerComplex64::new(*real, *imag))
+        .collect::<Vec<_>>();
+    let model_parameters = model_parameters
+        .iter()
+        .map(|(real, imag)| EagerComplex64::new(*real, *imag))
+        .collect::<Vec<_>>();
+    let output_len = sector_count
+        .checked_mul(point_count)
+        .ok_or_else(|| invalid("recurrence output length overflows"))?;
+    let mut amplitudes = vec![EagerComplex64::new(0.0, 0.0); output_len];
+    runtime.evaluate_one_helicity_amplitudes_into(
+        &mut backend,
+        point_count,
+        &source_values,
+        external_momenta,
+        &model_parameters,
+        &mut amplitudes,
+    )?;
+    Ok(NativeRecurrenceEvaluation {
+        amplitudes: amplitudes
+            .into_iter()
+            .map(|value| (value.re, value.im))
+            .collect(),
+        source_layout,
+        sector_count,
+        backend: backend.summary().clone(),
+    })
+}
+
+fn recurrence_evaluation_mapping(
+    py: Python<'_>,
+    native: NativeRecurrenceEvaluation,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item("kind", "pyamplicol-recurrence-private-evaluation-v1")?;
+    result.set_item("sector_count", native.sector_count)?;
+    result.set_item("amplitudes", native.amplitudes)?;
+    let source_layout = PyList::empty(py);
+    for source in native.source_layout {
+        let row = PyDict::new(py);
+        row.set_item("current_id", source.current_id)?;
+        row.set_item("source_slot", source.source_slot)?;
+        row.set_item("source_template_id", source.source_template_id)?;
+        row.set_item("component_start", source.component_start)?;
+        row.set_item("component_count", source.component_count)?;
+        source_layout.append(row)?;
+    }
+    result.set_item("source_layout", source_layout)?;
+    let backend = PyDict::new(py);
+    backend.set_item("manifest_sha256", native.backend.manifest_sha256)?;
+    backend.set_item("backend", native.backend.backend)?;
+    backend.set_item("target_triple", native.backend.target_triple)?;
+    backend.set_item("target_cpu_features", native.backend.target_cpu_features)?;
+    backend.set_item("target_portable", native.backend.target_portable)?;
+    backend.set_item("kernel_count", native.backend.kernel_count)?;
+    result.set_item("prepared_backend", backend)?;
+    Ok(result.into_any().unbind())
 }
 
 fn parse_input(input: &Bound<'_, PyAny>) -> PyResult<OwnedInput> {
@@ -1004,6 +1180,34 @@ fn validate_input(
             + template_summary.symmetry_proof_count as usize;
         let schedule_summary = if construct_schedule {
             let program = authenticated.build()?;
+            let mut source_component_start = 0usize;
+            let mut source_layout = Vec::new();
+            for current in program.currents().iter().filter(|row| row.is_source()) {
+                let CurrentSourceBinding::FixedTemplate(source_template_id) =
+                    current.key().source_binding()
+                else {
+                    return Err(invalid(
+                        "topology-replay source lacks a fixed source template",
+                    ));
+                };
+                let component_count = authenticated
+                    .template()
+                    .input()
+                    .current_states
+                    .get(current.key().current_state_template_id() as usize)
+                    .ok_or_else(|| invalid("source current state is absent"))?
+                    .dimension as usize;
+                source_layout.push(NativeSourceLayout {
+                    current_id: current.id(),
+                    source_slot: current.key().support_source_slots()[0],
+                    source_template_id,
+                    component_start: source_component_start,
+                    component_count,
+                });
+                source_component_start = source_component_start
+                    .checked_add(component_count)
+                    .ok_or_else(|| invalid("source component layout overflows"))?;
+            }
             let mut current_count_by_support_size = Vec::<usize>::new();
             for current in program.currents() {
                 let support_size = current.key().support_source_slots().len();
@@ -1017,10 +1221,8 @@ fn validate_input(
                 .iter()
                 .map(|row| row.key().quantum_flow_witness_id())
                 .collect::<BTreeSet<_>>();
-            let mut contribution_count_by_transition_template_id =
-                BTreeMap::<u32, usize>::new();
-            let mut contribution_count_by_quantum_flow_template_id =
-                BTreeMap::<u32, usize>::new();
+            let mut contribution_count_by_transition_template_id = BTreeMap::<u32, usize>::new();
+            let mut contribution_count_by_quantum_flow_template_id = BTreeMap::<u32, usize>::new();
             for contribution in program.contributions() {
                 *contribution_count_by_transition_template_id
                     .entry(contribution.key().transition_template_id())
@@ -1035,6 +1237,21 @@ fn validate_input(
                     .iter()
                     .filter_map(|row| row.quantum_flow_template_id()),
             );
+            let mut identity_finalization_count_by_support_size =
+                vec![0usize; current_count_by_support_size.len()];
+            let mut propagated_finalization_count_by_support_size =
+                vec![0usize; current_count_by_support_size.len()];
+            for finalization in program.finalizations() {
+                let support_size = program.currents()[finalization.current_id() as usize]
+                    .key()
+                    .support_source_slots()
+                    .len();
+                if finalization.propagator_template_id().is_some() {
+                    propagated_finalization_count_by_support_size[support_size] += 1;
+                } else {
+                    identity_finalization_count_by_support_size[support_size] += 1;
+                }
+            }
             Some(NativeScheduleSummary {
                 dynamic_color_state_count: program.dynamic_color_states().len(),
                 current_count: program.currents().len(),
@@ -1057,8 +1274,11 @@ fn validate_input(
                     .into_iter()
                     .collect(),
                 finalization_count: program.finalizations().len(),
+                identity_finalization_count_by_support_size,
+                propagated_finalization_count_by_support_size,
                 target_sector_count: program.target_sector_closure_ranges().len(),
                 closure_term_count: program.closure_terms().len(),
+                source_layout,
             })
         } else {
             None
@@ -1952,8 +2172,27 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
             schedule.referenced_quantum_flow_template_ids,
         )?;
         schedule_summary.set_item("finalization_count", schedule.finalization_count)?;
+        schedule_summary.set_item(
+            "identity_finalization_count_by_support_size",
+            schedule.identity_finalization_count_by_support_size,
+        )?;
+        schedule_summary.set_item(
+            "propagated_finalization_count_by_support_size",
+            schedule.propagated_finalization_count_by_support_size,
+        )?;
         schedule_summary.set_item("target_sector_count", schedule.target_sector_count)?;
         schedule_summary.set_item("closure_term_count", schedule.closure_term_count)?;
+        let source_layout = PyList::empty(py);
+        for source in schedule.source_layout {
+            let row = PyDict::new(py);
+            row.set_item("current_id", source.current_id)?;
+            row.set_item("source_slot", source.source_slot)?;
+            row.set_item("source_template_id", source.source_template_id)?;
+            row.set_item("component_start", source.component_start)?;
+            row.set_item("component_count", source.component_count)?;
+            source_layout.append(row)?;
+        }
+        schedule_summary.set_item("source_layout", source_layout)?;
         summary.set_item("schedule", schedule_summary)?;
     }
     result.set_item("inspection_summary", summary)?;
