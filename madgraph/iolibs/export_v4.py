@@ -2391,6 +2391,38 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         replace_dict['crossing_routines'] = \
             open(crossing_template).read() % replace_dict
 
+    def fill_crossing_replace_dict_me(self, matrix_element, replace_dict,
+                                      use_crossing, proc_id):
+        """Fill the crossing holes of matrix_madevent_group_v4.inc.
+
+        The madevent group SMATRIX differs structurally from the standalone one
+        (runtime IFLAV, GOODHEL/NTRY carry a flavor dimension, IVEC, and the NSF
+        flags are baked into the helas calls rather than read from an IC array),
+        so it gets its own holes and OFF fills. With crossing off every hole
+        reproduces the historical madevent code, so a non-crossing output is
+        unchanged; the extended-FLAV_IDX decode / APPLY_CROSSING path is only
+        written out when use_crossing is True (added in the ON slice).
+        """
+        pid = str(proc_id)
+        if not use_crossing:
+            replace_dict.update({
+                'smatrix_me_cross_decl':
+                    'C     Generated without crossing symmetry: IFLAV is a plain'
+                    '\nC     flavor index, there is no crossing to decode.',
+                'smatrix_me_cross_decode': '',
+                'me_flav_key': 'IFLAV',
+                'smatrix_me_goodhel_or': '',
+                'me_matrix_args': 'P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC',
+                'smatrix_me_iden_line':
+                    '    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%s(FLAVOR_FOR_SYM)' % pid,
+                'crossing_routines_me': '',
+                'me_matrix_ic_param': '',
+                'me_matrix_ic_decl': '',
+            })
+            return
+        raise NotImplementedError(
+            'madevent crossing ON path is added in the next slice')
+
     # (decl, decode, apply) for GET_PDG_FOR_FLAVOR without crossing: FLAV_IDX_IN
     # is a bare flavor index, so there is nothing to permute or conjugate.
     PDG_CROSS_SNIPPETS_OFF = (
@@ -6992,7 +7024,15 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                         'set_amp2_line': 'ANS=ANS*AMP2(MAPCONFIG(ICONFIG))/XTOT',
                         'flavor_mask_decl':'',
                         'flavor_mask_setup':''}
- 
+
+        # Crossing holes of matrix_madevent_group_v4.inc. Only the fortran
+        # standalone can currently decode the extended FLAV_IDX, so the madevent
+        # exporter always takes the OFF path for now (byte-identical output);
+        # the ON path is wired in once the group ME evaluates crossings.
+        me_use_crossing = False
+        self.fill_crossing_replace_dict_me(matrix_element, replace_dict,
+                                           me_use_crossing, proc_id)
+
  
         mask_decl, mask_setup, n_flavors, active_flavor_mask = \
                 self._get_flavor_mask_blocks(matrix_element)
