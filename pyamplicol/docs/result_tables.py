@@ -8470,6 +8470,16 @@ def _fixed_source_helicity_choice(
     fallback = _alternating_fixed_source_helicity_choice(process)
     if spec is None or artifact_root is None:
         return fallback
+    if not _legacy_lc_all_flow_supported(process):
+        note = str(fallback["validation_note"])
+        return {
+            **fallback,
+            "selection_source": "alternating-fallback-legacy-all-flow-unavailable",
+            "validation_note": (
+                f"{note}; original AmpliCol all-flow reference is unavailable, "
+                "so the expensive DAG helicity probe is skipped"
+            ),
+        }
     try:
         if _source_helicity_choice_has_amplitudes(
             process,

@@ -366,6 +366,51 @@ def test_lc_matrix_renderer_shows_py_timings_when_reference_is_unavailable() -> 
     assert r"\texttt{2 us}" in table
 
 
+def test_fixed_helicity_choice_skips_dag_probe_without_legacy_all_flow(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fallback = {
+        "mode": "fixed-source-helicity",
+        "source_helicities": {"1": -1, "2": 1},
+        "source_helicities_cli": "1=-1,2=1",
+        "amplicol_helicities": [-1, 1],
+        "value_validation_enabled": False,
+        "validation_note": "fallback",
+    }
+    monkeypatch.setattr(
+        report,
+        "_alternating_fixed_source_helicity_choice",
+        lambda _process: dict(fallback),
+    )
+    monkeypatch.setattr(
+        report,
+        "_legacy_lc_all_flow_supported",
+        lambda _process: False,
+    )
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("DAG helicity probe should not run")
+
+    monkeypatch.setattr(
+        report,
+        "_source_helicity_choice_has_amplitudes",
+        unexpected_probe,
+    )
+
+    choice = report._fixed_source_helicity_choice(
+        "d d~ > u u~ s s~ c c~",
+        spec=report.MATRIX_SPECS[0],
+        artifact_root=tmp_path,
+    )
+
+    assert choice["source_helicities"] == fallback["source_helicities"]
+    assert (
+        choice["selection_source"]
+        == "alternating-fallback-legacy-all-flow-unavailable"
+    )
+
+
 def test_lc_matrix_renderer_localizes_union_out_of_reach() -> None:
     legacy = report._empty_measurement()
     legacy.update(
