@@ -2902,56 +2902,72 @@ C     crossing carried by FLAV_IDX moves across.
         return entries
 
     def partition_crossing_classes(self, matrix_elements):
-        """Partition a group's matrix elements into crossing-equivalence classes.
+        """Route each subprocess *flavor* to a base matrix element via crossing.
 
-        Two subprocesses belong to the same class when one is a crossing of the
-        other -- same particles, related by the initial<->final leg swap the
-        crossing machinery encodes. One member of each class is the *base*: its
-        SMATRIX, driven by an extended FLAV_IDX, evaluates every member of the
-        class, so only the base needs its own matrix<i>.f and the other members'
-        auto_dsig can call the base SMATRIX with the crossing's FLAV_IDX.
+        The crossing relates whole flavor combinations, not whole modules: a
+        flavor-merged matrix element bundles flavors that cross to *different*
+        bases (e.g. within a group ``u u~ > u u~`` is a crossing of ``u u > u u``
+        while its module-mate ``d d~ > u u~`` is not). So the sharing that lets
+        one matrix<i>.f serve several subprocesses is decided per flavor: a
+        module can drop its own matrix<i>.f only when EVERY one of its flavors is
+        a genuine crossing (cross != 0) of some *base* module's flavor; otherwise
+        it stays a base and keeps its own matrix<i>.f.
 
-        Returns a list parallel to ``matrix_elements``: for member ``i`` a pair
-        ``(base_index, cross)`` where ``base_index`` indexes ``matrix_elements``
-        (the class base) and ``cross`` is the crossing code that reaches member
-        ``i`` from that base (0 for a base itself). Matching is by the crossed
-        physical-PDG signature, exactly the key check_crossing matches on, so a
-        member is tied to a base only when the base can actually reproduce it.
+        Bases are chosen greedily in order. Returns ``(bases, routing)``:
+
+        * ``bases``   -- the matrix_element indices that keep their own
+          matrix<i>.f (their SMATRIX, driven by an extended FLAV_IDX, also serves
+          the flavors routed to them).
+        * ``routing`` -- a list parallel to ``matrix_elements``; ``routing[i]``
+          has one ``(base_index, iflav)`` per flavor of member ``i`` (in flavor
+          order), naming the base module whose ``SMATRIX`` evaluates that flavor
+          and the 1-based extended ``FLAV_IDX`` to call it with. A base routes
+          each of its own flavors to itself with the plain (cross 0) index.
+
+        Signatures are the crossed physical PDG tuples of compute_crossing_pdg_
+        entries, the same key check_crossing matches on, so the momentum order a
+        member supplies already matches what the base SMATRIX expects for that
+        index.
         """
         n = len(matrix_elements)
-
-        # Representative identity signature (cross == 0) of every member: the
-        # PDG tuple of its own leg ordering, the thing a base crossing must hit.
-        id_sig = [None] * n
-        for i, me in enumerate(matrix_elements):
-            for _idx, cross, _flav0, pdg in \
-                    self.compute_crossing_pdg_entries(me, zero_based=True):
+        # Per ME: identity signature of each flavor (flavor order) and the map
+        # from any crossed signature it can reach to (cross, 1-based FLAV_IDX).
+        sig_by_flav = []
+        crossmap = []
+        for me in matrix_elements:
+            sbf = {}
+            cm = {}
+            for idx, cross, flav0, pdg in \
+                    self.compute_crossing_pdg_entries(me, zero_based=False):
                 if cross == 0:
-                    id_sig[i] = pdg
+                    sbf[flav0] = pdg
+                cm.setdefault(pdg, (cross, idx))
+            nflav = (max(sbf) + 1) if sbf else 0
+            sig_by_flav.append([sbf[f] for f in range(nflav)])
+            crossmap.append(cm)
+
+        bases = []
+        routing = [None] * n
+        for i in range(n):
+            cover = []
+            coverable = bool(bases)   # nothing to route to before the first base
+            for sig in sig_by_flav[i]:
+                hit = None
+                for b in bases:
+                    cx = crossmap[b].get(sig)
+                    if cx is not None and cx[0] != 0:  # a genuine crossing of b
+                        hit = (b, cx[1])
+                        break
+                if hit is None:
+                    coverable = False
                     break
-
-        assigned = [None] * n
-        for b in range(n):
-            if assigned[b] is not None:
-                continue
-            # b opens a new class as its base.
-            assigned[b] = (b, 0)
-            # Every crossed PDG signature b can reproduce, and with which code.
-            cross_by_sig = {}
-            for _idx, cross, _flav0, pdg in \
-                    self.compute_crossing_pdg_entries(matrix_elements[b],
-                                                      zero_based=True):
-                if cross == 0:
-                    continue
-                cross_by_sig.setdefault(pdg, cross)
-            # Pull every still-free member b can reach into b's class.
-            for m in range(n):
-                if assigned[m] is not None or id_sig[m] is None:
-                    continue
-                cross = cross_by_sig.get(id_sig[m])
-                if cross is not None:
-                    assigned[m] = (b, cross)
-        return assigned
+                cover.append(hit)
+            if coverable:
+                routing[i] = cover            # drop i's matrix.f; route each flavor
+            else:
+                bases.append(i)               # i keeps its own matrix.f (a base)
+                routing[i] = [(i, crossmap[i][sig][1]) for sig in sig_by_flav[i]]
+        return bases, routing
 
     def compute_ghremap(self, matrix_element, allow_reverse=True):
         """Build the good-helicity remap table for the crossing filter.

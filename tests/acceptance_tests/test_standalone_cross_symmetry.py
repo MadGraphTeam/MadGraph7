@@ -1789,10 +1789,10 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
 
 class TestCrossingPartition(unittest.TestCase):
-    """partition_crossing_classes groups a subprocess group's matrix elements
-    into crossing-equivalence classes (a base plus the crossings it reproduces),
-    the basis for sharing one matrix<i>.f across a base and its crossings in the
-    madevent output."""
+    """partition_crossing_classes routes each subprocess flavor to a base matrix
+    element via crossing. A module drops its own matrix<i>.f only when every one
+    of its flavors is a crossing of a base module's flavor; the basis for sharing
+    one matrix<i>.f across a base and its crossings in the madevent output."""
 
     def _groups(self, proc):
         import madgraph.iolibs.group_subprocs as group_subprocs
@@ -1809,23 +1809,20 @@ class TestCrossingPartition(unittest.TestCase):
 
     def test_partition_pp_jj(self):
         groups, exp = self._groups('p p > j j')
-        total_me = total_base = 0
-        found_cross = False
+        eliminated_any = False
         for g in groups:
             mes = g.get('matrix_elements')
-            assigned = exp.partition_crossing_classes(mes)
-            self.assertEqual(len(assigned), len(mes))
-            bases = set()
-            for i, (b, c) in enumerate(assigned):
-                # the base a member points at is itself a base (cross 0)
-                self.assertEqual(assigned[b], (b, 0))
-                bases.add(b)
-                if i != b:
-                    self.assertNotEqual(c, 0)   # a genuine crossing, not identity
-                    found_cross = True
-            total_me += len(mes)
-            total_base += len(bases)
-        self.assertTrue(found_cross,
-                        'no crossing class found in p p > j j')
-        self.assertLess(total_base, total_me,
-                        'no matrix element was shared across a crossing')
+            bases, routing = exp.partition_crossing_classes(mes)
+            self.assertEqual(len(routing), len(mes))
+            for i in range(len(mes)):
+                self.assertTrue(routing[i], 'a module with no flavors')
+                for (b, iflav) in routing[i]:
+                    self.assertIn(b, bases)            # routes to a real base
+                    self.assertGreaterEqual(iflav, 1)  # 1-based FLAV_IDX
+                    if i not in bases:
+                        # an eliminated module never routes back to itself
+                        self.assertNotEqual(b, i)
+            if len(bases) < len(mes):
+                eliminated_any = True
+        self.assertTrue(eliminated_any,
+                        'no module was eliminated by crossing in p p > j j')
