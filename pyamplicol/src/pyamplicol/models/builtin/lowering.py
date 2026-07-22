@@ -415,6 +415,20 @@ class BuiltinSMLoweringMixin:
                 input_order=input_order,
             )
 
+        quark_gluon_orientations = {
+            4: ("quark-gluon-to-quark", (1, 0)),
+            6: ("quark-gluon-to-quark", (0, 1)),
+            5: ("antiquark-gluon-to-antiquark", (1, 0)),
+            7: ("antiquark-gluon-to-antiquark", (0, 1)),
+        }
+        relation = quark_gluon_orientations.get(kind)
+        if relation is not None:
+            class_name, input_order = relation
+            return VertexEvaluationEquivalence(
+                class_id=f"builtin-sm:{class_name}",
+                input_order=input_order,
+            )
+
         return super().vertex_evaluation_equivalence(kind)
 
     def vertex_component_expression(

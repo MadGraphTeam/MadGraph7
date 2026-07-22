@@ -299,6 +299,10 @@ impl DynamicLCColorStateInterner {
     pub fn is_empty(&self) -> bool {
         self.states.is_empty()
     }
+
+    pub fn into_states(self) -> Vec<DynamicLCColorState> {
+        self.states
+    }
 }
 
 /// Exact operation performed by one compiler-certified LC transition term.
@@ -311,6 +315,24 @@ pub enum LCColorComponentOperation {
     InheritRight = 3,
     Empty = 4,
     Close = 5,
+}
+
+impl TryFrom<u8> for LCColorComponentOperation {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::ConcatenateJoin),
+            1 => Ok(Self::ConcatenateKeep),
+            2 => Ok(Self::InheritLeft),
+            3 => Ok(Self::InheritRight),
+            4 => Ok(Self::Empty),
+            5 => Ok(Self::Close),
+            _ => Err(invalid(format!(
+                "unsupported LC color component operation {value}"
+            ))),
+        }
+    }
 }
 
 /// Executable color-state witness emitted by the model compiler.

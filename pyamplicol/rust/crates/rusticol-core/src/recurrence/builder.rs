@@ -64,6 +64,10 @@ impl AuthenticatedRecurrenceBuilderInput {
     ) {
         (self.process, self.template)
     }
+
+    pub fn build(self) -> RusticolResult<super::RecurrenceProgram> {
+        super::construct::build_recurrence_program(self)
+    }
 }
 
 fn authenticate_singlet_closure_anchors(

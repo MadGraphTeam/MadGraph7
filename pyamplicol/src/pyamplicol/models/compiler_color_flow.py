@@ -26,12 +26,34 @@ from .tensors import normalize_color_expression
 _U1_SUBTRACTION_AUXILIARY = "u1-subtraction-color-flow-vector"
 
 
+class _CompiledLCColorTransitionCompilation(tuple):
+    """Transition tuple carrying compiler-owned closure companions.
+
+    The oriented-kernel compiler call site predates recurrence closure
+    contracts and assigns only the transition tuple. ``CompiledOrientedKernel``
+    consumes this private companion immediately and persists the two catalogs
+    as separate fields.
+    """
+
+    compiler_closure_terms: tuple[CompiledLCColorTransitionTerm, ...]
+
+    def __new__(
+        cls,
+        transition_terms: tuple[CompiledLCColorTransitionTerm, ...],
+        closure_terms: tuple[CompiledLCColorTransitionTerm, ...],
+    ) -> _CompiledLCColorTransitionCompilation:
+        instance = super().__new__(cls, transition_terms)
+        instance.compiler_closure_terms = closure_terms
+        return instance
+
+
 def compile_lc_color_transition_terms(
     kernel: CompiledOrientedKernel,
     oriented_representations: tuple[int, int, int],
     *,
     proof_source: str,
     provenance: tuple[tuple[str, str], ...] = (),
+    tensor_role_representations: tuple[int, int, int] | None = None,
 ) -> tuple[CompiledLCColorTransitionTerm, ...]:
     """Compile exact ordered-word operations from a certified local tensor.
 
@@ -42,6 +64,19 @@ def compile_lc_color_transition_terms(
     structure = kernel.color_projection_structure
     if structure is None:
         raise ValueError(f"kernel {kernel.kind} has no certified color projection")
+    tensor_representations = (
+        oriented_representations
+        if tensor_role_representations is None
+        else tuple(int(value) for value in tensor_role_representations)
+    )
+    if tuple(abs(value) for value in tensor_representations) != tuple(
+        abs(value) for value in oriented_representations
+    ):
+        raise ValueError(
+            f"kernel {kernel.kind} tensor-role representations "
+            f"{tensor_representations!r} do not match its oriented current shapes "
+            f"{oriented_representations!r}"
+        )
     shapes = tuple(_lc_color_shape(value) for value in oriented_representations)
     result_shape = shapes[2]
 
@@ -50,6 +85,8 @@ def compile_lc_color_transition_terms(
         operation: str,
         result_component_kind: str | None,
         exact_factor_expression: str = "1",
+        *,
+        closure: bool = False,
     ) -> CompiledLCColorTransitionTerm:
         result_component_role = (
             "passive"
@@ -67,10 +104,11 @@ def compile_lc_color_transition_terms(
             "kernel_kind": kernel.kind,
             "operation": operation,
             "oriented_representations": list(oriented_representations),
+            "tensor_role_representations": list(tensor_representations),
             "proof_source": proof_source,
             "result_component_kind": result_component_kind,
             "result_component_role": result_component_role,
-            "result_shape_kind": result_shape,
+            "result_shape_kind": None if closure else result_shape,
             "source_particle_legs": list(kernel.source_particle_legs),
             "structure": structure,
         }
@@ -81,6 +119,10 @@ def compile_lc_color_transition_terms(
             sorted(
                 (
                     ("compiler-proof-source", proof_source),
+                    (
+                        "contract-kind",
+                        "closure" if closure else "transition",
+                    ),
                     ("kernel-kind", str(kernel.kind)),
                     (
                         "source-particle-legs",
@@ -97,10 +139,39 @@ def compile_lc_color_transition_terms(
             result_component_kind=result_component_kind,
             result_component_role=result_component_role,
             input_shape_kinds=(shapes[0], shapes[1]),
-            result_shape_kind=result_shape,
+            result_shape_kind=None if closure else result_shape,
             exact_factor_expression=exact_factor_expression,
             proof_digest=digest,
             provenance=term_provenance,
+        )
+
+    def compiled(
+        *transition_terms: CompiledLCColorTransitionTerm,
+    ) -> tuple[CompiledLCColorTransitionTerm, ...]:
+        left_representation, right_representation = oriented_representations[:2]
+        if abs(left_representation) == abs(right_representation) == 1:
+            closure_kind = None
+        elif {left_representation, right_representation} == {3, -3}:
+            closure_kind = "open-string"
+        elif left_representation == right_representation == 8:
+            closure_kind = "trace"
+        else:
+            closure_terms: tuple[CompiledLCColorTransitionTerm, ...] = ()
+            return _CompiledLCColorTransitionCompilation(
+                tuple(transition_terms),
+                closure_terms,
+            )
+        closure_terms = (
+            term(
+                (0, 1),
+                "close",
+                closure_kind,
+                closure=True,
+            ),
+        )
+        return _CompiledLCColorTransitionCompilation(
+            tuple(transition_terms),
+            closure_terms,
         )
 
     left_representation, right_representation, output_representation = (
@@ -112,7 +183,7 @@ def compile_lc_color_transition_terms(
                 "a colored literal-singlet transition requires explicit contact "
                 f"provenance; kernel {kernel.kind} has {oriented_representations!r}"
             )
-        return (term((0, 1), "empty", None),)
+        return compiled(term((0, 1), "empty", None))
     if structure == "color-identity":
         colored_inputs = tuple(
             index
@@ -120,10 +191,10 @@ def compile_lc_color_transition_terms(
             if abs(representation) != 1
         )
         if len(colored_inputs) == 0:
-            return (term((0, 1), "empty", None),)
+            return compiled(term((0, 1), "empty", None))
         if len(colored_inputs) == 1:
             operation = "inherit-left" if colored_inputs[0] == 0 else "inherit-right"
-            return (term((0, 1), operation, None),)
+            return compiled(term((0, 1), operation, None))
         if len(colored_inputs) == 2 and abs(output_representation) == 1:
             if {left_representation, right_representation} == {3, -3}:
                 permutation = (0, 1) if left_representation == 3 else (1, 0)
@@ -136,12 +207,12 @@ def compile_lc_color_transition_terms(
                     f"kernel {kernel.kind} has unsupported identity contraction "
                     f"{oriented_representations!r}"
                 )
-            return (
+            return compiled(
                 term(
                     permutation,
                     "concatenate-join",
                     result_component,
-                ),
+                )
             )
         raise ValueError(
             f"kernel {kernel.kind} has unsupported color-identity orientation "
@@ -149,38 +220,40 @@ def compile_lc_color_transition_terms(
         )
     if structure == "fundamental-generator":
         try:
-            fundamental = oriented_representations.index(3)
-            antifundamental = oriented_representations.index(-3)
-            adjoint = oriented_representations.index(8)
+            fundamental = tensor_representations.index(3)
+            antifundamental = tensor_representations.index(-3)
+            adjoint = tensor_representations.index(8)
         except ValueError as exc:
             raise ValueError(
                 f"kernel {kernel.kind} fundamental generator has invalid oriented "
-                f"representations {oriented_representations!r}"
+                f"tensor roles {tensor_representations!r} for current shapes "
+                f"{oriented_representations!r}"
             ) from exc
-        if output_representation == -3:
+        tensor_output_representation = tensor_representations[2]
+        if tensor_output_representation == -3:
             permutation = (fundamental, adjoint)
             result_component = "open-string"
-        elif output_representation == 3:
+        elif tensor_output_representation == 3:
             permutation = (adjoint, antifundamental)
             result_component = "open-string"
-        elif output_representation == 8:
+        elif tensor_output_representation == 8:
             permutation = (fundamental, antifundamental)
             result_component = "adjoint-segment"
         else:
             raise ValueError(
                 f"kernel {kernel.kind} fundamental generator has unsupported output "
-                f"representation {output_representation}"
+                f"tensor representation {tensor_output_representation}"
             )
         if set(permutation) != {0, 1}:
             raise ValueError(
                 f"kernel {kernel.kind} fundamental generator output is not slot 2"
             )
-        return (
+        return compiled(
             term(
                 permutation,
                 "concatenate-join",
                 result_component,
-            ),
+            )
         )
     if structure == "adjoint-structure-constant":
         if oriented_representations != (8, 8, 8):
@@ -188,7 +261,7 @@ def compile_lc_color_transition_terms(
                 f"kernel {kernel.kind} structure constant has representations "
                 f"{oriented_representations!r}"
             )
-        return (
+        return compiled(
             term((0, 1), "concatenate-join", "adjoint-segment"),
             term(
                 (1, 0),

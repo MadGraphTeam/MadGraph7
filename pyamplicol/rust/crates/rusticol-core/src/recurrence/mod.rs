@@ -8,10 +8,12 @@
 
 mod builder;
 mod color;
+mod construct;
 mod exact;
 mod input;
 mod layout;
 pub mod process;
+mod program;
 pub mod template;
 
 pub use builder::AuthenticatedRecurrenceBuilderInput;
@@ -31,6 +33,10 @@ pub use layout::{
     CanonicalMomentumLinearForm, ContributionKey, CurrentCoreKey, CurrentHelicityIdentity,
     CurrentSourceBinding, DynamicLCColorStateId, LCColorWitnessTermId, MomentumTerm,
     RecurrenceNodeKind, RecurrenceStrategy, SemanticDigest, SourceStateAssignment,
+};
+pub use program::{
+    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
+    RecurrenceProgram,
 };
 
 /// Semantic prepared-model companion ABI.

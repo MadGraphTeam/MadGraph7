@@ -545,20 +545,14 @@ class CompiledLCColorTransitionTerm:
                     "compiled LC joins require a result kind and active/passive role"
                 )
         elif self.component_operation == "close":
-            if (
-                self.result_component_role != "none"
-            ):
+            if self.result_component_role != "none":
                 raise ValueError(
                     "compiled LC closures cannot declare a recurrence result component"
                 )
-        elif (
-            self.result_component_kind is not None
-            or self.result_component_role
-            != (
-                "active"
-                if self.component_operation in {"inherit-left", "inherit-right"}
-                else "none"
-            )
+        elif self.result_component_kind is not None or self.result_component_role != (
+            "active"
+            if self.component_operation in {"inherit-left", "inherit-right"}
+            else "none"
         ):
             raise ValueError(
                 "compiled LC non-join result role does not match its operation"
@@ -742,8 +736,7 @@ class CompiledLCColorTransitionTerm:
                 if operation == "concatenate-join"
                 and result_shape_kind == "singlet-forest"
                 else "active"
-                if operation
-                in {"concatenate-join", "inherit-left", "inherit-right"}
+                if operation in {"concatenate-join", "inherit-left", "inherit-right"}
                 else "none"
             )
         return cls(
@@ -808,9 +801,43 @@ class CompiledOrientedKernel:
     evaluation_equivalence_verified: bool = False
     input_ordering_ids: tuple[str, ...] = ()
     output_ordering_id: str = ""
+    lc_recurrence_color_rule_kind: str | None = None
     lc_color_transition_terms: tuple[CompiledLCColorTransitionTerm, ...] = ()
+    lc_color_closure_terms: tuple[CompiledLCColorTransitionTerm, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.lc_recurrence_color_rule_kind is not None and (
+            not isinstance(self.lc_recurrence_color_rule_kind, str)
+            or not self.lc_recurrence_color_rule_kind
+        ):
+            raise ValueError(
+                "compiled oriented-kernel recurrence color rule must be a "
+                "nonempty string"
+            )
+        compiler_closure_terms = getattr(
+            self.lc_color_transition_terms,
+            "compiler_closure_terms",
+            None,
+        )
+        if compiler_closure_terms is not None:
+            compiler_closure_terms = tuple(compiler_closure_terms)
+            if self.lc_color_closure_terms and (
+                self.lc_color_closure_terms != compiler_closure_terms
+            ):
+                raise ValueError(
+                    "compiled oriented-kernel LC closure terms conflict with "
+                    "compiler-owned closure companions"
+                )
+            object.__setattr__(
+                self,
+                "lc_color_transition_terms",
+                tuple(self.lc_color_transition_terms),
+            )
+            object.__setattr__(
+                self,
+                "lc_color_closure_terms",
+                compiler_closure_terms,
+            )
         if not isinstance(self.lc_color_transition_terms, tuple):
             raise TypeError(
                 "compiled oriented-kernel LC color transition terms must be a tuple"
@@ -822,6 +849,33 @@ class CompiledOrientedKernel:
             raise TypeError(
                 "compiled oriented-kernel LC color transition terms must contain "
                 "typed records"
+            )
+        if not isinstance(self.lc_color_closure_terms, tuple):
+            raise TypeError(
+                "compiled oriented-kernel LC color closure terms must be a tuple"
+            )
+        if any(
+            not isinstance(item, CompiledLCColorTransitionTerm)
+            for item in self.lc_color_closure_terms
+        ):
+            raise TypeError(
+                "compiled oriented-kernel LC color closure terms must contain "
+                "typed records"
+            )
+        if any(
+            item.component_operation == "close"
+            for item in self.lc_color_transition_terms
+        ):
+            raise ValueError(
+                "compiled oriented-kernel LC transition terms cannot contain "
+                "closure operations"
+            )
+        if any(
+            item.component_operation != "close" for item in self.lc_color_closure_terms
+        ):
+            raise ValueError(
+                "compiled oriented-kernel LC closure terms must contain only "
+                "closure operations"
             )
 
     def to_dict(self) -> dict[str, object]:
@@ -856,8 +910,12 @@ class CompiledOrientedKernel:
             "evaluation_equivalence_verified": (self.evaluation_equivalence_verified),
             "input_ordering_ids": list(self.input_ordering_ids),
             "output_ordering_id": self.output_ordering_id,
+            "lc_recurrence_color_rule_kind": self.lc_recurrence_color_rule_kind,
             "lc_color_transition_terms": [
                 item.to_dict() for item in self.lc_color_transition_terms
+            ],
+            "lc_color_closure_terms": [
+                item.to_dict() for item in self.lc_color_closure_terms
             ],
         }
 
@@ -1752,9 +1810,17 @@ class CompiledModelIR:
                         ),
                         "kernel output ordering ID",
                     ),
+                    lc_recurrence_color_rule_kind=_optional_string(
+                        item.get("lc_recurrence_color_rule_kind")
+                    ),
                     lc_color_transition_terms=(
                         _compiled_lc_color_transition_terms(
                             item.get("lc_color_transition_terms", ())
+                        )
+                    ),
+                    lc_color_closure_terms=(
+                        _compiled_lc_color_closure_terms(
+                            item.get("lc_color_closure_terms", ())
                         )
                     ),
                 )
@@ -2035,6 +2101,21 @@ def _compiled_lc_color_transition_terms(
     return tuple(
         CompiledLCColorTransitionTerm.from_dict(
             _strict_mapping(item, "compiled LC color transition term")
+        )
+        for item in value
+    )
+
+
+def _compiled_lc_color_closure_terms(
+    value: object,
+) -> tuple[CompiledLCColorTransitionTerm, ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, list | tuple):
+        raise TypeError(
+            "compiled oriented-kernel LC color closure terms must be an array"
+        )
+    return tuple(
+        CompiledLCColorTransitionTerm.from_dict(
+            _strict_mapping(item, "compiled LC color closure term")
         )
         for item in value
     )

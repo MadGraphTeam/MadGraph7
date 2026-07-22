@@ -21,7 +21,7 @@ use rusticol_core::recurrence::{
 };
 use rusticol_core::{RusticolError, RusticolResult};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::python_error;
 
@@ -573,20 +573,37 @@ struct NativeValidationResult {
     compiled_model_digest: Option<SemanticDigest>,
     prepared_kernel_pack_digest: Option<SemanticDigest>,
     prepared_template_count: Option<usize>,
+    schedule_summary: Option<NativeScheduleSummary>,
 }
 
-#[pyfunction(signature = (builder_input, prepared_template_input=None))]
+#[derive(Clone, Debug)]
+struct NativeScheduleSummary {
+    dynamic_color_state_count: usize,
+    current_count: usize,
+    source_current_count: usize,
+    current_count_by_support_size: Vec<usize>,
+    contribution_count: usize,
+    contribution_count_by_transition_template_id: Vec<(u32, usize)>,
+    contribution_count_by_quantum_flow_template_id: Vec<(u32, usize)>,
+    referenced_quantum_flow_template_ids: Vec<u32>,
+    finalization_count: usize,
+    target_sector_count: usize,
+    closure_term_count: usize,
+}
+
+#[pyfunction(signature = (builder_input, prepared_template_input=None, *, construct_schedule=false))]
 pub(crate) fn _validate_recurrence_builder_input_v1(
     py: Python<'_>,
     builder_input: &Bound<'_, PyAny>,
     prepared_template_input: Option<&Bound<'_, PyAny>>,
+    construct_schedule: bool,
 ) -> PyResult<Py<PyAny>> {
     let owned = parse_input(builder_input)?;
     let prepared_template = prepared_template_input
         .map(parse_prepared_template_input)
         .transpose()?;
     let native = py
-        .detach(move || validate_input(owned, prepared_template))
+        .detach(move || validate_input(owned, prepared_template, construct_schedule))
         .map_err(python_error)?;
     result_mapping(py, native)
 }
@@ -902,6 +919,7 @@ fn extract_owned_values(
 fn validate_input(
     input: OwnedInput,
     prepared_template: Option<PreparedTemplateInput>,
+    construct_schedule: bool,
 ) -> RusticolResult<NativeValidationResult> {
     validate_inventory(&input)?;
     let actual_digest = canonical_digest(&input)?;
@@ -966,30 +984,95 @@ fn validate_input(
         compiled_model_digest,
         prepared_kernel_pack_digest,
         prepared_template_count,
+        schedule_summary,
     ) = if let Some(prepared_template) = prepared_template {
         let validated_template = prepared_template.into_core()?.validate()?;
         let authenticated =
             AuthenticatedRecurrenceBuilderInput::new(validated_process, validated_template)?;
         let template_summary = authenticated.template().summary();
+        let template_catalog_digest = template_summary.catalog_digest;
+        let compiled_model_digest = template_summary.compiled_model_digest;
+        let prepared_kernel_pack_digest = template_summary.prepared_kernel_pack_digest;
+        let prepared_template_count = template_summary.parameter_count as usize
+            + template_summary.current_state_count as usize
+            + template_summary.source_count as usize
+            + template_summary.quantum_flow_count as usize
+            + template_summary.transition_count as usize
+            + template_summary.propagator_count as usize
+            + template_summary.closure_count as usize
+            + template_summary.color_contraction_count as usize
+            + template_summary.symmetry_proof_count as usize;
+        let schedule_summary = if construct_schedule {
+            let program = authenticated.build()?;
+            let mut current_count_by_support_size = Vec::<usize>::new();
+            for current in program.currents() {
+                let support_size = current.key().support_source_slots().len();
+                if current_count_by_support_size.len() <= support_size {
+                    current_count_by_support_size.resize(support_size + 1, 0);
+                }
+                current_count_by_support_size[support_size] += 1;
+            }
+            let mut referenced_quantum_flow_template_ids = program
+                .contributions()
+                .iter()
+                .map(|row| row.key().quantum_flow_witness_id())
+                .collect::<BTreeSet<_>>();
+            let mut contribution_count_by_transition_template_id =
+                BTreeMap::<u32, usize>::new();
+            let mut contribution_count_by_quantum_flow_template_id =
+                BTreeMap::<u32, usize>::new();
+            for contribution in program.contributions() {
+                *contribution_count_by_transition_template_id
+                    .entry(contribution.key().transition_template_id())
+                    .or_default() += 1;
+                *contribution_count_by_quantum_flow_template_id
+                    .entry(contribution.key().quantum_flow_witness_id())
+                    .or_default() += 1;
+            }
+            referenced_quantum_flow_template_ids.extend(
+                program
+                    .closure_terms()
+                    .iter()
+                    .filter_map(|row| row.quantum_flow_template_id()),
+            );
+            Some(NativeScheduleSummary {
+                dynamic_color_state_count: program.dynamic_color_states().len(),
+                current_count: program.currents().len(),
+                source_current_count: program
+                    .currents()
+                    .iter()
+                    .filter(|current| current.is_source())
+                    .count(),
+                current_count_by_support_size,
+                contribution_count: program.contributions().len(),
+                contribution_count_by_transition_template_id:
+                    contribution_count_by_transition_template_id
+                        .into_iter()
+                        .collect(),
+                contribution_count_by_quantum_flow_template_id:
+                    contribution_count_by_quantum_flow_template_id
+                        .into_iter()
+                        .collect(),
+                referenced_quantum_flow_template_ids: referenced_quantum_flow_template_ids
+                    .into_iter()
+                    .collect(),
+                finalization_count: program.finalizations().len(),
+                target_sector_count: program.target_sector_closure_ranges().len(),
+                closure_term_count: program.closure_terms().len(),
+            })
+        } else {
+            None
+        };
         (
             true,
-            Some(template_summary.catalog_digest),
-            Some(template_summary.compiled_model_digest),
-            Some(template_summary.prepared_kernel_pack_digest),
-            Some(
-                template_summary.parameter_count as usize
-                    + template_summary.current_state_count as usize
-                    + template_summary.source_count as usize
-                    + template_summary.quantum_flow_count as usize
-                    + template_summary.transition_count as usize
-                    + template_summary.propagator_count as usize
-                    + template_summary.closure_count as usize
-                    + template_summary.color_contraction_count as usize
-                    + template_summary.symmetry_proof_count as usize,
-            ),
+            Some(template_catalog_digest),
+            Some(compiled_model_digest),
+            Some(prepared_kernel_pack_digest),
+            Some(prepared_template_count),
+            schedule_summary,
         )
     } else {
-        (false, None, None, None, None)
+        (false, None, None, None, None, None)
     };
 
     Ok(NativeValidationResult {
@@ -1021,6 +1104,7 @@ fn validate_input(
         compiled_model_digest,
         prepared_kernel_pack_digest,
         prepared_template_count,
+        schedule_summary,
     })
 }
 
@@ -1778,7 +1862,7 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
             "validated-identity-only"
         },
     )?;
-    result.set_item("schedule_constructed", false)?;
+    result.set_item("schedule_constructed", native.schedule_summary.is_some())?;
     result.set_item("composite_authenticated", native.composite_authenticated)?;
     result.set_item("builder_input_abi", RECURRENCE_BUILDER_INPUT_ABI)?;
     result.set_item("builder_input_schema_version", INPUT_SCHEMA_VERSION)?;
@@ -1842,6 +1926,36 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
         native.parameter_projection_count,
     )?;
     summary.set_item("prepared_template_count", native.prepared_template_count)?;
+    if let Some(schedule) = native.schedule_summary {
+        let schedule_summary = PyDict::new(py);
+        schedule_summary.set_item(
+            "dynamic_color_state_count",
+            schedule.dynamic_color_state_count,
+        )?;
+        schedule_summary.set_item("current_count", schedule.current_count)?;
+        schedule_summary.set_item("source_current_count", schedule.source_current_count)?;
+        schedule_summary.set_item(
+            "current_count_by_support_size",
+            schedule.current_count_by_support_size,
+        )?;
+        schedule_summary.set_item("contribution_count", schedule.contribution_count)?;
+        schedule_summary.set_item(
+            "contribution_count_by_transition_template_id",
+            schedule.contribution_count_by_transition_template_id,
+        )?;
+        schedule_summary.set_item(
+            "contribution_count_by_quantum_flow_template_id",
+            schedule.contribution_count_by_quantum_flow_template_id,
+        )?;
+        schedule_summary.set_item(
+            "referenced_quantum_flow_template_ids",
+            schedule.referenced_quantum_flow_template_ids,
+        )?;
+        schedule_summary.set_item("finalization_count", schedule.finalization_count)?;
+        schedule_summary.set_item("target_sector_count", schedule.target_sector_count)?;
+        schedule_summary.set_item("closure_term_count", schedule.closure_term_count)?;
+        summary.set_item("schedule", schedule_summary)?;
+    }
     result.set_item("inspection_summary", summary)?;
     Ok(result.into_any().unbind())
 }

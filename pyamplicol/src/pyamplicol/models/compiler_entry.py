@@ -307,6 +307,9 @@ def _annotate_oriented_kernel_color_projections(
     annotated: list[CompiledOrientedKernel] = []
     for kernel in kernels:
         term = term_by_id.get(kernel.term_id)
+        oriented_representations = tuple(
+            particle_by_name[name].color for name in kernel.particles
+        )
         if term is not None and term.valence == 3 and kernel.vertex == term.vertex:
             representations = tuple(
                 particle_by_name[name].color for name in term.particles
@@ -322,9 +325,6 @@ def _annotate_oriented_kernel_color_projections(
                     "as a singlet, identity, fundamental generator, or adjoint "
                     "structure constant"
                 )
-            oriented_representations = tuple(
-                particle_by_name[name].color for name in kernel.particles
-            )
             structure, _ = classify_trilinear_color_expression(
                 kernel.color_expression,
                 kernel.color_source,
@@ -336,25 +336,27 @@ def _annotate_oriented_kernel_color_projections(
                     f"vertex {term.vertex!r} changed color-tensor family while "
                     "being oriented"
                 )
-            if (
-                structure == "generic-tensor"
-                and certified_structure != "color-identity"
-            ):
-                # A numeric prefactor can prevent the cheap source recognizer
-                # from identifying an otherwise proven generator/structure
-                # constant. Preserve the certified family and coefficient.
+            if structure == "generic-tensor":
+                # Numeric prefactors and the dual representation carried by an
+                # oriented result state can hide the family from the cheap
+                # oriented recognizer.  The original trilinear term and the
+                # compiler-owned source-leg permutation already certify it.
                 structure = certified_structure
+            recurrence_structure = certified_structure
+            recurrence_proof_source = "exact-trilinear-symbolica-projection-v1"
+            recurrence_provenance = (("vertex-term-id", str(term.id)),)
+            tensor_role_representations = tuple(
+                representations[source_leg]
+                for source_leg in kernel.source_particle_legs
+            )
         else:
             # Contact fragments are emitted only after compiler_contacts has
             # serialized a complete decomposition proof. Their compact source
             # is compiler-owned, so textual recognition is safe at this point.
-            representations = tuple(
-                particle_by_name[name].color for name in kernel.particles
-            )
             structure, coefficient = classify_trilinear_color_expression(
                 kernel.color_expression,
                 kernel.color_source,
-                representations,
+                oriented_representations,
                 allow_source_fallback=True,
             )
             if structure == "generic-tensor":
@@ -362,6 +364,25 @@ def _annotate_oriented_kernel_color_projections(
                     f"compiler-generated kernel {kernel.vertex!r} has no proven "
                     "color-flow projection"
                 )
+            contact_contract = _contact_recurrence_color_contract(
+                kernel,
+                term_by_id,
+            )
+            if contact_contract is None:
+                recurrence_structure = structure
+                recurrence_proof_source = "compiler-generated-color-projection-v1"
+                recurrence_provenance = ()
+            else:
+                (
+                    recurrence_structure,
+                    recurrence_proof_source,
+                    recurrence_provenance,
+                ) = contact_contract
+            tensor_role_representations = (
+                oriented_representations[0],
+                oriented_representations[1],
+                _dual_color_representation(oriented_representations[2]),
+            )
         annotated_kernel = replace(
             kernel,
             color_projection_structure=structure,
@@ -369,22 +390,104 @@ def _annotate_oriented_kernel_color_projections(
                 float(coefficient.real),
                 float(coefficient.imag),
             ),
+            lc_recurrence_color_rule_kind=recurrence_structure,
         )
-        if term is not None and term.valence == 3 and kernel.vertex == term.vertex:
-            annotated_kernel = replace(
-                annotated_kernel,
-                lc_color_transition_terms=compile_lc_color_transition_terms(
-                    annotated_kernel,
-                    tuple(
-                        particle_by_name[name].color
-                        for name in annotated_kernel.particles
-                    ),
-                    proof_source="exact-trilinear-symbolica-projection-v1",
-                    provenance=(("vertex-term-id", str(term.id)),),
-                ),
-            )
+        recurrence_kernel = replace(
+            annotated_kernel,
+            color_projection_structure=recurrence_structure,
+        )
+        annotated_kernel = replace(
+            annotated_kernel,
+            lc_color_transition_terms=compile_lc_color_transition_terms(
+                recurrence_kernel,
+                oriented_representations,
+                proof_source=recurrence_proof_source,
+                provenance=recurrence_provenance,
+                tensor_role_representations=tensor_role_representations,
+            ),
+        )
         annotated.append(annotated_kernel)
     return tuple(annotated)
+
+
+def _dual_color_representation(representation: int) -> int:
+    return -representation if abs(representation) == 3 else representation
+
+
+def _contact_recurrence_color_contract(
+    kernel: CompiledOrientedKernel,
+    term_by_id: dict[int, CompiledVertexTerm],
+) -> tuple[str, str, tuple[tuple[str, str], ...]] | None:
+    if "::contact-" not in kernel.vertex:
+        return None
+
+    stage = "partial" if kernel.vertex.endswith("::contact-partial") else "final"
+    owner_matches = []
+    orientation_matches = []
+    fused_term_ids = set(kernel.term_ids or (kernel.term_id,))
+    # Contact-partial deduplication and final fusion may retain an auxiliary
+    # owned by a term that is no longer the fused kernel's primary term ID.
+    # Match the authenticated auxiliary name and source-leg orientation against
+    # the complete proof catalog instead of trusting that incidental owner.
+    for term in term_by_id.values():
+        if term.contact_decomposition_proof is None:
+            continue
+        proof = term.contact_decomposition_proof
+        if proof.status != "proven":
+            continue
+        for split in proof.splits:
+            auxiliary_name = f"__pyamplicol_contact_{term.id}_r{split.result_leg}"
+            owns_auxiliary = (
+                kernel.particles[2] == auxiliary_name
+                if stage == "partial"
+                else auxiliary_name in kernel.particles[:2]
+            )
+            if owns_auxiliary:
+                owner_matches.append((term, proof, split))
+            orientation_is_relevant = (
+                owns_auxiliary if stage == "partial" else term.id in fused_term_ids
+            )
+            if not orientation_is_relevant:
+                continue
+            for orientation in split.orientations:
+                if orientation.stage != stage:
+                    continue
+                expected_source_legs = (
+                    orientation.input_legs[0],
+                    orientation.input_legs[1],
+                    -1 if stage == "partial" else split.result_leg,
+                )
+                if kernel.source_particle_legs == expected_source_legs:
+                    orientation_matches.append((term, proof, split, orientation))
+    if len(owner_matches) != 1 or not orientation_matches:
+        raise ValueError(
+            f"compiler-generated contact kernel {kernel.vertex!r} has "
+            f"{len(owner_matches)} recurrence auxiliary owners and "
+            f"{len(orientation_matches)} exact stage orientations"
+        )
+    term, proof, split = owner_matches[0]
+    if any(
+        candidate_split.decomposition_kind != split.decomposition_kind
+        for _term, _proof, candidate_split, _orientation in orientation_matches
+    ):
+        raise ValueError(
+            f"compiler-generated contact kernel {kernel.vertex!r} fuses "
+            "incompatible recurrence color decompositions"
+        )
+    recurrence_structure = {
+        "literal-color-singlet": "singlet",
+        "two-structure-constants": "adjoint-structure-constant",
+    }[split.decomposition_kind]
+    return (
+        recurrence_structure,
+        f"{proof.algorithm}-recurrence-{stage}-v{proof.algorithm_version}",
+        (
+            ("contact-decomposition-kind", split.decomposition_kind),
+            ("contact-result-leg", str(split.result_leg)),
+            ("contact-stage", stage),
+            ("vertex-term-id", str(term.id)),
+        ),
+    )
 
 
 def _annotate_oriented_kernel_evaluation_equivalence(

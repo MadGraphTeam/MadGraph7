@@ -118,3 +118,50 @@ def test_external_compiler_rejects_unimplemented_symmetric_color_tensor() -> Non
 
     with pytest.raises(ValueError, match="unsupported trilinear color tensor"):
         _annotate_oriented_kernel_color_projections((kernel,), particles, (term,))
+
+
+def test_oriented_identity_retains_the_exact_vertex_color_proof() -> None:
+    particles = (
+        _particle("anti", -3),
+        _particle("singlet", 1),
+        _particle("fund", 3),
+    )
+    color = normalize_color_expression("UFO::Identity(1,3)", [-3, 1, 3])
+    term = CompiledVertexTerm(
+        id=0,
+        vertex="identity",
+        particles=("anti", "singlet", "fund"),
+        color_index=0,
+        lorentz_index=0,
+        color_source="UFO::Identity(1,3)",
+        color_expression=color.expression,
+        lorentz_name="L",
+        lorentz_source="1",
+        lorentz_expression="1",
+        coupling="GC",
+        coupling_expression="1",
+        coupling_orders=(),
+    )
+    kernel = CompiledOrientedKernel(
+        kind=0,
+        term_id=0,
+        vertex=term.vertex,
+        particles=("fund", "singlet", "fund"),
+        source_particle_legs=(2, 1, 0),
+        component_expressions=("1",),
+        coupling_expression="1",
+        coupling_orders=(),
+        runtime_parameters=(),
+        color_source="oriented-identity",
+        color_expression="1",
+    )
+
+    (annotated,) = _annotate_oriented_kernel_color_projections(
+        (kernel,), particles, (term,)
+    )
+
+    assert annotated.color_projection_structure == "color-identity"
+    assert len(annotated.lc_color_transition_terms) == 1
+    witness = annotated.lc_color_transition_terms[0]
+    assert witness.component_operation == "inherit-left"
+    assert witness.input_permutation == (0, 1)

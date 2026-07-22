@@ -1090,9 +1090,18 @@ def _build_transitions(
     tuple[TransitionTemplateV1, ...],
     tuple[ColorContractionTemplateV1, ...],
 ]:
-    flows_by_id: dict[str, QuantumFlowTemplateV1] = {}
-    transitions: list[TransitionTemplateV1] = []
-    colors: dict[str, ColorContractionTemplateV1] = {}
+    candidates: list[
+        tuple[
+            str,
+            tuple[int, str],
+            TransitionTemplateV1,
+            QuantumFlowTemplateV1,
+            ColorContractionTemplateV1,
+            Any,
+            tuple[str, ...],
+            str,
+        ]
+    ] = []
     for binding in sorted(bindings, key=lambda item: item.key):
         vertex = Vertex(
             binding.key.kind,
@@ -1124,7 +1133,6 @@ def _build_transitions(
             closure=False,
             proof_subject=kernel.canonical_signature,
         )
-        colors.setdefault(color.template_id, color)
         flow_variants = _probe_quantum_flows(model, vertex, binding)
         if not flow_variants:
             raise RecurrenceTemplateError(
@@ -1143,7 +1151,6 @@ def _build_transitions(
                 state_ids,
                 coupling_orders,
             )
-            flows_by_id.setdefault(flow.template_id, flow)
             transition_id = _token(
                 "transition",
                 {
@@ -1190,17 +1197,245 @@ def _build_transitions(
                 ),
                 output_projection=f"{binding.result_state.basis}:chirality={binding.result_state.chirality}",
             )
-            transitions.append(transition)
-            evaluator_requests.append(
-                _EvaluatorRequest(
-                    kernel=kernel,
-                    contract_kind="vertex",
-                    input_state_template_ids=concrete_state_ids,
-                    output_state_template_id=result_state_id,
-                    semantic_template_id=transition.template_id,
+            candidates.append(
+                (
+                    _canonical_transition_alias_key(
+                        binding=binding,
+                        kernel=kernel,
+                        flow=flow,
+                        color=color,
+                        transition=transition,
+                    ),
+                    _transition_alias_preference(model, binding, transition),
+                    transition,
+                    flow,
+                    color,
+                    kernel,
+                    concrete_state_ids,
+                    result_state_id,
                 )
             )
+
+    # Oriented model catalogs may contain exact mirrored aliases.  Collapse only
+    # rows whose complete prepared callable, quantum-flow, color, coupling, and
+    # sign contracts agree after the certified evaluator input permutation.  In
+    # particular, never aggregate alias coefficients: doing so would double a
+    # single physical recurrence contribution.
+    selected: dict[
+        str,
+        tuple[
+            tuple[int, str],
+            TransitionTemplateV1,
+            QuantumFlowTemplateV1,
+            ColorContractionTemplateV1,
+            Any,
+            tuple[str, ...],
+            str,
+        ],
+    ] = {}
+    for (
+        alias_key,
+        preference,
+        transition,
+        flow,
+        color,
+        kernel,
+        concrete_state_ids,
+        result_state_id,
+    ) in candidates:
+        candidate = (
+            preference,
+            transition,
+            flow,
+            color,
+            kernel,
+            concrete_state_ids,
+            result_state_id,
+        )
+        existing = selected.get(alias_key)
+        if existing is None or preference < existing[0]:
+            selected[alias_key] = candidate
+
+    flows_by_id: dict[str, QuantumFlowTemplateV1] = {}
+    colors: dict[str, ColorContractionTemplateV1] = {}
+    transitions: list[TransitionTemplateV1] = []
+    for alias_key in sorted(selected):
+        (
+            _,
+            transition,
+            flow,
+            color,
+            kernel,
+            concrete_state_ids,
+            result_state_id,
+        ) = selected[alias_key]
+        flows_by_id.setdefault(flow.template_id, flow)
+        colors.setdefault(color.template_id, color)
+        transitions.append(transition)
+        evaluator_requests.append(
+            _EvaluatorRequest(
+                kernel=kernel,
+                contract_kind="vertex",
+                input_state_template_ids=concrete_state_ids,
+                output_state_template_id=result_state_id,
+                semantic_template_id=transition.template_id,
+            )
+        )
     return tuple(flows_by_id.values()), tuple(transitions), tuple(colors.values())
+
+
+def _canonical_transition_alias_key(
+    *,
+    binding: PreparedVertexBinding,
+    kernel: Any,
+    flow: QuantumFlowTemplateV1,
+    color: ColorContractionTemplateV1,
+    transition: TransitionTemplateV1,
+) -> str:
+    """Return an exact, orientation-independent transition proof key."""
+
+    order = tuple(int(value) for value in binding.canonical_input_order)
+    inverse_order = tuple(order.index(index) for index in (0, 1))
+
+    def reordered(values: Sequence[Any]) -> list[Any]:
+        return [values[index] for index in order]
+
+    color_witnesses = []
+    for witness in color.transition_witnesses:
+        reverse_parent_mask = 0
+        for concrete_index in range(2):
+            if witness.reverse_parent_mask & (1 << concrete_index):
+                reverse_parent_mask |= 1 << inverse_order[concrete_index]
+        canonical_witness_order = tuple(
+            inverse_order[index] for index in witness.input_permutation
+        )
+        if witness.component_operation == "inherit-left":
+            operation = f"inherit-input-{canonical_witness_order[0]}"
+            operation_order: list[int] = []
+        elif witness.component_operation == "inherit-right":
+            operation = f"inherit-input-{canonical_witness_order[1]}"
+            operation_order = []
+        elif witness.component_operation in {"concatenate-keep", "empty"}:
+            operation = witness.component_operation
+            operation_order = []
+        else:
+            operation = witness.component_operation
+            operation_order = list(canonical_witness_order)
+        color_witnesses.append(
+            {
+                "input_shape_kinds": reordered(witness.input_shape_kinds),
+                "input_permutation": operation_order,
+                "reverse_parent_mask": reverse_parent_mask,
+                "component_operation": operation,
+                "result_component_kind": witness.result_component_kind,
+                "result_component_role": witness.result_component_role,
+                "result_shape_kind": witness.result_shape_kind,
+                "exact_factor": witness.exact_factor.to_dict(),
+            }
+        )
+    color_witnesses.sort(key=_canonical_json)
+
+    payload = {
+        "prepared_kernel": {
+            "kernel_id": int(kernel.kernel_id),
+            "callable_signature": str(kernel.canonical_signature),
+        },
+        "input_state_template_ids": reordered(
+            transition.input_state_template_ids
+        ),
+        "result_state_template_id": transition.result_state_template_id,
+        "quantum_flow": {
+            "input_state_template_ids": reordered(flow.input_state_template_ids),
+            "input_spin_states": reordered(flow.input_spin_states),
+            "input_flavour_flows": [
+                list(value) for value in reordered(flow.input_flavour_flows)
+            ],
+            "input_quantum_number_flows": [
+                [list(item) for item in value]
+                for value in reordered(flow.input_quantum_number_flows)
+            ],
+            "flavour_flow_operation": _canonical_flavour_flow_operation(
+                flow.flavour_flow_operation,
+                order,
+            ),
+            "quantum_number_flow_operation": flow.quantum_number_flow_operation,
+            "coupling_orders": [list(item) for item in flow.coupling_orders],
+            "result_state_template_id": flow.result_state_template_id,
+            "result_spin_state": flow.result_spin_state,
+            "result_flavour_flow": list(flow.result_flavour_flow),
+            "result_quantum_number_flow": [
+                list(item) for item in flow.result_quantum_number_flow
+            ],
+            "exact_coupling": flow.exact_coupling.to_dict(),
+        },
+        "color": {
+            "rule_kind": color.rule_kind,
+            "input_representations": reordered(color.input_representations),
+            "output_representation": color.output_representation,
+            "ordered_open_string_arity": color.ordered_open_string_arity,
+            "exact_coefficient": color.exact_coefficient.to_dict(),
+            "nc_polynomial": [
+                [power, coefficient.to_dict()]
+                for power, coefficient in color.nc_polynomial
+            ],
+            "transition_witnesses": color_witnesses,
+        },
+        "momentum_semantics": _canonical_momentum_semantics(
+            transition.momentum_convention,
+            order,
+        ),
+        "coupling_parameter_ids": list(transition.coupling_parameter_ids),
+        "coupling_orders": [list(item) for item in transition.coupling_orders],
+        "binding_coupling": transition.binding_coupling.to_dict(),
+        "exact_factor": transition.exact_factor.to_dict(),
+        "output_factor_source": transition.output_factor_source,
+        "equivalence_class": transition.equivalence_class,
+        "input_exchange_factor": (
+            None
+            if transition.input_exchange_factor is None
+            else transition.input_exchange_factor.to_dict()
+        ),
+        "output_projection": transition.output_projection,
+    }
+    return _canonical_json(payload)
+
+
+def _canonical_flavour_flow_operation(
+    operation: FlavourFlowOperationV1,
+    canonical_input_order: tuple[int, int],
+) -> str:
+    if canonical_input_order == (0, 1):
+        return operation
+    if operation == "append-left-result":
+        return "append-right-result"
+    if operation == "append-right-result":
+        return "append-left-result"
+    if operation == "concat-left-right-result":
+        return "concat-right-left-result"
+    return operation
+
+
+def _canonical_momentum_semantics(
+    conventions: Sequence[str],
+    canonical_input_order: tuple[int, int],
+) -> list[str]:
+    result: list[str] = []
+    for concrete_index in canonical_input_order:
+        value = str(conventions[concrete_index])
+        side = "left" if concrete_index == 0 else "right"
+        suffix = f"-{side}"
+        result.append(value[: -len(suffix)] if value.endswith(suffix) else value)
+    return result
+
+
+def _transition_alias_preference(
+    model: Model,
+    binding: PreparedVertexBinding,
+    transition: TransitionTemplateV1,
+) -> tuple[int, str]:
+    left_colored = abs(int(model.color_rep(binding.left_state.particle_id))) != 1
+    right_singlet = abs(int(model.color_rep(binding.right_state.particle_id))) == 1
+    return (0 if left_colored and right_singlet else 1, transition.template_id)
 
 
 def _quantum_flow_template(

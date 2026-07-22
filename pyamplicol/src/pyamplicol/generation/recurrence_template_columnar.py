@@ -548,6 +548,13 @@ def _all_u32_sequences(
             for value in record.eligible_quantum_flow_template_ids
         )
         yield tuple(factors.id(value) for value in record.component_coefficients)
+    for record in catalog.color_contractions:
+        for witness in record.transition_witnesses:
+            yield tuple(
+                strings.id(item)
+                for pair in witness.provenance
+                for item in pair
+            )
     for record in catalog.symmetry_proofs:
         yield tuple(strings.id(value) for value in record.subject_template_ids)
         yield record.input_permutation

@@ -259,32 +259,47 @@ class ExternalModelCatalogMixin:
         *,
         closure: bool,
     ) -> RecurrenceLCColorTransitionContract:
-        if closure:
-            raise NotImplementedError(
-                "external recurrence closures require compiler-owned LC closure "
-                "terms; recompile the model after recurrence closure ABI support lands"
-            )
         kernel = self._kernel(vertex.kind)
-        if not kernel.lc_color_transition_terms:
+        terms = (
+            kernel.lc_color_closure_terms
+            if closure
+            else kernel.lc_color_transition_terms
+        )
+        contract_kind = "closure" if closure else "transition"
+        if not terms:
             raise NotImplementedError(
                 f"compiled kernel {kernel.kind} has no compiler-owned LC color "
-                "transition terms; recompile the UFO/JSON model with the current "
-                "pyAmpliCol compiler"
+                f"{contract_kind} terms; re-run the original `pyamplicol model "
+                "compile ...` command with the current pyAmpliCol compiler"
             )
         input_shapes = tuple(
             self.recurrence_lc_color_shape_contract(particle)
             for particle in vertex.particles[:2]
         )
-        result_shape = self.recurrence_lc_color_shape_contract(vertex.particles[2])
+        result_shape = (
+            None
+            if closure
+            else self.recurrence_lc_color_shape_contract(vertex.particles[2])
+        )
         witnesses = []
-        for term in kernel.lc_color_transition_terms:
+        for term in terms:
             if (
                 term.input_shape_kinds != input_shapes
                 or term.result_shape_kind != result_shape
             ):
                 raise ValueError(
-                    f"compiled kernel {kernel.kind} LC color term does not match its "
-                    "live oriented particle-state shapes"
+                    f"compiled kernel {kernel.kind} LC color {contract_kind} term "
+                    "does not match its live oriented particle-state shapes"
+                )
+            if (term.component_operation == "close") != closure:
+                expectation = (
+                    "a closure operation"
+                    if closure
+                    else "a non-closure operation"
+                )
+                raise ValueError(
+                    f"compiled kernel {kernel.kind} LC color {contract_kind} term "
+                    f"must contain {expectation}"
                 )
             factor = {
                 "1": (1.0, 0.0),
@@ -315,7 +330,10 @@ class ExternalModelCatalogMixin:
                 )
             )
         return RecurrenceLCColorTransitionContract(
-            str(kernel.color_projection_structure),
+            str(
+                kernel.lc_recurrence_color_rule_kind
+                or kernel.color_projection_structure
+            ),
             tuple(witnesses),
         )
 
