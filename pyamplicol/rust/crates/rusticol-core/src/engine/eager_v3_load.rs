@@ -340,6 +340,7 @@ fn exact_amplitude_stage(
     decoded: &DecodedEagerRuntimeV3,
     manifest: &EagerV3ExecutionManifest,
 ) -> RusticolResult<Value> {
+    let color_sector_by_group = coherent_group_color_sector_ids(decoded)?;
     let group_weights = decoded
         .reduction_groups
         .iter()
@@ -377,6 +378,12 @@ fn exact_amplitude_stage(
                     "kernel-closure"
                 },
                 "coherent_group_id": root.coherent_group_id,
+                "color_sector_id": color_sector_by_group
+                    .get(&root.coherent_group_id)
+                    .copied()
+                    .ok_or_else(|| RusticolError::integrity(
+                        "eager exact closure references an unknown coherent-group color sector"
+                    ))?,
                 "helicity_weight": exact_real_factor_number(decoded, *helicity_weight_id, "helicity weight")?,
                 "all_sector_weight": exact_real_factor_number(decoded, *all_sector_weight_id, "all-sector weight")?,
             }))
@@ -420,6 +427,50 @@ fn exact_amplitude_stage(
         "roots": roots,
         "color_contraction": color_contraction,
     }))
+}
+
+fn coherent_group_color_sector_ids(
+    decoded: &DecodedEagerRuntimeV3,
+) -> RusticolResult<BTreeMap<u32, u32>> {
+    let table = decoded
+        .retained_tables
+        .iter()
+        .find(|table| table.name.as_ref() == "coherent_groups")
+        .ok_or_else(|| RusticolError::integrity("eager coherent-group table is absent"))?;
+    let column = table
+        .columns
+        .iter()
+        .find(|column| column.name.as_ref() == "color_sector_id")
+        .ok_or_else(|| {
+            RusticolError::integrity("eager coherent-group color-sector column is absent")
+        })?;
+    if column.elements_per_row != 1 {
+        return Err(RusticolError::integrity(
+            "eager coherent-group color-sector column is not scalar",
+        ));
+    }
+    let super::eager_v3_decode::DecodedEagerPrimitiveColumn::U32(color_sector_ids) = &column.values
+    else {
+        return Err(RusticolError::integrity(
+            "eager coherent-group color-sector column has the wrong primitive type",
+        ));
+    };
+    if color_sector_ids.len() != decoded.reduction_groups.len()
+        || color_sector_ids.len()
+            != usize::try_from(table.row_count).map_err(|_| {
+                RusticolError::artifact("eager coherent-group row count exceeds usize")
+            })?
+    {
+        return Err(RusticolError::integrity(
+            "eager coherent-group color-sector coverage is inconsistent",
+        ));
+    }
+    decoded
+        .reduction_groups
+        .iter()
+        .zip(color_sector_ids)
+        .map(|(group, sector_id)| Ok((group.coherent_group_id, *sector_id)))
+        .collect()
 }
 
 fn exact_closure(

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_DAG_F64_RUNTIME_CAPABILITY,
+    EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
     verify_native_module,
 )
 from pyamplicol.api.errors import (
@@ -375,8 +376,12 @@ class RusticolRuntimeBackend:
                 )
             self._supports_per_point_selectors = declares_selector_capability
         else:
-            self._supports_per_point_selectors = (
-                EAGER_DAG_F64_RUNTIME_CAPABILITY in capabilities
+            self._supports_per_point_selectors = any(
+                capability in capabilities
+                for capability in (
+                    EAGER_DAG_F64_RUNTIME_CAPABILITY,
+                    EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+                )
             )
         if self._supports_per_point_selectors and not _accepts_keyword_arguments(
             self._runtime.evaluate,
@@ -386,7 +391,14 @@ class RusticolRuntimeBackend:
             required = (
                 COMPILED_RUNTIME_SELECTORS_CAPABILITY
                 if self._execution_mode == "compiled"
-                else EAGER_DAG_F64_RUNTIME_CAPABILITY
+                else next(
+                    capability
+                    for capability in (
+                        EAGER_DAG_F64_RUNTIME_CAPABILITY,
+                        EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+                    )
+                    if capability in capabilities
+                )
             )
             raise CompatibilityError(
                 f"artifact requires runtime capability {required!r}, but the "

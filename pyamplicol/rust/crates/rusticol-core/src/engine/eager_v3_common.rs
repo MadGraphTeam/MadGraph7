@@ -43,6 +43,8 @@ pub(super) struct EagerV3CommonParts {
     normalization_identical_factor: f64,
     normalization_qcd_coupling_power: usize,
     normalization_electroweak_coupling_power: usize,
+    lc_topology_replay: Option<LcTopologyReplayManifest>,
+    lc_topology_replay_data: LcTopologyReplayData,
     model_parameters: Vec<GenericRuntimeModelParameterManifest>,
     model_parameter_name_to_index: BTreeMap<String, usize>,
     model_parameter_runtime_slots: BTreeMap<String, RuntimeParameterSlots>,
@@ -87,6 +89,9 @@ impl EagerV3CommonParts {
         let normalization: CanonicalNormalization =
             canonical_ir(decoded, normalization_ir_id, "runtime normalization")?;
         normalization.validate()?;
+        let lc_topology_replay = build_lc_topology_replay_manifest(decoded, &retained)?;
+        let lc_topology_replay_data =
+            super::runtime_load::build_lc_topology_replay_data(lc_topology_replay.as_ref())?;
 
         let model_parameters = build_model_parameters(decoded, &retained)?;
         validate_physics_parameters(&model_parameters, &physics)?;
@@ -169,6 +174,8 @@ impl EagerV3CommonParts {
             normalization_identical_factor: normalization.identical_factor,
             normalization_qcd_coupling_power: normalization.qcd_coupling_power,
             normalization_electroweak_coupling_power: normalization.electroweak_coupling_power,
+            lc_topology_replay,
+            lc_topology_replay_data,
             model_parameters,
             model_parameter_name_to_index,
             model_parameter_runtime_slots,
@@ -178,6 +185,8 @@ impl EagerV3CommonParts {
     }
 
     fn into_runtime(self) -> ExecutionRuntime {
+        let topology_replay_mappings = self.lc_topology_replay_data.mappings;
+        let topology_replay_public_mappings = topology_replay_mappings.clone();
         ExecutionRuntime {
             process: self.process,
             key: self.key,
@@ -192,11 +201,13 @@ impl EagerV3CommonParts {
             interaction_count: self.interaction_count,
             stage_count: self.stage_count,
             amplitude_output_count: self.amplitude_output_count,
-            lc_topology_replay_enabled: false,
-            lc_topology_replay_mappings: Arc::new(Vec::new()),
-            lc_topology_replay_public_mappings: Vec::new(),
-            lc_topology_replay_routes: Vec::new(),
-            lc_topology_replay_materialized_sector_ids: BTreeSet::new(),
+            lc_topology_replay_enabled: !topology_replay_mappings.is_empty(),
+            lc_topology_replay_mappings: Arc::new(topology_replay_mappings),
+            lc_topology_replay_public_mappings: topology_replay_public_mappings,
+            lc_topology_replay_routes: self.lc_topology_replay_data.routes,
+            lc_topology_replay_materialized_sector_ids: self
+                .lc_topology_replay_data
+                .materialized_sector_ids,
             lc_resolved_replay_plan: None,
             lc_resolved_replay_selection_cache: None,
             helicity_recurrence: None,
@@ -348,9 +359,183 @@ impl EagerV3CommonParts {
                 "source_count": self.sources.len(),
                 "sources": self.sources,
             },
+            "lc_topology_replay": self.lc_topology_replay,
             "amplitude_stage": amplitude_stage,
         }))
     }
+}
+
+fn build_lc_topology_replay_manifest(
+    decoded: &DecodedEagerRuntimeV3,
+    retained: &RetainedTables<'_>,
+) -> RusticolResult<Option<LcTopologyReplayManifest>> {
+    let metadata = retained.table("lc_replay_metadata")?;
+    let present = retained.scalar_u8(metadata, "present")?;
+    let physical_sequence_id = retained.scalar_u32(metadata, "physical_sector_ids_sequence_id")?;
+    let materialized_sequence_id =
+        retained.scalar_u32(metadata, "materialized_sector_ids_sequence_id")?;
+    let partitions = retained.table("lc_replay_partitions")?;
+    let members = retained.table("lc_replay_members")?;
+    let permutations = retained.table("lc_replay_permutations")?;
+    let residuals = retained.table("lc_replay_residual_sectors")?;
+    if present == 0 {
+        if physical_sequence_id != crate::MISSING_U32
+            || materialized_sequence_id != crate::MISSING_U32
+            || partitions.row_count != 0
+            || members.row_count != 0
+            || permutations.row_count != 0
+            || residuals.row_count != 0
+        {
+            return Err(integrity(
+                "absent eager LC topology replay has retained payload rows",
+            ));
+        }
+        return Ok(None);
+    }
+    if present != 1
+        || physical_sequence_id == crate::MISSING_U32
+        || materialized_sequence_id == crate::MISSING_U32
+    {
+        return Err(integrity(
+            "eager LC topology replay metadata has an invalid presence contract",
+        ));
+    }
+
+    let physical_sector_ids = u32_sequence(decoded, physical_sequence_id, "LC physical sectors")?;
+    let materialized_sector_ids =
+        u32_sequence(decoded, materialized_sequence_id, "LC materialized sectors")?;
+    let representative_sector_ids =
+        retained.u32_column(partitions, "representative_sector_id", 1)?;
+    let partition_materialized_sector_ids =
+        retained.u32_column(partitions, "materialized_sector_id", 1)?;
+    let member_starts = retained.u64_column(partitions, "member_start", 1)?;
+    let member_counts = retained.u64_column(partitions, "member_count", 1)?;
+    let proof_algorithm_ids = retained.u32_column(partitions, "proof_algorithm_string_id", 1)?;
+    let proof_digest_ids = retained.u32_column(partitions, "proof_digest_string_id", 1)?;
+
+    let member_sector_ids = retained.u32_column(members, "sector_id", 1)?;
+    let member_factor_ids = retained.u32_column(members, "factor_id", 1)?;
+    let member_signs = retained.i32_column(members, "sign", 1)?;
+    let permutation_starts = retained.u64_column(members, "permutation_start", 1)?;
+    let permutation_counts = retained.u64_column(members, "permutation_count", 1)?;
+    let representative_labels = retained.u32_column(permutations, "representative_label", 1)?;
+    let sector_labels = retained.u32_column(permutations, "sector_label", 1)?;
+    let residual_sector_ids = retained.u32_column(residuals, "sector_id", 1)?;
+
+    let mut groups = Vec::with_capacity(partitions.row_count as usize);
+    let mut member_cursor = 0_usize;
+    let mut permutation_cursor = 0_usize;
+    for partition_index in 0..partitions.row_count as usize {
+        let member_start = usize_count(member_starts[partition_index], "LC replay member start")?;
+        let member_count = usize_count(member_counts[partition_index], "LC replay member count")?;
+        if member_start != member_cursor {
+            return Err(integrity(
+                "eager LC replay partition members are not canonical and contiguous",
+            ));
+        }
+        let member_stop = member_start
+            .checked_add(member_count)
+            .ok_or_else(|| RusticolError::artifact("LC replay member range overflows"))?;
+        if member_stop > members.row_count as usize {
+            return Err(integrity("eager LC replay member range is out of bounds"));
+        }
+        let mut active_sector_ids = Vec::with_capacity(member_count);
+        let mut sector_permutations = Vec::with_capacity(member_count);
+        for member_index in member_start..member_stop {
+            let permutation_start = usize_count(
+                permutation_starts[member_index],
+                "LC replay permutation start",
+            )?;
+            let permutation_count = usize_count(
+                permutation_counts[member_index],
+                "LC replay permutation count",
+            )?;
+            if permutation_start != permutation_cursor {
+                return Err(integrity(
+                    "eager LC replay permutations are not canonical and contiguous",
+                ));
+            }
+            let permutation_stop = permutation_start
+                .checked_add(permutation_count)
+                .ok_or_else(|| RusticolError::artifact("LC replay permutation range overflows"))?;
+            if permutation_stop > permutations.row_count as usize {
+                return Err(integrity(
+                    "eager LC replay permutation range is out of bounds",
+                ));
+            }
+            let sign = i8::try_from(member_signs[member_index])
+                .map_err(|_| integrity("eager LC replay sign does not fit i8"))?;
+            let factor = decoded
+                .exact_factors
+                .get(member_factor_ids[member_index] as usize)
+                .ok_or_else(|| integrity("eager LC replay factor is absent"))?;
+            let amplitude_factor = [
+                f64::from_bits(factor.real_bits),
+                f64::from_bits(factor.imaginary_bits),
+            ];
+            let weight = amplitude_factor[0] * f64::from(sign);
+            let label_permutation = (permutation_start..permutation_stop)
+                .map(|index| LcTopologyReplayLabelPermutationManifest {
+                    representative_label: representative_labels[index] as usize,
+                    sector_label: sector_labels[index] as usize,
+                })
+                .collect();
+            let sector_id = i64::from(member_sector_ids[member_index]);
+            active_sector_ids.push(sector_id);
+            sector_permutations.push(LcTopologyReplaySectorPermutationManifest {
+                sector_id,
+                weight,
+                sign,
+                factor: Some(amplitude_factor.to_vec()),
+                label_permutation,
+            });
+            permutation_cursor = permutation_stop;
+        }
+        groups.push(LcTopologyReplayGroupManifest {
+            representative_sector_id: i64::from(representative_sector_ids[partition_index]),
+            materialized_sector_id: i64::from(partition_materialized_sector_ids[partition_index]),
+            active_sector_ids,
+            proof: Some(LcTopologyReplayProofManifest {
+                status: "proven".to_string(),
+                algorithm: Some(
+                    string(
+                        decoded,
+                        proof_algorithm_ids[partition_index],
+                        "LC replay proof algorithm",
+                    )?
+                    .to_string(),
+                ),
+                digest: Some(
+                    string(
+                        decoded,
+                        proof_digest_ids[partition_index],
+                        "LC replay proof digest",
+                    )?
+                    .to_string(),
+                ),
+            }),
+            sector_permutations,
+        });
+        member_cursor = member_stop;
+    }
+    if member_cursor != members.row_count as usize
+        || permutation_cursor != permutations.row_count as usize
+    {
+        return Err(integrity(
+            "eager LC replay retained tables contain unreachable rows",
+        ));
+    }
+
+    Ok(Some(LcTopologyReplayManifest {
+        enabled: true,
+        mode: "external-label-permutation".to_string(),
+        contract_version: Some(2),
+        physical_sector_count: Some(physical_sector_ids.len()),
+        replayed_sector_count: members.row_count as usize,
+        materialized_sector_ids: materialized_sector_ids.into_iter().map(i64::from).collect(),
+        residual_sector_ids: residual_sector_ids.iter().copied().map(i64::from).collect(),
+        groups,
+    }))
 }
 
 fn validate_identity(
@@ -876,6 +1061,33 @@ impl<'a> RetainedTables<'a> {
         Ok(values[0])
     }
 
+    fn scalar_u8(&self, table: &DecodedEagerRetainedTable, name: &str) -> RusticolResult<u8> {
+        let values = self.u8_column(table, name, 1)?;
+        if table.row_count != 1 || values.len() != 1 {
+            return Err(integrity(format!(
+                "retained eager scalar {}.{name} has the wrong shape",
+                table.name
+            )));
+        }
+        Ok(values[0])
+    }
+
+    fn u8_column(
+        &self,
+        table: &'a DecodedEagerRetainedTable,
+        name: &str,
+        elements_per_row: u32,
+    ) -> RusticolResult<&'a [u8]> {
+        let column = retained_column(table, name, elements_per_row)?;
+        match &column.values {
+            DecodedEagerPrimitiveColumn::U8(values) => Ok(values),
+            _ => Err(integrity(format!(
+                "retained eager column {}.{name} is not u8",
+                table.name
+            ))),
+        }
+    }
+
     fn u32_column(
         &self,
         table: &'a DecodedEagerRetainedTable,
@@ -903,6 +1115,22 @@ impl<'a> RetainedTables<'a> {
             DecodedEagerPrimitiveColumn::I32(values) => Ok(values),
             _ => Err(integrity(format!(
                 "retained eager column {}.{name} is not i32",
+                table.name
+            ))),
+        }
+    }
+
+    fn u64_column(
+        &self,
+        table: &'a DecodedEagerRetainedTable,
+        name: &str,
+        elements_per_row: u32,
+    ) -> RusticolResult<&'a [u64]> {
+        let column = retained_column(table, name, elements_per_row)?;
+        match &column.values {
+            DecodedEagerPrimitiveColumn::U64(values) => Ok(values),
+            _ => Err(integrity(format!(
+                "retained eager column {}.{name} is not u64",
                 table.name
             ))),
         }
@@ -981,6 +1209,24 @@ fn i32_sequence(decoded: &DecodedEagerRuntimeV3, id: u32) -> RusticolResult<Vec<
         "i32 sequence",
     )
     .map(<[i32]>::to_vec)
+}
+
+fn u32_sequence(
+    decoded: &DecodedEagerRuntimeV3,
+    id: u32,
+    context: &str,
+) -> RusticolResult<Vec<u32>> {
+    let range = decoded
+        .u32_sequence_ranges
+        .get(id as usize)
+        .ok_or_else(|| integrity(format!("eager metadata references absent {context}")))?;
+    checked_catalog_range(
+        &decoded.u32_sequence_values,
+        range.start,
+        range.count,
+        context,
+    )
+    .map(<[u32]>::to_vec)
 }
 
 fn bitset_words(decoded: &DecodedEagerRuntimeV3, id: u32) -> RusticolResult<&[u64]> {

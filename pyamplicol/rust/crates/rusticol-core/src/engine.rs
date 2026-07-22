@@ -403,7 +403,7 @@ struct GenericDerivedParameterOutputManifest {
     imag_parameter_index: usize,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LcTopologyReplayManifest {
     #[serde(default)]
@@ -424,7 +424,7 @@ struct LcTopologyReplayManifest {
     groups: Vec<LcTopologyReplayGroupManifest>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LcTopologyReplayGroupManifest {
     representative_sector_id: i64,
@@ -437,7 +437,7 @@ struct LcTopologyReplayGroupManifest {
     sector_permutations: Vec<LcTopologyReplaySectorPermutationManifest>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LcTopologyReplayProofManifest {
     #[serde(default)]
@@ -448,7 +448,7 @@ struct LcTopologyReplayProofManifest {
     digest: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LcTopologyReplaySectorPermutationManifest {
     sector_id: i64,
@@ -462,7 +462,7 @@ struct LcTopologyReplaySectorPermutationManifest {
     label_permutation: Vec<LcTopologyReplayLabelPermutationManifest>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LcTopologyReplayLabelPermutationManifest {
     representative_label: usize,

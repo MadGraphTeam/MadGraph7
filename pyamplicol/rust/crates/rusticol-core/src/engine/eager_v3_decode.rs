@@ -751,9 +751,13 @@ fn decode_retained_tables(reader: &PacbinReader) -> RusticolResult<Vec<DecodedEa
 }
 
 fn retained_column_is_runtime_required(table: &str, column: &str) -> bool {
+    if table.starts_with("lc_replay_") {
+        return true;
+    }
     matches!(
         (table, column),
         ("metadata", "normalization_ir_id")
+            | ("coherent_groups", "color_sector_id")
             | ("model_parameters", "pdg")
             | ("currents", "particle_id")
             | ("currents", "source_leg_label")

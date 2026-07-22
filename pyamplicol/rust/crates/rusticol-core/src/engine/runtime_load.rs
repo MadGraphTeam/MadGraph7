@@ -10,7 +10,7 @@ pub(super) fn build_lc_topology_replay_mappings(
     Ok((data.mappings, vec![1.0; mapping_count]))
 }
 
-fn build_lc_topology_replay_data(
+pub(super) fn build_lc_topology_replay_data(
     replay: Option<&LcTopologyReplayManifest>,
 ) -> RusticolResult<LcTopologyReplayData> {
     let Some(replay) = replay else {
