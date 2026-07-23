@@ -59199,8 +59199,8 @@
             "effective_config": null,
             "environment": {},
             "evaluator_seconds_per_point": null,
-            "failure_kind": "GenerationError",
-            "failure_message": "evaluator materialization failed for process 'd_dbar_to_z_g_g_g_g_g_g_g': generation exceeded 3600 seconds",
+            "failure_kind": "generation_skip",
+            "failure_message": "skipped by campaign policy: generation exceeded 600 seconds",
             "generation_seconds": null,
             "limit_gib": null,
             "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n8-cpp-o3/logs/pyamplicol-all-flows.log",
@@ -59224,6 +59224,9 @@
                 "variant": "cpp_o3"
               },
               "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n8-cpp-o3/inputs/pyamplicol-inputs.json",
+              "lane_status_policy": "lc_two_workload_lane_status_v1",
+              "lc_flow_layout": "all-flow-union",
+              "runtime_selector_role": "all-flows-fixed-helicity",
               "source_provenance": {
                 "cache_schema_version": 2,
                 "compiled_model_schema_version": 9,
@@ -59240,7 +59243,7 @@
             "sample_count": null,
             "standard_deviation_seconds_per_point": null,
             "standard_error_seconds_per_point": null,
-            "status": "error",
+            "status": "skip",
             "timeout_seconds": 3600.0,
             "wall_seconds_per_point": null
           },
@@ -59309,7 +59312,7 @@
               1
             ],
             "all_flow_backend": "cpp",
-            "all_flow_error": "evaluator materialization failed for process 'd_dbar_to_z_g_g_g_g_g_g_g': generation exceeded 3600 seconds",
+            "all_flow_error": "skipped by campaign policy: generation exceeded 600 seconds",
             "all_flow_generation_s": null,
             "all_flow_helicity_mode": "fixed-source-helicity",
             "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
@@ -59329,7 +59332,7 @@
               "8": 1,
               "9": -1
             },
-            "all_flow_status": "timeout",
+            "all_flow_status": "skip",
             "all_flow_validation_note": "fixed source-helicity selection is used for timing; selected-flow spin-summed validation remains authoritative",
             "all_flow_wall_us_per_point": null,
             "generation_s": 1225.3365552965552,
@@ -59348,14 +59351,14 @@
             "all_flow_pyamplicol_matrix_element": null,
             "all_flow_reference_matrix_element": null,
             "all_flow_relative_difference": null,
-            "all_flow_status": "error",
-            "message": "all-flow validation measurement is unavailable: AmpliCol=ok, pyAmpliCol=timeout",
+            "all_flow_status": "skip",
+            "message": "all-flow validation skipped because the all-flow lane is skipped",
             "point_source": "shared validation point",
             "pyamplicol_matrix_element": 7.995142776995677e-22,
             "reference_matrix_element": 7.995142777018192e-22,
             "relative_difference": 2.8160783648077355e-12,
             "relative_tolerance": 1e-08,
-            "status": "error"
+            "status": "ok"
           },
           "runtime_process": "d_dbar_to_z_g_g_g_g_g_g_g",
           "selected_flow_measurement": {
@@ -60785,8 +60788,8 @@
             "effective_config": null,
             "environment": {},
             "evaluator_seconds_per_point": null,
-            "failure_kind": "out_of_reach",
-            "failure_message": "out of reach by campaign policy: UFO-SM n=8 eager all-flow-union measurement was held after the built-in n=8 canary ran about 2.6 h and reached about 93 GiB RSS in the pre-publication generation/lowering phase under a 500 GiB guard; no UFO n=8 result was attempted under this policy",
+            "failure_kind": "skip",
+            "failure_message": "skipped by campaign policy: UFO-SM n=8 eager all-flow-union measurement was held after the built-in n=8 canary ran about 2.6 h and reached about 93 GiB RSS in the pre-publication generation/lowering phase under a 500 GiB guard; no UFO n=8 result was attempted under this policy",
             "generation_seconds": null,
             "limit_gib": 500.0,
             "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n8-eager-jit-o3/logs/worker-e9e852773b1c40699942aaec137f664d.log",
@@ -60796,7 +60799,7 @@
               "campaign_classification": {
                 "classification_source_revision": "7a5e2207c79333c5c3035a2a5379b8aa432b3c9d",
                 "classified_at": "2026-07-22T20:01:17+00:00",
-                "decision": "held and classified out-of-reach by campaign policy",
+                "decision": "held and classified as skip by campaign policy",
                 "held_after_cell_id": "z-builtin-sm-n8-eager-jit-o3",
                 "held_cell_id": "z-external-sm-n8-eager-jit-o3",
                 "limit_gib": 500.0,
@@ -60804,8 +60807,8 @@
                 "observed_built_in_phase": "pre-publication eager all-flow-union generation/lowering",
                 "observed_built_in_rss_gib_approx": 93.0,
                 "observed_built_in_rss_kib": 97499084,
-                "policy": "high_multiplicity_out_of_reach_v1",
-                "status": "out_of_reach"
+                "policy": "high_multiplicity_skip_v1",
+                "status": "skip"
               },
               "cell": {
                 "cache_name": "z_external_sm.json",
@@ -60824,7 +60827,7 @@
                 "variant": "eager_jit_o3"
               },
               "lane_status_policy": "lc_two_workload_lane_status_v1",
-              "lane_terminal_policy": "high_multiplicity_all_flow_union_out_of_reach_v1",
+              "lane_terminal_policy": "high_multiplicity_all_flow_union_skip_v1",
               "lc_flow_layout": "all-flow-union",
               "pointwise_validation": {
                 "absolute_difference": null,
@@ -60859,14 +60862,14 @@
             "sample_count": null,
             "standard_deviation_seconds_per_point": null,
             "standard_error_seconds_per_point": null,
-            "status": "out_of_reach",
+            "status": "skip",
             "timeout_seconds": null,
             "wall_seconds_per_point": null
           },
           "campaign_classification": {
             "classification_source_revision": "7a5e2207c79333c5c3035a2a5379b8aa432b3c9d",
             "classified_at": "2026-07-22T20:01:17+00:00",
-            "decision": "held and classified out-of-reach by campaign policy",
+            "decision": "held and classified as skip by campaign policy",
             "held_after_cell_id": "z-builtin-sm-n8-eager-jit-o3",
             "held_cell_id": "z-external-sm-n8-eager-jit-o3",
             "limit_gib": 500.0,
@@ -60874,8 +60877,8 @@
             "observed_built_in_phase": "pre-publication eager all-flow-union generation/lowering",
             "observed_built_in_rss_gib_approx": 93.0,
             "observed_built_in_rss_kib": 97499084,
-            "policy": "high_multiplicity_out_of_reach_v1",
-            "status": "out_of_reach"
+            "policy": "high_multiplicity_skip_v1",
+            "status": "skip"
           },
           "cell": {
             "cache_name": "z_external_sm.json",
@@ -60895,11 +60898,11 @@
           },
           "lane_status_policy": "lc_two_workload_lane_status_v1",
           "old_matrix_format": {
-            "all_flow_error": "out of reach by campaign policy: UFO-SM n=8 eager all-flow-union measurement was held after the built-in n=8 canary ran about 2.6 h and reached about 93 GiB RSS in the pre-publication generation/lowering phase under a 500 GiB guard; no UFO n=8 result was attempted under this policy",
+            "all_flow_error": "skipped by campaign policy: UFO-SM n=8 eager all-flow-union measurement was held after the built-in n=8 canary ran about 2.6 h and reached about 93 GiB RSS in the pre-publication generation/lowering phase under a 500 GiB guard; no UFO n=8 result was attempted under this policy",
             "all_flow_generation_s": null,
             "all_flow_matrix_element": null,
             "all_flow_runtime_us_per_point": null,
-            "all_flow_status": "out_of_reach",
+            "all_flow_status": "skip",
             "all_flow_wall_us_per_point": null,
             "generation_s": null,
             "runtime_us_per_point": null,
@@ -62972,8 +62975,8 @@
             "effective_config": null,
             "environment": {},
             "evaluator_seconds_per_point": null,
-            "failure_kind": "GenerationError",
-            "failure_message": "evaluator materialization failed for process 'd_dbar_to_z_g_g_g_g_g_g_g_g': generation exceeded 3600 seconds",
+            "failure_kind": "generation_skip",
+            "failure_message": "skipped by campaign policy: generation exceeded 600 seconds",
             "generation_seconds": null,
             "limit_gib": null,
             "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n9-asm-o3/logs/pyamplicol-all-flows.log",
@@ -62997,6 +63000,9 @@
                 "variant": "asm_o3"
               },
               "input_snapshot_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n9-asm-o3/inputs/pyamplicol-inputs.json",
+              "lane_status_policy": "lc_two_workload_lane_status_v1",
+              "lc_flow_layout": "all-flow-union",
+              "runtime_selector_role": "all-flows-fixed-helicity",
               "source_provenance": {
                 "cache_schema_version": 2,
                 "compiled_model_schema_version": 9,
@@ -63013,7 +63019,7 @@
             "sample_count": null,
             "standard_deviation_seconds_per_point": null,
             "standard_error_seconds_per_point": null,
-            "status": "error",
+            "status": "skip",
             "timeout_seconds": 3600.0,
             "wall_seconds_per_point": null
           },
@@ -63084,7 +63090,7 @@
               -1
             ],
             "all_flow_backend": "asm",
-            "all_flow_error": "evaluator materialization failed for process 'd_dbar_to_z_g_g_g_g_g_g_g_g': generation exceeded 3600 seconds",
+            "all_flow_error": "skipped by campaign policy: generation exceeded 600 seconds",
             "all_flow_generation_s": null,
             "all_flow_helicity_mode": "fixed-source-helicity",
             "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
@@ -63105,7 +63111,7 @@
               "8": 1,
               "9": -1
             },
-            "all_flow_status": "timeout",
+            "all_flow_status": "skip",
             "all_flow_validation_note": "fixed source-helicity selection is used for timing; selected-flow spin-summed validation remains authoritative",
             "all_flow_wall_us_per_point": null,
             "generation_s": 145.78413651511073,
@@ -63124,14 +63130,14 @@
             "all_flow_pyamplicol_matrix_element": null,
             "all_flow_reference_matrix_element": null,
             "all_flow_relative_difference": null,
-            "all_flow_status": "error",
-            "message": "all-flow validation measurement is unavailable: AmpliCol=ok, pyAmpliCol=timeout",
+            "all_flow_status": "skip",
+            "message": "all-flow validation skipped because the all-flow lane is skipped",
             "point_source": "shared validation point",
             "pyamplicol_matrix_element": 1.1712888477553204e-23,
             "reference_matrix_element": 1.1712888477586117e-23,
             "relative_difference": 2.810053377184309e-12,
             "relative_tolerance": 1e-08,
-            "status": "error"
+            "status": "ok"
           },
           "runtime_process": "d_dbar_to_z_g_g_g_g_g_g_g_g",
           "selected_flow_measurement": {
@@ -63564,8 +63570,8 @@
         "effective_config": null,
         "environment": {},
         "evaluator_seconds_per_point": null,
-        "failure_kind": "timeout",
-        "failure_message": "worker exceeded 8100 second aggregate budget",
+        "failure_kind": "generation_skip",
+        "failure_message": "skipped by campaign policy: generation exceeded 600 seconds",
         "generation_seconds": null,
         "limit_gib": 800.0,
         "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n9-cpp-o3/logs/worker.log",
@@ -64639,8 +64645,8 @@
             "effective_config": null,
             "environment": {},
             "evaluator_seconds_per_point": null,
-            "failure_kind": "out_of_reach",
-            "failure_message": "out of reach by campaign policy: UFO-SM n=9 eager all-flow-union measurement was held after the built-in n=9 canary reached about 2.9 h and about 276 GiB RSS in the pre-publication generation/lowering phase under a 500 GiB guard; no UFO n=9 result was attempted under this policy",
+            "failure_kind": "skip",
+            "failure_message": "skipped by campaign policy: UFO-SM n=9 eager all-flow-union measurement was held after the built-in n=9 canary reached about 2.9 h and about 276 GiB RSS in the pre-publication generation/lowering phase under a 500 GiB guard; no UFO n=9 result was attempted under this policy",
             "generation_seconds": null,
             "limit_gib": 500.0,
             "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/z-external-sm-n9-eager-jit-o3/logs/worker-2e0e96748b824ce294d3b2fb8fdbb0d8.log",
@@ -64650,7 +64656,7 @@
               "campaign_classification": {
                 "classification_source_revision": "b7f0d899747f1b2aed3055d9a964287365a209b3",
                 "classified_at": "2026-07-22T16:56:28Z",
-                "decision": "held and classified out-of-reach by campaign policy",
+                "decision": "held and classified as skip by campaign policy",
                 "held_after_cell_id": "z-builtin-sm-n9-eager-jit-o3",
                 "held_cell_id": "z-external-sm-n9-eager-jit-o3",
                 "limit_gib": 500.0,
@@ -64658,8 +64664,8 @@
                 "observed_built_in_phase": "pre-publication eager all-flow-union generation/lowering",
                 "observed_built_in_rss_gib_approx": 275.5,
                 "observed_built_in_rss_kib": 288898940,
-                "policy": "high_multiplicity_out_of_reach_v1",
-                "status": "out_of_reach"
+                "policy": "high_multiplicity_skip_v1",
+                "status": "skip"
               },
               "cell": {
                 "cache_name": "z_external_sm.json",
@@ -64678,7 +64684,7 @@
                 "variant": "eager_jit_o3"
               },
               "lane_status_policy": "lc_two_workload_lane_status_v1",
-              "lane_terminal_policy": "high_multiplicity_all_flow_union_out_of_reach_v1",
+              "lane_terminal_policy": "high_multiplicity_all_flow_union_skip_v1",
               "lc_flow_layout": "all-flow-union",
               "pointwise_validation": {
                 "absolute_difference": null,
@@ -64713,14 +64719,14 @@
             "sample_count": null,
             "standard_deviation_seconds_per_point": null,
             "standard_error_seconds_per_point": null,
-            "status": "out_of_reach",
+            "status": "skip",
             "timeout_seconds": null,
             "wall_seconds_per_point": null
           },
           "campaign_classification": {
             "classification_source_revision": "b7f0d899747f1b2aed3055d9a964287365a209b3",
             "classified_at": "2026-07-22T16:56:28Z",
-            "decision": "held and classified out-of-reach by campaign policy",
+            "decision": "held and classified as skip by campaign policy",
             "held_after_cell_id": "z-builtin-sm-n9-eager-jit-o3",
             "held_cell_id": "z-external-sm-n9-eager-jit-o3",
             "limit_gib": 500.0,
@@ -64728,8 +64734,8 @@
             "observed_built_in_phase": "pre-publication eager all-flow-union generation/lowering",
             "observed_built_in_rss_gib_approx": 275.5,
             "observed_built_in_rss_kib": 288898940,
-            "policy": "high_multiplicity_out_of_reach_v1",
-            "status": "out_of_reach"
+            "policy": "high_multiplicity_skip_v1",
+            "status": "skip"
           },
           "cell": {
             "cache_name": "z_external_sm.json",
@@ -64749,11 +64755,11 @@
           },
           "lane_status_policy": "lc_two_workload_lane_status_v1",
           "old_matrix_format": {
-            "all_flow_error": "out of reach by campaign policy: UFO-SM n=9 eager all-flow-union measurement was held after the built-in n=9 canary reached about 2.9 h and about 276 GiB RSS in the pre-publication generation/lowering phase under a 500 GiB guard; no UFO n=9 result was attempted under this policy",
+            "all_flow_error": "skipped by campaign policy: UFO-SM n=9 eager all-flow-union measurement was held after the built-in n=9 canary reached about 2.9 h and about 276 GiB RSS in the pre-publication generation/lowering phase under a 500 GiB guard; no UFO n=9 result was attempted under this policy",
             "all_flow_generation_s": null,
             "all_flow_matrix_element": null,
             "all_flow_runtime_us_per_point": null,
-            "all_flow_status": "out_of_reach",
+            "all_flow_status": "skip",
             "all_flow_wall_us_per_point": null,
             "generation_s": null,
             "runtime_us_per_point": null,
