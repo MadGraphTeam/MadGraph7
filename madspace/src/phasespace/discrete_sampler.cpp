@@ -140,7 +140,7 @@ void madspace::initialize_uniform_probs(
 ) {
     bool is_cpu = context->device() == cpu_device();
     auto prob_global = context->define_global(name, DataType::dt_float, {option_count});
-    auto prob = is_cpu ? prob_global : Tensor(DataType::dt_float, {option_count});
+    auto prob = is_cpu ? prob_global : Tensor(DataType::dt_float, {1, option_count});
     auto prob_view = prob.view<double, 2>()[0];
     auto prob_value = 1. / option_count;
     for (std::size_t i = 0; i < prob_view.size(); ++i) {
