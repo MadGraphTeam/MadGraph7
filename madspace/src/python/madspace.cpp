@@ -1470,7 +1470,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<double, double, double, int>(),
             py::arg("cross_section") = 0.,
             py::arg("cross_section_error") = 0.,
-            py::arg("max-weight") = 0.,
+            py::arg("max_weight") = 0.,
             py::arg("process_id") = 0
         )
         .def_readwrite("cross_section", &LHEProcess::cross_section)
@@ -1740,7 +1740,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             "combine_to_lhe",
             &EventGenerator::combine_to_lhe,
             py::arg("file_name"),
-            py::arg("lhe_completer")
+            py::arg("lhe_completer"),
+            py::arg("meta") = LHEMeta{}
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)

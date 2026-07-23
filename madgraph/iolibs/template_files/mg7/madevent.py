@@ -705,7 +705,8 @@ class MadgraphProcess:
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
             self.event_generator.combine_to_lhe(
-                os.path.join(self.run_path, "events.lhe"), self.lhe_completer
+                os.path.join(self.run_path, "events.lhe"), self.lhe_completer,
+                self.build_lhe_meta(),
             )
         else:
             raise ValueError("Unknown output format")
@@ -738,6 +739,71 @@ class MadgraphProcess:
         except Exception as err:
             logger.warning("could not extract observable means: %s", err)
         return result
+
+    def _beam_info(self):
+        """Return (beam_pdg_ids, beam_energies) for the LHE <init> block.
+
+        `incoming` holds the *partonic* initial state (e.g. gluons), not the
+        beam particle, so hadronic beams are protons (2212); leptonic beams are
+        the incoming leptons themselves."""
+        half_e = float(self.e_cm) / 2.
+        if not self.leptonic:
+            # hadronic collider: proton beams (p-pbar is not distinguished)
+            return [2212, 2212], [half_e, half_e]
+        data = self.subprocess_data[0]
+        incoming = data["incoming"]
+        flavor0 = data["flavors"][0]["options"][0]
+        init_pdgs = flavor0[:len(incoming)]
+        beam_pdgs = [pdg if abs(code) in (81, 82) else code
+                     for code, pdg in zip(incoming, init_pdgs)]
+        return beam_pdgs, [half_e, half_e]
+
+    def _lhapdf_id(self):
+        """Central LHAPDF id of the beam PDF set (read from its .info SetIndex),
+        or -1 for a leptonic beam (no PDF)."""
+        if self.leptonic:
+            return -1
+        pdf_set = self.run_card["beam"]["pdf"]
+        info = os.path.join(PDF_PATH or "", pdf_set, "%s.info" % pdf_set)
+        try:
+            for line in open(info):
+                if line.strip().startswith("SetIndex:"):
+                    return int(line.split(":", 1)[1].strip())
+        except Exception as err:
+            logger.warning("could not read LHAPDF id from %s: %s", info, err)
+        return -1
+
+    def build_lhe_meta(self):
+        """Build the LHE header/<init> metadata: the param_card (<slha>) and the
+        run_card.toml (<MG7RunCard>) headers plus the beam/PDF/cross-section info
+        needed by downstream tools (systematics, MadSpin, ...)."""
+        beam_pdgs, energies = self._beam_info()
+        lhaid = self._lhapdf_id()
+        pdf_group = -1 if self.leptonic else 0
+        status = self.event_generator.status()
+        xsec, err = status.mean, status.error
+        with open(self.param_card_path) as f:
+            param_text = f.read()
+        with open(os.path.join("Cards", "run_card.toml")) as f:
+            run_text = f.read()
+        headers = []
+        # generation commands (model + process): read by MadSpin/reweight/...
+        proc_card = os.path.join("Cards", "proc_card_mg5.dat")
+        if os.path.exists(proc_card):
+            with open(proc_card) as f:
+                headers.append(ms.LHEHeader(name="MG5ProcCard", content=f.read()))
+        headers.append(ms.LHEHeader(name="slha", content=param_text))
+        headers.append(ms.LHEHeader(name="MG7RunCard", content=run_text))
+        return ms.LHEMeta(
+            beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
+            beam1_energy=energies[0], beam2_energy=energies[1],
+            beam1_pdf_authors=pdf_group, beam2_pdf_authors=pdf_group,
+            beam1_pdf_id=lhaid, beam2_pdf_id=lhaid,
+            weight_mode=3,
+            # positional: the pybind arg name for max_weight is non-kwarg-safe
+            processes=[ms.LHEProcess(xsec, err, xsec, 1)],
+            headers=headers,
+        )
 
     def build_lhe_completer(self):
         subproc_args = []
@@ -1456,20 +1522,73 @@ class MadgraphSubprocess:
         )
 
 
-def ask_edit_cards() -> None:
-    #TODO: these imports break when trying to generate flame graphs, so do them locally for now
-    from madgraph.interface.common_run_interface import CommonRunCmd, AskforEditCard
-    from madgraph.interface.extended_cmd import Cmd
+def load_mg5_options() -> dict:
+    """Read the tool paths from the MG5aMC configuration so the launcher knows
+    which optional programs (Pythia8/Delphes/MadSpin/reweight/analysis) are
+    available.  Relative *_path entries are resolved against the MG5aMC root."""
 
-    #TODO: some rather disgusting monkey-patching to make editing cards work
+    import madgraph
+    mg5dir = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+
+    options = {
+        'pythia-pgs_path': None, 'pythia8_path': None, 'madanalysis_path': None,
+        'madanalysis5_path': None, 'exrootanalysis_path': None, 'delphes_path': None,
+        'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
+        'lhapdf': None, 'timeout': 0,
+        'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
+    }
+    config_files = [os.path.join(mg5dir, 'input', 'mg5_configuration.txt')]
+    home = os.environ.get('HOME')
+    if home:
+        config_files.append(os.path.join(home, '.mg5', 'mg5_configuration.txt'))
+        config_files.append(os.path.join(
+            os.environ.get('XDG_CONFIG_HOME', os.path.join(home, '.config')),
+            'mg5_configuration.txt'))
+    for cfg in config_files:
+        if not os.path.exists(cfg):
+            continue
+        with open(cfg) as fsock:
+            for line in fsock:
+                line = line.split('#', 1)[0]
+                if '=' not in line:
+                    continue
+                name, value = (x.strip() for x in line.split('=', 1))
+                if name not in options or value in ('', 'None'):
+                    continue
+                if name.endswith('_path') and value.startswith('.'):
+                    value = os.path.join(mg5dir, value)
+                options[name] = value
+    options['mg5_path'] = mg5dir  # enables MadSpin/reweight
+    return options
+
+
+def build_selector_cmd():
+    """Build the (monkey-patched) mother command + merged switch/card selector
+    used by the mg7 output.  Returns the selector *class* and a mother instance
+    understood by AskRun/AskforEditCard."""
+
+    from madgraph.interface.common_run_interface import CommonRunCmd
+    from madgraph.interface.extended_cmd import Cmd
+    from madgraph.interface.madevent_interface import AskRunEditCard
+
     class MG7Cmd(Cmd):
+
         def __init__(self):
             super().__init__(".", {})
-            self.proc_characteristics = None
+            self.me_dir = "."
+            self.options = load_mg5_options()
+            self.plugin_path = []
+            self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
+
+        def keep_cards(self, need_card=[], ignore=[]):
+            return CommonRunCmd.keep_cards(self, need_card, ignore)
+
         def do_open(self, line):
             CommonRunCmd.do_open(self, line)
+
         def check_open(self, args):
             CommonRunCmd.check_open(self, args)
+
         def do_compute_widths(self, line):
             # The interactive card editor delegates 'auto' width computation to
             # the mother interface. Reuse the runtime helper (mg5_aMC subprocess
@@ -1481,101 +1600,481 @@ def ask_edit_cards() -> None:
             # return an empty mapping: the caller iterates out.items() for the
             # small-width treatment, which mg7 does not apply.
             return {}
-    old_define_paths = AskforEditCard.define_paths
-    def define_paths(self, **opt):
-        old_define_paths(self, **opt)
-        self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
-        self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
-        # the TOML run_card uses its own default file (concrete defaults written
-        # at output time); this powers "set <param> default".
-        self.paths["run_default"] = os.path.join(self.me_dir, "Cards", "run_card_default.toml")
-    AskforEditCard.define_paths = define_paths
 
-    # Make sure the run_card is loaded as a RunCardMG7 regardless of whether the
-    # generic editor recognised run_card.toml (older common_run_interface, an
-    # unexpected me_dir, ...). Without this self.run_card can stay {} and every
-    # "set <param>" is rejected as an invalid command.
     from madgraph.various import banner as _banner_mod
     from madgraph.various import misc as _misc
-    old_init_run = AskforEditCard.init_run
-    def init_run(self, cards):
-        out = old_init_run(self, cards)
-        if not isinstance(getattr(self, "run_card", None), RunCardMG7):
-            toml_path = self.paths.get("run") or os.path.join(
-                self.me_dir, "Cards", "run_card.toml")
-            if os.path.exists(toml_path):
-                try:
-                    # allow_scan so a run_card that already holds scan:[...]
-                    # values loads instead of failing the type conversion
-                    with _misc.TMP_variable(_banner_mod.RunCard, "allow_scan", True):
-                        self.run_card = RunCardMG7(toml_path, consistency="warning")
-                    self.run_set = list(self.run_card.keys())
-                except Exception as err:
-                    logger.warning("could not load %s: %s", toml_path, err)
-        # let "set <param> scan:[...]" be accepted for the toml run_card
-        if isinstance(getattr(self, "run_card", None), RunCardMG7):
-            self.run_card.allow_scan = True
-        return getattr(self, "run_set", out)
-    AskforEditCard.init_run = init_run
 
-    # Extra "set" handling for the TOML run_card: madevent-style shortcuts
-    # (lhc/lep/fixed_scale/no_parton_cut), cut editing, energy units and
-    # arithmetic/mass expressions. The generic editor only knows the fixed
-    # [section] parameters, so these are intercepted before delegating.
-    old_do_set = AskforEditCard.do_set
-    def do_set(self, line, *args, **kwargs):
-        targs = self.split_arg(line)
-        run_card = getattr(self, "run_card", None)
-        if isinstance(run_card, RunCardMG7) and targs:
-            start = 1 if targs[0] == "run_card" else 0
-            if len(targs) > start:
-                name = targs[start]
-                nlow = name.lower()
-                rest = " ".join(targs[start + 1:]).split("#")[0].strip()
-                masses = run_card.get_mass_shortcuts(getattr(self, "param_card", None))
+    class MG7Selector(AskRunEditCard):
+        """Merged switch/card question for the mg7 output.
 
-                # --- shortcuts ---
-                if nlow in ("no_parton_cut", "nocut", "no_cut"):
-                    run_card.remove_all_cut()
-                    logger.info("removing all cuts from the run_card.toml")
-                    self.modified_card.add("run")
-                    return
-                if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
-                    ecm = run_card.set_collider(nlow, rest, masses)
-                    logger.info("set %s collider: e_cm = %s GeV", nlow, ecm)
-                    self.modified_card.add("run")
-                    return
-                if nlow == "fixed_scale" and rest:
-                    val = run_card.set_fixed_scale(rest, masses)
-                    logger.info("set fixed scales to %s GeV", val)
-                    self.modified_card.add("run")
-                    return
+        The mg7 run_card is a TOML file, so define_paths/init_run/do_set are
+        overridden *on this class* (not globally on AskforEditCard) to treat it
+        as such. Scoping them here is important: MadSpin/reweight spawn their own
+        legacy madevent runs in the same process, and a global patch would break
+        their (run_card.dat based) card editing."""
 
-                # --- cut editing (with units/math/mass) ---
-                if rest and run_card.is_cut_name(name):
-                    cut, bound, val = run_card.set_cut(name, run_card.evaluate(rest, masses))
-                    logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
-                    self.modified_card.add("run")
-                    return
+        # param_card + the TOML run_card are always offered
+        always_cards = ['param_card.dat', 'run_card.toml']
+        optional_cards = []
 
-                # --- numeric params: resolve units/arithmetic/masses ---
-                if rest and nlow in [k.lower() for k in run_card.keys()]:
-                    current = run_card[nlow]
-                    if isinstance(current, (int, float)) and not isinstance(current, bool):
-                        resolved = run_card.evaluate(rest, masses)
-                        if not isinstance(resolved, str):
-                            prefix = "run_card " if start == 1 else ""
-                            line = "%s%s %s" % (prefix, name, resolved)
-        return old_do_set(self, line, *args, **kwargs)
-    AskforEditCard.do_set = do_set
+        def define_paths(self, **opt):
+            super().define_paths(**opt)
+            self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+            self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+            # the TOML run_card uses its own default file (concrete defaults
+            # written at output time); this powers "set <param> default".
+            self.paths["run_default"] = os.path.join(self.me_dir, "Cards", "run_card_default.toml")
 
-    cmd = MG7Cmd()
-    CommonRunCmd.ask_edit_card_static(
-        ["param_card.dat", "run_card.toml"],
-        pwd=".",
-        ask=cmd.ask,
-        plot=False
-    )
+        def init_run(self, cards):
+            # Make sure the run_card is loaded as a RunCardMG7 (the generic
+            # editor does not recognise run_card.toml), else "set <param>" fails.
+            out = super().init_run(cards)
+            if not isinstance(getattr(self, "run_card", None), RunCardMG7):
+                toml_path = self.paths.get("run") or os.path.join(
+                    self.me_dir, "Cards", "run_card.toml")
+                if os.path.exists(toml_path):
+                    try:
+                        # allow_scan so a run_card holding scan:[...] values loads
+                        with _misc.TMP_variable(_banner_mod.RunCard, "allow_scan", True):
+                            self.run_card = RunCardMG7(toml_path, consistency="warning")
+                        self.run_set = list(self.run_card.keys())
+                    except Exception as err:
+                        logger.warning("could not load %s: %s", toml_path, err)
+            if isinstance(getattr(self, "run_card", None), RunCardMG7):
+                self.run_card.allow_scan = True
+            return getattr(self, "run_set", out)
+
+        def do_set(self, line, *args, **kwargs):
+            # madevent-style shortcuts (lhc/lep/fixed_scale/no_parton_cut), cut
+            # editing, energy units and arithmetic/mass expressions on the TOML
+            # run_card, intercepted before delegating to the generic editor.
+            targs = self.split_arg(line)
+            run_card = getattr(self, "run_card", None)
+            if isinstance(run_card, RunCardMG7) and targs:
+                start = 1 if targs[0] == "run_card" else 0
+                if len(targs) > start:
+                    name = targs[start]
+                    nlow = name.lower()
+                    rest = " ".join(targs[start + 1:]).split("#")[0].strip()
+                    masses = run_card.get_mass_shortcuts(getattr(self, "param_card", None))
+
+                    if nlow in ("no_parton_cut", "nocut", "no_cut"):
+                        run_card.remove_all_cut()
+                        logger.info("removing all cuts from the run_card.toml")
+                        self.modified_card.add("run")
+                        return
+                    if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
+                        ecm = run_card.set_collider(nlow, rest, masses)
+                        logger.info("set %s collider: e_cm = %s GeV", nlow, ecm)
+                        self.modified_card.add("run")
+                        return
+                    if nlow == "fixed_scale" and rest:
+                        val = run_card.set_fixed_scale(rest, masses)
+                        logger.info("set fixed scales to %s GeV", val)
+                        self.modified_card.add("run")
+                        return
+
+                    if rest and run_card.is_cut_name(name):
+                        cut, bound, val = run_card.set_cut(name, run_card.evaluate(rest, masses))
+                        logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
+                        self.modified_card.add("run")
+                        return
+
+                    # legacy madevent run_card names -> mg7 "section.key", so a
+                    # madevent-style launch script ("set nevents 500", "set
+                    # use_syst F", "set bwcutoff 10", ...) edits the mg7
+                    # run_card.toml verbatim. RunCardMG7._LO_SCALAR_MAP is the
+                    # same rename table used by the LO->MG7 run_card conversion.
+                    if rest and nlow in run_card._LO_SCALAR_MAP \
+                            and nlow not in [k.lower() for k in run_card.keys()]:
+                        target = run_card._LO_SCALAR_MAP[nlow]
+                        run_card.set(target, rest, user=True)
+                        logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                    nlow, target, run_card[target])
+                        self.modified_card.add("run")
+                        return
+
+                    if rest and nlow in [k.lower() for k in run_card.keys()]:
+                        current = run_card[nlow]
+                        if isinstance(current, (int, float)) and not isinstance(current, bool):
+                            resolved = run_card.evaluate(rest, masses)
+                            if not isinstance(resolved, str):
+                                prefix = "run_card " if start == 1 else ""
+                                line = "%s%s %s" % (prefix, name, resolved)
+            return super().do_set(line, *args, **kwargs)
+
+    return MG7Selector, MG7Cmd()
+
+
+def ask_edit_cards() -> dict:
+    """Single (MadDM-style) question letting the user both pick which programs
+    to run after generation and edit the associated cards.  Returns the switch
+    dict describing the selected tools."""
+
+    selector_class, mother = build_selector_cmd()
+    # path_msg is what makes Cmd.check_answer_in_input_file accept a bare path as
+    # an answer (its "elif path:" branch), so that a scripted launch can hand the
+    # question a card/banner path -- as the question itself advertises -- and have
+    # it replace the corresponding card. Without it the path is rejected ("This
+    # answer is not valid for current question") and the default is used instead.
+    switch, question = mother.ask('', '0', [], path_msg='enter path',
+                                  ask_class=selector_class,
+                                  mode='auto', line_args=[], force=False,
+                                  return_instance=True)
+    switch = dict(switch)
+    prune_unselected_tool_cards(mother, question, switch)
+    return switch
+
+
+def prune_unselected_tool_cards(mother, question, switch) -> None:
+    """Hide the cards of the tools that were NOT selected in the question.
+
+    The question materialises every candidate tool card (copying the
+    *_default.dat) so that it can offer them all for edition; madevent's
+    ask_run_configuration prunes them again afterwards (keep_cards on the
+    selected cards), but the mg7 launcher had no such cleanup. The materialised
+    cards therefore persisted, and a later re-launch of the same output saw them
+    all present and defaulted every switch to ON (set_default_<tool> keys off
+    card presence). Prune here too, using the question's own switch->card map, so
+    a re-launch reflects the previous selection instead of turning everything on.
+    """
+    try:
+        keep = list(question.always_cards)
+        for spec in question.switch_cards:
+            if spec['on'](switch):
+                keep.append(spec['card'])
+        mother.keep_cards(keep)
+    except Exception as error:
+        logger.debug('could not prune unselected tool cards: %s', error)
+
+
+def _find_event_file(run_path):
+    """Locate the LHE event file produced by generate_events (if any)."""
+    for name in ("events.lhe", "events.lhe.gz"):
+        path = os.path.join(run_path, name)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _report_failure(log, what, error, directory=None):
+    """Log a post-processing failure and write the full traceback to a file
+    (whose path is printed) so the problem can be investigated."""
+    import traceback
+    if not directory or not os.path.isdir(directory):
+        directory = os.getcwd()
+    path = os.path.join(directory, "%s_crash.log" % what.replace(" ", "_"))
+    try:
+        with open(path, "w") as fsock:
+            fsock.write(traceback.format_exc())
+    except Exception:
+        path = None
+    log.warning("%s failed: %s", what, error)
+    if path:
+        log.warning("full traceback written to: %s", path)
+
+
+def _off(value) -> bool:
+    """True when a switch value means the tool was not selected."""
+    return value in (None, "OFF", "Not Avail.", "Not Avail. (numpy missing)")
+
+
+_TOOL_LOGGING_READY = False
+
+
+def _setup_tool_logging():
+    """Make the reused madevent tool drivers' progress visible on screen.
+
+    The drivers already narrate what they do through logger.info /
+    update_status ("Running Pythia8 [arXiv:...]", "Splitting .lhe event
+    file...", the live Idle/Running/Completed job counters, "Running
+    MadSpin", ...), but the standalone mg7 launcher never attaches a handler
+    to the 'madgraph'/'madevent' loggers, so all of it is swallowed. Attach a
+    colored INFO console handler to them (idempotent)."""
+    global _TOOL_LOGGING_READY
+    if _TOOL_LOGGING_READY:
+        return
+    try:
+        import madgraph.interface.coloring_logging  # registers ColorFormatter
+        formatter = logging.ColorFormatter("%(message)s")
+    except Exception:
+        formatter = logging.Formatter("%(message)s")
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    handler._mg7_tool_handler = True
+    for name in ("madgraph", "madevent", "cmdprint"):
+        lg = logging.getLogger(name)
+        if not any(getattr(h, "_mg7_tool_handler", False) for h in lg.handlers):
+            lg.addHandler(handler)
+        lg.setLevel(logging.INFO)
+        lg.propagate = False
+    _TOOL_LOGGING_READY = True
+
+
+def run_selected_tools(switch, process) -> None:
+    """Run the optional post-processing programs selected in the merged
+    question on the generated events.
+
+    All the tools are driven through :class:`MG7RunCmd`, a thin adapter around
+    the standard madevent run interface (``MadEventCmd``). This means the mg7
+    output reuses the *exact* madevent tool drivers -- in particular Pythia8 is
+    showered in parallel over the cluster/multicore backend, identically to a
+    madevent run -- instead of re-implementing each tool here. The command
+    sequence mirrors ``MadEventCmd.do_launch`` (reweight, MadSpin, MA5 parton,
+    shower, Delphes, MA5 hadron, Rivet); each tool checks its own card, so a
+    tool is invoked only when its switch is on.
+    """
+    log = logging.getLogger("madevent")
+
+    active = {k: v for k, v in switch.items() if not _off(v)}
+    if not active:
+        return
+
+    lhe_path = _find_event_file(process.run_path)
+    if lhe_path is None:
+        log.warning("No LHE event file in %s; cannot run %s.",
+                    process.run_path, ", ".join(sorted(active)))
+        return
+
+    # surface the reused madevent drivers' own progress messages on screen
+    _setup_tool_logging()
+
+    run_name = os.path.basename(os.path.dirname(os.path.abspath(lhe_path)))
+    run_dir = os.path.dirname(os.path.abspath(lhe_path))
+
+    # MadAnalysis5 hadron level analyses the shower/detector output, so it only
+    # makes sense when a shower ran (mirrors madevent's card gating:
+    # analysis == 'MadAnalysis5' and shower != 'OFF').
+    ma5 = switch.get("analysis") == "MadAnalysis5"
+    showered = not _off(switch.get("shower"))
+    tools = [t for t, on in (
+        ("reweighting", not _off(switch.get("reweight"))),
+        ("MadSpin", not _off(switch.get("madspin"))),
+        ("MadAnalysis5 (parton level)", ma5),
+        ("Pythia8 shower", switch.get("shower") == "Pythia8"),
+        ("Delphes", switch.get("detector") == "Delphes"),
+        ("MadAnalysis5 (hadron level)", ma5 and showered),
+        ("Rivet", switch.get("analysis") == "Rivet"),
+    ) if on]
+    log.info("")
+    log.info("Post-processing the generated events with: %s", ", ".join(tools))
+
+    try:
+        from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
+        cmd = MG7RunCmd(os.getcwd(), load_mg5_options(), run_name, lhe_path)
+        cmd.set_run_name(run_name, None, "parton")
+    except Exception as error:
+        _report_failure(log, "post-processing setup", error, run_dir)
+        return
+
+    def run(tool, command):
+        bar = "=" * 60
+        log.info("")
+        log.info(bar)
+        log.info("  post-processing step: %s", tool)
+        log.info(bar)
+        start = time.time()
+        try:
+            cmd.exec_cmd(command, postcmd=False, printcmd=False)
+        except Exception as error:
+            _report_failure(log, tool, error, run_dir)
+        else:
+            log.info("  -> %s done (%.1fs)", tool, time.time() - start)
+
+    # Same order as MadEventCmd.do_launch. The commands take no run name and so
+    # act on cmd.run_name: reweight runs on the generated events, then
+    # decay_events (MadSpin) repoints cmd.run_name to the "<run>_decayed_i" run,
+    # so the shower and the analyses that follow act on the decayed events --
+    # exactly as a madevent run does. Each driver still guards on its own card.
+    if not _off(switch.get("reweight")):
+        run("reweight", "reweight -from_cards")
+    if not _off(switch.get("madspin")):
+        run("MadSpin", "decay_events -from_cards")
+    if ma5:
+        run("MadAnalysis5 (parton)", "madanalysis5_parton --no_default")
+    if switch.get("shower") == "Pythia8":
+        run("Pythia8 shower", "shower --no_default")
+    if switch.get("detector") == "Delphes":
+        run("Delphes", "delphes --no_default")
+    # hadron-level MA5 needs the shower/detector output: only run it if a shower
+    # was requested (otherwise there is no hadron-level event file to analyse).
+    if ma5 and showered:
+        run("MadAnalysis5 (hadron)", "madanalysis5_hadron --no_default")
+    if switch.get("analysis") == "Rivet":
+        run("Rivet", "rivet --no_default")
+
+    # Finalize the run exactly as MadEventCmd.do_launch does after the
+    # shower/detector/analysis tools: store_result() processes the deferred
+    # "to_store" actions -- in particular it gzips the Pythia8 HepMC to
+    # <tag>_pythia8_events.hepmc.gz (the pythia8_card default is HEPMCoutput:file
+    # = hepmc.gz). The deferred Rivet job reads exactly that .gz path, so this
+    # must run before the Rivet/Contur postprocessor below.
+    try:
+        cmd.store_result()
+    except Exception as error:
+        _report_failure(log, "store_result", error, run_dir)
+
+    if switch.get("analysis") == "Rivet":
+        # do_rivet only *prepared* the run (wrote Events/<run>/run_rivet.sh) and
+        # deferred execution to the postprocessor -- the rivet_card default has
+        # run_rivet_later = True, so with --no_default it logged "Skipping Rivet
+        # for now, passing it to postprocessor" and appended the run to
+        # cmd.postprocessing_dirs. MadEventCmd.do_launch runs that postprocessor
+        # at the end of a run; do the same here so the .yoda (and, when
+        # run_contur = True, the Contur limits) are actually produced.
+        bar = "=" * 60
+        log.info("")
+        log.info(bar)
+        log.info("  post-processing step: Rivet/Contur postprocessing")
+        log.info(bar)
+        start = time.time()
+        try:
+            cmd.postprocessing()
+        except Exception as error:
+            _report_failure(log, "Rivet-Contur postprocessing", error, run_dir)
+        else:
+            log.info("  -> Rivet/Contur postprocessing done (%.1fs)",
+                     time.time() - start)
+
+
+def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
+    """Add invariant-lifetime (vtim) information to the LHE events, drawing each
+    unstable particle's decay length from its width (in mm). Mirrors
+    common_run_interface.CommonRunCmd.do_add_time_of_flight but reads the widths
+    from the local param_card instead of the LHE banner."""
+    import random
+    try:
+        import madgraph.various.lhe_parser as lhe_parser
+    except ImportError:
+        import internal.lhe_parser as lhe_parser
+    from models import check_param_card as param_card_mod
+    from madgraph.various import misc as _misc
+    import madgraph.iolibs.files as files
+
+    need_zip = lhe_path.endswith('.gz')
+    if need_zip:
+        _misc.gunzip(lhe_path)
+        lhe_path = lhe_path[:-3]
+
+    param_card = param_card_mod.ParamCard(param_card_path)
+    cst = 6.58211915e-25   # hbar in GeV s
+    c = 299792458000       # speed of light in mm/s
+    log.info('Adding time of flight information on %s', lhe_path)
+    lhe = lhe_parser.EventFile(lhe_path)
+    out = open('%s_2vertex.lhe' % lhe_path, 'w')
+    out.write(lhe.banner)
+    for event in lhe:
+        for particle in event:
+            # default=0 -> particles without a decay entry are treated as stable
+            width = param_card['decay'].get((abs(particle.pid),), 0.).value
+            if width:
+                vtim = c * random.expovariate(width / cst)
+                if vtim > threshold:
+                    particle.vtim = vtim
+        out.write(str(event))
+    out.write('</LesHouchesEvents>\n')
+    out.close()
+    lhe.close()
+    files.mv('%s_2vertex.lhe' % lhe_path, lhe_path)
+    if need_zip:
+        _misc.gzip(lhe_path)
+
+
+def _lhapdf_config_path():
+    """Best-effort path to lhapdf-config so systematics can import the python
+    lhapdf module (required to compute PDF/scale variations)."""
+    cfg = os.environ.get("MADGRAPH_LHAPDF_CONFIG")
+    if cfg and os.path.exists(cfg):
+        return cfg
+    if PDF_PATH:
+        # PDF_PATH is <prefix>/share/LHAPDF -> <prefix>/bin/lhapdf-config
+        cand = os.path.join(os.path.dirname(os.path.dirname(PDF_PATH)),
+                            "bin", "lhapdf-config")
+        if os.path.exists(cand):
+            return cand
+    import shutil
+    return shutil.which("lhapdf-config")
+
+
+def _run_systematics(lhe_path, cfg, log):
+    """Run systematics.py (scale/PDF variations) on the LHE file, reusing the
+    exact worker madevent uses (systematics.call_systematics)."""
+    try:
+        import madgraph.various.systematics as systematics
+    except ImportError:
+        import internal.systematics as systematics
+
+    def fmt(vals):
+        return ','.join(str(v) for v in vals)
+
+    opts = []
+    if cfg.get('systematics_mur'):
+        opts.append('--mur=%s' % fmt(cfg['systematics_mur']))
+    if cfg.get('systematics_muf'):
+        opts.append('--muf=%s' % fmt(cfg['systematics_muf']))
+    if cfg.get('systematics_pdf'):
+        opts.append('--pdf=%s' % fmt(cfg['systematics_pdf']))
+    extra = cfg.get('systematics_str_options', '')
+    if extra:
+        opts.extend(extra.split())
+    # The mg7 LHE has no <mgrwt> block, so systematics cannot read the per-event
+    # LO reweighting info. For a process with a single alpha_s power (stored in
+    # SubProcesses/proc_characteristics at output time) it can be reconstructed
+    # from the events: pass that power as --lo_nqcd. -1 means the QCD power is
+    # not uniform, so the reconstruction is not applicable.
+    if not any(o.startswith('--lo_nqcd') for o in opts):
+        try:
+            from madgraph.various import banner as _banner_mod
+        except ImportError:
+            import internal.banner as _banner_mod
+        pc_path = os.path.join('SubProcesses', 'proc_characteristics')
+        if os.path.exists(pc_path):
+            try:
+                nqcd = int(_banner_mod.ProcCharacteristic(pc_path)['single_qcd_order'])
+            except Exception:
+                nqcd = -1
+            if nqcd >= 0:
+                opts.append('--lo_nqcd=%d' % nqcd)
+    # tell systematics where to find lhapdf (so it can link the python module)
+    if not any(o.startswith('--lhapdf_config') for o in opts):
+        lhapdf_config = _lhapdf_config_path()
+        if lhapdf_config:
+            opts.append('--lhapdf_config=%s' % lhapdf_config)
+
+    log.info('Running systematics on %s %s', lhe_path, ' '.join(opts))
+    systematics.call_systematics([lhe_path, lhe_path] + opts,
+                                 log=lambda x: log.info(str(x)))
+
+
+def run_lhe_postprocessing(process) -> None:
+    """Run the LHE-level post-processings configured in the run_card
+    [postprocessing] section on the generated event file (displaced-vertex
+    time-of-flight and systematics). Only applies when an LHE file exists."""
+    lhe_path = _find_event_file(process.run_path)
+    if lhe_path is None:
+        return
+    # process.run_card is a RunCardMG7; the section view exposes .get(key, def)
+    try:
+        cfg = process.run_card["postprocessing"]
+    except Exception:
+        return
+    log = logging.getLogger('madevent')
+
+    if cfg.get('systematics'):
+        try:
+            _run_systematics(lhe_path, cfg, log)
+        except Exception as error:
+            _report_failure(log, "systematics computation", error,
+                            os.path.dirname(lhe_path))
+
+    tof = cfg.get('time_of_flight', -1.0)
+    try:
+        if tof is not None and float(tof) >= 0:
+            _add_time_of_flight(lhe_path, float(tof), process.param_card_path, log)
+    except Exception as error:
+        _report_failure(log, "add_time_of_flight", error,
+                        os.path.dirname(lhe_path))
+
 
 def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat")) -> None:
     """Fill any width set to ``auto`` in the param_card, using mg5_aMC and the
@@ -1646,13 +2145,19 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             pass
 
 
-def run_single() -> "MadgraphProcess":
+def run_single(switch=None) -> "MadgraphProcess":
     """Run a single generation and return the process (for its result)."""
     compute_auto_widths()
     process = MadgraphProcess()
     process.survey()
     process.train_madnis()
     process.generate_events()
+    # run_card-driven LHE post-processing (displaced vertex + systematics)
+    run_lhe_postprocessing(process)
+    # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)
+    # selected in the merged question above on the generated events.
+    if switch:
+        run_selected_tools(switch, process)
     return process
 
 
@@ -1682,7 +2187,7 @@ def detect_param_scan(param_card_path):
     return None
 
 
-def run_scan(iterator, card_path) -> None:
+def run_scan(iterator, card_path, switch=None) -> None:
     """Iterate over all scan points, running a full generation for each and
     accumulating the results, then write the scan summary. Works for both the
     run_card (RunCardIterator) and the param_card (ParamCardIterator); their
@@ -1701,7 +2206,7 @@ def run_scan(iterator, card_path) -> None:
         for i, point in enumerate(iterator):
             point.write(card_path)
             logger.info("=== scan point %d ===", i + 1)
-            process = run_single()
+            process = run_single(switch)
             # use the run directory the process actually created, so the
             # per-point params.dat written by write_summary has a home
             name = os.path.basename(process.run_path)
@@ -1720,7 +2225,7 @@ def run_scan(iterator, card_path) -> None:
         shutil.move(backup, card_path)
 
 
-def run_generation() -> None:
+def run_generation(switch=None) -> None:
     """Run the generation, expanding a scan over the run_card or the param_card
     when one is present (scanning both simultaneously is not allowed)."""
     run_card_path = os.path.join("Cards", "run_card.toml")
@@ -1732,22 +2237,43 @@ def run_generation() -> None:
             "Scanning simultaneously over the run_card and the param_card is "
             "not allowed. Please keep the scan:[...] entries in only one card.")
     if run_iter:
-        run_scan(run_iter, run_card_path)
+        run_scan(run_iter, run_card_path, switch)
     elif param_iter:
-        run_scan(param_iter, param_card_path)
+        run_scan(param_iter, param_card_path, switch)
     else:
-        run_single()
+        run_single(switch)
+
+
+def force_lhe_output_if_needed(switch) -> None:
+    """Any post-processing tool (shower/detector/madspin/reweight/analysis)
+    operates on an LHE file, so make sure the events are written in that format
+    when one of them is enabled."""
+    if not switch:
+        return
+    if not any(switch.get(k, "OFF") not in ("OFF", "Not Avail.")
+               for k in ("shower", "detector", "madspin", "reweight", "analysis")):
+        return
+    from madgraph.various.banner import RunCardMG7
+    path = os.path.join("Cards", "run_card.toml")
+    run_card = RunCardMG7(path, consistency=False)
+    if run_card["run"]["output_format"] != "lhe":
+        run_card["run"]["output_format"] = "lhe"
+        run_card.write(path)
+        logging.getLogger("madevent").info(
+            "output_format set to 'lhe' (required by the selected post-processing).")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
     args = parser.parse_args()
+    switch = {}
     if args.ask_edit_cards:
-        ask_edit_cards()
+        switch = ask_edit_cards()
+        force_lhe_output_if_needed(switch)
 
     # Remove soft limit on number of open files as it can be quite low on some systems
     soft_lim, hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (hard_lim, hard_lim))
 
-    run_generation()
+    run_generation(switch)
