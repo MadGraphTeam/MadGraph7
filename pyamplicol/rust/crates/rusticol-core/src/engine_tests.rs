@@ -807,16 +807,24 @@ fn final_state_alias_three_cycle_preserves_contracted_color_reduction() {
         vec![0]
     );
 
-    let contraction = || ColorContractionRuntime {
-        group_count: 1,
-        entries: vec![ColorContractionEntry {
-            left_group_index: 0,
-            right_group_index: 0,
-            weight_re: 2.0,
-            weight_im: 0.0,
-            symmetry_factor: 1.0,
-        }],
-        group_scratch_f64: Vec::new(),
+    let contraction = || {
+        let groups = [RawSumGroup {
+            id: 7,
+            indices: vec![0],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![0],
+        }];
+        ColorContractionRuntime::new(
+            &groups,
+            vec![ColorContractionEntry {
+                left_group_index: 0,
+                right_group_index: 0,
+                weight_re: 2.0,
+                weight_im: 0.0,
+                symmetry_factor: 1.0,
+            }],
+        )
     };
     let representative_total = test_amplitude_runtime(vec![c64(3.0, 0.0)], Some(contraction()))
         .reduce_scratch_f64_resolved(1, &representative_physics, 2.0, None, None)
@@ -902,17 +910,23 @@ fn resolved_lc_reduction_expands_symmetries_and_structural_zeros() {
 fn contracted_reductions_have_one_color_component_and_sum_to_total() {
     for color_accuracy in ["nlc", "full"] {
         let physics = test_physics_runtime(color_accuracy);
-        let contraction = ColorContractionRuntime {
-            group_count: 1,
-            entries: vec![ColorContractionEntry {
+        let groups = [RawSumGroup {
+            id: 7,
+            indices: vec![0],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![0],
+        }];
+        let contraction = ColorContractionRuntime::new(
+            &groups,
+            vec![ColorContractionEntry {
                 left_group_index: 0,
                 right_group_index: 0,
                 weight_re: 2.0,
                 weight_im: 0.0,
                 symmetry_factor: 1.0,
             }],
-            group_scratch_f64: Vec::new(),
-        };
+        );
         let mut amplitude = test_amplitude_runtime(vec![c64(3.0, 0.0)], Some(contraction));
 
         let resolved = amplitude
@@ -924,6 +938,262 @@ fn contracted_reductions_have_one_color_component_and_sum_to_total() {
         assert_eq!(resolved.values, vec![18.0, 18.0]);
         assert_eq!(resolved.values.iter().sum::<f64>(), 36.0);
     }
+}
+
+fn repeated_test_group(id: i64, output_index: usize, sector_id: i64) -> RawSumGroup {
+    RawSumGroup {
+        id,
+        indices: vec![output_index],
+        weight: 1.0,
+        all_sector_weight: 1.0,
+        sector_ids: vec![sector_id],
+    }
+}
+
+fn legacy_color_contraction_totals(
+    amplitudes: &[Complex<f64>],
+    output_length: usize,
+    groups: &[RawSumGroup],
+    entries: &[ColorContractionEntry],
+) -> Vec<f64> {
+    amplitudes
+        .chunks_exact(output_length)
+        .map(|row| {
+            let group_values = groups
+                .iter()
+                .map(|group| {
+                    group
+                        .indices
+                        .iter()
+                        .map(|index| row[*index])
+                        .sum::<Complex<f64>>()
+                })
+                .collect::<Vec<_>>();
+            entries.iter().fold(0.0, |total, entry| {
+                let product = group_values[entry.left_group_index]
+                    * group_values[entry.right_group_index].conj();
+                total
+                    + entry.symmetry_factor
+                        * (entry.weight_re * product.re - entry.weight_im * product.im)
+            })
+        })
+        .collect()
+}
+
+fn reduction_test_amplitude(
+    output_length: usize,
+    outputs: Vec<Complex<f64>>,
+    groups: Vec<RawSumGroup>,
+    entries: Vec<ColorContractionEntry>,
+) -> AmplitudeRuntime {
+    let contraction = ColorContractionRuntime::new(&groups, entries);
+    AmplitudeRuntime {
+        output_length,
+        raw_sum_weights: vec![1.0; output_length],
+        raw_sum_all_sector_weights: vec![1.0; output_length],
+        raw_sum_color_sector_ids: vec![None; output_length],
+        raw_sum_groups: groups,
+        has_coherent_groups: true,
+        color_contraction: Some(contraction),
+        input_components: None,
+        input_spans: Vec::new(),
+        parameter_scratch_f64: Vec::new(),
+        evaluator_output_scratch_f64: Vec::new(),
+        output_scratch_f64: outputs,
+        resolved_source_row_scratch_f64: Vec::new(),
+        resolved_target_row_scratch_f64: Vec::new(),
+        evaluator_output_order: None,
+        evaluator: empty_evaluator_group(),
+    }
+}
+
+#[test]
+fn repeated_real_color_blocks_match_legacy_reduction_for_permuted_outputs() {
+    let groups = vec![
+        repeated_test_group(10, 2, 100),
+        repeated_test_group(11, 5, 100),
+        repeated_test_group(12, 0, 200),
+        repeated_test_group(13, 3, 200),
+        repeated_test_group(14, 1, 300),
+        repeated_test_group(15, 4, 300),
+    ];
+    // Deliberately interleave the two disconnected components and do not
+    // present their left indices monotonically. Runtime canonicalization may
+    // change floating-point association, but it must preserve the contraction.
+    let entries = vec![
+        ColorContractionEntry {
+            left_group_index: 3,
+            right_group_index: 5,
+            weight_re: 0.5,
+            weight_im: 0.0,
+            symmetry_factor: 2.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 0,
+            right_group_index: 0,
+            weight_re: 1.25,
+            weight_im: 0.0,
+            symmetry_factor: 1.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 1,
+            right_group_index: 3,
+            weight_re: -0.75,
+            weight_im: 0.0,
+            symmetry_factor: 2.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 4,
+            right_group_index: 4,
+            weight_re: 2.0,
+            weight_im: 0.0,
+            symmetry_factor: 1.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 2,
+            right_group_index: 4,
+            weight_re: 0.5,
+            weight_im: 0.0,
+            symmetry_factor: 2.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 1,
+            right_group_index: 1,
+            weight_re: 1.25,
+            weight_im: 0.0,
+            symmetry_factor: 1.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 0,
+            right_group_index: 2,
+            weight_re: -0.75,
+            weight_im: 0.0,
+            symmetry_factor: 2.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 5,
+            right_group_index: 5,
+            weight_re: 2.0,
+            weight_im: 0.0,
+            symmetry_factor: 1.0,
+        },
+    ];
+    let outputs = vec![
+        c64(0.5, -1.0),
+        c64(1.5, 0.25),
+        c64(-0.75, 2.0),
+        c64(0.125, -0.5),
+        c64(2.25, 1.0),
+        c64(-1.25, -0.75),
+        c64(1.0, 0.5),
+        c64(-0.25, 1.25),
+        c64(0.75, -1.5),
+        c64(2.0, 0.125),
+        c64(-1.0, 0.75),
+        c64(0.25, -2.0),
+    ];
+    let expected = legacy_color_contraction_totals(&outputs, 6, &groups, &entries);
+    let mut amplitude = reduction_test_amplitude(6, outputs, groups, entries);
+    let repeated = amplitude
+        .color_contraction
+        .as_ref()
+        .and_then(|contraction| contraction.repeated_block.as_ref())
+        .expect("two identical color components should be canonicalized");
+    assert_eq!(repeated.component_count, 2);
+    assert_eq!(repeated.entries.len(), 4);
+    assert_eq!(
+        repeated.singleton_output_indices.as_deref(),
+        Some([2, 5, 0, 3, 1, 4].as_slice())
+    );
+    assert!(repeated.all_weights_real);
+
+    let mut actual = vec![0.0; 2];
+    amplitude
+        .reduce_scratch_f64_into_selected_slice(2, &mut actual, None)
+        .unwrap();
+    for (actual, expected) in actual.iter().zip(expected) {
+        assert!(
+            (actual - expected).abs() <= 1.0e-12 * expected.abs().max(1.0),
+            "repeated-block reduction {actual} differs from legacy {expected}"
+        );
+    }
+}
+
+#[test]
+fn repeated_color_block_requires_identical_component_coefficients() {
+    let groups = vec![
+        repeated_test_group(10, 0, 100),
+        repeated_test_group(11, 1, 100),
+        repeated_test_group(12, 2, 200),
+        repeated_test_group(13, 3, 200),
+    ];
+    let entries = vec![
+        ColorContractionEntry {
+            left_group_index: 0,
+            right_group_index: 2,
+            weight_re: 1.0,
+            weight_im: 0.0,
+            symmetry_factor: 2.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 1,
+            right_group_index: 3,
+            weight_re: 1.0 + f64::EPSILON,
+            weight_im: 0.0,
+            symmetry_factor: 2.0,
+        },
+    ];
+    let contraction = ColorContractionRuntime::new(&groups, entries);
+    assert!(contraction.repeated_block.is_none());
+}
+
+#[test]
+fn repeated_complex_color_blocks_match_legacy_reduction() {
+    let groups = vec![
+        repeated_test_group(10, 0, 100),
+        repeated_test_group(11, 1, 100),
+        repeated_test_group(12, 2, 200),
+        repeated_test_group(13, 3, 200),
+    ];
+    let entries = vec![
+        ColorContractionEntry {
+            left_group_index: 0,
+            right_group_index: 2,
+            weight_re: 0.75,
+            weight_im: -0.25,
+            symmetry_factor: 2.0,
+        },
+        ColorContractionEntry {
+            left_group_index: 1,
+            right_group_index: 3,
+            weight_re: 0.75,
+            weight_im: -0.25,
+            symmetry_factor: 2.0,
+        },
+    ];
+    let outputs = vec![
+        c64(1.0, 2.0),
+        c64(-0.5, 0.25),
+        c64(0.75, -1.0),
+        c64(2.0, 0.5),
+    ];
+    let expected = legacy_color_contraction_totals(&outputs, 4, &groups, &entries);
+    let mut amplitude = reduction_test_amplitude(4, outputs, groups, entries);
+    assert!(
+        !amplitude
+            .color_contraction
+            .as_ref()
+            .unwrap()
+            .repeated_block
+            .as_ref()
+            .unwrap()
+            .all_weights_real
+    );
+    let mut actual = vec![0.0];
+    amplitude
+        .reduce_scratch_f64_into_selected_slice(1, &mut actual, None)
+        .unwrap();
+    assert!((actual[0] - expected[0]).abs() <= 1.0e-12 * expected[0].abs().max(1.0));
 }
 
 #[test]

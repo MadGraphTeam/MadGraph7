@@ -3,6 +3,39 @@
 use super::super::*;
 use super::*;
 
+#[inline(always)]
+fn sum_real_hermitian_products(left: &[Complex<f64>], right: &[Complex<f64>]) -> f64 {
+    debug_assert_eq!(left.len(), right.len());
+    let mut sums = [0.0; 4];
+    let mut index = 0;
+    while index + 4 <= left.len() {
+        for lane in 0..4 {
+            let left_value = left[index + lane];
+            let right_value = right[index + lane];
+            sums[lane] += left_value.re * right_value.re + left_value.im * right_value.im;
+        }
+        index += 4;
+    }
+    while index < left.len() {
+        let left_value = left[index];
+        let right_value = right[index];
+        sums[0] += left_value.re * right_value.re + left_value.im * right_value.im;
+        index += 1;
+    }
+    (sums[0] + sums[1]) + (sums[2] + sums[3])
+}
+
+#[inline(always)]
+fn sum_hermitian_products(left: &[Complex<f64>], right: &[Complex<f64>]) -> Complex<f64> {
+    debug_assert_eq!(left.len(), right.len());
+    let mut sum = c64(0.0, 0.0);
+    for (left_value, right_value) in left.iter().zip(right) {
+        sum.re += left_value.re * right_value.re + left_value.im * right_value.im;
+        sum.im += left_value.im * right_value.re - left_value.re * right_value.im;
+    }
+    sum
+}
+
 fn remap_amplitude_outputs(
     batch_size: usize,
     evaluator_output_order: &[usize],
@@ -429,6 +462,63 @@ impl AmplitudeRuntime {
                 return Err(RusticolError::invalid_argument(
                     "colour contraction group count does not match coherent groups",
                 ));
+            }
+            if let Some(repeated_block) = contraction.repeated_block.as_ref() {
+                contraction
+                    .group_scratch_f64
+                    .resize(contraction.group_count, c64(0.0, 0.0));
+                for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
+                    let row_offset = row * self.output_length;
+                    if let Some(output_indices) = repeated_block.singleton_output_indices.as_deref()
+                    {
+                        for (target, output_index) in
+                            contraction.group_scratch_f64.iter_mut().zip(output_indices)
+                        {
+                            *target = amplitudes[row_offset + *output_index];
+                        }
+                    } else {
+                        for (target, group_index) in contraction
+                            .group_scratch_f64
+                            .iter_mut()
+                            .zip(&repeated_block.component_group_indices)
+                        {
+                            let mut sum = c64(0.0, 0.0);
+                            for output_index in &self.raw_sum_groups[*group_index].indices {
+                                sum += amplitudes[row_offset + *output_index];
+                            }
+                            *target = sum;
+                        }
+                    }
+
+                    let component_count = repeated_block.component_count;
+                    if repeated_block.all_weights_real {
+                        for entry in &repeated_block.entries {
+                            let left_start = entry.left_group_index * component_count;
+                            let right_start = entry.right_group_index * component_count;
+                            let product_re = sum_real_hermitian_products(
+                                &contraction.group_scratch_f64
+                                    [left_start..left_start + component_count],
+                                &contraction.group_scratch_f64
+                                    [right_start..right_start + component_count],
+                            );
+                            *raw_sum += entry.symmetry_factor * (entry.weight_re * product_re);
+                        }
+                    } else {
+                        for entry in &repeated_block.entries {
+                            let left_start = entry.left_group_index * component_count;
+                            let right_start = entry.right_group_index * component_count;
+                            let product = sum_hermitian_products(
+                                &contraction.group_scratch_f64
+                                    [left_start..left_start + component_count],
+                                &contraction.group_scratch_f64
+                                    [right_start..right_start + component_count],
+                            );
+                            *raw_sum += entry.symmetry_factor
+                                * (entry.weight_re * product.re - entry.weight_im * product.im);
+                        }
+                    }
+                }
+                return Ok(());
             }
             contraction
                 .group_scratch_f64
@@ -1797,11 +1887,7 @@ pub(crate) fn build_color_contraction_runtime(
             symmetry_factor: entry.symmetry_factor,
         });
     }
-    Ok(Some(ColorContractionRuntime {
-        group_count: manifest.group_count,
-        entries,
-        group_scratch_f64: Vec::new(),
-    }))
+    Ok(Some(ColorContractionRuntime::new(groups, entries)))
 }
 
 pub(crate) fn generic_root_group_id(

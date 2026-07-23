@@ -902,14 +902,8 @@ fn reduction_runtime(
             symmetry_factor,
         });
     }
-    Ok((
-        groups,
-        Some(ColorContractionRuntime {
-            group_count: group_index_by_id.len(),
-            entries,
-            group_scratch_f64: Vec::new(),
-        }),
-    ))
+    let contraction = ColorContractionRuntime::new(&groups, entries);
+    Ok((groups, Some(contraction)))
 }
 
 fn eager_raw_sum_sector_ids(

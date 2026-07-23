@@ -1796,15 +1796,199 @@ struct RawSumGroup {
 struct ColorContractionRuntime {
     group_count: usize,
     entries: Vec<ColorContractionEntry>,
+    repeated_block: Option<RepeatedColorContractionBlock>,
     group_scratch_f64: Vec<Complex<f64>>,
 }
 
+#[derive(Clone, Copy)]
 struct ColorContractionEntry {
     left_group_index: usize,
     right_group_index: usize,
     weight_re: f64,
     weight_im: f64,
     symmetry_factor: f64,
+}
+
+/// One color matrix shared by several disconnected contraction components.
+///
+/// Helicity-summed NLC/full-color plans contain one isomorphic color block per
+/// physical helicity. Keeping only one canonical block avoids streaming the
+/// same sparse matrix metadata once per helicity and lays out group values so
+/// that the repeated component dimension is contiguous.
+struct RepeatedColorContractionBlock {
+    component_count: usize,
+    component_group_indices: Vec<usize>,
+    singleton_output_indices: Option<Vec<usize>>,
+    entries: Vec<ColorContractionEntry>,
+    all_weights_real: bool,
+}
+
+impl ColorContractionRuntime {
+    fn new(groups: &[RawSumGroup], entries: Vec<ColorContractionEntry>) -> Self {
+        let repeated_block = repeated_color_contraction_block(groups, &entries);
+        Self {
+            group_count: groups.len(),
+            entries,
+            repeated_block,
+            group_scratch_f64: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct CanonicalColorContractionEntry {
+    left_group_index: usize,
+    right_group_index: usize,
+    weight_re_bits: u64,
+    weight_im_bits: u64,
+    symmetry_factor_bits: u64,
+}
+
+fn color_component_root(parent: &mut [usize], mut index: usize) -> usize {
+    while parent[index] != index {
+        parent[index] = parent[parent[index]];
+        index = parent[index];
+    }
+    index
+}
+
+fn repeated_color_contraction_block(
+    groups: &[RawSumGroup],
+    entries: &[ColorContractionEntry],
+) -> Option<RepeatedColorContractionBlock> {
+    if groups.len() < 2 || entries.is_empty() {
+        return None;
+    }
+
+    let mut parent = (0..groups.len()).collect::<Vec<_>>();
+    let mut component_size = vec![1usize; groups.len()];
+    for entry in entries {
+        let mut left = color_component_root(&mut parent, entry.left_group_index);
+        let mut right = color_component_root(&mut parent, entry.right_group_index);
+        if left == right {
+            continue;
+        }
+        if component_size[left] < component_size[right] {
+            std::mem::swap(&mut left, &mut right);
+        }
+        parent[right] = left;
+        component_size[left] += component_size[right];
+    }
+
+    let mut components_by_root = BTreeMap::<usize, Vec<usize>>::new();
+    for group_index in 0..groups.len() {
+        let root = color_component_root(&mut parent, group_index);
+        components_by_root
+            .entry(root)
+            .or_default()
+            .push(group_index);
+    }
+    let mut components = components_by_root.into_values().collect::<Vec<_>>();
+    components.sort_by_key(|component| component.iter().copied().min().unwrap_or(usize::MAX));
+    if components.len() < 2 {
+        return None;
+    }
+    let groups_per_component = components[0].len();
+    if groups_per_component == 0
+        || components
+            .iter()
+            .any(|component| component.len() != groups_per_component)
+    {
+        return None;
+    }
+
+    let component_maps = components
+        .iter()
+        .map(|component| {
+            let mut by_sector_signature = BTreeMap::<Vec<i64>, usize>::new();
+            for group_index in component {
+                let mut signature = groups[*group_index].sector_ids.clone();
+                signature.sort_unstable();
+                if by_sector_signature
+                    .insert(signature, *group_index)
+                    .is_some()
+                {
+                    return None;
+                }
+            }
+            Some(by_sector_signature)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let canonical_signatures = component_maps[0].keys().cloned().collect::<Vec<_>>();
+    if component_maps
+        .iter()
+        .skip(1)
+        .any(|component| component.keys().ne(canonical_signatures.iter()))
+    {
+        return None;
+    }
+
+    let mut component_index_by_group = vec![usize::MAX; groups.len()];
+    let mut local_index_by_group = vec![usize::MAX; groups.len()];
+    let mut component_group_indices = Vec::with_capacity(groups.len());
+    for (local_index, signature) in canonical_signatures.iter().enumerate() {
+        for (component_index, component) in component_maps.iter().enumerate() {
+            let group_index = component[signature];
+            component_index_by_group[group_index] = component_index;
+            local_index_by_group[group_index] = local_index;
+            component_group_indices.push(group_index);
+        }
+    }
+
+    let mut entries_by_component =
+        vec![Vec::<CanonicalColorContractionEntry>::new(); components.len()];
+    for entry in entries {
+        let component_index = component_index_by_group[entry.left_group_index];
+        if component_index == usize::MAX
+            || component_index != component_index_by_group[entry.right_group_index]
+        {
+            return None;
+        }
+        entries_by_component[component_index].push(CanonicalColorContractionEntry {
+            left_group_index: local_index_by_group[entry.left_group_index],
+            right_group_index: local_index_by_group[entry.right_group_index],
+            weight_re_bits: entry.weight_re.to_bits(),
+            weight_im_bits: entry.weight_im.to_bits(),
+            symmetry_factor_bits: entry.symmetry_factor.to_bits(),
+        });
+    }
+    for component_entries in &mut entries_by_component {
+        component_entries.sort_unstable();
+    }
+    if entries_by_component
+        .iter()
+        .skip(1)
+        .any(|component_entries| component_entries != &entries_by_component[0])
+    {
+        return None;
+    }
+
+    let entries = entries_by_component[0]
+        .iter()
+        .map(|entry| ColorContractionEntry {
+            left_group_index: entry.left_group_index,
+            right_group_index: entry.right_group_index,
+            weight_re: f64::from_bits(entry.weight_re_bits),
+            weight_im: f64::from_bits(entry.weight_im_bits),
+            symmetry_factor: f64::from_bits(entry.symmetry_factor_bits),
+        })
+        .collect::<Vec<_>>();
+    let singleton_output_indices = component_group_indices
+        .iter()
+        .map(
+            |group_index| match groups[*group_index].indices.as_slice() {
+                [output_index] => Some(*output_index),
+                _ => None,
+            },
+        )
+        .collect::<Option<Vec<_>>>();
+    Some(RepeatedColorContractionBlock {
+        component_count: components.len(),
+        component_group_indices,
+        singleton_output_indices,
+        all_weights_real: entries.iter().all(|entry| entry.weight_im == 0.0),
+        entries,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Default)]
