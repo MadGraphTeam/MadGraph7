@@ -257,12 +257,15 @@ def test_json_restrictions_are_complete_explicit_ufo_cards() -> None:
     from ufo_model_loader.common import optionally_lower_external_parameter_name
     from ufo_model_loader.model import InputParamCard, Model, ParamCard
 
+    from pyamplicol.models.loading import _sanitized_model_environment
+
     asset_root = Path(str(_assets_resource()))
     for json_path in sorted((asset_root / "json").glob("*/restrict_*.json")):
         model_name = json_path.parent.name
         model_path = json_path.parent / f"{model_name}.json"
         ufo_path = asset_root / "ufo" / model_name / f"{json_path.stem}.dat"
-        model = Model.from_json(model_path.read_text(encoding="utf-8"))
+        with _sanitized_model_environment():
+            model = Model.from_json(model_path.read_text(encoding="utf-8"))
         parameter_names = {
             optionally_lower_external_parameter_name(parameter.name)
             for parameter in model.get_external_parameters()

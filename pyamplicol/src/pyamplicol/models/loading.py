@@ -119,6 +119,42 @@ UFO_TENSOR_HEADS = frozenset(
 )
 
 
+def _replace_ufo_sqrt_once(expression: Any) -> Any:
+    """Bound the ufo-model-loader sqrt normalization to one traversal."""
+
+    from symbolica import Expression
+    from ufo_model_loader.common import UFOModelLoaderError
+    from ufo_model_loader.symbolica_processing import expression_to_string
+
+    # Symbolica 2.2 also matches x^(1/2), so repetition rewrites its own output.
+    expression = expression.replace(
+        Expression.parse("sqrt(x__)"),
+        Expression.parse("x__^(1/2)"),
+        repeat=False,
+    )
+    rendered = expression_to_string(expression)
+    if rendered is None or re.match(r"\^\(\d+/\d+\)", rendered):
+        raise UFOModelLoaderError(
+            "Exponentiation with real arguments not supported in model "
+            f"expressions: {rendered}"
+        )
+    return expression
+
+
+@contextmanager
+def _bounded_ufo_sqrt_normalization() -> Iterator[None]:
+    """Work around ufo-model-loader's non-converging repeated sqrt rewrite."""
+
+    from ufo_model_loader import symbolica_processing
+
+    original = symbolica_processing.replace_from_sqrt
+    symbolica_processing.replace_from_sqrt = _replace_ufo_sqrt_once
+    try:
+        yield
+    finally:
+        symbolica_processing.replace_from_sqrt = original
+
+
 @dataclass(frozen=True, slots=True)
 class ModelCompileOptions:
     restriction: str = DEFAULT_MODEL_RESTRICTION
@@ -724,7 +760,8 @@ def _sanitized_model_environment() -> Iterator[None]:
         for name in removed:
             os.environ.pop(name, None)
         try:
-            yield
+            with _bounded_ufo_sqrt_normalization():
+                yield
         finally:
             sys.dont_write_bytecode = previous_dont_write_bytecode
             for name in tuple(os.environ):

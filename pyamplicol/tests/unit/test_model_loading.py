@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import json
 import os
 import sys
 from copy import deepcopy
@@ -23,6 +24,7 @@ from pyamplicol.models.contracts import (
 )
 from pyamplicol.models.loading import (
     ModelCompileOptions,
+    _bounded_ufo_sqrt_normalization,
     _classify_external_propagators,
     _load_external_model,
     _loader_restriction_name,
@@ -40,6 +42,62 @@ class _SerializedModel:
 
     def to_json(self, _look: object) -> str:
         return '{"name":"synthetic","propagators":[]}'
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "x+1",
+        "x^(1/2)",
+        "sqrt(x)",
+        "2*UFO::{}::aS^(1/2)*𝜋^(1/2)",
+        "x^(1/3)",
+    ),
+)
+def test_ufo_sqrt_normalization_is_one_shot_and_idempotent(source: str) -> None:
+    from symbolica import Expression
+    from ufo_model_loader import symbolica_processing
+
+    expression = Expression.parse(source)
+    expected = expression.to_canonical_string()
+
+    with _bounded_ufo_sqrt_normalization():
+        normalized = symbolica_processing.replace_from_sqrt(expression)
+        normalized_again = symbolica_processing.replace_from_sqrt(normalized)
+
+    normalized_text = normalized.to_canonical_string()
+    assert "sqrt(" not in normalized_text
+    if source != "sqrt(x)":
+        assert normalized_text == expected
+    assert normalized_again.to_canonical_string() == normalized_text
+
+
+def test_all_packaged_ufo_sm_parameter_expressions_normalize_once() -> None:
+    from ufo_model_loader import symbolica_processing
+
+    source = (
+        Path(pyamplicol.__file__).parent
+        / "assets"
+        / "models"
+        / "json"
+        / "sm"
+        / "sm.json"
+    )
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    expressions = [
+        parameter["expression"]
+        for parameter in payload["parameters"]
+        if parameter["expression"] is not None
+    ]
+
+    with _sanitized_model_environment():
+        normalized = [
+            symbolica_processing.parse_python_expression_safe(expression)
+            for expression in expressions
+        ]
+
+    assert len(normalized) == len(expressions)
+    assert all(expression.to_canonical_string() for expression in normalized)
 
 
 def test_model_loading_sanitizes_historical_scalar_environment(
