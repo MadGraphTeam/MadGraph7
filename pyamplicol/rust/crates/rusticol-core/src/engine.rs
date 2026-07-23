@@ -2758,8 +2758,11 @@ mod model_parameters;
 use model_parameters::*;
 
 mod evaluation;
+use evaluation::write_resolved_f64_totals;
 mod helicity_lane;
 use helicity_lane::*;
+mod momentum;
+use momentum::*;
 mod sources;
 
 mod validation;

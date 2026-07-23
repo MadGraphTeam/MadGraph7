@@ -391,6 +391,17 @@ impl AmplitudeRuntime {
         raw_sums: &mut Vec<f64>,
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
     ) -> RusticolResult<()> {
+        raw_sums.clear();
+        raw_sums.resize(batch_size, 0.0);
+        self.reduce_scratch_f64_into_selected_slice(batch_size, raw_sums, selected_color_sector_ids)
+    }
+
+    pub(crate) fn reduce_scratch_f64_into_selected_slice(
+        &mut self,
+        batch_size: usize,
+        raw_sums: &mut [f64],
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+    ) -> RusticolResult<()> {
         let amplitudes = &self.output_scratch_f64;
         if amplitudes.len() != batch_size * self.output_length {
             return Err(RusticolError::invalid_argument(format!(
@@ -399,8 +410,13 @@ impl AmplitudeRuntime {
                 batch_size * self.output_length
             )));
         }
-        raw_sums.clear();
-        raw_sums.resize(batch_size, 0.0);
+        if raw_sums.len() != batch_size {
+            return Err(RusticolError::invalid_argument(format!(
+                "generic reduction output has length {}, expected {batch_size}",
+                raw_sums.len()
+            )));
+        }
+        raw_sums.fill(0.0);
         if let Some(contraction) = self.color_contraction.as_mut() {
             if selected_color_sector_ids.is_some() {
                 return Err(RusticolError::invalid_argument(

@@ -900,8 +900,14 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_f64(
         let handle = unsafe { required_handle_mut(handle) }?;
         let momenta = unsafe { read_f64_slice(momenta, momentum_count, "momenta") }?;
         validate_f64_output(output, output_capacity, point_count, "total output")?;
-        let values = handle.runtime.evaluate_f64(momenta, point_count)?;
-        unsafe { write_f64_slice(&values, output, output_capacity, "total output") }
+        // SAFETY: The output pointer is non-null and has at least point_count writable values.
+        // Restrict the mutable slice to the exact result prefix so excess caller capacity and
+        // trailing canaries remain untouched.
+        let output = unsafe { slice::from_raw_parts_mut(output, point_count) };
+        handle
+            .runtime
+            .evaluate_f64_into(momenta, point_count, output)
+            .map_err(AbiError::from)
     })
 }
 
@@ -975,15 +981,22 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_selected_f64(
             ));
         }
         validate_f64_output(output, output_capacity, point_count, "total output")?;
-        let values = handle.runtime.evaluate_f64_with_selectors(
-            momenta,
-            point_count,
-            helicities.as_deref(),
-            colors.as_deref(),
-            helicity_by_point,
-            color_flow_by_point,
-        )?;
-        unsafe { write_f64_slice(&values, output, output_capacity, "total output") }
+        // SAFETY: The output pointer is non-null and has at least point_count writable values.
+        // Restrict the mutable slice to the exact result prefix so excess caller capacity and
+        // trailing canaries remain untouched.
+        let output = unsafe { slice::from_raw_parts_mut(output, point_count) };
+        handle
+            .runtime
+            .evaluate_f64_into_with_selectors(
+                momenta,
+                point_count,
+                helicities.as_deref(),
+                colors.as_deref(),
+                helicity_by_point,
+                color_flow_by_point,
+                output,
+            )
+            .map_err(AbiError::from)
     })
 }
 

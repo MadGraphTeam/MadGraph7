@@ -1021,6 +1021,79 @@ fn empty_generic_runtime() -> ExecutionRuntime {
     }
 }
 
+fn zero_native_runtime() -> NativeRuntime {
+    let physics = test_physics_runtime("lc");
+    let physics_v1 = physics.manifest.clone();
+    let mut execution = empty_generic_runtime();
+    execution.external_count = 3;
+    execution.external_pdg_order = vec![1, -1, 23];
+    execution.external_is_initial = vec![true, true, false];
+    execution.physics = Some(Arc::new(physics));
+    execution.stages = Some(Vec::new());
+    let mut amplitude = test_amplitude_runtime(Vec::new(), None);
+    amplitude.input_components = Some(Vec::new());
+    execution.amplitude_stage = Some(amplitude);
+    NativeRuntime {
+        root: PathBuf::new(),
+        runtime: execution,
+        execution_lane: NativeExecutionLane::Compiled,
+        process: "x x > y".to_string(),
+        process_key: "x_x_to_y".to_string(),
+        input_crossing_map: None,
+        final_state_permutation_alias_of: None,
+        physics_v1,
+        warnings_muted: false,
+        warned_kinds: BTreeSet::new(),
+        pending_warnings: Vec::new(),
+        point_selector_scratch: PointSelectorExecutionScratch::default(),
+        selector_simd_lane_width: 1,
+    }
+}
+
+#[test]
+fn native_f64_into_matches_allocating_wrapper_and_validates_output() {
+    let point = [
+        10.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0, -10.0, 20.0, 0.0, 0.0, 0.0,
+    ];
+    let momenta = point.repeat(4);
+    let mut runtime = zero_native_runtime();
+    let allocated = runtime.evaluate_f64(&momenta, 4).unwrap();
+    let mut output = vec![f64::NAN; 4];
+    runtime.evaluate_f64_into(&momenta, 4, &mut output).unwrap();
+    assert_eq!(output, allocated);
+
+    let helicity_by_point = [0_u32, 1, 2, 0];
+    runtime
+        .evaluate_f64_into_with_selectors(
+            &momenta,
+            4,
+            None,
+            None,
+            Some(&helicity_by_point),
+            None,
+            &mut output,
+        )
+        .unwrap();
+    assert_eq!(output, vec![0.0; 4]);
+
+    let error = runtime
+        .evaluate_f64_into(&momenta, 4, &mut [0.0; 3])
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("output has length 3, expected 4")
+    );
+    let error = runtime
+        .evaluate_f64_into(&momenta, 4, &mut [0.0; 5])
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("output has length 5, expected 4")
+    );
+}
+
 #[test]
 fn model_parameter_override_batch_is_atomic() {
     let mut runtime = empty_generic_runtime();

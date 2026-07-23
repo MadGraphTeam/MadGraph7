@@ -253,6 +253,8 @@ impl NativeRuntime {
         } else {
             None
         };
+        let input_crossing_map =
+            prevalidate_input_crossing_lookup(runtime.external_count, input_crossing_map)?;
         runtime.attach_physics(Arc::new(PhysicsRuntime::new(physics_v1.clone())?))?;
         if matches!(&execution_lane, NativeExecutionLane::Compiled) {
             runtime.initialize_compiled_helicity_execution_plan(
@@ -517,6 +519,15 @@ impl NativeRuntime {
         self.evaluate_f64_with_selectors(momenta, point_count, None, None, None, None)
     }
 
+    pub fn evaluate_f64_into(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        self.evaluate_f64_into_with_selectors(momenta, point_count, None, None, None, None, output)
+    }
+
     /// Evaluate one total per point with optional global or per-point selectors.
     ///
     /// Global selectors retain the existing subset semantics. Per-point
@@ -533,6 +544,38 @@ impl NativeRuntime {
         helicity_by_point: Option<&[u32]>,
         color_by_point: Option<&[u32]>,
     ) -> Result<Vec<f64>, RusticolError> {
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        let mut output = vec![0.0; point_count];
+        self.evaluate_f64_into_with_selectors(
+            momenta,
+            point_count,
+            helicity_ids,
+            color_ids,
+            helicity_by_point,
+            color_by_point,
+            &mut output,
+        )?;
+        Ok(output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_f64_into_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        if output.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {point_count}",
+                output.len()
+            )));
+        }
         if helicity_ids.is_some() && helicity_by_point.is_some() {
             return Err(RusticolError::selector(
                 "helicities and helicity_by_point are mutually exclusive",
@@ -549,14 +592,20 @@ impl NativeRuntime {
         )?;
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
         let selected_colors = selector_set(color_ids, "color component")?;
-        let batch = self.prepare_f64_batch(momenta, point_count)?;
         let physics = self.runtime.physics.clone().ok_or_else(|| {
             RusticolError::artifact(
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
             )
         })?;
+        let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
         let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
         let result = (|| {
+            let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                momenta,
+                point_count,
+                self.runtime.external_count,
+                crossing_lookup.as_deref(),
+            )?;
             let plan = selector_scratch.planner.build(
                 point_count,
                 helicity_by_point,
@@ -567,19 +616,13 @@ impl NativeRuntime {
             if plan == PointSelectorPlan::None {
                 if selected_helicities.is_some() || selected_colors.is_some() {
                     let resolved = self.run_resolved_f64_batch(
-                        &batch,
+                        batch,
                         selected_helicities.as_ref(),
                         selected_colors.as_ref(),
                     )?;
-                    return Ok(resolved_totals(&resolved));
+                    return write_resolved_f64_totals(&resolved, output);
                 }
-                return match &mut self.execution_lane {
-                    NativeExecutionLane::Compiled => self.runtime.run_f64_unprofiled(&batch),
-                    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                    NativeExecutionLane::Eager(runtime) => runtime
-                        .run_f64(&mut self.runtime, &batch)
-                        .map(|(values, _profile)| values),
-                };
+                return self.run_f64_batch_into(batch, output);
             }
 
             self.record_resolved_warnings(helicity_ids, color_ids)?;
@@ -594,11 +637,11 @@ impl NativeRuntime {
                     point_helicities.as_ref().or(selected_helicities.as_ref());
                 let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
                 let resolved =
-                    self.run_resolved_f64_batch(&batch, effective_helicities, effective_colors)?;
-                return Ok(resolved_totals(&resolved));
+                    self.run_resolved_f64_batch(batch, effective_helicities, effective_colors)?;
+                return write_resolved_f64_totals(&resolved, output);
             }
 
-            let mut values = vec![0.0; point_count];
+            output.fill(0.0);
             let partition_count = selector_scratch.planner.partitions().len();
             for partition_index in 0..partition_count {
                 let partition = selector_scratch.planner.partitions()[partition_index];
@@ -614,19 +657,22 @@ impl NativeRuntime {
                 let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
                 let resolved = match partition.rows {
                     PointSelectorRows::Contiguous { start, end } => self.run_resolved_f64_batch(
-                        &batch[start..end],
+                        batch.subview(start, end)?,
                         effective_helicities,
                         effective_colors,
                     )?,
                     rows @ PointSelectorRows::Gathered { .. } => {
                         let point_indices = selector_scratch.planner.gathered_rows(rows);
-                        let gathered_batch = fill_gathered_batch(
+                        let gathered_batch = fill_gathered_batch_from_view(
                             &mut selector_scratch.gathered_batch,
-                            &batch,
+                            batch,
                             point_indices,
-                        );
+                        )?;
                         self.run_resolved_f64_batch(
-                            gathered_batch,
+                            F64MomentumBatchView::from_nested(
+                                gathered_batch,
+                                self.runtime.external_count,
+                            )?,
                             effective_helicities,
                             effective_colors,
                         )?
@@ -639,21 +685,44 @@ impl NativeRuntime {
                     ));
                 }
                 scatter_partition_totals(
-                    &mut values,
+                    output,
                     &selector_scratch.partition_totals,
                     partition.rows,
                     &selector_scratch.planner,
                 );
             }
-            Ok(values)
+            Ok(())
         })();
         self.point_selector_scratch = selector_scratch;
+        self.input_crossing_map = crossing_lookup;
         result
+    }
+
+    fn run_f64_batch_into(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        match &mut self.execution_lane {
+            NativeExecutionLane::Compiled => self.runtime.run_f64_into_unprofiled(batch, output),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Eager(runtime) => {
+                let nested = batch.materialize_nested();
+                let (values, _profile) = runtime.run_f64(&mut self.runtime, &nested)?;
+                if values.len() != output.len() {
+                    return Err(RusticolError::integrity(
+                        "eager evaluation returned an inconsistent output length",
+                    ));
+                }
+                output.copy_from_slice(&values);
+                Ok(())
+            }
+        }
     }
 
     fn run_resolved_f64_batch(
         &mut self,
-        batch: &[Vec<[f64; 4]>],
+        batch: F64MomentumBatchView<'_>,
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
     ) -> Result<ResolvedValues<f64>, RusticolError> {
@@ -664,14 +733,17 @@ impl NativeRuntime {
                 selected_colors,
             ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Eager(runtime) => runtime
-                .run_resolved_f64(
-                    &mut self.runtime,
-                    batch,
-                    selected_helicities,
-                    selected_colors,
-                )
-                .map(|(resolved, _profile)| resolved),
+            NativeExecutionLane::Eager(runtime) => {
+                let nested = batch.materialize_nested();
+                runtime
+                    .run_resolved_f64(
+                        &mut self.runtime,
+                        &nested,
+                        selected_helicities,
+                        selected_colors,
+                    )
+                    .map(|(resolved, _profile)| resolved)
+            }
         }
     }
 
@@ -731,17 +803,20 @@ impl NativeRuntime {
                 "benchmark repetitions must be positive",
             ));
         }
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        let mut output = vec![0.0; point_count];
         let started = Instant::now();
         for _ in 0..repetitions {
-            let values = self.evaluate_f64_with_selectors(
+            self.evaluate_f64_into_with_selectors(
                 momenta,
                 point_count,
                 helicity_ids,
                 color_ids,
                 helicity_by_point,
                 color_by_point,
+                &mut output,
             )?;
-            std::hint::black_box(values);
+            std::hint::black_box(&output);
         }
         Ok(started.elapsed().as_secs_f64())
     }
@@ -1123,30 +1198,28 @@ impl NativeRuntime {
         self.record_resolved_warnings(helicity_ids, color_ids)?;
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
         let selected_colors = selector_set(color_ids, "color component")?;
-        let batch = self.prepare_f64_batch(momenta, point_count)?;
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
         let physics = self.runtime.physics.clone().ok_or_else(|| {
             RusticolError::artifact(
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
             )
         })?;
-        let resolved = match &mut self.execution_lane {
-            NativeExecutionLane::Compiled => self.runtime.run_resolved_f64_unprofiled(
-                &batch,
+        let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
+        let result = (|| {
+            let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                momenta,
+                point_count,
+                self.runtime.external_count,
+                crossing_lookup.as_deref(),
+            )?;
+            self.run_resolved_f64_batch(
+                batch,
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
-            )?,
-            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Eager(runtime) => {
-                runtime
-                    .run_resolved_f64(
-                        &mut self.runtime,
-                        &batch,
-                        selected_helicities.as_ref(),
-                        selected_colors.as_ref(),
-                    )?
-                    .0
-            }
-        };
+            )
+        })();
+        self.input_crossing_map = crossing_lookup;
+        let resolved = result?;
         let helicity_ids = resolved
             .helicity_indices
             .iter()
@@ -1363,19 +1436,6 @@ impl NativeRuntime {
         &self.root
     }
 
-    fn prepare_f64_batch(
-        &self,
-        momenta: &[f64],
-        point_count: usize,
-    ) -> Result<Vec<Vec<[f64; 4]>>, RusticolError> {
-        let batch = self.prepare_uncrossed_f64_batch(momenta, point_count)?;
-        apply_input_crossing_map(
-            batch,
-            self.runtime.external_count,
-            self.input_crossing_map.as_deref(),
-        )
-    }
-
     fn prepare_f64_batch_profile(
         &self,
         momenta: &[f64],
@@ -1579,7 +1639,6 @@ impl NativeRuntime {
     }
 }
 
-#[cfg(feature = "symbolica-runtime")]
 fn validate_flat_momentum_shape(
     value_count: usize,
     point_count: usize,

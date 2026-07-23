@@ -18,6 +18,7 @@ use rusticol_core::{
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
 use std::path::PathBuf;
 
 create_exception!(_rusticol, RusticolError, PyException);
@@ -483,16 +484,18 @@ impl Runtime {
         precision: u32,
     ) -> PyResult<Py<PyAny>> {
         require_raw_f64_precision(precision).map_err(python_error)?;
-        let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
-        let values = self
-            .runtime
-            .evaluate_f64_with_selectors(
-                &values,
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let point_count = momenta.point_count();
+        let mut values = vec![0.0; point_count];
+        self.runtime
+            .evaluate_f64_into_with_selectors(
+                momenta.as_slice(),
                 point_count,
                 helicities.as_deref(),
                 color_flows.as_deref(),
                 helicity_by_point.as_deref(),
                 color_flow_by_point.as_deref(),
+                &mut values,
             )
             .map_err(python_error)?;
         let result = PyList::new(py, values)?.into_any().unbind();
@@ -512,10 +515,11 @@ impl Runtime {
         precision: u32,
     ) -> PyResult<f64> {
         require_raw_f64_precision(precision).map_err(python_error)?;
-        let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let point_count = momenta.point_count();
         self.runtime
             .benchmark_f64_wall_time_with_selectors(
-                &values,
+                momenta.as_slice(),
                 point_count,
                 repetitions,
                 helicities.as_deref(),
@@ -539,11 +543,12 @@ impl Runtime {
         include_values: bool,
     ) -> PyResult<Py<PyAny>> {
         require_raw_f64_precision(precision).map_err(python_error)?;
-        let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let point_count = momenta.point_count();
         let profiled = self
             .runtime
             .evaluate_f64_profile_with_selectors(
-                &values,
+                momenta.as_slice(),
                 point_count,
                 helicities.as_deref(),
                 color_flows.as_deref(),
@@ -573,11 +578,12 @@ impl Runtime {
         include_values: bool,
     ) -> PyResult<Py<PyAny>> {
         require_raw_f64_precision(precision).map_err(python_error)?;
-        let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let point_count = momenta.point_count();
         let profiled = self
             .runtime
             .evaluate_f64_profile_repeated_with_selectors(
-                &values,
+                momenta.as_slice(),
                 point_count,
                 repetitions,
                 helicities.as_deref(),
@@ -632,11 +638,12 @@ impl Runtime {
     ) -> PyResult<ResolvedEvaluation> {
         require_raw_f64_precision(precision).map_err(python_error)?;
         let accuracy = self.runtime.metadata().color_accuracy;
-        let (values, point_count) = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let point_count = momenta.point_count();
         let resolved = self
             .runtime
             .evaluate_resolved_f64(
-                &values,
+                momenta.as_slice(),
                 point_count,
                 helicities.as_deref(),
                 color_flows.as_deref(),
@@ -793,26 +800,60 @@ fn parse_complex_value(value: &Bound<'_, PyAny>, name: &str) -> PyResult<(f64, f
     Ok((real, imaginary))
 }
 
-fn parse_f64_momenta(
-    momenta: &Bound<'_, PyAny>,
-    expected_legs: usize,
-) -> PyResult<(Vec<f64>, usize)> {
+enum ParsedF64Momenta<'py> {
     #[cfg(feature = "numpy")]
-    if let Ok(array) = momenta.extract::<PyReadonlyArray3<'_, f64>>() {
+    Borrowed {
+        array: PyReadonlyArray3<'py, f64>,
+        point_count: usize,
+    },
+    Owned {
+        values: Vec<f64>,
+        point_count: usize,
+        _python: PhantomData<&'py ()>,
+    },
+}
+
+impl ParsedF64Momenta<'_> {
+    fn as_slice(&self) -> &[f64] {
+        match self {
+            #[cfg(feature = "numpy")]
+            Self::Borrowed { array, .. } => array
+                .as_slice()
+                .expect("contiguous NumPy momenta were validated while parsing"),
+            Self::Owned { values, .. } => values,
+        }
+    }
+
+    fn point_count(&self) -> usize {
+        match self {
+            #[cfg(feature = "numpy")]
+            Self::Borrowed { point_count, .. } => *point_count,
+            Self::Owned { point_count, .. } => *point_count,
+        }
+    }
+}
+
+fn parse_f64_momenta<'py>(
+    momenta: &Bound<'py, PyAny>,
+    expected_legs: usize,
+) -> PyResult<ParsedF64Momenta<'py>> {
+    #[cfg(feature = "numpy")]
+    if let Ok(array) = momenta.extract::<PyReadonlyArray3<'py, f64>>() {
         let shape = array.shape();
+        let point_count = shape[0];
         if shape[1] != expected_legs || shape[2] != 4 {
             return Err(PyValueError::new_err(format!(
                 "momenta array has shape ({}, {}, {}), expected (points, {expected_legs}, 4)",
-                shape[0], shape[1], shape[2]
+                point_count, shape[1], shape[2]
             )));
         }
-        if shape[0] == 0 {
+        if point_count == 0 {
             return Err(PyValueError::new_err(
                 "momenta must contain at least one point",
             ));
         }
-        if let Ok(values) = array.as_slice() {
-            return Ok((values.to_vec(), shape[0]));
+        if array.as_slice().is_ok() {
+            return Ok(ParsedF64Momenta::Borrowed { point_count, array });
         }
     }
 
@@ -848,7 +889,11 @@ fn parse_f64_momenta(
             "momenta must contain at least one point",
         ));
     }
-    Ok((values, point_count))
+    Ok(ParsedF64Momenta::Owned {
+        values,
+        point_count,
+        _python: PhantomData,
+    })
 }
 
 fn resolved_f64_to_python(

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: 0BSD
 
 use rusticol_capi::{
-    RUSTICOL_STATUS_INVALID_ARGUMENT, RUSTICOL_STATUS_OK, RusticolRuntimeHandle,
-    rusticol_last_error_message, rusticol_runtime_color_count, rusticol_runtime_color_id,
+    RUSTICOL_STATUS_BUFFER_TOO_SMALL, RUSTICOL_STATUS_INVALID_ARGUMENT, RUSTICOL_STATUS_OK,
+    RusticolRuntimeHandle, rusticol_last_error_message, rusticol_runtime_color_count,
+    rusticol_runtime_color_id, rusticol_runtime_evaluate_f64,
     rusticol_runtime_evaluate_resolved_f64, rusticol_runtime_evaluate_selected_f64,
     rusticol_runtime_free, rusticol_runtime_helicity_count, rusticol_runtime_helicity_id,
     rusticol_runtime_load,
@@ -240,6 +241,143 @@ fn expected_selected_sum(
                 })
         })
         .sum()
+}
+
+#[test]
+fn direct_total_outputs_preserve_bits_canaries_and_capacity_errors() {
+    let Some(root) = fixture_root() else {
+        return;
+    };
+    let handle = load_fixture(&root);
+    let point_count = 4;
+    let momenta = repeated_momenta(&root, point_count);
+    let (helicity_count, color_count) = physical_counts(handle);
+    let resolved = resolved_values(handle, &momenta, point_count, helicity_count, color_count);
+    let leading_canary = f64::from_bits(0x7ff8_1234_5678_9abc);
+    let trailing_canary = f64::from_bits(0x7ff8_cafe_babe_f00d);
+
+    let mut totals = vec![f64::NAN; point_count + 2];
+    totals[0] = leading_canary;
+    totals[point_count + 1] = trailing_canary;
+    // SAFETY: The output pointer starts after the leading canary and has point_count + 1
+    // writable values; the runtime must write only the exact point_count-value prefix.
+    let status = unsafe {
+        rusticol_runtime_evaluate_f64(
+            handle,
+            momenta.as_ptr(),
+            momenta.len(),
+            point_count,
+            totals.as_mut_ptr().add(1),
+            point_count + 1,
+        )
+    };
+    assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    assert_eq!(totals[0].to_bits(), leading_canary.to_bits());
+    assert_eq!(totals[point_count + 1].to_bits(), trailing_canary.to_bits());
+    for point in 0..point_count {
+        let expected =
+            expected_selected_sum(&resolved, point, None, None, helicity_count, color_count);
+        assert_eq!(totals[point + 1].to_bits(), expected.to_bits());
+    }
+
+    let mut selected = vec![f64::NAN; point_count + 2];
+    selected[0] = leading_canary;
+    selected[point_count + 1] = trailing_canary;
+    // SAFETY: All selector arrays are omitted and the output has one excess tail value.
+    let status = unsafe {
+        rusticol_runtime_evaluate_selected_f64(
+            handle,
+            momenta.as_ptr(),
+            momenta.len(),
+            point_count,
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+            selected.as_mut_ptr().add(1),
+            point_count + 1,
+        )
+    };
+    assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    assert_eq!(selected[0].to_bits(), leading_canary.to_bits());
+    assert_eq!(
+        selected[point_count + 1].to_bits(),
+        trailing_canary.to_bits()
+    );
+    for point in 0..point_count {
+        assert_eq!(selected[point + 1].to_bits(), totals[point + 1].to_bits());
+    }
+
+    let short_sentinel = f64::from_bits(0x7ff8_dead_beef_0001);
+    let mut short_total = vec![short_sentinel; point_count + 2];
+    let unchanged_total = short_total.clone();
+    // SAFETY: The storage is writable, but its declared capacity is intentionally too short.
+    let status = unsafe {
+        rusticol_runtime_evaluate_f64(
+            handle,
+            momenta.as_ptr(),
+            momenta.len(),
+            point_count,
+            short_total.as_mut_ptr().add(1),
+            point_count - 1,
+        )
+    };
+    assert_eq!(status, RUSTICOL_STATUS_BUFFER_TOO_SMALL);
+    assert_eq!(
+        short_total
+            .iter()
+            .map(|value| value.to_bits())
+            .collect::<Vec<_>>(),
+        unchanged_total
+            .iter()
+            .map(|value| value.to_bits())
+            .collect::<Vec<_>>()
+    );
+
+    let mut short_selected = vec![short_sentinel; point_count + 2];
+    let unchanged_selected = short_selected.clone();
+    // SAFETY: The storage is writable, but its declared capacity is intentionally too short.
+    let status = unsafe {
+        rusticol_runtime_evaluate_selected_f64(
+            handle,
+            momenta.as_ptr(),
+            momenta.len(),
+            point_count,
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+            short_selected.as_mut_ptr().add(1),
+            point_count - 1,
+        )
+    };
+    assert_eq!(status, RUSTICOL_STATUS_BUFFER_TOO_SMALL);
+    assert_eq!(
+        short_selected
+            .iter()
+            .map(|value| value.to_bits())
+            .collect::<Vec<_>>(),
+        unchanged_selected
+            .iter()
+            .map(|value| value.to_bits())
+            .collect::<Vec<_>>()
+    );
+
+    // SAFETY: The handle is consumed exactly once after all evaluations finish.
+    assert_eq!(
+        unsafe { rusticol_runtime_free(handle) },
+        RUSTICOL_STATUS_OK,
+        "{}",
+        last_error(),
+    );
 }
 
 #[test]

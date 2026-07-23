@@ -30,35 +30,50 @@ impl ExecutionRuntime {
         }
     }
 
+    #[allow(dead_code)] // Allocating compatibility wrapper around the into lane.
     pub(super) fn run_f64_unprofiled(
         &mut self,
-        batch: &[Vec<[f64; 4]>],
+        batch: F64MomentumBatchView<'_>,
     ) -> RusticolResult<Vec<f64>> {
+        let mut output = vec![0.0; batch.point_count()];
+        self.run_f64_into_unprofiled(batch, &mut output)?;
+        Ok(output)
+    }
+
+    pub(super) fn run_f64_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        if output.len() != batch.point_count() {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {}",
+                output.len(),
+                batch.point_count()
+            )));
+        }
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
-            return sum_runtime.run_f64_unprofiled(batch);
+            return sum_runtime.run_f64_into_unprofiled(batch, output);
         }
         if self.lc_topology_replay_enabled {
-            return self.run_f64_with_lc_topology_replay_unprofiled(batch);
+            let resolved =
+                self.run_resolved_f64_with_lc_topology_replay_unprofiled(batch, None, None)?;
+            return write_resolved_f64_totals(&resolved, output);
         }
         if self.has_compiled_helicity_execution_plan() {
             let resolved =
                 self.run_resolved_f64_with_helicity_recurrence_unprofiled(batch, None, None, None)?;
-            let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
-            return Ok(resolved
-                .values
-                .chunks_exact(component_count)
-                .map(|components| components.iter().sum())
-                .collect());
+            return write_resolved_f64_totals(&resolved, output);
         }
         let previous = self.set_lc_sector_selector(None);
-        let result = self.run_f64_materialized_selected_unprofiled(batch, None);
+        let result = self.run_f64_materialized_selected_into_unprofiled(batch, None, output);
         self.restore_lc_sector_selector(previous);
         result
     }
 
     pub(super) fn run_resolved_f64_unprofiled(
         &mut self,
-        batch: &[Vec<[f64; 4]>],
+        batch: F64MomentumBatchView<'_>,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<ResolvedValues<f64>> {
@@ -106,12 +121,12 @@ impl ExecutionRuntime {
                 selected_color_ids,
             );
         }
-        self.run_f64_materialized_selected_unprofiled(batch, None)?;
+        self.run_f64_materialized_selected_for_resolved_unprofiled(batch, None)?;
         self.amplitude_stage
             .as_mut()
             .expect("generic amplitude stage checked")
             .reduce_scratch_f64_resolved(
-                batch.len(),
+                batch.point_count(),
                 &physics,
                 self.normalization_factor,
                 selected_helicity_ids,
@@ -121,7 +136,7 @@ impl ExecutionRuntime {
 
     fn run_resolved_f64_with_lc_topology_replay_unprofiled(
         &mut self,
-        batch: &[Vec<[f64; 4]>],
+        batch: F64MomentumBatchView<'_>,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<ResolvedValues<f64>> {
@@ -137,7 +152,7 @@ impl ExecutionRuntime {
             selected_helicity_ids,
             selected_color_ids,
         )?;
-        let n_points = batch.len();
+        let n_points = batch.point_count();
         let component_count = selection.helicity_indices.len() * selection.color_indices.len();
         let mut full_values = vec![0.0; n_points * component_count];
         let mappings = self.lc_topology_replay_mappings.clone();
@@ -158,13 +173,17 @@ impl ExecutionRuntime {
                 let expanded_batch = if mapping_chunk.len() == 1 && mapping_chunk[0].is_empty() {
                     None
                 } else {
-                    Some(apply_lc_topology_label_permutations(
+                    Some(apply_lc_topology_label_permutations_from_view(
                         batch,
                         self.external_count,
                         &mapping_chunk,
                     )?)
                 };
-                let evaluation_batch = expanded_batch.as_deref().unwrap_or(batch);
+                let evaluation_view = if let Some(expanded_batch) = expanded_batch.as_deref() {
+                    F64MomentumBatchView::from_nested(expanded_batch, self.external_count)?
+                } else {
+                    batch
+                };
                 let selected_lane_id = (materialized_sector_ids.len() == 1)
                     .then(|| materialized_sector_ids.iter().next().copied())
                     .flatten();
@@ -172,7 +191,7 @@ impl ExecutionRuntime {
                     && selected_helicity_ids.is_some()
                 {
                     self.run_resolved_f64_with_helicity_recurrence_unprofiled(
-                        evaluation_batch,
+                        evaluation_view,
                         Some(&source_group.helicity_ids),
                         Some(&source_group.color_ids),
                         Some(&materialized_sector_ids),
@@ -181,20 +200,20 @@ impl ExecutionRuntime {
                     .and_then(|sector_id| self.color_selector_runtimes.get_mut(&sector_id))
                 {
                     selector_runtime.run_resolved_f64_unprofiled(
-                        evaluation_batch,
+                        evaluation_view,
                         Some(&source_group.helicity_ids),
                         Some(&source_group.color_ids),
                     )?
                 } else {
-                    self.run_f64_materialized_selected_unprofiled(
-                        evaluation_batch,
+                    self.run_f64_materialized_selected_for_resolved_unprofiled(
+                        evaluation_view,
                         Some(&materialized_sector_ids),
                     )?;
                     self.amplitude_stage
                         .as_mut()
                         .expect("generic amplitude stage checked")
                         .reduce_scratch_f64_resolved(
-                            evaluation_batch.len(),
+                            evaluation_view.point_count(),
                             &physics,
                             self.normalization_factor,
                             Some(&source_group.helicity_ids),
@@ -219,29 +238,53 @@ impl ExecutionRuntime {
         })
     }
 
-    fn run_f64_with_lc_topology_replay_unprofiled(
-        &mut self,
-        batch: &[Vec<[f64; 4]>],
-    ) -> RusticolResult<Vec<f64>> {
-        let resolved =
-            self.run_resolved_f64_with_lc_topology_replay_unprofiled(batch, None, None)?;
-        let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
-        Ok(resolved
-            .values
-            .chunks_exact(component_count)
-            .map(|components| components.iter().sum())
-            .collect())
-    }
-
+    #[allow(dead_code)] // Allocating compatibility wrapper around the into lane.
     fn run_f64_materialized_selected_unprofiled(
         &mut self,
-        batch: &[Vec<[f64; 4]>],
+        batch: F64MomentumBatchView<'_>,
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
     ) -> RusticolResult<Vec<f64>> {
+        let mut output = vec![0.0; batch.point_count()];
+        self.run_f64_materialized_selected_into_unprofiled(
+            batch,
+            selected_color_sector_ids,
+            &mut output,
+        )?;
+        Ok(output)
+    }
+
+    fn run_f64_materialized_selected_for_resolved_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+    ) -> RusticolResult<()> {
+        let mut totals_scratch = std::mem::take(&mut self.values_scratch_f64);
+        totals_scratch.resize(batch.point_count(), 0.0);
+        let result = self.run_f64_materialized_selected_into_unprofiled(
+            batch,
+            selected_color_sector_ids,
+            &mut totals_scratch,
+        );
+        self.values_scratch_f64 = totals_scratch;
+        result
+    }
+
+    fn run_f64_materialized_selected_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
         if self.stages.is_none() || self.amplitude_stage.is_none() {
             return Err(self.execution_unavailable_error());
         }
-        let n_points = batch.len();
+        let n_points = batch.point_count();
+        if output.len() != n_points {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {n_points}",
+                output.len()
+            )));
+        }
         let color_schedule = selected_color_sector_ids
             .map(|sector_ids| self.compiled_color_selector_schedule(sector_ids))
             .transpose()?
@@ -254,7 +297,8 @@ impl ExecutionRuntime {
         self.state_scratch_f64_requires_clear = true;
         let state = &mut self.state_scratch_f64;
         let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
-        for (row, point) in batch.iter().enumerate() {
+        for row in 0..n_points {
+            let point = batch.point(row);
             let row_state =
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_sources_row(
@@ -262,10 +306,11 @@ impl ExecutionRuntime {
                 self.external_count,
                 &self.particle_masses,
                 row_state,
-                point,
+                &point,
             )?;
         }
-        for (row, point) in batch.iter().enumerate() {
+        for row in 0..n_points {
+            let point = batch.point(row);
             let row_state =
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_momenta_row(
@@ -274,7 +319,7 @@ impl ExecutionRuntime {
                 self.external_count,
                 &self.external_is_initial,
                 row_state,
-                point,
+                &point,
             )?;
         }
         for row in 0..n_points {
@@ -326,16 +371,12 @@ impl ExecutionRuntime {
         self.amplitude_stage
             .as_mut()
             .expect("generic amplitude stage checked")
-            .reduce_scratch_f64_into_selected(
-                n_points,
-                &mut self.values_scratch_f64,
-                selected_color_sector_ids,
-            )?;
-        for value in &mut self.values_scratch_f64 {
+            .reduce_scratch_f64_into_selected_slice(n_points, output, selected_color_sector_ids)?;
+        for value in output {
             *value *= self.normalization_factor;
         }
         self.state_scratch_f64_requires_clear = color_schedule.is_some();
-        Ok(self.values_scratch_f64.clone())
+        Ok(())
     }
 
     pub(super) fn run_f64(
@@ -1441,6 +1482,36 @@ impl ExecutionRuntime {
             },
         ))
     }
+}
+
+pub(super) fn write_resolved_f64_totals(
+    resolved: &ResolvedValues<f64>,
+    output: &mut [f64],
+) -> RusticolResult<()> {
+    if output.len() != resolved.point_count {
+        return Err(RusticolError::invalid_argument(format!(
+            "evaluation output has length {}, expected {}",
+            output.len(),
+            resolved.point_count
+        )));
+    }
+    let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
+    if component_count == 0 {
+        output.fill(0.0);
+        return Ok(());
+    }
+    if resolved.values.len() != resolved.point_count * component_count {
+        return Err(RusticolError::integrity(
+            "resolved evaluation has an inconsistent component buffer length",
+        ));
+    }
+    for (target, components) in output
+        .iter_mut()
+        .zip(resolved.values.chunks_exact(component_count))
+    {
+        *target = components.iter().sum();
+    }
+    Ok(())
 }
 
 pub(super) fn accumulate_selected_lc_replay_resolved_f64(

@@ -168,6 +168,61 @@ pub(crate) fn apply_lc_topology_label_permutations(
     Ok(expanded_batch)
 }
 
+pub(crate) fn apply_lc_topology_label_permutations_from_view(
+    batch: F64MomentumBatchView<'_>,
+    expected_legs: usize,
+    mappings: &[Vec<(usize, usize)>],
+) -> RusticolResult<Vec<Vec<[f64; 4]>>> {
+    if batch.external_count() != expected_legs {
+        return Err(RusticolError::invalid_argument(format!(
+            "LC topology replay input has {} external legs, expected {expected_legs}",
+            batch.external_count()
+        )));
+    }
+    let capacity = batch
+        .point_count()
+        .checked_mul(mappings.len())
+        .ok_or_else(|| RusticolError::invalid_argument("LC topology replay batch overflows"))?;
+    let mut expanded_batch = Vec::with_capacity(capacity);
+    for mapping in mappings {
+        let mut seen = vec![false; expected_legs];
+        for (representative_index, sector_index) in mapping {
+            if *representative_index >= expected_legs || *sector_index >= expected_legs {
+                return Err(RusticolError::invalid_argument(
+                    "LC topology replay label permutation references an out-of-range external leg",
+                ));
+            }
+            if seen[*representative_index] {
+                return Err(RusticolError::invalid_argument(
+                    "LC topology replay label permutation contains a duplicate representative label",
+                ));
+            }
+            seen[*representative_index] = true;
+        }
+        for point_index in 0..batch.point_count() {
+            let point = batch.point(point_index);
+            let mut mapped = (0..expected_legs)
+                .map(|external_index| {
+                    point.momentum(external_index).ok_or_else(|| {
+                        RusticolError::integrity(
+                            "validated momentum view is missing an external leg during topology replay",
+                        )
+                    })
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            for (representative_index, sector_index) in mapping {
+                mapped[*representative_index] = point.momentum(*sector_index).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "validated momentum view is missing a permuted external leg",
+                    )
+                })?;
+            }
+            expanded_batch.push(mapped);
+        }
+    }
+    Ok(expanded_batch)
+}
+
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) fn apply_lc_topology_label_permutation_generic<T>(
     batch: &[Vec<[T; 4]>],

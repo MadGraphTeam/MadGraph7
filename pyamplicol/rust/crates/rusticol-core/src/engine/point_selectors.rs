@@ -285,6 +285,34 @@ pub(super) fn fill_gathered_batch<'a>(
     &gathered_batch[..point_indices.len()]
 }
 
+pub(super) fn fill_gathered_batch_from_view<'a>(
+    gathered_batch: &'a mut Vec<Vec<[f64; 4]>>,
+    batch: F64MomentumBatchView<'_>,
+    point_indices: &[usize],
+) -> RusticolResult<&'a [Vec<[f64; 4]>]> {
+    if gathered_batch.len() < point_indices.len() {
+        gathered_batch.resize_with(point_indices.len(), Vec::new);
+    }
+    for (target, source_index) in gathered_batch.iter_mut().zip(point_indices.iter().copied()) {
+        if source_index >= batch.point_count() {
+            return Err(RusticolError::integrity(
+                "point-selector gather references an out-of-range input row",
+            ));
+        }
+        let point = batch.point(source_index);
+        target.clear();
+        target.reserve(batch.external_count());
+        for external_index in 0..batch.external_count() {
+            target.push(point.momentum(external_index).ok_or_else(|| {
+                RusticolError::integrity(
+                    "validated momentum view is missing an external leg during selector gather",
+                )
+            })?);
+        }
+    }
+    Ok(&gathered_batch[..point_indices.len()])
+}
+
 pub(super) fn write_partition_totals(
     partition_totals: &mut Vec<f64>,
     resolved: &ResolvedValues<f64>,

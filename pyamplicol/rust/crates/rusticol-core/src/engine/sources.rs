@@ -9,14 +9,17 @@ pub(super) struct RuntimeSourceState {
 }
 
 impl ExecutionRuntime {
-    pub(super) fn fill_sources_row_with_states(
+    pub(super) fn fill_sources_row_with_states<P>(
         sources: &[GenericSourceRecordManifest],
         source_states: &[RuntimeSourceState],
         external_count: usize,
         particle_masses: &BTreeMap<i32, f64>,
         row: &mut [Complex<f64>],
-        point: &[[f64; 4]],
-    ) -> RusticolResult<()> {
+        point: &P,
+    ) -> RusticolResult<()>
+    where
+        P: F64MomentumPoint + ?Sized,
+    {
         if source_states.len() != sources.len() {
             return Err(RusticolError::invalid_argument(format!(
                 "runtime source-state count {} does not match source count {}",
@@ -170,13 +173,16 @@ impl ExecutionRuntime {
         })
     }
 
-    pub(super) fn fill_sources_row(
+    pub(super) fn fill_sources_row<P>(
         sources: &[GenericSourceRecordManifest],
         external_count: usize,
         particle_masses: &BTreeMap<i32, f64>,
         row: &mut [Complex<f64>],
-        point: &[[f64; 4]],
-    ) -> RusticolResult<()> {
+        point: &P,
+    ) -> RusticolResult<()>
+    where
+        P: F64MomentumPoint + ?Sized,
+    {
         for source in sources {
             let start = source.value_slot.component_start;
             let stop = source.value_slot.component_stop;
@@ -229,14 +235,17 @@ impl ExecutionRuntime {
         Ok(())
     }
 
-    pub(super) fn fill_momenta_row(
+    pub(super) fn fill_momenta_row<P>(
         momentum_slots: &[GenericMomentumSlotManifest],
         value_parameter_count: usize,
         external_count: usize,
         external_is_initial: &[bool],
         row: &mut [Complex<f64>],
-        point: &[[f64; 4]],
-    ) -> RusticolResult<()> {
+        point: &P,
+    ) -> RusticolResult<()>
+    where
+        P: F64MomentumPoint + ?Sized,
+    {
         for slot in momentum_slots {
             let start = value_parameter_count + slot.component_start;
             let stop = value_parameter_count + slot.component_stop;
@@ -262,7 +271,13 @@ impl ExecutionRuntime {
                 } else {
                     1.0
                 };
-                for (momentum_component, point_component) in momentum.iter_mut().zip(&point[index])
+                let point_momentum = point.momentum(index).ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "generic momentum slot {} refers to absent external label {}",
+                        slot.momentum_slot_id, label
+                    ))
+                })?;
+                for (momentum_component, point_component) in momentum.iter_mut().zip(point_momentum)
                 {
                     *momentum_component += sign * point_component;
                 }
@@ -362,13 +377,16 @@ impl ExecutionRuntime {
         Ok(())
     }
 
-    pub(super) fn write_source_wavefunction(
+    pub(super) fn write_source_wavefunction<P>(
         source: &GenericSourceRecordManifest,
         external_count: usize,
         particle_masses: &BTreeMap<i32, f64>,
-        point: &[[f64; 4]],
+        point: &P,
         out: &mut [Complex<f64>],
-    ) -> RusticolResult<()> {
+    ) -> RusticolResult<()>
+    where
+        P: F64MomentumPoint + ?Sized,
+    {
         let state = default_source_state(source)?;
         Self::write_source_wavefunction_with_state(
             source,
@@ -380,14 +398,17 @@ impl ExecutionRuntime {
         )
     }
 
-    pub(super) fn write_source_wavefunction_with_state(
+    pub(super) fn write_source_wavefunction_with_state<P>(
         source: &GenericSourceRecordManifest,
         state: &GenericSourceStateIrManifest,
         external_count: usize,
         particle_masses: &BTreeMap<i32, f64>,
-        point: &[[f64; 4]],
+        point: &P,
         out: &mut [Complex<f64>],
-    ) -> RusticolResult<()> {
+    ) -> RusticolResult<()>
+    where
+        P: F64MomentumPoint + ?Sized,
+    {
         Self::write_source_wavefunction_unphased(
             source,
             state,
@@ -400,14 +421,17 @@ impl ExecutionRuntime {
         Ok(())
     }
 
-    fn write_source_wavefunction_unphased(
+    fn write_source_wavefunction_unphased<P>(
         source: &GenericSourceRecordManifest,
         state: &GenericSourceStateIrManifest,
         external_count: usize,
         particle_masses: &BTreeMap<i32, f64>,
-        point: &[[f64; 4]],
+        point: &P,
         out: &mut [Complex<f64>],
-    ) -> RusticolResult<()> {
+    ) -> RusticolResult<()>
+    where
+        P: F64MomentumPoint + ?Sized,
+    {
         if source.source_kind != "external-wavefunction" {
             return Err(RusticolError::invalid_argument(format!(
                 "generic source kind {:?} is not implemented",
@@ -427,9 +451,15 @@ impl ExecutionRuntime {
         let identity = &source_ir.identity;
         let family = source_ir.wavefunction_family;
         let dimension = source_ir.component_dimension;
+        let input_momentum = point.momentum(index).ok_or_else(|| {
+            RusticolError::invalid_argument(format!(
+                "generic source {} refers to absent external label {}",
+                source.source_id, source.leg_label
+            ))
+        })?;
         let momentum = match source.applied_crossing.momentum_transform {
-            GenericMomentumTransformManifest::Identity => point[index],
-            GenericMomentumTransformManifest::NegateFourMomentum => negate(point[index]),
+            GenericMomentumTransformManifest::Identity => input_momentum,
+            GenericMomentumTransformManifest::NegateFourMomentum => negate(input_momentum),
         };
         if dimension == 1 && family == GenericWavefunctionFamilyManifest::Scalar {
             if out.len() != 1 {

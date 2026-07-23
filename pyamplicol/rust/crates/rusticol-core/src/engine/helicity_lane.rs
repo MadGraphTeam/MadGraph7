@@ -202,7 +202,7 @@ impl ExecutionRuntime {
 
     pub(super) fn run_resolved_f64_with_helicity_recurrence_unprofiled(
         &mut self,
-        batch: &[Vec<[f64; 4]>],
+        batch: F64MomentumBatchView<'_>,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
         selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
@@ -214,7 +214,7 @@ impl ExecutionRuntime {
         })?;
         let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
         let color_indices = physics.selected_color_indices(selected_color_ids)?;
-        let point_count = batch.len();
+        let point_count = batch.point_count();
         let component_count = helicity_indices
             .len()
             .checked_mul(color_indices.len())
@@ -331,7 +331,7 @@ impl ExecutionRuntime {
 
     fn run_f64_materialized_helicity_schedule_unprofiled(
         &mut self,
-        batch: &[Vec<[f64; 4]>],
+        batch: F64MomentumBatchView<'_>,
         physics: &PhysicsRuntime,
         selected_color_ids: Option<&BTreeSet<String>>,
         selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
@@ -341,7 +341,7 @@ impl ExecutionRuntime {
         if self.stages.is_none() || self.amplitude_stage.is_none() {
             return Err(self.execution_unavailable_error());
         }
-        let point_count = batch.len();
+        let point_count = batch.point_count();
         let color_schedule = selected_materialized_sector_ids
             .map(|sector_ids| self.compiled_color_selector_schedule(sector_ids))
             .transpose()?
@@ -353,7 +353,8 @@ impl ExecutionRuntime {
         self.state_scratch_f64_requires_clear = true;
         let state = &mut self.state_scratch_f64;
         let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
-        for (row, point) in batch.iter().enumerate() {
+        for row in 0..point_count {
+            let point = batch.point(row);
             let row_state =
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_sources_row_with_states(
@@ -362,10 +363,11 @@ impl ExecutionRuntime {
                 self.external_count,
                 &self.particle_masses,
                 row_state,
-                point,
+                &point,
             )?;
         }
-        for (row, point) in batch.iter().enumerate() {
+        for row in 0..point_count {
+            let point = batch.point(row);
             let row_state =
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_momenta_row(
@@ -374,7 +376,7 @@ impl ExecutionRuntime {
                 self.external_count,
                 &self.external_is_initial,
                 row_state,
-                point,
+                &point,
             )?;
         }
         for row in 0..point_count {
