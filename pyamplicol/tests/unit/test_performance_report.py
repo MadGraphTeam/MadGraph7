@@ -1405,6 +1405,17 @@ def test_ten_minute_profile_cap_records_out_of_reach() -> None:
     assert report._profile_timeout_failure_message(exc, 3600.0) == str(exc)
 
 
+def test_cleanup_campaign_defaults_use_ten_minute_and_100g_caps() -> None:
+    parser = report._parser()
+    args = parser.parse_args(("populate", "--dry-run"))
+
+    assert args.limit_gib == 100.0
+    assert (
+        args.jit_o3_generation_timeout_seconds
+        == report.OUT_OF_REACH_GENERATION_CAP_SECONDS
+    )
+
+
 def test_symbolica_license_detection_uses_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
