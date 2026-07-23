@@ -1345,6 +1345,16 @@ def test_ten_minute_profile_cap_records_out_of_reach() -> None:
     assert report._profile_timeout_failure_message(exc, 3600.0) == str(exc)
 
 
+def test_symbolica_license_detection_uses_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SYMBOLICA_LICENSE", raising=False)
+    assert not report._symbolica_licensed_mode_enabled()
+
+    monkeypatch.setenv("SYMBOLICA_LICENSE", "test-license")
+    assert report._symbolica_licensed_mode_enabled()
+
+
 def test_legacy_reference_timeout_uses_hard_child_process_boundary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
