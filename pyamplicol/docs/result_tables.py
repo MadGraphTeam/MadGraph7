@@ -7655,11 +7655,7 @@ def _measure_pyamplicol_lc_lane(
                         helicity_ids=selector_contract["all_flow_helicity_ids"],  # type: ignore[arg-type]
                     )
 
-                profile_timeout_seconds = (
-                    OUT_OF_REACH_PROFILE_CAP_SECONDS
-                    if _symbolica_licensed_mode_enabled()
-                    else None
-                )
+                profile_timeout_seconds = OUT_OF_REACH_PROFILE_CAP_SECONDS
                 measurement = _run_mapping_with_timeout(
                     profile_artifact,
                     timeout_seconds=profile_timeout_seconds,
@@ -7700,11 +7696,7 @@ def _measure_pyamplicol_lc_lane(
                 "runtime_selector_role": role,
                 "lc_flow_layout": layout,
                 "profile_timeout_seconds": profile_timeout_seconds,
-                "profile_timeout_policy": (
-                    "hard_subprocess"
-                    if profile_timeout_seconds is not None
-                    else "inline_unlicensed_symbolica"
-                ),
+                "profile_timeout_policy": "hard_subprocess",
                 "measurement_point_digest": measurement_point_digest,
                 "measurement_point_source": snapshot["measurement_point_source"],
                 "selector_contract": selector_contract,
