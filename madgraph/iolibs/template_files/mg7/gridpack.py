@@ -31,7 +31,6 @@ import json
 import tomllib
 import argparse
 
-
 def derive_seed(base_seed: int, index: int) -> int:
     """Derive an independent per-context stream seed from the base seed.
 
@@ -47,6 +46,15 @@ def derive_seed(base_seed: int, index: int) -> int:
     x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & mask
     x = x ^ (x >> 31)
     return x or 1
+
+
+def resolve_verbosity(verbosity: str) -> str:
+    """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
+    whether stdout is attached to a terminal; other values pass through
+    unchanged."""
+    if verbosity == "auto":
+        return "pretty" if sys.stdout.isatty() else "log"
+    return verbosity
 
 
 def main() -> None:
@@ -93,7 +101,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log"]
+        choices=["none", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
@@ -156,7 +164,7 @@ def main() -> None:
     config.freeze_max_weight_after = args.freeze_max_weight_after
     config.cpu_batch_size = args.cpu_batch_size
     config.gpu_batch_size = args.gpu_batch_size
-    config.verbosity = args.verbosity
+    config.verbosity = resolve_verbosity(args.verbosity)
     config.combine_thread_count = run_args["combine_thread_pool_size"]
     config.cut_efficiency_threshold = gen_args["cut_efficiency_threshold"]
     config.max_cut_repetitions = gen_args["max_cut_repetitions"]

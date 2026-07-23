@@ -10,6 +10,10 @@
 using namespace madspace;
 using json = nlohmann::json;
 
+namespace {
+UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
+} // namespace
+
 MatrixElementApi::MatrixElementApi(
     const std::string& file,
     const std::string& param_card,
@@ -34,6 +38,30 @@ MatrixElementApi::MatrixElementApi(
         throw std::runtime_error(
             std::format("Did not find symbol umami_get_meta in shared object {}", file)
         );
+    }
+
+    // These symbols are optional: implementations may not report which keys they
+    // support, in which case queries for that information fail with
+    // UMAMI_ERROR_NOT_IMPLEMENTED instead of the constructor throwing.
+    _supported_inputs = reinterpret_cast<decltype(&umami_supported_inputs)>(
+        dlsym(_shared_lib.get(), "umami_supported_inputs")
+    );
+    if (_supported_inputs == nullptr) {
+        _supported_inputs = umami_key_query_not_implemented;
+    }
+
+    _required_inputs = reinterpret_cast<decltype(&umami_required_inputs)>(
+        dlsym(_shared_lib.get(), "umami_required_inputs")
+    );
+    if (_required_inputs == nullptr) {
+        _required_inputs = umami_key_query_not_implemented;
+    }
+
+    _supported_outputs = reinterpret_cast<decltype(&umami_supported_outputs)>(
+        dlsym(_shared_lib.get(), "umami_supported_outputs")
+    );
+    if (_supported_outputs == nullptr) {
+        _supported_outputs = umami_key_query_not_implemented;
     }
 
     _initialize = reinterpret_cast<decltype(&umami_initialize)>(

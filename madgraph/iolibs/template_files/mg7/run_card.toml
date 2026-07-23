@@ -18,7 +18,7 @@ cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
 output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
-verbosity = %(run.verbosity)s # options: silent, pretty, log
+verbosity = %(run.verbosity)s # options: silent, pretty, log, auto (pretty if attached to a terminal, log otherwise)
 dummy_matrix_element = %(run.dummy_matrix_element)s
 
 [gridpack]

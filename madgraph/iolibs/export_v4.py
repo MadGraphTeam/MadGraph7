@@ -9241,18 +9241,9 @@ C
         end subroutine init_flv_couplings
             """
 
-        def _get_k1_k2(key):
-            keys = [i for i in key if i != 0]
-            if len(keys) == 2:
-                return keys[0], keys[1]
-            elif len(keys) == 1:
-                k = keys[0]
-                if key[0] == k:
-                    return k, 1
-                else:
-                    return 1, k
-            else:
-                raise Exception('Flavor coupling with more than 2 flavors is not supported for the moment')
+        # Single source of truth for the (k1, k2) PARTNER/PARTNER2 indices,
+        # shared with the C++/Python backends (see FLV_Coupling docstring).
+        _get_k1_k2 = base_objects.FLV_Coupling.get_partner_indices
 
         def_flv = []
         for coupl in self.coups_flv_indep:
