@@ -412,6 +412,50 @@ def test_fixed_helicity_choice_skips_dag_probe_without_legacy_all_flow(
     )
 
 
+def test_fixed_helicity_choice_skips_dag_probe_for_high_multiplicity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fallback = {
+        "mode": "fixed-source-helicity",
+        "source_helicities": {
+            str(index): (-1 if index % 2 else 1) for index in range(1, 10)
+        },
+        "source_helicities_cli": "",
+        "amplicol_helicities": [-1 if index % 2 else 1 for index in range(1, 10)],
+        "value_validation_enabled": False,
+        "validation_note": "fallback",
+    }
+    monkeypatch.setattr(
+        report,
+        "_alternating_fixed_source_helicity_choice",
+        lambda _process: dict(fallback),
+    )
+    monkeypatch.setattr(
+        report,
+        "_legacy_lc_all_flow_supported",
+        lambda _process: True,
+    )
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("DAG helicity probe should not run")
+
+    monkeypatch.setattr(
+        report,
+        "_source_helicity_choice_has_amplitudes",
+        unexpected_probe,
+    )
+
+    choice = report._fixed_source_helicity_choice(
+        "g g > g g g g g g g",
+        spec=report.MATRIX_SPECS[0],
+        artifact_root=tmp_path,
+    )
+
+    assert choice["source_helicities"] == fallback["source_helicities"]
+    assert choice["selection_source"] == "alternating-fallback-high-multiplicity"
+
+
 def test_generation_timeout_uses_hard_child_process_boundary(tmp_path: Path) -> None:
     if not hasattr(os, "fork"):
         pytest.skip("hard generation timeout requires fork")

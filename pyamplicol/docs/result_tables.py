@@ -8558,6 +8558,17 @@ def _fixed_source_helicity_choice(
     fallback = _alternating_fixed_source_helicity_choice(process)
     if spec is None or artifact_root is None:
         return fallback
+    final_state_count = max(0, len(fallback["source_helicities"]) - 2)
+    if final_state_count >= 7:
+        note = str(fallback["validation_note"])
+        return {
+            **fallback,
+            "selection_source": "alternating-fallback-high-multiplicity",
+            "validation_note": (
+                f"{note}; high-multiplicity cleanup uses the deterministic "
+                "fallback helicity to avoid a separate DAG helicity probe"
+            ),
+        }
     if not _legacy_lc_all_flow_supported(process):
         note = str(fallback["validation_note"])
         return {
