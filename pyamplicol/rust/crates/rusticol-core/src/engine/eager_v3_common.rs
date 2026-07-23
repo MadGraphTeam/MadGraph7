@@ -842,7 +842,10 @@ fn build_sources(
                 chirality: state.chirality,
                 spin_state: spin_state_value(&state.spin_state),
                 dimension,
-                helicity_ancestry: Value::from(bitset_u64(decoded, ancestry_ids[current_index])?),
+                helicity_ancestry: Value::String(bitset_decimal(
+                    decoded,
+                    ancestry_ids[current_index],
+                )?),
                 color_state: json!({"accuracy": manifest_color_accuracy(physics)}),
             };
             super::validation::validate_source_wavefunction_metadata(index, &source)?;
@@ -1252,10 +1255,41 @@ fn bitset_u64(decoded: &DecodedEagerRuntimeV3, id: u32) -> RusticolResult<u64> {
     let words = bitset_words(decoded, id)?;
     if words.iter().skip(1).any(|word| *word != 0) {
         return Err(RusticolError::compatibility(
-            "common eager metadata cannot project a bitset wider than 64 bits",
+            "eager momentum metadata cannot project a bitset wider than 64 bits",
         ));
     }
     Ok(words.first().copied().unwrap_or(0))
+}
+
+fn bitset_decimal(decoded: &DecodedEagerRuntimeV3, id: u32) -> RusticolResult<String> {
+    Ok(bitset_words_decimal(bitset_words(decoded, id)?))
+}
+
+fn bitset_words_decimal(words: &[u64]) -> String {
+    const BASE: u128 = 1_000_000_000;
+    const WORD_RADIX: u128 = 1_u128 << 64;
+
+    let mut decimal_limbs = vec![0_u32];
+    for word in words.iter().rev().copied() {
+        let mut carry = u128::from(word);
+        for limb in &mut decimal_limbs {
+            let value = u128::from(*limb) * WORD_RADIX + carry;
+            *limb = (value % BASE) as u32;
+            carry = value / BASE;
+        }
+        while carry != 0 {
+            decimal_limbs.push((carry % BASE) as u32);
+            carry /= BASE;
+        }
+    }
+
+    let mut limbs = decimal_limbs.iter().rev();
+    let mut result = limbs.next().copied().unwrap_or(0).to_string();
+    for limb in limbs {
+        use std::fmt::Write as _;
+        write!(&mut result, "{limb:09}").expect("writing to a string cannot fail");
+    }
+    result
 }
 
 fn bitset_labels(
@@ -1349,4 +1383,18 @@ fn usize_count(value: u64, context: &str) -> RusticolResult<usize> {
 
 fn integrity(message: impl Into<String>) -> RusticolError {
     RusticolError::integrity(message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bitset_words_decimal;
+
+    #[test]
+    fn arbitrary_width_bitsets_project_to_decimal_strings() {
+        assert_eq!(bitset_words_decimal(&[]), "0");
+        assert_eq!(bitset_words_decimal(&[1]), "1");
+        assert_eq!(bitset_words_decimal(&[u64::MAX]), "18446744073709551615");
+        assert_eq!(bitset_words_decimal(&[0, 1]), "18446744073709551616");
+        assert_eq!(bitset_words_decimal(&[1, 2]), "36893488147419103233");
+    }
 }
