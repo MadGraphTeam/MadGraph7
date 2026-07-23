@@ -504,3 +504,39 @@ Evidence:
   `cargo check`, and two independent read-only audits found no correctness
   issue. The measured implementation existed only as uncommitted work atop
   `b232ba1` and was restored after rejection.
+
+## Milestone 6: persistent authoritative stage-output slabs
+
+Status: deferred; no implementation code created.
+
+The post-milestone-5 runtime topology removes the premise that this remains a
+low-risk experiment. Each fused evaluator leaf currently writes a contiguous
+row-major scratch matrix and then copies into one compact global-state matrix.
+Keeping those outputs authoritative requires one retained matrix per leaf:
+multiple leaf matrices cannot write directly into one stage matrix without
+the explicitly out-of-scope strided/plane-aware backend ABI. Every downstream
+stage and amplitude input would then gather from segmented
+`(base state | producer leaf slab | structural zero)` sources.
+
+Static mapping of the retained artifacts and milestone-4 profiles gives a
+clear upper bound and locality risk:
+
+| LC workload | Assigned components/point | Assignment ms/point (b128 / b1024) | Share of wall | Global-state source runs | Leaf-slab source runs |
+|---|---:|---:|---:|---:|---:|
+| all-flow-union, fixed helicity | 22,946 over 47 leaf slabs | 0.03788 / 0.04874 | 8.3% / 10.0% | 6,979 | 11,612 (+66%) |
+| topology-replay, selected flow, helicity sum | 196 over 19 leaf slabs | 0.00341 / 0.00436 | 4.5% / 5.4% | 63 | 141 (+124%) |
+
+The union amplitude input is particularly unfavorable: two contiguous
+global-state runs become 1,441 producer/zero runs. Keeping the global arena
+for safe fallback would add about 44.8 MiB of slabs at batch 128 and
+358.5 MiB at batch 1024. Removing it instead would expand the change into
+source/momentum/model storage, structural-zero ownership, selector liveness,
+and exact/resolved compatibility.
+
+Milestone 5 already supplied the relevant measured A/B lesson: reducing
+copies while weakening compact-parent locality regressed union by 5--8% and
+non-union by 2--4%. Authoritative slabs have a smaller theoretical ceiling
+and substantially worse source fragmentation. A prototype therefore does not
+meet this project's low-risk threshold. Reconsider it only with a separate
+segmented/strided backend ABI project, or if future measurements put stage
+assignment materially above 10% of wall.
