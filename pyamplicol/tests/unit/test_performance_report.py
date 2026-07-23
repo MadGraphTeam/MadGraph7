@@ -1536,12 +1536,15 @@ def test_ten_minute_generation_cap_records_skip() -> None:
         == "skipped by campaign policy: generation exceeded 600 seconds"
     )
 
-    assert report._generation_timeout_status(3600.0) == report.ResultStatus.TIMEOUT
+    assert report._generation_timeout_status(3600.0) == report.ResultStatus.SKIP
     assert (
         report._generation_timeout_failure_kind(3600.0)
-        == "generation_timeout"
+        == "generation_skip"
     )
-    assert report._generation_timeout_failure_message(exc, 3600.0) == str(exc)
+    assert (
+        report._generation_timeout_failure_message(exc, 3600.0)
+        == "skipped by campaign policy: generation exceeded 600 seconds"
+    )
 
 
 def test_ten_minute_profile_cap_records_skip() -> None:
@@ -1567,9 +1570,12 @@ def test_ten_minute_profile_cap_records_skip() -> None:
         == "skipped by campaign policy: profiling exceeded 600 seconds"
     )
 
-    assert report._profile_timeout_status(3600.0) == report.ResultStatus.TIMEOUT
-    assert report._profile_timeout_failure_kind(3600.0) == "profile_timeout"
-    assert report._profile_timeout_failure_message(exc, 3600.0) == str(exc)
+    assert report._profile_timeout_status(3600.0) == report.ResultStatus.SKIP
+    assert report._profile_timeout_failure_kind(3600.0) == "profile_skip"
+    assert (
+        report._profile_timeout_failure_message(exc, 3600.0)
+        == "skipped by campaign policy: profiling exceeded 600 seconds"
+    )
 
 
 def test_ten_minute_lc_cap_only_skips_union_lane() -> None:
@@ -1635,6 +1641,42 @@ def test_ten_minute_lc_cap_only_skips_union_lane() -> None:
         )
         == report.ResultStatus.SKIP
     )
+
+
+def test_old_lc_union_generation_timeout_normalizes_to_skip() -> None:
+    measurement = report._failure_measurement(
+        report.ResultStatus.ERROR,
+        "evaluator materialization failed: generation exceeded 3600 seconds",
+        failure_kind="GenerationError",
+        timeout_seconds=3600.0,
+        metadata={
+            "lane_status_policy": report.LC_LANE_STATUS_POLICY,
+            "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
+            "runtime_selector_role": "all-flows-fixed-helicity",
+        },
+    )
+
+    assert report._measurement_status(measurement) == report.ResultStatus.SKIP.value
+    normalized = report._normalize_measurement(measurement)
+    assert normalized["status"] == report.ResultStatus.SKIP.value
+
+
+def test_old_lc_selected_generation_timeout_is_not_skip() -> None:
+    measurement = report._failure_measurement(
+        report.ResultStatus.ERROR,
+        "evaluator materialization failed: generation exceeded 3600 seconds",
+        failure_kind="GenerationError",
+        timeout_seconds=3600.0,
+        metadata={
+            "lane_status_policy": report.LC_LANE_STATUS_POLICY,
+            "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
+            "runtime_selector_role": "selected-flow-helicity-sum",
+        },
+    )
+
+    assert report._measurement_status(measurement) == report.ResultStatus.TIMEOUT.value
+    normalized = report._normalize_measurement(measurement)
+    assert normalized["status"] == report.ResultStatus.ERROR.value
 
 
 def test_cleanup_campaign_defaults_use_ten_minute_and_100g_caps() -> None:

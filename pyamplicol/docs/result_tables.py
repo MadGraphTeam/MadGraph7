@@ -802,11 +802,16 @@ def _optional_positive_float(value: object) -> float | None:
 
 
 def _measurement_status(value: Mapping[str, object]) -> str:
-    return _normalized_failure_status(
+    status = _normalized_failure_status(
         value.get("status", NA_STATUS),
         failure_kind=value.get("failure_kind"),
         failure_message=value.get("failure_message"),
     )
+    if status == ResultStatus.TIMEOUT.value and _timeout_measurement_exceeds_skip_cap(
+        value
+    ):
+        return ResultStatus.SKIP.value
+    return status
 
 
 def _normalized_failure_status(
@@ -1098,7 +1103,12 @@ def _normalize_measurement(value: object) -> dict[str, object]:
 
 
 def _timeout_measurement_exceeds_skip_cap(measurement: Mapping[str, object]) -> bool:
-    if str(measurement.get("status")) != ResultStatus.TIMEOUT.value:
+    status = _normalized_failure_status(
+        measurement.get("status", NA_STATUS),
+        failure_kind=measurement.get("failure_kind"),
+        failure_message=measurement.get("failure_message"),
+    )
+    if status != ResultStatus.TIMEOUT.value:
         return False
     metadata = measurement.get("metadata")
     if isinstance(metadata, Mapping) and (
@@ -1309,6 +1319,12 @@ def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
             raw_entry["measurement"] = _normalize_measurement(
                 raw_entry.get("measurement")
             )
+            if (
+                str(raw_entry.get("status")) == ResultStatus.TIMEOUT.value
+                and _measurement_status(raw_entry["measurement"])
+                == ResultStatus.SKIP.value
+            ):
+                raw_entry["status"] = ResultStatus.SKIP.value
         if matched_ladder_spec is not None:
             existing: set[tuple[int, str]] = set()
             for raw_entry in entries:
@@ -7403,8 +7419,8 @@ OUT_OF_REACH_PROFILE_CAP_SECONDS = SKIP_PROFILE_CAP_SECONDS
 
 
 def _generation_timeout_status(timeout_seconds: float | None) -> ResultStatus:
-    if timeout_seconds is not None and timeout_seconds <= (
-        SKIP_GENERATION_CAP_SECONDS + 1.0e-9
+    if timeout_seconds is not None and timeout_seconds >= (
+        SKIP_GENERATION_CAP_SECONDS - 1.0e-9
     ):
         return ResultStatus.SKIP
     return ResultStatus.TIMEOUT
@@ -7429,8 +7445,8 @@ def _generation_timeout_failure_message(
 
 
 def _profile_timeout_status(timeout_seconds: float | None) -> ResultStatus:
-    if timeout_seconds is not None and timeout_seconds <= (
-        SKIP_PROFILE_CAP_SECONDS + 1.0e-9
+    if timeout_seconds is not None and timeout_seconds >= (
+        SKIP_PROFILE_CAP_SECONDS - 1.0e-9
     ):
         return ResultStatus.SKIP
     return ResultStatus.TIMEOUT
@@ -7530,6 +7546,12 @@ def _lc_lane_profile_timeout_failure_message(
     ):
         return str(exc)
     return _profile_timeout_failure_message(exc, timeout_seconds)
+
+
+def _reference_timeout_status(timeout_seconds: float | None) -> ResultStatus:
+    if timeout_seconds is not None and timeout_seconds > 0.0:
+        return ResultStatus.SKIP
+    return ResultStatus.TIMEOUT
 
 
 def _symbolica_licensed_mode_enabled() -> bool:
@@ -11960,7 +11982,7 @@ def _measure_legacy_amplicol(
     except Exception as exc:
         status = ResultStatus.ERROR
         if isinstance(exc, ReportGenerationTimeout):
-            status = _generation_timeout_status(reference_timeout_seconds)
+            status = _reference_timeout_status(reference_timeout_seconds)
             message = (
                 "skipped by campaign policy: reference generation or "
                 "profiling exceeded "
@@ -12017,7 +12039,7 @@ def _legacy_reference_timeout_measurement(
     legacy_root = cell_root / f"legacy-amplicol-{legacy_revision[:12]}"
     log_path = cell_root / "logs" / f"legacy-amplicol-{legacy_revision[:12]}.log"
     manifest_path = legacy_root / "manifest.json"
-    status = _generation_timeout_status(reference_timeout_seconds)
+    status = _reference_timeout_status(reference_timeout_seconds)
     message = (
         "skipped by campaign policy: reference generation or profiling exceeded "
         f"{SKIP_GENERATION_CAP_SECONDS:.0f} seconds"

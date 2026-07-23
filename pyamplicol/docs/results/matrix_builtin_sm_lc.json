@@ -56183,28 +56183,124 @@
       "applicable": true,
       "generation_multiplier": null,
       "legacy_amplicol": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-z-jets/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "d d~ > z g g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [],
+          "matching_row_count": 1,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-z-jets/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 18.15483063645661,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-z-jets/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-z-jets/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 7.995142777018192e-22,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-dd-z-jets",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "d d~ > z g g g g g g g",
+            "process_key": "dd_z_jets",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 18.15483063645661,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 21518.631197097944,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 18.15483063645661,
+            "runtime_us_per_point": 228.52658841744557,
+            "selected_generation_s": 18.15483063645661,
+            "status": "ok",
+            "wall_us_per_point": 228.52658841744557
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 87839,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00022852658841744557
       },
       "n_final": 8,
       "parameter_alignment": {
@@ -56281,28 +56377,124 @@
         "wall_seconds_per_point": null
       },
       "reference": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-z-jets/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "d d~ > z g g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [],
+          "matching_row_count": 1,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-z-jets/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 18.15483063645661,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-z-jets/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-z-jets/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 7.995142777018192e-22,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-dd-z-jets",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "d d~ > z g g g g g g g",
+            "process_key": "dd_z_jets",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 18.15483063645661,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 21518.631197097944,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 18.15483063645661,
+            "runtime_us_per_point": 228.52658841744557,
+            "selected_generation_s": 18.15483063645661,
+            "status": "ok",
+            "wall_us_per_point": 228.52658841744557
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 87839,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00022852658841744557
       },
       "relative_difference": null,
       "runtime_multiplier": null,
@@ -116122,28 +116314,126 @@
       "applicable": true,
       "generation_multiplier": null,
       "legacy_amplicol": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-ud-w-jets/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "u d~ > w+ g g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [
+            "-cc"
+          ],
+          "matching_row_count": 1,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-ud-w-jets/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 11.54409302584827,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-ud-w-jets/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-ud-w-jets/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 1.8172640130157266e-21,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-ud-w-jets",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "u d~ > w+ g g g g g g g",
+            "process_key": "ud_w_jets",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 11.54409302584827,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 25319.42286751361,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 11.54409302584827,
+            "runtime_us_per_point": 172.04798,
+            "selected_generation_s": 11.54409302584827,
+            "status": "ok",
+            "wall_us_per_point": 172.04798
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 100000,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00017204798
       },
       "n_final": 8,
       "parameter_alignment": {
@@ -116220,28 +116510,126 @@
         "wall_seconds_per_point": null
       },
       "reference": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-ud-w-jets/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "u d~ > w+ g g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [
+            "-cc"
+          ],
+          "matching_row_count": 1,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-ud-w-jets/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 11.54409302584827,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-ud-w-jets/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-ud-w-jets/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 1.8172640130157266e-21,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-ud-w-jets",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "u d~ > w+ g g g g g g g",
+            "process_key": "ud_w_jets",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 11.54409302584827,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 25319.42286751361,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 11.54409302584827,
+            "runtime_us_per_point": 172.04798,
+            "selected_generation_s": 11.54409302584827,
+            "status": "ok",
+            "wall_us_per_point": 172.04798
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 100000,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00017204798
       },
       "relative_difference": null,
       "runtime_multiplier": null,
@@ -390744,28 +391132,124 @@
       "applicable": true,
       "generation_multiplier": null,
       "legacy_amplicol": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-gg-tt-jets/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "g g > t t~ g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [],
+          "matching_row_count": 56,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-gg-tt-jets/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "eab0dd71802a63ebce5ff1ab56da534778858f14",
+            "model_compiler_version": 13,
+            "origin_main": "eab0dd71802a63ebce5ff1ab56da534778858f14",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 15237.378864571452,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-gg-tt-jets/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-gg-tt-jets/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 9.236641642551142e-22,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-gg-tt-jets",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "g g > t t~ g g g g g g",
+            "process_key": "gg_tt_jets",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 15237.378864571452,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 169399.24347826088,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 15237.378864571452,
+            "runtime_us_per_point": 389.83156475347363,
+            "selected_generation_s": 15237.378864571452,
+            "status": "ok",
+            "wall_us_per_point": 389.83156475347363
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "eab0dd71802a63ebce5ff1ab56da534778858f14",
+            "model_compiler_version": 13,
+            "origin_main": "eab0dd71802a63ebce5ff1ab56da534778858f14",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 51171,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00038983156475347363
       },
       "n_final": 8,
       "parameter_alignment": {
@@ -390842,28 +391326,124 @@
         "wall_seconds_per_point": null
       },
       "reference": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-gg-tt-jets/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "g g > t t~ g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [],
+          "matching_row_count": 56,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-gg-tt-jets/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "eab0dd71802a63ebce5ff1ab56da534778858f14",
+            "model_compiler_version": 13,
+            "origin_main": "eab0dd71802a63ebce5ff1ab56da534778858f14",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 15237.378864571452,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-gg-tt-jets/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-gg-tt-jets/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 9.236641642551142e-22,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-gg-tt-jets",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "g g > t t~ g g g g g g",
+            "process_key": "gg_tt_jets",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 15237.378864571452,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 169399.24347826088,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 15237.378864571452,
+            "runtime_us_per_point": 389.83156475347363,
+            "selected_generation_s": 15237.378864571452,
+            "status": "ok",
+            "wall_us_per_point": 389.83156475347363
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "eab0dd71802a63ebce5ff1ab56da534778858f14",
+            "model_compiler_version": 13,
+            "origin_main": "eab0dd71802a63ebce5ff1ab56da534778858f14",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 51171,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00038983156475347363
       },
       "relative_difference": null,
       "runtime_multiplier": null,
@@ -460085,28 +460665,124 @@
       "applicable": true,
       "generation_multiplier": null,
       "legacy_amplicol": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-tt-jets/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "d d~ > t t~ g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [],
+          "matching_row_count": 14,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-tt-jets/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 408.13679958321154,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-tt-jets/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-tt-jets/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 2.6540783829375772e-22,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-dd-tt-jets",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "d d~ > t t~ g g g g g g",
+            "process_key": "dd_tt_jets",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 408.13679958321154,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 25513.660322108346,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 408.13679958321154,
+            "runtime_us_per_point": 169.88137,
+            "selected_generation_s": 408.13679958321154,
+            "status": "ok",
+            "wall_us_per_point": 169.88137
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 100000,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00016988137
       },
       "n_final": 8,
       "parameter_alignment": {
@@ -460183,28 +460859,124 @@
         "wall_seconds_per_point": null
       },
       "reference": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-tt-jets/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "d d~ > t t~ g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [],
+          "matching_row_count": 14,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-tt-jets/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 408.13679958321154,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-tt-jets/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-tt-jets/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 2.6540783829375772e-22,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-dd-tt-jets",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "d d~ > t t~ g g g g g g",
+            "process_key": "dd_tt_jets",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 408.13679958321154,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 25513.660322108346,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 408.13679958321154,
+            "runtime_us_per_point": 169.88137,
+            "selected_generation_s": 408.13679958321154,
+            "status": "ok",
+            "wall_us_per_point": 169.88137
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 100000,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00016988137
       },
       "relative_difference": null,
       "runtime_multiplier": null,
@@ -544807,28 +545579,122 @@
       "applicable": true,
       "generation_multiplier": null,
       "legacy_amplicol": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n7-gg-gluons/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "g g > g g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [],
+          "matching_row_count": 8,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n7-gg-gluons/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 54.55880582332611,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n7-gg-gluons/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n7-gg-gluons/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 3.537821665643571e-19,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n7-gg-gluons",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 7,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "g g > g g g g g g g",
+            "process_key": "gg_gluons",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1
+            ],
+            "all_flow_generation_s": 54.55880582332611,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 62856.1552795031,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 54.55880582332611,
+            "runtime_us_per_point": 211.18012680594532,
+            "selected_generation_s": 54.55880582332611,
+            "status": "ok",
+            "wall_us_per_point": 211.18012680594532
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 76968,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00021118012680594532
       },
       "n_final": 7,
       "parameter_alignment": {
@@ -544905,28 +545771,122 @@
         "wall_seconds_per_point": null
       },
       "reference": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n7-gg-gluons/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "g g > g g g g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [],
+          "matching_row_count": 8,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n7-gg-gluons/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:1:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 54.55880582332611,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n7-gg-gluons/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n7-gg-gluons/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 3.537821665643571e-19,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n7-gg-gluons",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 7,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "g g > g g g g g g g",
+            "process_key": "gg_gluons",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1
+            ],
+            "all_flow_generation_s": 54.55880582332611,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 62856.1552795031,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 54.55880582332611,
+            "runtime_us_per_point": 211.18012680594532,
+            "selected_generation_s": 54.55880582332611,
+            "status": "ok",
+            "wall_us_per_point": 211.18012680594532
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 76968,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 0.00021118012680594532
       },
       "relative_difference": null,
       "runtime_multiplier": null,
@@ -809053,28 +810013,126 @@
       "applicable": true,
       "generation_multiplier": null,
       "legacy_amplicol": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-3q-lines/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "d d~ > u u~ s s~ g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [
+            "-3"
+          ],
+          "matching_row_count": 180,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-3q-lines/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:4:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 115.3738984297961,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-3q-lines/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-3q-lines/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 3.0555693209203104e-22,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-dd-3q-lines",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "d d~ > u u~ s s~ g g g g",
+            "process_key": "dd_3q_lines",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 115.3738984297961,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 3823.8849782293178,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 115.3738984297961,
+            "runtime_us_per_point": 20.78877,
+            "selected_generation_s": 115.3738984297961,
+            "status": "ok",
+            "wall_us_per_point": 20.78877
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 100000,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 2.0788769999999998e-05
       },
       "n_final": 8,
       "parameter_alignment": {
@@ -809151,28 +810209,126 @@
         "wall_seconds_per_point": null
       },
       "reference": {
-        "artifact_path": null,
-        "command": null,
-        "effective_config": null,
-        "environment": {},
+        "artifact_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-3q-lines/legacy-amplicol-79c96cecf2a7",
+        "command": [
+          "legacy-amplicol-generated-library",
+          "d d~ > u u~ s s~ g g g g",
+          "lc"
+        ],
+        "effective_config": {
+          "legacy_process_list_flags": [
+            "-3"
+          ],
+          "matching_row_count": 180,
+          "process_file": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-3q-lines/legacy-amplicol-79c96cecf2a7/processes.txt",
+          "row_id": "group:4:integral:1",
+          "row_selection_policy": "exact-external-pdg-order-then-process-file-order-v1"
+        },
+        "environment": {
+          "report_source": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          },
+          "repository": "/shared/vhirschi/pyamplicol/dependencies/checkouts/legacy-amplicol",
+          "revision": "79c96cecf2a722e50c3d2030b6894d755f96518a"
+        },
         "evaluator_seconds_per_point": null,
         "failure_kind": null,
         "failure_message": null,
-        "generation_seconds": null,
-        "limit_gib": null,
-        "log_path": null,
-        "manifest_path": null,
-        "matrix_element": null,
-        "metadata": {},
+        "generation_seconds": 115.3738984297961,
+        "limit_gib": 800.0,
+        "log_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-3q-lines/logs/legacy-amplicol-79c96cecf2a7.log",
+        "manifest_path": "/shared/vhirschi/pyamplicol/.artifacts/performance-report/cells/matrix-builtin-sm-lc-n8-dd-3q-lines/legacy-amplicol-79c96cecf2a7/manifest.json",
+        "matrix_element": 3.0555693209203104e-22,
+        "metadata": {
+          "cell": {
+            "cache_name": "matrix_builtin_sm_lc.json",
+            "cell_id": "matrix-builtin-sm-lc-n8-dd-3q-lines",
+            "dataset_id": "matrix_builtin_sm_lc",
+            "kind": "matrix",
+            "n_final": 8,
+            "priority": [
+              0,
+              0,
+              0,
+              ""
+            ],
+            "process": "d d~ > u u~ s s~ g g g g",
+            "process_key": "dd_3q_lines",
+            "variant": null
+          },
+          "matrix_element_probe": "amplicol_library_benchmark_selected_flow",
+          "old_matrix_format": {
+            "all_flow_amplicol_helicities": [
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1,
+              -1,
+              1
+            ],
+            "all_flow_generation_s": 115.3738984297961,
+            "all_flow_generation_source": "shared_generated_library_build",
+            "all_flow_helicity_mode": "fixed-source-helicity",
+            "all_flow_helicity_selection_source": "pyamplicol-dag-selected-helicity-probe",
+            "all_flow_runtime_us_per_point": 3823.8849782293178,
+            "all_flow_source_helicities": {
+              "1": -1,
+              "10": 1,
+              "2": 1,
+              "3": -1,
+              "4": 1,
+              "5": -1,
+              "6": 1,
+              "7": -1,
+              "8": 1,
+              "9": -1
+            },
+            "all_flow_status": "ok",
+            "generation_s": 115.3738984297961,
+            "runtime_us_per_point": 20.78877,
+            "selected_generation_s": 115.3738984297961,
+            "status": "ok",
+            "wall_us_per_point": 20.78877
+          },
+          "source_provenance": {
+            "cache_schema_version": 2,
+            "compiled_model_schema_version": 9,
+            "head": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "model_compiler_version": 13,
+            "origin_main": "b2cb14efee77bd203049d33827e52d5dbe8b4bcb",
+            "report_version": "0.1.0",
+            "repository": "/shared/vhirschi/pyamplicol"
+          }
+        },
         "peak_rss_gib": null,
-        "relative_standard_error": null,
-        "requested_config": null,
-        "sample_count": null,
-        "standard_deviation_seconds_per_point": null,
-        "standard_error_seconds_per_point": null,
-        "status": "not_available",
+        "relative_standard_error": 0.0,
+        "requested_config": {
+          "color_accuracy": "lc",
+          "jobs": 1,
+          "legacy_profile_max_points": 100000,
+          "legacy_profile_min_points": 100,
+          "legacy_profile_policy": "target_runtime_warmup_v1",
+          "legacy_profile_target_seconds": 20.0,
+          "legacy_profile_warmup_points": 100,
+          "method": "legacy_amplicol_generated_library",
+          "point_source": "pyamplicol-shared-validation-momenta"
+        },
+        "sample_count": 100000,
+        "standard_deviation_seconds_per_point": 0.0,
+        "standard_error_seconds_per_point": 0.0,
+        "status": "ok",
         "timeout_seconds": null,
-        "wall_seconds_per_point": null
+        "wall_seconds_per_point": 2.0788769999999998e-05
       },
       "relative_difference": null,
       "runtime_multiplier": null,
