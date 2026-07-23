@@ -558,6 +558,66 @@ def test_lc_matrix_renderer_localizes_union_out_of_reach() -> None:
     assert r"\texttt{out-of-reach}" in cell
 
 
+def test_render_safe_lc_measurement_hides_stale_lane_numbers() -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    selected = {
+        **report._empty_measurement(),
+        "status": report.ResultStatus.OK.value,
+        "generation_seconds": 2.0,
+        "wall_seconds_per_point": 2.0e-6,
+        "evaluator_seconds_per_point": 1.0e-6,
+        "metadata": {
+            "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
+            "runtime_selector_role": "selected-flow-helicity-sum",
+        },
+    }
+    union = report._failure_measurement(
+        report.ResultStatus.OUT_OF_REACH,
+        "union lane exceeded the campaign cap",
+        metadata={
+            "lane_status_policy": report.LC_LANE_STATUS_POLICY,
+            "lane_terminal_policy": report.LC_GENERATION_CAP_OUT_OF_REACH_POLICY,
+            "runtime_selector_role": "all-flows-fixed-helicity",
+            "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
+        },
+    )
+    measurement = {
+        **selected,
+        "metadata": {
+            "old_matrix_format": {
+                "status": report.ResultStatus.OK.value,
+                "generation_s": 2.0,
+                "selected_generation_s": 2.0,
+                "wall_us_per_point": 2.0,
+                "runtime_us_per_point": 1.0,
+                "all_flow_status": report.ResultStatus.OUT_OF_REACH.value,
+            },
+            "selected_flow_measurement": selected,
+            "all_flow_measurement": union,
+        },
+    }
+
+    safe = report._lc_render_safe_measurement(
+        cell,
+        measurement,
+        execution_mode="compiled",
+        reference_measurement={"status": report.ResultStatus.OK.value},
+    )
+
+    fields = report._measurement_old_matrix_fields(safe)
+    assert fields["status"] == report.NA_STATUS
+    assert fields["generation_s"] is None
+    assert fields["selected_generation_s"] is None
+    assert fields["runtime_us_per_point"] is None
+    assert fields["wall_us_per_point"] is None
+    assert fields["all_flow_status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert safe["status"] == report.NA_STATUS
+
+
 def test_lc_matrix_reference_runtime_pair_uses_tight_spacing() -> None:
     macros = "\n".join(report._matrix_table_macros())
 
@@ -2849,6 +2909,225 @@ def test_lc_lane_profile_out_of_reach_preserves_generation_metadata(
     assert metadata["measurement_point_digest"] == report._measurement_point_digest(
         ("point",)
     )
+    assert contract["status"] == report.ResultStatus.OUT_OF_REACH.value
+
+
+@pytest.mark.parametrize(
+    ("layout", "role", "execution_mode", "expected_label"),
+    (
+        (
+            report.LC_TOPOLOGY_REPLAY_LAYOUT,
+            "selected-flow-helicity-sum",
+            "compiled",
+            "complete-lc",
+        ),
+        (
+            report.LC_ALL_FLOW_UNION_LAYOUT,
+            "all-flows-fixed-helicity",
+            "compiled",
+            "all-flow-union",
+        ),
+        (
+            report.LC_TOPOLOGY_REPLAY_LAYOUT,
+            "selected-flow-helicity-sum",
+            "eager",
+            "eager-complete",
+        ),
+        (
+            report.LC_ALL_FLOW_UNION_LAYOUT,
+            "all-flows-fixed-helicity",
+            "eager",
+            "eager-all-flow-union",
+        ),
+    ),
+)
+@pytest.mark.parametrize(
+    ("timeout_error", "expected_policy", "expected_kind"),
+    (
+        (
+            report.ReportGenerationTimeout,
+            report.LC_GENERATION_CAP_OUT_OF_REACH_POLICY,
+            "generation_out_of_reach",
+        ),
+        (
+            report.ReportProfileTimeout,
+            report.LC_PROFILE_CAP_OUT_OF_REACH_POLICY,
+            "profile_out_of_reach",
+        ),
+    ),
+)
+def test_lc_lane_out_of_reach_is_layout_and_mode_local(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    layout: str,
+    role: str,
+    execution_mode: str,
+    expected_label: str,
+    timeout_error: type[BaseException],
+    expected_policy: str,
+    expected_kind: str,
+) -> None:
+    import pyamplicol.api as api
+    import pyamplicol.config.resolver as resolver
+
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    spec = report.LADDER_SPECS[0]
+    reference = {
+        "status": report.ResultStatus.OK.value,
+        "metadata": {
+            "old_matrix_format": {
+                "reference_color_order": [2, 4, 5, 1, 3],
+            }
+        },
+    }
+    fixed_helicity = report._source_helicity_choice_payload(
+        cell.process,
+        {"1": -1, "2": 1, "3": -1, "4": 1, "5": -1},
+        selection_source="test",
+        validation_note="test",
+    )
+    resolution = SimpleNamespace(
+        requested=SimpleNamespace(),
+        effective=SimpleNamespace(benchmark=BenchmarkConfig(target_runtime=0.1)),
+    )
+
+    class FakeGenerator:
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        def generate(
+            self,
+            _process: str,
+            artifact_dir: Path,
+            *,
+            model: object,
+            mode: str,
+        ) -> None:
+            assert model == "compiled-model"
+            assert mode == "replace"
+            artifact_dir.mkdir(parents=True)
+
+    class FakeRuntime:
+        physics = SimpleNamespace()
+
+    class FakeRuntimeLoader:
+        @staticmethod
+        def load(_artifact_dir: Path, *, process: str) -> FakeRuntime:
+            assert process == cell.process
+            return FakeRuntime()
+
+    def timeout_generation(action: object, *, timeout_seconds: object) -> None:
+        if timeout_error is report.ReportGenerationTimeout:
+            raise report.ReportGenerationTimeout("generation exceeded the cap")
+        assert callable(action)
+        action()
+
+    def timeout_profile(action: object, **_kwargs: object) -> object:
+        if timeout_error is report.ReportProfileTimeout:
+            raise report.ReportProfileTimeout("profiling exceeded the cap")
+        assert callable(action)
+        return {
+            **report._empty_measurement(),
+            "status": report.ResultStatus.OK.value,
+            "wall_seconds_per_point": 1.0e-6,
+            "evaluator_seconds_per_point": 1.0e-6,
+            "matrix_element": 1.0,
+        }
+
+    monkeypatch.setattr(api, "Generator", FakeGenerator)
+    monkeypatch.setattr(api, "Runtime", FakeRuntimeLoader)
+    monkeypatch.setattr(
+        resolver,
+        "resolve_config",
+        lambda *_args, **_kwargs: resolution,
+    )
+    monkeypatch.setattr(resolver, "config_to_dict", lambda _value: {"ok": True})
+    monkeypatch.setattr(
+        report,
+        "_precompile_model_for_generation",
+        lambda *_args, **_kwargs: (
+            "compiled-model",
+            {
+                "model_precompile_policy": (
+                    report.PYAMPLICOL_GENERATION_PROFILE_POLICY
+                ),
+                "model_precompile_seconds": 0.0,
+                "model_precompile_cache_dir": None,
+                "model_precompile_used_cache": True,
+                "model_precompile_source_kind": "built-in-sm",
+                "generation_timer_excludes_model_compile": True,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        report,
+        "_single_artifact_process_id",
+        lambda _artifact_dir, *, fallback: fallback,
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_runtime_selector_contract",
+        lambda **_kwargs: {
+            **report._empty_eager_selector_contract(),
+            "status": report.ResultStatus.OK.value,
+            "reference_digest": report._eager_reference_digest(cell, reference),
+            "selected_reference_color_order": [2, 4, 5, 1, 3],
+            "selected_color_flow_ids": ["flow:2,4,5,1"],
+            "all_flow_source_helicities": fixed_helicity["source_helicities"],
+            "all_flow_helicity_ids": ["h:-1,+1,-1,+1,-1"],
+        },
+    )
+    monkeypatch.setattr(report, "_run_generation_with_timeout", timeout_generation)
+    monkeypatch.setattr(report, "_run_mapping_with_timeout", timeout_profile)
+    monkeypatch.setattr(
+        report,
+        "_report_source_provenance",
+        lambda: {
+            "head": "test",
+            "report_version": report.REPORT_VERSION,
+            "cache_schema_version": report.CACHE_SCHEMA_VERSION,
+            "compiled_model_schema_version": 9,
+            "model_compiler_version": 13,
+        },
+    )
+
+    variant = {
+        "evaluator.backend": "jit",
+        "evaluator.jit.optimization_level": 3,
+    }
+    if execution_mode == "eager":
+        variant["evaluator.execution_mode"] = "eager"
+
+    measurement, _points, contract = report._measure_pyamplicol_lc_lane(
+        cell=cell,
+        spec=spec,
+        variant_overrides=variant,
+        reference_measurement=reference,
+        artifact_root=tmp_path,
+        artifact_label=expected_label,
+        log_label=expected_label,
+        layout=layout,
+        role=role,
+        generation_timeout_seconds=report.OUT_OF_REACH_GENERATION_CAP_SECONDS,
+        target_runtime=0.1,
+        cell_cores=1,
+        points=("point",),
+        fixed_helicity=fixed_helicity,
+        previous_measurement=None,
+    )
+
+    assert measurement["status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert measurement["failure_kind"] == expected_kind
+    assert measurement["artifact_path"].endswith(expected_label)
+    metadata = measurement["metadata"]
+    assert metadata["lc_flow_layout"] == layout
+    assert metadata["runtime_selector_role"] == role
+    assert metadata["lane_terminal_policy"] == expected_policy
+    assert metadata["lane_status_policy"] == report.LC_LANE_STATUS_POLICY
     assert contract["status"] == report.ResultStatus.OUT_OF_REACH.value
 
 

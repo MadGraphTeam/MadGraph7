@@ -3842,6 +3842,55 @@ def _joined_eager_matrix_entries(
     return joined
 
 
+def _render_safe_matrix_entry(
+    spec: MatrixSpec | EagerMatrixSpec,
+    entry: Mapping[str, object],
+    *,
+    reference_payload: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    safe = dict(entry)
+    n_final = int(safe["n_final"])
+    process_key = str(safe["process_key"])
+    process = str(safe["process"])
+    cell = CampaignCell(
+        kind="eager_matrix" if isinstance(spec, EagerMatrixSpec) else "matrix",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=n_final,
+        process=process,
+        process_key=process_key,
+    )
+    if spec.color_accuracy != "lc":
+        return safe
+    if isinstance(spec, EagerMatrixSpec):
+        measurement = safe.get("pyamplicol_jit_o3")
+        reference = safe.get("legacy_amplicol")
+        if not isinstance(reference, Mapping) and reference_payload is not None:
+            reference = _eager_reference_measurement(
+                cell,
+                {spec.reference_cache_name: reference_payload},
+            )
+        safe["pyamplicol_jit_o3"] = _lc_render_safe_measurement(
+            cell,
+            measurement,
+            execution_mode="eager",
+            reference_measurement=reference if isinstance(reference, Mapping) else None,
+        )
+    else:
+        safe["pyamplicol_jit_o3"] = _lc_render_safe_measurement(
+            cell,
+            safe.get("pyamplicol_jit_o3"),
+            execution_mode="compiled",
+            reference_measurement=(
+                safe.get("legacy_amplicol")
+                if isinstance(safe.get("legacy_amplicol"), Mapping)
+                else None
+            ),
+        )
+    _refresh_matrix_derived_fields(safe)
+    return safe
+
+
 def render_matrix_table(
     spec: MatrixSpec | EagerMatrixSpec,
     payload: Mapping[str, object],
@@ -3865,6 +3914,14 @@ def render_matrix_table(
             for entry in raw_entries
             if isinstance(entry, Mapping)
         }
+    entries = {
+        key: _render_safe_matrix_entry(
+            spec,
+            entry,
+            reference_payload=reference_payload,
+        )
+        for key, entry in entries.items()
+    }
     chunks = _chunks(spec.multiplicities, 3)
     lines = [
         "% SPDX-License-Identifier: 0BSD",
@@ -3956,6 +4013,37 @@ def render_performance_ladder(
         for entry in raw_entries
         if isinstance(entry, Mapping)
     }
+    safe_entries: dict[tuple[int, str], dict[str, object]] = {}
+    for key, entry in entries.items():
+        n_final, variant_key = key
+        safe_entry = dict(entry)
+        measurement = safe_entry.get("measurement")
+        if variant_key != "reference" and isinstance(measurement, Mapping):
+            cell = CampaignCell(
+                kind="performance_ladder",
+                cache_name=spec.cache_name,
+                dataset_id=spec.dataset_id,
+                n_final=n_final,
+                process=spec.process(n_final),
+                variant=variant_key,
+            )
+            reference = (
+                entries.get((n_final, "jit_o3"), {}).get("measurement")
+                if variant_key == "eager_jit_o3"
+                else entries.get((n_final, "reference"), {}).get("measurement")
+            )
+            safe_entry["measurement"] = _lc_render_safe_measurement(
+                cell,
+                measurement,
+                execution_mode="eager"
+                if variant_key == "eager_jit_o3"
+                else "compiled",
+                reference_measurement=(
+                    reference if isinstance(reference, Mapping) else None
+                ),
+            )
+        safe_entries[key] = safe_entry
+    entries = safe_entries
     compare_to_built_in = spec.model.profile != BUILTIN_SM.profile
     built_in_entries: dict[tuple[int, str], Mapping[str, object]] = {}
     if compare_to_built_in and built_in_payload is not None:
@@ -3967,6 +4055,43 @@ def render_performance_ladder(
             for entry in raw_built_in_entries
             if isinstance(entry, Mapping)
         }
+        safe_built_in_entries: dict[tuple[int, str], dict[str, object]] = {}
+        for key, entry in built_in_entries.items():
+            n_final, variant_key = key
+            safe_entry = dict(entry)
+            measurement = safe_entry.get("measurement")
+            if variant_key != "reference" and isinstance(measurement, Mapping):
+                cell = CampaignCell(
+                    kind="performance_ladder",
+                    cache_name="z_builtin_sm.json",
+                    dataset_id="z_builtin_sm",
+                    n_final=n_final,
+                    process=next(
+                        item
+                        for item in LADDER_SPECS
+                        if item.dataset_id == "z_builtin_sm"
+                    ).process(n_final),
+                    variant=variant_key,
+                )
+                reference = (
+                    built_in_entries.get((n_final, "jit_o3"), {}).get("measurement")
+                    if variant_key == "eager_jit_o3"
+                    else built_in_entries.get((n_final, "reference"), {}).get(
+                        "measurement"
+                    )
+                )
+                safe_entry["measurement"] = _lc_render_safe_measurement(
+                    cell,
+                    measurement,
+                    execution_mode="eager"
+                    if variant_key == "eager_jit_o3"
+                    else "compiled",
+                    reference_measurement=(
+                        reference if isinstance(reference, Mapping) else None
+                    ),
+                )
+            safe_built_in_entries[key] = safe_entry
+        built_in_entries = safe_built_in_entries
     display_n_values = tuple(spec.multiplicities)
     section_prefix = "UFO-SM " if compare_to_built_in else ""
     lines = [
@@ -5119,6 +5244,119 @@ def _lc_lane_missing_measurement(
         "lc_flow_layout": layout,
     }
     return lane
+
+
+def _lc_render_safe_measurement(
+    cell: CampaignCell,
+    measurement: object,
+    *,
+    execution_mode: Literal["compiled", "eager"],
+    reference_measurement: Mapping[str, object] | None,
+) -> dict[str, object]:
+    if not isinstance(measurement, Mapping):
+        return _empty_measurement()
+    if not _lc_measurement_has_explicit_lanes(measurement):
+        return dict(measurement)
+
+    selected, all_flow = _lc_lane_measurements(measurement)
+    reasons = _lc_combined_measurement_reasons(
+        cell,
+        measurement,
+        execution_mode=execution_mode,
+        reference_measurement=reference_measurement,
+    )
+    global_stale = any(
+        not reason.startswith(("selected:", "union:")) for reason in reasons
+    )
+    selected_current = (
+        not global_stale
+        and _lc_nested_measurement_current(
+            cell,
+            selected,
+            expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+            execution_mode=execution_mode,
+        )
+    )
+    selected_terminal = _lc_lane_terminal_current(
+        selected,
+        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        role="selected-flow-helicity-sum",
+    )
+    all_flow_current = (
+        not global_stale
+        and _lc_nested_measurement_current(
+            cell,
+            all_flow,
+            expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+            execution_mode=execution_mode,
+        )
+    )
+    all_flow_terminal = _lc_lane_terminal_current(
+        all_flow,
+        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+        role="all-flows-fixed-helicity",
+    )
+    selected_safe = (
+        dict(selected)
+        if isinstance(selected, Mapping) and (selected_current or selected_terminal)
+        else _lc_lane_missing_measurement(
+            measurement,
+            layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+            role="selected-flow-helicity-sum",
+        )
+    )
+    all_flow_safe = (
+        dict(all_flow)
+        if isinstance(all_flow, Mapping) and (all_flow_current or all_flow_terminal)
+        else _lc_lane_missing_measurement(
+            measurement,
+            layout=LC_ALL_FLOW_UNION_LAYOUT,
+            role="all-flows-fixed-helicity",
+        )
+    )
+    selected_status = _measurement_status(selected_safe)
+    all_flow_status = _measurement_status(all_flow_safe)
+
+    safe = dict(measurement)
+    metadata_value = safe.get("metadata")
+    metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+    old_fields = dict(_measurement_old_matrix_fields(measurement))
+    old_fields["status"] = selected_status
+    old_fields["all_flow_status"] = all_flow_status
+    if selected_status != ResultStatus.OK.value:
+        for key in (
+            "generation_s",
+            "selected_generation_s",
+            "runtime_us_per_point",
+            "wall_us_per_point",
+        ):
+            old_fields[key] = None
+    elif selected_safe.get("generation_seconds") is not None:
+        old_fields.setdefault("generation_s", selected_safe.get("generation_seconds"))
+        old_fields.setdefault(
+            "selected_generation_s",
+            selected_safe.get("generation_seconds"),
+        )
+    if all_flow_status != ResultStatus.OK.value:
+        for key in (
+            "all_flow_generation_s",
+            "all_flow_runtime_us_per_point",
+            "all_flow_wall_us_per_point",
+            "all_flow_matrix_element",
+        ):
+            old_fields[key] = None
+        old_fields["all_flow_error"] = all_flow_safe.get("failure_message")
+    elif all_flow_safe.get("generation_seconds") is not None:
+        old_fields.setdefault(
+            "all_flow_generation_s",
+            all_flow_safe.get("generation_seconds"),
+        )
+    metadata["old_matrix_format"] = old_fields
+    metadata["selected_flow_measurement"] = selected_safe
+    metadata["all_flow_measurement"] = all_flow_safe
+    safe["metadata"] = metadata
+    safe["status"] = _lc_status_pair_to_cell_status(selected_status, all_flow_status)
+    return safe
 
 
 def _migrate_known_eager_z_lane_out_of_reach_entry(
