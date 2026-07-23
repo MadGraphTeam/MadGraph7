@@ -303,3 +303,79 @@ Evidence:
   `0673e2779c182487278036aeef8f2d98df424998a3f5d9070de5bef86b1d8c6d`.
 - Focused candidate rebuild watchdog peak: `1.290 GiB`; Rust library test
   watchdog peak: `1.053 GiB`.
+
+## Milestone 3: borrowed flat input and direct output
+
+Status: implemented and measured at commits `b707da9` and `e237d5c`; final
+robust median/MAD validation remains part of the cumulative optimization gate.
+
+The ordinary f64 lane now borrows contiguous row-major momentum input with
+layout `[point][external][E,px,py,pz]`. A prevalidated view applies an alias
+permutation on access, while the dominant identity case has a separate
+branch-free accessor that performs neither a lookup nor multiplication by
+one. Contiguous selector partitions remain borrowed; only genuinely gathered
+random partitions and real topology permutations materialize momentum rows.
+Noncontiguous NumPy arrays and generic Python sequences retain the validating
+owned fallback.
+
+Rust exposes `evaluate_f64_into` and output-last
+`evaluate_f64_into_with_selectors`; the established allocating entry points
+are wrappers. Python allocates its public result once and the C ABI writes
+directly into the validated caller prefix. The native benchmark allocates and
+reuses its output before starting the wall clock. Existing resolved APIs,
+native signatures, artifact schemas and evaluator ABIs are unchanged.
+
+The first borrowed-view draft retained a per-leg optional crossing branch and
+four multiplications by one in the identity case. A current-host paired check
+showed that draft about 12--13% slower than exact main at batch 128 in both
+required workloads. Commit `e237d5c` specializes identity access; the same
+check then measured `0.474549 ms/point` for all-flow-union fixed helicity
+(`-15.81%` versus paired exact main) and `0.077799 ms/point` for non-union
+selected-flow/helicity-sum (`-19.38%`). The regressing draft is not used as
+performance evidence.
+
+A five-block, same-helper smoke against the clock-free milestone measured:
+
+| LC workload | Batch | Clock-free ms/point | Borrowed/into ms/point | Change |
+|---|---:|---:|---:|---:|
+| all-flow-union, fixed helicity | 1 | 2.730917 | 1.164927 | -57.34% |
+| all-flow-union, fixed helicity | 128 | 0.537119 | 0.474549 | -11.65% |
+| all-flow-union, fixed helicity | 1024 | 0.529601 | 0.495361 | -6.47% |
+| topology-replay, selected flow, helicity sum | 1 | 0.274444 | 0.259004 | -5.63% |
+| topology-replay, selected flow, helicity sum | 128 | 0.085786 | 0.077799 | -9.31% |
+| topology-replay, selected flow, helicity sum | 1024 | 0.086619 | 0.084251 | -2.73% |
+
+Every warmed value is bitwise identical to the preceding clock-free build.
+Relative to the accounting build, the cumulative batch-128/1024 changes are
+`-14.03% / -12.76%` for union and `-24.72% / -11.02%` for non-union. The
+batch-1 union number is deliberately provisional because its five-block
+standard deviation was `0.143603 ms/point`; the final long regression gate,
+not this smoke, decides acceptance.
+
+Explicit profile APIs still use the owned diagnostic input-preparation lane.
+Their native input pack/cross clocks and container counters therefore describe
+the paired profile pass, not ordinary borrowed evaluation; the independently
+timed unprofiled headline remains authoritative.
+
+Evidence:
+
+- Measurements: `/private/tmp/pyamplicol-compiled-dag-flat-identity`.
+- Union batch 1/128/1024 SHA-256:
+  `2a4e2e01ef1d73243d5a2956bed4566771619730457def857a04feeb64bd8699` /
+  `a8599471496984b94d9a3b8fb0e1afbe960004b66dcb0d2455ea94dcce564dc6` /
+  `2bf145392a7fbfcb166ecd1256ef28e37334a9f0ff4863db280ecad0dd70b562`.
+- Non-union batch 1/128/1024 SHA-256:
+  `8609c38f88744173d04ebfcab0532fd72813df0dd3e90d17feccc5cd89f7fb9a` /
+  `325e609745220b890925a64f78179b0af80a47a9f66035497f058b6cc3452179` /
+  `dfba535db6dbb67629f9485c266b081c498578e4996de3effefc8cc744339d66`.
+- Native build-input SHA-256:
+  `32a045bb291a396838f10ec42eb3aee94384d85d2aaa452fd98a28c2da7ee6de`;
+  module SHA-256:
+  `bd87c30f1c613dc84433652e06a946d43dfafc359439271e27a2f0901171117e`.
+  The measurement wheel was built from the exact `e237d5c` file content before
+  that one-file corrective commit was created, so its informational build
+  revision still records parent `b707da9`; final evidence will be rebuilt from
+  the tested commit.
+- Focused candidate rebuild watchdog peak: `1.288 GiB`. Formatting and affected
+  crate checks pass; broader correctness and release gates remain deferred to
+  final integration as requested.
