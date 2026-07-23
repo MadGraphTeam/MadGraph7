@@ -2715,6 +2715,8 @@ def _matrix_failure_label(measurement: Mapping[str, object]) -> str:
     status = str(measurement.get("status", NA_STATUS))
     if status == NA_STATUS:
         return _matrix_na()
+    if _retryable_worker_exit_measurement(measurement):
+        return _matrix_na()
     if status == ResultStatus.TIMEOUT.value:
         return r"\textcolor{ReportRed}{\texttt{t/o}}"
     if status == ResultStatus.MEMORY_LIMIT.value:
@@ -2728,6 +2730,24 @@ def _matrix_failure_label(measurement: Mapping[str, object]) -> str:
     if status == ResultStatus.UNSUPPORTED.value:
         return r"\textcolor{ReportMuted}{\texttt{UNSUPPORTED}}"
     return r"\textcolor{ReportRed}{\texttt{ERROR}}"
+
+
+def _retryable_worker_exit_measurement(measurement: Mapping[str, object]) -> bool:
+    if str(measurement.get("status", NA_STATUS)) != ResultStatus.ERROR.value:
+        return False
+    if str(measurement.get("failure_kind") or "") != "error":
+        return False
+    message = str(measurement.get("failure_message") or "")
+    if not message.startswith("worker exited with code "):
+        return False
+    value_fields = (
+        "generation_seconds",
+        "wall_seconds_per_point",
+        "evaluator_seconds_per_point",
+        "runtime_seconds_per_point",
+        "matrix_element",
+    )
+    return all(measurement.get(field) is None for field in value_fields)
 
 
 def _matrix_reference_metric(
@@ -2885,8 +2905,19 @@ def _matrix_lane_status_fragment(
         return None
     if status == NA_STATUS:
         return _matrix_missing_ratio() if ratio else _matrix_na()
+    fields = _measurement_old_matrix_fields(measurement)
+    failure_message = (
+        fields.get("all_flow_error")
+        if status_key == "all_flow_status"
+        else measurement.get("failure_message")
+    )
     return _matrix_failure_label(
-        {"status": status, "limit_gib": measurement.get("limit_gib")}
+        {
+            "status": status,
+            "limit_gib": measurement.get("limit_gib"),
+            "failure_kind": measurement.get("failure_kind"),
+            "failure_message": failure_message,
+        }
     )
 
 

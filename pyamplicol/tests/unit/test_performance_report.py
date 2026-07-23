@@ -4596,6 +4596,21 @@ def test_failure_status_labels_render_in_cells() -> None:
         report._z_old_status_cell("skip")
         == r"\textcolor{ReportMuted}{\texttt{skip}}"
     )
+    stale_worker_exit = report._failure_measurement(
+        report.ResultStatus.ERROR,
+        "worker exited with code 134",
+        failure_kind="error",
+    )
+    assert report._matrix_failure_label(stale_worker_exit) == r"\matrixna{ReportMuted}"
+    real_error = report._failure_measurement(
+        report.ResultStatus.ERROR,
+        "cross-artifact validation failed",
+        failure_kind="cross_artifact_validation",
+    )
+    assert (
+        report._matrix_failure_label(real_error)
+        == r"\textcolor{ReportRed}{\texttt{ERROR}}"
+    )
 
 
 def test_campaign_schedule_is_fast_first_and_duplicates_sm_tables() -> None:
