@@ -4652,6 +4652,7 @@ LC_ALL_FLOW_UNION_OUT_OF_REACH_POLICY = (
     "high_multiplicity_all_flow_union_out_of_reach_v1"
 )
 LC_GENERATION_CAP_OUT_OF_REACH_POLICY = "ten_minute_lc_lane_generation_out_of_reach_v1"
+LC_PROFILE_CAP_OUT_OF_REACH_POLICY = "ten_minute_lc_lane_profile_out_of_reach_v1"
 _KNOWN_EAGER_Z_UNION_OUT_OF_REACH: frozenset[tuple[str, int, str]] = frozenset(
     {
         ("z_builtin_sm", 8, "eager_jit_o3"),
@@ -6067,6 +6068,10 @@ class ReportGenerationTimeout(TimeoutError):
     """Raised when a report cell exceeds its generation time budget."""
 
 
+class ReportProfileTimeout(TimeoutError):
+    """Raised when a report cell exceeds its runtime profiling budget."""
+
+
 @contextmanager
 def _report_timeout(
     seconds: float | None,
@@ -6174,7 +6179,85 @@ def _run_generation_with_timeout(
         os.close(read_fd)
 
 
+def _run_mapping_with_timeout(
+    action: Callable[[], Mapping[str, object]],
+    *,
+    timeout_seconds: float | None,
+    timeout_error: type[Exception],
+    timeout_label: str,
+) -> dict[str, object]:
+    if timeout_seconds is None or timeout_seconds <= 0 or not hasattr(os, "fork"):
+        return dict(action())
+
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", prefix="result-tables-timeout-", delete=False
+    ) as handle:
+        result_path = Path(handle.name)
+
+    pid = os.fork()
+    if pid == 0:
+        with contextlib.suppress(OSError):
+            os.setsid()
+        try:
+            result = dict(action())
+        except BaseException as exc:
+            payload = {
+                "status": "error",
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+            with contextlib.suppress(OSError):
+                result_path.write_text(_json_text(payload), encoding="utf-8")
+            os._exit(1)
+        else:
+            payload = {"status": "ok", "result": result}
+            with contextlib.suppress(OSError):
+                result_path.write_text(_json_text(payload), encoding="utf-8")
+            os._exit(0)
+
+    deadline = time.monotonic() + float(timeout_seconds)
+    try:
+        while True:
+            waited_pid, status = os.waitpid(pid, os.WNOHANG)
+            if waited_pid == pid:
+                payload: object = {}
+                with contextlib.suppress(OSError, ValueError, TypeError):
+                    payload = json.loads(result_path.read_text(encoding="utf-8"))
+                if (
+                    os.WIFEXITED(status)
+                    and os.WEXITSTATUS(status) == 0
+                    and isinstance(payload, Mapping)
+                    and payload.get("status") == "ok"
+                    and isinstance(payload.get("result"), Mapping)
+                ):
+                    return dict(payload["result"])  # type: ignore[index]
+                message = f"{timeout_label} subprocess failed"
+                if isinstance(payload, Mapping):
+                    error_type = str(payload.get("type") or "error")
+                    error_message = str(payload.get("message") or message)
+                    message = f"{error_type}: {error_message}"
+                raise RuntimeError(message)
+            if time.monotonic() >= deadline:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(pid, signal.SIGTERM)
+                time.sleep(2.0)
+                waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+                if waited_pid == 0:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(pid, signal.SIGKILL)
+                    with contextlib.suppress(ChildProcessError):
+                        os.waitpid(pid, 0)
+                raise timeout_error(
+                    f"{timeout_label} exceeded {float(timeout_seconds):.0f} seconds"
+                )
+            time.sleep(0.1)
+    finally:
+        with contextlib.suppress(OSError):
+            result_path.unlink()
+
+
 OUT_OF_REACH_GENERATION_CAP_SECONDS = 600.0
+OUT_OF_REACH_PROFILE_CAP_SECONDS = 600.0
 
 
 def _generation_timeout_status(timeout_seconds: float | None) -> ResultStatus:
@@ -6200,6 +6283,32 @@ def _generation_timeout_failure_message(
     return (
         "out of reach by campaign policy: generation exceeded "
         f"{OUT_OF_REACH_GENERATION_CAP_SECONDS:.0f} seconds"
+    )
+
+
+def _profile_timeout_status(timeout_seconds: float | None) -> ResultStatus:
+    if timeout_seconds is not None and timeout_seconds <= (
+        OUT_OF_REACH_PROFILE_CAP_SECONDS + 1.0e-9
+    ):
+        return ResultStatus.OUT_OF_REACH
+    return ResultStatus.TIMEOUT
+
+
+def _profile_timeout_failure_kind(timeout_seconds: float | None) -> str:
+    if _profile_timeout_status(timeout_seconds) == ResultStatus.OUT_OF_REACH:
+        return "profile_out_of_reach"
+    return "profile_timeout"
+
+
+def _profile_timeout_failure_message(
+    exc: ReportProfileTimeout,
+    timeout_seconds: float | None,
+) -> str:
+    if _profile_timeout_status(timeout_seconds) != ResultStatus.OUT_OF_REACH:
+        return str(exc)
+    return (
+        "out of reach by campaign policy: profiling exceeded "
+        f"{OUT_OF_REACH_PROFILE_CAP_SECONDS:.0f} seconds"
     )
 
 
@@ -7527,20 +7636,27 @@ def _measure_pyamplicol_lc_lane(
                     artifact_root=artifact_root,
                     fixed_helicity=fixed_helicity,
                 )
-                if role == "selected-flow-helicity-sum":
-                    measurement = _profile_eager_runtime(
-                        runtime,
-                        benchmark_config=resolution.effective.benchmark,
-                        points=selected_points,
-                        color_flow_ids=selector_contract["selected_color_flow_ids"],  # type: ignore[arg-type]
-                    )
-                else:
-                    measurement = _profile_eager_runtime(
+                def profile_artifact() -> Mapping[str, object]:
+                    if role == "selected-flow-helicity-sum":
+                        return _profile_eager_runtime(
+                            runtime,
+                            benchmark_config=resolution.effective.benchmark,
+                            points=selected_points,
+                            color_flow_ids=selector_contract["selected_color_flow_ids"],  # type: ignore[arg-type]
+                        )
+                    return _profile_eager_runtime(
                         runtime,
                         benchmark_config=resolution.effective.benchmark,
                         points=selected_points,
                         helicity_ids=selector_contract["all_flow_helicity_ids"],  # type: ignore[arg-type]
                     )
+
+                measurement = _run_mapping_with_timeout(
+                    profile_artifact,
+                    timeout_seconds=OUT_OF_REACH_PROFILE_CAP_SECONDS,
+                    timeout_error=ReportProfileTimeout,
+                    timeout_label="profiling",
+                )
         measurement.update(
             {
                 "generation_seconds": generation_seconds,
@@ -7592,12 +7708,29 @@ def _measure_pyamplicol_lc_lane(
         }
         manifest_path.write_text(_json_text(manifest), encoding="utf-8")
         return measurement, selected_points, selector_contract
+    except ReportProfileTimeout as exc:
+        status = _profile_timeout_status(OUT_OF_REACH_PROFILE_CAP_SECONDS)
+        failure_kind = _profile_timeout_failure_kind(OUT_OF_REACH_PROFILE_CAP_SECONDS)
+        failure_message = _profile_timeout_failure_message(
+            exc,
+            OUT_OF_REACH_PROFILE_CAP_SECONDS,
+        )
+        lane_terminal_policy = (
+            LC_PROFILE_CAP_OUT_OF_REACH_POLICY
+            if status == ResultStatus.OUT_OF_REACH
+            else None
+        )
     except ReportGenerationTimeout as exc:
         status = _generation_timeout_status(generation_timeout_seconds)
         failure_kind = _generation_timeout_failure_kind(generation_timeout_seconds)
         failure_message = _generation_timeout_failure_message(
             exc,
             generation_timeout_seconds,
+        )
+        lane_terminal_policy = (
+            LC_GENERATION_CAP_OUT_OF_REACH_POLICY
+            if status == ResultStatus.OUT_OF_REACH
+            else None
         )
     except Exception as exc:
         status = (
@@ -7607,6 +7740,7 @@ def _measure_pyamplicol_lc_lane(
         )
         failure_kind = type(exc).__name__
         failure_message = str(exc)
+        lane_terminal_policy = None
     failure = _failure_measurement(
         status,
         failure_message,
@@ -7627,9 +7761,10 @@ def _measure_pyamplicol_lc_lane(
             **(
                 {
                     "lane_status_policy": LC_LANE_STATUS_POLICY,
-                    "lane_terminal_policy": LC_GENERATION_CAP_OUT_OF_REACH_POLICY,
+                    "lane_terminal_policy": lane_terminal_policy,
                 }
                 if status == ResultStatus.OUT_OF_REACH
+                and lane_terminal_policy is not None
                 else {}
             ),
         },

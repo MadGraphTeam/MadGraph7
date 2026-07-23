@@ -474,6 +474,26 @@ def test_generation_timeout_uses_hard_child_process_boundary(tmp_path: Path) -> 
         )
 
 
+def test_mapping_timeout_uses_hard_child_process_boundary() -> None:
+    if not hasattr(os, "fork"):
+        pytest.skip("hard mapping timeout requires fork")
+
+    assert report._run_mapping_with_timeout(
+        lambda: {"value": 1},
+        timeout_seconds=5.0,
+        timeout_error=report.ReportProfileTimeout,
+        timeout_label="profiling",
+    ) == {"value": 1}
+
+    with pytest.raises(report.ReportProfileTimeout):
+        report._run_mapping_with_timeout(
+            lambda: {"value": time.sleep(30.0)},
+            timeout_seconds=0.1,
+            timeout_error=report.ReportProfileTimeout,
+            timeout_label="profiling",
+        )
+
+
 def test_lc_matrix_renderer_localizes_union_out_of_reach() -> None:
     legacy = report._empty_measurement()
     legacy.update(
@@ -1295,6 +1315,34 @@ def test_ten_minute_generation_cap_records_out_of_reach() -> None:
         == "generation_timeout"
     )
     assert report._generation_timeout_failure_message(exc, 3600.0) == str(exc)
+
+
+def test_ten_minute_profile_cap_records_out_of_reach() -> None:
+    exc = report.ReportProfileTimeout("profiling exceeded 600 seconds")
+
+    assert (
+        report._profile_timeout_status(
+            report.OUT_OF_REACH_PROFILE_CAP_SECONDS,
+        )
+        == report.ResultStatus.OUT_OF_REACH
+    )
+    assert (
+        report._profile_timeout_failure_kind(
+            report.OUT_OF_REACH_PROFILE_CAP_SECONDS,
+        )
+        == "profile_out_of_reach"
+    )
+    assert (
+        report._profile_timeout_failure_message(
+            exc,
+            report.OUT_OF_REACH_PROFILE_CAP_SECONDS,
+        )
+        == "out of reach by campaign policy: profiling exceeded 600 seconds"
+    )
+
+    assert report._profile_timeout_status(3600.0) == report.ResultStatus.TIMEOUT
+    assert report._profile_timeout_failure_kind(3600.0) == "profile_timeout"
+    assert report._profile_timeout_failure_message(exc, 3600.0) == str(exc)
 
 
 def test_missing_only_retries_model_ladder_failures() -> None:
@@ -2291,6 +2339,11 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
         report,
         "_run_generation_with_timeout",
         lambda action, *, timeout_seconds: action(),
+    )
+    monkeypatch.setattr(
+        report,
+        "_run_mapping_with_timeout",
+        lambda action, **_kwargs: action(),
     )
     monkeypatch.setattr(
         report,
