@@ -30,6 +30,7 @@
 #include "processConfig.h"
 
 #include "MemoryAccessDenominators.h"
+#include "MemoryAccessInvariants.h"
 #include "MemoryAccessNumerators.h"
 #include "coloramps.h"
 

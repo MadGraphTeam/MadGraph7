@@ -646,13 +646,38 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         mydict['normden'] = '%(num)s / ( ( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] ) - M%(i)s * ( M%(i)s - cI * W%(i)s ) )' % mydict
                         mydict['mi'] = 'static_cast<fptype_invmass>( M%(i)s )' % mydict
                         mydict['wi'] = 'static_cast<fptype_invmass>( W%(i)s )' % mydict
-                        out.write('#ifdef MGONGPU_CPPSIMD\n') # FS
-                        out.write('    %(declnamedenom)s = %(normden)s;\n' % mydict) # FS
-                        out.write('#else\n') # FS
-                        out.write('    %(declnamedenom)s = ( INVP2 == %(zero)s )\n' % mydict) # FS
-                        out.write('      ? ( %(normden)s )\n' % mydict) # FS
-                        out.write('      : static_cast<cxtype_sv>( static_cast<cxtype_invmass_sv>( %(num)s ) / ( INVP2 - %(mi)s * ( %(mi)s - cxtype_invmass_sv( 0, 1 ) * %(wi)s ) ) );\n' % mydict) # FS
-                        out.write('#endif\n') # FS
+                        mydict['p2mom'] = '( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] )' % mydict
+                        out.write('#ifdef MGONGPU_CPPSIMD\n')
+                        out.write('    %(declnamedenom)s = %(normden)s;\n' % mydict)
+                        out.write('#else\n')
+                        # Debug compare PS & compute | sensible only for FP64 (1e-8)
+                        out.write('#ifdef MGONGPU_INVP2_DEBUG\n')
+                        out.write('    if( INVP2 != %(zero)s && sizeof( fptype ) == sizeof( double ) )\n' % mydict)
+                        out.write('    {\n')
+                        out.write('      static bool invp2seen = false;\n')
+                        out.write('      const double invp2dbg = (double)( INVP2 );\n')
+                        out.write('      const double p2dbg = (double)( %(p2mom)s );\n' % mydict)
+                        out.write('      const double absdiff = std::fabs( invp2dbg - p2dbg );\n')
+                        out.write('      const double reldiff = absdiff / ( std::fabs( p2dbg ) + 1.e-30 );\n')
+                        out.write('      const bool bad = ( reldiff > 1.e-8 ) && ( sizeof( fptype ) == sizeof( double ) );\n')
+                        out.write('      static int invp2nprint = 0;\n')
+                        out.write('      static long invp2ncall = 0;\n')
+                        out.write('      static double invp2maxrel = -1.;\n')
+                        out.write('      ++invp2ncall;\n')
+                        out.write('      const bool worse = ( reldiff > invp2maxrel ); // report every new worst case\n')
+                        out.write('      if( worse ) invp2maxrel = reldiff;\n')
+                        out.write('      if( bad || worse || invp2nprint < MGONGPU_INVP2_DEBUG )\n')
+                        out.write('      {\n')
+                        out.write('        ++invp2nprint;\n')
+                        out.write('        printf( "[INVP2_DEBUG] %%-14s ncall=%%-9ld M=%%-9.4g W=%%-9.4g supplied=%%.17g recomputed=%%.17g absdiff=%%.6g reldiff=%%.6g maxrel=%%.6g %%s\\n",\n' % mydict)
+                        out.write('                __FUNCTION__, invp2ncall, (double)( M%(i)s ), (double)( W%(i)s ), invp2dbg, p2dbg, absdiff, reldiff, invp2maxrel, bad ? "MISMATCH" : "ok" );\n' % mydict)
+                        out.write('      }\n')
+                        out.write('    }\n')
+                        out.write('#endif\n')
+                        out.write('    %(declnamedenom)s = ( INVP2 == %(zero)s )\n' % mydict)
+                        out.write('      ? ( %(normden)s )\n' % mydict)
+                        out.write('      : static_cast<cxtype_sv>( static_cast<cxtype_invmass_sv>( %(num)s ) / ( INVP2 - %(mi)s * ( %(mi)s - cxtype_invmass_sv( 0, 1 ) * %(wi)s ) ) );\n' % mydict)
+                        out.write('#endif\n')
                     else:
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( P%(i)s[0] * P%(i)s[0] ) - ( P%(i)s[1] * P%(i)s[1] ) - ( P%(i)s[2] * P%(i)s[2] ) - ( P%(i)s[3] * P%(i)s[3] ) - M%(i)s * ( M%(i)s - cI * W%(i)s ) );\n' % mydict) # AV
                 else:
@@ -1907,6 +1932,29 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     // It is hardcoded here because various attempts to hardcode it in CPPProcess.h at generation time gave the wrong result...
     static const int nwf = %i; // #wavefunctions = #external (npar) + #internal: e.g. 5 for e+ e- -> mu+ mu- (1 internal is gamma or Z)"""%nwavefuncs )
             ret_lines.append("""
+    // canonicalised table of invar. (see slotOfMask) 
+    using INV_ACCESS = MemoryAccessInvariants;
+    fptype_invmass invRecord[INV_ACCESS::maskDim] = {};
+#ifdef MGONGPUCPP_GPUIMPL
+    const int invEvt = blockDim.x * blockIdx.x + threadIdx.x;
+#else
+    const int invEvt = ievt00;
+#endif
+    if( allInvariantMasks != nullptr && allInvariantMasses != nullptr && ninvar > 0 )
+    {
+      const int* invMasksEvt = allInvariantMasks + invEvt * ninvar;
+      const fptype_invmass* invMassesEvt = allInvariantMasses + invEvt * ninvar;
+      for( int k = 0; k < ninvar; ++k )
+      {
+        const int m = invMasksEvt[k] & 0xFFFF; // low 16 bits = leg bitmask (high 16 = PDG)
+        invRecord[INV_ACCESS::slotOfMask( m )] = invMassesEvt[k];
+      }
+    }
+#ifdef MGONGPU_INVP2_DEBUG
+    bool invUsed[INV_ACCESS::maskDim] = {};
+    INV_ACCESS::s_invUsed = invUsed; // record which masks the wavefunctions actually read
+#endif""" )
+            ret_lines.append("""
     // Local TEMPORARY variables for a subset of Feynman diagrams in the given CUDA event (ievt) or C++ event page (ipagV)
     // [NB these variables are reused several times (and re-initialised each time) within the same event or event page]
     // ** NB: in other words, amplitudes and wavefunctions still have TRIVIAL ACCESS: there is currently no need
@@ -1950,6 +1998,33 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
       const int ievt0 = ievt00 + iParity * neppV;
 #endif""")
             ret_lines += helas_calls
+            #coverage debug
+            ret_lines.append("""
+#ifdef MGONGPU_INVP2_DEBUG
+    if( allInvariantMasks != nullptr && ninvar > 0 )
+    {
+      for( int k = 0; k < ninvar; ++k )
+      {
+        const int word = ( allInvariantMasks + invEvt * ninvar )[k];
+        const int m = word & 0xFFFF;          // low 16 bits: external-leg bitmask
+        const int pid = word >> 16;           // high 16 bits: propagator PDG (0 => massless), signed
+        if( !invUsed[INV_ACCESS::slotOfMask( m )] )
+        {
+          static int invp2nunused = 0;
+          if( invp2nunused < MGONGPU_INVP2_DEBUG )
+          {
+            ++invp2nunused;
+            char invp2bits[CPPProcess::npar + 1];
+            for( int b = 0; b < CPPProcess::npar; ++b ) invp2bits[CPPProcess::npar - 1 - b] = ( m >> b & 1 ) ? '1' : '0';
+            invp2bits[CPPProcess::npar] = '\\0';
+            printf( "[INVP2_DEBUG] UNUSED invariant: mask=0b%s pid=%d p^2=%.17g\\n",
+                    invp2bits, pid, (double)( ( allInvariantMasses + invEvt * ninvar )[k] ) );
+          }
+        }
+      }
+    }
+    INV_ACCESS::s_invUsed = nullptr; // stop bookkeeping outside this event
+#endif""")
         else:
             ret_lines.extend([self.get_sigmaKin_single_process(i, me) \
                                   for i, me in enumerate(self.matrix_elements)])
@@ -2667,9 +2742,40 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 wf_group_mask[id(wf)] = gm
         return diag_group_mask, wf_group_mask
 
+    # bitmask of external particles
+    def build_wf_mask_map(self, matrix_element):
+        self.wf_mask_map = {}
+        self.wf_mask_npar = matrix_element.get_nexternal_ninitial()[0] # n external
+        def mask_of(wf):
+            num = wf.get('number') #ID
+            if num in self.wf_mask_map: return self.wf_mask_map[num]
+            mothers = wf.get('mothers')
+            if not mothers: #external
+                mask = 1 << (wf.get('number_external') - 1) #add new bit
+            else:
+                mask = 0
+                for mother in mothers:
+                    mask |= mask_of(mother) #if internal OR masks of mothers!
+            self.wf_mask_map[num] = mask
+            return mask
+        for diagram in matrix_element.get('diagrams'):
+            for wf in diagram.get('wavefunctions'):
+                mask_of(wf)
+
+    # arg from bitmask
+    def get_invp2_arg(self, wf):
+        mask = getattr(self, 'wf_mask_map', {}).get(wf.get('number'))
+        if mask is None: return 'fptype_invmass_sv{0}'
+        npar = getattr(self, 'wf_mask_npar', 0)
+        full = (1 << npar) - 1 #0b011111
+        if mask & 2: mask = full ^ mask #only end
+        slot = (mask & 1) | ((mask >> 2) << 1) #drop 2nd
+        return 'INV_ACCESS::kernelAccessConst( invRecord, %d )' % slot #from bit to int
+
     # AV - overload helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     def get_matrix_element_calls(self, matrix_element, color_amplitudes, multi_channel_map):
         """Return a list of strings, corresponding to the Helas calls for the matrix element"""
+        self.build_wf_mask_map(matrix_element) # see build_wf_mask_map
         res = self.super_get_matrix_element_calls(matrix_element, color_amplitudes, multi_channel_map)
         for i, item in enumerate(res):
             ###print(item) # FOR DEBUGGING
@@ -2862,7 +2968,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 if not argument.get('is_loop') and \
                    not argument.get('polarization') and \
                    not argument.get('particle').get('propagator'):
-                    arg['invp2'] = 'fptype_invmass_sv{0}, '
+                    arg['invp2'] = '%(invp2arg)s, '
                 else:
                     arg['invp2'] = ''
             else:
@@ -2875,8 +2981,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 arg['invp2'] = ''
             call = call % arg
             # Now we have a line correctly formatted
-            call_function = lambda wf: self.format_coupling(
-                                         call % wf.get_helas_call_dict(index=0))
+            # injection of invp2 key sensible to mothers 
+            def call_function( wf, call=call ):
+                d = wf.get_helas_call_dict( index=0 )
+                if 'invp2arg' not in d:
+                    d['invp2arg'] = self.get_invp2_arg( wf ) #add
+                return self.format_coupling( call % d )
+
         # Add the constructed function to wavefunction or amplitude dictionary
         if isinstance(argument, helas_objects.HelasWavefunction):
             self.add_wavefunction(argument.get_call_key(), call_function)
