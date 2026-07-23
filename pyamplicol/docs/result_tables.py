@@ -8317,6 +8317,14 @@ def _measure_pyamplicol_lc_lane(
     ]
     if lane_overrides.get("evaluator.execution_mode") == "eager":
         command.extend(("--execution-mode", "eager"))
+    generation_seconds: float | None = None
+    generation_seconds_source: str | None = None
+    runtime_process: str | None = None
+    measurement_point_digest: str | None = None
+    profile_timeout_seconds = OUT_OF_REACH_PROFILE_CAP_SECONDS
+    failure_timeout_seconds: float | None = generation_timeout_seconds
+    failure_extra_fields: dict[str, object] = {}
+    failure_extra_metadata: dict[str, object] = {}
     try:
         with log_path.open("a", encoding="utf-8") as log:
             log.write(
@@ -8336,6 +8344,7 @@ def _measure_pyamplicol_lc_lane(
                 }
                 if artifact_reusable:
                     generation_seconds = float(reusable_generation_seconds)
+                    generation_seconds_source = "previous_measurement"
                 else:
                     model_for_generation, model_precompile_metadata = (
                         _precompile_model_for_generation(
@@ -8358,6 +8367,7 @@ def _measure_pyamplicol_lc_lane(
                         timeout_seconds=generation_timeout_seconds,
                     )
                     generation_seconds = time.perf_counter() - started
+                    generation_seconds_source = "fresh_generation"
                 runtime_process = _single_artifact_process_id(
                     artifact_dir,
                     fallback=cell.process,
@@ -8398,7 +8408,6 @@ def _measure_pyamplicol_lc_lane(
                         helicity_ids=selector_contract["all_flow_helicity_ids"],  # type: ignore[arg-type]
                     )
 
-                profile_timeout_seconds = OUT_OF_REACH_PROFILE_CAP_SECONDS
                 measurement = _run_mapping_with_timeout(
                     profile_artifact,
                     timeout_seconds=profile_timeout_seconds,
@@ -8465,6 +8474,27 @@ def _measure_pyamplicol_lc_lane(
             exc,
             OUT_OF_REACH_PROFILE_CAP_SECONDS,
         )
+        failure_timeout_seconds = profile_timeout_seconds
+        if generation_seconds is not None:
+            failure_extra_fields.update(
+                {
+                    "generation_seconds": generation_seconds,
+                    "requested_config": config_to_dict(resolution.requested),
+                    "effective_config": config_to_dict(resolution.effective),
+                }
+            )
+            failure_extra_metadata.update(
+                {
+                    "artifact_reused_for_timing": artifact_reusable,
+                    "generation_seconds_source": (
+                        generation_seconds_source or "fresh_generation"
+                    ),
+                    "runtime_process": runtime_process,
+                    "measurement_point_digest": measurement_point_digest,
+                    "profile_timeout_seconds": profile_timeout_seconds,
+                    "profile_timeout_policy": "hard_subprocess",
+                }
+            )
         lane_terminal_policy = (
             LC_PROFILE_CAP_OUT_OF_REACH_POLICY
             if status == ResultStatus.OUT_OF_REACH
@@ -8477,6 +8507,7 @@ def _measure_pyamplicol_lc_lane(
             exc,
             generation_timeout_seconds,
         )
+        failure_timeout_seconds = generation_timeout_seconds
         lane_terminal_policy = (
             LC_GENERATION_CAP_OUT_OF_REACH_POLICY
             if status == ResultStatus.OUT_OF_REACH
@@ -8490,6 +8521,7 @@ def _measure_pyamplicol_lc_lane(
         )
         failure_kind = type(exc).__name__
         failure_message = str(exc)
+        failure_timeout_seconds = generation_timeout_seconds
         lane_terminal_policy = None
     failure = _failure_measurement(
         status,
@@ -8498,7 +8530,7 @@ def _measure_pyamplicol_lc_lane(
         artifact_path=artifact_dir,
         log_path=log_path,
         manifest_path=manifest_path,
-        timeout_seconds=generation_timeout_seconds,
+        timeout_seconds=failure_timeout_seconds,
         command=command,
         metadata={
             "cell": cell.as_json(),
@@ -8517,8 +8549,10 @@ def _measure_pyamplicol_lc_lane(
                 and lane_terminal_policy is not None
                 else {}
             ),
+            **failure_extra_metadata,
         },
     )
+    failure.update(failure_extra_fields)
     return (
         failure,
         points,
