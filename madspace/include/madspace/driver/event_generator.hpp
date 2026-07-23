@@ -3,6 +3,7 @@
 #include <chrono>
 #include <optional>
 #include <random>
+#include <set>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -71,6 +72,13 @@ private:
     std::vector<std::size_t> _context_job_counts;
     ResultQueue _result_queue;
 
+    // Deterministic-path state. _deterministic is set from the context seed. Generate
+    // completions are buffered in _ready_gen and committed in ascending job id, with
+    // _commit_cursor pointing at the next job id to commit.
+    bool _deterministic = false;
+    std::set<std::size_t> _ready_gen;
+    std::size_t _commit_cursor = 0;
+
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;
     std::chrono::time_point<std::chrono::steady_clock> _last_print_time;
@@ -79,6 +87,15 @@ private:
     PrettyBox _pretty_box_lower;
     std::string _status_file;
     std::unordered_map<std::string, TimingData> _timing_data;
+
+    // Deterministic generation path (enabled when the context seed is non-zero):
+    // expensive matrix-element jobs still run on the pool, but their results are
+    // committed strictly in job-id order with unweighting folded in synchronously,
+    // so the whole computation is a deterministic function of the seed at a fixed
+    // thread count.
+    void survey_deterministic();
+    void generate_deterministic();
+    void commit_generate_deterministic(GeneratorBatchJob& job);
 
     bool start_jobs();
     void update_integral();
@@ -90,7 +107,8 @@ private:
     void read_and_combine(
         std::vector<CombineChannelData>& channel_data,
         EventBuffer& buffer,
-        double norm_factor
+        double norm_factor,
+        std::mt19937& rand_gen
     );
     void fill_lhe_event(
         LHECompleter& lhe_completer,

@@ -6436,6 +6436,12 @@ class RunCardMG7(RunCard):
 
         # ----------------------------- [run] --------------------------
         self.add_toml_param('run', 'run_name', "run", gridpack=True)
+        self.add_toml_param('run', 'seed', 0, gridpack=True,
+            comment="0 draws a fresh random seed each run; any positive integer "
+                    "makes the run reproducible: the same (seed, thread-pool sizes) "
+                    "reproduces bit-identically. Generation is reproducible at any "
+                    "cpu_thread_pool_size; for output_format = lhe also set "
+                    "combine_thread_pool_size = 1")
         self.add_toml_param('run', 'devices', ["cppnone"], typelist=str, gridpack=True,
             comment="options: cuda, hip, cpp, cppnone, cppsse4, cppavx2, cpp512y, cpp512z, cppauto")
         self.add_toml_param('run', 'simd_vector_size', -1,

@@ -84,6 +84,24 @@ if _source_hash != ms.SOURCE_HASH:
 logger = logging.getLogger("madevent7")
 
 
+def derive_seed(base_seed: int, index: int) -> int:
+    """Derive an independent per-context stream seed from the run_card seed.
+
+    Returns 0 (i.e. seed non-deterministically) when ``base_seed`` is 0, which is
+    the run_card default. Otherwise the base seed and context ``index`` are mixed
+    with splitmix64 so that distinct contexts get well-separated streams and two
+    different base seeds never collide onto the same context seed.
+    """
+    if base_seed == 0:
+        return 0
+    mask = (1 << 64) - 1
+    x = (base_seed + index * 0x9E3779B97F4A7C15) & mask
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & mask
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & mask
+    x = x ^ (x >> 31)
+    return x or 1
+
+
 def get_start_time():
     return time.time(), time.process_time()
 
@@ -190,6 +208,7 @@ class MadgraphProcess:
 
     def init_context(self) -> None:
         device_names = self.run_card["run"]["devices"]
+        base_seed = self.run_card["run"]["seed"]
         self.contexts = []
         self.device_types = []
         self.devices = []
@@ -213,7 +232,11 @@ class MadgraphProcess:
                 pool_size = self.run_card["run"]["cpu_thread_pool_size"]
             self.devices.append(device)
             self.pool_sizes.append(pool_size)
-            self.contexts.append(ms.Context(device=device, thread_count=pool_size))
+            self.contexts.append(ms.Context(
+                device=device,
+                thread_count=pool_size,
+                seed=derive_seed(base_seed, i),
+            ))
 
     def parse_observable(self, name: str, order_observable: str) -> dict:
         parts = name.split("-")
@@ -531,7 +554,10 @@ class MadgraphProcess:
 
         gen_context = self.contexts[0]
         opt_context = ms.Context(
-            device=self.devices[0], thread_count=self.pool_sizes[0]
+            device=self.devices[0],
+            thread_count=self.pool_sizes[0],
+            # distinct stream from the generation contexts (offset the index)
+            seed=derive_seed(self.run_card["run"]["seed"], 1000),
         )
         opt_context.copy_globals_from(gen_context)
 

@@ -63,6 +63,11 @@ public:
     double channel_weight_sum(std::size_t event_count);
     void start_job(GeneratorBatchJob& job, ResultQueue& result_queue);
     void start_unweight_job(GeneratorBatchJob& job, ResultQueue& result_queue);
+    // Synchronous unweighting used by the deterministic generation path: runs the
+    // unweighter on the calling (harvest) thread against the current max weight so
+    // that it happens in a fixed, job-id-ordered position instead of as a separate
+    // asynchronously-scheduled job.
+    void unweight_job_inline(GeneratorBatchJob& job);
     std::size_t next_vegas_batch_size();
     void clear_events();
     void update_max_weight(Tensor weights);
@@ -127,6 +132,10 @@ private:
     std::optional<Function> _histogram_function;
     RunningIntegral _cross_section;
     double _max_weight = 0.;
+    // Monotonic per-channel counter assigned to each scheduled job (main thread) to
+    // key its deterministic random stream; never reset, so re-used jobs keep unique
+    // streams across survey/generate.
+    std::size_t _rng_seq = 0;
     std::size_t _unweighted_count = 0;
     std::size_t _iters_without_improvement = 0;
     double _best_rsd = std::numeric_limits<double>::max();

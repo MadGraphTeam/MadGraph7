@@ -244,10 +244,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("__dlpack_device__", &dlpack_device);
 
     py::classh<Context>(m, "Context")
-        .def(py::init<int>(), py::arg("thread_count") = -1)
         .def(
-            py::init<DevicePtr, int>(), py::arg("device"), py::arg("thread_count") = -1
+            py::init<int, std::uint64_t>(),
+            py::arg("thread_count") = -1,
+            py::arg("seed") = 0
         )
+        .def(
+            py::init<DevicePtr, int, std::uint64_t>(),
+            py::arg("device"),
+            py::arg("thread_count") = -1,
+            py::arg("seed") = 0
+        )
+        .def_property_readonly("seed", &Context::seed)
         .def(
             "load_matrix_element",
             &Context::load_matrix_element,

@@ -1,6 +1,8 @@
 #include "runtime.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <memory>
 #include <random>
 #include <ranges>
 #include <tuple>
@@ -46,6 +48,15 @@ using namespace madspace::cpu;
 using namespace madspace::kernels;
 
 namespace {
+
+// Per-thread deterministic job generator. When a job installs one via
+// begin_job_rng(), every op_random/op_random_int/op_unweight on this thread draws
+// from it instead of the pool generator, so the job's random numbers depend only
+// on its seed and not on which thread happened to run it. Integrand runtimes are
+// single-threaded (concurrent == false), so the whole job runs on one thread and
+// a single continuous stream spans all of its random draws.
+thread_local std::mt19937 t_job_rng;
+thread_local bool t_job_rng_active = false;
 
 template <typename D>
 void op_matrix_element(
@@ -880,14 +891,30 @@ void op_discrete_histogram(
 
 } // namespace
 
+std::mt19937& CpuRuntime::rand_gen() {
+    return t_job_rng_active ? t_job_rng : _rand_gens.get();
+}
+
+void CpuRuntime::begin_job_rng(std::uint64_t seed) {
+    t_job_rng = seeded_rng(seed);
+    t_job_rng_active = true;
+}
+
+void CpuRuntime::end_job_rng() {
+    t_job_rng_active = false;
+}
+
 CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concurrent) :
     _context(context),
     _input_count(function.inputs().size()),
     _rand_gens(
         context->thread_pool(),
-        []() {
-            std::random_device rand_device;
-            return std::mt19937(rand_device());
+        // Fallback per-thread streams used when no per-job generator is installed
+        // (context seed 0, i.e. non-deterministic mode). Keyed by a running thread
+        // index so the streams are independent.
+        [seed = context->seed(),
+         next_index = std::make_shared<std::atomic<std::uint32_t>>(0)]() {
+            return seeded_rng(seed, {next_index->fetch_add(1)});
         }
     ),
     _concurrent(concurrent) {

@@ -1,9 +1,15 @@
 #include "madspace/driver/channel_generator.hpp"
+#include "madspace/util.hpp"
 
 using namespace madspace;
 using json = nlohmann::json;
 
 namespace {
+
+// Phase salts keeping the phase-space/matrix-element stream of a job independent
+// from its unweighting stream while both derive from the same per-job base seed.
+constexpr std::uint64_t kPhaseGenerate = 1;
+constexpr std::uint64_t kPhaseUnweight = 2;
 
 int event_extra_flags(const std::unordered_map<std::string, std::size_t>& index_map) {
     int flags = 0;
@@ -390,11 +396,22 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
 void ChannelEventGenerator::start_job(
     GeneratorBatchJob& job, ResultQueue& result_queue
 ) {
+    // Assign the job's deterministic base seed on the (single) scheduling thread so
+    // it depends only on the job's logical identity, not on which worker runs it.
+    std::uint64_t context_seed = _contexts.at(job.context_index)->seed();
+    job.rng_seed = context_seed == 0
+        ? 0
+        : mix_seed(context_seed, {job.channel_index, _rng_seq++});
     _contexts.at(job.context_index)
         ->thread_pool()
         .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
+            if (job.rng_seed != 0) {
+                runtimes.integrand_channel->begin_job_rng(
+                    mix_seed(job.rng_seed, {kPhaseGenerate})
+                );
+            }
             std::size_t max_batch_size =
                 context->device()->device_type() == DeviceType::cpu
                 ? _config.cpu_batch_size
@@ -477,6 +494,9 @@ void ChannelEventGenerator::start_job(
                     }
                 }
             }
+            if (job.rng_seed != 0) {
+                runtimes.integrand_channel->end_job_rng();
+            }
             result_queue.push(job.job_id);
             return std::nullopt;
         });
@@ -491,6 +511,11 @@ void ChannelEventGenerator::start_unweight_job(
         .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
+            if (job.rng_seed != 0) {
+                runtimes.unweighter->begin_job_rng(
+                    mix_seed(job.rng_seed, {kPhaseUnweight})
+                );
+            }
             std::vector<Tensor> unweighter_args(
                 job.events.begin(), job.events.begin() + _field_indices.random
             );
@@ -499,9 +524,33 @@ void ChannelEventGenerator::start_unweight_job(
             for (auto& item : unw_events) {
                 job.unweighted_events.push_back(item.cpu());
             }
+            if (job.rng_seed != 0) {
+                runtimes.unweighter->end_job_rng();
+            }
             result_queue.push(job.job_id);
             return std::nullopt;
         });
+}
+
+void ChannelEventGenerator::unweight_job_inline(GeneratorBatchJob& job) {
+    auto& runtimes = _runtimes.at(job.context_index);
+    auto& context = _contexts.at(job.context_index);
+    job.max_weight = _max_weight;
+    if (job.rng_seed != 0) {
+        runtimes.unweighter->begin_job_rng(mix_seed(job.rng_seed, {kPhaseUnweight}));
+    }
+    std::vector<Tensor> unweighter_args(
+        job.events.begin(), job.events.begin() + _field_indices.random
+    );
+    unweighter_args.push_back(Tensor(job.max_weight, context->device()));
+    TensorVec unw_events = runtimes.unweighter->run(unweighter_args);
+    job.unweighted_events.clear();
+    for (auto& item : unw_events) {
+        job.unweighted_events.push_back(item.cpu());
+    }
+    if (job.rng_seed != 0) {
+        runtimes.unweighter->end_job_rng();
+    }
 }
 
 std::size_t ChannelEventGenerator::next_vegas_batch_size() {

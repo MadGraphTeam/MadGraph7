@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <stdint.h>
 #include <unordered_map>
 
@@ -105,11 +106,14 @@ class Context {
      * Contains global variables and matrix elements
      */
 public:
-    Context(int thread_count = -1) :
+    Context(int thread_count = -1, std::uint64_t seed = 0) :
         _device(cpu_device()),
-        _thread_pool(std::make_unique<ThreadPool>(thread_count)) {}
-    Context(DevicePtr device, int thread_count = -1) :
-        _device(device), _thread_pool(std::make_unique<ThreadPool>(thread_count)) {}
+        _thread_pool(std::make_unique<ThreadPool>(thread_count)),
+        _seed(seed) {}
+    Context(DevicePtr device, int thread_count = -1, std::uint64_t seed = 0) :
+        _device(device),
+        _thread_pool(std::make_unique<ThreadPool>(thread_count)),
+        _seed(seed) {}
     Context(Context&&) = default;
     Context& operator=(Context&&) = default;
     Context(const Context&) = delete;
@@ -135,10 +139,14 @@ public:
     void load_globals(const std::string& dir);
     DevicePtr device() { return _device; }
     ThreadPool& thread_pool() { return *_thread_pool; }
+    // Base seed for this context's random-number streams. 0 means "seed
+    // non-deterministically" (the historical default); see seeded_rng().
+    std::uint64_t seed() const { return _seed; }
 
 private:
     DevicePtr _device;
     std::unique_ptr<ThreadPool> _thread_pool;
+    std::uint64_t _seed = 0;
     std::unordered_map<std::string, std::pair<Tensor, bool>> _globals;
     std::vector<std::unique_ptr<MatrixElementApi>> _matrix_elements;
     std::vector<std::string> _param_card_paths;

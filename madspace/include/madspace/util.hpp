@@ -1,13 +1,63 @@
 #pragma once
 
+#include <cstdint>
 #include <cstdio>
 #include <format>
+#include <initializer_list>
+#include <random>
 #include <ranges>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
 
 namespace madspace {
+
+// Deterministic RNG factory used everywhere randomness is consumed on the CPU.
+//
+// A ``seed`` of 0 preserves the historical behaviour: the generator is seeded
+// non-deterministically from ``std::random_device``. Any non-zero ``seed`` makes
+// the returned generator fully reproducible. The 64-bit seed together with the
+// (small, low-entropy) integer ``salts`` is mixed through ``std::seed_seq`` so
+// that distinct ``(seed, salts...)`` tuples yield well-separated, statistically
+// independent streams -- salts are used to key a stream by its logical role
+// (e.g. thread index, channel selection vs. unweighting vs. LHE completion).
+// Fold a base seed together with integer salts into a single 64-bit value using
+// splitmix64. Used to derive a stable per-job seed from (context seed, channel,
+// job sequence, phase) so that a job's random stream depends only on its logical
+// identity, never on which thread runs it. mix_seed(0, ...) stays 0 so callers can
+// keep using 0 as the "non-deterministic" sentinel.
+inline std::uint64_t
+mix_seed(std::uint64_t seed, std::initializer_list<std::uint64_t> salts = {}) {
+    if (seed == 0) {
+        return 0;
+    }
+    auto splitmix = [](std::uint64_t x) {
+        x += 0x9E3779B97F4A7C15ull;
+        x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+        x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+        return x ^ (x >> 31);
+    };
+    std::uint64_t h = splitmix(seed);
+    for (auto s : salts) {
+        h = splitmix(h ^ splitmix(s));
+    }
+    return h ? h : 1;
+}
+
+inline std::mt19937
+seeded_rng(std::uint64_t seed, std::initializer_list<std::uint32_t> salts = {}) {
+    if (seed == 0) {
+        std::random_device rand_device;
+        return std::mt19937(rand_device());
+    }
+    std::vector<std::uint32_t> data;
+    data.reserve(2 + salts.size());
+    data.push_back(static_cast<std::uint32_t>(seed & 0xFFFFFFFFu));
+    data.push_back(static_cast<std::uint32_t>(seed >> 32));
+    data.insert(data.end(), salts.begin(), salts.end());
+    std::seed_seq seq(data.begin(), data.end());
+    return std::mt19937(seq);
+}
 
 template <class... Ts>
 struct Overloaded : Ts... {

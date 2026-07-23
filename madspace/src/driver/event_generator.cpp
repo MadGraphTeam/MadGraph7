@@ -1,14 +1,25 @@
 #include "madspace/driver/event_generator.hpp"
 
+#include <atomic>
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <memory>
 #include <ranges>
 
 #include "madspace/driver/logger.hpp"
 #include "madspace/util.hpp"
 
 using namespace madspace;
+
+namespace {
+// Salts keeping the driver-level random streams independent of each other for a
+// given context seed (see seeded_rng()). Parallel stages additionally mix in a
+// per-thread index.
+constexpr std::uint32_t kSaltCombineSelect = 1; // channel selection in read_and_combine
+constexpr std::uint32_t kSaltLheComplete = 2;   // colour/helicity in fill_lhe_event
+constexpr std::uint32_t kSaltUnweight = 3;       // final unweighting
+} // namespace
 
 const GeneratorConfig EventGenerator::default_config = {};
 
@@ -41,9 +52,14 @@ EventGenerator::EventGenerator(
     _channel_optimizing(channels.size()),
     _channel_integral_fractions(channels.size(), 1.),
     _context_job_counts(contexts.size()),
+    _deterministic(!contexts.empty() && contexts.at(0)->seed() != 0),
     _status_file(status_file) {}
 
 void EventGenerator::survey() {
+    if (_deterministic) {
+        survey_deterministic();
+        return;
+    }
     reset_start_time();
     bool done = false;
     std::size_t min_iters = _config.survey_min_iters;
@@ -136,6 +152,10 @@ void EventGenerator::survey() {
 }
 
 void EventGenerator::generate() {
+    if (_deterministic) {
+        generate_deterministic();
+        return;
+    }
     reset_start_time();
     print_gen_init();
 
@@ -225,6 +245,200 @@ void EventGenerator::generate() {
         }
     }
     print_gen_update(true);
+}
+
+void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
+    // Ordered, single-pass commit of one job: mirrors the generate() harvest body
+    // but folds unweighting in synchronously so there is exactly one commit per job.
+    // Called strictly in ascending job id, so every state mutation (cross-section
+    // accumulation, max-weight snapshot, event writes, counts, VEGAS optimisation)
+    // happens in a fixed order.
+    auto& channel = _channels.at(job.channel_index);
+    auto& channel_job_count = _channel_job_counts.at(job.channel_index);
+    auto& context_job_count = _context_job_counts.at(job.context_index);
+    if (job.vegas_batch_size > 0 && channel_job_count == job.split_job_count) {
+        channel->clear_events();
+    }
+    channel->integrate(job);
+    update_integral();
+    channel->update_max_weight(job.weights);
+    if (job.unweight) {
+        channel->unweight_job_inline(job);
+        channel->write_events(job.unweighted_events, job.max_weight);
+        update_counts();
+    }
+    channel_job_count -= 1 + job.unweight;
+    context_job_count -= 1;
+    if (job.vegas_batch_size > 0 && channel_job_count == 0) {
+        channel->optimize_vegas(job);
+        _channel_optimizing.at(job.channel_index) = false;
+    }
+    print_gen_update(false);
+}
+
+void EventGenerator::generate_deterministic() {
+    reset_start_time();
+    print_gen_init();
+    _commit_cursor = _job_id;
+    _ready_gen.clear();
+
+    std::size_t target_job_count = 0;
+    for (auto& context : _contexts) {
+        target_job_count += 2 * context->thread_pool().thread_count();
+    }
+    std::size_t channel_index = 0;
+    std::size_t in_flight = 0;
+    while (true) {
+        _abort_check_function();
+
+        std::size_t job_count_before;
+        do {
+            job_count_before = _ready_jobs.size();
+            for (std::size_t i = 0;
+                 i < _channels.size() && _ready_jobs.size() < target_job_count;
+                 ++i, channel_index = (channel_index + 1) % _channels.size()) {
+                auto& channel = _channels.at(channel_index);
+                double integral_frac = _channel_integral_fractions.at(channel_index);
+                if (integral_frac > 0 &&
+                    channel->status().count_unweighted >=
+                        integral_frac * _config.target_count) {
+                    continue;
+                }
+                if (channel->needs_optimization()) {
+                    if (!_channel_optimizing.at(channel_index)) {
+                        _channel_optimizing.at(channel_index) = true;
+                        _ready_jobs.push_back({
+                            .channel_index = channel_index,
+                            .unweight = true,
+                            .vegas_batch_size = channel->next_vegas_batch_size(),
+                        });
+                    }
+                } else {
+                    _ready_jobs.push_back({
+                        .channel_index = channel_index,
+                        .unweight = true,
+                        .vegas_batch_size = 0,
+                    });
+                }
+            }
+        } while (_ready_jobs.size() - job_count_before > 0);
+
+        std::size_t job_id_before = _job_id;
+        start_jobs();
+        in_flight += _job_id - job_id_before;
+
+        if (in_flight > 0) {
+            std::size_t job_id = _result_queue.wait();
+            --in_flight;
+            _ready_gen.insert(job_id);
+            while (_ready_gen.erase(_commit_cursor) > 0) {
+                commit_generate_deterministic(_running_jobs.at(_commit_cursor));
+                _running_jobs.erase(_commit_cursor);
+                ++_commit_cursor;
+            }
+        } else {
+            if (_status.done) {
+                unweight_all();
+            }
+            if (_status.done) {
+                break;
+            }
+        }
+    }
+    print_gen_update(true);
+}
+
+void EventGenerator::survey_deterministic() {
+    reset_start_time();
+    _commit_cursor = _job_id;
+    _ready_gen.clear();
+    bool done = false;
+    std::size_t min_iters = _config.survey_min_iters;
+    std::size_t max_iters = std::max(min_iters, _config.survey_max_iters);
+    double target_precision = _config.survey_target_precision;
+
+    std::size_t total_event_count = 0;
+    std::size_t done_event_count = 0;
+    for (auto& channel : _channels) {
+        std::size_t chan_batch_size = channel->batch_size();
+        for (std::size_t iter = channel->status().iterations; iter < min_iters;
+             ++iter) {
+            total_event_count += chan_batch_size;
+            chan_batch_size = std::min(chan_batch_size * 2, _config.max_batch_size);
+        }
+    }
+    print_survey_init();
+
+    std::size_t iter = 0;
+    for (; !done && iter < max_iters; ++iter) {
+        for (std::size_t i = 0; auto channel : _channels) {
+            if (channel->status().iterations > iter) {
+                ++i;
+                continue;
+            }
+            if (iter >= min_iters &&
+                channel->cross_section().rel_error() < target_precision) {
+                ++i;
+                continue;
+            }
+            std::size_t vegas_batch_size = channel->next_vegas_batch_size();
+            _ready_jobs.push_back({
+                .channel_index = i,
+                .unweight = iter >= min_iters - 1,
+                .vegas_batch_size = vegas_batch_size,
+            });
+            if (iter >= min_iters) {
+                total_event_count += vegas_batch_size;
+            }
+            ++i;
+        }
+        std::size_t job_id_before = _job_id;
+        start_jobs();
+        std::size_t in_flight = _job_id - job_id_before;
+        done = true;
+        while (in_flight > 0) {
+            std::size_t job_id = _result_queue.wait();
+            _abort_check_function();
+            --in_flight;
+            _ready_gen.insert(job_id);
+            while (_ready_gen.erase(_commit_cursor) > 0) {
+                auto& job = _running_jobs.at(_commit_cursor);
+                auto& channel = _channels.at(job.channel_index);
+                auto& channel_job_count = _channel_job_counts.at(job.channel_index);
+                auto& context_job_count = _context_job_counts.at(job.context_index);
+                if (channel_job_count == job.split_job_count) {
+                    channel->clear_events();
+                }
+                channel->integrate(job);
+                update_integral();
+                channel->update_max_weight(job.weights);
+                if (job.unweight) {
+                    channel->unweight_job_inline(job);
+                    channel->write_events(job.unweighted_events, job.max_weight);
+                    update_counts();
+                }
+                channel_job_count -= 1 + job.unweight;
+                context_job_count -= 1;
+                if (!job.unweight) {
+                    done = false;
+                } else if (channel_job_count == 0 &&
+                           channel->cross_section().rel_error() < target_precision) {
+                    done = false;
+                }
+                if (channel_job_count == 0) {
+                    channel->optimize_vegas(job);
+                    done_event_count += job.vegas_batch_size;
+                }
+                _running_jobs.erase(_commit_cursor);
+                ++_commit_cursor;
+            }
+            std::size_t job_id_refill = _job_id;
+            start_jobs();
+            in_flight += _job_id - job_id_refill;
+            print_survey_update(false, done_event_count, total_event_count, iter);
+        }
+    }
+    print_survey_update(true, done_event_count, total_event_count, iter - 1);
 }
 
 bool EventGenerator::start_jobs() {
@@ -319,6 +533,7 @@ void EventGenerator::update_counts() {
 
 void EventGenerator::combine_to_compact_npy(const std::string& file_name) {
     reset_start_time();
+    std::mt19937 select_rng = seeded_rng(_contexts.at(0)->seed(), {kSaltCombineSelect});
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout layout(
         EventRecord::layout(
@@ -337,7 +552,7 @@ void EventGenerator::combine_to_compact_npy(const std::string& file_name) {
     print_combine_init();
     while (true) {
         _abort_check_function();
-        read_and_combine(channel_data, buffer, norm_factor);
+        read_and_combine(channel_data, buffer, norm_factor, select_rng);
         if (buffer.event_count() == 0) {
             break;
         }
@@ -355,8 +570,9 @@ void EventGenerator::combine_to_lhe_npy(
     const std::string& file_name, LHECompleter& lhe_completer
 ) {
     reset_start_time();
-    std::random_device rand_device;
-    std::mt19937 rand_gen(rand_device());
+    std::uint64_t seed = _contexts.at(0)->seed();
+    std::mt19937 select_rng = seeded_rng(seed, {kSaltCombineSelect});
+    std::mt19937 rand_gen = seeded_rng(seed, {kSaltLheComplete});
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout in_layout(
         EventRecord::layout(
@@ -388,7 +604,7 @@ void EventGenerator::combine_to_lhe_npy(
     print_combine_init();
     while (true) {
         _abort_check_function();
-        read_and_combine(channel_data, buffer, norm_factor);
+        read_and_combine(channel_data, buffer, norm_factor, select_rng);
         if (buffer.event_count() == 0) {
             break;
         }
@@ -418,11 +634,17 @@ void EventGenerator::combine_to_lhe(
     const std::string& file_name, LHECompleter& lhe_completer
 ) {
     reset_start_time();
+    std::uint64_t seed = _contexts.at(0)->seed();
+    std::mt19937 select_rng = seeded_rng(seed, {kSaltCombineSelect});
     ThreadPool pool(_config.combine_thread_count);
-    ThreadResource<std::mt19937> rand_gens(pool, []() {
-        std::random_device rand_device;
-        return std::mt19937(rand_device());
-    });
+    // Per-thread LHE-completion streams, keyed by a running thread index. Bit
+    // identical output requires combine_thread_pool_size == 1 (see seeded_rng()).
+    ThreadResource<std::mt19937> rand_gens(
+        pool,
+        [seed, next_index = std::make_shared<std::atomic<std::uint32_t>>(0)]() {
+            return seeded_rng(seed, {kSaltLheComplete, next_index->fetch_add(1)});
+        }
+    );
     auto [channel_data, particle_count, norm_factor] = init_combine();
     std::vector<std::pair<EventBuffer, std::string>> buffers;
     std::vector<std::size_t> idle_buffers;
@@ -450,7 +672,7 @@ void EventGenerator::combine_to_lhe(
         while (idle_buffers.size() > 0 && !done) {
             std::size_t job_id = idle_buffers.back();
             auto& [in_buffer, out_buffer] = buffers.at(job_id);
-            read_and_combine(channel_data, in_buffer, norm_factor);
+            read_and_combine(channel_data, in_buffer, norm_factor, select_rng);
             if (in_buffer.event_count() == 0) {
                 done = true;
                 break;
@@ -506,8 +728,7 @@ void EventGenerator::add_timing_data(const std::string& key) {
 }
 
 void EventGenerator::unweight_all() {
-    std::random_device rand_device;
-    std::mt19937 rand_gen(rand_device());
+    std::mt19937 rand_gen = seeded_rng(_contexts.at(0)->seed(), {kSaltUnweight});
     bool done = true;
     double total_eff_count = 0.;
     for (auto [channel, integral_fraction] :
@@ -596,7 +817,8 @@ EventGenerator::init_combine() {
 void EventGenerator::read_and_combine(
     std::vector<EventGenerator::CombineChannelData>& channel_data,
     EventBuffer& buffer,
-    double norm_factor
+    double norm_factor,
+    std::mt19937& rand_gen
 ) {
     std::size_t batch_size = 1000;
     std::size_t event_count = std::min(batch_size, channel_data.back().cum_count);
@@ -607,8 +829,6 @@ void EventGenerator::read_and_combine(
     bool has_partial =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
 
-    std::random_device rand_device;
-    std::mt19937 rand_gen(rand_device());
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
         std::size_t random_index = std::uniform_int_distribution<
             std::size_t>(0, channel_data.back().cum_count - 1)(rand_gen);

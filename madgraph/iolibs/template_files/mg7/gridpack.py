@@ -31,6 +31,24 @@ import json
 import tomllib
 import argparse
 
+
+def derive_seed(base_seed: int, index: int) -> int:
+    """Derive an independent per-context stream seed from the base seed.
+
+    Returns 0 (seed non-deterministically) when ``base_seed`` is 0. Otherwise the
+    base seed and context ``index`` are mixed with splitmix64 so distinct contexts
+    get well-separated streams and different base seeds never collide.
+    """
+    if base_seed == 0:
+        return 0
+    mask = (1 << 64) - 1
+    x = (base_seed + index * 0x9E3779B97F4A7C15) & mask
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & mask
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & mask
+    x = x ^ (x >> 31)
+    return x or 1
+
+
 def main() -> None:
     # load run card and metadata. Use the RunCardMG7 representation when the
     # madgraph package is importable; gridpacks are meant to be portable, so
@@ -59,6 +77,11 @@ def main() -> None:
     # parse command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_name", type=str, default=run_args["run_name"])
+    parser.add_argument(
+        "--seed", type=int, default=run_args.get("seed", 0),
+        help="0 draws a fresh random seed; a positive integer makes the run "
+             "reproducible (bit-identical output requires --cpu_thread_pool_size 1)"
+    )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
         "--cpu_thread_pool_size", type=int, default=run_args["cpu_thread_pool_size"]

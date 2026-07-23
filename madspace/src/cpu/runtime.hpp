@@ -49,7 +49,11 @@ public:
     ) override;
 
     Context& context() { return *_context; }
-    std::mt19937& rand_gen() { return _rand_gens.get(); }
+    // Returns the active per-job generator when one is installed on this thread
+    // (see begin_job_rng), otherwise the thread's pool generator.
+    std::mt19937& rand_gen();
+    void begin_job_rng(std::uint64_t seed) override;
+    void end_job_rng() override;
 
 private:
     TensorVec run_single(const TensorVec& inputs) const;
