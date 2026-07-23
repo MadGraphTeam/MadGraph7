@@ -120,6 +120,7 @@ PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
     }
 )
 ALLOW_PARALLEL_SYMBOLICA_ENV = "PYAMPLICOL_REPORT_ALLOW_PARALLEL_SYMBOLICA"
+ALLOW_UNLICENSED_SYMBOLICA_ENV = "PYAMPLICOL_REPORT_ALLOW_UNLICENSED_SYMBOLICA"
 VALIDATION_RELATIVE_TOLERANCE = 1.0e-8
 VALIDATION_ABSOLUTE_TOLERANCE = 1.0e-15
 LEGACY_REFERENCE_COMPATIBLE_REVISIONS = frozenset(
@@ -12618,6 +12619,15 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     populate.add_argument(
+        "--allow-unlicensed-symbolica",
+        action="store_true",
+        help=(
+            "Permit cache-mutating populate runs without SYMBOLICA_LICENSE. "
+            "This is intended only for tiny local diagnostics on otherwise idle "
+            "hosts; campaign runs should use licensed mode."
+        ),
+    )
+    populate.add_argument(
         "--dataset",
         action="append",
         default=None,
@@ -12752,6 +12762,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(json.dumps(cell.as_json(), sort_keys=True))
             print(f"planned {len(cells)} cells", file=sys.stderr)
             return 0
+        allow_unlicensed_symbolica = (
+            bool(args.allow_unlicensed_symbolica)
+            or _truthy_environment_flag(ALLOW_UNLICENSED_SYMBOLICA_ENV)
+        )
+        if (
+            cells
+            and not _symbolica_licensed_mode_enabled()
+            and not allow_unlicensed_symbolica
+        ):
+            parser.error(
+                "populate requires SYMBOLICA_LICENSE for cache-mutating campaign "
+                "runs; set licensed mode in the environment or pass "
+                "--allow-unlicensed-symbolica for a deliberate local diagnostic"
+            )
         try:
             service.populate(
                 cells,

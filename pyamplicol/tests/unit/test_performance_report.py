@@ -3946,6 +3946,83 @@ def test_campaign_workers_serialize_symbolica_by_default() -> None:
     assert reason is None
 
 
+def test_populate_requires_licensed_symbolica_for_cache_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("SYMBOLICA_LICENSE", raising=False)
+
+    called = False
+
+    def unexpected_populate(*_args: object, **_kwargs: object) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(report.ReportService, "populate", unexpected_populate)
+
+    with pytest.raises(SystemExit) as exc_info:
+        report.main(
+            [
+                "populate",
+                "--cell-id",
+                "z-builtin-sm-n1-jit-o3",
+                "--refresh-pdf",
+                "never",
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert not called
+    assert "requires SYMBOLICA_LICENSE" in capsys.readouterr().err
+
+    assert (
+        report.main(
+            [
+                "populate",
+                "--dry-run",
+                "--cell-id",
+                "z-builtin-sm-n1-jit-o3",
+                "--refresh-pdf",
+                "never",
+            ]
+        )
+        == 0
+    )
+
+
+def test_populate_unlicensed_override_is_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SYMBOLICA_LICENSE", raising=False)
+    calls: list[dict[str, object]] = []
+
+    def fake_populate(
+        _service: report.ReportService,
+        cells: object,
+        **kwargs: object,
+    ) -> None:
+        calls.append({"cells": cells, **kwargs})
+
+    monkeypatch.setattr(report.ReportService, "populate", fake_populate)
+
+    assert (
+        report.main(
+            [
+                "populate",
+                "--cell-id",
+                "z-builtin-sm-n1-jit-o3",
+                "--refresh-pdf",
+                "never",
+                "--allow-unlicensed-symbolica",
+            ]
+        )
+        == 0
+    )
+
+    assert len(calls) == 1
+    assert len(calls[0]["cells"]) == 1  # type: ignore[arg-type]
+
+
 def test_campaign_worker_timeout_accounts_for_every_generation_workload() -> None:
     cells = report._campaign_cells()
     matrix_lc = next(
