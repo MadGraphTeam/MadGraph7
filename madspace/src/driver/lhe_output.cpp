@@ -516,7 +516,7 @@ void LHECompleter::complete_event_data(
             for (int child_prop_index = prop_index - 1, child_res_index = res_index + 1;
                  child_prop_index >= 0;
                  --child_prop_index) {
-                if (resonant_prop_mask & (1 << child_prop_index)) {
+                if (child_prop_mask & (1 << child_prop_index)) {
                     auto& child_particle = event.particles.at(child_res_index + 2);
                     child_particle.mother1 = res_index + 3;
                     child_particle.mother2 = res_index + 3;

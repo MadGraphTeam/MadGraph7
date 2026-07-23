@@ -1611,13 +1611,16 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("pdg_color_types", &LHECompleter::SubprocArgs::pdg_color_types)
         .def_readwrite("helicities", &LHECompleter::SubprocArgs::helicities)
         .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids);
+    py::classh<std::mt19937>(m, "RandGen")
+        .def(py::init<>())
+        .def(py::init<std::mt19937::result_type>(), py::arg("seed"));
     py::classh<LHECompleter>(m, "LHECompleter")
         .def(
             py::init<const std::vector<LHECompleter::SubprocArgs>&, double>(),
             py::arg("subproc_args"),
             py::arg("bw_cutoff")
         )
-        /*.def(
+        .def(
             "complete_event_data",
             &LHECompleter::complete_event_data,
             py::arg("event"),
@@ -1625,8 +1628,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("diagram_index"),
             py::arg("color_index"),
             py::arg("flavor_index"),
-            py::arg("helicity_index")
-        )*/
+            py::arg("helicity_index"),
+            py::arg("rand_gen")
+        )
         .def("save", &LHECompleter::save, py::arg("file"))
         .def_static("load", &LHECompleter::load, py::arg("file"))
         .def_property_readonly("max_particle_count", &LHECompleter::max_particle_count);

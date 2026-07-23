@@ -1300,6 +1300,16 @@ class LHECompleter:
         subproc_args: collections.abc.Sequence[SubprocArgs],
         bw_cutoff: typing.SupportsFloat,
     ) -> None: ...
+    def complete_event_data(
+        self,
+        event: LHEEvent,
+        subprocess_index: typing.SupportsInt,
+        diagram_index: typing.SupportsInt,
+        color_index: typing.SupportsInt,
+        flavor_index: typing.SupportsInt,
+        helicity_index: typing.SupportsInt,
+        rand_gen: RandGen,
+    ) -> None: ...
     def save(self, file: str) -> None: ...
     @property
     def max_particle_count(self) -> int: ...
@@ -2597,6 +2607,12 @@ class PropagatorChannelWeights(FunctionGenerator):
             collections.abc.Sequence[typing.SupportsInt]
         ],
     ) -> None: ...
+
+class RandGen:
+    @typing.overload
+    def __init__(self) -> None: ...
+    @typing.overload
+    def __init__(self, seed: typing.SupportsInt) -> None: ...
 
 class RunningCoupling(FunctionGenerator):
     def __init__(self, grid: AlphaSGrid, prefix: str = "") -> None: ...
