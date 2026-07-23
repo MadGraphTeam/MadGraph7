@@ -494,7 +494,7 @@ def test_mapping_timeout_uses_hard_child_process_boundary() -> None:
         )
 
 
-def test_lc_matrix_renderer_localizes_union_out_of_reach() -> None:
+def test_lc_matrix_renderer_localizes_union_skip() -> None:
     legacy = report._empty_measurement()
     legacy.update(
         {
@@ -526,7 +526,7 @@ def test_lc_matrix_renderer_localizes_union_out_of_reach() -> None:
                     "selected_generation_s": 2.0,
                     "wall_us_per_point": 1.0,
                     "runtime_us_per_point": 0.5,
-                    "all_flow_status": report.ResultStatus.OUT_OF_REACH.value,
+                    "all_flow_status": report.ResultStatus.SKIP.value,
                     "all_flow_error": "union lane is too large",
                 },
                 "selected_flow_measurement": {
@@ -534,7 +534,7 @@ def test_lc_matrix_renderer_localizes_union_out_of_reach() -> None:
                     "status": report.ResultStatus.OK.value,
                 },
                 "all_flow_measurement": report._failure_measurement(
-                    report.ResultStatus.OUT_OF_REACH,
+                    report.ResultStatus.SKIP,
                     "union lane is too large",
                     metadata={
                         "lane_status_policy": report.LC_LANE_STATUS_POLICY,
@@ -555,7 +555,7 @@ def test_lc_matrix_renderer_localizes_union_out_of_reach() -> None:
     cell = report._matrix_cell(entry, color_accuracy="lc")
 
     assert r"\matrixratio{ReportGreen}{0.2}" in cell
-    assert r"\texttt{out-of-reach}" in cell
+    assert r"\texttt{skip}" in cell
 
 
 def test_render_safe_lc_measurement_hides_stale_lane_numbers() -> None:
@@ -576,11 +576,11 @@ def test_render_safe_lc_measurement_hides_stale_lane_numbers() -> None:
         },
     }
     union = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+        report.ResultStatus.SKIP,
         "union lane exceeded the campaign cap",
         metadata={
             "lane_status_policy": report.LC_LANE_STATUS_POLICY,
-            "lane_terminal_policy": report.LC_GENERATION_CAP_OUT_OF_REACH_POLICY,
+            "lane_terminal_policy": report.LC_GENERATION_CAP_SKIP_POLICY,
             "runtime_selector_role": "all-flows-fixed-helicity",
             "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
         },
@@ -594,7 +594,7 @@ def test_render_safe_lc_measurement_hides_stale_lane_numbers() -> None:
                 "selected_generation_s": 2.0,
                 "wall_us_per_point": 2.0,
                 "runtime_us_per_point": 1.0,
-                "all_flow_status": report.ResultStatus.OUT_OF_REACH.value,
+                "all_flow_status": report.ResultStatus.SKIP.value,
             },
             "selected_flow_measurement": selected,
             "all_flow_measurement": union,
@@ -614,7 +614,7 @@ def test_render_safe_lc_measurement_hides_stale_lane_numbers() -> None:
     assert fields["selected_generation_s"] is None
     assert fields["runtime_us_per_point"] is None
     assert fields["wall_us_per_point"] is None
-    assert fields["all_flow_status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert fields["all_flow_status"] == report.ResultStatus.SKIP.value
     assert safe["status"] == report.NA_STATUS
 
 
@@ -786,7 +786,7 @@ def test_pointwise_validation_covers_all_flow_fixed_helicity() -> None:
     assert validation["all_flow_relative_difference"] == pytest.approx(0.05)
 
 
-def test_pointwise_validation_keeps_selected_ok_when_union_lane_out_of_reach() -> None:
+def test_pointwise_validation_keeps_selected_ok_when_union_lane_skip() -> None:
     legacy = report._empty_measurement()
     legacy.update(
         {
@@ -809,7 +809,7 @@ def test_pointwise_validation_keeps_selected_ok_when_union_lane_out_of_reach() -
             "metadata": {
                 "old_matrix_format": {
                     "status": report.ResultStatus.OK.value,
-                    "all_flow_status": report.ResultStatus.OUT_OF_REACH.value,
+                    "all_flow_status": report.ResultStatus.SKIP.value,
                     "all_flow_error": "union lane is too large",
                 }
             },
@@ -828,11 +828,42 @@ def test_pointwise_validation_keeps_selected_ok_when_union_lane_out_of_reach() -
     )
 
     assert validation["status"] == report.ResultStatus.OK.value
-    assert validation["all_flow_status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert validation["all_flow_status"] == report.ResultStatus.SKIP.value
     assert eager_validation["status"] == report.ResultStatus.OK.value
-    assert (
-        eager_validation["all_flow_status"]
-        == report.ResultStatus.OUT_OF_REACH.value
+    assert eager_validation["all_flow_status"] == report.ResultStatus.SKIP.value
+
+
+def test_selected_lc_lane_skip_is_not_terminal() -> None:
+    selected = report._failure_measurement(
+        report.ResultStatus.SKIP,
+        "selected lane was previously misclassified",
+        metadata={
+            "lane_status_policy": report.LC_LANE_STATUS_POLICY,
+            "lane_terminal_policy": report.LC_GENERATION_CAP_SKIP_POLICY,
+            "runtime_selector_role": "selected-flow-helicity-sum",
+            "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        },
+    )
+    union = report._failure_measurement(
+        report.ResultStatus.SKIP,
+        "union lane exceeded the campaign cap",
+        metadata={
+            "lane_status_policy": report.LC_LANE_STATUS_POLICY,
+            "lane_terminal_policy": report.LC_GENERATION_CAP_SKIP_POLICY,
+            "runtime_selector_role": "all-flows-fixed-helicity",
+            "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
+        },
+    )
+
+    assert not report._lc_lane_terminal_current(
+        selected,
+        expected_layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        role="selected-flow-helicity-sum",
+    )
+    assert report._lc_lane_terminal_current(
+        union,
+        expected_layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        role="all-flows-fixed-helicity",
     )
 
 
@@ -1225,7 +1256,7 @@ def test_missing_only_retries_z_unsupported_rows() -> None:
     assert report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
 
 
-def test_missing_only_skips_out_of_reach_z_rows() -> None:
+def test_missing_only_skips_terminal_skip_z_rows() -> None:
     spec = report.LADDER_SPECS[0]
     payload = report.build_ladder_cache(spec)
     entry = next(
@@ -1235,7 +1266,7 @@ def test_missing_only_skips_out_of_reach_z_rows() -> None:
     )
     entry["measurement"] = {
         **report._empty_measurement(),
-        "status": report.ResultStatus.OUT_OF_REACH.value,
+        "status": report.ResultStatus.SKIP.value,
     }
     cell = report.CampaignCell(
         kind="performance_ladder",
@@ -1249,7 +1280,7 @@ def test_missing_only_skips_out_of_reach_z_rows() -> None:
     assert not report._campaign_cell_needs_measurement(cell, {spec.cache_name: payload})
 
 
-def test_known_eager_z_out_of_reach_is_migrated_to_union_lane_only() -> None:
+def test_known_eager_z_skip_is_migrated_to_union_lane_only() -> None:
     spec = next(
         item for item in report.LADDER_SPECS if item.dataset_id == "z_builtin_sm"
     )
@@ -1259,14 +1290,14 @@ def test_known_eager_z_out_of_reach_is_migrated_to_union_lane_only() -> None:
         for item in payload["entries"]
         if item["n_final"] == 8 and item["variant"] == "eager_jit_o3"
     )
-    entry["status"] = report.ResultStatus.OUT_OF_REACH.value
+    entry["status"] = report.ResultStatus.SKIP.value
     entry["measurement"] = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+        report.ResultStatus.SKIP,
         "campaign policy stop",
         metadata={
             "campaign_classification": {
-                "policy": "high_multiplicity_out_of_reach_v1",
-                "status": report.ResultStatus.OUT_OF_REACH.value,
+                "policy": "high_multiplicity_skip_v1",
+                "status": report.ResultStatus.SKIP.value,
             },
             "cell": {
                 "dataset_id": "z_builtin_sm",
@@ -1287,13 +1318,13 @@ def test_known_eager_z_out_of_reach_is_migrated_to_union_lane_only() -> None:
     assert measurement["status"] == report.NA_STATUS
     old = report._measurement_old_matrix_fields(measurement)
     assert old["status"] == report.NA_STATUS
-    assert old["all_flow_status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert old["all_flow_status"] == report.ResultStatus.SKIP.value
     row = report._z_old_row_from_measurement(
         measurement,
         variant_key="eager_jit_o3",
     )
     assert row["status"] == "missing"
-    assert row["all_flow_status"] == "out_of_reach"
+    assert row["all_flow_status"] == "skip"
     cell = report.CampaignCell(
         kind="performance_ladder",
         cache_name=spec.cache_name,
@@ -1308,7 +1339,7 @@ def test_known_eager_z_out_of_reach_is_migrated_to_union_lane_only() -> None:
     )
 
 
-def test_audit_record_exposes_lane_local_out_of_reach() -> None:
+def test_audit_record_exposes_lane_local_skip() -> None:
     spec = next(
         item for item in report.LADDER_SPECS if item.dataset_id == "z_builtin_sm"
     )
@@ -1318,14 +1349,14 @@ def test_audit_record_exposes_lane_local_out_of_reach() -> None:
         for item in payload["entries"]
         if item["n_final"] == 8 and item["variant"] == "eager_jit_o3"
     )
-    entry["status"] = report.ResultStatus.OUT_OF_REACH.value
+    entry["status"] = report.ResultStatus.SKIP.value
     entry["measurement"] = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+        report.ResultStatus.SKIP,
         "campaign policy stop",
         metadata={
             "campaign_classification": {
-                "policy": "high_multiplicity_out_of_reach_v1",
-                "status": report.ResultStatus.OUT_OF_REACH.value,
+                "policy": "high_multiplicity_skip_v1",
+                "status": report.ResultStatus.SKIP.value,
             },
             "cell": {
                 "dataset_id": "z_builtin_sm",
@@ -1354,17 +1385,17 @@ def test_audit_record_exposes_lane_local_out_of_reach() -> None:
     assert isinstance(selected_lane, Mapping)
     assert isinstance(all_flow_lane, Mapping)
     assert selected_lane["status"] == report.NA_STATUS
-    assert all_flow_lane["status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert all_flow_lane["status"] == report.ResultStatus.SKIP.value
     reasons = audit["reasons"]
     assert isinstance(reasons, list)
     assert "selected:lc_lane_status:not_available" in reasons
-    assert "union:lc_lane_status:out_of_reach" not in reasons
+    assert "union:lc_lane_status:skip" not in reasons
     text = report._audit_cell_text(audit)
-    assert "all_flows_fixed_helicity=out_of_reach" in text
+    assert "all_flows_fixed_helicity=skip" in text
     assert "selected:lc_lane_status:not_available" in text
     summary = report._audit_summary_text([audit])
     assert "reason_buckets: lane_missing=1" in summary
-    assert "lc_lanes: all_flows_fixed_helicity:out_of_reach=1" in summary
+    assert "lc_lanes: all_flows_fixed_helicity:skip=1" in summary
     assert "z-builtin-sm-n8-eager-jit-o3" in summary
 
 
@@ -1391,14 +1422,14 @@ def test_populate_dry_run_can_filter_reason_bucket(
         for item in payload["entries"]
         if item["n_final"] == 8 and item["variant"] == "eager_jit_o3"
     )
-    entry["status"] = report.ResultStatus.OUT_OF_REACH.value
+    entry["status"] = report.ResultStatus.SKIP.value
     entry["measurement"] = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+        report.ResultStatus.SKIP,
         "campaign policy stop",
         metadata={
             "campaign_classification": {
-                "policy": "high_multiplicity_out_of_reach_v1",
-                "status": report.ResultStatus.OUT_OF_REACH.value,
+                "policy": "high_multiplicity_skip_v1",
+                "status": report.ResultStatus.SKIP.value,
             },
             "cell": {
                 "dataset_id": "z_builtin_sm",
@@ -1440,7 +1471,7 @@ def test_populate_dry_run_can_filter_reason_bucket(
     assert "z-builtin-sm-n8-eager-jit-o3" in captured.out
 
 
-def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
+def test_ambiguous_whole_row_skip_remains_terminal() -> None:
     spec = next(
         item for item in report.LADDER_SPECS if item.dataset_id == "z_builtin_sm"
     )
@@ -1450,9 +1481,9 @@ def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
         for item in payload["entries"]
         if item["n_final"] == 8 and item["variant"] == "eager_jit_o3"
     )
-    entry["status"] = report.ResultStatus.OUT_OF_REACH.value
+    entry["status"] = report.ResultStatus.SKIP.value
     entry["measurement"] = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+        report.ResultStatus.SKIP,
         "generic whole-cell policy stop",
     )
 
@@ -1462,7 +1493,7 @@ def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
         for item in normalized["entries"]
         if item["n_final"] == 8 and item["variant"] == "eager_jit_o3"
     )
-    assert terminal["status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert terminal["status"] == report.ResultStatus.SKIP.value
     assert not report._lc_measurement_has_explicit_lanes(terminal["measurement"])
     cell = report.CampaignCell(
         kind="performance_ladder",
@@ -1478,31 +1509,31 @@ def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
     )
 
 
-def test_ten_minute_generation_cap_records_out_of_reach() -> None:
+def test_ten_minute_generation_cap_records_skip() -> None:
     exc = report.ReportGenerationTimeout("generation exceeded 600 seconds")
 
     assert (
         report.DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS
-        == report.OUT_OF_REACH_GENERATION_CAP_SECONDS
+        == report.SKIP_GENERATION_CAP_SECONDS
     )
     assert (
         report._generation_timeout_status(
-            report.OUT_OF_REACH_GENERATION_CAP_SECONDS,
+            report.SKIP_GENERATION_CAP_SECONDS,
         )
-        == report.ResultStatus.OUT_OF_REACH
+        == report.ResultStatus.SKIP
     )
     assert (
         report._generation_timeout_failure_kind(
-            report.OUT_OF_REACH_GENERATION_CAP_SECONDS,
+            report.SKIP_GENERATION_CAP_SECONDS,
         )
-        == "generation_out_of_reach"
+        == "generation_skip"
     )
     assert (
         report._generation_timeout_failure_message(
             exc,
-            report.OUT_OF_REACH_GENERATION_CAP_SECONDS,
+            report.SKIP_GENERATION_CAP_SECONDS,
         )
-        == "out of reach by campaign policy: generation exceeded 600 seconds"
+        == "skipped by campaign policy: generation exceeded 600 seconds"
     )
 
     assert report._generation_timeout_status(3600.0) == report.ResultStatus.TIMEOUT
@@ -1513,32 +1544,97 @@ def test_ten_minute_generation_cap_records_out_of_reach() -> None:
     assert report._generation_timeout_failure_message(exc, 3600.0) == str(exc)
 
 
-def test_ten_minute_profile_cap_records_out_of_reach() -> None:
+def test_ten_minute_profile_cap_records_skip() -> None:
     exc = report.ReportProfileTimeout("profiling exceeded 600 seconds")
 
     assert (
         report._profile_timeout_status(
-            report.OUT_OF_REACH_PROFILE_CAP_SECONDS,
+            report.SKIP_PROFILE_CAP_SECONDS,
         )
-        == report.ResultStatus.OUT_OF_REACH
+        == report.ResultStatus.SKIP
     )
     assert (
         report._profile_timeout_failure_kind(
-            report.OUT_OF_REACH_PROFILE_CAP_SECONDS,
+            report.SKIP_PROFILE_CAP_SECONDS,
         )
-        == "profile_out_of_reach"
+        == "profile_skip"
     )
     assert (
         report._profile_timeout_failure_message(
             exc,
-            report.OUT_OF_REACH_PROFILE_CAP_SECONDS,
+            report.SKIP_PROFILE_CAP_SECONDS,
         )
-        == "out of reach by campaign policy: profiling exceeded 600 seconds"
+        == "skipped by campaign policy: profiling exceeded 600 seconds"
     )
 
     assert report._profile_timeout_status(3600.0) == report.ResultStatus.TIMEOUT
     assert report._profile_timeout_failure_kind(3600.0) == "profile_timeout"
     assert report._profile_timeout_failure_message(exc, 3600.0) == str(exc)
+
+
+def test_ten_minute_lc_cap_only_skips_union_lane() -> None:
+    generation_exc = report.ReportGenerationTimeout("generation exceeded 600 seconds")
+    profile_exc = report.ReportProfileTimeout("profiling exceeded 600 seconds")
+
+    assert (
+        report._lc_lane_generation_timeout_status(
+            report.SKIP_GENERATION_CAP_SECONDS,
+            role="selected-flow-helicity-sum",
+        )
+        == report.ResultStatus.TIMEOUT
+    )
+    assert (
+        report._lc_lane_generation_timeout_failure_kind(
+            report.SKIP_GENERATION_CAP_SECONDS,
+            role="selected-flow-helicity-sum",
+        )
+        == "generation_timeout"
+    )
+    assert (
+        report._lc_lane_generation_timeout_failure_message(
+            generation_exc,
+            report.SKIP_GENERATION_CAP_SECONDS,
+            role="selected-flow-helicity-sum",
+        )
+        == str(generation_exc)
+    )
+    assert (
+        report._lc_lane_generation_timeout_status(
+            report.SKIP_GENERATION_CAP_SECONDS,
+            role="all-flows-fixed-helicity",
+        )
+        == report.ResultStatus.SKIP
+    )
+
+    assert (
+        report._lc_lane_profile_timeout_status(
+            report.SKIP_PROFILE_CAP_SECONDS,
+            role="selected-flow-helicity-sum",
+        )
+        == report.ResultStatus.TIMEOUT
+    )
+    assert (
+        report._lc_lane_profile_timeout_failure_kind(
+            report.SKIP_PROFILE_CAP_SECONDS,
+            role="selected-flow-helicity-sum",
+        )
+        == "profile_timeout"
+    )
+    assert (
+        report._lc_lane_profile_timeout_failure_message(
+            profile_exc,
+            report.SKIP_PROFILE_CAP_SECONDS,
+            role="selected-flow-helicity-sum",
+        )
+        == str(profile_exc)
+    )
+    assert (
+        report._lc_lane_profile_timeout_status(
+            report.SKIP_PROFILE_CAP_SECONDS,
+            role="all-flows-fixed-helicity",
+        )
+        == report.ResultStatus.SKIP
+    )
 
 
 def test_cleanup_campaign_defaults_use_ten_minute_and_100g_caps() -> None:
@@ -1548,11 +1644,11 @@ def test_cleanup_campaign_defaults_use_ten_minute_and_100g_caps() -> None:
     assert args.limit_gib == 100.0
     assert (
         args.generation_timeout_seconds
-        == report.OUT_OF_REACH_GENERATION_CAP_SECONDS
+        == report.SKIP_GENERATION_CAP_SECONDS
     )
     assert (
         args.jit_o3_generation_timeout_seconds
-        == report.OUT_OF_REACH_GENERATION_CAP_SECONDS
+        == report.SKIP_GENERATION_CAP_SECONDS
     )
 
 
@@ -1597,11 +1693,11 @@ def test_legacy_reference_timeout_uses_hard_child_process_boundary(
         jobs=1,
     )
 
-    assert measurement["status"] == report.ResultStatus.OUT_OF_REACH.value
-    assert measurement["failure_kind"] == "reference_out_of_reach"
+    assert measurement["status"] == report.ResultStatus.SKIP.value
+    assert measurement["failure_kind"] == "reference_skip"
     fields = report._measurement_old_matrix_fields(measurement)
-    assert fields["status"] == report.ResultStatus.OUT_OF_REACH.value
-    assert fields["all_flow_status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert fields["status"] == report.ResultStatus.SKIP.value
+    assert fields["all_flow_status"] == report.ResultStatus.SKIP.value
 
 
 def test_legacy_reference_timeout_is_enforced_without_symbolica_license(
@@ -1634,8 +1730,8 @@ def test_legacy_reference_timeout_is_enforced_without_symbolica_license(
         jobs=1,
     )
 
-    assert measurement["status"] == report.ResultStatus.OUT_OF_REACH.value
-    assert measurement["failure_kind"] == "reference_out_of_reach"
+    assert measurement["status"] == report.ResultStatus.SKIP.value
+    assert measurement["failure_kind"] == "reference_skip"
 
 
 def test_missing_only_retries_model_ladder_failures() -> None:
@@ -2160,7 +2256,7 @@ def test_runtime_only_revision_hops_allow_generation_reuse(
         report,
         "_git_is_ancestor",
         lambda ancestor, descendant: (
-            ancestor == report.GENERATION_CAP_OUT_OF_REACH_POLICY_REVISION
+            ancestor == report.GENERATION_CAP_SKIP_POLICY_REVISION
             and descendant
             in {
                 "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61",
@@ -2172,23 +2268,23 @@ def test_runtime_only_revision_hops_allow_generation_reuse(
         "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61",
         "post-generation-cap-policy-head",
     ):
-        out_of_reach_policy_current = dict(current)
-        out_of_reach_policy_current["head"] = policy_current_head
+        skip_policy_current = dict(current)
+        skip_policy_current["head"] = policy_current_head
         monkeypatch.setattr(
             report,
             "_report_source_provenance",
-            lambda provenance=out_of_reach_policy_current: provenance,
+            lambda provenance=skip_policy_current: provenance,
         )
-        previous = dict(out_of_reach_policy_current)
+        previous = dict(skip_policy_current)
         previous["head"] = "3d896f399fe078f4b7e9deefa6738c52a77309d5"
         assert report._source_provenance_generation_reusable(previous)
 
-    out_of_reach_policy_current = dict(current)
-    out_of_reach_policy_current["head"] = "post-generation-cap-policy-head"
+    skip_policy_current = dict(current)
+    skip_policy_current["head"] = "post-generation-cap-policy-head"
     monkeypatch.setattr(
-        report, "_report_source_provenance", lambda: out_of_reach_policy_current
+        report, "_report_source_provenance", lambda: skip_policy_current
     )
-    previous = dict(out_of_reach_policy_current)
+    previous = dict(skip_policy_current)
     previous["head"] = "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61"
     assert report._source_provenance_generation_reusable(previous)
 
@@ -2750,7 +2846,7 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
     assert all_flow_snapshot_payload["measurement_point_digest"] == point_digest
 
 
-def test_lc_lane_profile_out_of_reach_preserves_generation_metadata(
+def test_lc_lane_profile_skip_preserves_generation_metadata(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -2880,10 +2976,10 @@ def test_lc_lane_profile_out_of_reach_preserves_generation_metadata(
         },
         reference_measurement=reference,
         artifact_root=tmp_path,
-        artifact_label="complete-lc",
-        log_label="complete-lc",
-        layout=report.LC_TOPOLOGY_REPLAY_LAYOUT,
-        role="selected-flow-helicity-sum",
+        artifact_label="all-flow-union",
+        log_label="all-flow-union",
+        layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        role="all-flows-fixed-helicity",
         generation_timeout_seconds=60.0,
         target_runtime=0.1,
         cell_cores=1,
@@ -2893,23 +2989,23 @@ def test_lc_lane_profile_out_of_reach_preserves_generation_metadata(
     )
 
     assert returned_points == ("point",)
-    assert measurement["status"] == report.ResultStatus.OUT_OF_REACH.value
-    assert measurement["failure_kind"] == "profile_out_of_reach"
-    assert measurement["timeout_seconds"] == report.OUT_OF_REACH_PROFILE_CAP_SECONDS
+    assert measurement["status"] == report.ResultStatus.SKIP.value
+    assert measurement["failure_kind"] == "profile_skip"
+    assert measurement["timeout_seconds"] == report.SKIP_PROFILE_CAP_SECONDS
     assert isinstance(measurement["generation_seconds"], float)
     assert measurement["requested_config"] == {"ok": True}
     metadata = measurement["metadata"]
-    assert metadata["lane_terminal_policy"] == report.LC_PROFILE_CAP_OUT_OF_REACH_POLICY
+    assert metadata["lane_terminal_policy"] == report.LC_PROFILE_CAP_SKIP_POLICY
     assert metadata["generation_seconds_source"] == "fresh_generation"
     assert metadata["artifact_reused_for_timing"] is False
     assert (
         metadata["profile_timeout_seconds"]
-        == report.OUT_OF_REACH_PROFILE_CAP_SECONDS
+        == report.SKIP_PROFILE_CAP_SECONDS
     )
     assert metadata["measurement_point_digest"] == report._measurement_point_digest(
         ("point",)
     )
-    assert contract["status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert contract["status"] == report.ResultStatus.SKIP.value
 
 
 @pytest.mark.parametrize(
@@ -2946,17 +3042,17 @@ def test_lc_lane_profile_out_of_reach_preserves_generation_metadata(
     (
         (
             report.ReportGenerationTimeout,
-            report.LC_GENERATION_CAP_OUT_OF_REACH_POLICY,
-            "generation_out_of_reach",
+            report.LC_GENERATION_CAP_SKIP_POLICY,
+            "generation_skip",
         ),
         (
             report.ReportProfileTimeout,
-            report.LC_PROFILE_CAP_OUT_OF_REACH_POLICY,
-            "profile_out_of_reach",
+            report.LC_PROFILE_CAP_SKIP_POLICY,
+            "profile_skip",
         ),
     ),
 )
-def test_lc_lane_out_of_reach_is_layout_and_mode_local(
+def test_lc_lane_skip_is_layout_and_mode_local(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     layout: str,
@@ -3112,7 +3208,7 @@ def test_lc_lane_out_of_reach_is_layout_and_mode_local(
         log_label=expected_label,
         layout=layout,
         role=role,
-        generation_timeout_seconds=report.OUT_OF_REACH_GENERATION_CAP_SECONDS,
+        generation_timeout_seconds=report.SKIP_GENERATION_CAP_SECONDS,
         target_runtime=0.1,
         cell_cores=1,
         points=("point",),
@@ -3120,15 +3216,26 @@ def test_lc_lane_out_of_reach_is_layout_and_mode_local(
         previous_measurement=None,
     )
 
-    assert measurement["status"] == report.ResultStatus.OUT_OF_REACH.value
-    assert measurement["failure_kind"] == expected_kind
+    if role == "all-flows-fixed-helicity":
+        expected_status = report.ResultStatus.SKIP.value
+        expected_failure_kind = expected_kind
+    else:
+        expected_status = report.ResultStatus.TIMEOUT.value
+        expected_failure_kind = expected_kind.replace("_skip", "_timeout")
+
+    assert measurement["status"] == expected_status
+    assert measurement["failure_kind"] == expected_failure_kind
     assert measurement["artifact_path"].endswith(expected_label)
     metadata = measurement["metadata"]
     assert metadata["lc_flow_layout"] == layout
     assert metadata["runtime_selector_role"] == role
-    assert metadata["lane_terminal_policy"] == expected_policy
-    assert metadata["lane_status_policy"] == report.LC_LANE_STATUS_POLICY
-    assert contract["status"] == report.ResultStatus.OUT_OF_REACH.value
+    if role == "all-flows-fixed-helicity":
+        assert metadata["lane_terminal_policy"] == expected_policy
+        assert metadata["lane_status_policy"] == report.LC_LANE_STATUS_POLICY
+    else:
+        assert "lane_terminal_policy" not in metadata
+        assert "lane_status_policy" not in metadata
+    assert contract["status"] == expected_status
 
 
 def test_compiled_lc_refreshes_only_stale_all_flow_union(
@@ -3286,7 +3393,7 @@ def test_compiled_lc_measures_missing_selected_lane_and_skips_union_terminal(
         "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
     }
     union_terminal = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+        report.ResultStatus.SKIP,
         "union lane is too large",
         metadata={
             "lane_status_policy": report.LC_LANE_STATUS_POLICY,
@@ -3329,6 +3436,16 @@ def test_compiled_lc_measures_missing_selected_lane_and_skips_union_terminal(
         )
 
     monkeypatch.setattr(report, "_measure_pyamplicol_lc_lane", measure_lane)
+    monkeypatch.setattr(
+        report,
+        "_load_lc_runtime_for_cross_validation",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_cross_artifact_validation",
+        lambda *_args, **_kwargs: {"status": report.ResultStatus.OK.value},
+    )
 
     measurement, returned_points = report._measure_pyamplicol_lc_two_workloads(
         cell=cell,
@@ -3350,15 +3467,15 @@ def test_compiled_lc_measures_missing_selected_lane_and_skips_union_terminal(
     metadata = measurement["metadata"]
     assert (
         metadata["all_flow_measurement"]["status"]
-        == report.ResultStatus.OUT_OF_REACH.value
+        == report.ResultStatus.SKIP.value
     )
     assert (
         metadata["old_matrix_format"]["all_flow_status"]
-        == report.ResultStatus.OUT_OF_REACH.value
+        == report.ResultStatus.SKIP.value
     )
 
 
-def test_compiled_lc_measures_union_when_selected_lane_is_terminal(
+def test_compiled_lc_retries_selected_lane_previously_marked_skip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -3385,12 +3502,12 @@ def test_compiled_lc_measures_union_when_selected_lane_is_terminal(
         "all_flow_helicity_ids": ["h:-1,+1,-1,+1,-1"],
     }
     selected_terminal = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+        report.ResultStatus.SKIP,
         "selected topology-replay generation exceeded the campaign cap",
-        failure_kind="generation_out_of_reach",
+        failure_kind="generation_skip",
         metadata={
             "lane_status_policy": report.LC_LANE_STATUS_POLICY,
-            "lane_terminal_policy": report.LC_GENERATION_CAP_OUT_OF_REACH_POLICY,
+            "lane_terminal_policy": report.LC_GENERATION_CAP_SKIP_POLICY,
             "runtime_selector_role": "selected-flow-helicity-sum",
             "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
         },
@@ -3409,7 +3526,13 @@ def test_compiled_lc_measures_union_when_selected_lane_is_terminal(
     ) -> tuple[dict[str, object], object, dict[str, object]]:
         layout = str(kwargs["layout"])
         lane_calls.append(layout)
-        assert layout == report.LC_ALL_FLOW_UNION_LAYOUT
+        if layout == report.LC_TOPOLOGY_REPLAY_LAYOUT:
+            artifact_path = "/artifact/complete-lc"
+            matrix_element = 0.5
+        else:
+            assert layout == report.LC_ALL_FLOW_UNION_LAYOUT
+            artifact_path = "/artifact/all-flow-union"
+            matrix_element = 1.0
         return (
             {
                 **report._empty_measurement(),
@@ -3417,10 +3540,10 @@ def test_compiled_lc_measures_union_when_selected_lane_is_terminal(
                 "generation_seconds": 7.0,
                 "wall_seconds_per_point": 4.0e-6,
                 "evaluator_seconds_per_point": 3.0e-6,
-                "matrix_element": 1.0,
-                "artifact_path": "/artifact/all-flow-union",
+                "matrix_element": matrix_element,
+                "artifact_path": artifact_path,
                 "metadata": {
-                    "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
+                    "lc_flow_layout": layout,
                     "selector_contract": contract,
                 },
             },
@@ -3429,6 +3552,16 @@ def test_compiled_lc_measures_union_when_selected_lane_is_terminal(
         )
 
     monkeypatch.setattr(report, "_measure_pyamplicol_lc_lane", measure_lane)
+    monkeypatch.setattr(
+        report,
+        "_load_lc_runtime_for_cross_validation",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        report,
+        "_lc_cross_artifact_validation",
+        lambda *_args, **_kwargs: {"status": report.ResultStatus.OK.value},
+    )
 
     measurement, returned_points = report._measure_pyamplicol_lc_two_workloads(
         cell=cell,
@@ -3444,18 +3577,21 @@ def test_compiled_lc_measures_union_when_selected_lane_is_terminal(
         previous_measurement=previous,
     )
 
-    assert lane_calls == [report.LC_ALL_FLOW_UNION_LAYOUT]
+    assert lane_calls == [
+        report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        report.LC_ALL_FLOW_UNION_LAYOUT,
+    ]
     assert returned_points == ("point",)
     assert measurement["status"] == report.ResultStatus.OK.value
     metadata = measurement["metadata"]
     assert (
         metadata["selected_flow_measurement"]["status"]
-        == report.ResultStatus.OUT_OF_REACH.value
+        == report.ResultStatus.OK.value
     )
     assert metadata["all_flow_measurement"]["status"] == report.ResultStatus.OK.value
     assert (
         metadata["old_matrix_format"]["status"]
-        == report.ResultStatus.OUT_OF_REACH.value
+        == report.ResultStatus.OK.value
     )
     assert (
         metadata["old_matrix_format"]["all_flow_status"]
@@ -3463,7 +3599,7 @@ def test_compiled_lc_measures_union_when_selected_lane_is_terminal(
     )
 
 
-def test_compiled_lc_keeps_lane_local_profile_out_of_reach(
+def test_compiled_lc_keeps_lane_local_profile_skip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -3499,20 +3635,20 @@ def test_compiled_lc_keeps_lane_local_profile_out_of_reach(
         if layout == report.LC_TOPOLOGY_REPLAY_LAYOUT:
             return (
                 report._failure_measurement(
-                    report.ResultStatus.OUT_OF_REACH,
+                    report.ResultStatus.SKIP,
                     "selected topology-replay profiling exceeded the campaign cap",
-                    failure_kind="profile_out_of_reach",
+                    failure_kind="profile_skip",
                     metadata={
                         "lane_status_policy": report.LC_LANE_STATUS_POLICY,
                         "lane_terminal_policy": (
-                            report.LC_PROFILE_CAP_OUT_OF_REACH_POLICY
+                            report.LC_PROFILE_CAP_SKIP_POLICY
                         ),
                         "runtime_selector_role": "selected-flow-helicity-sum",
                         "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
                     },
                 ),
                 ("point",),
-                {**contract, "status": report.ResultStatus.OUT_OF_REACH.value},
+                {**contract, "status": report.ResultStatus.SKIP.value},
             )
         return (
             {
@@ -3557,7 +3693,7 @@ def test_compiled_lc_keeps_lane_local_profile_out_of_reach(
     metadata = measurement["metadata"]
     assert (
         metadata["selected_flow_measurement"]["failure_kind"]
-        == "profile_out_of_reach"
+        == "profile_skip"
     )
     assert metadata["all_flow_measurement"]["status"] == report.ResultStatus.OK.value
 
@@ -4128,7 +4264,7 @@ def test_eager_lc_measures_missing_selected_lane_and_skips_union_terminal(
         "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
     }
     union_terminal = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+        report.ResultStatus.SKIP,
         "union lane is too large",
         metadata={
             "lane_status_policy": report.LC_LANE_STATUS_POLICY,
@@ -4199,7 +4335,7 @@ def test_eager_lc_measures_missing_selected_lane_and_skips_union_terminal(
     assert measurement["status"] == report.ResultStatus.OK.value
     assert (
         measurement["metadata"]["old_matrix_format"]["all_flow_status"]
-        == report.ResultStatus.OUT_OF_REACH.value
+        == report.ResultStatus.SKIP.value
     )
 
 
@@ -4446,19 +4582,19 @@ def test_failure_status_labels_render_in_cells() -> None:
         )
         == r"\ReportStatus{VALIDATION FAILED}"
     )
-    out_of_reach = report._failure_measurement(
-        report.ResultStatus.OUT_OF_REACH,
+    skip = report._failure_measurement(
+        report.ResultStatus.SKIP,
         "held by campaign policy",
     )
-    assert report._measurement_cell(out_of_reach) == r"\ReportStatus{out-of-reach}"
+    assert report._measurement_cell(skip) == r"\ReportStatus{skip}"
     assert (
-        report._matrix_failure_label(out_of_reach)
-        == r"\textcolor{ReportMuted}{\texttt{out-of-reach}}"
+        report._matrix_failure_label(skip)
+        == r"\textcolor{ReportMuted}{\texttt{skip}}"
     )
-    assert report._z_old_status(out_of_reach["status"]) == "out_of_reach"
+    assert report._z_old_status(skip["status"]) == "skip"
     assert (
-        report._z_old_status_cell("out_of_reach")
-        == r"\textcolor{ReportMuted}{\texttt{out-of-reach}}"
+        report._z_old_status_cell("skip")
+        == r"\textcolor{ReportMuted}{\texttt{skip}}"
     )
 
 

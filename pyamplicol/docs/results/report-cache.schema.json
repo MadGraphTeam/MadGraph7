@@ -132,6 +132,7 @@
             "failed",
             "timeout",
             "memory_limit",
+            "skip",
             "out_of_reach",
             "validation_failed",
             "error",

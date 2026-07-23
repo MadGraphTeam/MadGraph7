@@ -91,14 +91,18 @@ EAGER_TOPOLOGY_REPLAY_RUNTIME_FIX_REVISION = (
 EAGER_TOPOLOGY_REPLAY_RUNTIME_FIX_BASE_REVISIONS = frozenset(
     {"a0fd4a458c281b1838df10c6547395edc6e65618"}
 )
-GENERATION_CAP_OUT_OF_REACH_POLICY_REVISION = (
+GENERATION_CAP_SKIP_POLICY_REVISION = (
     "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61"
 )
-GENERATION_CAP_OUT_OF_REACH_POLICY_REUSE_BASE_REVISIONS = frozenset(
+GENERATION_CAP_SKIP_POLICY_REUSE_BASE_REVISIONS = frozenset(
     {
         "3d896f399fe078f4b7e9deefa6738c52a77309d5",
         "cfc19a3c497f0a8c5dd4db4b9affdf9a27697b61",
     }
+)
+GENERATION_CAP_OUT_OF_REACH_POLICY_REVISION = GENERATION_CAP_SKIP_POLICY_REVISION
+GENERATION_CAP_OUT_OF_REACH_POLICY_REUSE_BASE_REVISIONS = (
+    GENERATION_CAP_SKIP_POLICY_REUSE_BASE_REVISIONS
 )
 PYAMPLICOL_RUNTIME_ONLY_ARTIFACT_REUSE_REVISIONS = frozenset(
     {
@@ -165,6 +169,9 @@ class ResultStatus(StrEnum):
     FAILED = "failed"
     TIMEOUT = "timeout"
     MEMORY_LIMIT = "memory_limit"
+    SKIP = "skip"
+    # Legacy spelling kept loadable for caches produced before the report
+    # terminology was tightened to the shorter user-facing "skip".
     OUT_OF_REACH = "out_of_reach"
     VALIDATION_FAILED = "validation_failed"
     ERROR = "error"
@@ -809,6 +816,8 @@ def _normalized_failure_status(
     failure_message: object | None = None,
 ) -> str:
     status_text = str(status)
+    if status_text == ResultStatus.OUT_OF_REACH.value:
+        return ResultStatus.SKIP.value
     if status_text == ResultStatus.TIMEOUT.value:
         return status_text
     if status_text != ResultStatus.ERROR.value:
@@ -832,7 +841,18 @@ def _measurement_ok(value: Mapping[str, object]) -> bool:
 
 
 def _campaign_status_is_terminal(status: object) -> bool:
-    return str(status) == ResultStatus.OUT_OF_REACH.value
+    return _is_skip_status(status)
+
+
+def _is_skip_status(status: object) -> bool:
+    return str(status) in {
+        ResultStatus.SKIP.value,
+        ResultStatus.OUT_OF_REACH.value,
+    }
+
+
+def _contains_skip_status(statuses: Iterable[object]) -> bool:
+    return any(_is_skip_status(status) for status in statuses)
 
 
 def _failure_measurement(
@@ -1068,7 +1088,40 @@ def _normalize_measurement(value: object) -> dict[str, object]:
         measurement.update(
             {str(key): _json_compatible(entry) for key, entry in value.items()}
         )
+    if _is_skip_status(
+        measurement.get("status")
+    ) or _timeout_measurement_exceeds_skip_cap(measurement):
+        measurement["status"] = ResultStatus.SKIP.value
     return measurement
+
+
+def _timeout_measurement_exceeds_skip_cap(measurement: Mapping[str, object]) -> bool:
+    if str(measurement.get("status")) != ResultStatus.TIMEOUT.value:
+        return False
+    metadata = measurement.get("metadata")
+    if isinstance(metadata, Mapping) and (
+        metadata.get("runtime_selector_role") == "selected-flow-helicity-sum"
+        or (
+            metadata.get("lc_flow_layout") == LC_TOPOLOGY_REPLAY_LAYOUT
+            and metadata.get("lane_status_policy") == LC_LANE_STATUS_POLICY
+        )
+    ):
+        return False
+    timeout = measurement.get("timeout_seconds")
+    try:
+        timeout_seconds = None if timeout is None else float(timeout)
+    except (TypeError, ValueError):
+        timeout_seconds = None
+    if timeout_seconds is not None and timeout_seconds >= (
+        SKIP_GENERATION_CAP_SECONDS - 1.0e-9
+    ):
+        return True
+    failure_kind = str(measurement.get("failure_kind") or "")
+    failure_message = str(measurement.get("failure_message") or "")
+    return (
+        failure_kind in {"generation_timeout", "profile_timeout", "timeout"}
+        and "exceeded" in failure_message
+    )
 
 
 def _normalize_validation(value: object) -> dict[str, object]:
@@ -1131,8 +1184,8 @@ def _refresh_matrix_derived_fields(entry: dict[str, object]) -> None:
         entry["status"] = ResultStatus.VALIDATION_FAILED.value
     elif ResultStatus.MEMORY_LIMIT.value in statuses:
         entry["status"] = ResultStatus.MEMORY_LIMIT.value
-    elif ResultStatus.OUT_OF_REACH.value in statuses:
-        entry["status"] = ResultStatus.OUT_OF_REACH.value
+    elif _contains_skip_status(statuses):
+        entry["status"] = ResultStatus.SKIP.value
     elif ResultStatus.TIMEOUT.value in statuses:
         entry["status"] = ResultStatus.TIMEOUT.value
     elif ResultStatus.ERROR.value in statuses or ResultStatus.FAILED.value in statuses:
@@ -1181,8 +1234,8 @@ def _refresh_eager_matrix_derived_fields(entry: dict[str, object]) -> None:
         entry["status"] = ResultStatus.VALIDATION_FAILED.value
     elif ResultStatus.MEMORY_LIMIT.value in statuses:
         entry["status"] = ResultStatus.MEMORY_LIMIT.value
-    elif ResultStatus.OUT_OF_REACH.value in statuses:
-        entry["status"] = ResultStatus.OUT_OF_REACH.value
+    elif _contains_skip_status(statuses):
+        entry["status"] = ResultStatus.SKIP.value
     elif ResultStatus.TIMEOUT.value in statuses:
         entry["status"] = ResultStatus.TIMEOUT.value
     elif ResultStatus.ERROR.value in statuses or ResultStatus.FAILED.value in statuses:
@@ -1245,6 +1298,8 @@ def normalize_cache_payload(payload: Mapping[str, object]) -> dict[str, object]:
         for raw_entry in entries:
             if not isinstance(raw_entry, dict):
                 continue
+            if _is_skip_status(raw_entry.get("status")):
+                raw_entry["status"] = ResultStatus.SKIP.value
             _migrate_known_eager_z_lane_out_of_reach_entry(
                 normalized,
                 raw_entry,
@@ -2060,8 +2115,8 @@ def _status_label(status: object, *, limit_gib: object = None) -> str:
     if value == ResultStatus.MEMORY_LIMIT.value:
         suffix = "" if limit_gib is None else f">{float(limit_gib):.0f}G"
         return rf"\ReportStatus{{RAM{suffix}}}"
-    if value == ResultStatus.OUT_OF_REACH.value:
-        return r"\ReportStatus{out-of-reach}"
+    if _is_skip_status(value):
+        return r"\ReportStatus{skip}"
     if value == ResultStatus.VALIDATION_FAILED.value:
         return r"\ReportStatus{VALIDATION FAILED}"
     if value == ResultStatus.UNSUPPORTED.value:
@@ -2316,8 +2371,8 @@ def _z_old_status(value: object) -> str:
         return "timeout"
     if status in {ResultStatus.MEMORY_LIMIT.value, "ram_limit"}:
         return "ram_limit"
-    if status == ResultStatus.OUT_OF_REACH.value:
-        return "out_of_reach"
+    if _is_skip_status(status):
+        return "skip"
     if status == ResultStatus.VALIDATION_FAILED.value:
         return "validation_failed"
     if status == ResultStatus.UNSUPPORTED.value:
@@ -2372,8 +2427,8 @@ def _z_old_format_with_ratio(value: float | None, reference: float | None) -> st
 
 
 def _z_old_status_cell(status: str) -> str:
-    if status == "out_of_reach":
-        return r"\textcolor{ReportMuted}{\texttt{out-of-reach}}"
+    if status in {"skip", "out_of_reach"}:
+        return r"\textcolor{ReportMuted}{\texttt{skip}}"
     labels = {
         "timeout": "t/o",
         "ram_limit": "RAM>800G",
@@ -2430,6 +2485,7 @@ def _z_old_render_timing_triplet(
     if status in {
         "timeout",
         "ram_limit",
+        "skip",
         "out_of_reach",
         "validation_failed",
         "unsupported",
@@ -2478,6 +2534,7 @@ def _z_old_render_mode_cells(
     elif status in {
         "timeout",
         "ram_limit",
+        "skip",
         "out_of_reach",
         "validation_failed",
         "unsupported",
@@ -2664,8 +2721,8 @@ def _matrix_failure_label(measurement: Mapping[str, object]) -> str:
         limit = measurement.get("limit_gib")
         suffix = "" if limit is None else f">{float(limit):.0f}G"
         return rf"\textcolor{{ReportRed}}{{\texttt{{RAM{suffix}}}}}"
-    if status == ResultStatus.OUT_OF_REACH.value:
-        return r"\textcolor{ReportMuted}{\texttt{out-of-reach}}"
+    if _is_skip_status(status):
+        return r"\textcolor{ReportMuted}{\texttt{skip}}"
     if status == ResultStatus.VALIDATION_FAILED.value:
         return r"\textcolor{ReportRed}{\textbf{VALIDATION FAILED}}"
     if status == ResultStatus.UNSUPPORTED.value:
@@ -4852,8 +4909,11 @@ def _audit_reason_bucket(record: Mapping[str, object]) -> str:
         return "timeout"
     if any("entry_status:error" in reason for reason in reasons):
         return "entry_error"
-    if any("lc_lane_status:out_of_reach" in reason for reason in reasons):
-        return "lane_out_of_reach"
+    if any(
+        "lc_lane_status:skip" in reason or "lc_lane_status:out_of_reach" in reason
+        for reason in reasons
+    ):
+        return "lane_skip"
     if any("lc_lane_status:not_available" in reason for reason in reasons):
         return "lane_missing"
     if any("entry_status:not_available" in reason for reason in reasons) or any(
@@ -4874,7 +4934,7 @@ def _audit_reason_bucket(record: Mapping[str, object]) -> str:
 AUDIT_REASON_BUCKETS: tuple[str, ...] = (
     "entry_error",
     "lane_missing",
-    "lane_out_of_reach",
+    "lane_skip",
     "lane_timeout",
     "missing",
     "needs_review",
@@ -5049,11 +5109,17 @@ def _eager_reference_digest(
 LC_TOPOLOGY_REPLAY_LAYOUT = "topology-replay"
 LC_ALL_FLOW_UNION_LAYOUT = "all-flow-union"
 LC_LANE_STATUS_POLICY = "lc_two_workload_lane_status_v1"
+# Existing cache records use the historical "out_of_reach" policy spellings.
+# Keep those exact strings for provenance compatibility while rendering the
+# campaign terminal state as "skip".
 LC_ALL_FLOW_UNION_OUT_OF_REACH_POLICY = (
     "high_multiplicity_all_flow_union_out_of_reach_v1"
 )
 LC_GENERATION_CAP_OUT_OF_REACH_POLICY = "ten_minute_lc_lane_generation_out_of_reach_v1"
 LC_PROFILE_CAP_OUT_OF_REACH_POLICY = "ten_minute_lc_lane_profile_out_of_reach_v1"
+LC_ALL_FLOW_UNION_SKIP_POLICY = LC_ALL_FLOW_UNION_OUT_OF_REACH_POLICY
+LC_GENERATION_CAP_SKIP_POLICY = LC_GENERATION_CAP_OUT_OF_REACH_POLICY
+LC_PROFILE_CAP_SKIP_POLICY = LC_PROFILE_CAP_OUT_OF_REACH_POLICY
 _KNOWN_EAGER_Z_UNION_OUT_OF_REACH: frozenset[tuple[str, int, str]] = frozenset(
     {
         ("z_builtin_sm", 8, "eager_jit_o3"),
@@ -5140,14 +5206,17 @@ def _lc_status_pair_to_cell_status(
                 else status
             )
     lane_statuses = {selected_status, all_flow_status}
-    if lane_statuses == {ResultStatus.OUT_OF_REACH.value}:
-        return ResultStatus.OUT_OF_REACH.value
-    if lane_statuses <= {ResultStatus.OK.value, ResultStatus.OUT_OF_REACH.value}:
+    if all(_is_skip_status(status) for status in lane_statuses):
+        return ResultStatus.SKIP.value
+    if all(
+        status == ResultStatus.OK.value or _is_skip_status(status)
+        for status in lane_statuses
+    ):
         return ResultStatus.OK.value
     if NA_STATUS in lane_statuses:
         return NA_STATUS
-    if ResultStatus.OUT_OF_REACH.value in lane_statuses:
-        return ResultStatus.OUT_OF_REACH.value
+    if _contains_skip_status(lane_statuses):
+        return ResultStatus.SKIP.value
     return NA_STATUS
 
 
@@ -5170,9 +5239,14 @@ def _lc_lane_terminal_current(
     expected_layout: str,
     role: str,
 ) -> bool:
+    if (
+        expected_layout != LC_ALL_FLOW_UNION_LAYOUT
+        or role != "all-flows-fixed-helicity"
+    ):
+        return False
     if not isinstance(measurement, Mapping):
         return False
-    if _measurement_status(measurement) != ResultStatus.OUT_OF_REACH.value:
+    if not _is_skip_status(_measurement_status(measurement)):
         return False
     metadata = measurement.get("metadata")
     if not isinstance(metadata, Mapping):
@@ -5211,6 +5285,8 @@ def _lc_lane_out_of_reach_measurement(
     role: str,
 ) -> dict[str, object]:
     lane = _normalize_measurement(source)
+    if _is_skip_status(lane.get("status")):
+        lane["status"] = ResultStatus.SKIP.value
     metadata_value = lane.get("metadata")
     metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
     metadata.update(
@@ -5376,14 +5452,17 @@ def _migrate_known_eager_z_lane_out_of_reach_entry(
     if not isinstance(raw_measurement, Mapping):
         return
     measurement = _normalize_measurement(raw_measurement)
-    if _measurement_status(measurement) != ResultStatus.OUT_OF_REACH.value:
+    if not _is_skip_status(_measurement_status(measurement)):
         return
     metadata_value = measurement.get("metadata")
     metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
     classification = metadata.get("campaign_classification")
     if not isinstance(classification, Mapping):
         return
-    if classification.get("policy") != "high_multiplicity_out_of_reach_v1":
+    if classification.get("policy") not in {
+        "high_multiplicity_out_of_reach_v1",
+        "high_multiplicity_skip_v1",
+    }:
         return
     selected = _lc_lane_missing_measurement(
         measurement,
@@ -5401,7 +5480,7 @@ def _migrate_known_eager_z_lane_out_of_reach_entry(
         "selected_generation_s": None,
         "runtime_us_per_point": None,
         "wall_us_per_point": None,
-        "all_flow_status": ResultStatus.OUT_OF_REACH.value,
+        "all_flow_status": ResultStatus.SKIP.value,
         "all_flow_generation_s": None,
         "all_flow_runtime_us_per_point": None,
         "all_flow_wall_us_per_point": None,
@@ -5885,10 +5964,19 @@ def _campaign_cell_measurement_reasons(
     status = str(entry.get("status", NA_STATUS))
     if cell.kind == "eager_matrix":
         measurement = entry.get("eager_jit_o3")
-        if _campaign_status_is_terminal(
-            status
-        ) and not _lc_measurement_has_explicit_lanes(measurement):
-            return []
+        if _campaign_status_is_terminal(status):
+            if not _lc_measurement_has_explicit_lanes(measurement):
+                return []
+            reference = _eager_reference_measurement(cell, caches)
+            if isinstance(measurement, Mapping) and _lc_combined_measurement_current(
+                cell,
+                measurement,
+                execution_mode="eager",
+                reference_measurement=(
+                    reference if isinstance(reference, Mapping) else None
+                ),
+            ):
+                return []
         if status != ResultStatus.OK.value:
             return [f"entry_status:{status}"]
         selector_contract = entry.get("selector_contract")
@@ -5988,6 +6076,17 @@ def _campaign_cell_measurement_reasons(
         ) and not _lc_measurement_has_explicit_lanes(measurement):
             return []
         if _lc_measurement_has_explicit_lanes(measurement):
+            if _campaign_status_is_terminal(measurement_status):
+                execution_mode = (
+                    "eager" if cell.variant == "eager_jit_o3" else "compiled"
+                )
+                if _lc_combined_measurement_current(
+                    cell,
+                    measurement,
+                    execution_mode=execution_mode,
+                    reference_measurement=None,
+                ):
+                    return []
             if cell.variant == "eager_jit_o3":
                 compiled = _z_variant_measurement(
                     payload,
@@ -6128,10 +6227,22 @@ def _campaign_cell_needs_measurement(
                 return False
             status = str(entry.get("status", NA_STATUS))
             measurement = entry.get("eager_jit_o3")
-            if _campaign_status_is_terminal(
-                status
-            ) and not _lc_measurement_has_explicit_lanes(measurement):
-                return False
+            if _campaign_status_is_terminal(status):
+                if not _lc_measurement_has_explicit_lanes(measurement):
+                    return False
+                reference = _eager_reference_measurement(cell, caches)
+                if isinstance(
+                    measurement,
+                    Mapping,
+                ) and _lc_combined_measurement_current(
+                    cell,
+                    measurement,
+                    execution_mode="eager",
+                    reference_measurement=(
+                        reference if isinstance(reference, Mapping) else None
+                    ),
+                ):
+                    return False
             if status != ResultStatus.OK.value:
                 return True
             selector_contract = entry.get("selector_contract")
@@ -6311,6 +6422,19 @@ def _campaign_cell_needs_measurement(
                             cell
                         ),
                     )
+                )
+            if (
+                _campaign_status_is_terminal(status)
+                and _lc_measurement_has_explicit_lanes(measurement)
+            ):
+                execution_mode = (
+                    "eager" if cell.variant == "eager_jit_o3" else "compiled"
+                )
+                return not _lc_combined_measurement_current(
+                    cell,
+                    measurement,
+                    execution_mode=execution_mode,
+                    reference_measurement=None,
                 )
             return False
         if entry.get("n_final") != cell.n_final:
@@ -6693,10 +6817,8 @@ def _source_provenance_generation_reusable(provenance: object) -> bool:
         previous_head in LC_HELICITY_REPLAY_REUSE_BASE_REVISIONS
         and _git_is_ancestor(LC_HELICITY_REPLAY_RUNTIME_FIX_REVISION, current_head)
     ) or (
-        previous_head in GENERATION_CAP_OUT_OF_REACH_POLICY_REUSE_BASE_REVISIONS
-        and _git_is_ancestor(
-            GENERATION_CAP_OUT_OF_REACH_POLICY_REVISION, current_head
-        )
+        previous_head in GENERATION_CAP_SKIP_POLICY_REUSE_BASE_REVISIONS
+        and _git_is_ancestor(GENERATION_CAP_SKIP_POLICY_REVISION, current_head)
     )
 
 
@@ -6772,16 +6894,20 @@ def _matrix_reference_unavailable_by_design(
     pyamplicol = entry.get("pyamplicol_jit_o3")
     if not isinstance(legacy, Mapping) or not isinstance(pyamplicol, Mapping):
         return False
-    if _measurement_status(legacy) != ResultStatus.UNSUPPORTED.value:
-        return False
-    reason = str(legacy.get("failure_message", ""))
-    if ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON not in reason:
-        return False
-    if not _measurement_ok(pyamplicol):
+    legacy_status = _measurement_status(legacy)
+    if legacy_status == ResultStatus.UNSUPPORTED.value:
+        reason = str(legacy.get("failure_message", ""))
+        if ORIGINAL_AMPLICOL_OPEN_LINE_LIMIT_REASON not in reason:
+            return False
+    elif not _is_skip_status(legacy_status):
         return False
     old_fields = _measurement_old_matrix_fields(pyamplicol)
+    selected_status = old_fields.get("status", _measurement_status(pyamplicol))
     all_flow_status = old_fields.get("all_flow_status")
-    return all_flow_status == ResultStatus.OK.value
+    return (
+        selected_status == ResultStatus.OK.value
+        or all_flow_status == ResultStatus.OK.value
+    )
 
 
 def _reusable_legacy_lc_measurement(value: object) -> dict[str, object] | None:
@@ -7237,21 +7363,23 @@ def _run_mapping_with_timeout(
             result_path.unlink()
 
 
-OUT_OF_REACH_GENERATION_CAP_SECONDS = 600.0
-OUT_OF_REACH_PROFILE_CAP_SECONDS = 600.0
+SKIP_GENERATION_CAP_SECONDS = 600.0
+SKIP_PROFILE_CAP_SECONDS = 600.0
+OUT_OF_REACH_GENERATION_CAP_SECONDS = SKIP_GENERATION_CAP_SECONDS
+OUT_OF_REACH_PROFILE_CAP_SECONDS = SKIP_PROFILE_CAP_SECONDS
 
 
 def _generation_timeout_status(timeout_seconds: float | None) -> ResultStatus:
     if timeout_seconds is not None and timeout_seconds <= (
-        OUT_OF_REACH_GENERATION_CAP_SECONDS + 1.0e-9
+        SKIP_GENERATION_CAP_SECONDS + 1.0e-9
     ):
-        return ResultStatus.OUT_OF_REACH
+        return ResultStatus.SKIP
     return ResultStatus.TIMEOUT
 
 
 def _generation_timeout_failure_kind(timeout_seconds: float | None) -> str:
-    if _generation_timeout_status(timeout_seconds) == ResultStatus.OUT_OF_REACH:
-        return "generation_out_of_reach"
+    if _generation_timeout_status(timeout_seconds) == ResultStatus.SKIP:
+        return "generation_skip"
     return "generation_timeout"
 
 
@@ -7259,25 +7387,25 @@ def _generation_timeout_failure_message(
     exc: ReportGenerationTimeout,
     timeout_seconds: float | None,
 ) -> str:
-    if _generation_timeout_status(timeout_seconds) != ResultStatus.OUT_OF_REACH:
+    if _generation_timeout_status(timeout_seconds) != ResultStatus.SKIP:
         return str(exc)
     return (
-        "out of reach by campaign policy: generation exceeded "
-        f"{OUT_OF_REACH_GENERATION_CAP_SECONDS:.0f} seconds"
+        "skipped by campaign policy: generation exceeded "
+        f"{SKIP_GENERATION_CAP_SECONDS:.0f} seconds"
     )
 
 
 def _profile_timeout_status(timeout_seconds: float | None) -> ResultStatus:
     if timeout_seconds is not None and timeout_seconds <= (
-        OUT_OF_REACH_PROFILE_CAP_SECONDS + 1.0e-9
+        SKIP_PROFILE_CAP_SECONDS + 1.0e-9
     ):
-        return ResultStatus.OUT_OF_REACH
+        return ResultStatus.SKIP
     return ResultStatus.TIMEOUT
 
 
 def _profile_timeout_failure_kind(timeout_seconds: float | None) -> str:
-    if _profile_timeout_status(timeout_seconds) == ResultStatus.OUT_OF_REACH:
-        return "profile_out_of_reach"
+    if _profile_timeout_status(timeout_seconds) == ResultStatus.SKIP:
+        return "profile_skip"
     return "profile_timeout"
 
 
@@ -7285,12 +7413,90 @@ def _profile_timeout_failure_message(
     exc: ReportProfileTimeout,
     timeout_seconds: float | None,
 ) -> str:
-    if _profile_timeout_status(timeout_seconds) != ResultStatus.OUT_OF_REACH:
+    if _profile_timeout_status(timeout_seconds) != ResultStatus.SKIP:
         return str(exc)
     return (
-        "out of reach by campaign policy: profiling exceeded "
-        f"{OUT_OF_REACH_PROFILE_CAP_SECONDS:.0f} seconds"
+        "skipped by campaign policy: profiling exceeded "
+        f"{SKIP_PROFILE_CAP_SECONDS:.0f} seconds"
     )
+
+
+def _lc_lane_timeout_allows_skip(role: str) -> bool:
+    return role == "all-flows-fixed-helicity"
+
+
+def _lc_lane_generation_timeout_status(
+    timeout_seconds: float | None,
+    *,
+    role: str,
+) -> ResultStatus:
+    if not _lc_lane_timeout_allows_skip(role):
+        return ResultStatus.TIMEOUT
+    return _generation_timeout_status(timeout_seconds)
+
+
+def _lc_lane_generation_timeout_failure_kind(
+    timeout_seconds: float | None,
+    *,
+    role: str,
+) -> str:
+    if (
+        _lc_lane_generation_timeout_status(timeout_seconds, role=role)
+        == ResultStatus.SKIP
+    ):
+        return "generation_skip"
+    return "generation_timeout"
+
+
+def _lc_lane_generation_timeout_failure_message(
+    exc: ReportGenerationTimeout,
+    timeout_seconds: float | None,
+    *,
+    role: str,
+) -> str:
+    if (
+        _lc_lane_generation_timeout_status(timeout_seconds, role=role)
+        != ResultStatus.SKIP
+    ):
+        return str(exc)
+    return _generation_timeout_failure_message(exc, timeout_seconds)
+
+
+def _lc_lane_profile_timeout_status(
+    timeout_seconds: float | None,
+    *,
+    role: str,
+) -> ResultStatus:
+    if not _lc_lane_timeout_allows_skip(role):
+        return ResultStatus.TIMEOUT
+    return _profile_timeout_status(timeout_seconds)
+
+
+def _lc_lane_profile_timeout_failure_kind(
+    timeout_seconds: float | None,
+    *,
+    role: str,
+) -> str:
+    if (
+        _lc_lane_profile_timeout_status(timeout_seconds, role=role)
+        == ResultStatus.SKIP
+    ):
+        return "profile_skip"
+    return "profile_timeout"
+
+
+def _lc_lane_profile_timeout_failure_message(
+    exc: ReportProfileTimeout,
+    timeout_seconds: float | None,
+    *,
+    role: str,
+) -> str:
+    if (
+        _lc_lane_profile_timeout_status(timeout_seconds, role=role)
+        != ResultStatus.SKIP
+    ):
+        return str(exc)
+    return _profile_timeout_failure_message(exc, timeout_seconds)
 
 
 def _symbolica_licensed_mode_enabled() -> bool:
@@ -8559,7 +8765,7 @@ def _measure_pyamplicol_lc_lane(
     generation_seconds_source: str | None = None
     runtime_process: str | None = None
     measurement_point_digest: str | None = None
-    profile_timeout_seconds = OUT_OF_REACH_PROFILE_CAP_SECONDS
+    profile_timeout_seconds = SKIP_PROFILE_CAP_SECONDS
     failure_timeout_seconds: float | None = generation_timeout_seconds
     failure_extra_fields: dict[str, object] = {}
     failure_extra_metadata: dict[str, object] = {}
@@ -8706,11 +8912,18 @@ def _measure_pyamplicol_lc_lane(
         manifest_path.write_text(_json_text(manifest), encoding="utf-8")
         return measurement, selected_points, selector_contract
     except ReportProfileTimeout as exc:
-        status = _profile_timeout_status(OUT_OF_REACH_PROFILE_CAP_SECONDS)
-        failure_kind = _profile_timeout_failure_kind(OUT_OF_REACH_PROFILE_CAP_SECONDS)
-        failure_message = _profile_timeout_failure_message(
+        status = _lc_lane_profile_timeout_status(
+            SKIP_PROFILE_CAP_SECONDS,
+            role=role,
+        )
+        failure_kind = _lc_lane_profile_timeout_failure_kind(
+            SKIP_PROFILE_CAP_SECONDS,
+            role=role,
+        )
+        failure_message = _lc_lane_profile_timeout_failure_message(
             exc,
-            OUT_OF_REACH_PROFILE_CAP_SECONDS,
+            SKIP_PROFILE_CAP_SECONDS,
+            role=role,
         )
         failure_timeout_seconds = profile_timeout_seconds
         if generation_seconds is not None:
@@ -8734,21 +8947,28 @@ def _measure_pyamplicol_lc_lane(
                 }
             )
         lane_terminal_policy = (
-            LC_PROFILE_CAP_OUT_OF_REACH_POLICY
-            if status == ResultStatus.OUT_OF_REACH
+            LC_PROFILE_CAP_SKIP_POLICY
+            if status == ResultStatus.SKIP
             else None
         )
     except ReportGenerationTimeout as exc:
-        status = _generation_timeout_status(generation_timeout_seconds)
-        failure_kind = _generation_timeout_failure_kind(generation_timeout_seconds)
-        failure_message = _generation_timeout_failure_message(
+        status = _lc_lane_generation_timeout_status(
+            generation_timeout_seconds,
+            role=role,
+        )
+        failure_kind = _lc_lane_generation_timeout_failure_kind(
+            generation_timeout_seconds,
+            role=role,
+        )
+        failure_message = _lc_lane_generation_timeout_failure_message(
             exc,
             generation_timeout_seconds,
+            role=role,
         )
         failure_timeout_seconds = generation_timeout_seconds
         lane_terminal_policy = (
-            LC_GENERATION_CAP_OUT_OF_REACH_POLICY
-            if status == ResultStatus.OUT_OF_REACH
+            LC_GENERATION_CAP_SKIP_POLICY
+            if status == ResultStatus.SKIP
             else None
         )
     except Exception as exc:
@@ -8783,7 +9003,7 @@ def _measure_pyamplicol_lc_lane(
                     "lane_status_policy": LC_LANE_STATUS_POLICY,
                     "lane_terminal_policy": lane_terminal_policy,
                 }
-                if status == ResultStatus.OUT_OF_REACH
+                if status == ResultStatus.SKIP
                 and lane_terminal_policy is not None
                 else {}
             ),
@@ -11709,10 +11929,10 @@ def _measure_legacy_amplicol(
         if isinstance(exc, ReportGenerationTimeout):
             status = _generation_timeout_status(reference_timeout_seconds)
             message = (
-                "out of reach by campaign policy: reference generation or "
+                "skipped by campaign policy: reference generation or "
                 "profiling exceeded "
-                f"{OUT_OF_REACH_GENERATION_CAP_SECONDS:.0f} seconds"
-                if status == ResultStatus.OUT_OF_REACH
+                f"{SKIP_GENERATION_CAP_SECONDS:.0f} seconds"
+                if status == ResultStatus.SKIP
                 else str(exc)
             )
         elif type(exc).__name__ == "LegacyOracleError" or _legacy_probe_scope_limited(
@@ -11766,17 +11986,17 @@ def _legacy_reference_timeout_measurement(
     manifest_path = legacy_root / "manifest.json"
     status = _generation_timeout_status(reference_timeout_seconds)
     message = (
-        "out of reach by campaign policy: reference generation or profiling exceeded "
-        f"{OUT_OF_REACH_GENERATION_CAP_SECONDS:.0f} seconds"
-        if status == ResultStatus.OUT_OF_REACH
+        "skipped by campaign policy: reference generation or profiling exceeded "
+        f"{SKIP_GENERATION_CAP_SECONDS:.0f} seconds"
+        if status == ResultStatus.SKIP
         else str(exc)
     )
     return _failure_measurement(
         status,
         message,
         failure_kind=(
-            "reference_out_of_reach"
-            if status == ResultStatus.OUT_OF_REACH
+            "reference_skip"
+            if status == ResultStatus.SKIP
             else "reference_timeout"
         ),
         artifact_path=legacy_root,
@@ -11889,13 +12109,13 @@ def _pointwise_validation(
         legacy_status != ResultStatus.OK.value
         or pyamplicol_status != ResultStatus.OK.value
     ):
-        if ResultStatus.OUT_OF_REACH.value in {legacy_status, pyamplicol_status}:
+        if _contains_skip_status({legacy_status, pyamplicol_status}):
             payload.update(
                 {
-                    "all_flow_status": ResultStatus.OUT_OF_REACH.value,
+                    "all_flow_status": ResultStatus.SKIP.value,
                     "message": (
                         "all-flow validation skipped because the all-flow lane "
-                        "is out of reach"
+                        "is skipped"
                     ),
                 }
             )
@@ -12022,16 +12242,16 @@ def _eager_pointwise_validation(
         compiled_all_status != ResultStatus.OK.value
         or eager_all_status != ResultStatus.OK.value
     ):
-        if ResultStatus.OUT_OF_REACH.value in {
+        if _contains_skip_status({
             compiled_all_status,
             eager_all_status,
-        }:
+        }):
             payload.update(
                 {
-                    "all_flow_status": ResultStatus.OUT_OF_REACH.value,
+                    "all_flow_status": ResultStatus.SKIP.value,
                     "message": (
                         "all-flow validation skipped because the all-flow lane "
-                        "is out of reach"
+                        "is skipped"
                     ),
                 }
             )
