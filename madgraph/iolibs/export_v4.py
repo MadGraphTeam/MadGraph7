@@ -7710,16 +7710,39 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     #===========================================================================
     # _dsig_crossgroup_fills
     #===========================================================================
-    def _crossed_helicity_configs(self, base_me, cross):
-        """The base helicity rows after applying the crossing: crossed[hb][k] =
-        base_row[PERM[k]]*SGN[k] (PERM 0-based source leg, SGN the IC sign), i.e.
-        what APPLY_CROSSING makes of each base NHEL row. Returns (base_rows,
-        crossed_rows) as lists of tuples in the base NHEL order."""
+    def _crossed_helicity_configs(self, base_me, cross, signed=True):
+        """The base helicity rows transformed by the crossing. Two consumers need
+        two DIFFERENT transforms, selected by `signed`:
+
+        * signed=True -- the good-hel-set remap (_crossgroup_base_helperm):
+          crossed[hb][k] = base_row[PERM[k]]*SGN[k]. This is the table-space
+          permutation sigma the GHREMAP relation validates (_GOODHEL_PROBE): a
+          base row is good WHEN CROSSED iff sigma^-1 of it is good for the base's
+          own process, so the shared optim's good-hel union is
+          G_base U sigma(G_base). SGN belongs here because the crossed physical
+          config bh[PERM[k]]*SGN[k]*IC_IN[PERM[k]] reduces to the bare table value
+          bh[PERM[k]]*SGN[k] once the common IC_IN[PERM[k]] is stripped.
+
+        * signed=False -- the event helicity LABEL (_crossgroup_helmap):
+          crossed[hb][k] = base_row[PERM[k]], exactly what APPLY_CROSSING_TABLE
+          writes into NHEL (it permutes NHEL -- NHEL(XK)=NHEL_IN(PERM(XK)) -- but
+          flips only the IC/NSF flags -- IC(XK)=SGN(XK)*IC_IN(PERM(XK))). The LHE
+          label is the raw NHEL table value (unwgt.f: jpart(7,i)=nhel(i)), never
+          NHEL*IC, and the base MATRIX gives leg k the physical spinor helicity
+          NHEL(k)*IC(k)=base_row[PERM[k]]*SGN[k]*IC_IN[PERM[k]]
+          =base_row[PERM[k]]*IC_dep[k] (SGN[k]*IC_IN[PERM[k]] is exactly slot k's
+          own NSF in the dependent), matching the dependent's native label
+          NHEL_dep[k]*IC_dep[k] iff NHEL_dep[k]=base_row[PERM[k]] -- NO extra sign.
+          Multiplying SGN here double-counts the flip and mislabels every
+          fermion/vector leg that swaps initial<->final.
+
+        Returns (base_rows, crossed_rows) as tuples in the base NHEL order."""
         bh = [tuple(x) for x in base_me.get_helicity_matrix()]
         tables = ProcessExporterFortran.compute_crossing_tables(self, base_me)
         nx = tables['nexternal']
         P = [tables['perm'][cross * nx + k] for k in range(nx)]
-        S = [tables['ic'][cross * nx + k] for k in range(nx)]
+        S = [tables['ic'][cross * nx + k] for k in range(nx)] if signed \
+            else [1] * nx
         crossed = [tuple(row[P[k]] * S[k] for k in range(nx)) for row in bh]
         return bh, crossed
 
@@ -7727,9 +7750,12 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         """1-based map from a base helicity index to the DEPENDENT helicity index
         carrying the physically-crossed configuration. The base SMATRIX selects a
         helicity in ITS own NHEL enumeration, but the event is written through the
-        dependent's own get_helicities, so the index must be translated. Returns
-        the identity if that is not a clean permutation of the dependent's table."""
-        _, crossed = self._crossed_helicity_configs(base_me, cross)
+        dependent's own get_helicities, so the index must be translated. The label
+        uses the UNSIGNED crossed config (signed=False): the LHE helicity is the
+        raw NHEL value APPLY_CROSSING permutes, not NHEL*IC (see
+        _crossed_helicity_configs). Returns the identity if that is not a clean
+        permutation of the dependent's table."""
+        _, crossed = self._crossed_helicity_configs(base_me, cross, signed=False)
         dh = [tuple(x) for x in dep_me.get_helicity_matrix()]
         dhpos = {cfg: i for i, cfg in enumerate(dh)}
         hmap = [dhpos.get(c, -1) for c in crossed]
@@ -7742,7 +7768,9 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         index whose NHEL row equals the crossed row of hb. So the dependent for
         this crossing has good helicity hb iff pi[hb] is good for the base -- which
         is how gen_ximprove expands the base optim over the UNION good-hel of the
-        class so it can be shared. Returns None if not a clean permutation."""
+        class so it can be shared. Uses the SIGNED crossed config (the GHREMAP
+        sigma), unlike the event-label helmap. Returns None if not a clean
+        permutation."""
         bh, crossed = self._crossed_helicity_configs(base_me, cross)
         bhpos = {cfg: i for i, cfg in enumerate(bh)}
         pi = [bhpos.get(c, -1) for c in crossed]
@@ -9321,11 +9349,27 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             nflav_base = len(base_me.get_external_flavors_with_iden())
             cross = (iflav - 1) // nflav_base
             colmap = self._router_colmap(matrix_element, base_me, cross)
+            helmap = self._crossgroup_helmap(matrix_element, base_me, cross)
             kw = 'IF' if flav0 == 0 else 'ELSE IF'
             dispatch.append('      %s (IFLAV.EQ.%d) THEN' % (kw, flav0 + 1))
             dispatch.append(
                 '        CALL SMATRIX%d(P, %d, RHEL, RCOL, channel, IVEC, ANS,'
                 ' IHEL, ICOL)' % (base_index + 1, iflav))
+            # The base returns its selected helicity/colour in the BASE's own
+            # enumeration; the event is written through THIS module's get_nhel<i>
+            # / ICOLUP, so remap each to the module's convention (identity =
+            # skip). HELMAP uses the UNSIGNED crossed config (see
+            # _crossgroup_helmap): the LHE helicity label is the raw NHEL value,
+            # NOT NHEL*IC, so a crossed fermion/vector leg must not pick up an
+            # extra sign -- without this the crossed leg's helicity is flipped
+            # (invisible on non-chiral p p > j j, wrong for e.g. w+ w- j j).
+            if helmap and helmap != list(range(1, len(helmap) + 1)):
+                hname = 'HELMAP_%s_%d' % (proc_id, flav0 + 1)
+                decl.append('      INTEGER %s(%d)' % (hname, len(helmap)))
+                decl.append('      DATA %s /%s/' % (
+                    hname, ','.join(str(x) for x in helmap)))
+                dispatch.append('        IF (IHEL.GE.1.AND.IHEL.LE.%d)'
+                                ' IHEL = %s(IHEL)' % (len(helmap), hname))
             # A non-identity colmap has to be applied; skip it when it is the
             # identity (single flow, or the flow orders already agree).
             if colmap and colmap != list(range(1, len(colmap) + 1)):

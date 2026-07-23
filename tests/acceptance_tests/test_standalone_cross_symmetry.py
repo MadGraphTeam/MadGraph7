@@ -52,6 +52,7 @@ it crosses into and can be compared directly against the other code.
 
 from __future__ import absolute_import
 
+import json
 import math
 import os
 import re
@@ -72,6 +73,17 @@ pjoin = os.path.join
 # The two processes are each other's crossing under (I=0, J=3).
 PROC_QQ_GG = 'u u~ > g g'
 PROC_QG_QG = 'u g > u g'
+
+# A CHIRAL pair: the W+ couples only to a left-handed u and a right-handed d~, so
+# every external quark is 100% polarized and the per-leg density matrix diagonal
+# is fully asymmetric ((++) empty, (--) full, or vice versa). That is what makes
+# a crossed-fermion helicity FLIP detectable: on u u~ > g g the fermion density
+# is (++)==(--), so a flip would be invisible; here it would swap a full entry
+# with an empty one. u d~ > w+ g is mapped onto u g > w+ d by (I=0, J=NEXTERNAL):
+# the incoming d~ becomes the outgoing d of the last slot (the crossed, still
+# 100%-polarized fermion), the outgoing g becomes incoming.
+PROC_UDX_WPG = 'u d~ > w+ g'
+PROC_UG_WPD = 'u g > w+ d'
 
 # q q~ > g q q~ is likewise mapped onto q g > q q q~ by the same (I=0, J=3)
 # crossing: the incoming q~ becomes the outgoing q of slot 3 and the outgoing g
@@ -250,6 +262,34 @@ for cross in range(1, base * base):
 assert genuine >= 1, 'no genuine (non-identity) derivable crossing was checked'
 print('GHREMAP_RELATION_OK checked=%%d genuine=%%d points=%%d' %%
       (checked, genuine, NPTS))
+'''
+
+
+# Subprocess probe for the CROSSED spin-density matrix through the f2py wrapper
+# PY_GET_DENSITY_IDX -- the only path by which a python caller can request a
+# crossed density matrix (the FLAVOR-array PY_GET_DENSITY resolves through
+# GET_FLAVOR_INDEX, which only returns 1..NFLAV and so cannot carry a crossing).
+# Prints, per external leg, the three interference terms (++),(+-),(--) of that
+# leg's density matrix, so the parent can compare a crossed evaluation against a
+# natively generated reference term by term. Run in a subprocess because an
+# f2py .so leaks into the importing interpreter and clashes across dirs/tests.
+_DENSITY_PROBE = r'''
+import sys, json
+import numpy as np
+sys.path.insert(0, %(pdir)r)
+import matrix2py as m
+m.py_initialisemodel(%(card)r)
+momenta = %(momenta)s                       # [[E,px,py,pz], ...] per leg
+P = np.asfortranarray(np.array(momenta, dtype=float).T)   # (4, nexternal)
+flav_idx = %(flav_idx)d
+allow_hel = np.array([1, -1], dtype=np.int32)
+out = {}
+for leg in %(legs)s:
+    pos = np.array([leg], dtype=np.int32)
+    inter = np.asarray(m.py_get_density_idx(
+        P, pos, 1, allow_hel, 2, flav_idx, 0.0, 0.0)).ravel()
+    out[str(leg)] = [[float(z.real), float(z.imag)] for z in inter]
+print('DENSITY_JSON ' + json.dumps(out))
 '''
 
 
@@ -505,6 +545,32 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
         return [complex(float(re.sub('[dD]', 'e', real)),
                         float(re.sub('[dD]', 'e', imag)))
                 for real, imag in values]
+
+    def _density_f2py(self, pdir, momenta, iflav, legs):
+        """The same per-leg density matrix as _density, but obtained through the
+        compiled f2py module's PY_GET_DENSITY_IDX. Returns {leg: [c++, c+-, c--]}.
+
+        Requires the module already built (_build_f2py). Runs in a subprocess so
+        the f2py .so does not leak into the test interpreter and clash with the
+        other process' module.
+        """
+        card = pjoin(pdir, os.pardir, os.pardir, 'Cards', 'param_card.dat')
+        script = _DENSITY_PROBE % {
+            'pdir': pdir, 'card': card,
+            'momenta': repr([list(mom) for mom in momenta]),
+            'flav_idx': iflav, 'legs': repr(tuple(legs))}
+        script_path = pjoin(pdir, 'density_probe.py')
+        with open(script_path, 'w') as fsock:
+            fsock.write(script)
+        output = subprocess.Popen(
+            [sys.executable, script_path], stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, cwd=pdir).communicate()[0].decode()
+        match = re.search(r'DENSITY_JSON (.*)', output)
+        self.assertTrue(match, 'No density from f2py probe in %s:\n%s'
+                        % (pdir, output))
+        raw = json.loads(match.group(1))
+        return {int(leg): [complex(re_, im_) for re_, im_ in terms]
+                for leg, terms in raw.items()}
 
     def _run(self, pdir, momenta, iflav):
         """Return the averaged matrix element SMATRIX gives for this IFLAV."""
@@ -888,6 +954,78 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
                     'diagonal=%r smatrix=%r (ratio %r)'
                     % (flav, diagonal.real, reference,
                        reference / diagonal.real if diagonal.real else None))
+
+    def _assert_chiral_crossed_density(self, crossed, reference):
+        """Every leg's crossed density matrix must match the native one, AND the
+        crossed fermion (last leg) must be fully polarized so the check actually
+        discriminates a helicity flip.
+
+        `crossed` / `reference` are {leg: [c++, c+-, c--]} for legs 1..4 of
+        u g > w+ d. Leg 4 is the d that swapped initial<->final on the
+        u d~ > w+ g side; the W+ makes it 100% one-handed, so (++) and (--) are
+        one full / one empty. A missing or doubled crossing flip would swap them,
+        which the term-by-term comparison then catches.
+        """
+        pol_pp, pol_mm = abs(reference[4][0]), abs(reference[4][2])
+        self.assertGreater(max(pol_pp, pol_mm), 1e-3,
+                           'Reference crossed-fermion density is null; the probe '
+                           'is broken (%r)' % reference[4])
+        self.assertLess(min(pol_pp, pol_mm), 1e-9 * max(pol_pp, pol_mm),
+                        'Crossed fermion is not fully polarized, so a helicity '
+                        'flip would NOT be discriminated: (++)=%r (--)=%r'
+                        % (reference[4][0], reference[4][2]))
+        for leg in (1, 2, 3, 4):
+            self.assertTrue(any(abs(term) > 1e-99 for term in reference[leg]),
+                            'Null reference density for leg %s' % leg)
+            for index, (got, want) in enumerate(zip(crossed[leg],
+                                                     reference[leg])):
+                scale = max(abs(got), abs(want), 1e-99)
+                self.assertLessEqual(
+                    abs(got - want) / scale, self.tolerance,
+                    'Crossed density term %s of leg %s disagrees: crossed=%r '
+                    'reference=%r' % (index, leg, got, want))
+
+    def test_crossed_density_matrix_chiral_fortran(self):
+        """The crossed spin-density matrix of a CHIRAL process, via the compiled
+        Fortran GET_DENSITY_IDX (no f2py).
+
+        u d~ > w+ g crossed by (I=0, J=NEXTERNAL) is u g > w+ d; its outgoing d
+        is the incoming d~ that swapped sides, still 100% polarized by the W. The
+        density matrix is per helicity, so it is the probe that pins how that
+        crossed leg's helicity is LABELLED -- the same no-flip convention the
+        madevent cross-group event helicity (DSIG_XGHEL) depends on. Every leg,
+        crossed vs natively generated, must agree term by term.
+        """
+        udx_wpg = self._generate(PROC_UDX_WPG, 'Proc_udx_wpg')
+        ug_wpd = self._generate(PROC_UG_WPD, 'Proc_ug_wpd')
+        crossed_iflav = _iflav(CROSS_2_LAST, 1, nflav=1)
+        for cos_theta in self.cos_thetas:
+            momenta = self._phase_space(cos_theta)
+            with self.subTest(cos_theta=cos_theta):
+                crossed = {leg: self._density(udx_wpg, momenta, crossed_iflav,
+                                              leg=leg) for leg in (1, 2, 3, 4)}
+                reference = {leg: self._density(ug_wpd, momenta, IFLAV_IDENTITY,
+                                                leg=leg) for leg in (1, 2, 3, 4)}
+                self._assert_chiral_crossed_density(crossed, reference)
+
+    def test_crossed_density_matrix_chiral_f2py(self):
+        """Same chiral crossed-density-matrix check, but through the f2py
+        PY_GET_DENSITY_IDX wrapper -- the only way a python caller can ask for a
+        crossed density matrix. Skips if the f2py build backend is unavailable.
+        """
+        udx_wpg = self._output_standalone(PROC_UDX_WPG, 'Proc_udx_wpg_f2py')
+        ug_wpd = self._output_standalone(PROC_UG_WPD, 'Proc_ug_wpd_f2py')
+        self._build_f2py(udx_wpg)
+        self._build_f2py(ug_wpd)
+        crossed_iflav = _iflav(CROSS_2_LAST, 1, nflav=1)
+        for cos_theta in self.cos_thetas:
+            momenta = self._phase_space(cos_theta)
+            with self.subTest(cos_theta=cos_theta):
+                crossed = self._density_f2py(udx_wpg, momenta, crossed_iflav,
+                                             (1, 2, 3, 4))
+                reference = self._density_f2py(ug_wpd, momenta, IFLAV_IDENTITY,
+                                               (1, 2, 3, 4))
+                self._assert_chiral_crossed_density(crossed, reference)
 
     def test_split_orders_density_diagonal_matches_smatrix(self):
         """The same invariant on the split-orders template.
