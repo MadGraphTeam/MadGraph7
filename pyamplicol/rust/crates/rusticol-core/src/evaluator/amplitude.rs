@@ -156,17 +156,58 @@ impl AmplitudeRuntime {
         })
     }
 
-    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_f64_into_scratch(
         &mut self,
         batch_size: usize,
         state: &[Complex<f64>],
-    ) -> RusticolResult<(f64, f64)> {
-        let profile = self.evaluate_f64_into_scratch_profile(batch_size, state)?;
-        Ok((
-            profile.input_pack_s,
-            profile.evaluator.legacy_evaluator_call_s + profile.output_remap_s,
-        ))
+    ) -> RusticolResult<()> {
+        let evaluator_params = if let Some(input_components) = self.input_components.as_ref() {
+            let local_parameter_count = input_components.len();
+            let global_parameter_count = state.len().checked_div(batch_size).ok_or_else(|| {
+                RusticolError::invalid_argument("generic amplitude batch size is zero")
+            })?;
+            self.parameter_scratch_f64
+                .resize(batch_size * local_parameter_count, c64(0.0, 0.0));
+            for row in 0..batch_size {
+                let row_state = row * global_parameter_count;
+                let row_params = row * local_parameter_count;
+                if self.input_spans.is_empty() {
+                    for (local_index, global_index) in input_components.iter().enumerate() {
+                        self.parameter_scratch_f64[row_params + local_index] =
+                            state[row_state + *global_index];
+                    }
+                } else {
+                    for (local_start, global_start, len) in &self.input_spans {
+                        let target_start = row_params + *local_start;
+                        let source_start = row_state + *global_start;
+                        self.parameter_scratch_f64[target_start..target_start + *len]
+                            .copy_from_slice(&state[source_start..source_start + *len]);
+                    }
+                }
+            }
+            self.parameter_scratch_f64.as_slice()
+        } else {
+            state
+        };
+        if let Some(order) = self.evaluator_output_order.as_deref() {
+            self.evaluator.evaluate_batch_into(
+                batch_size,
+                evaluator_params,
+                &mut self.evaluator_output_scratch_f64,
+            )?;
+            remap_amplitude_outputs(
+                batch_size,
+                order,
+                &self.evaluator_output_scratch_f64,
+                &mut self.output_scratch_f64,
+            )
+        } else {
+            self.evaluator.evaluate_batch_into(
+                batch_size,
+                evaluator_params,
+                &mut self.output_scratch_f64,
+            )
+        }
     }
 
     pub(crate) fn evaluate_f64_into_scratch_profile(
@@ -256,22 +297,37 @@ impl AmplitudeRuntime {
         })
     }
 
-    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_active_chunks_f64_into_scratch(
         &mut self,
         batch_size: usize,
         state: &[Complex<f64>],
         active_chunk_indices: &[usize],
-    ) -> RusticolResult<(f64, f64)> {
-        let profile = self.evaluate_active_chunks_f64_into_scratch_profile(
-            batch_size,
-            state,
-            active_chunk_indices,
-        )?;
-        Ok((
-            profile.input_pack_s,
-            profile.evaluator.legacy_evaluator_call_s + profile.output_remap_s,
-        ))
+    ) -> RusticolResult<()> {
+        if let Some(order) = self.evaluator_output_order.as_deref() {
+            self.evaluator.evaluate_selected_chunks_f64_into_output(
+                batch_size,
+                state,
+                self.input_components.as_deref(),
+                &self.input_spans,
+                &mut self.evaluator_output_scratch_f64,
+                active_chunk_indices,
+            )?;
+            remap_amplitude_outputs(
+                batch_size,
+                order,
+                &self.evaluator_output_scratch_f64,
+                &mut self.output_scratch_f64,
+            )
+        } else {
+            self.evaluator.evaluate_selected_chunks_f64_into_output(
+                batch_size,
+                state,
+                self.input_components.as_deref(),
+                &self.input_spans,
+                &mut self.output_scratch_f64,
+                active_chunk_indices,
+            )
+        }
     }
 
     pub(crate) fn evaluate_active_chunks_f64_into_scratch_profile(

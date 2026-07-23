@@ -87,7 +87,6 @@ impl EvaluatorGroup {
         self.evaluators.len() > 1
     }
 
-    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_chunks_f64_into_state(
         &mut self,
         batch_size: usize,
@@ -96,16 +95,74 @@ impl EvaluatorGroup {
         state: &mut [Complex<f64>],
         chunk_outputs: &[Vec<(usize, usize)>],
         chunk_output_spans: &[Vec<(usize, usize, usize)>],
-    ) -> RusticolResult<(f64, f64)> {
-        let (profile, assign_s) = self.evaluate_chunks_f64_into_state_profile(
-            batch_size,
-            params,
-            state_parameter_count,
-            state,
-            chunk_outputs,
-            chunk_output_spans,
-        )?;
-        Ok((profile.legacy_evaluator_call_s, assign_s))
+    ) -> RusticolResult<()> {
+        if chunk_outputs.len() != self.evaluators.len()
+            || chunk_output_spans.len() != self.evaluators.len()
+        {
+            return Err(RusticolError::invalid_argument(
+                "stage chunk-output layout does not match evaluator chunks",
+            ));
+        }
+        let expected_state_len = batch_size
+            .checked_mul(state_parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+        if state.len() != expected_state_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "stage state has length {}, expected {expected_state_len}",
+                state.len()
+            )));
+        }
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
+        for ((((evaluator, input_mapping), input_spans), outputs), spans) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .zip(&self.input_mapping_spans)
+            .zip(chunk_outputs)
+            .zip(chunk_output_spans)
+        {
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                input_mapping.as_deref(),
+                input_spans,
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            self.chunk_scratch_f64
+                .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
+            evaluator.evaluate_f64_batch_unpadded(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            for row in 0..batch_size {
+                let row_state = row * state_parameter_count;
+                let row_eval = row * evaluator.output_len;
+                if spans.is_empty() {
+                    for (column, state_offset) in outputs {
+                        state[row_state + *state_offset] =
+                            self.chunk_scratch_f64[row_eval + *column];
+                    }
+                } else {
+                    for (column_start, state_offset_start, len) in spans {
+                        let source_start = row_eval + *column_start;
+                        let target_start = row_state + *state_offset_start;
+                        state[target_start..target_start + *len].copy_from_slice(
+                            &self.chunk_scratch_f64[source_start..source_start + *len],
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn evaluate_chunks_f64_into_state_profile(
@@ -226,7 +283,7 @@ impl EvaluatorGroup {
     }
 
     // The explicit slices avoid constructing a descriptor in this selector hot path.
-    #[allow(dead_code, clippy::too_many_arguments)] // Used by the clock-free compiled lane.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_selected_chunks_f64_into_state(
         &mut self,
         batch_size: usize,
@@ -237,22 +294,97 @@ impl EvaluatorGroup {
         chunk_outputs: &[Vec<(usize, usize)>],
         chunk_output_spans: &[Vec<(usize, usize, usize)>],
         active_chunk_indices: &[usize],
-    ) -> RusticolResult<(f64, f64, f64)> {
-        let (profile, assign_s) = self.evaluate_selected_chunks_f64_into_state_profile(
-            batch_size,
-            state_parameter_count,
-            state,
-            parent_input_components,
-            parent_input_spans,
-            chunk_outputs,
-            chunk_output_spans,
-            active_chunk_indices,
-        )?;
-        Ok((
-            profile.leaf_input_pack_s,
-            profile.evaluator_call_s,
-            assign_s,
-        ))
+    ) -> RusticolResult<()> {
+        if chunk_outputs.len() != self.evaluators.len()
+            || chunk_output_spans.len() != self.evaluators.len()
+        {
+            return Err(RusticolError::invalid_argument(
+                "stage chunk-output layout does not match evaluator chunks",
+            ));
+        }
+        validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
+        let expected_state_len = batch_size
+            .checked_mul(state_parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+        if state.len() != expected_state_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "stage state has length {}, expected {expected_state_len}",
+                state.len()
+            )));
+        }
+        match parent_input_components {
+            Some(components) => {
+                if components.len() != self.input_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "stage input-component map has length {}, expected {}",
+                        components.len(),
+                        self.input_len
+                    )));
+                }
+                if components
+                    .iter()
+                    .any(|component| *component >= state_parameter_count)
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "stage input-component map references state outside the parameter layout",
+                    ));
+                }
+            }
+            None if self.input_len != state_parameter_count => {
+                return Err(RusticolError::invalid_argument(format!(
+                    "evaluator input length {} does not match stage state parameter count {state_parameter_count}",
+                    self.input_len
+                )));
+            }
+            None => {}
+        }
+        for &chunk_index in active_chunk_indices {
+            let evaluator_params = selected_chunk_f64_parameters(
+                state,
+                batch_size,
+                state_parameter_count,
+                self.input_len,
+                parent_input_components,
+                parent_input_spans,
+                self.input_mappings[chunk_index].as_deref(),
+                &self.input_mapping_spans[chunk_index],
+                &mut self.chunk_parameter_scratch_f64,
+            )?;
+            let evaluator = &mut self.evaluators[chunk_index];
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let scratch_len = batch_size
+                .checked_mul(evaluator.output_len)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("stage chunk output length overflows usize")
+                })?;
+            self.chunk_scratch_f64.resize(scratch_len, c64(0.0, 0.0));
+            evaluator.evaluate_f64_batch_unpadded(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            let outputs = &chunk_outputs[chunk_index];
+            let spans = &chunk_output_spans[chunk_index];
+            for row in 0..batch_size {
+                let row_state = row * state_parameter_count;
+                let row_eval = row * evaluator.output_len;
+                if spans.is_empty() {
+                    for (column, state_offset) in outputs {
+                        state[row_state + *state_offset] =
+                            self.chunk_scratch_f64[row_eval + *column];
+                    }
+                } else {
+                    for (column_start, state_offset_start, len) in spans {
+                        let source_start = row_eval + *column_start;
+                        let target_start = row_state + *state_offset_start;
+                        state[target_start..target_start + *len].copy_from_slice(
+                            &self.chunk_scratch_f64[source_start..source_start + *len],
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -396,7 +528,6 @@ impl EvaluatorGroup {
         ))
     }
 
-    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_selected_chunks_f64_into_output(
         &mut self,
         batch_size: usize,
@@ -405,16 +536,92 @@ impl EvaluatorGroup {
         parent_input_spans: &[(usize, usize, usize)],
         out: &mut Vec<Complex<f64>>,
         active_chunk_indices: &[usize],
-    ) -> RusticolResult<(f64, f64)> {
-        let profile = self.evaluate_selected_chunks_f64_into_output_profile(
-            batch_size,
-            params,
-            parent_input_components,
-            parent_input_spans,
-            out,
-            active_chunk_indices,
-        )?;
-        Ok((profile.leaf_input_pack_s, profile.legacy_evaluator_call_s))
+    ) -> RusticolResult<()> {
+        validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
+        if batch_size == 0 || params.len() % batch_size != 0 {
+            return Err(RusticolError::invalid_argument(
+                "amplitude evaluator parameter buffer has an inconsistent batch size",
+            ));
+        }
+        let state_parameter_count = params.len() / batch_size;
+        match parent_input_components {
+            Some(components) => {
+                if components.len() != self.input_len
+                    || components
+                        .iter()
+                        .any(|component| *component >= state_parameter_count)
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "amplitude input-component map is inconsistent with runtime state",
+                    ));
+                }
+            }
+            None if self.input_len != state_parameter_count => {
+                return Err(RusticolError::invalid_argument(format!(
+                    "evaluator input length {} does not match amplitude state parameter count {state_parameter_count}",
+                    self.input_len
+                )));
+            }
+            None => {}
+        }
+        let output_len = batch_size
+            .checked_mul(self.output_len)
+            .ok_or_else(|| RusticolError::invalid_argument("amplitude output length overflows"))?;
+        out.resize(output_len, c64(0.0, 0.0));
+        out.fill(c64(0.0, 0.0));
+
+        let mut output_start = 0usize;
+        for chunk_index in 0..self.evaluators.len() {
+            let evaluator_output_len = self.evaluators[chunk_index].output_len;
+            if active_chunk_indices.binary_search(&chunk_index).is_ok() {
+                let evaluator_params = selected_chunk_f64_parameters(
+                    params,
+                    batch_size,
+                    state_parameter_count,
+                    self.input_len,
+                    parent_input_components,
+                    parent_input_spans,
+                    self.input_mappings[chunk_index].as_deref(),
+                    &self.input_mapping_spans[chunk_index],
+                    &mut self.chunk_parameter_scratch_f64,
+                )?;
+                let evaluator = &mut self.evaluators[chunk_index];
+                validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+                self.chunk_scratch_f64.resize(
+                    batch_size
+                        .checked_mul(evaluator_output_len)
+                        .ok_or_else(|| {
+                            RusticolError::invalid_argument(
+                                "amplitude chunk output length overflows usize",
+                            )
+                        })?,
+                    c64(0.0, 0.0),
+                );
+                evaluator.evaluate_f64_batch_unpadded(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+                for row in 0..batch_size {
+                    let source_start = row * evaluator_output_len;
+                    let target_start = row * self.output_len + output_start;
+                    out[target_start..target_start + evaluator_output_len].copy_from_slice(
+                        &self.chunk_scratch_f64[source_start..source_start + evaluator_output_len],
+                    );
+                }
+            }
+            output_start = output_start
+                .checked_add(evaluator_output_len)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("amplitude chunk output range overflows")
+                })?;
+        }
+        if output_start != self.output_len {
+            return Err(RusticolError::integrity(
+                "amplitude evaluator chunk outputs do not cover the declared output length",
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn evaluate_selected_chunks_f64_into_output_profile(
@@ -561,8 +768,7 @@ impl EvaluatorGroup {
         params: &[Complex<f64>],
         out: &mut Vec<Complex<f64>>,
     ) -> RusticolResult<()> {
-        self.evaluate_batch_into_profile(batch_size, params, out, false)
-            .map(|_| ())
+        self.evaluate_batch_into_unprofiled(batch_size, params, out, false)
     }
 
     pub(crate) fn evaluate_batch_into_padded_simd_tail(
@@ -571,8 +777,85 @@ impl EvaluatorGroup {
         params: &[Complex<f64>],
         out: &mut Vec<Complex<f64>>,
     ) -> RusticolResult<()> {
-        self.evaluate_batch_into_profile(batch_size, params, out, true)
-            .map(|_| ())
+        self.evaluate_batch_into_unprofiled(batch_size, params, out, true)
+    }
+
+    fn evaluate_batch_into_unprofiled(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut Vec<Complex<f64>>,
+        pad_incomplete_simd_tail: bool,
+    ) -> RusticolResult<()> {
+        let expected_output_len = batch_size * self.output_len;
+        if out.len() != expected_output_len {
+            out.resize(expected_output_len, c64(0.0, 0.0));
+        }
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
+        if self.evaluators.len() == 1 {
+            let evaluator = &mut self.evaluators[0];
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                self.input_mappings[0].as_deref(),
+                &self.input_mapping_spans[0],
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            if pad_incomplete_simd_tail {
+                evaluator.evaluate_f64_batch(batch_size, evaluator_params, out)?;
+            } else {
+                evaluator.evaluate_f64_batch_unpadded(batch_size, evaluator_params, out)?;
+            }
+            return Ok(());
+        }
+        let mut output_offset = 0;
+        for ((evaluator, input_mapping), input_spans) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .zip(&self.input_mapping_spans)
+        {
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                input_mapping.as_deref(),
+                input_spans,
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            self.chunk_scratch_f64
+                .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
+            if pad_incomplete_simd_tail {
+                evaluator.evaluate_f64_batch(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+            } else {
+                evaluator.evaluate_f64_batch_unpadded(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+            }
+            for row in 0..batch_size {
+                let src = row * evaluator.output_len;
+                let dst = row * self.output_len + output_offset;
+                out[dst..dst + evaluator.output_len]
+                    .copy_from_slice(&self.chunk_scratch_f64[src..src + evaluator.output_len]);
+            }
+            output_offset += evaluator.output_len;
+        }
+        Ok(())
     }
 
     pub(crate) fn evaluate_batch_into_profile(

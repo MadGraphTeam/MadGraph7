@@ -69,19 +69,70 @@ impl StageRuntime {
         })
     }
 
-    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_f64_into_state(
         &mut self,
         batch_size: usize,
         parameter_count: usize,
         state: &mut [Complex<f64>],
-    ) -> RusticolResult<(f64, f64, f64)> {
-        let profile = self.evaluate_f64_into_state_profile(batch_size, parameter_count, state)?;
-        Ok((
-            profile.input_pack_s,
-            profile.evaluator.legacy_evaluator_call_s,
-            profile.output_assign_s,
-        ))
+    ) -> RusticolResult<()> {
+        let evaluator_params = if let Some(input_components) = self.input_components.as_ref() {
+            let local_parameter_count = input_components.len();
+            self.parameter_scratch_f64
+                .resize(batch_size * local_parameter_count, c64(0.0, 0.0));
+            for row in 0..batch_size {
+                let row_state = row * parameter_count;
+                let row_params = row * local_parameter_count;
+                if self.input_spans.is_empty() {
+                    for (local_index, global_index) in input_components.iter().enumerate() {
+                        self.parameter_scratch_f64[row_params + local_index] =
+                            state[row_state + *global_index];
+                    }
+                } else {
+                    for (local_start, global_start, len) in &self.input_spans {
+                        let target_start = row_params + *local_start;
+                        let source_start = row_state + *global_start;
+                        self.parameter_scratch_f64[target_start..target_start + *len]
+                            .copy_from_slice(&state[source_start..source_start + *len]);
+                    }
+                }
+            }
+            if self.evaluator.is_chunked() {
+                return self.evaluator.evaluate_chunks_f64_into_state(
+                    batch_size,
+                    &self.parameter_scratch_f64,
+                    parameter_count,
+                    state,
+                    &self.chunk_outputs,
+                    &self.chunk_output_spans,
+                );
+            }
+            self.parameter_scratch_f64.as_slice()
+        } else {
+            &*state
+        };
+        self.evaluator.evaluate_batch_into(
+            batch_size,
+            evaluator_params,
+            &mut self.output_scratch_f64,
+        )?;
+        for row in 0..batch_size {
+            let row_state = row * parameter_count;
+            let row_eval = row * self.evaluator.output_len;
+            if self.output_spans.is_empty() {
+                for (column, state_offset) in &self.outputs {
+                    state[row_state + *state_offset] = self.output_scratch_f64[row_eval + *column];
+                }
+            } else {
+                for (column_start, state_offset_start, len) in &self.output_spans {
+                    let source_start = row_eval + *column_start;
+                    let target_start = row_state + *state_offset_start;
+                    state[target_start..target_start + *len].copy_from_slice(
+                        &self.output_scratch_f64[source_start..source_start + *len],
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn evaluate_f64_into_state_profile(
@@ -184,25 +235,23 @@ impl StageRuntime {
         })
     }
 
-    #[allow(dead_code)] // Called by the compiled selector lane after closure planning.
     pub(crate) fn evaluate_active_chunks_f64_into_state(
         &mut self,
         batch_size: usize,
         parameter_count: usize,
         state: &mut [Complex<f64>],
         active_chunk_indices: &[usize],
-    ) -> RusticolResult<(f64, f64, f64)> {
-        let profile = self.evaluate_active_chunks_f64_into_state_profile(
+    ) -> RusticolResult<()> {
+        self.evaluator.evaluate_selected_chunks_f64_into_state(
             batch_size,
             parameter_count,
             state,
+            self.input_components.as_deref(),
+            &self.input_spans,
+            &self.chunk_outputs,
+            &self.chunk_output_spans,
             active_chunk_indices,
-        )?;
-        Ok((
-            profile.input_pack_s,
-            profile.evaluator.legacy_evaluator_call_s,
-            profile.output_assign_s,
-        ))
+        )
     }
 
     pub(crate) fn evaluate_active_chunks_f64_into_state_profile(

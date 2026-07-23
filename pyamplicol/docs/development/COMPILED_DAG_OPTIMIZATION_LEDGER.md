@@ -252,3 +252,54 @@ Evidence:
   `7c61a6add4c4a75c7fd5239e321e4e31dfc318096d637287cfe44e08d3e64336`.
 - Final focused accounting candidate rebuild watchdog peak: `1.287 GiB`.
 - Rust/Python check/clippy watchdog peaks: `1.303 / 1.096 GiB`.
+
+## Milestone 2: clock-free ordinary compiled execution
+
+Status: implemented and measured; final robust median/MAD validation remains
+part of the cumulative optimization gate.
+
+Ordinary compiled f64 totals, resolved values, global selectors, per-point
+selectors, topology replay, and helicity recurrence now use result-only engine
+entry points. Those entry points call direct stage, amplitude, and evaluator
+loops with no `Instant` reads, timing vectors, profile structures, counter
+bookkeeping, or profile-fold allocations. Explicit `profile` entry points
+retain the instrumented implementations and the same attribution schema. The
+outer `_benchmark_f64_wall_time` marker remains the sole clock in the ordinary
+benchmark envelope.
+
+An independent diff audit found one LC-sector selector restoration omission in
+the first draft; the result-only path now uses the same set/call/restore guard
+as the established profiled path. No other routing, summation-order,
+structural-zero, or profile-path divergence was found. The Rust library suite
+passes 247 tests with the one documented stale exact-base test filtered.
+
+An early five-block, same-helper A/B smoke used the retained artifacts,
+byte-identical deterministic batches and selectors, and a 0.05-second target
+per block:
+
+| LC workload | Batch | Accounting `e9b28fe` ms/point | Clock-free ms/point | Change |
+|---|---:|---:|---:|---:|
+| all-flow-union, fixed helicity | 128 | 0.552008 | 0.537119 | -2.70% |
+| all-flow-union, fixed helicity | 1024 | 0.567789 | 0.529601 | -6.73% |
+| topology-replay, selected flow, helicity sum | 128 | 0.103348 | 0.085786 | -16.99% |
+| topology-replay, selected flow, helicity sum | 1024 | 0.094683 | 0.086619 | -8.52% |
+
+The warmed values are bitwise identical to the accounting build for every
+listed batch: union `0x1.98ab33a27f939p-64`, non-union
+`0x1.03c2893f24a72p-68`. Batch-1 provisional wall is `2.730917 ms/point`
+for union and `0.274444 ms/point` for non-union; the latter is effectively flat
+within the earlier batch-1 noise and is not presented as a gain.
+
+Evidence:
+
+- Accounting-build samples:
+  `/private/tmp/pyamplicol-compiled-dag-e9b28fe-baseline`.
+- Clock-free samples: `/private/tmp/pyamplicol-compiled-dag-clock-free`.
+- Current result SHA-256 values for union batch 128/1024:
+  `9fa3438cd377c794cdfd4175bdfb7290ce987696a08d7f475afeb05bfc81cd74` /
+  `96a5fae2d70bdbbc48883e03e4f9cb9955121d7aa6fc2302f8592b62d36c9208`.
+- Current result SHA-256 values for non-union batch 128/1024:
+  `b2ca185761a85e78110a26defdad40657b2a3ee938166893fd6ceb7090f6c740` /
+  `0673e2779c182487278036aeef8f2d98df424998a3f5d9070de5bef86b1d8c6d`.
+- Focused candidate rebuild watchdog peak: `1.290 GiB`; Rust library test
+  watchdog peak: `1.053 GiB`.

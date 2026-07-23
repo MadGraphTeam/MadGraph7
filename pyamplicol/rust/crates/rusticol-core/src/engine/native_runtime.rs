@@ -566,7 +566,7 @@ impl NativeRuntime {
             )?;
             if plan == PointSelectorPlan::None {
                 if selected_helicities.is_some() || selected_colors.is_some() {
-                    let (resolved, _profile) = self.run_resolved_f64_batch(
+                    let resolved = self.run_resolved_f64_batch(
                         &batch,
                         selected_helicities.as_ref(),
                         selected_colors.as_ref(),
@@ -574,10 +574,7 @@ impl NativeRuntime {
                     return Ok(resolved_totals(&resolved));
                 }
                 return match &mut self.execution_lane {
-                    NativeExecutionLane::Compiled => self
-                        .runtime
-                        .run_f64(&batch)
-                        .map(|(values, _profile)| values),
+                    NativeExecutionLane::Compiled => self.runtime.run_f64_unprofiled(&batch),
                     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                     NativeExecutionLane::Eager(runtime) => runtime
                         .run_f64(&mut self.runtime, &batch)
@@ -596,7 +593,7 @@ impl NativeRuntime {
                 let effective_helicities =
                     point_helicities.as_ref().or(selected_helicities.as_ref());
                 let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                let (resolved, _profile) =
+                let resolved =
                     self.run_resolved_f64_batch(&batch, effective_helicities, effective_colors)?;
                 return Ok(resolved_totals(&resolved));
             }
@@ -615,7 +612,7 @@ impl NativeRuntime {
                 let effective_helicities =
                     point_helicities.as_ref().or(selected_helicities.as_ref());
                 let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                let (resolved, _profile) = match partition.rows {
+                let resolved = match partition.rows {
                     PointSelectorRows::Contiguous { start, end } => self.run_resolved_f64_batch(
                         &batch[start..end],
                         effective_helicities,
@@ -659,19 +656,22 @@ impl NativeRuntime {
         batch: &[Vec<[f64; 4]>],
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
-    ) -> Result<(ResolvedValues<f64>, RuntimeProfile), RusticolError> {
+    ) -> Result<ResolvedValues<f64>, RusticolError> {
         match &mut self.execution_lane {
-            NativeExecutionLane::Compiled => {
-                self.runtime
-                    .run_resolved_f64(batch, selected_helicities, selected_colors)
-            }
-            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64(
-                &mut self.runtime,
+            NativeExecutionLane::Compiled => self.runtime.run_resolved_f64_unprofiled(
                 batch,
                 selected_helicities,
                 selected_colors,
             ),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Eager(runtime) => runtime
+                .run_resolved_f64(
+                    &mut self.runtime,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                )
+                .map(|(resolved, _profile)| resolved),
         }
     }
 
@@ -1129,19 +1129,23 @@ impl NativeRuntime {
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
             )
         })?;
-        let (resolved, _profile) = match &mut self.execution_lane {
-            NativeExecutionLane::Compiled => self.runtime.run_resolved_f64(
+        let resolved = match &mut self.execution_lane {
+            NativeExecutionLane::Compiled => self.runtime.run_resolved_f64_unprofiled(
                 &batch,
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64(
-                &mut self.runtime,
-                &batch,
-                selected_helicities.as_ref(),
-                selected_colors.as_ref(),
-            )?,
+            NativeExecutionLane::Eager(runtime) => {
+                runtime
+                    .run_resolved_f64(
+                        &mut self.runtime,
+                        &batch,
+                        selected_helicities.as_ref(),
+                        selected_colors.as_ref(),
+                    )?
+                    .0
+            }
         };
         let helicity_ids = resolved
             .helicity_indices

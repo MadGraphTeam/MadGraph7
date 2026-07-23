@@ -200,6 +200,267 @@ impl ExecutionRuntime {
         }))
     }
 
+    pub(super) fn run_resolved_f64_with_helicity_recurrence_unprofiled(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::artifact(
+                "helicity recurrence materialization requires resolved physics metadata",
+            )
+        })?;
+        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        let point_count = batch.len();
+        let component_count = helicity_indices
+            .len()
+            .checked_mul(color_indices.len())
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        let mut values = vec![0.0; point_count * component_count];
+        for (helicity_position, helicity_index) in helicity_indices.iter().copied().enumerate() {
+            let schedule = self
+                .compiled_helicity_execution_plan
+                .as_ref()
+                .and_then(|plan| {
+                    plan.schedules_by_physical_helicity
+                        .get(helicity_index)
+                        .and_then(Option::as_ref)
+                })
+                .cloned()
+                .ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "physical helicity {} has no compiled recurrence schedule",
+                        physics.manifest.helicities[helicity_index].id
+                    ))
+                })?;
+            if schedule.structural_zero {
+                continue;
+            }
+            let selector_lane_index = self
+                .helicity_selector_lane_by_domain
+                .get(&schedule.selector_domain_id)
+                .copied()
+                .filter(|lane_index| {
+                    self.helicity_selector_runtime_schedule_modes
+                        .get(*lane_index)
+                        .is_some_and(|schedule_mode| {
+                            (*schedule_mode == HelicitySelectorScheduleMode::NestedRuntime
+                                && selected_materialized_sector_ids.is_none())
+                                || (selected_color_ids.is_none()
+                                    && selected_materialized_sector_ids.is_none())
+                        })
+                });
+            let mut selected = if let Some(lane_index) = selector_lane_index {
+                let schedule_mode = self
+                    .helicity_selector_runtime_schedule_modes
+                    .get(lane_index)
+                    .copied()
+                    .ok_or_else(|| {
+                        RusticolError::integrity(format!(
+                            "helicity selector domain {} maps to missing schedule mode for lane {lane_index}",
+                            schedule.selector_domain_id
+                        ))
+                    })?;
+                let selector_runtime = self
+                    .helicity_selector_runtimes
+                    .get_mut(lane_index)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(format!(
+                            "helicity selector domain {} maps to missing execution lane {lane_index}",
+                            schedule.selector_domain_id
+                        ))
+                    })?;
+                match schedule_mode {
+                    HelicitySelectorScheduleMode::ParentClosure => selector_runtime
+                        .run_f64_materialized_helicity_schedule_unprofiled(
+                            batch, &physics, None, None, &schedule, true,
+                        )?,
+                    HelicitySelectorScheduleMode::NestedRuntime => {
+                        let selected_helicity = BTreeSet::from([physics.manifest.helicities
+                            [schedule.physical_helicity_index]
+                            .id
+                            .clone()]);
+                        selector_runtime.run_resolved_f64_unprofiled(
+                            batch,
+                            Some(&selected_helicity),
+                            selected_color_ids,
+                        )?
+                    }
+                }
+            } else {
+                self.run_f64_materialized_helicity_schedule_unprofiled(
+                    batch,
+                    &physics,
+                    selected_color_ids,
+                    selected_materialized_sector_ids,
+                    &schedule,
+                    false,
+                )?
+            };
+            if selected.helicity_indices != [schedule.physical_helicity_index]
+                || selected.color_indices != color_indices
+                || selected.point_count != point_count
+            {
+                return Err(RusticolError::integrity(
+                    "materialized helicity schedule returned an inconsistent resolved shape",
+                ));
+            }
+            selected.helicity_indices[0] = helicity_index;
+            if helicity_indices.len() == 1 {
+                return Ok(selected);
+            }
+            for point_index in 0..point_count {
+                let source_start = point_index * color_indices.len();
+                let target_start =
+                    point_index * component_count + helicity_position * color_indices.len();
+                values[target_start..target_start + color_indices.len()].copy_from_slice(
+                    &selected.values[source_start..source_start + color_indices.len()],
+                );
+            }
+        }
+        Ok(ResolvedValues {
+            values,
+            point_count,
+            helicity_indices,
+            color_indices,
+        })
+    }
+
+    fn run_f64_materialized_helicity_schedule_unprofiled(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        physics: &PhysicsRuntime,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
+        schedule: &CompiledHelicitySelectorSchedule,
+        execute_union: bool,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        if self.stages.is_none() || self.amplitude_stage.is_none() {
+            return Err(self.execution_unavailable_error());
+        }
+        let point_count = batch.len();
+        let color_schedule = selected_materialized_sector_ids
+            .map(|sector_ids| self.compiled_color_selector_schedule(sector_ids))
+            .transpose()?
+            .flatten();
+        let state_len = point_count
+            .checked_mul(self.parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("runtime state length overflows"))?;
+        self.state_scratch_f64.resize(state_len, c64(0.0, 0.0));
+        self.state_scratch_f64_requires_clear = true;
+        let state = &mut self.state_scratch_f64;
+        let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
+        for (row, point) in batch.iter().enumerate() {
+            let row_state =
+                &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
+            Self::fill_sources_row_with_states(
+                &self.sources,
+                &schedule.source_states,
+                self.external_count,
+                &self.particle_masses,
+                row_state,
+                point,
+            )?;
+        }
+        for (row, point) in batch.iter().enumerate() {
+            let row_state =
+                &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
+            Self::fill_momenta_row(
+                &self.momentum_slots,
+                self.value_parameter_count,
+                self.external_count,
+                &self.external_is_initial,
+                row_state,
+                point,
+            )?;
+        }
+        for row in 0..point_count {
+            let row_state =
+                &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
+            Self::fill_model_parameters_row(
+                model_parameter_start,
+                &self.model_parameter_values_f64,
+                row_state,
+            )?;
+        }
+        let stages = self.stages.as_mut().expect("generic stages checked");
+        if schedule.active_stage_chunk_indices.len() != stages.len() {
+            return Err(RusticolError::integrity(format!(
+                "helicity schedule {} has {} stage closures, expected {}",
+                schedule.selector_domain_id,
+                schedule.active_stage_chunk_indices.len(),
+                stages.len()
+            )));
+        }
+        for (stage_index, (stage, active_chunks)) in stages
+            .iter_mut()
+            .zip(&schedule.active_stage_chunk_indices)
+            .enumerate()
+        {
+            if execute_union {
+                stage.evaluate_f64_into_state(
+                    point_count,
+                    self.parameter_count,
+                    state.as_mut_slice(),
+                )?;
+            } else {
+                let combined_chunks;
+                let active_chunks = if let Some(color_schedule) = color_schedule.as_ref() {
+                    combined_chunks = intersect_sorted_chunk_indices(
+                        active_chunks,
+                        &color_schedule.active_stage_chunk_indices[stage_index],
+                    );
+                    &combined_chunks
+                } else {
+                    active_chunks
+                };
+                stage.evaluate_active_chunks_f64_into_state(
+                    point_count,
+                    self.parameter_count,
+                    state.as_mut_slice(),
+                    active_chunks,
+                )?;
+            }
+        }
+        let combined_amplitude_chunks;
+        let active_amplitude_chunks = if let Some(color_schedule) = color_schedule.as_ref() {
+            combined_amplitude_chunks = intersect_sorted_chunk_indices(
+                &schedule.active_amplitude_chunk_indices,
+                &color_schedule.active_amplitude_chunk_indices,
+            );
+            &combined_amplitude_chunks
+        } else {
+            &schedule.active_amplitude_chunk_indices
+        };
+        let amplitude = self
+            .amplitude_stage
+            .as_mut()
+            .expect("generic amplitude stage checked");
+        if execute_union {
+            amplitude.evaluate_f64_into_scratch(point_count, state.as_slice())?;
+        } else {
+            amplitude.evaluate_active_chunks_f64_into_scratch(
+                point_count,
+                state.as_slice(),
+                active_amplitude_chunks,
+            )?;
+        }
+        self.amplitude_stage
+            .as_mut()
+            .expect("generic amplitude stage checked")
+            .reduce_scratch_f64_for_materialized_helicity(
+                point_count,
+                physics,
+                self.normalization_factor,
+                schedule.physical_helicity_index,
+                &schedule.root_factors,
+                selected_color_ids,
+            )
+    }
+
     pub(super) fn run_resolved_f64_with_helicity_recurrence(
         &mut self,
         batch: &[Vec<[f64; 4]>],

@@ -30,6 +30,314 @@ impl ExecutionRuntime {
         }
     }
 
+    pub(super) fn run_f64_unprofiled(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+    ) -> RusticolResult<Vec<f64>> {
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
+            return sum_runtime.run_f64_unprofiled(batch);
+        }
+        if self.lc_topology_replay_enabled {
+            return self.run_f64_with_lc_topology_replay_unprofiled(batch);
+        }
+        if self.has_compiled_helicity_execution_plan() {
+            let resolved =
+                self.run_resolved_f64_with_helicity_recurrence_unprofiled(batch, None, None, None)?;
+            let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
+            return Ok(resolved
+                .values
+                .chunks_exact(component_count)
+                .map(|components| components.iter().sum())
+                .collect());
+        }
+        let previous = self.set_lc_sector_selector(None);
+        let result = self.run_f64_materialized_selected_unprofiled(batch, None);
+        self.restore_lc_sector_selector(previous);
+        result
+    }
+
+    pub(super) fn run_resolved_f64_unprofiled(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        if selected_helicity_ids.is_none()
+            && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
+        {
+            return sum_runtime.run_resolved_f64_unprofiled(batch, None, selected_color_ids);
+        }
+        if self.lc_topology_replay_enabled {
+            return self.run_resolved_f64_with_lc_topology_replay_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            );
+        }
+        if self.has_compiled_helicity_execution_plan() {
+            return self.run_resolved_f64_with_helicity_recurrence_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                None,
+            );
+        }
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
+            )
+        })?;
+        let selected_color_lane = if selected_color_ids.is_some_and(|ids| ids.len() == 1) {
+            self.lc_materialized_sector_ids_for_color_ids(
+                physics.as_ref(),
+                selected_color_ids.expect("singleton selection checked"),
+            )?
+            .into_iter()
+            .next()
+        } else {
+            None
+        };
+        if let Some(sector_id) = selected_color_lane
+            && let Some(selector_runtime) = self.color_selector_runtimes.get_mut(&sector_id)
+        {
+            return selector_runtime.run_resolved_f64_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            );
+        }
+        self.run_f64_materialized_selected_unprofiled(batch, None)?;
+        self.amplitude_stage
+            .as_mut()
+            .expect("generic amplitude stage checked")
+            .reduce_scratch_f64_resolved(
+                batch.len(),
+                &physics,
+                self.normalization_factor,
+                selected_helicity_ids,
+                selected_color_ids,
+            )
+    }
+
+    fn run_resolved_f64_with_lc_topology_replay_unprofiled(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
+            )
+        })?;
+        let replay_plan = self.cached_lc_resolved_replay_plan(&physics)?;
+        let selection = self.cached_lc_resolved_replay_selection(
+            &physics,
+            replay_plan.as_ref(),
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        let n_points = batch.len();
+        let component_count = selection.helicity_indices.len() * selection.color_indices.len();
+        let mut full_values = vec![0.0; n_points * component_count];
+        let mappings = self.lc_topology_replay_mappings.clone();
+        let mappings_per_chunk = replay_mappings_per_expanded_batch(n_points);
+        for source_group in &selection.source_groups {
+            let materialized_sector_ids =
+                self.lc_materialized_sector_ids_for_color_ids(&physics, &source_group.color_ids)?;
+            for chunk_start in (0..source_group.mapping_indices.len()).step_by(mappings_per_chunk) {
+                let chunk_end = usize::min(
+                    chunk_start + mappings_per_chunk,
+                    source_group.mapping_indices.len(),
+                );
+                let mapping_chunk = source_group.mapping_indices[chunk_start..chunk_end]
+                    .iter()
+                    .map(|mapping_index| mappings[*mapping_index].clone())
+                    .collect::<Vec<_>>();
+                let entry_chunk = &source_group.entries[chunk_start..chunk_end];
+                let expanded_batch = if mapping_chunk.len() == 1 && mapping_chunk[0].is_empty() {
+                    None
+                } else {
+                    Some(apply_lc_topology_label_permutations(
+                        batch,
+                        self.external_count,
+                        &mapping_chunk,
+                    )?)
+                };
+                let evaluation_batch = expanded_batch.as_deref().unwrap_or(batch);
+                let selected_lane_id = (materialized_sector_ids.len() == 1)
+                    .then(|| materialized_sector_ids.iter().next().copied())
+                    .flatten();
+                let materialized = if self.has_compiled_helicity_execution_plan()
+                    && selected_helicity_ids.is_some()
+                {
+                    self.run_resolved_f64_with_helicity_recurrence_unprofiled(
+                        evaluation_batch,
+                        Some(&source_group.helicity_ids),
+                        Some(&source_group.color_ids),
+                        Some(&materialized_sector_ids),
+                    )?
+                } else if let Some(selector_runtime) = selected_lane_id
+                    .and_then(|sector_id| self.color_selector_runtimes.get_mut(&sector_id))
+                {
+                    selector_runtime.run_resolved_f64_unprofiled(
+                        evaluation_batch,
+                        Some(&source_group.helicity_ids),
+                        Some(&source_group.color_ids),
+                    )?
+                } else {
+                    self.run_f64_materialized_selected_unprofiled(
+                        evaluation_batch,
+                        Some(&materialized_sector_ids),
+                    )?;
+                    self.amplitude_stage
+                        .as_mut()
+                        .expect("generic amplitude stage checked")
+                        .reduce_scratch_f64_resolved(
+                            evaluation_batch.len(),
+                            &physics,
+                            self.normalization_factor,
+                            Some(&source_group.helicity_ids),
+                            Some(&source_group.color_ids),
+                        )?
+                };
+                accumulate_selected_lc_replay_resolved_f64(
+                    &mut full_values,
+                    n_points,
+                    &materialized,
+                    entry_chunk,
+                    source_group.source_component_count,
+                    component_count,
+                )?;
+            }
+        }
+        Ok(ResolvedValues {
+            values: full_values,
+            point_count: n_points,
+            helicity_indices: selection.helicity_indices.clone(),
+            color_indices: selection.color_indices.clone(),
+        })
+    }
+
+    fn run_f64_with_lc_topology_replay_unprofiled(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+    ) -> RusticolResult<Vec<f64>> {
+        let resolved =
+            self.run_resolved_f64_with_lc_topology_replay_unprofiled(batch, None, None)?;
+        let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
+        Ok(resolved
+            .values
+            .chunks_exact(component_count)
+            .map(|components| components.iter().sum())
+            .collect())
+    }
+
+    fn run_f64_materialized_selected_unprofiled(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+    ) -> RusticolResult<Vec<f64>> {
+        if self.stages.is_none() || self.amplitude_stage.is_none() {
+            return Err(self.execution_unavailable_error());
+        }
+        let n_points = batch.len();
+        let color_schedule = selected_color_sector_ids
+            .map(|sector_ids| self.compiled_color_selector_schedule(sector_ids))
+            .transpose()?
+            .flatten();
+        let state_len = n_points * self.parameter_count;
+        self.state_scratch_f64.resize(state_len, c64(0.0, 0.0));
+        if self.state_scratch_f64_requires_clear {
+            self.state_scratch_f64.fill(c64(0.0, 0.0));
+        }
+        self.state_scratch_f64_requires_clear = true;
+        let state = &mut self.state_scratch_f64;
+        let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
+        for (row, point) in batch.iter().enumerate() {
+            let row_state =
+                &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
+            Self::fill_sources_row(
+                &self.sources,
+                self.external_count,
+                &self.particle_masses,
+                row_state,
+                point,
+            )?;
+        }
+        for (row, point) in batch.iter().enumerate() {
+            let row_state =
+                &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
+            Self::fill_momenta_row(
+                &self.momentum_slots,
+                self.value_parameter_count,
+                self.external_count,
+                &self.external_is_initial,
+                row_state,
+                point,
+            )?;
+        }
+        for row in 0..n_points {
+            let row_state =
+                &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
+            Self::fill_model_parameters_row(
+                model_parameter_start,
+                &self.model_parameter_values_f64,
+                row_state,
+            )?;
+        }
+        for (stage_index, stage) in self
+            .stages
+            .as_mut()
+            .expect("generic stages checked")
+            .iter_mut()
+            .enumerate()
+        {
+            if let Some(schedule) = color_schedule.as_ref() {
+                stage.evaluate_active_chunks_f64_into_state(
+                    n_points,
+                    self.parameter_count,
+                    state.as_mut_slice(),
+                    &schedule.active_stage_chunk_indices[stage_index],
+                )?;
+            } else {
+                stage.evaluate_f64_into_state(
+                    n_points,
+                    self.parameter_count,
+                    state.as_mut_slice(),
+                )?;
+            }
+        }
+        if let Some(schedule) = color_schedule.as_ref() {
+            self.amplitude_stage
+                .as_mut()
+                .expect("generic amplitude stage checked")
+                .evaluate_active_chunks_f64_into_scratch(
+                    n_points,
+                    state.as_slice(),
+                    &schedule.active_amplitude_chunk_indices,
+                )?;
+        } else {
+            self.amplitude_stage
+                .as_mut()
+                .expect("generic amplitude stage checked")
+                .evaluate_f64_into_scratch(n_points, state.as_slice())?;
+        }
+        self.amplitude_stage
+            .as_mut()
+            .expect("generic amplitude stage checked")
+            .reduce_scratch_f64_into_selected(
+                n_points,
+                &mut self.values_scratch_f64,
+                selected_color_sector_ids,
+            )?;
+        for value in &mut self.values_scratch_f64 {
+            *value *= self.normalization_factor;
+        }
+        self.state_scratch_f64_requires_clear = color_schedule.is_some();
+        Ok(self.values_scratch_f64.clone())
+    }
+
     pub(super) fn run_f64(
         &mut self,
         batch: &[Vec<[f64; 4]>],
