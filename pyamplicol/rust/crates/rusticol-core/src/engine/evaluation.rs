@@ -45,6 +45,16 @@ impl ExecutionRuntime {
         batch: F64MomentumBatchView<'_>,
         output: &mut [f64],
     ) -> RusticolResult<()> {
+        self.run_f64_selected_into_unprofiled(batch, None, None, output)
+    }
+
+    pub(super) fn run_f64_selected_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
         if output.len() != batch.point_count() {
             return Err(RusticolError::invalid_argument(format!(
                 "evaluation output has length {}, expected {}",
@@ -52,17 +62,54 @@ impl ExecutionRuntime {
                 batch.point_count()
             )));
         }
-        if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
-            return sum_runtime.run_f64_into_unprofiled(batch, output);
+        if selected_helicity_ids.is_none()
+            && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
+        {
+            return sum_runtime.run_f64_selected_into_unprofiled(
+                batch,
+                None,
+                selected_color_ids,
+                output,
+            );
         }
         if self.lc_topology_replay_enabled {
-            let resolved =
-                self.run_resolved_f64_with_lc_topology_replay_unprofiled(batch, None, None)?;
+            if selected_color_ids.is_some_and(|ids| ids.len() == 1)
+                && self.try_run_f64_with_single_lc_topology_replay_into_unprofiled(
+                    batch,
+                    selected_helicity_ids,
+                    selected_color_ids,
+                    output,
+                )?
+            {
+                return Ok(());
+            }
+            let resolved = self.run_resolved_f64_with_lc_topology_replay_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            )?;
             return write_resolved_f64_totals(&resolved, output);
         }
         if self.has_compiled_helicity_execution_plan() {
+            if self.try_run_f64_with_helicity_recurrence_into_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                output,
+            )? {
+                return Ok(());
+            }
+            let resolved = self.run_resolved_f64_with_helicity_recurrence_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                None,
+            )?;
+            return write_resolved_f64_totals(&resolved, output);
+        }
+        if selected_helicity_ids.is_some() || selected_color_ids.is_some() {
             let resolved =
-                self.run_resolved_f64_with_helicity_recurrence_unprofiled(batch, None, None, None)?;
+                self.run_resolved_f64_unprofiled(batch, selected_helicity_ids, selected_color_ids)?;
             return write_resolved_f64_totals(&resolved, output);
         }
         let previous = self.set_lc_sector_selector(None);
@@ -238,6 +285,149 @@ impl ExecutionRuntime {
         })
     }
 
+    /// Execute the dominant complete-layout selector shape without resolved
+    /// batch tensors: one requested public flow, replayed by one topology
+    /// mapping through one fused-helicity materialized-flow lane.
+    ///
+    /// Multiple mappings or recursive execution plans retain the resolved
+    /// fallback because their target cells must survive across evaluations to
+    /// preserve exact accumulation order.
+    fn try_run_f64_with_single_lc_topology_replay_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<bool> {
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
+            )
+        })?;
+        let replay_plan = self.cached_lc_resolved_replay_plan(&physics)?;
+        let selection = self.cached_lc_resolved_replay_selection(
+            &physics,
+            replay_plan.as_ref(),
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        let [source_group] = selection.source_groups.as_slice() else {
+            return Ok(false);
+        };
+        let [mapping_index] = source_group.mapping_indices.as_slice() else {
+            return Ok(false);
+        };
+        let [replay_entry] = source_group.entries.as_slice() else {
+            return Ok(false);
+        };
+        let materialized_sector_ids =
+            self.lc_materialized_sector_ids_for_color_ids(&physics, &source_group.color_ids)?;
+        if materialized_sector_ids.len() != 1 {
+            return Ok(false);
+        }
+        let materialized_sector_id = *materialized_sector_ids
+            .iter()
+            .next()
+            .expect("singleton materialized sector checked");
+        let Some(selector_runtime) = self.color_selector_runtimes.get(&materialized_sector_id)
+        else {
+            return Ok(false);
+        };
+        if selector_runtime.helicity_sum_runtime.is_some()
+            || selector_runtime.lc_topology_replay_enabled
+            || selector_runtime.has_compiled_helicity_execution_plan()
+            || selector_runtime
+                .amplitude_stage
+                .as_ref()
+                .is_none_or(|amplitude| amplitude.color_contraction.is_some())
+        {
+            return Ok(false);
+        }
+
+        let target_component_count = selection
+            .helicity_indices
+            .len()
+            .checked_mul(selection.color_indices.len())
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        let mapping = self
+            .lc_topology_replay_mappings
+            .get(*mapping_index)
+            .cloned()
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "LC topology replay selection references an unknown mapping",
+                )
+            })?;
+        let expanded_batch = if mapping.is_empty() {
+            None
+        } else {
+            Some(apply_lc_topology_label_permutations_from_view(
+                batch,
+                self.external_count,
+                std::slice::from_ref(&mapping),
+            )?)
+        };
+        let evaluation_view = if let Some(expanded_batch) = expanded_batch.as_deref() {
+            F64MomentumBatchView::from_nested(expanded_batch, self.external_count)?
+        } else {
+            batch
+        };
+        self.color_selector_runtimes
+            .get_mut(&materialized_sector_id)
+            .expect("selector lane checked above")
+            .run_f64_routed_materialized_into_unprofiled(
+                evaluation_view,
+                Some(&source_group.helicity_ids),
+                Some(&source_group.color_ids),
+                replay_entry,
+                source_group.source_component_count,
+                target_component_count,
+                output,
+            )?;
+        Ok(true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_f64_routed_materialized_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        replay_entry: &LcResolvedReplayEntry,
+        source_component_count: usize,
+        target_component_count: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        if self.helicity_sum_runtime.is_some()
+            || self.lc_topology_replay_enabled
+            || self.has_compiled_helicity_execution_plan()
+        {
+            return Err(RusticolError::integrity(
+                "routed direct totals require a materialized leaf execution lane",
+            ));
+        }
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
+            )
+        })?;
+        self.run_f64_materialized_selected_for_resolved_unprofiled(batch, None)?;
+        self.amplitude_stage
+            .as_mut()
+            .expect("materialized leaf amplitude stage checked")
+            .reduce_scratch_f64_routed_totals_into(
+                batch.point_count(),
+                &physics,
+                self.normalization_factor,
+                selected_helicity_ids,
+                selected_color_ids,
+                replay_entry,
+                source_component_count,
+                target_component_count,
+                output,
+            )
+    }
+
     #[allow(dead_code)] // Allocating compatibility wrapper around the into lane.
     fn run_f64_materialized_selected_unprofiled(
         &mut self,
@@ -258,15 +448,7 @@ impl ExecutionRuntime {
         batch: F64MomentumBatchView<'_>,
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
     ) -> RusticolResult<()> {
-        let mut totals_scratch = std::mem::take(&mut self.values_scratch_f64);
-        totals_scratch.resize(batch.point_count(), 0.0);
-        let result = self.run_f64_materialized_selected_into_unprofiled(
-            batch,
-            selected_color_sector_ids,
-            &mut totals_scratch,
-        );
-        self.values_scratch_f64 = totals_scratch;
-        result
+        self.evaluate_f64_materialized_selected_unprofiled(batch, selected_color_sector_ids)
     }
 
     fn run_f64_materialized_selected_into_unprofiled(
@@ -275,9 +457,6 @@ impl ExecutionRuntime {
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        if self.stages.is_none() || self.amplitude_stage.is_none() {
-            return Err(self.execution_unavailable_error());
-        }
         let n_points = batch.point_count();
         if output.len() != n_points {
             return Err(RusticolError::invalid_argument(format!(
@@ -285,6 +464,26 @@ impl ExecutionRuntime {
                 output.len()
             )));
         }
+        self.evaluate_f64_materialized_selected_unprofiled(batch, selected_color_sector_ids)?;
+        self.amplitude_stage
+            .as_mut()
+            .expect("generic amplitude stage checked")
+            .reduce_scratch_f64_into_selected_slice(n_points, output, selected_color_sector_ids)?;
+        for value in output {
+            *value *= self.normalization_factor;
+        }
+        Ok(())
+    }
+
+    fn evaluate_f64_materialized_selected_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+    ) -> RusticolResult<()> {
+        if self.stages.is_none() || self.amplitude_stage.is_none() {
+            return Err(self.execution_unavailable_error());
+        }
+        let n_points = batch.point_count();
         let color_schedule = selected_color_sector_ids
             .map(|sector_ids| self.compiled_color_selector_schedule(sector_ids))
             .transpose()?
@@ -367,13 +566,6 @@ impl ExecutionRuntime {
                 .as_mut()
                 .expect("generic amplitude stage checked")
                 .evaluate_f64_into_scratch(n_points, state.as_slice())?;
-        }
-        self.amplitude_stage
-            .as_mut()
-            .expect("generic amplitude stage checked")
-            .reduce_scratch_f64_into_selected_slice(n_points, output, selected_color_sector_ids)?;
-        for value in output {
-            *value *= self.normalization_factor;
         }
         self.state_scratch_f64_requires_clear = color_schedule.is_some();
         Ok(())

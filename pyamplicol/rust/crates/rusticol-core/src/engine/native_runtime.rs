@@ -615,12 +615,12 @@ impl NativeRuntime {
             )?;
             if plan == PointSelectorPlan::None {
                 if selected_helicities.is_some() || selected_colors.is_some() {
-                    let resolved = self.run_resolved_f64_batch(
+                    return self.run_selected_f64_batch_into(
                         batch,
                         selected_helicities.as_ref(),
                         selected_colors.as_ref(),
-                    )?;
-                    return write_resolved_f64_totals(&resolved, output);
+                        output,
+                    );
                 }
                 return self.run_f64_batch_into(batch, output);
             }
@@ -636,9 +636,12 @@ impl NativeRuntime {
                 let effective_helicities =
                     point_helicities.as_ref().or(selected_helicities.as_ref());
                 let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                let resolved =
-                    self.run_resolved_f64_batch(batch, effective_helicities, effective_colors)?;
-                return write_resolved_f64_totals(&resolved, output);
+                return self.run_selected_f64_batch_into(
+                    batch,
+                    effective_helicities,
+                    effective_colors,
+                    output,
+                );
             }
 
             output.fill(0.0);
@@ -655,12 +658,15 @@ impl NativeRuntime {
                 let effective_helicities =
                     point_helicities.as_ref().or(selected_helicities.as_ref());
                 let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                let resolved = match partition.rows {
-                    PointSelectorRows::Contiguous { start, end } => self.run_resolved_f64_batch(
-                        batch.subview(start, end)?,
-                        effective_helicities,
-                        effective_colors,
-                    )?,
+                match partition.rows {
+                    PointSelectorRows::Contiguous { start, end } => {
+                        self.run_selected_f64_batch_into(
+                            batch.subview(start, end)?,
+                            effective_helicities,
+                            effective_colors,
+                            &mut output[start..end],
+                        )?;
+                    }
                     rows @ PointSelectorRows::Gathered { .. } => {
                         let point_indices = selector_scratch.planner.gathered_rows(rows);
                         let gathered_batch = fill_gathered_batch_from_view(
@@ -668,28 +674,27 @@ impl NativeRuntime {
                             batch,
                             point_indices,
                         )?;
-                        self.run_resolved_f64_batch(
+                        selector_scratch
+                            .partition_totals
+                            .resize(partition.rows.len(), 0.0);
+                        selector_scratch.partition_totals.fill(0.0);
+                        self.run_selected_f64_batch_into(
                             F64MomentumBatchView::from_nested(
                                 gathered_batch,
                                 self.runtime.external_count,
                             )?,
                             effective_helicities,
                             effective_colors,
-                        )?
+                            &mut selector_scratch.partition_totals,
+                        )?;
+                        scatter_partition_totals(
+                            output,
+                            &selector_scratch.partition_totals,
+                            partition.rows,
+                            &selector_scratch.planner,
+                        );
                     }
-                };
-                write_partition_totals(&mut selector_scratch.partition_totals, &resolved);
-                if selector_scratch.partition_totals.len() != partition.rows.len() {
-                    return Err(RusticolError::integrity(
-                        "per-point selector partition returned the wrong number of values",
-                    ));
                 }
-                scatter_partition_totals(
-                    output,
-                    &selector_scratch.partition_totals,
-                    partition.rows,
-                    &selector_scratch.planner,
-                );
             }
             Ok(())
         })();
@@ -716,6 +721,34 @@ impl NativeRuntime {
                 }
                 output.copy_from_slice(&values);
                 Ok(())
+            }
+        }
+    }
+
+    fn run_selected_f64_batch_into(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        match &mut self.execution_lane {
+            NativeExecutionLane::Compiled => self.runtime.run_f64_selected_into_unprofiled(
+                batch,
+                selected_helicities,
+                selected_colors,
+                output,
+            ),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Eager(runtime) => {
+                let nested = batch.materialize_nested();
+                let (resolved, _profile) = runtime.run_resolved_f64(
+                    &mut self.runtime,
+                    &nested,
+                    selected_helicities,
+                    selected_colors,
+                )?;
+                write_resolved_f64_totals(&resolved, output)
             }
         }
     }

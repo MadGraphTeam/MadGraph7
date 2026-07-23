@@ -200,6 +200,136 @@ impl ExecutionRuntime {
         }))
     }
 
+    /// Direct totals lane for the common runtime selector shape: one physical
+    /// helicity and any manifest-ordered subset of diagonal LC colours.
+    ///
+    /// Broader helicity sums retain the resolved fallback because adding a
+    /// pre-summed colour row to a previous helicity would change the flattened
+    /// H-major/C-minor floating-point fold.
+    pub(super) fn try_run_f64_with_helicity_recurrence_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<bool> {
+        if output.len() != batch.point_count() {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {}",
+                output.len(),
+                batch.point_count()
+            )));
+        }
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::artifact(
+                "helicity recurrence materialization requires resolved physics metadata",
+            )
+        })?;
+        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
+        let _color_indices = physics.selected_color_indices(selected_color_ids)?;
+        let [helicity_index] = helicity_indices.as_slice() else {
+            return Ok(false);
+        };
+        let schedule = self
+            .compiled_helicity_execution_plan
+            .as_ref()
+            .and_then(|plan| {
+                plan.schedules_by_physical_helicity
+                    .get(*helicity_index)
+                    .and_then(Option::as_ref)
+            })
+            .cloned()
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "physical helicity {} has no compiled recurrence schedule",
+                    physics.manifest.helicities[*helicity_index].id
+                ))
+            })?;
+        output.fill(0.0);
+        if schedule.structural_zero {
+            return Ok(true);
+        }
+
+        let selector_lane_index = self
+            .helicity_selector_lane_by_domain
+            .get(&schedule.selector_domain_id)
+            .copied()
+            .filter(|lane_index| {
+                self.helicity_selector_runtime_schedule_modes
+                    .get(*lane_index)
+                    .is_some_and(|schedule_mode| {
+                        *schedule_mode == HelicitySelectorScheduleMode::NestedRuntime
+                            || selected_color_ids.is_none()
+                    })
+            });
+        if let Some(lane_index) = selector_lane_index {
+            let schedule_mode = self
+                .helicity_selector_runtime_schedule_modes
+                .get(lane_index)
+                .copied()
+                .ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "helicity selector domain {} maps to missing schedule mode for lane {lane_index}",
+                        schedule.selector_domain_id
+                    ))
+                })?;
+            let selector_runtime = self
+                .helicity_selector_runtimes
+                .get_mut(lane_index)
+                .ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "helicity selector domain {} maps to missing execution lane {lane_index}",
+                        schedule.selector_domain_id
+                    ))
+                })?;
+            match schedule_mode {
+                HelicitySelectorScheduleMode::ParentClosure => {
+                    if selector_runtime
+                        .amplitude_stage
+                        .as_ref()
+                        .is_none_or(|amplitude| amplitude.color_contraction.is_some())
+                    {
+                        return Ok(false);
+                    }
+                    selector_runtime.run_f64_materialized_helicity_schedule_add_into_unprofiled(
+                        batch, &physics, None, None, &schedule, true, output,
+                    )?;
+                }
+                HelicitySelectorScheduleMode::NestedRuntime => {
+                    let selected_helicity = BTreeSet::from([physics.manifest.helicities
+                        [schedule.physical_helicity_index]
+                        .id
+                        .clone()]);
+                    selector_runtime.run_f64_selected_into_unprofiled(
+                        batch,
+                        Some(&selected_helicity),
+                        selected_color_ids,
+                        output,
+                    )?;
+                }
+            }
+            return Ok(true);
+        }
+
+        if self
+            .amplitude_stage
+            .as_ref()
+            .is_none_or(|amplitude| amplitude.color_contraction.is_some())
+        {
+            return Ok(false);
+        }
+        self.run_f64_materialized_helicity_schedule_add_into_unprofiled(
+            batch,
+            &physics,
+            selected_color_ids,
+            None,
+            &schedule,
+            false,
+            output,
+        )?;
+        Ok(true)
+    }
+
     pub(super) fn run_resolved_f64_with_helicity_recurrence_unprofiled(
         &mut self,
         batch: F64MomentumBatchView<'_>,
@@ -338,6 +468,63 @@ impl ExecutionRuntime {
         schedule: &CompiledHelicitySelectorSchedule,
         execute_union: bool,
     ) -> RusticolResult<ResolvedValues<f64>> {
+        self.evaluate_f64_materialized_helicity_schedule_unprofiled(
+            batch,
+            selected_materialized_sector_ids,
+            schedule,
+            execute_union,
+        )?;
+        self.amplitude_stage
+            .as_mut()
+            .expect("generic amplitude stage checked")
+            .reduce_scratch_f64_for_materialized_helicity(
+                batch.point_count(),
+                physics,
+                self.normalization_factor,
+                schedule.physical_helicity_index,
+                &schedule.root_factors,
+                selected_color_ids,
+            )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_f64_materialized_helicity_schedule_add_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        physics: &PhysicsRuntime,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
+        schedule: &CompiledHelicitySelectorSchedule,
+        execute_union: bool,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        self.evaluate_f64_materialized_helicity_schedule_unprofiled(
+            batch,
+            selected_materialized_sector_ids,
+            schedule,
+            execute_union,
+        )?;
+        self.amplitude_stage
+            .as_mut()
+            .expect("generic amplitude stage checked")
+            .reduce_scratch_f64_for_materialized_helicity_add_into(
+                batch.point_count(),
+                physics,
+                self.normalization_factor,
+                schedule.physical_helicity_index,
+                &schedule.root_factors,
+                selected_color_ids,
+                output,
+            )
+    }
+
+    fn evaluate_f64_materialized_helicity_schedule_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
+        schedule: &CompiledHelicitySelectorSchedule,
+        execute_union: bool,
+    ) -> RusticolResult<()> {
         if self.stages.is_none() || self.amplitude_stage.is_none() {
             return Err(self.execution_unavailable_error());
         }
@@ -450,17 +637,7 @@ impl ExecutionRuntime {
                 active_amplitude_chunks,
             )?;
         }
-        self.amplitude_stage
-            .as_mut()
-            .expect("generic amplitude stage checked")
-            .reduce_scratch_f64_for_materialized_helicity(
-                point_count,
-                physics,
-                self.normalization_factor,
-                schedule.physical_helicity_index,
-                &schedule.root_factors,
-                selected_color_ids,
-            )
+        Ok(())
     }
 
     pub(super) fn run_resolved_f64_with_helicity_recurrence(

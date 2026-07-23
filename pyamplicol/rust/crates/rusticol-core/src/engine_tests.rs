@@ -869,6 +869,8 @@ fn test_amplitude_runtime(
         parameter_scratch_f64: Vec::new(),
         evaluator_output_scratch_f64: Vec::new(),
         output_scratch_f64: outputs,
+        resolved_source_row_scratch_f64: Vec::new(),
+        resolved_target_row_scratch_f64: Vec::new(),
         evaluator_output_order: None,
         evaluator: empty_evaluator_group(),
     }

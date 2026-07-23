@@ -2747,6 +2747,8 @@ struct AmplitudeRuntime {
     parameter_scratch_f64: Vec<Complex<f64>>,
     evaluator_output_scratch_f64: Vec<Complex<f64>>,
     output_scratch_f64: Vec<Complex<f64>>,
+    resolved_source_row_scratch_f64: Vec<f64>,
+    resolved_target_row_scratch_f64: Vec<f64>,
     evaluator_output_order: Option<Vec<usize>>,
     evaluator: EvaluatorGroup,
 }
