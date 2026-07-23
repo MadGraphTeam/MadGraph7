@@ -379,3 +379,77 @@ Evidence:
 - Focused candidate rebuild watchdog peak: `1.288 GiB`. Formatting and affected
   crate checks pass; broader correctness and release gates remain deferred to
   final integration as requested.
+
+## Milestone 4: totals-only compiled selectors
+
+Status: implemented and measured at commit `bf3a704`; final robust median/MAD
+validation remains part of the cumulative optimization gate.
+
+Ordinary compiled total evaluation no longer requires a batch-wide resolved
+tensor for the two target selector shapes. All-flow-union fixed-helicity
+execution accumulates the existing coherent-group contributions into one
+persistent manifest-color row, then performs the exact `+0.0` left fold in
+manifest color order. Topology-replay selected-flow/helicity-sum execution
+uses the same resolved group order in a persistent source row, applies one
+mapping's routes in their established order to a persistent target row, then
+folds the target helicity/color cells in manifest order.
+
+The direct topology route is deliberately guarded to one source group, one
+mapping, one replay entry, one diagonal-LC materialized selector lane.
+Multi-mapping, recursive, contracted-color and multi-helicity shapes retain
+the established resolved fallback. Resolved and profile APIs are unchanged.
+
+Global and homogeneous selectors write directly into caller output.
+Contiguous per-point partitions write their caller slice; gathered partitions
+reuse the existing partition-total scratch and then scatter. The eager lane
+retains resolved-plus-total fallback. Evaluation and reduction were separated
+so resolved evaluation no longer computes and discards an ordinary total
+first.
+
+Retained-artifact checks compare ordinary totals with an explicit resolved
+`+0.0` left fold. They are bitwise identical for the union primary nonzero
+helicity (manifest index 234), a structural-zero helicity (including exact
+positive-zero bits), and non-union identity and noncomputed/permuted flows
+(indices 0 and 1). Homogeneous, pooled and alternating per-point selectors
+agree with global-selector oracles at the required `rtol=1e-12`,
+`atol=1e-15`. Different SIMD partition widths can differ by a few ULP, so
+cross-width per-point results are not incorrectly claimed bitwise identical.
+
+A five-block, same-helper smoke against milestone 3 measured:
+
+| LC workload | Batch | Borrowed/into ms/point | Totals-only ms/point | Change |
+|---|---:|---:|---:|---:|
+| all-flow-union, fixed helicity | 1 | 1.164927 | 1.114137 | -4.36% |
+| all-flow-union, fixed helicity | 128 | 0.474549 | 0.462946 | -2.45% |
+| all-flow-union, fixed helicity | 1024 | 0.495361 | 0.483370 | -2.42% |
+| topology-replay, selected flow, helicity sum | 1 | 0.259004 | 0.226892 | -12.40% |
+| topology-replay, selected flow, helicity sum | 128 | 0.077799 | 0.075475 | -2.99% |
+| topology-replay, selected flow, helicity sum | 1024 | 0.084251 | 0.079319 | -5.85% |
+
+Every warmed result remains bitwise identical to milestone 3. Relative to the
+accounting build, cumulative batch-128/1024 changes are
+`-16.13% / -14.87%` for union and `-26.97% / -16.23%` for non-union.
+
+Evidence:
+
+- Measurements: `/private/tmp/pyamplicol-compiled-dag-totals-only`.
+- Union batch 1/128/1024 SHA-256:
+  `8950ab1651d8d3b43bfe9421a63c72e14c721303e06eaed3825fb0dae04569f8` /
+  `775e3b00c74b3c045443c05cf0678ff56af779ad5da3885141f10d9ceb4a5e68` /
+  `001efe54f585681ee895643855c1febf9b9527fc9f9ba5b5f6802436fba846de`.
+- Non-union batch 1/128/1024 SHA-256:
+  `e5b7e6f15c406af5251cadcb250a4fd54aca0861042e1805777fb92dfd82e30d` /
+  `fe223ff8b7e06174504771552bdbad2a5ccc563fa502f8d80acb8ee57c5d2070` /
+  `90bf8f0109a4c098f0fd575c1da145c91136772c510176b6c9d537867ecadf69`.
+- Native build-input SHA-256:
+  `8cb4af6ad4d2b06f76b80d4a6b600827131384a13bd932119f2bd2c40e9e2eff`;
+  module SHA-256:
+  `a928482a8e513306c18f6f6ec3a13412cee8ce5ca2c20844e70b3a1f2565728c`.
+  As in milestone 3, the measured source content exactly matches `bf3a704`,
+  while the informational wheel revision records its parent because the wheel
+  was built immediately before the source commit. Final evidence will rebuild
+  the immutable tested head.
+- Focused candidate rebuild watchdog peak: `1.252 GiB`; largest measurement
+  peak: `2.655 GiB`. `cargo fmt --all -- --check` and
+  `cargo check -p rusticol-core --tests` pass. An independent read-only diff
+  audit reported no actionable findings.
