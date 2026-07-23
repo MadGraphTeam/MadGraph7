@@ -218,6 +218,14 @@ class CheckValidForCmd(object):
                 self.help_set()
                 raise self.InvalidCmd('set needs an option and an argument')
 
+        if args[0] == 'zerowidth_tchannel':
+            raise self.InvalidCmd(
+                "'zerowidth_tchannel' is a generation-time option: the T-channel "
+                "width treatment is now baked into the matrix element (ALOHA) at "
+                "'output' time and cannot be changed at run time. Choose it in MG5 "
+                "before output ('set zerowidth_tchannel True|False') and regenerate "
+                "the process.")
+
         if args[0] not in self._set_options + list(self.options.keys()):
             self.help_set()
             raise self.InvalidCmd('Possible options for set are %s' % \

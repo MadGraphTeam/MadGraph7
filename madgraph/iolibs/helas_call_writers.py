@@ -285,9 +285,12 @@ class HelasCallWriter(base_objects.PhysicsObject):
            call = fct(wavefunction) 
 
         
-        if  self.options['zerowidth_tchannel'] and wavefunction.is_t_channel():
-            call, n = re.subn(r',\s*fk_(?!ZERO)\w*\s*,', ', ZERO,', str(call), flags=re.I)
-            if n:
+        if self.options['zerowidth_tchannel'] and wavefunction.is_t_channel():
+            # The width i*M*Gamma is now dropped inside the ALOHA propagator
+            # routine itself, at runtime, for spacelike (P^2<0) momenta -- see
+            # aloha.t_channel_width / aloha_writers. We no longer rewrite the call
+            # to pass ZERO; we only flag a non-zero width here for the notice.
+            if re.search(r',\s*fk_(?!ZERO)\w*\s*,', str(call), flags=re.I):
                 self.width_tchannel_set_tozero = True
         return call
         

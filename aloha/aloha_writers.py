@@ -956,8 +956,25 @@ class ALOHAWriterForFortran(WriteALOHA):
                             out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
                                 'denom':self.write_obj(self.routine.denominator)}) 
                     else:
-                        out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s * (M%(i)s -CI* W%(i)s))\n' % \
-                                  {'i': self.outgoing, 'COUP': coup_name})
+                        p2 = 'P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2' \
+                              % {'i': self.outgoing}
+                        wdenom = '%(p2)s - M%(i)s * (M%(i)s -CI* W%(i)s)' \
+                              % {'i': self.outgoing, 'p2': p2}
+                        if aloha.t_channel_width:
+                            out.write('    denom = %(COUP)s/(%(wd)s)\n' %
+                                      {'COUP': coup_name, 'wd': wdenom})
+                        else:
+                            # spacelike (t-channel) propagator: no pole to regulate,
+                            # so drop the width unless in the complex-mass scheme.
+                            out.write('    if (dble(%(p2)s).gt.0d0) then\n'
+                                      % {'p2': p2})
+                            out.write('       denom = %(COUP)s/(%(wd)s)\n' %
+                                      {'COUP': coup_name, 'wd': wdenom})
+                            out.write('    else\n')
+                            out.write('       denom = %(COUP)s/(%(p2)s - M%(i)s**2)\n'
+                                      % {'i': self.outgoing, 'COUP': coup_name,
+                                         'p2': p2})
+                            out.write('    endif\n')
                 else:
                     if self.routine.denominator:
                         if 'P1N' not in self.tag:
@@ -2050,8 +2067,19 @@ class ALOHAWriterForCPP(WriteALOHA):
                             out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(denom)s);\n' % \
                                   mydict) 
                     else:
-                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/((P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3]) - M%(i)s * (M%(i)s -cI* W%(i)s));\n' % \
-                                  mydict)
+                        p2 = '(P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3])' % mydict
+                        wd = '%(p2)s - M%(i)s * (M%(i)s -cI* W%(i)s)' % dict(mydict, p2=p2)
+                        if aloha.t_channel_width:
+                            out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(wd)s);\n' % dict(mydict, wd=wd))
+                        else:
+                            # spacelike (t-channel) propagator: no pole to regulate,
+                            # so drop the width unless in the complex-mass scheme.
+                            p2sign = '(%s)%s' % (p2, self.realoperator) if aloha.loop_mode else p2
+                            out.write('    if (%s > 0.){\n' % p2sign)
+                            out.write('       denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(wd)s);\n' % dict(mydict, wd=wd))
+                            out.write('    } else {\n')
+                            out.write('       denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(p2)s - M%(i)s*M%(i)s);\n' % dict(mydict, p2=p2))
+                            out.write('    }\n')
                 else:
                     if self.routine.denominator:
                         raise Exception('modify denominator are not compatible with complex mass scheme')                
@@ -2583,8 +2611,17 @@ class ALOHAWriterForPython(WriteALOHA):
                         out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
                                 'denom':self.write_obj(self.routine.denominator)}) 
                     else:
-                        out.write('    denom = %(coup)s/(P%(i)s[0]**2-P%(i)s[1]**2-P%(i)s[2]**2-P%(i)s[3]**2 - M%(i)s * (M%(i)s -1j* W%(i)s))\n' % 
-                          {'i': self.outgoing,'coup':coup_name})
+                        p2 = 'P%(i)s[0]**2-P%(i)s[1]**2-P%(i)s[2]**2-P%(i)s[3]**2' % {'i': self.outgoing}
+                        wd = '%(p2)s - M%(i)s * (M%(i)s -1j* W%(i)s)' % {'i': self.outgoing, 'p2': p2}
+                        if aloha.t_channel_width:
+                            out.write('    denom = %(coup)s/(%(wd)s)\n' % {'coup': coup_name, 'wd': wd})
+                        else:
+                            # spacelike (t-channel) propagator: no pole to regulate,
+                            # so drop the width unless in the complex-mass scheme.
+                            out.write('    if (%s).real > 0:\n' % p2)
+                            out.write('        denom = %(coup)s/(%(wd)s)\n' % {'coup': coup_name, 'wd': wd})
+                            out.write('    else:\n')
+                            out.write('        denom = %(coup)s/(%(p2)s - M%(i)s**2)\n' % {'i': self.outgoing, 'coup': coup_name, 'p2': p2})
                 else:
                     if self.routine.denominator:
                         raise Exception('modify denominator are not compatible with complex mass scheme')                

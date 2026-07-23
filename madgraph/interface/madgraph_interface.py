@@ -9196,19 +9196,25 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         
     def help_set2_zerowidth_tchannel(self):
         logger.info("zerowidth_tchannel <value>",'$MG:color:GREEN')
-        logger.info(" > (default: True) [Used ONLY for tree-level output with madevent]")
-        logger.info(" > set the width to zero for all T-channel propagator --no impact on complex-mass scheme mode")
+        logger.info(" > (default: True) [generation/output-time option for tree-level output]")
+        logger.info(" > drop the width in the propagator denominator for spacelike (t-channel,")
+        logger.info(" > P^2<0) momenta. Done inside the ALOHA routine (runtime sign of P^2), so it")
+        logger.info(" > applies to every tree-level output. No impact in complex-mass-scheme mode.")
         
 
 
     def set2_zerowidth_tchannel(self, args, log=True):
         """Set whether the code should use zero-width for t-channel propagators.
         Default is set to True. (since v2.8.0)
-        Example: set zerowidth_tchannel False 
-        """ 
+        The treatment is now performed inside the ALOHA propagator routine (it
+        drops the width for spacelike, P^2<0, momenta); this flag is therefore an
+        output-time (code-generation) option and propagates to aloha here.
+        Example: set zerowidth_tchannel False
+        """
         args = ['zerowidth_tchannel'] + args
         self.check_set(args)
-        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
+        aloha.t_channel_width = not self.options[args[0]]
 
     def set2_store_rwgt_info(self,args, log=True):
         """Set whether the code should generate systematics information in the output LHE file at NLO
@@ -9867,22 +9873,29 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         """Export a generated amplitude to file."""
 
 
+        # T-channel width treatment is now baked into ALOHA (the propagator
+        # routine drops the width i*M*Gamma for spacelike, P^2<0, momenta -- the
+        # correct tree-level treatment outside the complex-mass scheme). Propagate
+        # the zerowidth_tchannel option to the aloha flag it now controls, so the
+        # generated propagator routines carry the runtime sign check. A 1->N decay
+        # has no t-channel, so keep every width there (as the legacy code did).
+        zerowidth_tchannel = self.options['zerowidth_tchannel']
+        if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
+            zerowidth_tchannel = False
+        aloha.t_channel_width = not zerowidth_tchannel
+
         # Define the helas call  writer
         if hasattr(self._curr_exporter, 'helas_exporter') and self._curr_exporter.helas_exporter:
             self._curr_helas_model = self._curr_exporter.helas_exporter(self._curr_model, options=self.options)
-        elif self._curr_exporter.exporter == 'cpp':       
+        elif self._curr_exporter.exporter == 'cpp':
             self._curr_helas_model = helas_call_writers.CPPUFOHelasCallWriter(self._curr_model)
-        elif self._curr_exporter.exporter == 'gpu':       
+        elif self._curr_exporter.exporter == 'gpu':
             self._curr_helas_model = helas_call_writers.GPUFOHelasCallWriter(self._curr_model)
         elif self._curr_exporter.exporter == 'v4':
             if self._model_v4_path:
                 self._curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
             else:
-                options = {'zerowidth_tchannel': self.options['zerowidth_tchannel']}
-                if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
-                    options['zerowidth_tchannel'] = False
-                self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model,
-                                                                                      options=options)
+                self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
         else:
             raise Exception('unable to associate an helas format')
 
