@@ -2108,6 +2108,73 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         return "\n".join(helicity_line_list)
 
+    @staticmethod
+    def _fortran_data_stmt(name, values, per_line=10):
+        """Emit a fixed-form 'DATA name /v1,v2,.../' statement with
+        continuation lines (column-6 '&') so long value lists stay within the
+        Fortran line-length limit. name may contain an implied-DO, e.g.
+        '(STATES(I,1),I=1,3)'."""
+        strs = ["%d" % v for v in values]
+        if len(strs) <= per_line:
+            return "      DATA %s /%s/" % (name, ",".join(strs))
+        lines = ["      DATA %s /" % name]
+        for i in range(0, len(strs), per_line):
+            seg = strs[i:i + per_line]
+            tail = "," if i + per_line < len(strs) else "/"
+            lines.append("     & %s%s" % (",".join(seg), tail))
+        return "\n".join(lines)
+
+    def _helstate_data(self, matrix_element):
+        """Return the Fortran DATA blocks for the canonical helicity
+        encoder/decoder that replaces the explicit NHEL config table.
+
+        A helicity configuration is encoded as a single mixed-radix integer
+        (the 'canonical code') over the per-leg helicity states, with the last
+        external leg as the least-significant digit -- matching the
+        itertools.product ordering used by get_helicity_matrix(). For a
+        non-polarized process this makes the code of the i-th row exactly i, so
+        HELALLOW is simply [1..NCOMB] and nothing is relabelled; a polarization
+        restriction ({0}/{L}/...) keeps the *full* per-leg multiplicity as the
+        radix (so helicity 0 / longitudinal stays a first-class state) and
+        leaves HELALLOW as the selected, non-contiguous subset of codes.
+
+        Returns a dict with keys:
+          maxhel          - max per-leg helicity multiplicity (STATES 1st dim)
+          nhstate_data    - DATA for NHSTATE(NEXTERNAL)   (states per leg)
+          states_data     - DATA for STATES(MAXHEL,NEXTERNAL) (helicity values)
+          hel_allow_data  - DATA for HELALLOW(NCOMB)      (allowed codes)
+        """
+        model = matrix_element.get('processes')[0].get('model')
+        pdict = model.get('particle_dict')
+        ext = matrix_element.get_external_wavefunctions()
+        # Full per-leg helicity states, allow_reverse=True so the value order
+        # matches get_helicity_matrix() for non-polarized legs (code==row).
+        states = [pdict[wf.get('pdg_code')].get_helicity_states(True)
+                  for wf in ext]
+        nstate = [len(s) for s in states]
+        nexternal = len(ext)
+        maxhel = max(nstate) if nstate else 1
+
+        # Allowed canonical codes: encode each enumerated helicity row.
+        allowed = []
+        for row in matrix_element.get_helicity_matrix():
+            code = 0
+            for k, val in enumerate(row):
+                code = code * nstate[k] + states[k].index(val)
+            allowed.append(code + 1)
+
+        states_lines = []
+        for k in range(nexternal):
+            vals = [states[k][i] if i < nstate[k] else 0
+                    for i in range(maxhel)]
+            states_lines.append(self._fortran_data_stmt(
+                '(STATES(I,%d),I=1,%d)' % (k + 1, maxhel), vals))
+
+        return {'maxhel': maxhel,
+                'nhstate_data': self._fortran_data_stmt('NHSTATE', nstate),
+                'states_data': "\n".join(states_lines),
+                'hel_allow_data': self._fortran_data_stmt('HELALLOW', allowed)}
+
     def get_ic_line(self, matrix_element):
         """Return the IC definition line coming after helicities, required by
         switchmom in madevent"""
@@ -4745,11 +4812,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         end 
 """
         nhel_template = """subroutine %(f2py_prefix)sf77_%(prefix)sget_nhel_entry(NHEL)
-        integer %(prefix)snhel(%(next)s,%(ncombs)s), NHEL(%(next)s,%(ncombs)s)
-        common/%(prefix)sPROCESS_NHEL/%(prefix)sNHEL
-        NHEL(:,:) = %(prefix)snhel(:,:)
+        integer NHEL(%(next)s,%(ncombs)s)
+        integer idendummy
+C       Fill NHEL through GET_NHEL rather than reading the PROCESS_NHEL common
+C       directly. With the canonical helicity encoder/decoder the table is
+C       materialized at runtime (GET_NHEL calls FILL_NHEL), so an early caller
+C       -- e.g. reweighting building its per-config helicity map at init, before
+C       any matrix-element evaluation -- would otherwise read a table of zeros.
+C       Every standalone matrix.f defines GET_NHEL (materializing or DATA-backed),
+C       so this also stays correct for split-order processes.
+        call %(prefix)sget_nhel(idendummy, NHEL)
         return
-        end 
+        end
 """
 
         f2py_prefix = ''
@@ -5315,9 +5389,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         ncomb = matrix_element.get_helicity_combinations()
         replace_dict['ncomb'] = ncomb
 
-        # Extract helicity lines
+        # Extract helicity lines. helicity_lines (the explicit NHEL config DATA
+        # table) is still consumed by the msP/msF/splitOrders standalone
+        # templates; matrix_standalone_v4.inc instead uses the canonical
+        # encoder/decoder tables below (NHSTATE/STATES/HELALLOW) and
+        # materializes PROCESS_NHEL at runtime via FILL_NHEL.
         helicity_lines = self.get_helicity_lines(matrix_element)
         replace_dict['helicity_lines'] = helicity_lines
+        hel_data = self._helstate_data(matrix_element)
+        replace_dict['maxhel'] = hel_data['maxhel']
+        replace_dict['nhstate_data'] = hel_data['nhstate_data']
+        replace_dict['states_data'] = hel_data['states_data']
+        replace_dict['hel_allow_data'] = hel_data['hel_allow_data']
 
         # Extract overall denominator
         # Averaging initial state color, spin, and identical FS particles

@@ -104,7 +104,10 @@ C
       common/%(proc_prefix)shelreset/HELRESET
       data HELRESET/.true./
 
-%(helicity_lines)s
+C     Allowed canonical helicity codes (mixed-radix over the per-leg states).
+C     The explicit NHEL config table is materialized at runtime by FILL_NHEL.
+      INTEGER HELALLOW(NCOMB)
+%(hel_allow_data)s
 %(den_factor_line)s
 
       INTEGER POLARIZATIONS(0:NEXTERNAL,0:5)
@@ -147,6 +150,7 @@ C     zero. Short-circuit before touching the 1..NFLAV GOODHEL/NTRY arrays.
 C     The helicity filter is deliberately shared by every crossing of a given
 C     flavor, so it is indexed by FLAV_USE rather than by the full FLAV_IDX.
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_USE, FLAVOR)
+      CALL %(proc_prefix)sFILL_NHEL()
       IF(USERHEL.EQ.-1) NTRY(FLAV_USE)=NTRY(FLAV_USE)+1
       DO IHEL=1,NEXTERNAL
          JC(IHEL) = +1
@@ -167,7 +171,7 @@ C     For this reason, we simply remove the filterin when there is only three ex
       ENDIF
       ANS = 0D0
           DO IHEL=1,NCOMB
-             IF (USERHEL.EQ.-1.OR.USERHEL.EQ.IHEL) THEN
+             IF (USERHEL.EQ.-1.OR.USERHEL.EQ.HELALLOW(IHEL)) THEN
 %(smatrix_goodhel_gate)s
                     IF(NTRY(FLAV_USE).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
@@ -277,11 +281,12 @@ CF2PY INTENT(OUT) :: IDEN_STAR
       INTEGER                 NCOMB
       PARAMETER (             NCOMB=%(ncomb)d)
 
-      INTEGER NHEL(NEXTERNAL,NCOMB),NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
       INTEGER IDEN,IDEN_STAR
-
-%(helicity_lines)s
 %(den_factor_line)s
+      CALL %(proc_prefix)sFILL_NHEL()
       IDEN_STAR = IDEN
       NHEL_STAR = NHEL
       END
@@ -656,6 +661,7 @@ C     part of the normalisation (RESCALE=0 = impossible crossing).
       IF (RESCALE.EQ.0D0) THEN
         return
       ENDIF
+      CALL %(proc_prefix)sFILL_NHEL()
 %(density_cross_apply)s
       DO IHEL =1, NB_NHEL
         THISNHEL(:) = NHELUSE(:, IHEL)
@@ -1030,6 +1036,86 @@ C     ----------
         ENDIF
       ENDDO
 
+      RETURN
+      END
+
+
+      SUBROUTINE %(proc_prefix)sDECODE_HEL(CODE, THISNHEL)
+C     Decode a canonical mixed-radix helicity CODE (1..NCOMBFULL) into the
+C     per-leg helicity values THISNHEL(NEXTERNAL). The last external leg is the
+C     least-significant digit, matching the itertools.product ordering used to
+C     build the allowed-code list HELALLOW.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER CODE, THISNHEL(NEXTERNAL)
+      INTEGER I, K, R, D
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(nhstate_data)s
+%(states_data)s
+      R = CODE - 1
+      DO K=NEXTERNAL,1,-1
+        D = MOD(R, NHSTATE(K))
+        THISNHEL(K) = STATES(D+1, K)
+        R = R / NHSTATE(K)
+      ENDDO
+      RETURN
+      END
+
+      SUBROUTINE %(proc_prefix)sENCODE_HEL(THISNHEL, CODE)
+C     Inverse of DECODE_HEL: encode per-leg helicity values THISNHEL into the
+C     canonical mixed-radix code (used by the crossing-aware routines).
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER THISNHEL(NEXTERNAL), CODE
+      INTEGER I, K, D
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(nhstate_data)s
+%(states_data)s
+      CODE = 0
+      DO K=1,NEXTERNAL
+        DO D=1,NHSTATE(K)
+          IF (STATES(D,K).EQ.THISNHEL(K)) GOTO 5
+        ENDDO
+        D = 1
+ 5      CONTINUE
+        CODE = CODE*NHSTATE(K) + (D-1)
+      ENDDO
+      CODE = CODE + 1
+      RETURN
+      END
+
+      SUBROUTINE %(proc_prefix)sFILL_NHEL()
+C     Materialize the PROCESS_NHEL config table by decoding the list of allowed
+C     canonical helicity codes (HELALLOW). Runs once; the table is a runtime
+C     cache of the encoder/decoder representation, kept for the density-matrix
+C     and python (f2py) interfaces.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      INTEGER HELALLOW(NCOMB)
+      INTEGER I, K, THIS(NEXTERNAL)
+      LOGICAL DONE
+      SAVE DONE
+%(hel_allow_data)s
+      DATA DONE /.FALSE./
+      IF (DONE) RETURN
+      DO I=1,NCOMB
+        CALL %(proc_prefix)sDECODE_HEL(HELALLOW(I), THIS)
+        DO K=1,NEXTERNAL
+          NHEL(K,I) = THIS(K)
+        ENDDO
+      ENDDO
+      DONE = .TRUE.
       RETURN
       END
 
