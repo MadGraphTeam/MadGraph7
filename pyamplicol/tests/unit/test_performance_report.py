@@ -1302,6 +1302,10 @@ def test_audit_record_exposes_lane_local_out_of_reach() -> None:
     text = report._audit_cell_text(audit)
     assert "all_flows_fixed_helicity=out_of_reach" in text
     assert "selected:lc_lane_status:not_available" in text
+    summary = report._audit_summary_text([audit])
+    assert "reason_buckets: lane_missing=1" in summary
+    assert "lc_lanes: all_flows_fixed_helicity:out_of_reach=1" in summary
+    assert "z-builtin-sm-n8-eager-jit-o3" in summary
 
 
 def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:

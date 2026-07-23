@@ -4697,6 +4697,119 @@ def _audit_cell_text(record: Mapping[str, object]) -> str:
     return " | ".join(parts)
 
 
+def _audit_cell_label(record: Mapping[str, object]) -> str:
+    raw_cell = record.get("cell")
+    if not isinstance(raw_cell, Mapping):
+        return "unknown-cell"
+    cell_id = str(raw_cell.get("cell_id") or "unknown-cell")
+    dataset = str(raw_cell.get("dataset_id") or "unknown-dataset")
+    n_final = raw_cell.get("n_final")
+    variant = raw_cell.get("variant")
+    process_key = raw_cell.get("process_key")
+    detail = variant if variant is not None else process_key
+    suffix = f" {detail}" if detail is not None else ""
+    return f"{cell_id} [{dataset} n={n_final}{suffix}]"
+
+
+def _audit_reason_bucket(record: Mapping[str, object]) -> str:
+    reasons_value = record.get("reasons")
+    reasons = (
+        [str(reason) for reason in reasons_value]
+        if isinstance(reasons_value, Sequence)
+        and not isinstance(reasons_value, (str, bytes))
+        else []
+    )
+    if any("lc_lane_status:timeout" in reason for reason in reasons):
+        return "lane_timeout"
+    if any("measurement_status:timeout" in reason for reason in reasons) or any(
+        "entry_status:timeout" in reason for reason in reasons
+    ):
+        return "timeout"
+    if any("entry_status:error" in reason for reason in reasons):
+        return "entry_error"
+    if any("lc_lane_status:out_of_reach" in reason for reason in reasons):
+        return "lane_out_of_reach"
+    if any("lc_lane_status:not_available" in reason for reason in reasons):
+        return "lane_missing"
+    if any("entry_status:not_available" in reason for reason in reasons) or any(
+        "measurement_status:not_available" in reason for reason in reasons
+    ):
+        return "missing"
+    if any(
+        marker in reason
+        for reason in reasons
+        for marker in ("stale", "refresh_required", "not_complete_lc_coverage")
+    ):
+        return "stale_or_contract_refresh"
+    if record.get("needs_measurement") is True:
+        return "needs_review"
+    return "current"
+
+
+def _audit_summary_text(records: Sequence[Mapping[str, object]]) -> str:
+    needs_count = sum(
+        1 for record in records if record.get("needs_measurement") is True
+    )
+    by_dataset = Counter()
+    by_status = Counter()
+    by_bucket = Counter()
+    by_lane = Counter()
+    bucket_records: dict[str, list[Mapping[str, object]]] = {}
+    for record in records:
+        raw_cell = record.get("cell")
+        dataset = (
+            raw_cell.get("dataset_id") if isinstance(raw_cell, Mapping) else "unknown"
+        )
+        by_dataset[str(dataset)] += 1
+        by_status[str(record.get("entry_status", NA_STATUS))] += 1
+        bucket = _audit_reason_bucket(record)
+        by_bucket[bucket] += 1
+        bucket_records.setdefault(bucket, []).append(record)
+        lanes = record.get("lc_lanes")
+        if isinstance(lanes, Mapping):
+            for lane_name, lane in lanes.items():
+                if isinstance(lane, Mapping):
+                    by_lane[f"{lane_name}:{lane.get('status', NA_STATUS)}"] += 1
+
+    lines = [
+        f"audit summary cells={len(records)} needs_measurement={needs_count}",
+        "datasets: "
+        + ", ".join(
+            f"{dataset}={count}" for dataset, count in sorted(by_dataset.items())
+        ),
+        "entry_statuses: "
+        + ", ".join(
+            f"{status}={count}" for status, count in sorted(by_status.items())
+        ),
+        "reason_buckets: "
+        + ", ".join(
+            f"{bucket}={count}" for bucket, count in sorted(by_bucket.items())
+        ),
+    ]
+    if by_lane:
+        lines.append(
+            "lc_lanes: "
+            + ", ".join(
+                f"{lane}={count}" for lane, count in sorted(by_lane.items())
+            )
+        )
+    for bucket in sorted(bucket_records):
+        records_for_bucket = bucket_records[bucket]
+        lines.append(f"{bucket} ({len(records_for_bucket)}):")
+        for record in records_for_bucket:
+            reasons = record.get("reasons")
+            reason_text = ""
+            if isinstance(reasons, Sequence) and not isinstance(
+                reasons,
+                (str, bytes),
+            ):
+                reason_text = "; ".join(str(reason) for reason in reasons[:3])
+                if len(reasons) > 3:
+                    reason_text += "; ..."
+            lines.append(f"  - {_audit_cell_label(record)} :: {reason_text}")
+    return "\n".join(lines)
+
+
 def _eager_reference_measurement(
     cell: CampaignCell,
     caches: Mapping[str, Mapping[str, object]],
@@ -13174,9 +13287,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     audit.add_argument(
         "--format",
-        choices=("text", "json"),
+        choices=("text", "json", "summary"),
         default="text",
-        help="Output a compact text report or one JSON record per selected cell.",
+        help=(
+            "Output detailed text, one JSON record per selected cell, or a "
+            "grouped summary."
+        ),
     )
     audit.add_argument(
         "--missing-only",
@@ -13422,6 +13538,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.format == "json":
             for record in records:
                 print(json.dumps(record, sort_keys=True))
+        elif args.format == "summary":
+            print(_audit_summary_text(records))
         else:
             needs_count = sum(
                 1 for record in records if record.get("needs_measurement") is True
