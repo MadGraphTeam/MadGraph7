@@ -1295,7 +1295,13 @@ def test_audit_record_exposes_lane_local_out_of_reach() -> None:
     assert isinstance(all_flow_lane, Mapping)
     assert selected_lane["status"] == report.NA_STATUS
     assert all_flow_lane["status"] == report.ResultStatus.OUT_OF_REACH.value
-    assert "all_flows_fixed_helicity=out_of_reach" in report._audit_cell_text(audit)
+    reasons = audit["reasons"]
+    assert isinstance(reasons, list)
+    assert "selected:lc_lane_status:not_available" in reasons
+    assert "union:lc_lane_status:out_of_reach" not in reasons
+    text = report._audit_cell_text(audit)
+    assert "all_flows_fixed_helicity=out_of_reach" in text
+    assert "selected:lc_lane_status:not_available" in text
 
 
 def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
@@ -1339,6 +1345,10 @@ def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
 def test_ten_minute_generation_cap_records_out_of_reach() -> None:
     exc = report.ReportGenerationTimeout("generation exceeded 600 seconds")
 
+    assert (
+        report.DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS
+        == report.OUT_OF_REACH_GENERATION_CAP_SECONDS
+    )
     assert (
         report._generation_timeout_status(
             report.OUT_OF_REACH_GENERATION_CAP_SECONDS,

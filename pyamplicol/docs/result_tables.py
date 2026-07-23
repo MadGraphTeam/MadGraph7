@@ -58,7 +58,7 @@ REPORT_TEX_INPUTS = (
 )
 DEFAULT_LIMIT_GIB = 800.0
 DEFAULT_GENERATION_TIMEOUT_SECONDS = 3600.0
-DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS = 86400.0
+DEFAULT_JIT_O3_GENERATION_TIMEOUT_SECONDS = 600.0
 DEFAULT_REFERENCE_TIMEOUT_SECONDS = 0.0
 DEFAULT_WORKERS = 50
 DEFAULT_PARALLEL_CELL_CORES = 1
@@ -4611,6 +4611,7 @@ def _audit_cell_record(
         "cell": cell.as_json(),
         "needs_measurement": _campaign_cell_needs_measurement(cell, caches),
         "entry_status": NA_STATUS,
+        "reasons": _campaign_cell_measurement_reasons(cell, caches),
     }
     if not isinstance(entry, Mapping):
         record["entry_status"] = "missing_entry"
@@ -4666,6 +4667,11 @@ def _audit_cell_text(record: Mapping[str, object]) -> str:
         f"needs={str(record.get('needs_measurement')).lower()}",
         f"entry={record.get('entry_status', NA_STATUS)}",
     ]
+    reasons = record.get("reasons")
+    if isinstance(reasons, Sequence) and not isinstance(reasons, (str, bytes)):
+        visible_reasons = [str(reason) for reason in reasons]
+        if visible_reasons:
+            parts.append("reasons[" + ", ".join(visible_reasons) + "]")
     for label in (
         "legacy_amplicol",
         "pyamplicol_jit_o3",
@@ -5157,6 +5163,65 @@ def _lc_nested_measurement_current(
     return effective_mode in {None, "compiled"}
 
 
+def _lc_nested_measurement_reasons(
+    cell: CampaignCell,
+    measurement: object,
+    *,
+    expected_layout: str,
+    execution_mode: str,
+) -> list[str]:
+    if not isinstance(measurement, Mapping):
+        return ["missing_lc_lane_measurement"]
+    reasons: list[str] = []
+    status = _measurement_status(measurement)
+    if status != ResultStatus.OK.value:
+        return [f"lc_lane_status:{status}"]
+    if not _pyamplicol_timing_profile_current(measurement):
+        reasons.append("timing_profile_stale")
+    if _measurement_requires_runtime_refresh(
+        cell,
+        measurement,
+        execution_mode=execution_mode,
+    ):
+        reasons.append("runtime_refresh_required")
+    if not _pyamplicol_generation_profile_current(measurement):
+        reasons.append("generation_profile_stale")
+    if not _pyamplicol_measurement_source_fences_current(cell, measurement):
+        reasons.append("source_fence_stale")
+    if not _lc_flow_layout_source_current(
+        measurement,
+        expected_layout=expected_layout,
+    ):
+        reasons.append("lc_layout_source_stale")
+    if not _lc_measurement_has_complete_coverage(
+        measurement,
+        expected_layout=expected_layout,
+        execution_mode=execution_mode,
+    ):
+        reasons.append("not_complete_lc_coverage")
+    if not _pyamplicol_artifacts_current(
+        measurement,
+        require_current_compiled_model_contract=(
+            execution_mode == "eager" or _cell_uses_external_model(cell)
+        ),
+    ):
+        reasons.append("artifact_stale_or_missing")
+    actual_layout = _measurement_lc_flow_layout(measurement)
+    if actual_layout != expected_layout:
+        reasons.append(f"lc_layout_mismatch:{actual_layout}")
+    effective = measurement.get("effective_config")
+    evaluator = effective.get("evaluator") if isinstance(effective, Mapping) else None
+    effective_mode = (
+        evaluator.get("execution_mode") if isinstance(evaluator, Mapping) else None
+    )
+    if execution_mode == "eager":
+        if effective_mode != "eager":
+            reasons.append(f"execution_mode_mismatch:{effective_mode}")
+    elif effective_mode not in {None, "compiled"}:
+        reasons.append(f"execution_mode_mismatch:{effective_mode}")
+    return reasons
+
+
 def _lc_combined_measurement_current(
     cell: CampaignCell,
     measurement: Mapping[str, object],
@@ -5221,6 +5286,93 @@ def _lc_combined_measurement_current(
     return first_contract.get("reference_digest") == current_reference_digest
 
 
+def _lc_combined_measurement_reasons(
+    cell: CampaignCell,
+    measurement: object,
+    *,
+    execution_mode: str,
+    reference_measurement: Mapping[str, object] | None = None,
+) -> list[str]:
+    if not isinstance(measurement, Mapping):
+        return ["missing_lc_measurement"]
+    metadata = measurement.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return ["missing_lc_lane_metadata"]
+    selected = metadata.get("selected_flow_measurement")
+    all_flow = metadata.get("all_flow_measurement")
+    selected_current = _lc_nested_measurement_current(
+        cell,
+        selected,
+        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        execution_mode=execution_mode,
+    )
+    selected_terminal = _lc_lane_terminal_current(
+        selected,
+        expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+        role="selected-flow-helicity-sum",
+    )
+    all_flow_current = _lc_nested_measurement_current(
+        cell,
+        all_flow,
+        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+        execution_mode=execution_mode,
+    )
+    all_flow_terminal = _lc_lane_terminal_current(
+        all_flow,
+        expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+        role="all-flows-fixed-helicity",
+    )
+    reasons: list[str] = []
+    if not (selected_current or selected_terminal):
+        reasons.extend(
+            "selected:" + reason
+            for reason in _lc_nested_measurement_reasons(
+                cell,
+                selected,
+                expected_layout=LC_TOPOLOGY_REPLAY_LAYOUT,
+                execution_mode=execution_mode,
+            )
+        )
+    if not (all_flow_current or all_flow_terminal):
+        reasons.extend(
+            "union:" + reason
+            for reason in _lc_nested_measurement_reasons(
+                cell,
+                all_flow,
+                expected_layout=LC_ALL_FLOW_UNION_LAYOUT,
+                execution_mode=execution_mode,
+            )
+        )
+    if reasons:
+        return reasons
+    selected_contract = _cached_lc_selector_contract(selected)
+    all_flow_contract = _cached_lc_selector_contract(all_flow)
+    combined_contract = _cached_lc_selector_contract(measurement)
+    current_contracts = [
+        contract
+        for current, contract in (
+            (selected_current, selected_contract),
+            (all_flow_current, all_flow_contract),
+        )
+        if current
+    ]
+    if not current_contracts:
+        return [] if selected_terminal and all_flow_terminal else ["no_current_lc_lane"]
+    first_contract = current_contracts[0]
+    if first_contract is None:
+        return ["selector_contract_missing"]
+    if any(contract != first_contract for contract in current_contracts):
+        return ["selector_contract_mismatch_between_lanes"]
+    if combined_contract is not None and combined_contract != first_contract:
+        return ["combined_selector_contract_stale"]
+    if reference_measurement is None:
+        return ["reference_measurement_missing"]
+    current_reference_digest = _eager_reference_digest(cell, reference_measurement)
+    if first_contract.get("reference_digest") != current_reference_digest:
+        return ["reference_digest_stale"]
+    return []
+
+
 def _eager_measurement_current(
     measurement: Mapping[str, object],
     *,
@@ -5252,6 +5404,327 @@ def _eager_measurement_current(
     effective = measurement.get("effective_config")
     evaluator = effective.get("evaluator") if isinstance(effective, Mapping) else None
     return isinstance(evaluator, Mapping) and evaluator.get("execution_mode") == "eager"
+
+
+def _standard_pyamplicol_measurement_reasons(
+    cell: CampaignCell,
+    measurement: object,
+    *,
+    require_current_compiled_model_contract: bool,
+) -> list[str]:
+    if not isinstance(measurement, Mapping):
+        return ["missing_pyamplicol_measurement"]
+    reasons: list[str] = []
+    status = _measurement_status(measurement)
+    if status != ResultStatus.OK.value:
+        reasons.append(f"pyamplicol_status:{status}")
+    if not _pyamplicol_timing_profile_current(measurement):
+        reasons.append("timing_profile_stale")
+    if not _pyamplicol_generation_profile_current(measurement):
+        reasons.append("generation_profile_stale")
+    if not _pyamplicol_measurement_source_fences_current(cell, measurement):
+        reasons.append("source_fence_stale")
+    if not _pyamplicol_artifacts_current(
+        measurement,
+        require_current_compiled_model_contract=require_current_compiled_model_contract,
+    ):
+        reasons.append("artifact_stale_or_missing")
+    return reasons
+
+
+def _eager_measurement_reasons(
+    cell: CampaignCell,
+    measurement: object,
+    *,
+    reference_measurement: Mapping[str, object] | None = None,
+) -> list[str]:
+    if not isinstance(measurement, Mapping):
+        return ["missing_eager_measurement"]
+    metadata = measurement.get("metadata")
+    if isinstance(metadata, Mapping) and "selected_flow_measurement" in metadata:
+        return _lc_combined_measurement_reasons(
+            cell,
+            measurement,
+            execution_mode="eager",
+            reference_measurement=reference_measurement,
+        )
+    reasons = _standard_pyamplicol_measurement_reasons(
+        cell,
+        measurement,
+        require_current_compiled_model_contract=True,
+    )
+    effective = measurement.get("effective_config")
+    evaluator = effective.get("evaluator") if isinstance(effective, Mapping) else None
+    if not (
+        isinstance(evaluator, Mapping)
+        and evaluator.get("execution_mode") == "eager"
+    ):
+        reasons.append("execution_mode_mismatch")
+    return reasons
+
+
+def _legacy_measurement_reasons(
+    measurement: object,
+    *,
+    require_profile: bool = True,
+    require_lc_contract: bool = False,
+) -> list[str]:
+    if not isinstance(measurement, Mapping):
+        return ["missing_legacy_measurement"]
+    reasons: list[str] = []
+    status = _measurement_status(measurement)
+    if status != ResultStatus.OK.value:
+        reasons.append(f"legacy_status:{status}")
+    if not _legacy_measurement_revision_current(measurement):
+        reasons.append("legacy_revision_stale")
+    if require_profile and not _legacy_measurement_profile_current(measurement):
+        reasons.append("legacy_profile_stale")
+    if require_lc_contract and not _legacy_lc_measurement_contract_current(
+        measurement
+    ):
+        reasons.append("legacy_lc_contract_stale")
+    return reasons
+
+
+def _campaign_cell_measurement_reasons(
+    cell: CampaignCell,
+    caches: Mapping[str, Mapping[str, object]],
+) -> list[str]:
+    payload = caches.get(cell.cache_name)
+    if payload is None:
+        return ["cache_payload_missing"]
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return ["cache_entries_missing"]
+    entry = _cache_entry_for_cell(cell, caches)
+    if entry is None:
+        return ["cache_entry_missing"]
+    if not bool(entry.get("applicable", False)) and cell.kind in {
+        "matrix",
+        "eager_matrix",
+    }:
+        return []
+    status = str(entry.get("status", NA_STATUS))
+    if cell.kind == "eager_matrix":
+        measurement = entry.get("eager_jit_o3")
+        if _campaign_status_is_terminal(
+            status
+        ) and not _lc_measurement_has_explicit_lanes(measurement):
+            return []
+        if status != ResultStatus.OK.value:
+            return [f"entry_status:{status}"]
+        selector_contract = entry.get("selector_contract")
+        reference = _eager_reference_measurement(cell, caches)
+        reasons: list[str] = []
+        if not isinstance(selector_contract, Mapping):
+            reasons.append("selector_contract_missing")
+        elif selector_contract.get("status") != ResultStatus.OK.value:
+            reasons.append(f"selector_contract_status:{selector_contract.get('status')}")
+        if not (isinstance(reference, Mapping) and _measurement_ok(reference)):
+            reasons.append("compiled_reference_missing_or_not_ok")
+        reasons.extend(
+            _eager_measurement_reasons(
+                cell,
+                measurement,
+                reference_measurement=(
+                    reference if isinstance(reference, Mapping) else None
+                ),
+            )
+        )
+        if (
+            isinstance(selector_contract, Mapping)
+            and isinstance(reference, Mapping)
+            and selector_contract.get("reference_digest")
+            != _eager_reference_digest(cell, reference)
+        ):
+            reasons.append("selector_reference_digest_stale")
+        return sorted(set(reasons))
+    if cell.kind == "matrix":
+        pyamplicol = entry.get("pyamplicol_jit_o3")
+        if _campaign_status_is_terminal(
+            status
+        ) and not _lc_measurement_has_explicit_lanes(pyamplicol):
+            return []
+        if status == NA_STATUS:
+            return ["entry_status:not_available"]
+        if (
+            status == ResultStatus.UNSUPPORTED.value
+            and _matrix_reference_unavailable_by_design(entry)
+        ):
+            return []
+        if status in {
+            ResultStatus.ERROR.value,
+            ResultStatus.FAILED.value,
+            ResultStatus.MEMORY_LIMIT.value,
+            ResultStatus.TIMEOUT.value,
+            ResultStatus.UNSUPPORTED.value,
+            ResultStatus.VALIDATION_FAILED.value,
+        }:
+            return [f"entry_status:{status}"]
+        legacy = entry.get("legacy_amplicol")
+        if cell.dataset_id.endswith("_lc"):
+            reasons = []
+            reasons.extend(
+                "legacy:" + reason
+                for reason in _legacy_measurement_reasons(
+                    legacy,
+                    require_profile=True,
+                    require_lc_contract=True,
+                )
+            )
+            reasons.extend(
+                _lc_combined_measurement_reasons(
+                    cell,
+                    pyamplicol,
+                    execution_mode="compiled",
+                    reference_measurement=(
+                        legacy if isinstance(legacy, Mapping) else None
+                    ),
+                )
+            )
+            return sorted(set(reasons))
+        reasons = []
+        if isinstance(legacy, Mapping) and _measurement_ok(legacy):
+            reasons.extend(
+                "legacy:" + reason
+                for reason in _legacy_measurement_reasons(
+                    legacy,
+                    require_profile=True,
+                )
+            )
+        reasons.extend(
+            _standard_pyamplicol_measurement_reasons(
+                cell,
+                pyamplicol,
+                require_current_compiled_model_contract=_cell_uses_external_model(cell),
+            )
+        )
+        return sorted(set(reasons))
+    if cell.kind == "performance_ladder":
+        measurement = entry.get("measurement")
+        if not isinstance(measurement, Mapping):
+            return ["missing_measurement"]
+        measurement_status = str(measurement.get("status", NA_STATUS))
+        if _campaign_status_is_terminal(
+            measurement_status
+        ) and not _lc_measurement_has_explicit_lanes(measurement):
+            return []
+        if _lc_measurement_has_explicit_lanes(measurement):
+            if cell.variant == "eager_jit_o3":
+                compiled = _z_variant_measurement(
+                    payload,
+                    n_final=cell.n_final,
+                    variant="jit_o3",
+                )
+                reasons: list[str] = []
+                if not (isinstance(compiled, Mapping) and _measurement_ok(compiled)):
+                    reasons.append("compiled_reference_missing_or_not_ok")
+                metadata = measurement.get("metadata")
+                if not isinstance(metadata, Mapping):
+                    reasons.append("metadata_missing")
+                elif isinstance(compiled, Mapping) and metadata.get(
+                    "compiled_reference_digest"
+                ) != _eager_reference_digest(cell, compiled):
+                    reasons.append("compiled_reference_digest_stale")
+                reasons.extend(
+                    _eager_measurement_reasons(
+                        cell,
+                        measurement,
+                        reference_measurement=(
+                            compiled if isinstance(compiled, Mapping) else None
+                        ),
+                    )
+                )
+                return sorted(set(reasons))
+            reference = _z_variant_measurement(
+                payload,
+                n_final=cell.n_final,
+                variant="reference",
+            )
+            return _lc_combined_measurement_reasons(
+                cell,
+                measurement,
+                execution_mode="compiled",
+                reference_measurement=(
+                    reference if isinstance(reference, Mapping) else None
+                ),
+            )
+        if measurement_status == NA_STATUS:
+            return ["measurement_status:not_available"]
+        if measurement_status in {
+            ResultStatus.ERROR.value,
+            ResultStatus.FAILED.value,
+            ResultStatus.MEMORY_LIMIT.value,
+            ResultStatus.TIMEOUT.value,
+            ResultStatus.UNSUPPORTED.value,
+            ResultStatus.VALIDATION_FAILED.value,
+        }:
+            return [f"measurement_status:{measurement_status}"]
+        if status == ResultStatus.VALIDATION_FAILED.value:
+            return ["entry_status:validation_failed"]
+        if not bool(_measurement_old_matrix_fields(measurement)):
+            return ["old_matrix_fields_missing"]
+        if cell.variant == "reference":
+            return _legacy_measurement_reasons(
+                measurement,
+                require_profile=False,
+                require_lc_contract=True,
+            )
+        if cell.variant == "eager_jit_o3":
+            compiled = _z_variant_measurement(
+                payload,
+                n_final=cell.n_final,
+                variant="jit_o3",
+            )
+            reasons: list[str] = []
+            if not (isinstance(compiled, Mapping) and _measurement_ok(compiled)):
+                reasons.append("compiled_reference_missing_or_not_ok")
+            metadata = measurement.get("metadata")
+            if not isinstance(metadata, Mapping):
+                reasons.append("metadata_missing")
+            elif isinstance(compiled, Mapping) and metadata.get(
+                "compiled_reference_digest"
+            ) != _eager_reference_digest(cell, compiled):
+                reasons.append("compiled_reference_digest_stale")
+            reasons.extend(
+                _eager_measurement_reasons(
+                    cell,
+                    measurement,
+                    reference_measurement=(
+                        compiled if isinstance(compiled, Mapping) else None
+                    ),
+                )
+            )
+            return sorted(set(reasons))
+        return _standard_pyamplicol_measurement_reasons(
+            cell,
+            measurement,
+            require_current_compiled_model_contract=_cell_uses_external_model(cell),
+        )
+    measurement = entry.get("measurement")
+    if not isinstance(measurement, Mapping):
+        return ["missing_measurement"]
+    status = str(measurement.get("status", NA_STATUS))
+    if _campaign_status_is_terminal(status):
+        return []
+    if status == NA_STATUS:
+        return ["measurement_status:not_available"]
+    if status in {
+        ResultStatus.ERROR.value,
+        ResultStatus.FAILED.value,
+        ResultStatus.MEMORY_LIMIT.value,
+        ResultStatus.TIMEOUT.value,
+        ResultStatus.UNSUPPORTED.value,
+        ResultStatus.VALIDATION_FAILED.value,
+    }:
+        return [f"measurement_status:{status}"]
+    if status == ResultStatus.OK.value:
+        return _standard_pyamplicol_measurement_reasons(
+            cell,
+            measurement,
+            require_current_compiled_model_contract=_cell_uses_external_model(cell),
+        )
+    return []
 
 
 def _campaign_cell_needs_measurement(
