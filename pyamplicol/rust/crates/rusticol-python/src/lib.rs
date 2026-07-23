@@ -904,14 +904,39 @@ fn runtime_profile_to_python<'py>(
     let payload = PyDict::new(py);
     payload.set_item("points", point_count)?;
     payload.set_item("wall_time_s", profile.total_s)?;
+    payload.set_item("native_input_pack_time_s", profile.native_input_pack_s)?;
+    payload.set_item(
+        "native_input_crossing_time_s",
+        profile.native_input_crossing_s,
+    )?;
+    payload.set_item("orchestration_time_s", profile.orchestration_s)?;
+    payload.set_item("state_prepare_time_s", profile.state_prepare_s)?;
+    payload.set_item("state_clear_time_s", profile.state_clear_s)?;
     payload.set_item("source_fill_time_s", profile.source_fill_s)?;
+    payload.set_item(
+        "momentum_input_setup_time_s",
+        profile.momentum_input_setup_s,
+    )?;
     payload.set_item("momentum_setup_time_s", profile.momentum_setup_s)?;
+    payload.set_item(
+        "model_parameter_setup_time_s",
+        profile.model_parameter_setup_s,
+    )?;
     payload.set_item("stage_input_pack_time_s", profile.stage_input_pack_s)?;
+    payload.set_item(
+        "stage_leaf_input_pack_time_s",
+        profile.stage_leaf_input_pack_s,
+    )?;
     payload.set_item(
         "stage_evaluator_call_time_s",
         profile.stage_evaluator_call_s,
     )?;
     payload.set_item("stage_evaluator_time_s", profile.stage_evaluator_s)?;
+    payload.set_item("stage_backend_call_time_s", profile.stage_backend_call_s)?;
+    payload.set_item(
+        "stage_evaluator_output_gather_time_s",
+        profile.stage_evaluator_output_gather_s,
+    )?;
     payload.set_item("output_assign_time_s", profile.output_assign_s)?;
     payload.set_item(
         "amplitude_input_pack_time_s",
@@ -921,8 +946,33 @@ fn runtime_profile_to_python<'py>(
         "amplitude_evaluator_call_time_s",
         profile.amplitude_evaluator_call_s,
     )?;
+    payload.set_item(
+        "amplitude_leaf_input_pack_time_s",
+        profile.amplitude_leaf_input_pack_s,
+    )?;
+    payload.set_item(
+        "amplitude_backend_call_time_s",
+        profile.amplitude_backend_call_s,
+    )?;
+    payload.set_item(
+        "amplitude_evaluator_output_gather_time_s",
+        profile.amplitude_evaluator_output_gather_s,
+    )?;
+    payload.set_item(
+        "amplitude_output_remap_time_s",
+        profile.amplitude_output_remap_s,
+    )?;
     payload.set_item("amplitude_evaluator_time_s", profile.amplitude_evaluator_s)?;
     payload.set_item("reduction_time_s", profile.reduction_s)?;
+    payload.set_item(
+        "resolved_reduction_materialization_inclusive_time_s",
+        profile.resolved_reduction_materialization_s,
+    )?;
+    payload.set_item(
+        "total_materialization_time_s",
+        profile.total_materialization_s,
+    )?;
+    payload.set_item("final_output_copy_time_s", profile.final_output_copy_s)?;
     payload.set_item(
         "stage_input_pack_by_stage_time_s",
         profile.stage_input_pack_by_stage_s.clone(),
@@ -930,6 +980,18 @@ fn runtime_profile_to_python<'py>(
     payload.set_item(
         "stage_evaluator_call_by_stage_time_s",
         profile.stage_evaluator_call_by_stage_s.clone(),
+    )?;
+    payload.set_item(
+        "stage_leaf_input_pack_by_stage_time_s",
+        profile.stage_leaf_input_pack_by_stage_s.clone(),
+    )?;
+    payload.set_item(
+        "stage_backend_call_by_stage_time_s",
+        profile.stage_backend_call_by_stage_s.clone(),
+    )?;
+    payload.set_item(
+        "stage_evaluator_output_gather_by_stage_time_s",
+        profile.stage_evaluator_output_gather_by_stage_s.clone(),
     )?;
     payload.set_item(
         "stage_output_assign_by_stage_time_s",
@@ -961,6 +1023,99 @@ fn runtime_profile_to_python<'py>(
     )?;
     payload.set_item("selector_simd_lane_width", profile.selector_simd_lane_width)?;
     payload.set_item("selector_simd_occupancy", profile.selector_simd_occupancy)?;
+    payload.set_item(
+        "native_input_component_count",
+        profile.native_input_component_count,
+    )?;
+    payload.set_item("native_input_pack_bytes", profile.native_input_pack_bytes)?;
+    payload.set_item(
+        "native_input_crossing_bytes",
+        profile.native_input_crossing_bytes,
+    )?;
+    payload.set_item(
+        "native_input_container_allocation_count",
+        profile.native_input_container_allocation_count,
+    )?;
+    payload.set_item("state_component_count", profile.state_component_count)?;
+    payload.set_item(
+        "state_clear_component_count",
+        profile.state_clear_component_count,
+    )?;
+    payload.set_item("source_component_count", profile.source_component_count)?;
+    payload.set_item("momentum_component_count", profile.momentum_component_count)?;
+    payload.set_item(
+        "model_parameter_component_count",
+        profile.model_parameter_component_count,
+    )?;
+    payload.set_item(
+        "stage_input_copy_component_count",
+        profile.stage_input_copy_component_count,
+    )?;
+    payload.set_item(
+        "stage_leaf_input_copy_component_count",
+        profile.stage_leaf_input_copy_component_count,
+    )?;
+    payload.set_item(
+        "stage_evaluator_output_gather_component_count",
+        profile.stage_evaluator_output_gather_component_count,
+    )?;
+    payload.set_item(
+        "stage_output_assign_component_count",
+        profile.stage_output_assign_component_count,
+    )?;
+    payload.set_item(
+        "amplitude_input_copy_component_count",
+        profile.amplitude_input_copy_component_count,
+    )?;
+    payload.set_item(
+        "amplitude_leaf_input_copy_component_count",
+        profile.amplitude_leaf_input_copy_component_count,
+    )?;
+    payload.set_item(
+        "amplitude_evaluator_output_gather_component_count",
+        profile.amplitude_evaluator_output_gather_component_count,
+    )?;
+    payload.set_item(
+        "amplitude_output_remap_component_count",
+        profile.amplitude_output_remap_component_count,
+    )?;
+    payload.set_item(
+        "evaluator_backend_call_count",
+        profile.evaluator_backend_call_count,
+    )?;
+    payload.set_item(
+        "reduction_input_component_count",
+        profile.reduction_input_component_count,
+    )?;
+    payload.set_item(
+        "selector_gather_point_count",
+        profile.selector_gather_point_count,
+    )?;
+    payload.set_item("selector_gather_bytes", profile.selector_gather_bytes)?;
+    payload.set_item(
+        "selector_scatter_value_count",
+        profile.selector_scatter_value_count,
+    )?;
+    payload.set_item(
+        "resolved_materialized_component_count",
+        profile.resolved_materialized_component_count,
+    )?;
+    payload.set_item(
+        "total_materialized_value_count",
+        profile.total_materialized_value_count,
+    )?;
+    payload.set_item(
+        "final_output_copy_value_count",
+        profile.final_output_copy_value_count,
+    )?;
+    payload.set_item(
+        "observed_scratch_reallocation_count",
+        profile.observed_scratch_reallocation_count,
+    )?;
+    payload.set_item(
+        "native_output_allocation_count",
+        profile.native_output_allocation_count,
+    )?;
     Ok(payload)
 }
 

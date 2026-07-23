@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 from pyamplicol.api import (
     BenchmarkComponentTiming,
+    BenchmarkProfileCounters,
     BenchmarkResult,
     BenchmarkStageTiming,
     BenchmarkStatistics,
@@ -106,8 +107,25 @@ def _benchmark_result() -> BenchmarkResult:
     evaluator_uncertainty = BenchmarkStatistics(0.1e-6, 0.025e-6, 0.0125)
     component = BenchmarkComponentTiming(0.5e-6, evaluator_uncertainty, 8)
     wall_component = BenchmarkComponentTiming(2.5e-6, wall_uncertainty, 8)
-    evaluator_component = BenchmarkComponentTiming(
-        2.0e-6, evaluator_uncertainty, 8
+    evaluator_component = BenchmarkComponentTiming(2.0e-6, evaluator_uncertainty, 8)
+    counters = BenchmarkProfileCounters(
+        sample_count=8,
+        native_input_components_per_point=20.0,
+        native_input_pack_bytes_per_point=160.0,
+        state_components_per_point=400.0,
+        stage_input_copy_components_per_point=120.0,
+        stage_leaf_input_copy_components_per_point=240.0,
+        stage_evaluator_output_gather_components_per_point=60.0,
+        stage_output_assign_components_per_point=80.0,
+        amplitude_input_copy_components_per_point=40.0,
+        amplitude_leaf_input_copy_components_per_point=42.0,
+        amplitude_evaluator_output_gather_components_per_point=10.0,
+        amplitude_output_remap_components_per_point=8.0,
+        evaluator_backend_calls_per_call=12.0,
+        reduction_input_components_per_point=16.0,
+        total_materialized_values_per_point=1.0,
+        observed_scratch_reallocations_per_call=0.0,
+        native_output_allocations_per_call=1.0,
     )
     breakdown = BenchmarkTimingBreakdown(
         sample_count=8,
@@ -119,9 +137,27 @@ def _benchmark_result() -> BenchmarkResult:
         output_assign_time=component,
         amplitude_input_pack_time=component,
         amplitude_evaluator_call_time=None,
+        stage_leaf_input_pack_time=component,
+        stage_backend_call_time=component,
+        stage_evaluator_output_gather_time=component,
+        amplitude_leaf_input_pack_time=component,
+        amplitude_backend_call_time=component,
+        amplitude_evaluator_output_gather_time=component,
+        amplitude_output_remap_time=component,
         reduction_time=component,
         other_core_time=component,
-        stages=(BenchmarkStageTiming(1, component, component, component),),
+        stages=(
+            BenchmarkStageTiming(
+                1,
+                component,
+                component,
+                component,
+                leaf_input_pack_time=component,
+                backend_call_time=component,
+                evaluator_output_gather_time=component,
+            ),
+        ),
+        counters=counters,
     )
     return BenchmarkResult(
         requested_config=config,
@@ -135,13 +171,15 @@ def _benchmark_result() -> BenchmarkResult:
             "elapsed_seconds": 1.01,
             "platform": "test-platform",
             "wall_time_source": "runtime_core_repeated_wall_time",
-            "wall_time_sample_pass": "runtime.profile_repeated",
+            "wall_time_sample_pass": "runtime._benchmark_f64_wall_time",
             "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
             "evaluator_time_sample_pass": "runtime.profile_repeated",
             "execution_mode": "compiled",
             "color_workload": "all 1 generated physical LC flows",
             "helicity_workload": "all 24 generated helicity configurations",
-            "timing_sample_contract": "shared_native_repeated_profile_v1",
+            "timing_sample_contract": (
+                "paired_unprofiled_headline_profiled_attribution_v1"
+            ),
             "evaluator_sample_count": 8,
             "native_profile_repetitions_per_sample": 50,
             "native_profile_points_per_sample": 1600,
@@ -171,11 +209,21 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "Source fill" in rendered
     assert "Other Rusticol core" in rendered
     assert "Rusticol Stage Detail" in rendered
+    assert "Stage evaluator envelope (top-level)" in rendered
+    assert "Stage leaf input pack (attribution)" in rendered
+    assert "Amplitude output remap (attribution)" in rendered
+    assert "Rusticol Stage Internal Attribution (do not add to top-level)" in rendered
     assert "evaluator call" in rendered
-    assert "one shared native pass" in rendered
-    assert "wall, evaluator, and breakdown" in rendered
-    assert "use the same blocks" in rendered
-    assert "Profile wall (headline)" in rendered
+    assert "Native Work Counters (mean across 8 profiled blocks)" in rendered
+    assert "stage leaf copy" in rendered
+    assert "240 components" in rendered
+    assert "per runtime call" in rendered
+    assert "observed scratch reallocations" in rendered
+    assert "paired passes: unprofiled headline" in rendered
+    assert "identical batch and repetition count" in rendered
+    assert "paired evaluator" in rendered
+    assert "Profile wall (paired profiled pass)" in rendered
+    assert "Rusticol Timing Breakdown (paired profiled attribution)" in rendered
 
 
 def test_separate_breakdown_samples_are_labeled_explicitly() -> None:
@@ -231,6 +279,34 @@ def test_benchmark_profile_table_color_is_optional() -> None:
 
     assert rendered is not None
     assert "\x1b[" in rendered
+
+
+def test_benchmark_profile_counters_remain_machine_readable() -> None:
+    stream = io.StringIO()
+
+    write_result(
+        _benchmark_result(),
+        format="json",
+        stream=stream,
+        color=True,
+    )
+
+    payload = json.loads(stream.getvalue())
+    counters = payload["timing_breakdown"]["counters"]
+    assert counters["normalization"] == ("mean_per_profiled_point_or_runtime_call_v1")
+    assert counters["stage_leaf_input_copy_components_per_point"] == 240.0
+    assert counters["evaluator_backend_calls_per_call"] == 12.0
+    assert (
+        payload["timing_breakdown"]["stage_backend_call_time"]["mean_seconds_per_point"]
+        == 0.5e-6
+    )
+    assert (
+        payload["timing_breakdown"]["amplitude_output_remap_time"][
+            "mean_seconds_per_point"
+        ]
+        == 0.5e-6
+    )
+    assert "\x1b[" not in stream.getvalue()
 
 
 def test_eager_benchmark_uses_eager_phase_labels() -> None:

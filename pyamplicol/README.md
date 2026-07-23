@@ -84,12 +84,18 @@ are complete or selected. In a terminal it uses a colored progress bar with
 live elapsed-time, sampling, and uncertainty metadata, followed by
 colorized PrettyTables. Pressing `Ctrl-C` stops sampling and reports a clearly
 marked partial result from every fully completed block. Native Rusticol
-profiling is bounded to one
-call per statistical block, independent of wall-time repetitions, and reports
-source/momentum setup, stage and amplitude packing/evaluator calls, output
-assignment, reduction, and per-stage detail. `--format json` keeps stdout
-limited to the typed `BenchmarkResult` payload; progress and diagnostics remain
-on stderr.
+profiling is a separate paired pass over the same batch and repetition count as
+the ordinary wall-time block. It reports exclusive native input, state, source,
+momentum, model, stage, amplitude, reduction, materialization, output-copy, and
+selector phases; internal leaf-gather/backend/output-gather attribution; and
+per-stage detail. Internal attribution is non-additive: full-stage evaluator
+envelopes own leaf gathering, while composed selected-chunk input-pack
+envelopes own it. A second `Native Work Counters` table reports data movement
+and materialization per profiled point plus backend/allocation activity per
+runtime call. Repeated profiling uses constant aggregate storage rather than a
+profile vector proportional to the repetition count. `--format json` keeps
+stdout limited to the typed `BenchmarkResult` payload, including the same
+timings and counters; progress and diagnostics remain on stderr.
 
 `pyamplicol benchmark` remains a compatibility alias with the same options and
 output. TOML run cards continue to use `action = "benchmark"`, and the Python

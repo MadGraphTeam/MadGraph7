@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     )
     from .results import (
         BenchmarkComponentTiming,
+        BenchmarkProfileCounters,
         BenchmarkResult,
         BenchmarkStageTiming,
         BenchmarkStatistics,
@@ -74,6 +75,7 @@ __all__ = [
     "BenchmarkBackend",
     "BenchmarkComponentTiming",
     "BenchmarkFactory",
+    "BenchmarkProfileCounters",
     "BenchmarkResult",
     "BenchmarkRunner",
     "BenchmarkStageTiming",
@@ -160,6 +162,7 @@ _MODEL_EXPORTS = (
 )
 _RESULT_EXPORTS = (
     "BenchmarkComponentTiming",
+    "BenchmarkProfileCounters",
     "BenchmarkResult",
     "BenchmarkStageTiming",
     "BenchmarkStatistics",

@@ -219,8 +219,10 @@ timed blocks and the repetitions in each block. Fast runtimes use more
 repetitions per block; slow runtimes reduce the block count without going below
 `--minimum-samples`. The target duration applies to wall-time measurements.
 Native component profiling is measured separately when the runtime supports it,
-with exactly one native profile per statistical block. It never inherits the
-potentially large wall-time repetition count.
+as a paired pass over the identical batch and repetition count used by each
+ordinary wall-time block. The paired pass never replaces the headline wall
+sample. Rusticol accumulates repeated profiles online with constant aggregate
+storage, so memory use does not grow with the calibrated repetition count.
 
 For f64 artifacts, wall time starts inside Rusticol after the caller-language
 momentum buffer has been converted and covers repeated ordinary core
@@ -240,19 +242,33 @@ only fully completed blocks, with the result explicitly marked as partial.
 Non-TTY progress uses typed, rate-limited log messages on stderr. With
 `--format json`, stdout contains only the machine-readable result.
 
-When native profiling is available, additional Rusticol tables report profile
-wall time, source fill, momentum setup, stage input packing/evaluator calls and
-output assignment, amplitude input packing/evaluator calls, reduction, and
-per-stage packing/evaluator/output timings. An `Other Rusticol core` row closes
-the component sum against profile wall time; it covers native input-batch
-materialization, workspace preparation, final-value copying, selector result
-assembly, and timer bookkeeping not yet split into narrower scopes. Except for
-amortized capacity growth, these are native per-call costs paid by the current
-Rust, C, C++, and Fortran interfaces; they are distinct from Python/NumPy input
-packing and therefore remain part of Rusticol wall time.
-`BenchmarkResult.timing_breakdown`
-preserves the same data as typed component and stage timing objects, including
-sample counts and uncertainty.
+When native profiling is available, the Rusticol timing table reports profile
+wall time and exclusive native-input packing/crossing, orchestration,
+state preparation/clearing, source fill, momentum input, model parameters,
+stage input/evaluator/output work, amplitude input/evaluator work, reduction,
+totals materialization, final output copies, and selector
+planning/gather/scatter. Internal-attribution rows separately expose evaluator
+leaf-input gathers, backend calls, chunk-output gathers, and amplitude output
+remapping, but are never added again to the top-level sum. In full-stage paths
+the evaluator envelope owns the leaf gather; in composed selected-chunk paths
+the input-pack envelope owns it. The report labels both top-level envelopes and
+the lane-dependent attribution explicitly. Per-stage tables retain
+packing/evaluator/output detail. An
+`Other Rusticol core` row closes the exclusive component sum against profile
+wall time and is expected to contain only residual bookkeeping and unsplit
+work.
+
+The `Native Work Counters` table reports input bytes and explicit native
+containers, state/source/momentum/model components, stage and amplitude
+movement, backend calls, reduction/materialized/output values, selector
+gather/scatter work, observed reusable-scratch capacity changes, and explicit
+native output allocations. Movement and materialization are normalized per
+profiled point; backend/allocation activity is normalized per runtime call.
+The observed scratch count is deliberately a lower bound over instrumented
+reusable buffers, not a process-wide allocator count.
+`BenchmarkResult.timing_breakdown` preserves the same information as typed
+component/stage timing objects and a typed counter summary, including sample
+counts and uncertainty.
 
 For eager artifacts the corresponding breakdown separates initialization,
 gather, prepared-kernel calls, invocation scatter, current finalization,

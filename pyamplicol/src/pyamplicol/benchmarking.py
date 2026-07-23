@@ -11,7 +11,7 @@ import time
 import tomllib
 import warnings
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -19,6 +19,7 @@ from pyamplicol.api.errors import EvaluationError
 from pyamplicol.api.protocols import Momenta, RuntimeBackend
 from pyamplicol.api.results import (
     BenchmarkComponentTiming,
+    BenchmarkProfileCounters,
     BenchmarkResult,
     BenchmarkStageTiming,
     BenchmarkStatistics,
@@ -65,17 +66,39 @@ class _Calibration:
 class _NativeProfileSample:
     execution_mode: str | None
     wall_time: float | None
+    native_input_pack_time: float | None
+    native_input_crossing_time: float | None
+    orchestration_time: float | None
+    state_prepare_time: float | None
+    state_clear_time: float | None
     source_fill_time: float | None
+    momentum_input_setup_time: float | None
     momentum_setup_time: float | None
+    model_parameter_setup_time: float | None
     stage_input_pack_time: float | None
+    stage_leaf_input_pack_time: float | None
     stage_evaluator_call_time: float
+    stage_backend_call_time: float | None
+    stage_evaluator_output_gather_time: float | None
     output_assign_time: float | None
     amplitude_input_pack_time: float | None
     amplitude_evaluator_call_time: float | None
+    amplitude_leaf_input_pack_time: float | None
+    amplitude_backend_call_time: float | None
+    amplitude_evaluator_output_gather_time: float | None
+    amplitude_output_remap_time: float | None
     reduction_time: float | None
+    total_materialization_time: float | None
+    final_output_copy_time: float | None
+    selector_planner_time: float | None
+    selector_gather_time: float | None
+    selector_scatter_time: float | None
     other_core_time: float | None
     stage_input_pack_times: tuple[float, ...] | None
+    stage_leaf_input_pack_times: tuple[float, ...] | None
     stage_evaluator_call_times: tuple[float, ...] | None
+    stage_backend_call_times: tuple[float, ...] | None
+    stage_evaluator_output_gather_times: tuple[float, ...] | None
     stage_output_assign_times: tuple[float, ...] | None
     eager_initialize_time: float | None
     eager_gather_time: float | None
@@ -85,6 +108,38 @@ class _NativeProfileSample:
     eager_scatter_finalization_time: float | None
     eager_closure_time: float | None
     eager_copy_out_time: float | None
+    counters: _NativeProfileCounterSample | None
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeProfileCounterSample:
+    native_input_components_per_point: float | None
+    native_input_pack_bytes_per_point: float | None
+    native_input_crossing_bytes_per_point: float | None
+    state_components_per_point: float | None
+    state_clear_components_per_point: float | None
+    source_components_per_point: float | None
+    momentum_components_per_point: float | None
+    model_parameter_components_per_point: float | None
+    stage_input_copy_components_per_point: float | None
+    stage_leaf_input_copy_components_per_point: float | None
+    stage_evaluator_output_gather_components_per_point: float | None
+    stage_output_assign_components_per_point: float | None
+    amplitude_input_copy_components_per_point: float | None
+    amplitude_leaf_input_copy_components_per_point: float | None
+    amplitude_evaluator_output_gather_components_per_point: float | None
+    amplitude_output_remap_components_per_point: float | None
+    reduction_input_components_per_point: float | None
+    selector_gather_points_per_point: float | None
+    selector_gather_bytes_per_point: float | None
+    selector_scatter_values_per_point: float | None
+    resolved_materialized_components_per_point: float | None
+    total_materialized_values_per_point: float | None
+    final_output_copy_values_per_point: float | None
+    native_input_container_allocations_per_call: float | None
+    evaluator_backend_calls_per_call: float | None
+    observed_scratch_reallocations_per_call: float | None
+    native_output_allocations_per_call: float | None
 
 
 class BenchmarkBackend:
@@ -196,8 +251,17 @@ class BenchmarkBackend:
             last_warmup_seconds: float | None = None
             for warmup_index in range(self._config.warmup_runs):
                 warmup_started = time.perf_counter()
-                last_warmup_seconds = _timed_repetitions(evaluate_once, 1)
-                if profiler is not None:
+                last_warmup_seconds = measure_repetitions(1)
+                if repeated_profiler is not None:
+                    repeated_profiler(
+                        batch,
+                        1,
+                        helicities=helicities,
+                        color_flows=color_flows,
+                        precision=self._config.precision,
+                        include_values=False,
+                    )
+                elif profiler is not None:
                     profiler(
                         batch,
                         helicities=helicities,
@@ -219,9 +283,7 @@ class BenchmarkBackend:
             calibration = _calibrate_repetitions(
                 evaluate_once,
                 self._config,
-                initial_seconds=(
-                    None if native_wall_timer is not None else last_warmup_seconds
-                ),
+                initial_seconds=last_warmup_seconds,
                 timer=measure_repetitions,
             )
             if self._progress is not None:
@@ -261,6 +323,8 @@ class BenchmarkBackend:
                 for sample_index in range(calibration.sample_count):
                     native_sample: _NativeProfileSample | None = None
                     profile_duration = 0.0
+                    duration = measure_repetitions(repetitions)
+                    sample_seconds_per_point = duration / (repetitions * len(batch))
                     if repeated_profiler is not None:
                         profile_started = time.perf_counter()
                         profile = repeated_profiler(
@@ -275,19 +339,14 @@ class BenchmarkBackend:
                         native_sample = _native_profile_sample(
                             profile,
                             len(batch) * repetitions,
+                            repetitions=repetitions,
                         )
                         if native_sample.wall_time is None:
                             raise EvaluationError(
                                 "repeated native profile did not report core wall time"
                             )
-                        duration = _profile_float(profile, "wall_time_s")
-                        sample_seconds_per_point = native_sample.wall_time
-                    else:
-                        duration = measure_repetitions(repetitions)
-                        sample_seconds_per_point = duration / (repetitions * len(batch))
-                    if (
-                        repeated_profiler is None
-                        and profiler is not None
+                    elif (
+                        profiler is not None
                         and evaluator_samples is not None
                         and native_profile_samples is not None
                         and sample_index < native_profile_sample_limit
@@ -371,40 +430,19 @@ class BenchmarkBackend:
         wall_samples = samples
         wall_time_source = (
             "runtime_core_repeated_wall_time"
-            if native_wall_timer is not None or repeated_profiler is not None
+            if native_wall_timer is not None
             else "runtime_evaluate_wall_time"
         )
         wall_sample_pass = (
-            "runtime.profile_repeated"
-            if repeated_profiler is not None
-            else (
-                "runtime._benchmark_f64_wall_time"
-                if native_wall_timer is not None
-                else "runtime.evaluate"
-            )
+            "runtime._benchmark_f64_wall_time"
+            if native_wall_timer is not None
+            else "runtime.evaluate"
         )
         timing_sample_contract = (
-            "shared_native_repeated_profile_v1"
+            "paired_unprofiled_headline_profiled_attribution_v1"
             if repeated_profiler is not None
             else "separate_native_profile_diagnostic_v1"
         )
-        if (
-            repeated_profiler is None
-            and native_wall_timer is None
-            and native_profile_samples is not None
-            and len(native_profile_samples) == len(samples)
-            and calibration.repetitions_per_sample == 1
-        ):
-            native_wall_samples = [
-                sample.wall_time
-                for sample in native_profile_samples
-                if sample.wall_time is not None
-            ]
-            if len(native_wall_samples) == len(samples):
-                wall_samples = native_wall_samples
-                wall_time_source = "runtime_profile_core_wall_time"
-                wall_sample_pass = "runtime.profile"
-                timing_sample_contract = "shared_native_single_profile_v1"
         mean, deviation, error, relative_error = _sample_statistics(wall_samples)
         uncertainty = BenchmarkStatistics(deviation, error, relative_error)
         if evaluator_samples is None:
@@ -440,8 +478,11 @@ class BenchmarkBackend:
                 else 1
             )
             native_profile_warmup_calls = (
-                self._config.warmup_runs if profiler is not None else 0
+                self._config.warmup_runs
+                if profiler is not None or repeated_profiler is not None
+                else 0
             )
+            paired_profile_attribution = repeated_profiler is not None
             evaluator_environment = {
                 "wall_time_source": wall_time_source,
                 "wall_time_sample_pass": wall_sample_pass,
@@ -460,9 +501,7 @@ class BenchmarkBackend:
                 "evaluator_elapsed_seconds": evaluator_elapsed,
                 "native_profile_sample_count": len(evaluator_samples),
                 "native_profile_sample_limit": native_profile_sample_limit,
-                "native_profile_repetitions_per_sample": (
-                    native_profile_repetitions
-                ),
+                "native_profile_repetitions_per_sample": (native_profile_repetitions),
                 "native_profile_points_per_sample": (
                     native_profile_repetitions * len(batch)
                 ),
@@ -472,6 +511,19 @@ class BenchmarkBackend:
                 "native_profile_warmup_call_count": native_profile_warmup_calls,
                 "native_profile_total_call_count": (
                     native_profile_warmup_calls + len(evaluator_samples)
+                ),
+                "profile_attribution_paired_with_headline": (
+                    paired_profile_attribution
+                ),
+                "profile_attribution_identical_batch": paired_profile_attribution,
+                "profile_attribution_identical_repetitions": (
+                    paired_profile_attribution
+                ),
+                "profile_attribution_evaluation_count": (
+                    len(evaluator_samples) * native_profile_repetitions
+                ),
+                "profile_attribution_point_count": (
+                    len(evaluator_samples) * native_profile_repetitions * len(batch)
                 ),
                 "timing_sample_contract": timing_sample_contract,
                 "evaluator_standard_deviation_seconds_per_point": (evaluator_deviation),
@@ -850,6 +902,94 @@ def _profile_float_or_none(profile: Mapping[str, object], key: str) -> float | N
     return result
 
 
+def _profile_count_or_none(
+    profile: Mapping[str, object],
+    key: str,
+    *,
+    denominator: int,
+) -> float | None:
+    if key not in profile:
+        return None
+    value = profile[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise EvaluationError(
+            f"native runtime profile counter {key!r} is not a non-negative integer"
+        )
+    return value / denominator
+
+
+def _native_profile_counters(
+    profile: Mapping[str, object],
+    *,
+    points: int,
+    repetitions: int,
+) -> _NativeProfileCounterSample | None:
+    def per_point(key: str) -> float | None:
+        return _profile_count_or_none(profile, key, denominator=points)
+
+    def per_call(key: str) -> float | None:
+        return _profile_count_or_none(profile, key, denominator=repetitions)
+
+    counters = _NativeProfileCounterSample(
+        native_input_components_per_point=per_point("native_input_component_count"),
+        native_input_pack_bytes_per_point=per_point("native_input_pack_bytes"),
+        native_input_crossing_bytes_per_point=per_point("native_input_crossing_bytes"),
+        state_components_per_point=per_point("state_component_count"),
+        state_clear_components_per_point=per_point("state_clear_component_count"),
+        source_components_per_point=per_point("source_component_count"),
+        momentum_components_per_point=per_point("momentum_component_count"),
+        model_parameter_components_per_point=per_point(
+            "model_parameter_component_count"
+        ),
+        stage_input_copy_components_per_point=per_point(
+            "stage_input_copy_component_count"
+        ),
+        stage_leaf_input_copy_components_per_point=per_point(
+            "stage_leaf_input_copy_component_count"
+        ),
+        stage_evaluator_output_gather_components_per_point=per_point(
+            "stage_evaluator_output_gather_component_count"
+        ),
+        stage_output_assign_components_per_point=per_point(
+            "stage_output_assign_component_count"
+        ),
+        amplitude_input_copy_components_per_point=per_point(
+            "amplitude_input_copy_component_count"
+        ),
+        amplitude_leaf_input_copy_components_per_point=per_point(
+            "amplitude_leaf_input_copy_component_count"
+        ),
+        amplitude_evaluator_output_gather_components_per_point=per_point(
+            "amplitude_evaluator_output_gather_component_count"
+        ),
+        amplitude_output_remap_components_per_point=per_point(
+            "amplitude_output_remap_component_count"
+        ),
+        reduction_input_components_per_point=per_point(
+            "reduction_input_component_count"
+        ),
+        selector_gather_points_per_point=per_point("selector_gather_point_count"),
+        selector_gather_bytes_per_point=per_point("selector_gather_bytes"),
+        selector_scatter_values_per_point=per_point("selector_scatter_value_count"),
+        resolved_materialized_components_per_point=per_point(
+            "resolved_materialized_component_count"
+        ),
+        total_materialized_values_per_point=per_point("total_materialized_value_count"),
+        final_output_copy_values_per_point=per_point("final_output_copy_value_count"),
+        native_input_container_allocations_per_call=per_call(
+            "native_input_container_allocation_count"
+        ),
+        evaluator_backend_calls_per_call=per_call("evaluator_backend_call_count"),
+        observed_scratch_reallocations_per_call=per_call(
+            "observed_scratch_reallocation_count"
+        ),
+        native_output_allocations_per_call=per_call("native_output_allocation_count"),
+    )
+    if not any(getattr(counters, field.name) is not None for field in fields(counters)):
+        return None
+    return counters
+
+
 def _profile_float_sequence(
     profile: Mapping[str, object], key: str
 ) -> tuple[float, ...]:
@@ -918,10 +1058,28 @@ def _profile_point_count(profile: Mapping[str, object], fallback: int) -> int:
 
 
 def _native_profile_sample(
-    profile: Mapping[str, object], fallback_points: int
+    profile: Mapping[str, object],
+    fallback_points: int,
+    *,
+    repetitions: int = 1,
 ) -> _NativeProfileSample:
     points = _profile_point_count(profile, fallback_points)
+    if (
+        isinstance(repetitions, bool)
+        or not isinstance(repetitions, int)
+        or repetitions < 1
+    ):
+        raise EvaluationError("native runtime profile repetition count is invalid")
+    if points % repetitions != 0:
+        raise EvaluationError(
+            "native runtime profile point count is not divisible by repetitions"
+        )
     per_point = 1.0 / points
+    counters = _native_profile_counters(
+        profile,
+        points=points,
+        repetitions=repetitions,
+    )
     stage_vector_keys = (
         "stage_input_pack_by_stage_time_s",
         "stage_evaluator_call_by_stage_time_s",
@@ -937,8 +1095,17 @@ def _native_profile_sample(
     stage_input_pack = _profile_float_sequence_or_none(
         profile, "stage_input_pack_by_stage_time_s"
     )
+    stage_leaf_input_pack = _profile_float_sequence_or_none(
+        profile, "stage_leaf_input_pack_by_stage_time_s"
+    )
     stage_evaluator_call = _profile_float_sequence_or_none(
         profile, "stage_evaluator_call_by_stage_time_s"
+    )
+    stage_backend_call = _profile_float_sequence_or_none(
+        profile, "stage_backend_call_by_stage_time_s"
+    )
+    stage_evaluator_output_gather = _profile_float_sequence_or_none(
+        profile, "stage_evaluator_output_gather_by_stage_time_s"
     )
     stage_output_assign = _profile_float_sequence_or_none(
         profile, "stage_output_assign_by_stage_time_s"
@@ -960,6 +1127,21 @@ def _native_profile_sample(
         sum(stage_output_assign)
         if stage_output_assign is not None
         else _profile_float_or_none(profile, "output_assign_time_s")
+    )
+    stage_leaf_input_pack_total = (
+        sum(stage_leaf_input_pack)
+        if stage_leaf_input_pack is not None
+        else _profile_float_or_none(profile, "stage_leaf_input_pack_time_s")
+    )
+    stage_backend_call_total = (
+        sum(stage_backend_call)
+        if stage_backend_call is not None
+        else _profile_float_or_none(profile, "stage_backend_call_time_s")
+    )
+    stage_evaluator_output_gather_total = (
+        sum(stage_evaluator_output_gather)
+        if stage_evaluator_output_gather is not None
+        else _profile_float_or_none(profile, "stage_evaluator_output_gather_time_s")
     )
     execution_mode = _profile_execution_mode(
         profile,
@@ -987,14 +1169,46 @@ def _native_profile_sample(
         return tuple(value * per_point for value in values)
 
     wall_time = normalized("wall_time_s")
+    native_input_pack_time = normalized("native_input_pack_time_s")
+    native_input_crossing_time = normalized("native_input_crossing_time_s")
+    orchestration_time = normalized("orchestration_time_s")
+    state_prepare_time = normalized("state_prepare_time_s")
+    state_clear_time = normalized("state_clear_time_s")
     source_fill_time = normalized("source_fill_time_s")
     momentum_setup_time = normalized("momentum_setup_time_s")
+    momentum_input_setup_time = normalized("momentum_input_setup_time_s")
+    model_parameter_setup_time = normalized("model_parameter_setup_time_s")
+    if momentum_input_setup_time is None:
+        momentum_input_setup_time = momentum_setup_time
+        if (
+            momentum_input_setup_time is not None
+            and model_parameter_setup_time is not None
+        ):
+            momentum_input_setup_time = max(
+                momentum_input_setup_time - model_parameter_setup_time,
+                0.0,
+            )
     stage_input_pack_time = (
         None
         if execution_mode == "eager" or stage_input_pack_total is None
         else stage_input_pack_total * per_point
     )
+    stage_leaf_input_pack_time = (
+        None
+        if execution_mode == "eager" or stage_leaf_input_pack_total is None
+        else stage_leaf_input_pack_total * per_point
+    )
     stage_evaluator_call_time = stage_evaluator_call_total * per_point
+    stage_backend_call_time = (
+        None
+        if execution_mode == "eager" or stage_backend_call_total is None
+        else stage_backend_call_total * per_point
+    )
+    stage_evaluator_output_gather_time = (
+        None
+        if execution_mode == "eager" or stage_evaluator_output_gather_total is None
+        else stage_evaluator_output_gather_total * per_point
+    )
     output_assign_time = (
         None
         if execution_mode == "eager" or output_assign_total is None
@@ -1008,47 +1222,75 @@ def _native_profile_sample(
         if amplitude_evaluator_call is None
         else amplitude_evaluator_call * per_point
     )
+    amplitude_leaf_input_pack_time = (
+        None
+        if execution_mode == "eager"
+        else normalized("amplitude_leaf_input_pack_time_s")
+    )
+    amplitude_backend_call_time = (
+        None
+        if execution_mode == "eager"
+        else normalized("amplitude_backend_call_time_s")
+    )
+    amplitude_evaluator_output_gather_time = (
+        None
+        if execution_mode == "eager"
+        else normalized("amplitude_evaluator_output_gather_time_s")
+    )
+    amplitude_output_remap_time = (
+        None
+        if execution_mode == "eager"
+        else normalized("amplitude_output_remap_time_s")
+    )
     reduction_time = (
         normalized("eager_reduction_time_s")
         if execution_mode == "eager"
         else normalized("reduction_time_s")
     )
+    total_materialization_time = normalized("total_materialization_time_s")
+    final_output_copy_time = normalized("final_output_copy_time_s")
+    selector_planner_time = normalized("selector_planner_time_s")
+    selector_gather_time = normalized("selector_gather_time_s")
+    selector_scatter_time = normalized("selector_scatter_time_s")
     eager_execution_time = (
         stage_evaluator_call_time if execution_mode == "eager" else None
     )
     eager_initialize_time = normalized("eager_initialize_time_s")
     eager_gather_time = normalized("eager_gather_time_s")
     eager_kernel_call_time = normalized("eager_kernel_call_time_s")
-    eager_invocation_scatter_time = normalized(
-        "eager_invocation_scatter_time_s"
-    )
+    eager_invocation_scatter_time = normalized("eager_invocation_scatter_time_s")
     eager_finalization_time = normalized("eager_finalization_time_s")
-    eager_scatter_finalization_time = normalized(
-        "eager_scatter_finalization_time_s"
-    )
+    eager_scatter_finalization_time = normalized("eager_scatter_finalization_time_s")
     eager_closure_time = normalized("eager_closure_time_s")
     eager_copy_out_time = normalized("eager_copy_out_time_s")
     accounted = (
+        native_input_pack_time,
+        native_input_crossing_time,
+        orchestration_time,
+        state_prepare_time,
+        state_clear_time,
         source_fill_time,
-        momentum_setup_time,
+        momentum_input_setup_time,
+        model_parameter_setup_time,
         eager_execution_time if execution_mode == "eager" else stage_input_pack_time,
         None if execution_mode == "eager" else stage_evaluator_call_time,
         None if execution_mode == "eager" else output_assign_time,
         None if execution_mode == "eager" else amplitude_input_pack_time,
         None if execution_mode == "eager" else amplitude_evaluator_call_time,
         None if execution_mode == "eager" else reduction_time,
+        total_materialization_time,
+        final_output_copy_time,
+        selector_planner_time,
+        selector_gather_time,
+        selector_scatter_time,
     )
     accounted_total = sum(value or 0.0 for value in accounted)
     accounting_tolerance = (
         1.0e-12 if wall_time is None else max(1.0e-12, wall_time * 1.0e-12)
     )
-    if (
-        execution_mode == "eager"
-        and wall_time is not None
-        and accounted_total > wall_time + accounting_tolerance
-    ):
+    if wall_time is not None and accounted_total > wall_time + accounting_tolerance:
         raise EvaluationError(
-            "native eager profile exclusive top-level phases account for "
+            "native profile exclusive top-level phases account for "
             f"{accounted_total:.9e}s/point, exceeding wall time "
             f"{wall_time:.9e}s/point"
         )
@@ -1068,9 +1310,7 @@ def _native_profile_sample(
             reduction_time,
             eager_copy_out_time,
         )
-        exclusive_eager_total = sum(
-            value or 0.0 for value in exclusive_eager_phases
-        )
+        exclusive_eager_total = sum(value or 0.0 for value in exclusive_eager_phases)
         if exclusive_eager_total > eager_execution_time + accounting_tolerance:
             raise EvaluationError(
                 "native eager profile exclusive execution phases account for "
@@ -1078,25 +1318,55 @@ def _native_profile_sample(
                 f"eager execution time {eager_execution_time:.9e}s/point"
             )
     other_core_time = (
-        None
-        if wall_time is None
-        else max(wall_time - accounted_total, 0.0)
+        None if wall_time is None else max(wall_time - accounted_total, 0.0)
     )
 
     return _NativeProfileSample(
         execution_mode=execution_mode,
         wall_time=wall_time,
+        native_input_pack_time=native_input_pack_time,
+        native_input_crossing_time=native_input_crossing_time,
+        orchestration_time=orchestration_time,
+        state_prepare_time=state_prepare_time,
+        state_clear_time=state_clear_time,
         source_fill_time=source_fill_time,
+        momentum_input_setup_time=momentum_input_setup_time,
         momentum_setup_time=momentum_setup_time,
+        model_parameter_setup_time=model_parameter_setup_time,
         stage_input_pack_time=stage_input_pack_time,
+        stage_leaf_input_pack_time=stage_leaf_input_pack_time,
         stage_evaluator_call_time=stage_evaluator_call_time,
+        stage_backend_call_time=stage_backend_call_time,
+        stage_evaluator_output_gather_time=stage_evaluator_output_gather_time,
         output_assign_time=output_assign_time,
         amplitude_input_pack_time=amplitude_input_pack_time,
         amplitude_evaluator_call_time=amplitude_evaluator_call_time,
+        amplitude_leaf_input_pack_time=amplitude_leaf_input_pack_time,
+        amplitude_backend_call_time=amplitude_backend_call_time,
+        amplitude_evaluator_output_gather_time=(amplitude_evaluator_output_gather_time),
+        amplitude_output_remap_time=amplitude_output_remap_time,
         reduction_time=reduction_time,
+        total_materialization_time=total_materialization_time,
+        final_output_copy_time=final_output_copy_time,
+        selector_planner_time=selector_planner_time,
+        selector_gather_time=selector_gather_time,
+        selector_scatter_time=selector_scatter_time,
         other_core_time=other_core_time,
         stage_input_pack_times=normalized_sequence(stage_input_pack),
+        stage_leaf_input_pack_times=(
+            None
+            if execution_mode == "eager"
+            else normalized_sequence(stage_leaf_input_pack)
+        ),
         stage_evaluator_call_times=normalized_sequence(stage_evaluator_call),
+        stage_backend_call_times=(
+            None
+            if execution_mode == "eager"
+            else normalized_sequence(stage_backend_call)
+        ),
+        stage_evaluator_output_gather_times=normalized_sequence(
+            None if execution_mode == "eager" else stage_evaluator_output_gather
+        ),
         stage_output_assign_times=normalized_sequence(stage_output_assign),
         eager_initialize_time=eager_initialize_time,
         eager_gather_time=eager_gather_time,
@@ -1106,6 +1376,7 @@ def _native_profile_sample(
         eager_scatter_finalization_time=eager_scatter_finalization_time,
         eager_closure_time=eager_closure_time,
         eager_copy_out_time=eager_copy_out_time,
+        counters=counters,
     )
 
 
@@ -1138,6 +1409,90 @@ def _stage_component_timing(
     return _component_timing(values)
 
 
+def _profile_counter_summary(
+    samples: Sequence[_NativeProfileSample],
+) -> BenchmarkProfileCounters | None:
+    counter_samples = [
+        sample.counters for sample in samples if sample.counters is not None
+    ]
+    if not counter_samples:
+        return None
+    if len(counter_samples) != len(samples):
+        raise EvaluationError(
+            "native runtime profile counter availability changed between samples"
+        )
+
+    def mean(attribute: str) -> float | None:
+        values = [
+            cast(float | None, getattr(sample, attribute)) for sample in counter_samples
+        ]
+        available = [value for value in values if value is not None]
+        if available and len(available) != len(values):
+            raise EvaluationError(
+                f"native runtime profile counter {attribute!r} changed availability"
+            )
+        return statistics.fmean(available) if available else None
+
+    return BenchmarkProfileCounters(
+        sample_count=len(counter_samples),
+        native_input_components_per_point=mean("native_input_components_per_point"),
+        native_input_pack_bytes_per_point=mean("native_input_pack_bytes_per_point"),
+        native_input_crossing_bytes_per_point=mean(
+            "native_input_crossing_bytes_per_point"
+        ),
+        state_components_per_point=mean("state_components_per_point"),
+        state_clear_components_per_point=mean("state_clear_components_per_point"),
+        source_components_per_point=mean("source_components_per_point"),
+        momentum_components_per_point=mean("momentum_components_per_point"),
+        model_parameter_components_per_point=mean(
+            "model_parameter_components_per_point"
+        ),
+        stage_input_copy_components_per_point=mean(
+            "stage_input_copy_components_per_point"
+        ),
+        stage_leaf_input_copy_components_per_point=mean(
+            "stage_leaf_input_copy_components_per_point"
+        ),
+        stage_evaluator_output_gather_components_per_point=mean(
+            "stage_evaluator_output_gather_components_per_point"
+        ),
+        stage_output_assign_components_per_point=mean(
+            "stage_output_assign_components_per_point"
+        ),
+        amplitude_input_copy_components_per_point=mean(
+            "amplitude_input_copy_components_per_point"
+        ),
+        amplitude_leaf_input_copy_components_per_point=mean(
+            "amplitude_leaf_input_copy_components_per_point"
+        ),
+        amplitude_evaluator_output_gather_components_per_point=mean(
+            "amplitude_evaluator_output_gather_components_per_point"
+        ),
+        amplitude_output_remap_components_per_point=mean(
+            "amplitude_output_remap_components_per_point"
+        ),
+        reduction_input_components_per_point=mean(
+            "reduction_input_components_per_point"
+        ),
+        selector_gather_points_per_point=mean("selector_gather_points_per_point"),
+        selector_gather_bytes_per_point=mean("selector_gather_bytes_per_point"),
+        selector_scatter_values_per_point=mean("selector_scatter_values_per_point"),
+        resolved_materialized_components_per_point=mean(
+            "resolved_materialized_components_per_point"
+        ),
+        total_materialized_values_per_point=mean("total_materialized_values_per_point"),
+        final_output_copy_values_per_point=mean("final_output_copy_values_per_point"),
+        native_input_container_allocations_per_call=mean(
+            "native_input_container_allocations_per_call"
+        ),
+        evaluator_backend_calls_per_call=mean("evaluator_backend_calls_per_call"),
+        observed_scratch_reallocations_per_call=mean(
+            "observed_scratch_reallocations_per_call"
+        ),
+        native_output_allocations_per_call=mean("native_output_allocations_per_call"),
+    )
+
+
 def _timing_breakdown(
     samples: Sequence[_NativeProfileSample],
 ) -> BenchmarkTimingBreakdown:
@@ -1149,7 +1504,10 @@ def _timing_breakdown(
             for sample in samples
             for values in (
                 sample.stage_input_pack_times,
+                sample.stage_leaf_input_pack_times,
                 sample.stage_evaluator_call_times,
+                sample.stage_backend_call_times,
+                sample.stage_evaluator_output_gather_times,
                 sample.stage_output_assign_times,
             )
             if values is not None
@@ -1164,11 +1522,28 @@ def _timing_breakdown(
         evaluator_call = _stage_component_timing(
             samples, "stage_evaluator_call_times", stage_index
         )
+        leaf_input_pack = _stage_component_timing(
+            samples, "stage_leaf_input_pack_times", stage_index
+        )
+        backend_call = _stage_component_timing(
+            samples, "stage_backend_call_times", stage_index
+        )
+        evaluator_output_gather = _stage_component_timing(
+            samples, "stage_evaluator_output_gather_times", stage_index
+        )
         output_assign = _stage_component_timing(
             samples, "stage_output_assign_times", stage_index
         )
         if any(
-            value is not None for value in (input_pack, evaluator_call, output_assign)
+            value is not None
+            for value in (
+                input_pack,
+                evaluator_call,
+                output_assign,
+                leaf_input_pack,
+                backend_call,
+                evaluator_output_gather,
+            )
         ):
             stages.append(
                 BenchmarkStageTiming(
@@ -1176,6 +1551,9 @@ def _timing_breakdown(
                     input_pack_time=input_pack,
                     evaluator_call_time=evaluator_call,
                     output_assign_time=output_assign,
+                    leaf_input_pack_time=leaf_input_pack,
+                    backend_call_time=backend_call,
+                    evaluator_output_gather_time=evaluator_output_gather,
                 )
             )
 
@@ -1195,17 +1573,47 @@ def _timing_breakdown(
         sample_count=len(samples),
         execution_mode=execution_mode,
         wall_time=_component_timing([sample.wall_time for sample in samples]),
+        native_input_pack_time=_component_timing(
+            [sample.native_input_pack_time for sample in samples]
+        ),
+        native_input_crossing_time=_component_timing(
+            [sample.native_input_crossing_time for sample in samples]
+        ),
+        orchestration_time=_component_timing(
+            [sample.orchestration_time for sample in samples]
+        ),
+        state_prepare_time=_component_timing(
+            [sample.state_prepare_time for sample in samples]
+        ),
+        state_clear_time=_component_timing(
+            [sample.state_clear_time for sample in samples]
+        ),
         source_fill_time=_component_timing(
             [sample.source_fill_time for sample in samples]
         ),
         momentum_setup_time=_component_timing(
             [sample.momentum_setup_time for sample in samples]
         ),
+        momentum_input_setup_time=_component_timing(
+            [sample.momentum_input_setup_time for sample in samples]
+        ),
+        model_parameter_setup_time=_component_timing(
+            [sample.model_parameter_setup_time for sample in samples]
+        ),
         stage_input_pack_time=_component_timing(
             [sample.stage_input_pack_time for sample in samples]
         ),
+        stage_leaf_input_pack_time=_component_timing(
+            [sample.stage_leaf_input_pack_time for sample in samples]
+        ),
         stage_evaluator_call_time=(
             None if execution_mode == "eager" else evaluator_call_time
+        ),
+        stage_backend_call_time=_component_timing(
+            [sample.stage_backend_call_time for sample in samples]
+        ),
+        stage_evaluator_output_gather_time=_component_timing(
+            [sample.stage_evaluator_output_gather_time for sample in samples]
         ),
         output_assign_time=_component_timing(
             [sample.output_assign_time for sample in samples]
@@ -1216,7 +1624,34 @@ def _timing_breakdown(
         amplitude_evaluator_call_time=_component_timing(
             [sample.amplitude_evaluator_call_time for sample in samples]
         ),
+        amplitude_leaf_input_pack_time=_component_timing(
+            [sample.amplitude_leaf_input_pack_time for sample in samples]
+        ),
+        amplitude_backend_call_time=_component_timing(
+            [sample.amplitude_backend_call_time for sample in samples]
+        ),
+        amplitude_evaluator_output_gather_time=_component_timing(
+            [sample.amplitude_evaluator_output_gather_time for sample in samples]
+        ),
+        amplitude_output_remap_time=_component_timing(
+            [sample.amplitude_output_remap_time for sample in samples]
+        ),
         reduction_time=_component_timing([sample.reduction_time for sample in samples]),
+        total_materialization_time=_component_timing(
+            [sample.total_materialization_time for sample in samples]
+        ),
+        final_output_copy_time=_component_timing(
+            [sample.final_output_copy_time for sample in samples]
+        ),
+        selector_planner_time=_component_timing(
+            [sample.selector_planner_time for sample in samples]
+        ),
+        selector_gather_time=_component_timing(
+            [sample.selector_gather_time for sample in samples]
+        ),
+        selector_scatter_time=_component_timing(
+            [sample.selector_scatter_time for sample in samples]
+        ),
         other_core_time=_component_timing(
             [sample.other_core_time for sample in samples]
         ),
@@ -1248,6 +1683,7 @@ def _timing_breakdown(
             [sample.eager_copy_out_time for sample in samples]
         ),
         stages=tuple(stages),
+        counters=_profile_counter_summary(samples),
     )
 
 

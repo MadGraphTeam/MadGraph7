@@ -156,19 +156,40 @@ impl AmplitudeRuntime {
         })
     }
 
+    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_f64_into_scratch(
         &mut self,
         batch_size: usize,
         state: &[Complex<f64>],
     ) -> RusticolResult<(f64, f64)> {
+        let profile = self.evaluate_f64_into_scratch_profile(batch_size, state)?;
+        Ok((
+            profile.input_pack_s,
+            profile.evaluator.legacy_evaluator_call_s + profile.output_remap_s,
+        ))
+    }
+
+    pub(crate) fn evaluate_f64_into_scratch_profile(
+        &mut self,
+        batch_size: usize,
+        state: &[Complex<f64>],
+    ) -> RusticolResult<AmplitudeEvaluationProfile> {
+        let mut input_pack_elapsed = Duration::ZERO;
+        let input_copy_component_count;
+        let mut scratch_reallocation_count = 0;
+        let evaluator;
+        let evaluator_params;
         if let Some(input_components) = self.input_components.as_ref() {
             let local_parameter_count = input_components.len();
             let global_parameter_count = state.len().checked_div(batch_size).ok_or_else(|| {
                 RusticolError::invalid_argument("generic amplitude batch size is zero")
             })?;
             let pack_start = Instant::now();
+            let capacity = self.parameter_scratch_f64.capacity();
             self.parameter_scratch_f64
                 .resize(batch_size * local_parameter_count, c64(0.0, 0.0));
+            scratch_reallocation_count +=
+                u64::from(self.parameter_scratch_f64.capacity() != capacity);
             for row in 0..batch_size {
                 let row_state = row * global_parameter_count;
                 let row_params = row * local_parameter_count;
@@ -189,84 +210,123 @@ impl AmplitudeRuntime {
             // Generated evaluators may use the platform floating-point ABI
             // aggressively. Keep timing state in integer-backed Duration
             // values until the generated call has returned.
-            let input_pack_elapsed = pack_start.elapsed();
-            let eval_start = Instant::now();
-            if let Some(order) = self.evaluator_output_order.as_deref() {
-                self.evaluator.evaluate_batch_into(
-                    batch_size,
-                    &self.parameter_scratch_f64,
-                    &mut self.evaluator_output_scratch_f64,
-                )?;
-                remap_amplitude_outputs(
-                    batch_size,
-                    order,
-                    &self.evaluator_output_scratch_f64,
-                    &mut self.output_scratch_f64,
-                )?;
-            } else {
-                self.evaluator.evaluate_batch_into(
-                    batch_size,
-                    &self.parameter_scratch_f64,
-                    &mut self.output_scratch_f64,
-                )?;
-            }
-            return Ok((
-                profile_duration_seconds(input_pack_elapsed),
-                eval_start.elapsed().as_secs_f64(),
-            ));
+            input_pack_elapsed = pack_start.elapsed();
+            input_copy_component_count = batch_size * local_parameter_count;
+            evaluator_params = self.parameter_scratch_f64.as_slice();
+        } else {
+            input_copy_component_count = 0;
+            evaluator_params = state;
         }
-        let eval_start = Instant::now();
+        let mut output_remap_elapsed = Duration::ZERO;
         if let Some(order) = self.evaluator_output_order.as_deref() {
-            self.evaluator.evaluate_batch_into(
+            evaluator = self.evaluator.evaluate_batch_into_profile(
                 batch_size,
-                state,
+                evaluator_params,
                 &mut self.evaluator_output_scratch_f64,
+                false,
             )?;
+            let remap_start = Instant::now();
             remap_amplitude_outputs(
                 batch_size,
                 order,
                 &self.evaluator_output_scratch_f64,
                 &mut self.output_scratch_f64,
             )?;
+            output_remap_elapsed = remap_start.elapsed();
         } else {
-            self.evaluator
-                .evaluate_batch_into(batch_size, state, &mut self.output_scratch_f64)?;
+            evaluator = self.evaluator.evaluate_batch_into_profile(
+                batch_size,
+                evaluator_params,
+                &mut self.output_scratch_f64,
+                false,
+            )?;
         }
-        Ok((0.0, eval_start.elapsed().as_secs_f64()))
+        let input_pack_s = profile_duration_seconds(input_pack_elapsed);
+        Ok(AmplitudeEvaluationProfile {
+            input_pack_s,
+            evaluator,
+            output_remap_s: profile_duration_seconds(output_remap_elapsed),
+            input_copy_component_count: input_copy_component_count as u64,
+            output_remap_component_count: if self.evaluator_output_order.is_some() {
+                (batch_size * self.output_length) as u64
+            } else {
+                0
+            },
+            scratch_reallocation_count,
+        })
     }
 
+    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_active_chunks_f64_into_scratch(
         &mut self,
         batch_size: usize,
         state: &[Complex<f64>],
         active_chunk_indices: &[usize],
     ) -> RusticolResult<(f64, f64)> {
+        let profile = self.evaluate_active_chunks_f64_into_scratch_profile(
+            batch_size,
+            state,
+            active_chunk_indices,
+        )?;
+        Ok((
+            profile.input_pack_s,
+            profile.evaluator.legacy_evaluator_call_s + profile.output_remap_s,
+        ))
+    }
+
+    pub(crate) fn evaluate_active_chunks_f64_into_scratch_profile(
+        &mut self,
+        batch_size: usize,
+        state: &[Complex<f64>],
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<AmplitudeEvaluationProfile> {
+        let evaluator;
+        let mut output_remap_elapsed = Duration::ZERO;
         if let Some(order) = self.evaluator_output_order.as_deref() {
-            let timing = self.evaluator.evaluate_selected_chunks_f64_into_output(
-                batch_size,
-                state,
-                self.input_components.as_deref(),
-                &self.input_spans,
-                &mut self.evaluator_output_scratch_f64,
-                active_chunk_indices,
-            )?;
+            evaluator = self
+                .evaluator
+                .evaluate_selected_chunks_f64_into_output_profile(
+                    batch_size,
+                    state,
+                    self.input_components.as_deref(),
+                    &self.input_spans,
+                    &mut self.evaluator_output_scratch_f64,
+                    active_chunk_indices,
+                )?;
+            let remap_start = Instant::now();
             remap_amplitude_outputs(
                 batch_size,
                 order,
                 &self.evaluator_output_scratch_f64,
                 &mut self.output_scratch_f64,
             )?;
-            Ok(timing)
+            output_remap_elapsed = remap_start.elapsed();
         } else {
-            self.evaluator.evaluate_selected_chunks_f64_into_output(
-                batch_size,
-                state,
-                self.input_components.as_deref(),
-                &self.input_spans,
-                &mut self.output_scratch_f64,
-                active_chunk_indices,
-            )
+            evaluator = self
+                .evaluator
+                .evaluate_selected_chunks_f64_into_output_profile(
+                    batch_size,
+                    state,
+                    self.input_components.as_deref(),
+                    &self.input_spans,
+                    &mut self.output_scratch_f64,
+                    active_chunk_indices,
+                )?;
         }
+        Ok(AmplitudeEvaluationProfile {
+            input_pack_s: evaluator.leaf_input_pack_s,
+            output_remap_s: profile_duration_seconds(output_remap_elapsed),
+            // Active chunks compose the amplitude input and leaf maps, so
+            // the evaluator leaf gather is the only actual input copy.
+            input_copy_component_count: 0,
+            output_remap_component_count: if self.evaluator_output_order.is_some() {
+                (batch_size * self.output_length) as u64
+            } else {
+                0
+            },
+            scratch_reallocation_count: 0,
+            evaluator,
+        })
     }
 
     pub(crate) fn reduce_scratch_f64_into_selected(

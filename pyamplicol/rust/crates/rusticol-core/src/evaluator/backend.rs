@@ -87,6 +87,7 @@ impl EvaluatorGroup {
         self.evaluators.len() > 1
     }
 
+    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_chunks_f64_into_state(
         &mut self,
         batch_size: usize,
@@ -96,6 +97,26 @@ impl EvaluatorGroup {
         chunk_outputs: &[Vec<(usize, usize)>],
         chunk_output_spans: &[Vec<(usize, usize, usize)>],
     ) -> RusticolResult<(f64, f64)> {
+        let (profile, assign_s) = self.evaluate_chunks_f64_into_state_profile(
+            batch_size,
+            params,
+            state_parameter_count,
+            state,
+            chunk_outputs,
+            chunk_output_spans,
+        )?;
+        Ok((profile.legacy_evaluator_call_s, assign_s))
+    }
+
+    pub(crate) fn evaluate_chunks_f64_into_state_profile(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        state_parameter_count: usize,
+        state: &mut [Complex<f64>],
+        chunk_outputs: &[Vec<(usize, usize)>],
+        chunk_output_spans: &[Vec<(usize, usize, usize)>],
+    ) -> RusticolResult<(EvaluatorBatchProfile, f64)> {
         if chunk_outputs.len() != self.evaluators.len()
             || chunk_output_spans.len() != self.evaluators.len()
         {
@@ -116,7 +137,11 @@ impl EvaluatorGroup {
         // Keep timing state out of floating-point registers while generated
         // evaluators execute. Some native evaluator ABIs use the full SIMD
         // register file, whereas Duration remains integer-backed.
+        let mut leaf_input_pack_elapsed = Duration::ZERO;
         let mut evaluator_elapsed = Duration::ZERO;
+        let mut leaf_input_copy_component_count = 0u64;
+        let mut backend_call_count = 0u64;
+        let mut scratch_reallocation_count = 0u64;
         let mut assign_elapsed = Duration::ZERO;
         if params.len() != batch_size * self.input_len {
             return Err(RusticolError::invalid_argument(format!(
@@ -133,6 +158,8 @@ impl EvaluatorGroup {
             .zip(chunk_outputs)
             .zip(chunk_output_spans)
         {
+            let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
+            let leaf_start = Instant::now();
             let evaluator_params = mapped_f64_parameters(
                 params,
                 batch_size,
@@ -141,7 +168,12 @@ impl EvaluatorGroup {
                 input_spans,
                 &mut self.chunk_parameter_scratch_f64,
             );
+            leaf_input_pack_elapsed += leaf_start.elapsed();
+            if input_mapping.is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let chunk_capacity = self.chunk_scratch_f64.capacity();
             self.chunk_scratch_f64
                 .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
             let eval_start = Instant::now();
@@ -151,6 +183,12 @@ impl EvaluatorGroup {
                 &mut self.chunk_scratch_f64,
             )?;
             evaluator_elapsed += eval_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_scratch_f64.capacity() != chunk_capacity);
+            // The mapped slice is no longer live after the backend call.
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != leaf_capacity);
 
             let assign_start = Instant::now();
             for row in 0..batch_size {
@@ -173,14 +211,22 @@ impl EvaluatorGroup {
             }
             assign_elapsed += assign_start.elapsed();
         }
-        Ok((
-            evaluator_elapsed.as_secs_f64(),
-            assign_elapsed.as_secs_f64(),
-        ))
+        let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
+        let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+        let profile = EvaluatorBatchProfile {
+            leaf_input_pack_s,
+            legacy_evaluator_call_s: leaf_input_pack_s + evaluator_call_s,
+            evaluator_call_s,
+            leaf_input_copy_component_count,
+            backend_call_count,
+            scratch_reallocation_count,
+            ..EvaluatorBatchProfile::default()
+        };
+        Ok((profile, assign_elapsed.as_secs_f64()))
     }
 
     // The explicit slices avoid constructing a descriptor in this selector hot path.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code, clippy::too_many_arguments)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_selected_chunks_f64_into_state(
         &mut self,
         batch_size: usize,
@@ -192,6 +238,35 @@ impl EvaluatorGroup {
         chunk_output_spans: &[Vec<(usize, usize, usize)>],
         active_chunk_indices: &[usize],
     ) -> RusticolResult<(f64, f64, f64)> {
+        let (profile, assign_s) = self.evaluate_selected_chunks_f64_into_state_profile(
+            batch_size,
+            state_parameter_count,
+            state,
+            parent_input_components,
+            parent_input_spans,
+            chunk_outputs,
+            chunk_output_spans,
+            active_chunk_indices,
+        )?;
+        Ok((
+            profile.leaf_input_pack_s,
+            profile.evaluator_call_s,
+            assign_s,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_selected_chunks_f64_into_state_profile(
+        &mut self,
+        batch_size: usize,
+        state_parameter_count: usize,
+        state: &mut [Complex<f64>],
+        parent_input_components: Option<&[usize]>,
+        parent_input_spans: &[(usize, usize, usize)],
+        chunk_outputs: &[Vec<(usize, usize)>],
+        chunk_output_spans: &[Vec<(usize, usize, usize)>],
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<(EvaluatorBatchProfile, f64)> {
         if chunk_outputs.len() != self.evaluators.len()
             || chunk_output_spans.len() != self.evaluators.len()
         {
@@ -239,7 +314,11 @@ impl EvaluatorGroup {
         let mut input_pack_elapsed = Duration::ZERO;
         let mut evaluator_elapsed = Duration::ZERO;
         let mut assign_elapsed = Duration::ZERO;
+        let mut leaf_input_copy_component_count = 0u64;
+        let mut backend_call_count = 0u64;
+        let mut scratch_reallocation_count = 0u64;
         for &chunk_index in active_chunk_indices {
+            let parameter_capacity = self.chunk_parameter_scratch_f64.capacity();
             let input_pack_start = Instant::now();
             let evaluator_params = selected_chunk_f64_parameters(
                 state,
@@ -253,6 +332,9 @@ impl EvaluatorGroup {
                 &mut self.chunk_parameter_scratch_f64,
             )?;
             input_pack_elapsed += input_pack_start.elapsed();
+            if parent_input_components.is_some() || self.input_mappings[chunk_index].is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
 
             let evaluator = &mut self.evaluators[chunk_index];
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
@@ -261,6 +343,7 @@ impl EvaluatorGroup {
                 .ok_or_else(|| {
                     RusticolError::invalid_argument("stage chunk output length overflows usize")
                 })?;
+            let output_capacity = self.chunk_scratch_f64.capacity();
             self.chunk_scratch_f64.resize(scratch_len, c64(0.0, 0.0));
             let eval_start = Instant::now();
             evaluator.evaluate_f64_batch_unpadded(
@@ -269,6 +352,10 @@ impl EvaluatorGroup {
                 &mut self.chunk_scratch_f64,
             )?;
             evaluator_elapsed += eval_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != parameter_capacity)
+                    + u64::from(self.chunk_scratch_f64.capacity() != output_capacity);
 
             let assign_start = Instant::now();
             let outputs = &chunk_outputs[chunk_index];
@@ -293,13 +380,23 @@ impl EvaluatorGroup {
             }
             assign_elapsed += assign_start.elapsed();
         }
+        let leaf_input_pack_s = profile_duration_seconds(input_pack_elapsed);
+        let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
         Ok((
-            input_pack_elapsed.as_secs_f64(),
-            evaluator_elapsed.as_secs_f64(),
-            assign_elapsed.as_secs_f64(),
+            EvaluatorBatchProfile {
+                leaf_input_pack_s,
+                legacy_evaluator_call_s: evaluator_call_s,
+                evaluator_call_s,
+                leaf_input_copy_component_count,
+                backend_call_count,
+                scratch_reallocation_count,
+                ..EvaluatorBatchProfile::default()
+            },
+            profile_duration_seconds(assign_elapsed),
         ))
     }
 
+    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_selected_chunks_f64_into_output(
         &mut self,
         batch_size: usize,
@@ -309,6 +406,26 @@ impl EvaluatorGroup {
         out: &mut Vec<Complex<f64>>,
         active_chunk_indices: &[usize],
     ) -> RusticolResult<(f64, f64)> {
+        let profile = self.evaluate_selected_chunks_f64_into_output_profile(
+            batch_size,
+            params,
+            parent_input_components,
+            parent_input_spans,
+            out,
+            active_chunk_indices,
+        )?;
+        Ok((profile.leaf_input_pack_s, profile.legacy_evaluator_call_s))
+    }
+
+    pub(crate) fn evaluate_selected_chunks_f64_into_output_profile(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        parent_input_components: Option<&[usize]>,
+        parent_input_spans: &[(usize, usize, usize)],
+        out: &mut Vec<Complex<f64>>,
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<EvaluatorBatchProfile> {
         validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
         if batch_size == 0 || params.len() % batch_size != 0 {
             return Err(RusticolError::invalid_argument(
@@ -339,8 +456,14 @@ impl EvaluatorGroup {
         let output_len = batch_size
             .checked_mul(self.output_len)
             .ok_or_else(|| RusticolError::invalid_argument("amplitude output length overflows"))?;
+        let mut output_gather_elapsed = Duration::ZERO;
+        let output_prepare_start = Instant::now();
+        let output_capacity = out.capacity();
         out.resize(output_len, c64(0.0, 0.0));
         out.fill(c64(0.0, 0.0));
+        output_gather_elapsed += output_prepare_start.elapsed();
+        let mut output_gather_component_count = output_len as u64;
+        let mut scratch_reallocation_count = u64::from(out.capacity() != output_capacity);
 
         let mut chunk_output_starts = Vec::with_capacity(self.evaluators.len());
         let mut output_start = 0usize;
@@ -360,7 +483,10 @@ impl EvaluatorGroup {
 
         let mut input_pack_elapsed = Duration::ZERO;
         let mut evaluator_elapsed = Duration::ZERO;
+        let mut leaf_input_copy_component_count = 0u64;
+        let mut backend_call_count = 0u64;
         for &chunk_index in active_chunk_indices {
+            let parameter_capacity = self.chunk_parameter_scratch_f64.capacity();
             let input_pack_start = Instant::now();
             let evaluator_params = selected_chunk_f64_parameters(
                 params,
@@ -374,9 +500,13 @@ impl EvaluatorGroup {
                 &mut self.chunk_parameter_scratch_f64,
             )?;
             input_pack_elapsed += input_pack_start.elapsed();
+            if parent_input_components.is_some() || self.input_mappings[chunk_index].is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
 
             let evaluator = &mut self.evaluators[chunk_index];
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let chunk_capacity = self.chunk_scratch_f64.capacity();
             self.chunk_scratch_f64.resize(
                 batch_size
                     .checked_mul(evaluator.output_len)
@@ -393,6 +523,12 @@ impl EvaluatorGroup {
                 evaluator_params,
                 &mut self.chunk_scratch_f64,
             )?;
+            evaluator_elapsed += eval_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != parameter_capacity)
+                    + u64::from(self.chunk_scratch_f64.capacity() != chunk_capacity);
+            let output_gather_start = Instant::now();
             let chunk_output_start = chunk_output_starts[chunk_index];
             for row in 0..batch_size {
                 let source_start = row * evaluator.output_len;
@@ -401,12 +537,22 @@ impl EvaluatorGroup {
                     &self.chunk_scratch_f64[source_start..source_start + evaluator.output_len],
                 );
             }
-            evaluator_elapsed += eval_start.elapsed();
+            output_gather_elapsed += output_gather_start.elapsed();
+            output_gather_component_count += (batch_size * evaluator.output_len) as u64;
         }
-        Ok((
-            input_pack_elapsed.as_secs_f64(),
-            evaluator_elapsed.as_secs_f64(),
-        ))
+        let leaf_input_pack_s = profile_duration_seconds(input_pack_elapsed);
+        let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+        let output_gather_s = profile_duration_seconds(output_gather_elapsed);
+        Ok(EvaluatorBatchProfile {
+            leaf_input_pack_s,
+            legacy_evaluator_call_s: evaluator_call_s + output_gather_s,
+            evaluator_call_s,
+            output_gather_s,
+            leaf_input_copy_component_count,
+            output_gather_component_count,
+            backend_call_count,
+            scratch_reallocation_count,
+        })
     }
 
     pub(crate) fn evaluate_batch_into(
@@ -415,7 +561,8 @@ impl EvaluatorGroup {
         params: &[Complex<f64>],
         out: &mut Vec<Complex<f64>>,
     ) -> RusticolResult<()> {
-        self.evaluate_batch_into_with_tail_policy(batch_size, params, out, false)
+        self.evaluate_batch_into_profile(batch_size, params, out, false)
+            .map(|_| ())
     }
 
     pub(crate) fn evaluate_batch_into_padded_simd_tail(
@@ -424,20 +571,30 @@ impl EvaluatorGroup {
         params: &[Complex<f64>],
         out: &mut Vec<Complex<f64>>,
     ) -> RusticolResult<()> {
-        self.evaluate_batch_into_with_tail_policy(batch_size, params, out, true)
+        self.evaluate_batch_into_profile(batch_size, params, out, true)
+            .map(|_| ())
     }
 
-    fn evaluate_batch_into_with_tail_policy(
+    pub(crate) fn evaluate_batch_into_profile(
         &mut self,
         batch_size: usize,
         params: &[Complex<f64>],
         out: &mut Vec<Complex<f64>>,
         pad_incomplete_simd_tail: bool,
-    ) -> RusticolResult<()> {
+    ) -> RusticolResult<EvaluatorBatchProfile> {
+        let mut leaf_input_pack_elapsed = Duration::ZERO;
+        let mut evaluator_elapsed = Duration::ZERO;
+        let mut output_gather_elapsed = Duration::ZERO;
+        let mut leaf_input_copy_component_count = 0u64;
+        let mut output_gather_component_count = 0u64;
+        let mut backend_call_count = 0u64;
+        let mut scratch_reallocation_count = 0u64;
         let expected_output_len = batch_size * self.output_len;
+        let output_capacity = out.capacity();
         if out.len() != expected_output_len {
             out.resize(expected_output_len, c64(0.0, 0.0));
         }
+        scratch_reallocation_count += u64::from(out.capacity() != output_capacity);
         if params.len() != batch_size * self.input_len {
             return Err(RusticolError::invalid_argument(format!(
                 "parameter buffer has length {}, expected {}",
@@ -446,6 +603,8 @@ impl EvaluatorGroup {
             )));
         }
         if self.evaluators.len() == 1 {
+            let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
+            let leaf_start = Instant::now();
             let evaluator = &mut self.evaluators[0];
             let evaluator_params = mapped_f64_parameters(
                 params,
@@ -455,13 +614,32 @@ impl EvaluatorGroup {
                 &self.input_mapping_spans[0],
                 &mut self.chunk_parameter_scratch_f64,
             );
+            leaf_input_pack_elapsed += leaf_start.elapsed();
+            if self.input_mappings[0].is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let backend_start = Instant::now();
             if pad_incomplete_simd_tail {
                 evaluator.evaluate_f64_batch(batch_size, evaluator_params, out)?;
             } else {
                 evaluator.evaluate_f64_batch_unpadded(batch_size, evaluator_params, out)?;
             }
-            return Ok(());
+            evaluator_elapsed += backend_start.elapsed();
+            backend_call_count = 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != leaf_capacity);
+            let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
+            let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+            return Ok(EvaluatorBatchProfile {
+                leaf_input_pack_s,
+                legacy_evaluator_call_s: leaf_input_pack_s + evaluator_call_s,
+                evaluator_call_s,
+                leaf_input_copy_component_count,
+                backend_call_count,
+                scratch_reallocation_count,
+                ..EvaluatorBatchProfile::default()
+            });
         }
         let mut output_offset = 0;
         for ((evaluator, input_mapping), input_spans) in self
@@ -470,6 +648,8 @@ impl EvaluatorGroup {
             .zip(&self.input_mappings)
             .zip(&self.input_mapping_spans)
         {
+            let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
+            let leaf_start = Instant::now();
             let evaluator_params = mapped_f64_parameters(
                 params,
                 batch_size,
@@ -478,9 +658,17 @@ impl EvaluatorGroup {
                 input_spans,
                 &mut self.chunk_parameter_scratch_f64,
             );
+            leaf_input_pack_elapsed += leaf_start.elapsed();
+            if input_mapping.is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let chunk_capacity = self.chunk_scratch_f64.capacity();
             self.chunk_scratch_f64
                 .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
+            scratch_reallocation_count +=
+                u64::from(self.chunk_scratch_f64.capacity() != chunk_capacity);
+            let backend_start = Instant::now();
             if pad_incomplete_simd_tail {
                 evaluator.evaluate_f64_batch(
                     batch_size,
@@ -494,15 +682,34 @@ impl EvaluatorGroup {
                     &mut self.chunk_scratch_f64,
                 )?;
             }
+            evaluator_elapsed += backend_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != leaf_capacity);
+            let gather_start = Instant::now();
             for row in 0..batch_size {
                 let src = row * evaluator.output_len;
                 let dst = row * self.output_len + output_offset;
                 out[dst..dst + evaluator.output_len]
                     .copy_from_slice(&self.chunk_scratch_f64[src..src + evaluator.output_len]);
             }
+            output_gather_elapsed += gather_start.elapsed();
+            output_gather_component_count += (batch_size * evaluator.output_len) as u64;
             output_offset += evaluator.output_len;
         }
-        Ok(())
+        let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
+        let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+        let output_gather_s = profile_duration_seconds(output_gather_elapsed);
+        Ok(EvaluatorBatchProfile {
+            leaf_input_pack_s,
+            legacy_evaluator_call_s: leaf_input_pack_s + evaluator_call_s + output_gather_s,
+            evaluator_call_s,
+            output_gather_s,
+            leaf_input_copy_component_count,
+            output_gather_component_count,
+            backend_call_count,
+            scratch_reallocation_count,
+        })
     }
 
     #[cfg(feature = "symbolica-runtime")]

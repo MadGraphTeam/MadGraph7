@@ -1298,6 +1298,7 @@ fn eager_native_profile_accepts_non_overlapping_top_level_phases() {
     let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
     profile.total_s = 10.0e-3;
     profile.source_fill_s = 1.0e-3;
+    profile.momentum_input_setup_s = 0.5e-3;
     profile.momentum_setup_s = 0.5e-3;
     profile.stage_evaluator_call_s = 7.0e-3;
     profile.eager_initialize_s = 0.5e-3;
@@ -1305,6 +1306,21 @@ fn eager_native_profile_accepts_non_overlapping_top_level_phases() {
     profile.eager_copy_out_s = 0.5e-3;
 
     profile.validate_eager_top_level_accounting().unwrap();
+}
+
+#[test]
+fn native_profile_preserves_legacy_momentum_setup_aggregate() {
+    let profile: NativeRuntimeProfile = RuntimeProfile {
+        momentum_input_setup_s: 0.25,
+        momentum_setup_s: 0.75,
+        model_parameter_setup_s: 0.5,
+        ..RuntimeProfile::default()
+    }
+    .into();
+
+    assert_eq!(profile.momentum_input_setup_s, 0.25);
+    assert_eq!(profile.momentum_setup_s, 0.75);
+    assert_eq!(profile.model_parameter_setup_s, 0.5);
 }
 
 #[test]
@@ -1319,4 +1335,53 @@ fn eager_native_profile_rejects_top_level_overlap() {
     assert_eq!(error.kind(), crate::RusticolErrorKind::Internal);
     assert!(error.to_string().contains("exclusive top-level phases"));
     assert!(error.to_string().contains("exceeding wall time"));
+}
+
+#[test]
+fn compiled_native_profile_rejects_top_level_overlap() {
+    let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
+    profile.total_s = 10.0e-3;
+    profile.stage_input_pack_s = 4.0e-3;
+    profile.stage_evaluator_call_s = 7.0e-3;
+
+    let error = profile
+        .validate_compiled_top_level_accounting()
+        .unwrap_err();
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Internal);
+    assert!(error.to_string().contains("exclusive top-level phases"));
+    assert!(error.to_string().contains("exceeding wall time"));
+}
+
+#[test]
+fn native_profile_accumulates_compiled_accounting() {
+    let mut profile: NativeRuntimeProfile = RuntimeProfile {
+        orchestration_s: 1.0,
+        stage_leaf_input_pack_s: 2.0,
+        stage_leaf_input_pack_by_stage_s: vec![2.0],
+        stage_leaf_input_copy_component_count: 3,
+        evaluator_backend_call_count: 4,
+        scratch_reallocation_count: 5,
+        ..RuntimeProfile::default()
+    }
+    .into();
+    let repeated: NativeRuntimeProfile = RuntimeProfile {
+        orchestration_s: 10.0,
+        stage_leaf_input_pack_s: 20.0,
+        stage_leaf_input_pack_by_stage_s: vec![20.0, 30.0],
+        stage_leaf_input_copy_component_count: 30,
+        evaluator_backend_call_count: 40,
+        scratch_reallocation_count: 50,
+        ..RuntimeProfile::default()
+    }
+    .into();
+
+    profile.accumulate(&repeated);
+
+    assert_eq!(profile.orchestration_s, 11.0);
+    assert_eq!(profile.stage_leaf_input_pack_s, 22.0);
+    assert_eq!(profile.stage_leaf_input_pack_by_stage_s, [22.0, 30.0]);
+    assert_eq!(profile.stage_leaf_input_copy_component_count, 33);
+    assert_eq!(profile.evaluator_backend_call_count, 44);
+    assert_eq!(profile.observed_scratch_reallocation_count, 55);
 }

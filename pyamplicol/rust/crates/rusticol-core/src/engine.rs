@@ -1807,22 +1807,91 @@ struct ColorContractionEntry {
     symmetry_factor: f64,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct EvaluatorBatchProfile {
+    leaf_input_pack_s: f64,
+    legacy_evaluator_call_s: f64,
+    evaluator_call_s: f64,
+    output_gather_s: f64,
+    leaf_input_copy_component_count: u64,
+    output_gather_component_count: u64,
+    backend_call_count: u64,
+    scratch_reallocation_count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct StageEvaluationProfile {
+    input_pack_s: f64,
+    evaluator: EvaluatorBatchProfile,
+    output_assign_s: f64,
+    input_copy_component_count: u64,
+    output_assign_component_count: u64,
+    scratch_reallocation_count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct AmplitudeEvaluationProfile {
+    input_pack_s: f64,
+    evaluator: EvaluatorBatchProfile,
+    output_remap_s: f64,
+    input_copy_component_count: u64,
+    output_remap_component_count: u64,
+    scratch_reallocation_count: u64,
+}
+
 #[derive(Clone, Debug, Default)]
 struct RuntimeProfile {
+    orchestration_s: f64,
+    state_prepare_s: f64,
+    state_clear_s: f64,
     source_fill_s: f64,
+    momentum_input_setup_s: f64,
     momentum_setup_s: f64,
+    model_parameter_setup_s: f64,
     stage_input_pack_s: f64,
+    stage_leaf_input_pack_s: f64,
     stage_evaluator_call_s: f64,
+    stage_backend_call_s: f64,
+    stage_evaluator_output_gather_s: f64,
     stage_evaluator_s: f64,
     output_assign_s: f64,
     amplitude_input_pack_s: f64,
+    amplitude_leaf_input_pack_s: f64,
     amplitude_evaluator_call_s: f64,
+    amplitude_backend_call_s: f64,
+    amplitude_evaluator_output_gather_s: f64,
+    amplitude_output_remap_s: f64,
     amplitude_evaluator_s: f64,
     reduction_s: f64,
+    resolved_reduction_materialization_s: f64,
+    total_materialization_s: f64,
+    final_output_copy_s: f64,
     total_s: f64,
     stage_input_pack_by_stage_s: Vec<f64>,
+    stage_leaf_input_pack_by_stage_s: Vec<f64>,
     stage_evaluator_call_by_stage_s: Vec<f64>,
+    stage_backend_call_by_stage_s: Vec<f64>,
+    stage_evaluator_output_gather_by_stage_s: Vec<f64>,
     stage_output_assign_by_stage_s: Vec<f64>,
+    state_component_count: u64,
+    state_clear_component_count: u64,
+    source_component_count: u64,
+    momentum_component_count: u64,
+    model_parameter_component_count: u64,
+    stage_input_copy_component_count: u64,
+    stage_leaf_input_copy_component_count: u64,
+    stage_evaluator_output_gather_component_count: u64,
+    stage_output_assign_component_count: u64,
+    amplitude_input_copy_component_count: u64,
+    amplitude_leaf_input_copy_component_count: u64,
+    amplitude_evaluator_output_gather_component_count: u64,
+    amplitude_output_remap_component_count: u64,
+    evaluator_backend_call_count: u64,
+    reduction_input_component_count: u64,
+    resolved_materialized_component_count: u64,
+    total_materialized_value_count: u64,
+    final_output_copy_value_count: u64,
+    scratch_reallocation_count: u64,
     eager_initialize_s: f64,
     eager_gather_s: f64,
     eager_kernel_call_s: f64,
@@ -1845,16 +1914,54 @@ fn profile_duration_seconds(duration: Duration) -> f64 {
 
 impl RuntimeProfile {
     fn add_sector(&mut self, sector: &RuntimeProfile) {
+        self.orchestration_s += sector.orchestration_s;
+        self.state_prepare_s += sector.state_prepare_s;
+        self.state_clear_s += sector.state_clear_s;
         self.source_fill_s += sector.source_fill_s;
+        self.momentum_input_setup_s += sector.momentum_input_setup_s;
         self.momentum_setup_s += sector.momentum_setup_s;
+        self.model_parameter_setup_s += sector.model_parameter_setup_s;
         self.stage_input_pack_s += sector.stage_input_pack_s;
+        self.stage_leaf_input_pack_s += sector.stage_leaf_input_pack_s;
         self.stage_evaluator_call_s += sector.stage_evaluator_call_s;
+        self.stage_backend_call_s += sector.stage_backend_call_s;
+        self.stage_evaluator_output_gather_s += sector.stage_evaluator_output_gather_s;
         self.stage_evaluator_s += sector.stage_evaluator_s;
         self.output_assign_s += sector.output_assign_s;
         self.amplitude_input_pack_s += sector.amplitude_input_pack_s;
+        self.amplitude_leaf_input_pack_s += sector.amplitude_leaf_input_pack_s;
         self.amplitude_evaluator_call_s += sector.amplitude_evaluator_call_s;
+        self.amplitude_backend_call_s += sector.amplitude_backend_call_s;
+        self.amplitude_evaluator_output_gather_s += sector.amplitude_evaluator_output_gather_s;
+        self.amplitude_output_remap_s += sector.amplitude_output_remap_s;
         self.amplitude_evaluator_s += sector.amplitude_evaluator_s;
         self.reduction_s += sector.reduction_s;
+        self.resolved_reduction_materialization_s += sector.resolved_reduction_materialization_s;
+        self.total_materialization_s += sector.total_materialization_s;
+        self.final_output_copy_s += sector.final_output_copy_s;
+        self.state_component_count += sector.state_component_count;
+        self.state_clear_component_count += sector.state_clear_component_count;
+        self.source_component_count += sector.source_component_count;
+        self.momentum_component_count += sector.momentum_component_count;
+        self.model_parameter_component_count += sector.model_parameter_component_count;
+        self.stage_input_copy_component_count += sector.stage_input_copy_component_count;
+        self.stage_leaf_input_copy_component_count += sector.stage_leaf_input_copy_component_count;
+        self.stage_evaluator_output_gather_component_count +=
+            sector.stage_evaluator_output_gather_component_count;
+        self.stage_output_assign_component_count += sector.stage_output_assign_component_count;
+        self.amplitude_input_copy_component_count += sector.amplitude_input_copy_component_count;
+        self.amplitude_leaf_input_copy_component_count +=
+            sector.amplitude_leaf_input_copy_component_count;
+        self.amplitude_evaluator_output_gather_component_count +=
+            sector.amplitude_evaluator_output_gather_component_count;
+        self.amplitude_output_remap_component_count +=
+            sector.amplitude_output_remap_component_count;
+        self.evaluator_backend_call_count += sector.evaluator_backend_call_count;
+        self.reduction_input_component_count += sector.reduction_input_component_count;
+        self.resolved_materialized_component_count += sector.resolved_materialized_component_count;
+        self.total_materialized_value_count += sector.total_materialized_value_count;
+        self.final_output_copy_value_count += sector.final_output_copy_value_count;
+        self.scratch_reallocation_count += sector.scratch_reallocation_count;
         self.eager_initialize_s += sector.eager_initialize_s;
         self.eager_gather_s += sector.eager_gather_s;
         self.eager_kernel_call_s += sector.eager_kernel_call_s;
@@ -1869,8 +1976,20 @@ impl RuntimeProfile {
             &sector.stage_input_pack_by_stage_s,
         );
         add_profile_vector(
+            &mut self.stage_leaf_input_pack_by_stage_s,
+            &sector.stage_leaf_input_pack_by_stage_s,
+        );
+        add_profile_vector(
             &mut self.stage_evaluator_call_by_stage_s,
             &sector.stage_evaluator_call_by_stage_s,
+        );
+        add_profile_vector(
+            &mut self.stage_backend_call_by_stage_s,
+            &sector.stage_backend_call_by_stage_s,
+        );
+        add_profile_vector(
+            &mut self.stage_evaluator_output_gather_by_stage_s,
+            &sector.stage_evaluator_output_gather_by_stage_s,
         );
         add_profile_vector(
             &mut self.stage_output_assign_by_stage_s,
@@ -2074,19 +2193,59 @@ pub struct NativeEagerExactClosure {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct NativeRuntimeProfile {
+    pub native_input_pack_s: f64,
+    pub native_input_crossing_s: f64,
+    pub orchestration_s: f64,
+    pub state_prepare_s: f64,
+    pub state_clear_s: f64,
     pub source_fill_s: f64,
+    /// Exclusive momentum-input setup. Unlike `momentum_setup_s`, this does
+    /// not include model-parameter setup.
+    pub momentum_input_setup_s: f64,
+    /// Backward-compatible aggregate of momentum-input and model-parameter
+    /// setup.
     pub momentum_setup_s: f64,
+    pub model_parameter_setup_s: f64,
+    /// Top-level stage input envelope. In composed selected-chunk paths this
+    /// owns the leaf gather; in full-stage paths it owns only the parent
+    /// stage-input gather.
     pub stage_input_pack_s: f64,
+    /// Internal attribution. This is owned by `stage_input_pack_s` for
+    /// composed selected-chunk paths and by `stage_evaluator_call_s` for
+    /// full-stage paths, so it must not be added to the top-level sum.
+    pub stage_leaf_input_pack_s: f64,
+    /// Top-level evaluator envelope. This includes leaf gathering for
+    /// full-stage paths and excludes it for composed selected-chunk paths.
     pub stage_evaluator_call_s: f64,
+    pub stage_backend_call_s: f64,
+    pub stage_evaluator_output_gather_s: f64,
     pub stage_evaluator_s: f64,
     pub output_assign_s: f64,
+    /// Top-level amplitude input envelope. In composed selected-chunk paths
+    /// this owns the amplitude leaf gather.
     pub amplitude_input_pack_s: f64,
+    /// Internal attribution owned either by `amplitude_input_pack_s` or
+    /// `amplitude_evaluator_call_s`; never an additional top-level phase.
+    pub amplitude_leaf_input_pack_s: f64,
+    /// Top-level amplitude evaluator envelope. Full-stage paths include leaf
+    /// gathering; composed selected-chunk paths exclude it.
     pub amplitude_evaluator_call_s: f64,
+    pub amplitude_backend_call_s: f64,
+    pub amplitude_evaluator_output_gather_s: f64,
+    pub amplitude_output_remap_s: f64,
     pub amplitude_evaluator_s: f64,
     pub reduction_s: f64,
+    /// Inclusive attribution: the resolved-result construction occurs inside
+    /// `reduction_s` and must not be added to exclusive top-level phases.
+    pub resolved_reduction_materialization_s: f64,
+    pub total_materialization_s: f64,
+    pub final_output_copy_s: f64,
     pub total_s: f64,
     pub stage_input_pack_by_stage_s: Vec<f64>,
+    pub stage_leaf_input_pack_by_stage_s: Vec<f64>,
     pub stage_evaluator_call_by_stage_s: Vec<f64>,
+    pub stage_backend_call_by_stage_s: Vec<f64>,
+    pub stage_evaluator_output_gather_by_stage_s: Vec<f64>,
     pub stage_output_assign_by_stage_s: Vec<f64>,
     pub eager_initialize_s: f64,
     pub eager_gather_s: f64,
@@ -2105,24 +2264,76 @@ pub struct NativeRuntimeProfile {
     pub selector_reordered_point_count: usize,
     pub selector_simd_lane_width: usize,
     pub selector_simd_occupancy: f64,
+    pub native_input_component_count: u64,
+    pub native_input_pack_bytes: u64,
+    pub native_input_crossing_bytes: u64,
+    /// Explicit nested native-input containers allocated for this call.
+    pub native_input_container_allocation_count: u64,
+    pub state_component_count: u64,
+    pub state_clear_component_count: u64,
+    pub source_component_count: u64,
+    pub momentum_component_count: u64,
+    pub model_parameter_component_count: u64,
+    pub stage_input_copy_component_count: u64,
+    pub stage_leaf_input_copy_component_count: u64,
+    pub stage_evaluator_output_gather_component_count: u64,
+    pub stage_output_assign_component_count: u64,
+    pub amplitude_input_copy_component_count: u64,
+    pub amplitude_leaf_input_copy_component_count: u64,
+    pub amplitude_evaluator_output_gather_component_count: u64,
+    pub amplitude_output_remap_component_count: u64,
+    pub evaluator_backend_call_count: u64,
+    pub reduction_input_component_count: u64,
+    pub selector_gather_point_count: u64,
+    pub selector_gather_bytes: u64,
+    pub selector_scatter_value_count: u64,
+    pub resolved_materialized_component_count: u64,
+    pub total_materialized_value_count: u64,
+    pub final_output_copy_value_count: u64,
+    /// Capacity-changing reallocations observed in instrumented reusable hot
+    /// buffers. This is intentionally not a process-wide allocation count.
+    pub observed_scratch_reallocation_count: u64,
+    /// Explicit final native output vector allocated for this call.
+    pub native_output_allocation_count: u64,
 }
 
 impl From<RuntimeProfile> for NativeRuntimeProfile {
     fn from(profile: RuntimeProfile) -> Self {
         Self {
+            native_input_pack_s: 0.0,
+            native_input_crossing_s: 0.0,
+            orchestration_s: profile.orchestration_s,
+            state_prepare_s: profile.state_prepare_s,
+            state_clear_s: profile.state_clear_s,
             source_fill_s: profile.source_fill_s,
+            momentum_input_setup_s: profile.momentum_input_setup_s,
             momentum_setup_s: profile.momentum_setup_s,
+            model_parameter_setup_s: profile.model_parameter_setup_s,
             stage_input_pack_s: profile.stage_input_pack_s,
+            stage_leaf_input_pack_s: profile.stage_leaf_input_pack_s,
             stage_evaluator_call_s: profile.stage_evaluator_call_s,
+            stage_backend_call_s: profile.stage_backend_call_s,
+            stage_evaluator_output_gather_s: profile.stage_evaluator_output_gather_s,
             stage_evaluator_s: profile.stage_evaluator_s,
             output_assign_s: profile.output_assign_s,
             amplitude_input_pack_s: profile.amplitude_input_pack_s,
+            amplitude_leaf_input_pack_s: profile.amplitude_leaf_input_pack_s,
             amplitude_evaluator_call_s: profile.amplitude_evaluator_call_s,
+            amplitude_backend_call_s: profile.amplitude_backend_call_s,
+            amplitude_evaluator_output_gather_s: profile.amplitude_evaluator_output_gather_s,
+            amplitude_output_remap_s: profile.amplitude_output_remap_s,
             amplitude_evaluator_s: profile.amplitude_evaluator_s,
             reduction_s: profile.reduction_s,
+            resolved_reduction_materialization_s: profile.resolved_reduction_materialization_s,
+            total_materialization_s: profile.total_materialization_s,
+            final_output_copy_s: profile.final_output_copy_s,
             total_s: profile.total_s,
             stage_input_pack_by_stage_s: profile.stage_input_pack_by_stage_s,
+            stage_leaf_input_pack_by_stage_s: profile.stage_leaf_input_pack_by_stage_s,
             stage_evaluator_call_by_stage_s: profile.stage_evaluator_call_by_stage_s,
+            stage_backend_call_by_stage_s: profile.stage_backend_call_by_stage_s,
+            stage_evaluator_output_gather_by_stage_s: profile
+                .stage_evaluator_output_gather_by_stage_s,
             stage_output_assign_by_stage_s: profile.stage_output_assign_by_stage_s,
             eager_initialize_s: profile.eager_initialize_s,
             eager_gather_s: profile.eager_gather_s,
@@ -2141,30 +2352,89 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
             selector_reordered_point_count: 0,
             selector_simd_lane_width: 1,
             selector_simd_occupancy: 1.0,
+            native_input_component_count: 0,
+            native_input_pack_bytes: 0,
+            native_input_crossing_bytes: 0,
+            native_input_container_allocation_count: 0,
+            state_component_count: profile.state_component_count,
+            state_clear_component_count: profile.state_clear_component_count,
+            source_component_count: profile.source_component_count,
+            momentum_component_count: profile.momentum_component_count,
+            model_parameter_component_count: profile.model_parameter_component_count,
+            stage_input_copy_component_count: profile.stage_input_copy_component_count,
+            stage_leaf_input_copy_component_count: profile.stage_leaf_input_copy_component_count,
+            stage_evaluator_output_gather_component_count: profile
+                .stage_evaluator_output_gather_component_count,
+            stage_output_assign_component_count: profile.stage_output_assign_component_count,
+            amplitude_input_copy_component_count: profile.amplitude_input_copy_component_count,
+            amplitude_leaf_input_copy_component_count: profile
+                .amplitude_leaf_input_copy_component_count,
+            amplitude_evaluator_output_gather_component_count: profile
+                .amplitude_evaluator_output_gather_component_count,
+            amplitude_output_remap_component_count: profile.amplitude_output_remap_component_count,
+            evaluator_backend_call_count: profile.evaluator_backend_call_count,
+            reduction_input_component_count: profile.reduction_input_component_count,
+            selector_gather_point_count: 0,
+            selector_gather_bytes: 0,
+            selector_scatter_value_count: 0,
+            resolved_materialized_component_count: profile.resolved_materialized_component_count,
+            total_materialized_value_count: profile.total_materialized_value_count,
+            final_output_copy_value_count: profile.final_output_copy_value_count,
+            observed_scratch_reallocation_count: profile.scratch_reallocation_count,
+            native_output_allocation_count: 0,
         }
     }
 }
 
 impl NativeRuntimeProfile {
     fn validate_eager_top_level_accounting(&self) -> RusticolResult<()> {
-        let phases = [
+        self.validate_top_level_accounting(true)
+    }
+
+    fn validate_compiled_top_level_accounting(&self) -> RusticolResult<()> {
+        self.validate_top_level_accounting(false)
+    }
+
+    fn validate_top_level_accounting(&self, eager: bool) -> RusticolResult<()> {
+        let mut phases = vec![
+            ("native input pack", self.native_input_pack_s),
+            ("native input crossing", self.native_input_crossing_s),
+            ("runtime orchestration", self.orchestration_s),
+            ("state preparation", self.state_prepare_s),
+            ("state clearing", self.state_clear_s),
             ("source fill", self.source_fill_s),
-            ("momentum setup", self.momentum_setup_s),
-            ("inclusive eager execution", self.stage_evaluator_call_s),
+            ("momentum input setup", self.momentum_input_setup_s),
+            ("model parameter setup", self.model_parameter_setup_s),
+        ];
+        if eager {
+            phases.push(("inclusive eager execution", self.stage_evaluator_call_s));
+        } else {
+            phases.extend([
+                ("stage input pack", self.stage_input_pack_s),
+                ("stage evaluator calls", self.stage_evaluator_call_s),
+                ("stage output assignment", self.output_assign_s),
+                ("amplitude input pack", self.amplitude_input_pack_s),
+                ("amplitude evaluator calls", self.amplitude_evaluator_call_s),
+                ("reduction", self.reduction_s),
+            ]);
+        }
+        phases.extend([
+            ("total materialization", self.total_materialization_s),
+            ("final output copy", self.final_output_copy_s),
             ("selector planning", self.selector_planner_s),
             ("selector gather", self.selector_gather_s),
             ("selector scatter", self.selector_scatter_s),
-        ];
+        ]);
         if !self.total_s.is_finite() || self.total_s < 0.0 {
             return Err(RusticolError::internal(format!(
-                "native eager profile has invalid wall time {:.9e}s",
-                self.total_s
+                "native profile has invalid wall time {:.9e}s",
+                self.total_s,
             )));
         }
-        for (label, value) in phases {
-            if !value.is_finite() || value < 0.0 {
+        for (label, value) in &phases {
+            if !value.is_finite() || *value < 0.0 {
                 return Err(RusticolError::internal(format!(
-                    "native eager profile has invalid {label} time {value:.9e}s"
+                    "native profile has invalid {label} time {value:.9e}s"
                 )));
             }
         }
@@ -2172,32 +2442,62 @@ impl NativeRuntimeProfile {
         let tolerance = 1.0e-9_f64.max(self.total_s * 1.0e-12);
         if accounted > self.total_s + tolerance {
             return Err(RusticolError::internal(format!(
-                "native eager profile exclusive top-level phases account for {accounted:.9e}s, exceeding wall time {wall:.9e}s",
+                "native profile exclusive top-level phases account for {accounted:.9e}s, exceeding wall time {wall:.9e}s",
                 wall = self.total_s,
             )));
         }
         Ok(())
     }
 
+    #[inline(never)]
     fn accumulate(&mut self, other: &Self) {
+        self.native_input_pack_s += other.native_input_pack_s;
+        self.native_input_crossing_s += other.native_input_crossing_s;
+        self.orchestration_s += other.orchestration_s;
+        self.state_prepare_s += other.state_prepare_s;
+        self.state_clear_s += other.state_clear_s;
         self.source_fill_s += other.source_fill_s;
+        self.momentum_input_setup_s += other.momentum_input_setup_s;
         self.momentum_setup_s += other.momentum_setup_s;
+        self.model_parameter_setup_s += other.model_parameter_setup_s;
         self.stage_input_pack_s += other.stage_input_pack_s;
+        self.stage_leaf_input_pack_s += other.stage_leaf_input_pack_s;
         self.stage_evaluator_call_s += other.stage_evaluator_call_s;
+        self.stage_backend_call_s += other.stage_backend_call_s;
+        self.stage_evaluator_output_gather_s += other.stage_evaluator_output_gather_s;
         self.stage_evaluator_s += other.stage_evaluator_s;
         self.output_assign_s += other.output_assign_s;
         self.amplitude_input_pack_s += other.amplitude_input_pack_s;
+        self.amplitude_leaf_input_pack_s += other.amplitude_leaf_input_pack_s;
         self.amplitude_evaluator_call_s += other.amplitude_evaluator_call_s;
+        self.amplitude_backend_call_s += other.amplitude_backend_call_s;
+        self.amplitude_evaluator_output_gather_s += other.amplitude_evaluator_output_gather_s;
+        self.amplitude_output_remap_s += other.amplitude_output_remap_s;
         self.amplitude_evaluator_s += other.amplitude_evaluator_s;
         self.reduction_s += other.reduction_s;
+        self.resolved_reduction_materialization_s += other.resolved_reduction_materialization_s;
+        self.total_materialization_s += other.total_materialization_s;
+        self.final_output_copy_s += other.final_output_copy_s;
         self.total_s += other.total_s;
         accumulate_profile_stages(
             &mut self.stage_input_pack_by_stage_s,
             &other.stage_input_pack_by_stage_s,
         );
         accumulate_profile_stages(
+            &mut self.stage_leaf_input_pack_by_stage_s,
+            &other.stage_leaf_input_pack_by_stage_s,
+        );
+        accumulate_profile_stages(
             &mut self.stage_evaluator_call_by_stage_s,
             &other.stage_evaluator_call_by_stage_s,
+        );
+        accumulate_profile_stages(
+            &mut self.stage_backend_call_by_stage_s,
+            &other.stage_backend_call_by_stage_s,
+        );
+        accumulate_profile_stages(
+            &mut self.stage_evaluator_output_gather_by_stage_s,
+            &other.stage_evaluator_output_gather_by_stage_s,
         );
         accumulate_profile_stages(
             &mut self.stage_output_assign_by_stage_s,
@@ -2215,6 +2515,37 @@ impl NativeRuntimeProfile {
         self.selector_planner_s += other.selector_planner_s;
         self.selector_gather_s += other.selector_gather_s;
         self.selector_scatter_s += other.selector_scatter_s;
+        self.native_input_component_count += other.native_input_component_count;
+        self.native_input_pack_bytes += other.native_input_pack_bytes;
+        self.native_input_crossing_bytes += other.native_input_crossing_bytes;
+        self.native_input_container_allocation_count +=
+            other.native_input_container_allocation_count;
+        self.state_component_count += other.state_component_count;
+        self.state_clear_component_count += other.state_clear_component_count;
+        self.source_component_count += other.source_component_count;
+        self.momentum_component_count += other.momentum_component_count;
+        self.model_parameter_component_count += other.model_parameter_component_count;
+        self.stage_input_copy_component_count += other.stage_input_copy_component_count;
+        self.stage_leaf_input_copy_component_count += other.stage_leaf_input_copy_component_count;
+        self.stage_evaluator_output_gather_component_count +=
+            other.stage_evaluator_output_gather_component_count;
+        self.stage_output_assign_component_count += other.stage_output_assign_component_count;
+        self.amplitude_input_copy_component_count += other.amplitude_input_copy_component_count;
+        self.amplitude_leaf_input_copy_component_count +=
+            other.amplitude_leaf_input_copy_component_count;
+        self.amplitude_evaluator_output_gather_component_count +=
+            other.amplitude_evaluator_output_gather_component_count;
+        self.amplitude_output_remap_component_count += other.amplitude_output_remap_component_count;
+        self.evaluator_backend_call_count += other.evaluator_backend_call_count;
+        self.reduction_input_component_count += other.reduction_input_component_count;
+        self.selector_gather_point_count += other.selector_gather_point_count;
+        self.selector_gather_bytes += other.selector_gather_bytes;
+        self.selector_scatter_value_count += other.selector_scatter_value_count;
+        self.resolved_materialized_component_count += other.resolved_materialized_component_count;
+        self.total_materialized_value_count += other.total_materialized_value_count;
+        self.final_output_copy_value_count += other.final_output_copy_value_count;
+        self.observed_scratch_reallocation_count += other.observed_scratch_reallocation_count;
+        self.native_output_allocation_count += other.native_output_allocation_count;
         if self.selector_plan_kind == "none" && other.selector_plan_kind != "none" {
             self.selector_plan_kind
                 .clone_from(&other.selector_plan_kind);

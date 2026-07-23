@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from pyamplicol.api.results import (
         BenchmarkComponentTiming,
+        BenchmarkProfileCounters,
         BenchmarkResult,
         BenchmarkStatistics,
     )
@@ -146,6 +148,217 @@ def _component_timing_text(timing: BenchmarkComponentTiming | None) -> str:
     )
 
 
+def _counter_mean_text(value: float, unit: str) -> str:
+    rounded = round(value)
+    number = (
+        f"{rounded:,}"
+        if math.isclose(value, rounded, rel_tol=0.0, abs_tol=1.0e-12)
+        else f"{value:,.6g}"
+    )
+    return f"{number} {unit}"
+
+
+def _profile_counter_rows(
+    counters: BenchmarkProfileCounters,
+) -> tuple[tuple[str, str, float, str, str], ...]:
+    definitions = (
+        (
+            "native input",
+            "input components",
+            counters.native_input_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "native input",
+            "packed input",
+            counters.native_input_pack_bytes_per_point,
+            "bytes",
+            "per point",
+        ),
+        (
+            "native input",
+            "crossed input",
+            counters.native_input_crossing_bytes_per_point,
+            "bytes",
+            "per point",
+        ),
+        (
+            "native input",
+            "input containers",
+            counters.native_input_container_allocations_per_call,
+            "allocations",
+            "per runtime call",
+        ),
+        (
+            "state setup",
+            "state extent",
+            counters.state_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "state setup",
+            "state clear",
+            counters.state_clear_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "state setup",
+            "source fill",
+            counters.source_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "state setup",
+            "momentum fill",
+            counters.momentum_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "state setup",
+            "model parameter fill",
+            counters.model_parameter_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "compiled stages",
+            "stage input copy",
+            counters.stage_input_copy_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "compiled stages",
+            "stage leaf copy",
+            counters.stage_leaf_input_copy_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "compiled stages",
+            "stage output gather",
+            counters.stage_evaluator_output_gather_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "compiled stages",
+            "stage output assign",
+            counters.stage_output_assign_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "amplitude",
+            "amplitude input copy",
+            counters.amplitude_input_copy_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "amplitude",
+            "amplitude leaf copy",
+            counters.amplitude_leaf_input_copy_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "amplitude",
+            "amplitude output gather",
+            counters.amplitude_evaluator_output_gather_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "amplitude",
+            "amplitude output remap",
+            counters.amplitude_output_remap_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "backend",
+            "evaluator backend calls",
+            counters.evaluator_backend_calls_per_call,
+            "calls",
+            "per runtime call",
+        ),
+        (
+            "reduction",
+            "reduction input",
+            counters.reduction_input_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "selectors",
+            "gathered rows",
+            counters.selector_gather_points_per_point,
+            "points",
+            "per point",
+        ),
+        (
+            "selectors",
+            "gathered input",
+            counters.selector_gather_bytes_per_point,
+            "bytes",
+            "per point",
+        ),
+        (
+            "selectors",
+            "scattered output",
+            counters.selector_scatter_values_per_point,
+            "values",
+            "per point",
+        ),
+        (
+            "materialization",
+            "resolved components",
+            counters.resolved_materialized_components_per_point,
+            "components",
+            "per point",
+        ),
+        (
+            "materialization",
+            "total values",
+            counters.total_materialized_values_per_point,
+            "values",
+            "per point",
+        ),
+        (
+            "materialization",
+            "final output copy",
+            counters.final_output_copy_values_per_point,
+            "values",
+            "per point",
+        ),
+        (
+            "allocations",
+            "observed scratch reallocations",
+            counters.observed_scratch_reallocations_per_call,
+            "reallocations",
+            "per runtime call",
+        ),
+        (
+            "allocations",
+            "native output vectors",
+            counters.native_output_allocations_per_call,
+            "allocations",
+            "per runtime call",
+        ),
+    )
+    return tuple(
+        (area, label, value, unit, basis)
+        for area, label, value, unit, basis in definitions
+        if value is not None
+    )
+
+
 def _benchmark_summary(
     result: BenchmarkResult,
     *,
@@ -171,7 +384,10 @@ def _benchmark_summary(
         "shared_native_repeated_profile_v1",
         "shared_native_single_profile_v1",
     }
-    separate_timing_samples = (
+    paired_timing_samples = (
+        timing_sample_contract == "paired_unprofiled_headline_profiled_attribution_v1"
+    )
+    separate_timing_samples = paired_timing_samples or (
         timing_sample_contract == "separate_native_profile_diagnostic_v1"
     )
     evaluator_sample_value = environment.get("evaluator_sample_count")
@@ -206,9 +422,7 @@ def _benchmark_summary(
         else "complete"
     )
     breakdown = result.timing_breakdown
-    profile_repetitions_value = environment.get(
-        "native_profile_repetitions_per_sample"
-    )
+    profile_repetitions_value = environment.get("native_profile_repetitions_per_sample")
     profile_repetitions = (
         int(profile_repetitions_value)
         if isinstance(profile_repetitions_value, int)
@@ -247,7 +461,15 @@ def _benchmark_summary(
             "GREEN",
         ),
         (
-            "diagnostic evaluator" if separate_timing_samples else "evaluator time",
+            (
+                "paired evaluator"
+                if paired_timing_samples
+                else (
+                    "diagnostic evaluator"
+                    if separate_timing_samples
+                    else "evaluator time"
+                )
+            ),
             evaluator_text,
             "CYAN",
         ),
@@ -303,20 +525,27 @@ def _benchmark_summary(
                 )
                 if shared_timing_samples
                 else (
-                    f"separate passes: headline wall {result.sample_count} blocks x "
-                    f"{result.repetitions_per_sample} repetitions x "
-                    f"{result.effective_config.batch_size} points; evaluator and "
-                    f"breakdown {breakdown.sample_count} diagnostic blocks x "
-                    f"{profile_repetitions} repetitions "
-                    f"({profile_points} points/block)"
-                    if timing_sample_contract == "separate_native_profile_diagnostic_v1"
-                    and breakdown is not None
-                    else "no native timing breakdown available"
+                    f"paired passes: unprofiled headline {result.sample_count} "
+                    f"blocks x {result.repetitions_per_sample} repetitions x "
+                    f"{result.effective_config.batch_size} points; profiled "
+                    f"attribution uses {breakdown.sample_count} paired blocks with "
+                    "the identical batch and repetition count"
+                    if paired_timing_samples and breakdown is not None
+                    else (
+                        f"separate passes: headline wall {result.sample_count} "
+                        f"blocks x {result.repetitions_per_sample} repetitions x "
+                        f"{result.effective_config.batch_size} points; evaluator and "
+                        f"breakdown {breakdown.sample_count} diagnostic blocks x "
+                        f"{profile_repetitions} repetitions "
+                        f"({profile_points} points/block)"
+                        if timing_sample_contract
+                        == "separate_native_profile_diagnostic_v1"
+                        and breakdown is not None
+                        else "no native timing breakdown available"
+                    )
                 )
             ),
-            "YELLOW"
-            if timing_sample_contract == "separate_native_profile_diagnostic_v1"
-            else None,
+            "YELLOW" if separate_timing_samples else None,
         ),
         ("platform", _value_text(environment.get("platform")), None),
     ]
@@ -351,7 +580,11 @@ def _benchmark_summary(
         else "Rusticol Timing Breakdown"
     )
     if separate_timing_samples:
-        breakdown_title += " (separate diagnostic samples)"
+        breakdown_title += (
+            " (paired profiled attribution)"
+            if paired_timing_samples
+            else " (separate diagnostic samples)"
+        )
     component_table.title = _paint(
         breakdown_title,
         "CYAN",
@@ -373,6 +606,9 @@ def _benchmark_summary(
             breakdown.eager_initialize_time,
             breakdown.eager_copy_out_time,
         )
+    )
+    momentum_input_setup_time = (
+        breakdown.momentum_input_setup_time or breakdown.momentum_setup_time
     )
     component_rows: tuple[tuple[str, BenchmarkComponentTiming | None], ...]
     if detailed_eager_profile:
@@ -402,11 +638,30 @@ def _benchmark_summary(
             (
                 "Profile wall (headline)"
                 if shared_timing_samples
-                else "Profile wall (diagnostic pass)",
+                else (
+                    "Profile wall (paired profiled pass)"
+                    if paired_timing_samples
+                    else "Profile wall (diagnostic pass)"
+                ),
                 breakdown.wall_time,
             ),
+            ("Native input pack (exclusive)", breakdown.native_input_pack_time),
+            (
+                "Native input crossing (exclusive)",
+                breakdown.native_input_crossing_time,
+            ),
+            ("Runtime orchestration (exclusive)", breakdown.orchestration_time),
+            ("State prepare (exclusive)", breakdown.state_prepare_time),
+            ("State clear (exclusive)", breakdown.state_clear_time),
             ("Source fill (exclusive)", breakdown.source_fill_time),
-            ("Momentum setup (exclusive)", breakdown.momentum_setup_time),
+            (
+                "Momentum input setup (exclusive)",
+                momentum_input_setup_time,
+            ),
+            (
+                "Model parameter setup (exclusive)",
+                breakdown.model_parameter_setup_time,
+            ),
             ("Eager execution (inclusive)", breakdown.eager_execution_time),
             ("Initialize (exclusive)", breakdown.eager_initialize_time),
             ("Gather (exclusive)", breakdown.eager_gather_time),
@@ -415,6 +670,14 @@ def _benchmark_summary(
             ("Amplitude closure (exclusive)", breakdown.eager_closure_time),
             ("Amplitude copy-out (exclusive)", breakdown.eager_copy_out_time),
             ("Reduction (exclusive)", breakdown.reduction_time),
+            (
+                "Total materialization (exclusive)",
+                breakdown.total_materialization_time,
+            ),
+            ("Final output copy (exclusive)", breakdown.final_output_copy_time),
+            ("Selector planning (exclusive)", breakdown.selector_planner_time),
+            ("Selector gather (exclusive)", breakdown.selector_gather_time),
+            ("Selector scatter (exclusive)", breakdown.selector_scatter_time),
             ("Other Rusticol core (exclusive)", breakdown.other_core_time),
         )
     elif eager_profile:
@@ -422,12 +685,39 @@ def _benchmark_summary(
             (
                 "Profile wall (headline)"
                 if shared_timing_samples
-                else "Profile wall (diagnostic pass)",
+                else (
+                    "Profile wall (paired profiled pass)"
+                    if paired_timing_samples
+                    else "Profile wall (diagnostic pass)"
+                ),
                 breakdown.wall_time,
             ),
+            ("Native input pack (exclusive)", breakdown.native_input_pack_time),
+            (
+                "Native input crossing (exclusive)",
+                breakdown.native_input_crossing_time,
+            ),
+            ("Runtime orchestration (exclusive)", breakdown.orchestration_time),
+            ("State prepare (exclusive)", breakdown.state_prepare_time),
+            ("State clear (exclusive)", breakdown.state_clear_time),
             ("Source fill (exclusive)", breakdown.source_fill_time),
-            ("Momentum setup (exclusive)", breakdown.momentum_setup_time),
+            (
+                "Momentum input setup (exclusive)",
+                momentum_input_setup_time,
+            ),
+            (
+                "Model parameter setup (exclusive)",
+                breakdown.model_parameter_setup_time,
+            ),
             ("Eager execution (inclusive)", breakdown.eager_execution_time),
+            (
+                "Total materialization (exclusive)",
+                breakdown.total_materialization_time,
+            ),
+            ("Final output copy (exclusive)", breakdown.final_output_copy_time),
+            ("Selector planning (exclusive)", breakdown.selector_planner_time),
+            ("Selector gather (exclusive)", breakdown.selector_gather_time),
+            ("Selector scatter (exclusive)", breakdown.selector_scatter_time),
             ("Other Rusticol core (exclusive)", breakdown.other_core_time),
         )
     else:
@@ -435,17 +725,69 @@ def _benchmark_summary(
             (
                 "Profile wall (headline)"
                 if shared_timing_samples
-                else "Profile wall (diagnostic pass)",
+                else (
+                    "Profile wall (paired profiled pass)"
+                    if paired_timing_samples
+                    else "Profile wall (diagnostic pass)"
+                ),
                 breakdown.wall_time,
             ),
+            ("Native input pack", breakdown.native_input_pack_time),
+            ("Native input crossing", breakdown.native_input_crossing_time),
+            ("Runtime orchestration", breakdown.orchestration_time),
+            ("State prepare", breakdown.state_prepare_time),
+            ("State clear", breakdown.state_clear_time),
             ("Source fill", breakdown.source_fill_time),
-            ("Momentum setup", breakdown.momentum_setup_time),
-            ("Stage input pack", breakdown.stage_input_pack_time),
-            ("Stage evaluator calls", breakdown.stage_evaluator_call_time),
+            ("Momentum input setup", momentum_input_setup_time),
+            ("Model parameter setup", breakdown.model_parameter_setup_time),
+            ("Stage input pack (top-level)", breakdown.stage_input_pack_time),
+            (
+                "Stage evaluator envelope (top-level)",
+                breakdown.stage_evaluator_call_time,
+            ),
+            (
+                "Stage leaf input pack (attribution)",
+                breakdown.stage_leaf_input_pack_time,
+            ),
+            (
+                "Stage backend calls (attribution)",
+                breakdown.stage_backend_call_time,
+            ),
+            (
+                "Stage output gather (attribution)",
+                breakdown.stage_evaluator_output_gather_time,
+            ),
             ("Output assign", breakdown.output_assign_time),
-            ("Amplitude input pack", breakdown.amplitude_input_pack_time),
-            ("Amplitude evaluator call", breakdown.amplitude_evaluator_call_time),
+            (
+                "Amplitude input pack (top-level)",
+                breakdown.amplitude_input_pack_time,
+            ),
+            (
+                "Amplitude evaluator envelope (top-level)",
+                breakdown.amplitude_evaluator_call_time,
+            ),
+            (
+                "Amplitude leaf input pack (attribution)",
+                breakdown.amplitude_leaf_input_pack_time,
+            ),
+            (
+                "Amplitude backend call (attribution)",
+                breakdown.amplitude_backend_call_time,
+            ),
+            (
+                "Amplitude output gather (attribution)",
+                breakdown.amplitude_evaluator_output_gather_time,
+            ),
+            (
+                "Amplitude output remap (attribution)",
+                breakdown.amplitude_output_remap_time,
+            ),
             ("Reduction", breakdown.reduction_time),
+            ("Total materialization", breakdown.total_materialization_time),
+            ("Final output copy", breakdown.final_output_copy_time),
+            ("Selector planning", breakdown.selector_planner_time),
+            ("Selector gather", breakdown.selector_gather_time),
+            ("Selector scatter", breakdown.selector_scatter_time),
             ("Other Rusticol core", breakdown.other_core_time),
         )
     for label, timing in component_rows:
@@ -456,8 +798,8 @@ def _benchmark_summary(
         )
         value = _component_timing_text(timing)
         if label in {
-            "Stage evaluator calls",
-            "Amplitude evaluator call",
+            "Stage evaluator envelope (top-level)",
+            "Amplitude evaluator envelope (top-level)",
             "Eager execution (inclusive)",
             "Kernel calls (exclusive)",
         }:
@@ -488,6 +830,77 @@ def _benchmark_summary(
                 )
             )
         sections.append(cast(str, stage_table.get_string()))
+
+        if any(
+            timing is not None
+            for stage in breakdown.stages
+            for timing in (
+                stage.leaf_input_pack_time,
+                stage.backend_call_time,
+                stage.evaluator_output_gather_time,
+            )
+        ):
+            nested_stage_table = prettytable.PrettyTable(
+                ("stage", "leaf input pack", "backend call", "output gather")
+            )
+            nested_stage_table.title = _paint(
+                "Rusticol Stage Internal Attribution (do not add to top-level)",
+                "CYAN",
+                enabled=color,
+            )
+            nested_stage_table.align["stage"] = "r"
+            for column in ("leaf input pack", "backend call", "output gather"):
+                nested_stage_table.align[column] = "r"
+            nested_stage_table.hrules = prettytable.HRuleStyle.HEADER
+            for stage in breakdown.stages:
+                nested_stage_table.add_row(
+                    (
+                        stage.stage_index,
+                        _component_timing_text(stage.leaf_input_pack_time),
+                        _paint(
+                            _component_timing_text(stage.backend_call_time),
+                            "CYAN",
+                            enabled=color,
+                        ),
+                        _component_timing_text(stage.evaluator_output_gather_time),
+                    )
+                )
+            sections.append(cast(str, nested_stage_table.get_string()))
+
+    counters = breakdown.counters
+    if counters is not None:
+        counter_table = prettytable.PrettyTable(
+            ("area", "counter", "mean", "normalization")
+        )
+        counter_table.title = _paint(
+            (
+                "Native Work Counters "
+                f"(mean across {counters.sample_count} profiled blocks)"
+            ),
+            "CYAN",
+            enabled=color,
+        )
+        for column in ("area", "counter", "normalization"):
+            counter_table.align[column] = "l"
+        counter_table.align["mean"] = "r"
+        counter_table.hrules = prettytable.HRuleStyle.HEADER
+        previous_area: str | None = None
+        for area, label, counter_value, unit, basis in _profile_counter_rows(counters):
+            area_text = (
+                _paint(area, "CYAN", enabled=color) if area != previous_area else ""
+            )
+            value_text = _counter_mean_text(counter_value, unit)
+            if label == "observed scratch reallocations":
+                value_text = _paint(
+                    value_text,
+                    "GREEN" if counter_value == 0.0 else "YELLOW",
+                    enabled=color,
+                )
+            elif label == "evaluator backend calls":
+                value_text = _paint(value_text, "CYAN", enabled=color)
+            counter_table.add_row((area_text, label, value_text, basis))
+            previous_area = area
+        sections.append(cast(str, counter_table.get_string()))
     return "\n\n".join(sections)
 
 
@@ -694,9 +1107,7 @@ def _artifact_inspection_summary(
         execution_table.add_row((process_id, "mode / backend", mode_text))
         lc_flow_layout = process.get("lc_flow_layout")
         if lc_flow_layout is not None:
-            execution_table.add_row(
-                (process_id, "LC flow layout", str(lc_flow_layout))
-            )
+            execution_table.add_row((process_id, "LC flow layout", str(lc_flow_layout)))
         union_sector_count = process.get("lc_union_sector_count")
         if union_sector_count is not None:
             execution_table.add_row(
@@ -748,9 +1159,7 @@ def _artifact_inspection_summary(
             if source_helicities:
                 selection_parts.append(
                     "helicities "
-                    + ", ".join(
-                        f"{pair[0]}:{pair[1]}" for pair in source_helicities
-                    )
+                    + ", ".join(f"{pair[0]}:{pair[1]}" for pair in source_helicities)
                 )
             if color_sectors:
                 selection_parts.append(
@@ -797,17 +1206,13 @@ def _artifact_inspection_summary(
                     f"; {optimized_amplitude_classes} optimized amplitude classes; "
                     f"{process.get('helicity_residual_amplitude_count')} residual roots"
                 )
-            materialized_currents = process.get(
-                "helicity_materialized_current_count"
-            )
+            materialized_currents = process.get("helicity_materialized_current_count")
             if materialized_currents is not None:
                 recurrence += (
                     f"; materialized {materialized_currents} currents / "
                     f"{process.get('helicity_materialized_amplitude_count')} roots"
                 )
-            execution_table.add_row(
-                (process_id, "helicity recurrence", recurrence)
-            )
+            execution_table.add_row((process_id, "helicity recurrence", recurrence))
         if mode != "eager":
             continue
         pack_kernels = process.get("prepared_kernel_count")

@@ -2,6 +2,14 @@
 
 use super::*;
 
+struct PointSelectorProfileCounts {
+    gather_point_count: usize,
+    input_bytes_per_point: usize,
+    scatter_value_count: usize,
+}
+
+type ProfiledPreparedF64Batch = (Vec<Vec<[f64; 4]>>, Duration, Duration);
+
 fn resolved_totals(resolved: &ResolvedValues<f64>) -> Vec<f64> {
     let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
     if component_count == 0 {
@@ -20,6 +28,7 @@ fn attach_point_selector_profile(
     planner: Duration,
     gather: Duration,
     scatter: Duration,
+    counts: PointSelectorProfileCounts,
 ) {
     profile.selector_planner_s = profile_duration_seconds(planner);
     profile.selector_gather_s = profile_duration_seconds(gather);
@@ -29,6 +38,10 @@ fn attach_point_selector_profile(
     profile.selector_reordered_point_count = plan.reordered_point_count;
     profile.selector_simd_lane_width = plan.simd_lane_width;
     profile.selector_simd_occupancy = plan.simd_occupancy;
+    profile.selector_gather_point_count = counts.gather_point_count as u64;
+    profile.selector_gather_bytes =
+        (counts.gather_point_count * counts.input_bytes_per_point) as u64;
+    profile.selector_scatter_value_count = counts.scatter_value_count as u64;
 }
 
 fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
@@ -741,13 +754,14 @@ impl NativeRuntime {
         color_ids: Option<&[String]>,
     ) -> Result<NativeProfiledEvaluation, RusticolError> {
         let total_start = Instant::now();
-        let batch = self.prepare_f64_batch(momenta, point_count)?;
+        let (batch, native_input_pack_elapsed, native_input_crossing_elapsed) =
+            self.prepare_f64_batch_profile(momenta, point_count)?;
         let (values, profile) = if helicity_ids.is_some() || color_ids.is_some() {
             self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
             self.record_resolved_warnings(helicity_ids, color_ids)?;
             let selected_helicities = selector_set(helicity_ids, "helicity")?;
             let selected_colors = selector_set(color_ids, "color component")?;
-            let (resolved, profile) = match &mut self.execution_lane {
+            let (resolved, mut profile) = match &mut self.execution_lane {
                 NativeExecutionLane::Compiled => self.runtime.run_resolved_f64(
                     &batch,
                     selected_helicities.as_ref(),
@@ -771,11 +785,14 @@ impl NativeRuntime {
                     "resolved evaluation returned an empty component axis",
                 ));
             }
-            let values = resolved
+            let materialization_start = Instant::now();
+            let values: Vec<f64> = resolved
                 .values
                 .chunks(component_count)
                 .map(|point| point.iter().sum())
                 .collect();
+            profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+            profile.total_materialized_value_count += values.len() as u64;
             (values, profile)
         } else {
             match &mut self.execution_lane {
@@ -787,9 +804,22 @@ impl NativeRuntime {
             }
         };
         let mut profile: NativeRuntimeProfile = profile.into();
+        profile.native_input_pack_s = profile_duration_seconds(native_input_pack_elapsed);
+        profile.native_input_crossing_s = profile_duration_seconds(native_input_crossing_elapsed);
+        profile.native_input_component_count = momenta.len() as u64;
+        profile.native_input_pack_bytes = std::mem::size_of_val(momenta) as u64;
+        if self.input_crossing_map.is_some() {
+            profile.native_input_crossing_bytes = profile.native_input_pack_bytes;
+        }
+        profile.native_input_container_allocation_count =
+            (point_count + 1 + usize::from(self.input_crossing_map.is_some()) * (point_count + 2))
+                as u64;
+        profile.native_output_allocation_count = 1;
         profile.total_s = total_start.elapsed().as_secs_f64();
         if self.execution_lane.is_eager() {
             profile.validate_eager_top_level_accounting()?;
+        } else {
+            profile.validate_compiled_top_level_accounting()?;
         }
         Ok(NativeProfiledEvaluation { values, profile })
     }
@@ -824,7 +854,8 @@ impl NativeRuntime {
         let total_start = Instant::now();
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
         let selected_colors = selector_set(color_ids, "color component")?;
-        let batch = self.prepare_f64_batch(momenta, point_count)?;
+        let (batch, native_input_pack_elapsed, native_input_crossing_elapsed) =
+            self.prepare_f64_batch_profile(momenta, point_count)?;
         let physics = self.runtime.physics.clone().ok_or_else(|| {
             RusticolError::artifact(
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
@@ -870,21 +901,46 @@ impl NativeRuntime {
                     planner,
                     Duration::ZERO,
                     Duration::ZERO,
+                    PointSelectorProfileCounts {
+                        gather_point_count: 0,
+                        input_bytes_per_point: self.runtime.external_count
+                            * 4
+                            * std::mem::size_of::<f64>(),
+                        scatter_value_count: 0,
+                    },
                 );
+                profile.native_input_pack_s = profile_duration_seconds(native_input_pack_elapsed);
+                profile.native_input_crossing_s =
+                    profile_duration_seconds(native_input_crossing_elapsed);
+                profile.native_input_component_count = momenta.len() as u64;
+                profile.native_input_pack_bytes = std::mem::size_of_val(momenta) as u64;
+                if self.input_crossing_map.is_some() {
+                    profile.native_input_crossing_bytes = profile.native_input_pack_bytes;
+                }
+                profile.native_input_container_allocation_count = (point_count
+                    + 1
+                    + usize::from(self.input_crossing_map.is_some()) * (point_count + 2))
+                    as u64;
+                let materialization_start = Instant::now();
+                let values = resolved_totals(&resolved);
+                profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+                profile.total_materialized_value_count += values.len() as u64;
+                profile.native_output_allocation_count = 1;
                 profile.total_s = total_start.elapsed().as_secs_f64();
                 if self.execution_lane.is_eager() {
                     profile.validate_eager_top_level_accounting()?;
+                } else {
+                    profile.validate_compiled_top_level_accounting()?;
                 }
-                return Ok(NativeProfiledEvaluation {
-                    values: resolved_totals(&resolved),
-                    profile,
-                });
+                return Ok(NativeProfiledEvaluation { values, profile });
             }
 
             let mut values = vec![0.0; point_count];
             let mut partition_profiles = Vec::new();
             let mut gather = Duration::ZERO;
             let mut scatter = Duration::ZERO;
+            let mut total_materialization = Duration::ZERO;
+            let mut gather_point_count = 0usize;
             let partition_count = selector_scratch.planner.partitions().len();
             for partition_index in 0..partition_count {
                 let partition = selector_scratch.planner.partitions()[partition_index];
@@ -908,6 +964,7 @@ impl NativeRuntime {
                     rows @ PointSelectorRows::Gathered { .. } => {
                         let gather_started = Instant::now();
                         let point_indices = selector_scratch.planner.gathered_rows(rows);
+                        gather_point_count += point_indices.len();
                         let gathered_batch = fill_gathered_batch(
                             &mut selector_scratch.gathered_batch,
                             &batch,
@@ -921,13 +978,15 @@ impl NativeRuntime {
                         )?
                     }
                 };
-                let scatter_started = Instant::now();
+                let materialization_started = Instant::now();
                 write_partition_totals(&mut selector_scratch.partition_totals, &resolved);
+                total_materialization += materialization_started.elapsed();
                 if selector_scratch.partition_totals.len() != partition.rows.len() {
                     return Err(RusticolError::integrity(
                         "per-point selector partition returned the wrong number of values",
                     ));
                 }
+                let scatter_started = Instant::now();
                 scatter_partition_totals(
                     &mut values,
                     &selector_scratch.partition_totals,
@@ -942,10 +1001,40 @@ impl NativeRuntime {
                 runtime_profile.add_sector(partition_profile);
             }
             let mut profile: NativeRuntimeProfile = runtime_profile.into();
-            attach_point_selector_profile(&mut profile, &plan_profile, planner, gather, scatter);
+            attach_point_selector_profile(
+                &mut profile,
+                &plan_profile,
+                planner,
+                gather,
+                scatter,
+                PointSelectorProfileCounts {
+                    gather_point_count,
+                    input_bytes_per_point: self.runtime.external_count
+                        * 4
+                        * std::mem::size_of::<f64>(),
+                    scatter_value_count: point_count,
+                },
+            );
+            profile.native_input_pack_s = profile_duration_seconds(native_input_pack_elapsed);
+            profile.native_input_crossing_s =
+                profile_duration_seconds(native_input_crossing_elapsed);
+            profile.native_input_component_count = momenta.len() as u64;
+            profile.native_input_pack_bytes = std::mem::size_of_val(momenta) as u64;
+            if self.input_crossing_map.is_some() {
+                profile.native_input_crossing_bytes = profile.native_input_pack_bytes;
+            }
+            profile.native_input_container_allocation_count = (point_count
+                + 1
+                + usize::from(self.input_crossing_map.is_some()) * (point_count + 2))
+                as u64;
+            profile.total_materialization_s += profile_duration_seconds(total_materialization);
+            profile.total_materialized_value_count += values.len() as u64;
+            profile.native_output_allocation_count = 1;
             profile.total_s = total_start.elapsed().as_secs_f64();
             if self.execution_lane.is_eager() {
                 profile.validate_eager_top_level_accounting()?;
+            } else {
+                profile.validate_compiled_top_level_accounting()?;
             }
             Ok(NativeProfiledEvaluation { values, profile })
         })();
@@ -989,9 +1078,14 @@ impl NativeRuntime {
             ));
         }
         let started = Instant::now();
-        let mut profiles = Vec::with_capacity(repetitions);
+        let mut profile: Option<Box<NativeRuntimeProfile>> = None;
         let mut values = Vec::new();
         for _ in 0..repetitions {
+            // The saved evaluator payload may use the complete AArch64
+            // floating-point register file. Keep the aggregate behind an
+            // opaque heap boundary so no accumulated f64 survives the next
+            // generated call in a register.
+            std::hint::black_box(&mut profile);
             let profiled = self.evaluate_f64_profile_with_selectors(
                 momenta,
                 point_count,
@@ -1002,16 +1096,18 @@ impl NativeRuntime {
             )?;
             std::hint::black_box(&profiled.values);
             values = profiled.values;
-            profiles.push(profiled.profile);
+            if let Some(aggregate) = profile.as_deref_mut() {
+                aggregate.accumulate(&profiled.profile);
+            } else {
+                profile = Some(Box::new(profiled.profile));
+            }
         }
-        let mut profiles = profiles.into_iter();
-        let mut profile = profiles.next().expect("positive repetitions checked");
-        for repeated_profile in profiles {
-            profile.accumulate(&repeated_profile);
-        }
+        let mut profile = *profile.expect("positive repetitions checked");
         profile.total_s = started.elapsed().as_secs_f64();
         if self.execution_lane.is_eager() {
             profile.validate_eager_top_level_accounting()?;
+        } else {
+            profile.validate_compiled_top_level_accounting()?;
         }
         Ok(NativeProfiledEvaluation { values, profile })
     }
@@ -1268,6 +1364,39 @@ impl NativeRuntime {
         momenta: &[f64],
         point_count: usize,
     ) -> Result<Vec<Vec<[f64; 4]>>, RusticolError> {
+        let batch = self.prepare_uncrossed_f64_batch(momenta, point_count)?;
+        apply_input_crossing_map(
+            batch,
+            self.runtime.external_count,
+            self.input_crossing_map.as_deref(),
+        )
+    }
+
+    fn prepare_f64_batch_profile(
+        &self,
+        momenta: &[f64],
+        point_count: usize,
+    ) -> Result<ProfiledPreparedF64Batch, RusticolError> {
+        let pack_start = Instant::now();
+        let batch = self.prepare_uncrossed_f64_batch(momenta, point_count)?;
+        let pack_elapsed = pack_start.elapsed();
+        if self.input_crossing_map.is_none() {
+            return Ok((batch, pack_elapsed, Duration::ZERO));
+        }
+        let crossing_start = Instant::now();
+        let batch = apply_input_crossing_map(
+            batch,
+            self.runtime.external_count,
+            self.input_crossing_map.as_deref(),
+        )?;
+        Ok((batch, pack_elapsed, crossing_start.elapsed()))
+    }
+
+    fn prepare_uncrossed_f64_batch(
+        &self,
+        momenta: &[f64],
+        point_count: usize,
+    ) -> Result<Vec<Vec<[f64; 4]>>, RusticolError> {
         if point_count == 0 {
             return Err(RusticolError::invalid_argument(
                 "point_count must be positive",
@@ -1296,11 +1425,7 @@ impl NativeRuntime {
                 .collect();
             batch.push(point);
         }
-        apply_input_crossing_map(
-            batch,
-            self.runtime.external_count,
-            self.input_crossing_map.as_deref(),
-        )
+        Ok(batch)
     }
 
     #[cfg(feature = "symbolica-runtime")]

@@ -179,6 +179,7 @@ impl EagerNativeRuntime {
             values,
             RuntimeProfile {
                 source_fill_s: profile_duration_seconds(source_fill),
+                momentum_input_setup_s: profile_duration_seconds(momentum_setup),
                 momentum_setup_s: profile_duration_seconds(momentum_setup),
                 stage_evaluator_call_s: execute_s,
                 stage_evaluator_s: execute_s,
@@ -306,6 +307,7 @@ impl EagerNativeRuntime {
         }
         Ok(RuntimeProfile {
             source_fill_s: profile_duration_seconds(source_fill),
+            momentum_input_setup_s: profile_duration_seconds(momentum_setup),
             momentum_setup_s: profile_duration_seconds(momentum_setup),
             stage_evaluator_call_s: execute_s,
             stage_evaluator_s: execute_s,
@@ -369,6 +371,7 @@ impl EagerNativeRuntime {
             values,
             RuntimeProfile {
                 source_fill_s: profile_duration_seconds(source_fill),
+                momentum_input_setup_s: profile_duration_seconds(momentum_setup),
                 momentum_setup_s: profile_duration_seconds(momentum_setup),
                 stage_evaluator_call_s: eager.total.as_secs_f64(),
                 stage_evaluator_s: eager.total.as_secs_f64(),
@@ -499,6 +502,7 @@ impl EagerNativeRuntime {
             resolved,
             RuntimeProfile {
                 source_fill_s: profile_duration_seconds(source_fill),
+                momentum_input_setup_s: profile_duration_seconds(momentum_setup),
                 momentum_setup_s: profile_duration_seconds(momentum_setup),
                 stage_evaluator_call_s: execute_s,
                 stage_evaluator_s: execute_s,
@@ -625,6 +629,7 @@ impl EagerNativeRuntime {
             resolved,
             RuntimeProfile {
                 source_fill_s: profile_duration_seconds(source_fill),
+                momentum_input_setup_s: profile_duration_seconds(momentum_setup),
                 momentum_setup_s: profile_duration_seconds(momentum_setup),
                 stage_evaluator_call_s: eager_execution.as_secs_f64(),
                 stage_evaluator_s: eager_execution.as_secs_f64(),

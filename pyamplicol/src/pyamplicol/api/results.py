@@ -519,12 +519,21 @@ class BenchmarkComponentTiming:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkStageTiming:
-    """Per-point timings for one native evaluator stage."""
+    """Per-point timings for one native evaluator stage.
+
+    The leaf/backend/output-gather fields are internal attribution, not
+    additional top-level phases. A full-stage leaf gather is owned by the
+    evaluator-call envelope; a composed selected-chunk leaf gather is owned by
+    the input-pack envelope.
+    """
 
     stage_index: int
     input_pack_time: BenchmarkComponentTiming | None = None
     evaluator_call_time: BenchmarkComponentTiming | None = None
     output_assign_time: BenchmarkComponentTiming | None = None
+    leaf_input_pack_time: BenchmarkComponentTiming | None = None
+    backend_call_time: BenchmarkComponentTiming | None = None
+    evaluator_output_gather_time: BenchmarkComponentTiming | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -537,6 +546,9 @@ class BenchmarkStageTiming:
             self.input_pack_time,
             self.evaluator_call_time,
             self.output_assign_time,
+            self.leaf_input_pack_time,
+            self.backend_call_time,
+            self.evaluator_output_gather_time,
         )
         if not any(timing is not None for timing in timings):
             raise ValueError("benchmark stage timing must contain at least one value")
@@ -548,8 +560,107 @@ class BenchmarkStageTiming:
 
 
 @dataclass(frozen=True, slots=True)
+class BenchmarkProfileCounters:
+    """Mean native profile work counts with an explicit normalization basis.
+
+    Movement and materialization fields are means per profiled phase-space
+    point. Backend-call and allocation fields are means per profiled runtime
+    call. The native repeated profiler reports integer totals; normalizing
+    before aggregating samples keeps these values comparable across batch sizes
+    and repetition counts.
+    """
+
+    sample_count: int
+    normalization: Literal["mean_per_profiled_point_or_runtime_call_v1"] = (
+        "mean_per_profiled_point_or_runtime_call_v1"
+    )
+    native_input_components_per_point: float | None = None
+    native_input_pack_bytes_per_point: float | None = None
+    native_input_crossing_bytes_per_point: float | None = None
+    state_components_per_point: float | None = None
+    state_clear_components_per_point: float | None = None
+    source_components_per_point: float | None = None
+    momentum_components_per_point: float | None = None
+    model_parameter_components_per_point: float | None = None
+    stage_input_copy_components_per_point: float | None = None
+    stage_leaf_input_copy_components_per_point: float | None = None
+    stage_evaluator_output_gather_components_per_point: float | None = None
+    stage_output_assign_components_per_point: float | None = None
+    amplitude_input_copy_components_per_point: float | None = None
+    amplitude_leaf_input_copy_components_per_point: float | None = None
+    amplitude_evaluator_output_gather_components_per_point: float | None = None
+    amplitude_output_remap_components_per_point: float | None = None
+    reduction_input_components_per_point: float | None = None
+    selector_gather_points_per_point: float | None = None
+    selector_gather_bytes_per_point: float | None = None
+    selector_scatter_values_per_point: float | None = None
+    resolved_materialized_components_per_point: float | None = None
+    total_materialized_values_per_point: float | None = None
+    final_output_copy_values_per_point: float | None = None
+    native_input_container_allocations_per_call: float | None = None
+    evaluator_backend_calls_per_call: float | None = None
+    observed_scratch_reallocations_per_call: float | None = None
+    native_output_allocations_per_call: float | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.sample_count, bool)
+            or not isinstance(self.sample_count, int)
+            or self.sample_count < 1
+        ):
+            raise ValueError("benchmark profile counter sample_count must be positive")
+        if self.normalization != "mean_per_profiled_point_or_runtime_call_v1":
+            raise ValueError("benchmark profile counter normalization is invalid")
+        for name in (
+            "native_input_components_per_point",
+            "native_input_pack_bytes_per_point",
+            "native_input_crossing_bytes_per_point",
+            "state_components_per_point",
+            "state_clear_components_per_point",
+            "source_components_per_point",
+            "momentum_components_per_point",
+            "model_parameter_components_per_point",
+            "stage_input_copy_components_per_point",
+            "stage_leaf_input_copy_components_per_point",
+            "stage_evaluator_output_gather_components_per_point",
+            "stage_output_assign_components_per_point",
+            "amplitude_input_copy_components_per_point",
+            "amplitude_leaf_input_copy_components_per_point",
+            "amplitude_evaluator_output_gather_components_per_point",
+            "amplitude_output_remap_components_per_point",
+            "reduction_input_components_per_point",
+            "selector_gather_points_per_point",
+            "selector_gather_bytes_per_point",
+            "selector_scatter_values_per_point",
+            "resolved_materialized_components_per_point",
+            "total_materialized_values_per_point",
+            "final_output_copy_values_per_point",
+            "native_input_container_allocations_per_call",
+            "evaluator_backend_calls_per_call",
+            "observed_scratch_reallocations_per_call",
+            "native_output_allocations_per_call",
+        ):
+            value = getattr(self, name)
+            if value is not None and (
+                not isinstance(value, (float, int))
+                or isinstance(value, bool)
+                or not math.isfinite(float(value))
+                or value < 0
+            ):
+                raise ValueError(
+                    f"benchmark profile counter {name} must be finite and non-negative"
+                )
+
+
+@dataclass(frozen=True, slots=True)
 class BenchmarkTimingBreakdown:
-    """Typed aggregate of bounded native Rusticol profile samples."""
+    """Typed aggregate of bounded native Rusticol profile samples.
+
+    Internal leaf/backend/output-gather/remap fields explain their enclosing
+    work but are not additive top-level phases. Leaf gathering is owned by the
+    evaluator envelope for full stages and by the input-pack envelope for
+    composed selected-chunk paths.
+    """
 
     sample_count: int
     execution_mode: Literal["compiled", "eager"] = "compiled"
@@ -573,6 +684,26 @@ class BenchmarkTimingBreakdown:
     eager_closure_time: BenchmarkComponentTiming | None = None
     eager_copy_out_time: BenchmarkComponentTiming | None = None
     stages: tuple[BenchmarkStageTiming, ...] = ()
+    native_input_pack_time: BenchmarkComponentTiming | None = None
+    native_input_crossing_time: BenchmarkComponentTiming | None = None
+    orchestration_time: BenchmarkComponentTiming | None = None
+    state_prepare_time: BenchmarkComponentTiming | None = None
+    state_clear_time: BenchmarkComponentTiming | None = None
+    momentum_input_setup_time: BenchmarkComponentTiming | None = None
+    model_parameter_setup_time: BenchmarkComponentTiming | None = None
+    total_materialization_time: BenchmarkComponentTiming | None = None
+    final_output_copy_time: BenchmarkComponentTiming | None = None
+    selector_planner_time: BenchmarkComponentTiming | None = None
+    selector_gather_time: BenchmarkComponentTiming | None = None
+    selector_scatter_time: BenchmarkComponentTiming | None = None
+    counters: BenchmarkProfileCounters | None = None
+    stage_leaf_input_pack_time: BenchmarkComponentTiming | None = None
+    stage_backend_call_time: BenchmarkComponentTiming | None = None
+    stage_evaluator_output_gather_time: BenchmarkComponentTiming | None = None
+    amplitude_leaf_input_pack_time: BenchmarkComponentTiming | None = None
+    amplitude_backend_call_time: BenchmarkComponentTiming | None = None
+    amplitude_evaluator_output_gather_time: BenchmarkComponentTiming | None = None
+    amplitude_output_remap_time: BenchmarkComponentTiming | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -587,14 +718,33 @@ class BenchmarkTimingBreakdown:
             )
         for name in (
             "wall_time",
+            "native_input_pack_time",
+            "native_input_crossing_time",
+            "orchestration_time",
+            "state_prepare_time",
+            "state_clear_time",
             "source_fill_time",
+            "momentum_input_setup_time",
             "momentum_setup_time",
+            "model_parameter_setup_time",
             "stage_input_pack_time",
             "stage_evaluator_call_time",
+            "stage_leaf_input_pack_time",
+            "stage_backend_call_time",
+            "stage_evaluator_output_gather_time",
             "output_assign_time",
             "amplitude_input_pack_time",
             "amplitude_evaluator_call_time",
+            "amplitude_leaf_input_pack_time",
+            "amplitude_backend_call_time",
+            "amplitude_evaluator_output_gather_time",
+            "amplitude_output_remap_time",
             "reduction_time",
+            "total_materialization_time",
+            "final_output_copy_time",
+            "selector_planner_time",
+            "selector_gather_time",
+            "selector_scatter_time",
             "other_core_time",
             "eager_execution_time",
             "eager_initialize_time",
@@ -618,6 +768,13 @@ class BenchmarkTimingBreakdown:
         indices = tuple(stage.stage_index for stage in stages)
         if len(indices) != len(set(indices)):
             raise ValueError("benchmark timing breakdown stage indices must be unique")
+        if self.counters is not None and not isinstance(
+            self.counters, BenchmarkProfileCounters
+        ):
+            raise TypeError(
+                "benchmark timing breakdown counters must be "
+                "BenchmarkProfileCounters or null"
+            )
         object.__setattr__(self, "stages", stages)
 
 
@@ -705,6 +862,7 @@ class BenchmarkResult:
 
 __all__ = [
     "BenchmarkComponentTiming",
+    "BenchmarkProfileCounters",
     "BenchmarkResult",
     "BenchmarkStageTiming",
     "BenchmarkStatistics",

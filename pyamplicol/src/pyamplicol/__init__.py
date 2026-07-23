@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .api import (
         ArtifactError,
         BenchmarkComponentTiming,
+        BenchmarkProfileCounters,
         BenchmarkResult,
         BenchmarkRunner,
         BenchmarkStageTiming,
@@ -64,6 +65,7 @@ __all__ = [
     "ArtifactError",
     "BenchmarkComponentTiming",
     "BenchmarkConfig",
+    "BenchmarkProfileCounters",
     "BenchmarkResult",
     "BenchmarkRunner",
     "BenchmarkStageTiming",
@@ -135,6 +137,7 @@ _MODEL_EXPORTS = (
 )
 _RESULT_EXPORTS = (
     "BenchmarkComponentTiming",
+    "BenchmarkProfileCounters",
     "BenchmarkResult",
     "BenchmarkStageTiming",
     "BenchmarkStatistics",

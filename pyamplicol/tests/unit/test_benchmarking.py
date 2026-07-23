@@ -7,6 +7,8 @@ import pytest
 
 import pyamplicol.benchmarking as benchmark_module
 from pyamplicol.api import (
+    BenchmarkProfileCounters,
+    BenchmarkTimingBreakdown,
     ColorFlow,
     HelicityConfiguration,
     PhysicsReduction,
@@ -91,15 +93,25 @@ class _RuntimeWithProfile(_Runtime):
             "wall_time_s": 12.0e-6,
             "source_fill_time_s": 1.0e-6,
             "momentum_setup_time_s": 0.5e-6,
-            "stage_input_pack_time_s": 3.0e-6,
+            "stage_input_pack_time_s": 1.0e-6,
+            "stage_leaf_input_pack_time_s": 0.3e-6,
             "stage_evaluator_call_time_s": 2.0e-6,
-            "output_assign_time_s": 1.0e-6,
-            "amplitude_input_pack_time_s": 1.0e-6,
+            "stage_backend_call_time_s": 1.4e-6,
+            "stage_evaluator_output_gather_time_s": 0.3e-6,
+            "output_assign_time_s": 0.5e-6,
+            "amplitude_input_pack_time_s": 0.5e-6,
             "amplitude_evaluator_call_time_s": 6.0e-6,
+            "amplitude_leaf_input_pack_time_s": 0.5e-6,
+            "amplitude_backend_call_time_s": 4.5e-6,
+            "amplitude_evaluator_output_gather_time_s": 0.5e-6,
+            "amplitude_output_remap_time_s": 0.5e-6,
             "reduction_time_s": 0.5e-6,
-            "stage_input_pack_by_stage_time_s": [1.0e-6, 2.0e-6],
+            "stage_input_pack_by_stage_time_s": [0.5e-6, 0.5e-6],
+            "stage_leaf_input_pack_by_stage_time_s": [0.1e-6, 0.2e-6],
             "stage_evaluator_call_by_stage_time_s": [0.5e-6, 1.5e-6],
-            "stage_output_assign_by_stage_time_s": [0.25e-6, 0.75e-6],
+            "stage_backend_call_by_stage_time_s": [0.4e-6, 1.0e-6],
+            "stage_evaluator_output_gather_by_stage_time_s": [0.0, 0.3e-6],
+            "stage_output_assign_by_stage_time_s": [0.25e-6, 0.25e-6],
         }
 
 
@@ -240,6 +252,11 @@ class _TimedRuntimeWithRepeatedProfile(_TimedRuntimeWithNativeWall):
             "stage_evaluator_call_time_s": points * 2.0e-6,
             "amplitude_evaluator_call_time_s": points * 0.5e-6,
             "reduction_time_s": points * 0.5e-6,
+            "native_input_component_count": points * 4,
+            "stage_input_copy_component_count": points * 7,
+            "evaluator_backend_call_count": repetitions * 3,
+            "observed_scratch_reallocation_count": 0,
+            "native_output_allocation_count": repetitions,
         }
 
 
@@ -483,13 +500,14 @@ def test_benchmark_uses_repeated_native_rusticol_wall_timer(
     assert result.repetitions_per_sample > 1
 
 
-def test_repeated_native_profile_supplies_headline_and_breakdown_samples(
+def test_repeated_native_profile_is_paired_with_unprofiled_headline_samples(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = _Clock()
     monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
     runtime = _TimedRuntimeWithRepeatedProfile(clock)
     runtime.repeated_profile_calls = 0
+    runtime.native_wall_calls = 0
     config = BenchmarkConfig(
         target_runtime=0.1,
         batch_size=2,
@@ -502,16 +520,24 @@ def test_repeated_native_profile_supplies_headline_and_breakdown_samples(
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
 
-    assert runtime.repeated_profile_calls == result.sample_count
-    assert result.wall_time_per_point == pytest.approx(4.0e-6)
+    assert runtime.repeated_profile_calls == config.warmup_runs + result.sample_count
+    assert runtime.native_wall_calls >= config.warmup_runs + result.sample_count
+    assert result.wall_time_per_point == pytest.approx(0.25e-3)
     assert result.evaluator_time_per_point == pytest.approx(2.5e-6)
     assert result.timing_breakdown is not None
     assert result.timing_breakdown.wall_time is not None
     assert result.timing_breakdown.wall_time.mean_seconds_per_point == pytest.approx(
-        result.wall_time_per_point
+        4.0e-6
     )
-    assert result.timing_breakdown.wall_time.uncertainty == result.uncertainty
     assert result.timing_breakdown.sample_count == result.sample_count
+    counters = result.timing_breakdown.counters
+    assert isinstance(counters, BenchmarkProfileCounters)
+    assert counters.sample_count == result.sample_count
+    assert counters.native_input_components_per_point == pytest.approx(4.0)
+    assert counters.stage_input_copy_components_per_point == pytest.approx(7.0)
+    assert counters.evaluator_backend_calls_per_call == pytest.approx(3.0)
+    assert counters.observed_scratch_reallocations_per_call == pytest.approx(0.0)
+    assert counters.native_output_allocations_per_call == pytest.approx(1.0)
     assert result.environment["native_profile_sample_count"] == result.sample_count
     assert result.environment["native_profile_repetitions_per_sample"] == (
         result.repetitions_per_sample
@@ -519,12 +545,23 @@ def test_repeated_native_profile_supplies_headline_and_breakdown_samples(
     assert result.environment["native_profile_points_per_sample"] == (
         result.repetitions_per_sample * config.batch_size
     )
-    assert result.environment["wall_time_sample_pass"] == "runtime.profile_repeated"
+    assert result.environment["wall_time_sample_pass"] == (
+        "runtime._benchmark_f64_wall_time"
+    )
     assert result.environment["evaluator_time_sample_pass"] == (
         "runtime.profile_repeated"
     )
     assert result.environment["timing_sample_contract"] == (
-        "shared_native_repeated_profile_v1"
+        "paired_unprofiled_headline_profiled_attribution_v1"
+    )
+    assert result.environment["profile_attribution_paired_with_headline"] is True
+    assert result.environment["profile_attribution_identical_batch"] is True
+    assert result.environment["profile_attribution_identical_repetitions"] is True
+    assert result.environment["profile_attribution_evaluation_count"] == (
+        result.evaluation_count
+    )
+    assert result.environment["profile_attribution_point_count"] == (
+        result.evaluated_point_count
     )
 
 
@@ -608,17 +645,17 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
     assert result.sample_count == 3
     assert runtime.calls == 4
     assert runtime.profile_calls == 4
-    assert result.wall_time_per_point == pytest.approx(3.0e-6)
+    assert result.wall_time_per_point >= 0.0
     assert result.evaluator_time_per_point == pytest.approx(2.0e-6)
-    assert result.environment["wall_time_source"] == "runtime_profile_core_wall_time"
-    assert result.environment["wall_time_sample_pass"] == "runtime.profile"
+    assert result.environment["wall_time_source"] == "runtime_evaluate_wall_time"
+    assert result.environment["wall_time_sample_pass"] == "runtime.evaluate"
     assert (
         result.environment["evaluator_time_source"]
         == "runtime_profile_core_evaluator_call_time"
     )
     assert result.environment["evaluator_sample_count"] == 3
     assert result.environment["timing_sample_contract"] == (
-        "shared_native_single_profile_v1"
+        "separate_native_profile_diagnostic_v1"
     )
     assert result.environment["native_profile_repetitions_per_sample"] == 1
     assert result.environment["precision"] == 16
@@ -630,11 +667,42 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
     assert result.process_expression == "d d~ > z"
     assert result.timing_breakdown is not None
     assert result.timing_breakdown.sample_count == 3
+    assert result.timing_breakdown.wall_time is not None
+    assert result.timing_breakdown.wall_time.mean_seconds_per_point == pytest.approx(
+        3.0e-6
+    )
     assert result.timing_breakdown.source_fill_time is not None
     assert result.timing_breakdown.source_fill_time.mean_seconds_per_point == (
         pytest.approx(0.25e-6)
     )
+    assert result.timing_breakdown.stage_leaf_input_pack_time is not None
+    assert (
+        result.timing_breakdown.stage_leaf_input_pack_time.mean_seconds_per_point
+        == pytest.approx(0.075e-6)
+    )
+    assert result.timing_breakdown.stage_backend_call_time is not None
+    assert (
+        result.timing_breakdown.stage_backend_call_time.mean_seconds_per_point
+        == pytest.approx(0.35e-6)
+    )
+    assert result.timing_breakdown.amplitude_output_remap_time is not None
+    assert (
+        result.timing_breakdown.amplitude_output_remap_time.mean_seconds_per_point
+        == pytest.approx(0.125e-6)
+    )
+    assert result.timing_breakdown.other_core_time is not None
+    assert result.timing_breakdown.other_core_time.mean_seconds_per_point == (
+        pytest.approx(0.0)
+    )
     assert len(result.timing_breakdown.stages) == 2
+    assert result.timing_breakdown.stages[1].leaf_input_pack_time is not None
+    assert result.timing_breakdown.stages[
+        1
+    ].leaf_input_pack_time.mean_seconds_per_point == pytest.approx(0.05e-6)
+    assert result.timing_breakdown.stages[1].backend_call_time is not None
+    assert result.timing_breakdown.stages[
+        1
+    ].backend_call_time.mean_seconds_per_point == pytest.approx(0.25e-6)
 
 
 def test_native_profile_reports_unaccounted_rusticol_core_time() -> None:
@@ -656,6 +724,220 @@ def test_native_profile_reports_unaccounted_rusticol_core_time() -> None:
     assert sample.other_core_time == pytest.approx(2.0e-6)
 
 
+def test_timing_breakdown_preserves_legacy_positional_field_order() -> None:
+    legacy_fields = (
+        "sample_count",
+        "execution_mode",
+        "wall_time",
+        "source_fill_time",
+        "momentum_setup_time",
+        "stage_input_pack_time",
+        "stage_evaluator_call_time",
+        "output_assign_time",
+        "amplitude_input_pack_time",
+        "amplitude_evaluator_call_time",
+        "reduction_time",
+        "other_core_time",
+        "eager_execution_time",
+        "eager_initialize_time",
+        "eager_gather_time",
+        "eager_kernel_call_time",
+        "eager_invocation_scatter_time",
+        "eager_finalization_time",
+        "eager_scatter_finalization_time",
+        "eager_closure_time",
+        "eager_copy_out_time",
+        "stages",
+    )
+
+    assert tuple(BenchmarkTimingBreakdown.__dataclass_fields__)[
+        : len(legacy_fields)
+    ] == (legacy_fields)
+    fields = tuple(BenchmarkTimingBreakdown.__dataclass_fields__)
+    assert fields.index("counters") == len(fields) - 8
+    assert fields[-7:] == (
+        "stage_leaf_input_pack_time",
+        "stage_backend_call_time",
+        "stage_evaluator_output_gather_time",
+        "amplitude_leaf_input_pack_time",
+        "amplitude_backend_call_time",
+        "amplitude_evaluator_output_gather_time",
+        "amplitude_output_remap_time",
+    )
+
+
+def test_repeated_profile_counters_normalize_per_point_and_per_call() -> None:
+    points = 24
+    repetitions = 3
+    per_point_counts = {
+        "native_input_component_count": 4,
+        "native_input_pack_bytes": 32,
+        "native_input_crossing_bytes": 32,
+        "state_component_count": 101,
+        "state_clear_component_count": 99,
+        "source_component_count": 8,
+        "momentum_component_count": 12,
+        "model_parameter_component_count": 5,
+        "stage_input_copy_component_count": 41,
+        "stage_leaf_input_copy_component_count": 43,
+        "stage_evaluator_output_gather_component_count": 47,
+        "stage_output_assign_component_count": 53,
+        "amplitude_input_copy_component_count": 59,
+        "amplitude_leaf_input_copy_component_count": 61,
+        "amplitude_evaluator_output_gather_component_count": 67,
+        "amplitude_output_remap_component_count": 71,
+        "reduction_input_component_count": 73,
+        "selector_gather_point_count": 1,
+        "selector_gather_bytes": 32,
+        "selector_scatter_value_count": 2,
+        "resolved_materialized_component_count": 79,
+        "total_materialized_value_count": 1,
+        "final_output_copy_value_count": 83,
+    }
+    per_call_counts = {
+        "native_input_container_allocation_count": 10,
+        "evaluator_backend_call_count": 11,
+        "observed_scratch_reallocation_count": 0,
+        "native_output_allocation_count": 1,
+    }
+    sample = benchmark_module._native_profile_sample(
+        {
+            "execution_mode": "compiled",
+            "points": points,
+            "wall_time_s": points * 4.0e-6,
+            "stage_evaluator_call_time_s": points * 2.0e-6,
+            "amplitude_evaluator_call_time_s": points * 0.5e-6,
+            **{key: value * points for key, value in per_point_counts.items()},
+            **{key: value * repetitions for key, value in per_call_counts.items()},
+        },
+        fallback_points=points,
+        repetitions=repetitions,
+    )
+
+    counters = sample.counters
+    assert counters is not None
+    for raw_name, expected in per_point_counts.items():
+        field_name = {
+            "native_input_component_count": "native_input_components_per_point",
+            "native_input_pack_bytes": "native_input_pack_bytes_per_point",
+            "native_input_crossing_bytes": "native_input_crossing_bytes_per_point",
+            "state_component_count": "state_components_per_point",
+            "state_clear_component_count": "state_clear_components_per_point",
+            "source_component_count": "source_components_per_point",
+            "momentum_component_count": "momentum_components_per_point",
+            "model_parameter_component_count": "model_parameter_components_per_point",
+            "stage_input_copy_component_count": (
+                "stage_input_copy_components_per_point"
+            ),
+            "stage_leaf_input_copy_component_count": (
+                "stage_leaf_input_copy_components_per_point"
+            ),
+            "stage_evaluator_output_gather_component_count": (
+                "stage_evaluator_output_gather_components_per_point"
+            ),
+            "stage_output_assign_component_count": (
+                "stage_output_assign_components_per_point"
+            ),
+            "amplitude_input_copy_component_count": (
+                "amplitude_input_copy_components_per_point"
+            ),
+            "amplitude_leaf_input_copy_component_count": (
+                "amplitude_leaf_input_copy_components_per_point"
+            ),
+            "amplitude_evaluator_output_gather_component_count": (
+                "amplitude_evaluator_output_gather_components_per_point"
+            ),
+            "amplitude_output_remap_component_count": (
+                "amplitude_output_remap_components_per_point"
+            ),
+            "reduction_input_component_count": ("reduction_input_components_per_point"),
+            "selector_gather_point_count": "selector_gather_points_per_point",
+            "selector_gather_bytes": "selector_gather_bytes_per_point",
+            "selector_scatter_value_count": "selector_scatter_values_per_point",
+            "resolved_materialized_component_count": (
+                "resolved_materialized_components_per_point"
+            ),
+            "total_materialized_value_count": ("total_materialized_values_per_point"),
+            "final_output_copy_value_count": ("final_output_copy_values_per_point"),
+        }[raw_name]
+        assert getattr(counters, field_name) == pytest.approx(expected)
+    assert counters.native_input_container_allocations_per_call == pytest.approx(10.0)
+    assert counters.evaluator_backend_calls_per_call == pytest.approx(11.0)
+    assert counters.observed_scratch_reallocations_per_call == pytest.approx(0.0)
+    assert counters.native_output_allocations_per_call == pytest.approx(1.0)
+
+    summary = benchmark_module._timing_breakdown((sample, sample)).counters
+    assert summary is not None
+    assert summary.sample_count == 2
+    assert summary.stage_leaf_input_copy_components_per_point == pytest.approx(43.0)
+    assert summary.evaluator_backend_calls_per_call == pytest.approx(11.0)
+
+
+def test_profile_counter_contract_rejects_ambiguous_repeated_totals() -> None:
+    with pytest.raises(EvaluationError, match="not divisible by repetitions"):
+        benchmark_module._native_profile_sample(
+            {
+                "points": 5,
+                "stage_evaluator_call_time_s": 1.0e-6,
+                "amplitude_evaluator_call_time_s": 0.0,
+            },
+            fallback_points=5,
+            repetitions=2,
+        )
+
+    with pytest.raises(EvaluationError, match="non-negative integer"):
+        benchmark_module._native_profile_sample(
+            {
+                "points": 2,
+                "stage_evaluator_call_time_s": 1.0e-6,
+                "amplitude_evaluator_call_time_s": 0.0,
+                "stage_input_copy_component_count": 1.5,
+            },
+            fallback_points=2,
+        )
+
+
+def test_native_profile_preserves_legacy_momentum_setup_aggregate() -> None:
+    sample = benchmark_module._native_profile_sample(
+        {
+            "execution_mode": "compiled",
+            "points": 1,
+            "wall_time_s": 10.0e-6,
+            "momentum_input_setup_time_s": 1.0e-6,
+            "momentum_setup_time_s": 3.0e-6,
+            "model_parameter_setup_time_s": 2.0e-6,
+            "stage_evaluator_call_time_s": 1.0e-6,
+            "amplitude_evaluator_call_time_s": 1.0e-6,
+        },
+        fallback_points=1,
+    )
+
+    assert sample.momentum_input_setup_time == pytest.approx(1.0e-6)
+    assert sample.momentum_setup_time == pytest.approx(3.0e-6)
+    assert sample.model_parameter_setup_time == pytest.approx(2.0e-6)
+    assert sample.other_core_time == pytest.approx(5.0e-6)
+
+
+def test_native_profile_accounts_selector_phases_exclusively() -> None:
+    profile = {
+        "execution_mode": "compiled",
+        "points": 2,
+        "wall_time_s": 20.0e-6,
+        "stage_evaluator_call_time_s": 8.0e-6,
+        "amplitude_evaluator_call_time_s": 2.0e-6,
+        "selector_planner_time_s": 1.0e-6,
+        "selector_gather_time_s": 3.0e-6,
+        "selector_scatter_time_s": 2.0e-6,
+    }
+
+    sample = benchmark_module._native_profile_sample(profile, fallback_points=2)
+
+    assert sample.selector_planner_time == pytest.approx(0.5e-6)
+    assert sample.selector_gather_time == pytest.approx(1.5e-6)
+    assert sample.selector_scatter_time == pytest.approx(1.0e-6)
+    assert sample.other_core_time == pytest.approx(2.0e-6)
+
+
 def test_native_eager_profile_rejects_overlapping_top_level_phases() -> None:
     profile = {
         "execution_mode": "eager",
@@ -672,6 +954,23 @@ def test_native_eager_profile_rejects_overlapping_top_level_phases() -> None:
 
     with pytest.raises(EvaluationError, match="exclusive top-level phases"):
         benchmark_module._native_profile_sample(profile, fallback_points=4)
+
+
+def test_native_compiled_profile_rejects_overlapping_top_level_phases() -> None:
+    profile = {
+        "execution_mode": "compiled",
+        "points": 1,
+        "wall_time_s": 10.0e-6,
+        "stage_input_pack_time_s": 4.0e-6,
+        "stage_evaluator_call_time_s": 7.0e-6,
+        "output_assign_time_s": 0.0,
+        "amplitude_input_pack_time_s": 0.0,
+        "amplitude_evaluator_call_time_s": 0.0,
+        "reduction_time_s": 0.0,
+    }
+
+    with pytest.raises(EvaluationError, match="exclusive top-level phases"):
+        benchmark_module._native_profile_sample(profile, fallback_points=1)
 
 
 def test_native_eager_profile_rejects_children_exceeding_inclusive_execution() -> None:

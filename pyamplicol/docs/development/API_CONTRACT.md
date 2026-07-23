@@ -16,7 +16,8 @@ review.
   `BenchmarkConfig`.
 - Services: `Generator`, `Runtime`, and `BenchmarkRunner`.
 - Results: `GenerationPlan`, `GenerationResult`, `BenchmarkResult`,
-  `BenchmarkStatistics`, `ProcessPhysics`, `ExternalParticle`,
+  `BenchmarkStatistics`, `BenchmarkComponentTiming`, `BenchmarkStageTiming`,
+  `BenchmarkTimingBreakdown`, `BenchmarkProfileCounters`, `ProcessPhysics`, `ExternalParticle`,
   `HelicityConfiguration`, `ColorComponent`, `ColorFlow`,
   `ContractedColorComponent`, `PhysicsReduction`, `ReductionGroup`,
   `ModelParameter`, and `ResolvedEvaluation`.
@@ -115,7 +116,14 @@ committing it. `set_model_parameter(name, value)` is a convenience wrapper.
 -> BenchmarkResult` accepts a runtime or artifact path. Results contain
 requested/effective configuration, sample count, wall time per point, pure
 evaluator time where available, uncertainty statistics, and environment
-provenance.
+provenance. When native profiling is available,
+`BenchmarkResult.timing_breakdown` contains typed top-level and internal timing
+attribution, per-stage timings, and `BenchmarkProfileCounters`. Internal
+leaf/backend/output-gather/remap attribution is non-additive: full-stage
+evaluator envelopes own leaf gathering, while composed selected-chunk
+input-pack envelopes own it. Movement and materialization counters are
+normalized per profiled point; backend-call and explicit allocation counters
+are normalized per runtime call.
 
 `benchmark(...)` is the convenience wrapper.
 

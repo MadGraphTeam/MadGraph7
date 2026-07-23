@@ -69,19 +69,38 @@ impl StageRuntime {
         })
     }
 
+    #[allow(dead_code)] // Used by the clock-free compiled lane.
     pub(crate) fn evaluate_f64_into_state(
         &mut self,
         batch_size: usize,
         parameter_count: usize,
         state: &mut [Complex<f64>],
     ) -> RusticolResult<(f64, f64, f64)> {
+        let profile = self.evaluate_f64_into_state_profile(batch_size, parameter_count, state)?;
+        Ok((
+            profile.input_pack_s,
+            profile.evaluator.legacy_evaluator_call_s,
+            profile.output_assign_s,
+        ))
+    }
+
+    pub(crate) fn evaluate_f64_into_state_profile(
+        &mut self,
+        batch_size: usize,
+        parameter_count: usize,
+        state: &mut [Complex<f64>],
+    ) -> RusticolResult<StageEvaluationProfile> {
         let mut input_pack_elapsed = Duration::ZERO;
-        let evaluator_s;
+        let evaluator;
+        let mut scratch_reallocation_count = 0;
         if let Some(input_components) = self.input_components.as_ref() {
             let local_parameter_count = input_components.len();
             let pack_start = Instant::now();
+            let capacity = self.parameter_scratch_f64.capacity();
             self.parameter_scratch_f64
                 .resize(batch_size * local_parameter_count, c64(0.0, 0.0));
+            scratch_reallocation_count +=
+                u64::from(self.parameter_scratch_f64.capacity() != capacity);
             for row in 0..batch_size {
                 let row_state = row * parameter_count;
                 let row_params = row * local_parameter_count;
@@ -101,7 +120,7 @@ impl StageRuntime {
             }
             input_pack_elapsed = pack_start.elapsed();
             if self.evaluator.is_chunked() {
-                let (evaluator_s, assign_s) = self.evaluator.evaluate_chunks_f64_into_state(
+                let (evaluator, assign_s) = self.evaluator.evaluate_chunks_f64_into_state_profile(
                     batch_size,
                     &self.parameter_scratch_f64,
                     parameter_count,
@@ -109,20 +128,28 @@ impl StageRuntime {
                     &self.chunk_outputs,
                     &self.chunk_output_spans,
                 )?;
-                return Ok((input_pack_elapsed.as_secs_f64(), evaluator_s, assign_s));
+                return Ok(StageEvaluationProfile {
+                    input_pack_s: input_pack_elapsed.as_secs_f64(),
+                    evaluator,
+                    output_assign_s: assign_s,
+                    input_copy_component_count: (batch_size * local_parameter_count) as u64,
+                    output_assign_component_count: (batch_size * self.outputs.len()) as u64,
+                    scratch_reallocation_count,
+                });
             }
-            let eval_start = Instant::now();
-            self.evaluator.evaluate_batch_into(
+            evaluator = self.evaluator.evaluate_batch_into_profile(
                 batch_size,
                 &self.parameter_scratch_f64,
                 &mut self.output_scratch_f64,
+                false,
             )?;
-            evaluator_s = eval_start.elapsed().as_secs_f64();
         } else {
-            let eval_start = Instant::now();
-            self.evaluator
-                .evaluate_batch_into(batch_size, state, &mut self.output_scratch_f64)?;
-            evaluator_s = eval_start.elapsed().as_secs_f64();
+            evaluator = self.evaluator.evaluate_batch_into_profile(
+                batch_size,
+                state,
+                &mut self.output_scratch_f64,
+                false,
+            )?;
         }
 
         let assign_start = Instant::now();
@@ -143,11 +170,18 @@ impl StageRuntime {
                 }
             }
         }
-        Ok((
-            input_pack_elapsed.as_secs_f64(),
-            evaluator_s,
-            assign_start.elapsed().as_secs_f64(),
-        ))
+        Ok(StageEvaluationProfile {
+            input_pack_s: input_pack_elapsed.as_secs_f64(),
+            evaluator,
+            output_assign_s: assign_start.elapsed().as_secs_f64(),
+            input_copy_component_count: self
+                .input_components
+                .as_ref()
+                .map_or(0, |components| batch_size * components.len())
+                as u64,
+            output_assign_component_count: (batch_size * self.outputs.len()) as u64,
+            scratch_reallocation_count,
+        })
     }
 
     #[allow(dead_code)] // Called by the compiled selector lane after closure planning.
@@ -158,16 +192,52 @@ impl StageRuntime {
         state: &mut [Complex<f64>],
         active_chunk_indices: &[usize],
     ) -> RusticolResult<(f64, f64, f64)> {
-        self.evaluator.evaluate_selected_chunks_f64_into_state(
+        let profile = self.evaluate_active_chunks_f64_into_state_profile(
             batch_size,
             parameter_count,
             state,
-            self.input_components.as_deref(),
-            &self.input_spans,
-            &self.chunk_outputs,
-            &self.chunk_output_spans,
             active_chunk_indices,
-        )
+        )?;
+        Ok((
+            profile.input_pack_s,
+            profile.evaluator.legacy_evaluator_call_s,
+            profile.output_assign_s,
+        ))
+    }
+
+    pub(crate) fn evaluate_active_chunks_f64_into_state_profile(
+        &mut self,
+        batch_size: usize,
+        parameter_count: usize,
+        state: &mut [Complex<f64>],
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<StageEvaluationProfile> {
+        let (evaluator, output_assign_s) = self
+            .evaluator
+            .evaluate_selected_chunks_f64_into_state_profile(
+                batch_size,
+                parameter_count,
+                state,
+                self.input_components.as_deref(),
+                &self.input_spans,
+                &self.chunk_outputs,
+                &self.chunk_output_spans,
+                active_chunk_indices,
+            )?;
+        Ok(StageEvaluationProfile {
+            input_pack_s: evaluator.leaf_input_pack_s,
+            output_assign_s,
+            // The selected-chunk evaluator gathers directly from global
+            // state into leaf inputs. There is no distinct parent stage-input
+            // copy to count in addition to the evaluator's leaf gather.
+            input_copy_component_count: 0,
+            output_assign_component_count: active_chunk_indices
+                .iter()
+                .map(|index| self.chunk_outputs[*index].len() as u64 * batch_size as u64)
+                .sum(),
+            scratch_reallocation_count: 0,
+            evaluator,
+        })
     }
 
     #[cfg(feature = "symbolica-runtime")]
@@ -461,11 +531,19 @@ mod tests {
 
         let sentinel = c64(-99.0, 0.0);
         let mut selected_state = vec![c64(3.0, 0.0), sentinel, c64(7.0, 0.0), sentinel];
-        stage
-            .evaluate_active_chunks_f64_into_state(1, 4, &mut selected_state, &[1])
+        let selected_profile = stage
+            .evaluate_active_chunks_f64_into_state_profile(1, 4, &mut selected_state, &[1])
             .unwrap();
         assert_eq!(selected_state[1], sentinel, "inactive output was assigned");
         assert_eq!(selected_state[3], c64(203.0, 0.0));
+        assert_eq!(
+            selected_profile.input_copy_component_count, 0,
+            "composed selected-chunk gather is not a separate parent input copy"
+        );
+        assert_eq!(
+            selected_profile.evaluator.leaf_input_copy_component_count, 1,
+            "the composed selected-chunk gather must be counted once as a leaf input"
+        );
         assert_eq!(fs::read_to_string(&marker).unwrap(), "1");
 
         let parameter_capacity = stage.evaluator.chunk_parameter_scratch_f64.capacity();

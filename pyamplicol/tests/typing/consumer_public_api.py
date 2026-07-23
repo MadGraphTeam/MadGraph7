@@ -11,6 +11,7 @@ from typing import Literal, assert_type
 from pyamplicol import (
     BenchmarkComponentTiming,
     BenchmarkConfig,
+    BenchmarkProfileCounters,
     BenchmarkResult,
     BenchmarkRunner,
     BenchmarkStageTiming,
@@ -185,6 +186,24 @@ def exercise_results(
             BenchmarkComponentTiming | None,
         )
         assert_type(result.timing_breakdown.stages, tuple[BenchmarkStageTiming, ...])
+        assert_type(
+            result.timing_breakdown.stage_backend_call_time,
+            BenchmarkComponentTiming | None,
+        )
+        if result.timing_breakdown.stages:
+            assert_type(
+                result.timing_breakdown.stages[0].leaf_input_pack_time,
+                BenchmarkComponentTiming | None,
+            )
+        assert_type(
+            result.timing_breakdown.counters,
+            BenchmarkProfileCounters | None,
+        )
+        if result.timing_breakdown.counters is not None:
+            assert_type(
+                result.timing_breakdown.counters.stage_input_copy_components_per_point,
+                float | None,
+            )
     assert_type(result.environment, Mapping[str, object])
 
 

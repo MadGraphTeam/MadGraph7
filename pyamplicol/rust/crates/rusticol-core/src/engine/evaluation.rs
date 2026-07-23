@@ -41,14 +41,17 @@ impl ExecutionRuntime {
             return self.run_f64_with_lc_topology_replay(batch);
         }
         if self.has_compiled_helicity_execution_plan() {
-            let (resolved, profile) =
+            let (resolved, mut profile) =
                 self.run_resolved_f64_with_helicity_recurrence(batch, None, None, None)?;
             let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
-            let values = resolved
+            let materialization_start = Instant::now();
+            let values: Vec<f64> = resolved
                 .values
                 .chunks_exact(component_count)
                 .map(|components| components.iter().sum())
                 .collect();
+            profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+            profile.total_materialized_value_count += values.len() as u64;
             return Ok((values, profile));
         }
         self.run_f64_selected(batch, None)
@@ -108,7 +111,8 @@ impl ExecutionRuntime {
                 selected_color_ids,
             );
         }
-        let (_summed, profile) = self.run_f64_materialized(batch)?;
+        let (_summed, mut profile) = self.run_f64_materialized(batch)?;
+        let resolved_reduction_start = Instant::now();
         let resolved = self
             .amplitude_stage
             .as_mut()
@@ -120,6 +124,10 @@ impl ExecutionRuntime {
                 selected_helicity_ids,
                 selected_color_ids,
             )?;
+        let resolved_reduction_s = resolved_reduction_start.elapsed().as_secs_f64();
+        profile.reduction_s += resolved_reduction_s;
+        profile.resolved_reduction_materialization_s += resolved_reduction_s;
+        profile.resolved_materialized_component_count += resolved.values.len() as u64;
         Ok((resolved, profile))
     }
 
@@ -142,16 +150,22 @@ impl ExecutionRuntime {
             selected_color_ids,
         )?;
         let total_start = Instant::now();
+        let initial_orchestration_start = Instant::now();
         let n_points = batch.len();
         let component_count = selection.helicity_indices.len() * selection.color_indices.len();
         let mut full_values = vec![0.0; n_points * component_count];
-        let mut profile = RuntimeProfile::default();
+        let mut sector_profiles = Vec::new();
+        let mut replay_reduction_elapsed = Duration::ZERO;
         let mappings = self.lc_topology_replay_mappings.clone();
         let mappings_per_chunk = replay_mappings_per_expanded_batch(n_points);
+        let mut replay_orchestration_elapsed = initial_orchestration_start.elapsed();
         for source_group in &selection.source_groups {
+            let group_orchestration_start = Instant::now();
             let materialized_sector_ids =
                 self.lc_materialized_sector_ids_for_color_ids(&physics, &source_group.color_ids)?;
+            replay_orchestration_elapsed += group_orchestration_start.elapsed();
             for chunk_start in (0..source_group.mapping_indices.len()).step_by(mappings_per_chunk) {
+                let chunk_orchestration_start = Instant::now();
                 let chunk_end = usize::min(
                     chunk_start + mappings_per_chunk,
                     source_group.mapping_indices.len(),
@@ -174,6 +188,7 @@ impl ExecutionRuntime {
                 let selected_lane_id = (materialized_sector_ids.len() == 1)
                     .then(|| materialized_sector_ids.iter().next().copied())
                     .flatten();
+                replay_orchestration_elapsed += chunk_orchestration_start.elapsed();
                 let (materialized, sector_profile) = if self.has_compiled_helicity_execution_plan()
                     && selected_helicity_ids.is_some()
                 {
@@ -192,10 +207,12 @@ impl ExecutionRuntime {
                         Some(&source_group.color_ids),
                     )?
                 } else {
-                    let (_expanded_totals, sector_profile) = self.run_f64_materialized_selected(
-                        evaluation_batch,
-                        Some(&materialized_sector_ids),
-                    )?;
+                    let (_expanded_totals, mut sector_profile) = self
+                        .run_f64_materialized_selected(
+                            evaluation_batch,
+                            Some(&materialized_sector_ids),
+                        )?;
+                    let resolved_reduction_start = Instant::now();
                     let materialized = self
                         .amplitude_stage
                         .as_mut()
@@ -207,9 +224,13 @@ impl ExecutionRuntime {
                             Some(&source_group.helicity_ids),
                             Some(&source_group.color_ids),
                         )?;
+                    let resolved_reduction_s = resolved_reduction_start.elapsed().as_secs_f64();
+                    sector_profile.reduction_s += resolved_reduction_s;
+                    sector_profile.resolved_reduction_materialization_s += resolved_reduction_s;
+                    sector_profile.resolved_materialized_component_count +=
+                        materialized.values.len() as u64;
                     (materialized, sector_profile)
                 };
-                profile.add_sector(&sector_profile);
                 let reduction_start = Instant::now();
                 accumulate_selected_lc_replay_resolved_f64(
                     &mut full_values,
@@ -219,9 +240,20 @@ impl ExecutionRuntime {
                     source_group.source_component_count,
                     component_count,
                 )?;
-                profile.reduction_s += reduction_start.elapsed().as_secs_f64();
+                replay_reduction_elapsed += reduction_start.elapsed();
+                let post_reduction_orchestration_start = Instant::now();
+                sector_profiles.push(sector_profile);
+                replay_orchestration_elapsed += post_reduction_orchestration_start.elapsed();
             }
         }
+        let profile_fold_start = Instant::now();
+        let mut profile = RuntimeProfile::default();
+        for sector_profile in &sector_profiles {
+            profile.add_sector(sector_profile);
+        }
+        replay_orchestration_elapsed += profile_fold_start.elapsed();
+        profile.orchestration_s += profile_duration_seconds(replay_orchestration_elapsed);
+        profile.reduction_s += profile_duration_seconds(replay_reduction_elapsed);
         profile.total_s = total_start.elapsed().as_secs_f64();
         Ok((
             ResolvedValues {
@@ -278,7 +310,7 @@ impl ExecutionRuntime {
         let total_start = Instant::now();
         let n_points = batch.len();
         let mut values = vec![0.0; n_points];
-        let mut profile = RuntimeProfile::default();
+        let mut sector_profiles = Vec::with_capacity(selected.len());
         let previous = self.set_lc_sector_selector(None);
         let result = (|| {
             for sector_id in selected {
@@ -290,7 +322,11 @@ impl ExecutionRuntime {
                 for (value, sector_value) in values.iter_mut().zip(sector_values) {
                     *value += sector_value;
                 }
-                profile.add_sector(&sector_profile);
+                sector_profiles.push(sector_profile);
+            }
+            let mut profile = RuntimeProfile::default();
+            for sector_profile in &sector_profiles {
+                profile.add_sector(sector_profile);
             }
             profile.total_s = total_start.elapsed().as_secs_f64();
             Ok((values, profile))
@@ -341,11 +377,15 @@ impl ExecutionRuntime {
         let (resolved, profile) =
             self.run_resolved_f64_with_lc_topology_replay(batch, None, None)?;
         let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
-        let values = resolved
+        let mut profile = profile;
+        let materialization_start = Instant::now();
+        let values: Vec<f64> = resolved
             .values
             .chunks_exact(component_count)
             .map(|components| components.iter().sum())
             .collect();
+        profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+        profile.total_materialized_value_count += values.len() as u64;
         Ok((values, profile))
     }
 
@@ -366,15 +406,24 @@ impl ExecutionRuntime {
         }
         let total_start = Instant::now();
         let n_points = batch.len();
+        let state_prepare_start = Instant::now();
         let color_schedule = selected_color_sector_ids
             .map(|sector_ids| self.compiled_color_selector_schedule(sector_ids))
             .transpose()?
             .flatten();
         let state_len = n_points * self.parameter_count;
+        let state_capacity = self.state_scratch_f64.capacity();
         self.state_scratch_f64.resize(state_len, c64(0.0, 0.0));
+        let state_prepare_elapsed = state_prepare_start.elapsed();
+        let mut scratch_reallocation_count =
+            u64::from(self.state_scratch_f64.capacity() != state_capacity);
+        let clear_start = Instant::now();
+        let mut state_clear_component_count = 0;
         if self.state_scratch_f64_requires_clear {
             self.state_scratch_f64.fill(c64(0.0, 0.0));
+            state_clear_component_count = state_len as u64;
         }
+        let state_clear_elapsed = clear_start.elapsed();
         // Keep this conservative while execution is in progress: an evaluator
         // error can leave a partially written state. A complete schedule clears
         // the flag below; selector-pruned schedules deliberately leave it set.
@@ -422,8 +471,12 @@ impl ExecutionRuntime {
             )?;
         }
         let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();
+        let mut stage_profiles = Vec::new();
         let mut stage_input_pack_by_stage_s = Vec::new();
+        let mut stage_leaf_input_pack_by_stage_s = Vec::new();
         let mut stage_evaluator_call_by_stage_s = Vec::new();
+        let mut stage_backend_call_by_stage_s = Vec::new();
+        let mut stage_evaluator_output_gather_by_stage_s = Vec::new();
         let mut stage_output_assign_by_stage_s = Vec::new();
         for (stage_index, stage) in self
             .stages
@@ -432,44 +485,51 @@ impl ExecutionRuntime {
             .iter_mut()
             .enumerate()
         {
-            let (pack_s, eval_s, assign_s) = if let Some(schedule) = color_schedule.as_ref() {
-                stage.evaluate_active_chunks_f64_into_state(
+            let stage_profile = if let Some(schedule) = color_schedule.as_ref() {
+                stage.evaluate_active_chunks_f64_into_state_profile(
                     n_points,
                     self.parameter_count,
                     state.as_mut_slice(),
                     &schedule.active_stage_chunk_indices[stage_index],
                 )?
             } else {
-                stage.evaluate_f64_into_state(
+                stage.evaluate_f64_into_state_profile(
                     n_points,
                     self.parameter_count,
                     state.as_mut_slice(),
                 )?
             };
-            stage_input_pack_by_stage_s.push(pack_s);
-            stage_evaluator_call_by_stage_s.push(eval_s);
-            stage_output_assign_by_stage_s.push(assign_s);
+            stage_input_pack_by_stage_s.push(stage_profile.input_pack_s);
+            stage_leaf_input_pack_by_stage_s.push(stage_profile.evaluator.leaf_input_pack_s);
+            stage_evaluator_call_by_stage_s.push(stage_profile.evaluator.legacy_evaluator_call_s);
+            stage_backend_call_by_stage_s.push(stage_profile.evaluator.evaluator_call_s);
+            stage_evaluator_output_gather_by_stage_s.push(stage_profile.evaluator.output_gather_s);
+            stage_output_assign_by_stage_s.push(stage_profile.output_assign_s);
+            stage_profiles.push(stage_profile);
         }
 
-        let (amplitude_input_pack_s, amplitude_evaluator_call_s) =
-            if let Some(schedule) = color_schedule.as_ref() {
-                self.amplitude_stage
-                    .as_mut()
-                    .expect("generic amplitude stage checked")
-                    .evaluate_active_chunks_f64_into_scratch(
-                        n_points,
-                        state.as_slice(),
-                        &schedule.active_amplitude_chunk_indices,
-                    )?
-            } else {
-                self.amplitude_stage
-                    .as_mut()
-                    .expect("generic amplitude stage checked")
-                    .evaluate_f64_into_scratch(n_points, state.as_slice())?
-            };
+        let amplitude_profile = if let Some(schedule) = color_schedule.as_ref() {
+            self.amplitude_stage
+                .as_mut()
+                .expect("generic amplitude stage checked")
+                .evaluate_active_chunks_f64_into_scratch_profile(
+                    n_points,
+                    state.as_slice(),
+                    &schedule.active_amplitude_chunk_indices,
+                )?
+        } else {
+            self.amplitude_stage
+                .as_mut()
+                .expect("generic amplitude stage checked")
+                .evaluate_f64_into_scratch_profile(n_points, state.as_slice())?
+        };
+        let amplitude_input_pack_s = amplitude_profile.input_pack_s;
+        let amplitude_evaluator_call_s =
+            amplitude_profile.evaluator.legacy_evaluator_call_s + amplitude_profile.output_remap_s;
         let amplitude_evaluator_s = amplitude_input_pack_s + amplitude_evaluator_call_s;
 
         let reduction_start = Instant::now();
+        let values_capacity = self.values_scratch_f64.capacity();
         self.amplitude_stage
             .as_mut()
             .expect("generic amplitude stage checked")
@@ -482,30 +542,112 @@ impl ExecutionRuntime {
             *value *= self.normalization_factor;
         }
         let reduction_s = reduction_start.elapsed().as_secs_f64();
+        scratch_reallocation_count +=
+            u64::from(self.values_scratch_f64.capacity() != values_capacity);
         self.state_scratch_f64_requires_clear = color_schedule.is_some();
         let stage_input_pack_s = stage_input_pack_by_stage_s.iter().sum::<f64>();
         let stage_evaluator_call_s = stage_evaluator_call_by_stage_s.iter().sum::<f64>();
         let stage_evaluator_s = stage_input_pack_s + stage_evaluator_call_s;
         let output_assign_s = stage_output_assign_by_stage_s.iter().sum::<f64>();
+        let final_output_copy_start = Instant::now();
+        let values = self.values_scratch_f64.clone();
+        let final_output_copy_s = final_output_copy_start.elapsed().as_secs_f64();
         Ok((
-            self.values_scratch_f64.clone(),
+            values,
             RuntimeProfile {
                 source_fill_s: profile_duration_seconds(source_fill_elapsed),
+                state_prepare_s: profile_duration_seconds(state_prepare_elapsed),
+                state_clear_s: profile_duration_seconds(state_clear_elapsed),
+                momentum_input_setup_s: profile_duration_seconds(momentum_setup_elapsed),
                 momentum_setup_s: profile_duration_seconds(
                     momentum_setup_elapsed + model_parameter_setup_elapsed,
                 ),
+                model_parameter_setup_s: profile_duration_seconds(model_parameter_setup_elapsed),
                 stage_input_pack_s,
+                stage_leaf_input_pack_s: stage_profiles
+                    .iter()
+                    .map(|profile| profile.evaluator.leaf_input_pack_s)
+                    .sum(),
                 stage_evaluator_call_s,
+                stage_backend_call_s: stage_profiles
+                    .iter()
+                    .map(|profile| profile.evaluator.evaluator_call_s)
+                    .sum(),
+                stage_evaluator_output_gather_s: stage_profiles
+                    .iter()
+                    .map(|profile| profile.evaluator.output_gather_s)
+                    .sum(),
                 stage_evaluator_s,
                 output_assign_s,
                 amplitude_input_pack_s,
+                amplitude_leaf_input_pack_s: amplitude_profile.evaluator.leaf_input_pack_s,
                 amplitude_evaluator_call_s,
+                amplitude_backend_call_s: amplitude_profile.evaluator.evaluator_call_s,
+                amplitude_evaluator_output_gather_s: amplitude_profile.evaluator.output_gather_s,
+                amplitude_output_remap_s: amplitude_profile.output_remap_s,
                 amplitude_evaluator_s,
                 reduction_s,
                 total_s: total_start.elapsed().as_secs_f64(),
                 stage_input_pack_by_stage_s,
+                stage_leaf_input_pack_by_stage_s,
                 stage_evaluator_call_by_stage_s,
+                stage_backend_call_by_stage_s,
+                stage_evaluator_output_gather_by_stage_s,
                 stage_output_assign_by_stage_s,
+                state_component_count: state_len as u64,
+                state_clear_component_count,
+                source_component_count: (n_points * self.source_count) as u64,
+                momentum_component_count: (n_points * self.momentum_parameter_count) as u64,
+                model_parameter_component_count: (n_points * model_parameter_values.len()) as u64,
+                stage_input_copy_component_count: stage_profiles
+                    .iter()
+                    .map(|profile| profile.input_copy_component_count)
+                    .sum(),
+                stage_leaf_input_copy_component_count: stage_profiles
+                    .iter()
+                    .map(|profile| profile.evaluator.leaf_input_copy_component_count)
+                    .sum(),
+                stage_evaluator_output_gather_component_count: stage_profiles
+                    .iter()
+                    .map(|profile| profile.evaluator.output_gather_component_count)
+                    .sum(),
+                stage_output_assign_component_count: stage_profiles
+                    .iter()
+                    .map(|profile| profile.output_assign_component_count)
+                    .sum(),
+                amplitude_input_copy_component_count: amplitude_profile.input_copy_component_count,
+                amplitude_leaf_input_copy_component_count: amplitude_profile
+                    .evaluator
+                    .leaf_input_copy_component_count,
+                amplitude_evaluator_output_gather_component_count: amplitude_profile
+                    .evaluator
+                    .output_gather_component_count,
+                amplitude_output_remap_component_count: amplitude_profile
+                    .output_remap_component_count,
+                evaluator_backend_call_count: stage_profiles
+                    .iter()
+                    .map(|profile| profile.evaluator.backend_call_count)
+                    .sum::<u64>()
+                    + amplitude_profile.evaluator.backend_call_count,
+                reduction_input_component_count: (n_points
+                    * self
+                        .amplitude_stage
+                        .as_ref()
+                        .expect("generic amplitude stage checked")
+                        .output_length) as u64,
+                total_materialized_value_count: n_points as u64,
+                final_output_copy_s,
+                final_output_copy_value_count: self.values_scratch_f64.len() as u64,
+                scratch_reallocation_count: scratch_reallocation_count
+                    + stage_profiles
+                        .iter()
+                        .map(|profile| {
+                            profile.scratch_reallocation_count
+                                + profile.evaluator.scratch_reallocation_count
+                        })
+                        .sum::<u64>()
+                    + amplitude_profile.scratch_reallocation_count
+                    + amplitude_profile.evaluator.scratch_reallocation_count,
                 ..RuntimeProfile::default()
             },
         ))
@@ -675,9 +817,11 @@ impl ExecutionRuntime {
             values,
             RuntimeProfile {
                 source_fill_s: profile_duration_seconds(source_fill_elapsed),
+                momentum_input_setup_s: profile_duration_seconds(momentum_setup_elapsed),
                 momentum_setup_s: profile_duration_seconds(
                     momentum_setup_elapsed + model_parameter_setup_elapsed,
                 ),
+                model_parameter_setup_s: profile_duration_seconds(model_parameter_setup_elapsed),
                 stage_input_pack_s,
                 stage_evaluator_call_s,
                 stage_evaluator_s,
@@ -767,14 +911,18 @@ impl ExecutionRuntime {
             selected_color_ids,
         )?;
         let total_start = Instant::now();
+        let initial_orchestration_start = Instant::now();
         let n_points = batch.len();
         let component_count = selection.helicity_indices.len() * selection.color_indices.len();
         let mut full_values = vec![T::new_zero(); n_points * component_count];
-        let mut profile = RuntimeProfile::default();
+        let mut sector_profiles = Vec::new();
+        let mut replay_reduction_elapsed = Duration::ZERO;
         let mappings = self.lc_topology_replay_mappings.clone();
         let mappings_per_chunk = replay_mappings_per_expanded_batch(n_points);
+        let mut replay_orchestration_elapsed = initial_orchestration_start.elapsed();
         for source_group in &selection.source_groups {
             for chunk_start in (0..source_group.mapping_indices.len()).step_by(mappings_per_chunk) {
+                let chunk_orchestration_start = Instant::now();
                 let chunk_end = usize::min(
                     chunk_start + mappings_per_chunk,
                     source_group.mapping_indices.len(),
@@ -794,6 +942,7 @@ impl ExecutionRuntime {
                     )?)
                 };
                 let evaluation_batch = expanded_batch.as_deref().unwrap_or(batch);
+                replay_orchestration_elapsed += chunk_orchestration_start.elapsed();
                 let (materialized, sector_profile) = if self.has_compiled_helicity_execution_plan()
                     && selected_helicity_ids.is_some()
                 {
@@ -812,7 +961,6 @@ impl ExecutionRuntime {
                         Some(&source_group.color_ids),
                     )?
                 };
-                profile.add_sector(&sector_profile);
                 let reduction_start = Instant::now();
                 accumulate_selected_lc_replay_resolved_generic(
                     &mut full_values,
@@ -822,9 +970,20 @@ impl ExecutionRuntime {
                     source_group.source_component_count,
                     component_count,
                 )?;
-                profile.reduction_s += reduction_start.elapsed().as_secs_f64();
+                replay_reduction_elapsed += reduction_start.elapsed();
+                let post_reduction_orchestration_start = Instant::now();
+                sector_profiles.push(sector_profile);
+                replay_orchestration_elapsed += post_reduction_orchestration_start.elapsed();
             }
         }
+        let profile_fold_start = Instant::now();
+        let mut profile = RuntimeProfile::default();
+        for sector_profile in &sector_profiles {
+            profile.add_sector(sector_profile);
+        }
+        replay_orchestration_elapsed += profile_fold_start.elapsed();
+        profile.orchestration_s += profile_duration_seconds(replay_orchestration_elapsed);
+        profile.reduction_s += profile_duration_seconds(replay_reduction_elapsed);
         profile.total_s = total_start.elapsed().as_secs_f64();
         Ok((
             ResolvedValues {
@@ -953,9 +1112,11 @@ impl ExecutionRuntime {
             resolved,
             RuntimeProfile {
                 source_fill_s: profile_duration_seconds(source_fill_elapsed),
+                momentum_input_setup_s: profile_duration_seconds(momentum_setup_elapsed),
                 momentum_setup_s: profile_duration_seconds(
                     momentum_setup_elapsed + model_parameter_setup_elapsed,
                 ),
+                model_parameter_setup_s: profile_duration_seconds(model_parameter_setup_elapsed),
                 stage_input_pack_s,
                 stage_evaluator_call_s,
                 stage_evaluator_s,
