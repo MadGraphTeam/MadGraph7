@@ -808,6 +808,9 @@ fn reduction_runtime(
     decoded: &DecodedEagerRuntimeV3,
     manifest: &EagerV3ExecutionManifest,
 ) -> RusticolResult<(Vec<RawSumGroup>, Option<ColorContractionRuntime>)> {
+    let color_sector_by_group = (manifest.color_accuracy == "lc")
+        .then(|| coherent_group_color_sector_ids(decoded))
+        .transpose()?;
     let mut groups = Vec::with_capacity(decoded.reduction_groups.len());
     for group in &decoded.reduction_groups {
         let amplitudes = reduction_range(
@@ -840,6 +843,13 @@ fn reduction_runtime(
             group.all_sector_weight_factor_id,
             "all-sector weight",
         )?;
+        // Selector IDs index the sorted public color axis. Replay uses the
+        // original color-plan sector identity retained by each coherent group.
+        let sector_ids = eager_raw_sum_sector_ids(
+            manifest.color_accuracy.as_str(),
+            group.coherent_group_id,
+            color_sector_by_group.as_ref(),
+        )?;
         groups.push(RawSumGroup {
             id: i64::from(group.coherent_group_id),
             indices: amplitudes
@@ -848,14 +858,7 @@ fn reduction_runtime(
                 .collect(),
             weight,
             all_sector_weight,
-            sector_ids: selectors
-                .iter()
-                .filter_map(|entry| {
-                    (entry.right_id != MISSING_U32).then_some(i64::from(entry.right_id))
-                })
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect(),
+            sector_ids,
         });
     }
     if manifest.color_accuracy == "lc" {
@@ -907,6 +910,25 @@ fn reduction_runtime(
             group_scratch_f64: Vec::new(),
         }),
     ))
+}
+
+fn eager_raw_sum_sector_ids(
+    color_accuracy: &str,
+    coherent_group_id: u32,
+    color_sector_by_group: Option<&BTreeMap<u32, u32>>,
+) -> RusticolResult<Vec<i64>> {
+    if color_accuracy != "lc" {
+        return Ok(Vec::new());
+    }
+    let sector_id = color_sector_by_group
+        .and_then(|sectors| sectors.get(&coherent_group_id))
+        .copied()
+        .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "eager LC coherent group {coherent_group_id} has no color-sector identity"
+            ))
+        })?;
+    Ok(vec![i64::from(sector_id)])
 }
 
 fn exact_factor(
@@ -1155,6 +1177,22 @@ mod compact_reduction_tests {
             axis_error
                 .to_string()
                 .contains("unknown helicity selector 99")
+        );
+    }
+
+    #[test]
+    fn lc_raw_sum_uses_retained_color_plan_sector_identity() {
+        let sectors = BTreeMap::from([(7, 1)]);
+
+        assert_eq!(
+            eager_raw_sum_sector_ids("lc", 7, Some(&sectors)).unwrap(),
+            vec![1]
+        );
+        assert!(eager_raw_sum_sector_ids("lc", 8, Some(&sectors)).is_err());
+        assert!(
+            eager_raw_sum_sector_ids("full", 7, None)
+                .unwrap()
+                .is_empty()
         );
     }
 
