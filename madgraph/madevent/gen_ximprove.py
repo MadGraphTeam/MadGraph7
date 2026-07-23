@@ -301,11 +301,17 @@ class gensym(object):
                 # Convert to sorted list for reproducibility
                 #good_hels = sorted(list(good_hels))
                 good_set = set(all_good_hels[me_index])
-                # Cross-group: expand to the UNION good-hel of the class.
-                gbase = frozenset(good_set)
-                for pi in helunion.get(me_index, []):
-                    good_set |= {h for h in range(1, len(pi) + 1)
-                                 if pi[h - 1] in gbase}
+                # Cross-group base: the shared optim is also evaluated with each
+                # dependent's CROSSED helicity configs, but the recycled MATRIX
+                # bakes the base's helicity configs (it takes no runtime NHEL).
+                # The full helicity SUM is invariant under the crossing's helicity
+                # permutation, whereas the base's own good-hel SUBSET is not the
+                # dependent's -- dropping configs here biases a crossed dependent.
+                # So keep EVERY config for a base of a crossing class; wavefunction
+                # recycling is retained, only the good-hel config filter is off.
+                perms = helunion.get(me_index, [])
+                if perms:
+                    good_set = set(range(1, len(perms[0]) + 1))
                 good_hels = [str(x) for x in sorted(good_set)]
                 if self.run_card['hel_zeroamp']:
                     

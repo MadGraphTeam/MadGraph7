@@ -71,6 +71,7 @@ C GLOBAL VARIABLES
 C
     include '../../Source/vector.inc' ! defines VECSIZE_MEMMAX
     DOUBLE PRECISION AMP2(MAXAMPS), JAMP2(0:MAXFLOW)
+%(xg_jamp2_decl)s
 
 
 C
@@ -171,6 +172,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
     ENDIF
 %(smatrix_me_iden_line)s
 
+%(xg_jamp2_pub)s
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol, ivec)
 
     END

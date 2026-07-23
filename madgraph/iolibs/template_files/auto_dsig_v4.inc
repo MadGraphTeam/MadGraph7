@@ -587,5 +587,6 @@ c         if hel=0 return the number of helicity state possible for that particl
       return
       end
 
+%(dsig_xg_helper)s
 
 %(ADDITIONAL_FCT)s

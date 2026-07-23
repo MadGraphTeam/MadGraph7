@@ -692,6 +692,11 @@ class ProcessExporterFortran(VirtualExporter):
             # visible, and hand the per-group routing to generate_subprocess_
             # directory (keyed by the same enumerate index it receives).
             self._crossgroup = self.compute_crossgroup_routing(matrix_elements)
+            # The MEs that serve as a cross-group base must publish their per-flow
+            # JAMP2 (so dependents can reselect colour natively); gate that emission
+            # to these MEs only, keeping every other madevent ME byte-identical.
+            self._crossgroup_base_mes = set(
+                id(cg['base_me']) for cg in self._crossgroup.values())
             if self._crossgroup:
                 logger.info('Cross-group crossing: %d subprocess(es) will reuse '
                             'a base group\'s matrix element via crossing.'
@@ -6450,6 +6455,7 @@ c     channel position
         replace_dict['dsig_xg_decl'] = ''
         replace_dict['dsig_xg_decl_vec'] = ''
         replace_dict['dsig_xg_decl_multi'] = ''
+        replace_dict['dsig_xg_helper'] = ''
         replace_dict['dsig_getflavor'] = \
             '      CALL GET_FLAVOR%s(IFLAV, FLAVOR)' % proc_id
         replace_dict['dsig_smatrix_call'] = (
@@ -7316,6 +7322,25 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                         'flavor_mask_decl':'',
                         'flavor_mask_setup':''}
 
+        # Cross-group (Track B) colour selection: an ME that serves as a base for a
+        # crossed dependent publishes its per-flow JAMP2 (in its own flow order) so
+        # the dependent can reselect colour natively (see _dsig_crossgroup_fills /
+        # XG_SELCOL). Emitted only for those bases -- every other madevent ME keeps
+        # both holes empty and is byte-identical.
+        if id(matrix_element) in getattr(self, '_crossgroup_base_mes', set()):
+            replace_dict['xg_jamp2_decl'] = (
+                'C     Cross-group (Track B): publish this ME\'s per-flow JAMP2 so a'
+                '\nC     crossed dependent can reselect colour in its own flow space.'
+                '\n      DOUBLE PRECISION XG_JAMP2(0:MAXFLOW,VECSIZE_MEMMAX)'
+                '\n      COMMON/TO_XG_JAMP2/XG_JAMP2')
+            replace_dict['xg_jamp2_pub'] = (
+                '      DO I=0,INT(JAMP2(0))'
+                '\n        XG_JAMP2(I,IVEC) = JAMP2(I)'
+                '\n      ENDDO')
+        else:
+            replace_dict['xg_jamp2_decl'] = ''
+            replace_dict['xg_jamp2_pub'] = ''
+
         # Crossing holes of matrix_madevent_group_v4.inc: the group SMATRIX
         # decodes the extended FLAV_IDX and evaluates the crossed process through
         # a runtime IC. Only that template carries the holes (the single-process
@@ -7835,8 +7860,30 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         ncol = len(colmap[0]) if colmap else 0
         hel_post = self._crossgroup_remap_decl(
             decl, 'DSIG_XGHEL', helmap, ncomb, 'selected_hel')
-        col_post = self._crossgroup_remap_decl(
-            decl, 'DSIG_XGCOL', colmap, ncol, 'selected_col')
+        # Colour: unlike helicity, a base->dep index relabel of selected_col is
+        # NOT sufficient. The base SMATRIX picked its flow with select_color,
+        # which masks the base-order JAMP2 with THIS (dependent) binary's ICOLAMP
+        # + ICONFIG -- mismatched in flow order AND config space -- so the picked
+        # flow can be incompatible with the sampled config and addmothers fails
+        # to reduce its ICOLUP. Reselect natively instead: permute the base's
+        # published per-flow JAMP2 (COMMON/TO_XG_JAMP2) into this subprocess's
+        # flow order (DSIG_XGCOL) and run this subprocess's own SELECT_COLOR
+        # (its own ICOLAMP + ICONFIG), via the XG_SELCOL helper below. Bit-for-bit
+        # a native colour selection. Only needed when colmap is non-identity
+        # (identity/colourless: the base's selection is already in this order).
+        identity_col = list(range(1, ncol + 1))
+        col_active = ncol > 0 and any(cm != identity_col for cm in colmap)
+        dsig_xg_helper = ''
+        col_scalar_call, col_vec_call = '', ''
+        if col_active:
+            col_flat = ','.join(str(x) for col in colmap for x in col)
+            dsig_xg_helper = self._crossgroup_colsel_helper(
+                proc_id, ncol, len(colmap), col_flat)
+            col_scalar_call = ('\n      CALL XG_SELCOL%s(RCOL, IFLAV, 1,'
+                               ' SELECTED_COL(1))' % proc_id)
+            col_vec_call = ('\n        CALL XG_SELCOL%s(COL_RAND(IVEC),'
+                            ' IFLAV_VEC(IVEC), IVEC, SELECTED_COL(IVEC))'
+                            % proc_id)
 
         # Multi-channel config remap: the base SMATRIX enhances AMP2(channel) in
         # ITS diagram numbering, but this subprocess's genps samples its own
@@ -7862,13 +7909,14 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             'dsig_xg_decl': decl_block,
             'dsig_xg_decl_vec': decl_block,
             'dsig_xg_decl_multi': decl_block,
+            'dsig_xg_helper': dsig_xg_helper,
             'dsig_getflavor': '      FLAVOR(:) = DSIG_XGFLAV(:, IFLAV)',
             'dsig_smatrix_call': (
                 '     CALL SMATRIX%d(P1, DSIG_XGROUTE(IFLAV), RHEL, RCOL, %s,'
                 ' 1, DSIGUU, selected_hel(1), selected_col(1))'
                 % (base_proc_id, chan_scalar)
                 + hel_post.format(idx='(1)', flav='IFLAV')
-                + col_post.format(idx='(1)', flav='IFLAV')),
+                + col_scalar_call),
             # vectorised (SMATRIX_MULTI) path: same routing. The MULTI wrapper
             # itself keeps this subprocess's own name (it is defined in this
             # auto_dsig); only the inner base-SMATRIX call + flavor are routed.
@@ -7879,7 +7927,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             'dsig_smatrix_vec_chan': chan_vec,
             'dsig_smatrix_vec_post': (
                 hel_post.format(idx='(IVEC)', flav='IFLAV_VEC(IVEC)')
-                + col_post.format(idx='(IVEC)', flav='IFLAV_VEC(IVEC)')),
+                + col_vec_call),
         }
 
     def _crossgroup_remap_decl(self, decl, name, maps, size, var):
@@ -7897,6 +7945,42 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         return ('\n      IF ({v}{{idx}}.GE.1.AND.{v}{{idx}}.LE.{n}) '
                 '{v}{{idx}} = {name}({v}{{idx}}, {{flav}})').format(
                     v=var, n=size, name=name)
+
+    def _crossgroup_colsel_helper(self, proc_id, ncol, nflav, col_flat):
+        """Emit XG_SELCOL<proc_id>, the cross-group (Track B) colour-selection
+        helper for a dependent subprocess. It permutes the base ME's published
+        per-flow JAMP2 (COMMON/TO_XG_JAMP2, base flow order) into this
+        subprocess's flow order via DSIG_XGCOL (base flow -> dep flow) and runs
+        this subprocess's own SELECT_COLOR (its ICOLAMP + the live ICONFIG), so
+        the returned flow is native to this subprocess -- consistent with its
+        ICOLUP and its sampled config, unlike a bare base->dep index relabel of
+        the base's own (mismatched) selection. The DATA is column-major (flow
+        fastest, then flavor); the writer wraps the long line."""
+        return '\n'.join([
+            '      SUBROUTINE XG_SELCOL%s(RCOL, IFLAV, IVEC, ICOL)' % proc_id,
+            '      IMPLICIT NONE',
+            "      INCLUDE 'genps.inc'",
+            "      INCLUDE 'nexternal.inc'",
+            "      INCLUDE 'maxconfigs.inc'",
+            "      INCLUDE 'maxamps.inc'",
+            "      INCLUDE '../../Source/vector.inc'",
+            '      DOUBLE PRECISION RCOL',
+            '      INTEGER IFLAV, IVEC, ICOL',
+            '      INTEGER I',
+            '      INTEGER MAPCONFIG(0:LMAXCONFIGS), ICONFIG',
+            '      COMMON/TO_MCONFIGS/MAPCONFIG, ICONFIG',
+            '      DOUBLE PRECISION XG_JAMP2(0:MAXFLOW,VECSIZE_MEMMAX)',
+            '      COMMON/TO_XG_JAMP2/XG_JAMP2',
+            '      DOUBLE PRECISION JD(0:MAXFLOW)',
+            '      INTEGER DSIG_XGCOL(%d,%d)' % (ncol, nflav),
+            '      DATA DSIG_XGCOL /%s/' % col_flat,
+            '      JD(0) = XG_JAMP2(0,IVEC)',
+            '      DO I=1,%d' % ncol,
+            '        JD(DSIG_XGCOL(I,IFLAV)) = XG_JAMP2(I,IVEC)',
+            '      ENDDO',
+            '      CALL SELECT_COLOR(RCOL, JD, ICONFIG, 1, ICOL, IVEC)',
+            '      END',
+        ])
 
     #===========================================================================
     # write_auto_dsig_file
@@ -7971,6 +8055,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         replace_dict['dsig_xg_decl'] = ''
         replace_dict['dsig_xg_decl_vec'] = ''
         replace_dict['dsig_xg_decl_multi'] = ''
+        replace_dict['dsig_xg_helper'] = ''
         replace_dict['dsig_getflavor'] = \
             '      CALL GET_FLAVOR%s(IFLAV, FLAVOR)' % proc_id
         replace_dict['dsig_smatrix_call'] = (

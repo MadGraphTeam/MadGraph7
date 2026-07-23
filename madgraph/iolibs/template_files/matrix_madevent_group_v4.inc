@@ -91,6 +91,7 @@ C
     logical init_mode
     common /to_determine_zero_hel/init_mode
     DOUBLE PRECISION AMP2(MAXAMPS), JAMP2(0:MAXFLOW)
+%(xg_jamp2_decl)s
    
 
     INTEGER NB_SPIN_STATE_in(2)
@@ -258,6 +259,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
     ENDIF
 %(smatrix_me_iden_line)s
 
+%(xg_jamp2_pub)s
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol, ivec)
 
     END
