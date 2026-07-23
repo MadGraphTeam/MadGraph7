@@ -1248,6 +1248,56 @@ def test_known_eager_z_out_of_reach_is_migrated_to_union_lane_only() -> None:
     )
 
 
+def test_audit_record_exposes_lane_local_out_of_reach() -> None:
+    spec = next(
+        item for item in report.LADDER_SPECS if item.dataset_id == "z_builtin_sm"
+    )
+    payload = report.build_ladder_cache(spec)
+    entry = next(
+        item
+        for item in payload["entries"]
+        if item["n_final"] == 8 and item["variant"] == "eager_jit_o3"
+    )
+    entry["status"] = report.ResultStatus.OUT_OF_REACH.value
+    entry["measurement"] = report._failure_measurement(
+        report.ResultStatus.OUT_OF_REACH,
+        "campaign policy stop",
+        metadata={
+            "campaign_classification": {
+                "policy": "high_multiplicity_out_of_reach_v1",
+                "status": report.ResultStatus.OUT_OF_REACH.value,
+            },
+            "cell": {
+                "dataset_id": "z_builtin_sm",
+                "n_final": 8,
+                "variant": "eager_jit_o3",
+            },
+        },
+    )
+    normalized = report.normalize_cache_payload(payload)
+    cell = report.CampaignCell(
+        kind="performance_ladder",
+        cache_name=spec.cache_name,
+        dataset_id=spec.dataset_id,
+        n_final=8,
+        process=spec.process(8),
+        variant="eager_jit_o3",
+    )
+
+    audit = report._audit_cell_record(cell, {spec.cache_name: normalized})
+
+    assert audit["needs_measurement"] is True
+    lanes = audit["lc_lanes"]
+    assert isinstance(lanes, Mapping)
+    selected_lane = lanes["selected_flow_helicity_sum"]
+    all_flow_lane = lanes["all_flows_fixed_helicity"]
+    assert isinstance(selected_lane, Mapping)
+    assert isinstance(all_flow_lane, Mapping)
+    assert selected_lane["status"] == report.NA_STATUS
+    assert all_flow_lane["status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert "all_flows_fixed_helicity=out_of_reach" in report._audit_cell_text(audit)
+
+
 def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
     spec = next(
         item for item in report.LADDER_SPECS if item.dataset_id == "z_builtin_sm"

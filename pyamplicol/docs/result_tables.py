@@ -29,6 +29,7 @@ import threading
 import time
 import tomllib
 import uuid
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass, replace
@@ -4560,6 +4561,134 @@ def _cache_entry_for_cell(
         elif entry.get("n_final") == cell.n_final:
             return entry
     return None
+
+
+def _audit_measurement(value: object) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        return {"status": NA_STATUS}
+    metadata = value.get("metadata")
+    result: dict[str, object] = {
+        "status": _measurement_status(value),
+        "failure_kind": value.get("failure_kind"),
+        "failure_message": value.get("failure_message"),
+        "artifact_path": value.get("artifact_path"),
+        "log_path": value.get("log_path"),
+    }
+    if isinstance(metadata, Mapping):
+        result["source_head"] = (
+            metadata.get("source_provenance", {}).get("head")
+            if isinstance(metadata.get("source_provenance"), Mapping)
+            else None
+        )
+        result["lc_flow_layout"] = metadata.get("lc_flow_layout")
+        result["runtime_selector_role"] = metadata.get("runtime_selector_role")
+        result["lane_terminal_policy"] = metadata.get("lane_terminal_policy")
+    return {
+        key: item
+        for key, item in result.items()
+        if item is not None and item != ""
+    }
+
+
+def _audit_lane_measurements(measurement: object) -> dict[str, object]:
+    if not isinstance(measurement, Mapping):
+        return {}
+    selected, all_flow = _lc_lane_measurements(measurement)
+    lanes: dict[str, object] = {}
+    if selected is not None:
+        lanes["selected_flow_helicity_sum"] = _audit_measurement(selected)
+    if all_flow is not None:
+        lanes["all_flows_fixed_helicity"] = _audit_measurement(all_flow)
+    return lanes
+
+
+def _audit_cell_record(
+    cell: CampaignCell,
+    caches: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    entry = _cache_entry_for_cell(cell, caches)
+    record: dict[str, object] = {
+        "cell": cell.as_json(),
+        "needs_measurement": _campaign_cell_needs_measurement(cell, caches),
+        "entry_status": NA_STATUS,
+    }
+    if not isinstance(entry, Mapping):
+        record["entry_status"] = "missing_entry"
+        return record
+    record["entry_status"] = str(entry.get("status", NA_STATUS))
+    if cell.kind == "matrix":
+        legacy = entry.get("legacy_amplicol")
+        pyamplicol = entry.get("pyamplicol_jit_o3")
+        record["legacy_amplicol"] = _audit_measurement(legacy)
+        record["pyamplicol_jit_o3"] = _audit_measurement(pyamplicol)
+        lanes = _audit_lane_measurements(pyamplicol)
+        if lanes:
+            record["lc_lanes"] = lanes
+        validation = entry.get("pointwise_validation")
+        if isinstance(validation, Mapping):
+            record["pointwise_validation"] = {
+                "status": validation.get("status"),
+                "relative_difference": validation.get("relative_difference"),
+            }
+    elif cell.kind == "eager_matrix":
+        eager = entry.get("eager_jit_o3")
+        record["eager_jit_o3"] = _audit_measurement(eager)
+        lanes = _audit_lane_measurements(eager)
+        if lanes:
+            record["lc_lanes"] = lanes
+        validation = entry.get("pointwise_validation")
+        if isinstance(validation, Mapping):
+            record["pointwise_validation"] = {
+                "status": validation.get("status"),
+                "relative_difference": validation.get("relative_difference"),
+            }
+    elif cell.kind == "performance_ladder":
+        measurement = entry.get("measurement")
+        record["measurement"] = _audit_measurement(measurement)
+        lanes = _audit_lane_measurements(measurement)
+        if lanes:
+            record["lc_lanes"] = lanes
+    else:
+        measurement = entry.get("measurement")
+        record["measurement"] = _audit_measurement(measurement)
+    return record
+
+
+def _audit_cell_text(record: Mapping[str, object]) -> str:
+    raw_cell = record.get("cell")
+    cell_id = "unknown-cell"
+    process = ""
+    if isinstance(raw_cell, Mapping):
+        cell_id = str(raw_cell.get("cell_id") or "unknown-cell")
+        process = str(raw_cell.get("process") or "")
+    parts = [
+        cell_id,
+        f"needs={str(record.get('needs_measurement')).lower()}",
+        f"entry={record.get('entry_status', NA_STATUS)}",
+    ]
+    for label in (
+        "legacy_amplicol",
+        "pyamplicol_jit_o3",
+        "eager_jit_o3",
+        "measurement",
+    ):
+        summary = record.get(label)
+        if isinstance(summary, Mapping):
+            parts.append(f"{label}={summary.get('status', NA_STATUS)}")
+    lanes = record.get("lc_lanes")
+    if isinstance(lanes, Mapping):
+        lane_parts = []
+        for label, lane in lanes.items():
+            if isinstance(lane, Mapping):
+                status = lane.get("status", NA_STATUS)
+                policy = lane.get("lane_terminal_policy")
+                suffix = f":{policy}" if policy else ""
+                lane_parts.append(f"{label}={status}{suffix}")
+        if lane_parts:
+            parts.append("lanes[" + ", ".join(lane_parts) + "]")
+    if process:
+        parts.append(process)
+    return " | ".join(parts)
 
 
 def _eager_reference_measurement(
@@ -12566,6 +12695,64 @@ def _parser() -> argparse.ArgumentParser:
             action="store_true",
             help="Compile and publish pyAmpliCol.pdf in the same transaction.",
         )
+    audit = subparsers.add_parser(
+        "audit",
+        help="Inspect cached campaign status without launching measurements.",
+    )
+    audit.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output a compact text report or one JSON record per selected cell.",
+    )
+    audit.add_argument(
+        "--missing-only",
+        action="store_true",
+        help="Show only cells that the campaign freshness predicate would schedule.",
+    )
+    audit.add_argument(
+        "--dataset",
+        action="append",
+        default=None,
+        help="Restrict to one dataset_id; repeat for multiple datasets.",
+    )
+    audit.add_argument(
+        "--cell-id",
+        action="append",
+        default=None,
+        help="Restrict to one exact campaign cell_id; repeat for multiple cells.",
+    )
+    audit.add_argument(
+        "--process",
+        action="append",
+        default=None,
+        help="Restrict to one exact generated process expression.",
+    )
+    audit.add_argument(
+        "--process-key",
+        action="append",
+        default=None,
+        help="Restrict matrix cells to one process key; repeat for multiple keys.",
+    )
+    audit.add_argument(
+        "--variant",
+        action="append",
+        default=None,
+        help="Restrict performance-ladder cells to one variant; repeat for multiple.",
+    )
+    audit.add_argument(
+        "--n-final",
+        action="append",
+        type=int,
+        default=None,
+        help="Restrict to one final-state multiplicity; repeat for multiple.",
+    )
+    audit.add_argument(
+        "--limit-cells",
+        type=int,
+        default=None,
+        help="Show only the first N fast-first cells after filtering.",
+    )
     populate = subparsers.add_parser(
         "populate",
         help="Run or dry-run the diagnostics/performance campaign.",
@@ -12727,7 +12914,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         caches = service.validate()
         print(f"validated {len(caches)} caches and {len(TABLE_INPUTS)} tables")
         return 0
-    if args.command == "populate":
+    if args.command in {"audit", "populate"}:
         if args.cell_id is not None:
             unknown_cell_ids = sorted(set(args.cell_id) - _known_cell_ids())
             if unknown_cell_ids:
@@ -12745,6 +12932,47 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parser.error(
                     f"unknown --process expression(s): {', '.join(unknown_processes)}"
                 )
+    if args.command == "audit":
+        caches = load_caches(service.paths)
+        cells = _select_cells(
+            datasets=None if args.dataset is None else set(args.dataset),
+            cell_ids=None if args.cell_id is None else set(args.cell_id),
+            processes=None if args.process is None else set(args.process),
+            process_keys=(None if args.process_key is None else set(args.process_key)),
+            variants=None if args.variant is None else set(args.variant),
+            n_values=None if args.n_final is None else set(args.n_final),
+            limit=args.limit_cells,
+            missing_only=bool(args.missing_only),
+            caches=caches,
+        )
+        records = [_audit_cell_record(cell, caches) for cell in cells]
+        if args.format == "json":
+            for record in records:
+                print(json.dumps(record, sort_keys=True))
+        else:
+            needs_count = sum(
+                1 for record in records if record.get("needs_measurement") is True
+            )
+            by_dataset = Counter()
+            by_status = Counter()
+            for record in records:
+                raw_cell = record.get("cell")
+                dataset = (
+                    raw_cell.get("dataset_id")
+                    if isinstance(raw_cell, Mapping)
+                    else "unknown"
+                )
+                by_dataset[str(dataset)] += 1
+                by_status[str(record.get("entry_status", NA_STATUS))] += 1
+            print(
+                f"audit cells={len(records)} needs_measurement={needs_count} "
+                f"datasets={dict(sorted(by_dataset.items()))} "
+                f"statuses={dict(sorted(by_status.items()))}"
+            )
+            for record in records:
+                print(_audit_cell_text(record))
+        return 0
+    if args.command == "populate":
         caches = load_caches(service.paths) if args.missing_only else None
         cells = _select_cells(
             datasets=None if args.dataset is None else set(args.dataset),
