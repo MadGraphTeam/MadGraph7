@@ -10725,6 +10725,104 @@ def _measure_legacy_amplicol(
         )
 
 
+def _legacy_reference_timeout_measurement(
+    *,
+    cell: CampaignCell,
+    color_accuracy: str,
+    artifact_root: Path,
+    limit_gib: float,
+    reference_timeout_seconds: float,
+    exc: ReportGenerationTimeout,
+) -> dict[str, object]:
+    _ensure_repo_root_on_path()
+    from tools.developer import legacy_amplicol
+
+    legacy_revision = legacy_amplicol.expected_revision()
+    cell_root = artifact_root / "cells" / cell.cell_id
+    legacy_root = cell_root / f"legacy-amplicol-{legacy_revision[:12]}"
+    log_path = cell_root / "logs" / f"legacy-amplicol-{legacy_revision[:12]}.log"
+    manifest_path = legacy_root / "manifest.json"
+    status = _generation_timeout_status(reference_timeout_seconds)
+    message = (
+        "out of reach by campaign policy: reference generation or profiling exceeded "
+        f"{OUT_OF_REACH_GENERATION_CAP_SECONDS:.0f} seconds"
+        if status == ResultStatus.OUT_OF_REACH
+        else str(exc)
+    )
+    return _failure_measurement(
+        status,
+        message,
+        failure_kind=(
+            "reference_out_of_reach"
+            if status == ResultStatus.OUT_OF_REACH
+            else "reference_timeout"
+        ),
+        artifact_path=legacy_root,
+        log_path=log_path,
+        manifest_path=manifest_path,
+        limit_gib=limit_gib,
+        timeout_seconds=(
+            None if reference_timeout_seconds <= 0 else reference_timeout_seconds
+        ),
+        command=["legacy-amplicol-generated-library", cell.process, color_accuracy],
+        metadata={
+            "cell": cell.as_json(),
+            "source_provenance": _report_source_provenance(),
+            "old_matrix_format": {
+                "status": status.value,
+                "all_flow_status": status.value,
+                "reference_unavailable_reason": message,
+                "all_flow_reference_unavailable_reason": message,
+            },
+        },
+    )
+
+
+def _measure_legacy_amplicol_supervised(
+    *,
+    cell: CampaignCell,
+    color_accuracy: str,
+    artifact_root: Path,
+    points: object | None,
+    limit_gib: float,
+    reference_timeout_seconds: float,
+    target_runtime: float,
+    jobs: int = 1,
+    fixed_helicity: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    def measure_reference() -> Mapping[str, object]:
+        return _measure_legacy_amplicol(
+            cell=cell,
+            color_accuracy=color_accuracy,
+            artifact_root=artifact_root,
+            points=points,
+            limit_gib=limit_gib,
+            reference_timeout_seconds=reference_timeout_seconds,
+            target_runtime=target_runtime,
+            jobs=jobs,
+            fixed_helicity=fixed_helicity,
+        )
+
+    if reference_timeout_seconds <= 0:
+        return dict(measure_reference())
+    try:
+        return _run_mapping_with_timeout(
+            measure_reference,
+            timeout_seconds=reference_timeout_seconds,
+            timeout_error=ReportGenerationTimeout,
+            timeout_label="legacy reference",
+        )
+    except ReportGenerationTimeout as exc:
+        return _legacy_reference_timeout_measurement(
+            cell=cell,
+            color_accuracy=color_accuracy,
+            artifact_root=artifact_root,
+            limit_gib=limit_gib,
+            reference_timeout_seconds=reference_timeout_seconds,
+            exc=exc,
+        )
+
+
 def _pointwise_validation(
     legacy: Mapping[str, object],
     pyamplicol: Mapping[str, object],
@@ -11155,7 +11253,7 @@ def _measure_cell_payload(
         legacy = (
             reusable_legacy_lc
             if reusable_legacy_lc is not None
-            else _measure_legacy_amplicol(
+            else _measure_legacy_amplicol_supervised(
                 cell=cell,
                 color_accuracy=spec.color_accuracy,
                 artifact_root=artifact_root,
@@ -11215,7 +11313,7 @@ def _measure_cell_payload(
         points = _pyamplicol_points_from_particles(shared_particles)
         variant = next(item for item in spec.variants if item.key == cell.variant)
         if variant.key == "reference":
-            measurement = _measure_legacy_amplicol(
+            measurement = _measure_legacy_amplicol_supervised(
                 cell=cell,
                 color_accuracy="lc",
                 artifact_root=artifact_root,

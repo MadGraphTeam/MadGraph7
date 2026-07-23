@@ -1345,6 +1345,43 @@ def test_ten_minute_profile_cap_records_out_of_reach() -> None:
     assert report._profile_timeout_failure_message(exc, 3600.0) == str(exc)
 
 
+def test_legacy_reference_timeout_uses_hard_child_process_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    if not hasattr(os, "fork"):
+        pytest.skip("hard legacy timeout requires fork")
+
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n1-jit-o3"
+    )
+
+    def slow_reference(**_kwargs: object) -> dict[str, object]:
+        time.sleep(30.0)
+        return report._empty_measurement()
+
+    monkeypatch.setattr(report, "_measure_legacy_amplicol", slow_reference)
+
+    measurement = report._measure_legacy_amplicol_supervised(
+        cell=cell,
+        color_accuracy="lc",
+        artifact_root=tmp_path,
+        points=None,
+        limit_gib=100.0,
+        reference_timeout_seconds=0.1,
+        target_runtime=0.1,
+        jobs=1,
+    )
+
+    assert measurement["status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert measurement["failure_kind"] == "reference_out_of_reach"
+    fields = report._measurement_old_matrix_fields(measurement)
+    assert fields["status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert fields["all_flow_status"] == report.ResultStatus.OUT_OF_REACH.value
+
+
 def test_missing_only_retries_model_ladder_failures() -> None:
     spec = next(
         item
@@ -1606,6 +1643,18 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
 ) -> None:
     monkeypatch.setattr(report, "_current_compiled_model_contract", lambda: (9, 10))
     monkeypatch.setattr(report, "_current_pyamplicol_version", lambda: "current")
+    current_provenance = {
+        "head": report._git_rev_parse("HEAD"),
+        "report_version": report.REPORT_VERSION,
+        "cache_schema_version": report.CACHE_SCHEMA_VERSION,
+        "compiled_model_schema_version": 9,
+        "model_compiler_version": 10,
+    }
+    monkeypatch.setattr(
+        report,
+        "_report_source_provenance",
+        lambda: current_provenance,
+    )
     artifact_dir = tmp_path / "artifact"
     previous = {
         "generation_seconds": 12.5,
@@ -1613,7 +1662,7 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
         "metadata": {
             "model_precompile_policy": report.PYAMPLICOL_GENERATION_PROFILE_POLICY,
             "generation_timer_excludes_model_compile": True,
-            "source_provenance": _synthetic_source_provenance(9, 10),
+            "source_provenance": dict(current_provenance),
         },
     }
     builtin_cell = report.CampaignCell(
@@ -1716,6 +1765,12 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
             "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
         },
     }
+    _write_current_report_artifact(
+        artifact_dir,
+        layout=report.LC_ALL_FLOW_UNION_LAYOUT,
+        producer_version="current",
+        compiled_model_schema=9,
+    )
     assert (
         report._reusable_pyamplicol_generation_seconds(
             builtin_cell,
