@@ -15,22 +15,25 @@ serialization/runtime compatibility has not been marked verified.
 ## Candidate Development Mode
 
 `just dev-install` uses immutable Symbolica/GammaLoop source revisions and the
-checksummed published SymJIT source archive listed in `contributor-lock.toml`.
+checksummed SymJIT source archive listed in `contributor-lock.toml`.
 It applies no source patches. Candidate mode
 exists for development and physics validation only. It installs the verified
 published `ufo-model-loader==0.1.7` wheel directly from the hash-locked runtime
 closure. Artifacts produced in this mode record the candidate revisions and
 are not eligible for PyPI publication.
 
-The contributor build uses the exact crates.io source for SymJIT 2.21.0. It
-uses Symbolica and symbolica-community at the immutable planned-release
-revisions recorded in the lock. GammaLoop is pinned to the merged main revision that
-provides Spenso's cached symbolic-parallelism policy. Spynso3 initializes that
-policy in `Auto` mode, checking the license once and keeping symbolic tensor
-reductions serial for restricted users or parallel for licensed users. SymJIT
-2.21.0 is published; the matching symbolica-community build must
-be released with the updated GammaLoop pin before a strict PyPI build can
-replace the currently verified release pins.
+The contributor build uses the checksummed upstream source archive for SymJIT
+2.21.1 at revision `48197f32536c894b51ef25b2cf05ddd05c22675f`.
+The installer changes only the crate target from `cdylib` to `rlib` so
+Symbolica can consume it as a Rust dependency; no SymJIT source patch is
+applied. It uses Symbolica and symbolica-community at the immutable
+planned-release revisions recorded in the lock. GammaLoop is pinned to the
+merged main revision that provides Spenso's cached symbolic-parallelism
+policy. Spynso3 initializes that policy in `Auto` mode, checking the license
+once and keeping symbolic tensor reductions serial for restricted users or
+parallel for licensed users. The matching Symbolica, symbolica-community, and
+SymJIT versions must be published before a strict PyPI build can replace the
+currently verified release pins.
 
 The planned Symbolica revision still has one upstream release blocker for
 pyAmpliCol's compiled-complex C++/CUDA path: complex constants can be emitted

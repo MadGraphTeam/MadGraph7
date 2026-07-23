@@ -15,10 +15,11 @@ community_revision = "0deaa0f1484ec5c24f5f109176fa66f0d30134ca"
 release_status = "merged-main-candidate"
 
 [symjit]
-candidate_version = "2.21.0"
-source_url = "https://static.crates.io/crates/symjit/symjit-2.21.0.crate"
-crate_sha256 = "41f54d4663441294b2ebee68fd9504c5483d31f99ee2e007f81ac3cbc246c5c1"
-candidate_revision = "crate:2.21.0@sha256:41f54d4663441294b2ebee68fd9504c5483d31f99ee2e007f81ac3cbc246c5c1"
+candidate_version = "2.21.1"
+source_url = "https://github.com/siravan/symjit/archive/48197f32536c894b51ef25b2cf05ddd05c22675f.tar.gz"
+archive_prefix = "symjit-48197f32536c894b51ef25b2cf05ddd05c22675f"
+archive_sha256 = "876930348cc06761ca780570fb282d009f143f4a469e321e3b5039c5ee217424"
+candidate_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
 application_storage_version = 3
 release_status = "unpatched-candidate"
 license = "MIT"

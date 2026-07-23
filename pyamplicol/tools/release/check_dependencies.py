@@ -386,9 +386,7 @@ def _toolchain_issues(lock: dict[str, Any]) -> list[GateIssue]:
         rust = _load_toml(RUST_TOOLCHAIN_PATH)["toolchain"]
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
         return [
-            GateIssue(
-                "toolchain-contract", f"invalid rust-toolchain.toml: {error}"
-            )
+            GateIssue("toolchain-contract", f"invalid rust-toolchain.toml: {error}")
         ]
     if not isinstance(rust, dict) or rust.get("channel") != toolchain.get(
         "rust_toolchain"
@@ -467,15 +465,11 @@ def _candidate_config_issues() -> list[GateIssue]:
         patches = config["patch"]["crates-io"]
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
         return [
-            GateIssue(
-                "candidate-cargo-config", f"invalid Cargo patch config: {error}"
-            )
+            GateIssue("candidate-cargo-config", f"invalid Cargo patch config: {error}")
         ]
     if not isinstance(patches, dict) or not patches:
         return [
-            GateIssue(
-                "candidate-cargo-config", "candidate Cargo patch table is empty"
-            )
+            GateIssue("candidate-cargo-config", "candidate Cargo patch table is empty")
         ]
     issues: list[GateIssue] = []
     checkout_root = CHECKOUTS_PATH.resolve()
@@ -576,7 +570,7 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                 archive_matches = (
                     isinstance(entry, dict)
                     and entry.get("version") == symjit.get("candidate_version")
-                    and entry.get("archive_sha256") == symjit.get("crate_sha256")
+                    and entry.get("archive_sha256") == symjit.get("archive_sha256")
                 )
                 if not checkout.is_dir() or not archive_matches:
                     issues.append(
@@ -595,9 +589,10 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                 )
     for entry in contributor.get("patches", []):
         relative = entry.get("path") if isinstance(entry, dict) else None
-        if not isinstance(relative, str) or not (
-            ROOT / "dependencies" / relative
-        ).is_file():
+        if (
+            not isinstance(relative, str)
+            or not (ROOT / "dependencies" / relative).is_file()
+        ):
             issues.append(
                 GateIssue(
                     "candidate-patch-missing",
@@ -687,9 +682,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "mode": "candidate" if args.candidate else "release",
         "ready": not issues,
-        "issues": [
-            {"code": issue.code, "message": issue.message} for issue in issues
-        ],
+        "issues": [{"code": issue.code, "message": issue.message} for issue in issues],
     }
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))

@@ -117,7 +117,7 @@ def test_candidate_gate_uses_revisions_without_source_tree_fingerprints(
     source_state["symjit"].update(
         {
             "version": contributor["symjit"]["candidate_version"],
-            "archive_sha256": contributor["symjit"]["crate_sha256"],
+            "archive_sha256": contributor["symjit"]["archive_sha256"],
         }
     )
     state_path.write_text(

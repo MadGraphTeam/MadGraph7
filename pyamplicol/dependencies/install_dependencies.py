@@ -145,10 +145,7 @@ def _lock() -> dict[str, Any]:
     contributor = _contributor_lock()
     payload = dict(release)
     for key, value in contributor.items():
-        if (
-            isinstance(value, dict)
-            and isinstance(payload.get(key), dict)
-        ):
+        if isinstance(value, dict) and isinstance(payload.get(key), dict):
             merged = dict(payload[key])
             merged.update(value)
             payload[key] = merged
@@ -299,15 +296,9 @@ def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
             "--filter=blob:none",
         ]
         if source.branch is not None:
-            clone_command.extend(
-                ["--branch", source.branch, "--single-branch"]
-            )
-        clone_command.extend(
-            ["--no-checkout", source.url, str(source.path)]
-        )
-        runner.run(
-            clone_command
-        )
+            clone_command.extend(["--branch", source.branch, "--single-branch"])
+        clone_command.extend(["--no-checkout", source.url, str(source.path)])
+        runner.run(clone_command)
         runner.run(
             ["git", "checkout", "--detach", source.revision],
             cwd=source.path,
@@ -333,11 +324,12 @@ def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
 
 
 def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
-    """Materialize the exact published SymJIT crate as a local path source."""
+    """Materialize the exact checksummed SymJIT source archive."""
 
     symjit = payload["symjit"]
     version = str(symjit["candidate_version"])
-    expected_sha256 = str(symjit["crate_sha256"])
+    expected_sha256 = str(symjit["archive_sha256"])
+    archive_prefix = str(symjit["archive_prefix"])
     destination = CHECKOUTS / "symjit"
     if runner.dry_run:
         print(
@@ -374,7 +366,7 @@ def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
             )
         extracted = temporary / "extracted"
         extracted.mkdir()
-        prefix = f"symjit-{version}"
+        prefix = archive_prefix
         with tarfile.open(archive, "r:gz") as source:
             for member in source.getmembers():
                 path = Path(member.name)
@@ -424,8 +416,16 @@ def _configure_source_manifests(runner: Runner) -> None:
     gammaloop = CHECKOUTS / "gammaloop"
 
     symjit_cargo = symjit / "Cargo.toml"
-    if 'crate-type = ["rlib"]' not in symjit_cargo.read_text(encoding="utf-8"):
-        raise SetupError("published SymJIT source is not configured as an rlib")
+    text = symjit_cargo.read_text(encoding="utf-8")
+    text, count = re.subn(
+        r'(?m)^crate-type\s*=\s*\["cdylib"\]\s*$',
+        'crate-type = ["rlib"]',
+        text,
+        count=1,
+    )
+    if count == 0 and 'crate-type = ["rlib"]' not in text:
+        raise SetupError("could not configure SymJIT as an rlib")
+    symjit_cargo.write_text(text, encoding="utf-8")
 
     symbolica_cargo = symbolica / "Cargo.toml"
     text = symbolica_cargo.read_text(encoding="utf-8")
@@ -722,7 +722,7 @@ def _rewrite_candidate_requirements(root: Path) -> None:
     )
     for dependency, published, candidate in projections:
         pattern = (
-            rf'(?m)^({dependency}\s*=\s*\{{\s*version\s*=\s*)'
+            rf"(?m)^({dependency}\s*=\s*\{{\s*version\s*=\s*)"
             rf'"={re.escape(published)}"'
         )
         text, count = re.subn(pattern, rf'\g<1>"={candidate}"', text, count=1)
@@ -953,7 +953,7 @@ def _write_state(
         "url": str(symjit["source_url"]),
         "revision": str(symjit["candidate_revision"]),
         "version": str(symjit["candidate_version"]),
-        "archive_sha256": str(symjit["crate_sha256"]),
+        "archive_sha256": str(symjit["archive_sha256"]),
         "worktree_sha256": _source_tree_sha256(CHECKOUTS / "symjit"),
     }
     STATE.write_text(
