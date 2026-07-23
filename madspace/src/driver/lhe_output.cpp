@@ -15,8 +15,8 @@ std::size_t cantor_pairing(std::size_t i, std::size_t j) {
     return (i + j) * (i + j + 1) / 2 + i;
 }
 
-std::size_t cantor_pairing(std::size_t i, std::size_t j, std::size_t k, std::size_t l) {
-    return cantor_pairing(cantor_pairing(i, j), cantor_pairing(k, l));
+std::size_t cantor_pairing(std::size_t i, std::size_t j, std::size_t k) {
+    return cantor_pairing(cantor_pairing(i, j), k);
 }
 
 int pdg_color_type(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
@@ -140,42 +140,24 @@ std::size_t LHECompleter::append_helicities(const SubprocArgs& args) {
 
 std::size_t
 LHECompleter::append_colors(const SubprocArgs& args, std::size_t particle_count) {
-    std::size_t color_count = args.color_flows.at(0).size();
-    for (auto& flavor_color_flows : args.color_flows) {
-        if (flavor_color_flows.size() != color_count) {
-            throw std::invalid_argument("Invalid number of colors per flavor");
+    std::size_t color_count = args.color_flows.size();
+    for (auto& color_flows : args.color_flows) {
+        if (color_flows.size() != particle_count) {
+            throw std::invalid_argument("Invalid number of particles per color");
         }
-        for (auto& color_flows : flavor_color_flows) {
-            if (color_flows.size() != particle_count) {
-                throw std::invalid_argument("Invalid number of particles per color");
-            }
-            _colors.insert(_colors.end(), color_flows.begin(), color_flows.end());
-        }
+        _colors.insert(_colors.end(), color_flows.begin(), color_flows.end());
     }
     return color_count;
 }
 
 void LHECompleter::append_pdg_ids(const SubprocArgs& args, std::size_t particle_count) {
-    if (args.pdg_ids.size() != args.matrix_flavor_indices.size()) {
-        throw std::invalid_argument(
-            "pdg_ids and matrix_flavor_indices must have same size"
-        );
-    }
-
-    std::size_t matrix_flavor_count = args.color_flows.size();
-    for (auto [pdg_id_options, matrix_flavor_index] :
-         zip(args.pdg_ids, args.matrix_flavor_indices)) {
+    for (auto& pdg_id_options : args.pdg_ids) {
         if (pdg_id_options.size() == 0) {
             throw std::invalid_argument(
                 "Must provide at least one option per flavor index"
             );
         }
-        if (matrix_flavor_index >= matrix_flavor_count) {
-            throw std::invalid_argument("Invalid matrix element flavor index");
-        }
-        _pdg_id_index_and_count.push_back(
-            {_pdg_ids.size(), matrix_flavor_index, pdg_id_options.size()}
-        );
+        _pdg_id_and_count.push_back({_pdg_ids.size(), pdg_id_options.size()});
         for (auto& pdg_ids : pdg_id_options) {
             if (pdg_ids.size() != particle_count) {
                 throw std::invalid_argument("Invalid number of particles ids");
@@ -201,7 +183,6 @@ void LHECompleter::append_masses(const Topology& first_topo) {
 void LHECompleter::init_propagator_data(
     const Topology& topo,
     const SubprocArgs& args,
-    std::size_t matrix_flavor_index,
     const std::vector<std::size_t>& colors,
     const std::vector<std::size_t>& permutation,
     std::vector<double>& e_min,
@@ -227,7 +208,7 @@ void LHECompleter::init_propagator_data(
         momentum_masks.at(index) = 1 << perm_index;
         for (std::size_t i = 0; std::size_t color_index : colors) {
             prop_colors.at(colors.size() * index + i) =
-                args.color_flows.at(matrix_flavor_index).at(color_index).at(perm_index);
+                args.color_flows.at(color_index).at(perm_index);
             ++i;
         }
     }
@@ -287,7 +268,6 @@ void LHECompleter::find_resonant_propagators(
 void LHECompleter::record_propagator_colors(
     std::size_t subproc_index,
     std::size_t diag_index,
-    std::size_t matrix_flavor_index,
     const std::vector<std::size_t>& colors,
     std::size_t prop_offset,
     const std::vector<std::tuple<int, int>>& prop_colors,
@@ -307,17 +287,14 @@ void LHECompleter::record_propagator_colors(
                 _propagator_colors.push_back(prop_colors.at(colors.size() * j + i));
             }
         }
-        _propagator_index_and_count[cantor_pairing(
-            subproc_index, diag_index, color, matrix_flavor_index
-        )] = {prop_offset, prop_color_offset, prop_count};
+        _propagator_index_and_count[cantor_pairing(subproc_index, diag_index, color)] =
+            {prop_offset, prop_color_offset, prop_count};
         ++i;
     }
 }
 
 std::pair<std::size_t, std::size_t>
 LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& args) {
-    std::size_t matrix_flavor_count = args.color_flows.size();
-
     std::vector<double> e_min;
     std::vector<int> momentum_masks;
     std::vector<std::tuple<int, int>> prop_colors;
@@ -335,45 +312,38 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
             if (diag_index >= diagram_count) {
                 diagram_count = diag_index + 1;
             }
-
-            for (std::size_t matrix_flavor_index = 0;
-                 matrix_flavor_index < matrix_flavor_count;
-                 ++matrix_flavor_index) {
-                init_propagator_data(
-                    topo,
-                    args,
-                    matrix_flavor_index,
-                    colors,
-                    permutation,
-                    e_min,
-                    momentum_masks,
-                    prop_colors,
-                    resonant_prop_indices
-                );
-                std::size_t prop_offset = _propagators.size();
-                find_resonant_propagators(
-                    topo,
-                    args,
-                    colors,
-                    prop_offset,
-                    e_min,
-                    momentum_masks,
-                    prop_colors,
-                    resonant_prop_indices
-                );
-                record_propagator_colors(
-                    subproc_index,
-                    diag_index,
-                    matrix_flavor_index,
-                    colors,
-                    prop_offset,
-                    prop_colors,
-                    resonant_prop_indices
-                );
-                std::size_t prop_count = _propagators.size() - prop_offset;
-                if (prop_count > max_prop_count) {
-                    max_prop_count = prop_count;
-                }
+            init_propagator_data(
+                topo,
+                args,
+                colors,
+                permutation,
+                e_min,
+                momentum_masks,
+                prop_colors,
+                resonant_prop_indices
+            );
+            std::size_t prop_offset = _propagators.size();
+            find_resonant_propagators(
+                topo,
+                args,
+                colors,
+                prop_offset,
+                e_min,
+                momentum_masks,
+                prop_colors,
+                resonant_prop_indices
+            );
+            record_propagator_colors(
+                subproc_index,
+                diag_index,
+                colors,
+                prop_offset,
+                prop_colors,
+                resonant_prop_indices
+            );
+            std::size_t prop_count = _propagators.size() - prop_offset;
+            if (prop_count > max_prop_count) {
+                max_prop_count = prop_count;
             }
         }
     }
@@ -405,13 +375,12 @@ LHECompleter::LHECompleter(
             .particle_count = particle_count,
             .color_count = color_count,
             .flavor_count = args.pdg_ids.size(),
-            .matrix_flavor_count = args.color_flows.size(),
             .diagram_count = diagram_count,
             .helicity_count = args.helicities.size(),
         });
 
         helicity_offset += particle_count * args.helicities.size();
-        color_offset += particle_count * color_count * args.color_flows.size();
+        color_offset += particle_count * color_count;
         pdg_id_offset += args.pdg_ids.size();
         mass_offset += particle_count;
         ++subproc_index;
@@ -452,8 +421,8 @@ void LHECompleter::complete_event_data(
         subproc_data.helicity_offset + subproc_data.particle_count * helicity_index;
     std::size_t mass_offset = subproc_data.mass_offset;
 
-    auto [pdg_index, matrix_flavor_index, pdg_count] =
-        _pdg_id_index_and_count.at(subproc_data.pdg_id_offset + flavor_index);
+    auto [pdg_index, pdg_count] =
+        _pdg_id_and_count.at(subproc_data.pdg_id_offset + flavor_index);
     std::uniform_int_distribution<std::size_t> dist(0, pdg_count - 1);
     std::size_t pdg_random = dist(rand_gen);
     std::size_t pdg_offset = pdg_index + subproc_data.particle_count * pdg_random;
@@ -477,9 +446,9 @@ void LHECompleter::complete_event_data(
         ++particle_index;
     }
 
-    auto find_propagators = _propagator_index_and_count.find(cantor_pairing(
-        subprocess_index, diagram_index, color_index, matrix_flavor_index
-    ));
+    auto find_propagators = _propagator_index_and_count.find(
+        cantor_pairing(subprocess_index, diagram_index, color_index)
+    );
     if (find_propagators == _propagator_index_and_count.end()) {
         return;
     }
@@ -597,7 +566,7 @@ void madspace::to_json(nlohmann::json& j, const LHECompleter& lhe_completer) {
         {"masses", lhe_completer._masses},
         {"colors", lhe_completer._colors},
         {"helicities", lhe_completer._helicities},
-        {"pdg_id_index_and_count", lhe_completer._pdg_id_index_and_count},
+        {"pdg_id_and_count", lhe_completer._pdg_id_and_count},
         {"pdg_ids", lhe_completer._pdg_ids},
         {"propagator_index_and_count", propagator_index_and_count},
         {"propagators", lhe_completer._propagators},
@@ -614,8 +583,8 @@ void madspace::from_json(const nlohmann::json& j, LHECompleter& lhe_completer) {
     lhe_completer._masses = j.at("masses").get<std::vector<double>>();
     lhe_completer._colors = j.at("colors").get<std::vector<std::tuple<int, int>>>();
     lhe_completer._helicities = j.at("helicities").get<std::vector<double>>();
-    lhe_completer._pdg_id_index_and_count =
-        j.at("pdg_id_index_and_count").get<std::vector<std::array<std::size_t, 3>>>();
+    lhe_completer._pdg_id_and_count =
+        j.at("pdg_id_and_count").get<std::vector<std::array<std::size_t, 2>>>();
     lhe_completer._pdg_ids = j.at("pdg_ids").get<std::vector<int>>();
     lhe_completer._propagator_index_and_count = {};
     for (auto& item : j.at("propagator_index_and_count")) {
@@ -642,7 +611,6 @@ void madspace::to_json(
         subproc_data.particle_count,
         subproc_data.color_count,
         subproc_data.flavor_count,
-        subproc_data.matrix_flavor_count,
         subproc_data.diagram_count,
         subproc_data.helicity_count,
     };
@@ -660,9 +628,8 @@ void madspace::from_json(
         .particle_count = j.at(5).get<std::size_t>(),
         .color_count = j.at(6).get<std::size_t>(),
         .flavor_count = j.at(7).get<std::size_t>(),
-        .matrix_flavor_count = j.at(8).get<std::size_t>(),
-        .diagram_count = j.at(9).get<std::size_t>(),
-        .helicity_count = j.at(10).get<std::size_t>(),
+        .diagram_count = j.at(8).get<std::size_t>(),
+        .helicity_count = j.at(9).get<std::size_t>(),
     };
 }
 

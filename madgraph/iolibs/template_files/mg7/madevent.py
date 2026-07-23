@@ -757,9 +757,6 @@ class MadgraphProcess:
                     },
                     helicities = meta["helicities"],
                     pdg_ids = [flavor["options"] for flavor in meta["flavors"]],
-                    matrix_flavor_indices = [
-                        flavor["index"] for flavor in meta["flavors"]
-                    ],
                 )
             )
         return ms.LHECompleter(
