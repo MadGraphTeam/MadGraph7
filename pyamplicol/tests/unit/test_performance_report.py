@@ -1411,6 +1411,10 @@ def test_cleanup_campaign_defaults_use_ten_minute_and_100g_caps() -> None:
 
     assert args.limit_gib == 100.0
     assert (
+        args.generation_timeout_seconds
+        == report.OUT_OF_REACH_GENERATION_CAP_SECONDS
+    )
+    assert (
         args.jit_o3_generation_timeout_seconds
         == report.OUT_OF_REACH_GENERATION_CAP_SECONDS
     )
