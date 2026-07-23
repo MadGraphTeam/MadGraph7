@@ -1393,29 +1393,24 @@ def test_legacy_reference_timeout_uses_hard_child_process_boundary(
     assert fields["all_flow_status"] == report.ResultStatus.OUT_OF_REACH.value
 
 
-def test_legacy_reference_runs_inline_without_symbolica_license(
+def test_legacy_reference_timeout_is_enforced_without_symbolica_license(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    if not hasattr(os, "fork"):
+        pytest.skip("hard legacy timeout requires fork")
     monkeypatch.delenv("SYMBOLICA_LICENSE", raising=False)
     cell = next(
         item
         for item in report._campaign_cells()
         if item.cell_id == "z-builtin-sm-n1-jit-o3"
     )
-    calls: list[str] = []
 
-    def reference(**_kwargs: object) -> dict[str, object]:
-        calls.append("reference")
-        measurement = report._empty_measurement()
-        measurement["status"] = report.ResultStatus.OK.value
-        return measurement
+    def slow_reference(**_kwargs: object) -> dict[str, object]:
+        time.sleep(30.0)
+        return report._empty_measurement()
 
-    def unexpected_timeout(*_args: object, **_kwargs: object) -> dict[str, object]:
-        raise AssertionError("unlicensed legacy reference must not fork")
-
-    monkeypatch.setattr(report, "_measure_legacy_amplicol", reference)
-    monkeypatch.setattr(report, "_run_mapping_with_timeout", unexpected_timeout)
+    monkeypatch.setattr(report, "_measure_legacy_amplicol", slow_reference)
 
     measurement = report._measure_legacy_amplicol_supervised(
         cell=cell,
@@ -1428,8 +1423,8 @@ def test_legacy_reference_runs_inline_without_symbolica_license(
         jobs=1,
     )
 
-    assert calls == ["reference"]
-    assert measurement["status"] == report.ResultStatus.OK.value
+    assert measurement["status"] == report.ResultStatus.OUT_OF_REACH.value
+    assert measurement["failure_kind"] == "reference_out_of_reach"
 
 
 def test_missing_only_retries_model_ladder_failures() -> None:
@@ -2769,6 +2764,210 @@ def test_compiled_lc_measures_missing_selected_lane_and_skips_union_terminal(
         metadata["old_matrix_format"]["all_flow_status"]
         == report.ResultStatus.OUT_OF_REACH.value
     )
+
+
+def test_compiled_lc_measures_union_when_selected_lane_is_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    spec = report.LADDER_SPECS[0]
+    fixed_helicity = report._source_helicity_choice_payload(
+        cell.process,
+        {"1": -1, "2": 1, "3": -1, "4": 1, "5": -1},
+        selection_source="test",
+        validation_note="test",
+    )
+    legacy = {"status": report.ResultStatus.OK.value}
+    contract = {
+        **report._empty_eager_selector_contract(),
+        "status": report.ResultStatus.OK.value,
+        "reference_digest": report._eager_reference_digest(cell, legacy),
+        "selected_reference_color_order": [2, 4, 5, 1, 3],
+        "selected_color_flow_ids": ["flow:2,4,5,1"],
+        "all_flow_source_helicities": fixed_helicity["source_helicities"],
+        "all_flow_helicity_ids": ["h:-1,+1,-1,+1,-1"],
+    }
+    selected_terminal = report._failure_measurement(
+        report.ResultStatus.OUT_OF_REACH,
+        "selected topology-replay generation exceeded the campaign cap",
+        failure_kind="generation_out_of_reach",
+        metadata={
+            "lane_status_policy": report.LC_LANE_STATUS_POLICY,
+            "lane_terminal_policy": report.LC_GENERATION_CAP_OUT_OF_REACH_POLICY,
+            "runtime_selector_role": "selected-flow-helicity-sum",
+            "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        },
+    )
+    previous = {
+        **selected_terminal,
+        "metadata": {
+            "lane_status_policy": report.LC_LANE_STATUS_POLICY,
+            "selected_flow_measurement": selected_terminal,
+        },
+    }
+    lane_calls: list[str] = []
+
+    def measure_lane(
+        **kwargs: object,
+    ) -> tuple[dict[str, object], object, dict[str, object]]:
+        layout = str(kwargs["layout"])
+        lane_calls.append(layout)
+        assert layout == report.LC_ALL_FLOW_UNION_LAYOUT
+        return (
+            {
+                **report._empty_measurement(),
+                "status": report.ResultStatus.OK.value,
+                "generation_seconds": 7.0,
+                "wall_seconds_per_point": 4.0e-6,
+                "evaluator_seconds_per_point": 3.0e-6,
+                "matrix_element": 1.0,
+                "artifact_path": "/artifact/all-flow-union",
+                "metadata": {
+                    "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
+                    "selector_contract": contract,
+                },
+            },
+            ("point",),
+            contract,
+        )
+
+    monkeypatch.setattr(report, "_measure_pyamplicol_lc_lane", measure_lane)
+
+    measurement, returned_points = report._measure_pyamplicol_lc_two_workloads(
+        cell=cell,
+        spec=spec,
+        variant_overrides={"evaluator.backend": "jit"},
+        legacy=legacy,
+        artifact_root=tmp_path,
+        generation_timeout_seconds=60.0,
+        target_runtime=0.1,
+        cell_cores=1,
+        points=("point",),
+        fixed_helicity=fixed_helicity,
+        previous_measurement=previous,
+    )
+
+    assert lane_calls == [report.LC_ALL_FLOW_UNION_LAYOUT]
+    assert returned_points == ("point",)
+    assert measurement["status"] == report.ResultStatus.OK.value
+    metadata = measurement["metadata"]
+    assert (
+        metadata["selected_flow_measurement"]["status"]
+        == report.ResultStatus.OUT_OF_REACH.value
+    )
+    assert metadata["all_flow_measurement"]["status"] == report.ResultStatus.OK.value
+    assert (
+        metadata["old_matrix_format"]["status"]
+        == report.ResultStatus.OUT_OF_REACH.value
+    )
+    assert (
+        metadata["old_matrix_format"]["all_flow_status"]
+        == report.ResultStatus.OK.value
+    )
+
+
+def test_compiled_lc_keeps_lane_local_profile_out_of_reach(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n3-jit-o3"
+    )
+    spec = report.LADDER_SPECS[0]
+    fixed_helicity = report._source_helicity_choice_payload(
+        cell.process,
+        {"1": -1, "2": 1, "3": -1, "4": 1, "5": -1},
+        selection_source="test",
+        validation_note="test",
+    )
+    legacy = {"status": report.ResultStatus.OK.value}
+    contract = {
+        **report._empty_eager_selector_contract(),
+        "status": report.ResultStatus.OK.value,
+        "reference_digest": report._eager_reference_digest(cell, legacy),
+        "selected_reference_color_order": [2, 4, 5, 1, 3],
+        "selected_color_flow_ids": ["flow:2,4,5,1"],
+        "all_flow_source_helicities": fixed_helicity["source_helicities"],
+        "all_flow_helicity_ids": ["h:-1,+1,-1,+1,-1"],
+    }
+    lane_calls: list[str] = []
+
+    def measure_lane(
+        **kwargs: object,
+    ) -> tuple[dict[str, object], object, dict[str, object]]:
+        layout = str(kwargs["layout"])
+        lane_calls.append(layout)
+        if layout == report.LC_TOPOLOGY_REPLAY_LAYOUT:
+            return (
+                report._failure_measurement(
+                    report.ResultStatus.OUT_OF_REACH,
+                    "selected topology-replay profiling exceeded the campaign cap",
+                    failure_kind="profile_out_of_reach",
+                    metadata={
+                        "lane_status_policy": report.LC_LANE_STATUS_POLICY,
+                        "lane_terminal_policy": (
+                            report.LC_PROFILE_CAP_OUT_OF_REACH_POLICY
+                        ),
+                        "runtime_selector_role": "selected-flow-helicity-sum",
+                        "lc_flow_layout": report.LC_TOPOLOGY_REPLAY_LAYOUT,
+                    },
+                ),
+                ("point",),
+                {**contract, "status": report.ResultStatus.OUT_OF_REACH.value},
+            )
+        return (
+            {
+                **report._empty_measurement(),
+                "status": report.ResultStatus.OK.value,
+                "generation_seconds": 7.0,
+                "wall_seconds_per_point": 4.0e-6,
+                "evaluator_seconds_per_point": 3.0e-6,
+                "matrix_element": 1.0,
+                "artifact_path": "/artifact/all-flow-union",
+                "metadata": {
+                    "lc_flow_layout": report.LC_ALL_FLOW_UNION_LAYOUT,
+                    "selector_contract": contract,
+                },
+            },
+            ("point",),
+            contract,
+        )
+
+    monkeypatch.setattr(report, "_measure_pyamplicol_lc_lane", measure_lane)
+
+    measurement, returned_points = report._measure_pyamplicol_lc_two_workloads(
+        cell=cell,
+        spec=spec,
+        variant_overrides={"evaluator.backend": "jit"},
+        legacy=legacy,
+        artifact_root=tmp_path,
+        generation_timeout_seconds=60.0,
+        target_runtime=0.1,
+        cell_cores=1,
+        points=("point",),
+        fixed_helicity=fixed_helicity,
+        previous_measurement=None,
+    )
+
+    assert lane_calls == [
+        report.LC_TOPOLOGY_REPLAY_LAYOUT,
+        report.LC_ALL_FLOW_UNION_LAYOUT,
+    ]
+    assert returned_points == ("point",)
+    assert measurement["status"] == report.ResultStatus.OK.value
+    metadata = measurement["metadata"]
+    assert (
+        metadata["selected_flow_measurement"]["failure_kind"]
+        == "profile_out_of_reach"
+    )
+    assert metadata["all_flow_measurement"]["status"] == report.ResultStatus.OK.value
 
 
 @pytest.mark.parametrize(
