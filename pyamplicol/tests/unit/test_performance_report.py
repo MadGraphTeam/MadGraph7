@@ -6,6 +6,7 @@ import os
 import re
 import signal
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
@@ -409,6 +410,24 @@ def test_fixed_helicity_choice_skips_dag_probe_without_legacy_all_flow(
         choice["selection_source"]
         == "alternating-fallback-legacy-all-flow-unavailable"
     )
+
+
+def test_generation_timeout_uses_hard_child_process_boundary(tmp_path: Path) -> None:
+    if not hasattr(os, "fork"):
+        pytest.skip("hard generation timeout requires fork")
+    marker = tmp_path / "marker.txt"
+
+    report._run_generation_with_timeout(
+        lambda: marker.write_text("ok", encoding="utf-8"),
+        timeout_seconds=5.0,
+    )
+    assert marker.read_text(encoding="utf-8") == "ok"
+
+    with pytest.raises(report.ReportGenerationTimeout):
+        report._run_generation_with_timeout(
+            lambda: time.sleep(30.0),
+            timeout_seconds=0.1,
+        )
 
 
 def test_lc_matrix_renderer_localizes_union_out_of_reach() -> None:
@@ -2223,6 +2242,11 @@ def test_compiled_lc_uses_two_complete_layout_artifacts_and_runtime_selectors(
         report,
         "_generation_slice_tools",
         lambda: pytest.fail("compiled LC report path must not use GenerationSlice"),
+    )
+    monkeypatch.setattr(
+        report,
+        "_run_generation_with_timeout",
+        lambda action, *, timeout_seconds: action(),
     )
     monkeypatch.setattr(
         report,

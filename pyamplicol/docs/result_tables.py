@@ -6101,6 +6101,79 @@ def _generation_timeout(seconds: float | None) -> Iterable[None]:
         yield
 
 
+def _run_generation_with_timeout(
+    action: Callable[[], None],
+    *,
+    timeout_seconds: float | None,
+) -> None:
+    if timeout_seconds is None or timeout_seconds <= 0 or not hasattr(os, "fork"):
+        with _generation_timeout(timeout_seconds):
+            action()
+        return
+
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(read_fd)
+        with contextlib.suppress(OSError):
+            os.setsid()
+        try:
+            action()
+        except BaseException as exc:
+            payload = {
+                "status": "error",
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+            with contextlib.suppress(OSError):
+                os.write(write_fd, _json_text(payload).encode())
+            os._exit(1)
+        else:
+            with contextlib.suppress(OSError):
+                os.write(write_fd, _json_text({"status": "ok"}).encode())
+            os._exit(0)
+
+    os.close(write_fd)
+    deadline = time.monotonic() + float(timeout_seconds)
+    chunks: list[bytes] = []
+    try:
+        while True:
+            waited_pid, status = os.waitpid(pid, os.WNOHANG)
+            if waited_pid == pid:
+                while True:
+                    chunk = os.read(read_fd, 65536)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                if os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0:
+                    return
+                message = "generation subprocess failed"
+                if chunks:
+                    with contextlib.suppress(ValueError, TypeError):
+                        payload = json.loads(b"".join(chunks).decode())
+                        if isinstance(payload, Mapping):
+                            error_type = str(payload.get("type") or "error")
+                            error_message = str(payload.get("message") or message)
+                            message = f"{error_type}: {error_message}"
+                raise RuntimeError(message)
+            if time.monotonic() >= deadline:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(pid, signal.SIGTERM)
+                time.sleep(2.0)
+                waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+                if waited_pid == 0:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(pid, signal.SIGKILL)
+                    with contextlib.suppress(ChildProcessError):
+                        os.waitpid(pid, 0)
+                raise ReportGenerationTimeout(
+                    f"generation exceeded {float(timeout_seconds):.0f} seconds"
+                )
+            time.sleep(0.1)
+    finally:
+        os.close(read_fd)
+
+
 OUT_OF_REACH_GENERATION_CAP_SECONDS = 600.0
 
 
@@ -6698,8 +6771,7 @@ def _measure_pyamplicol(
                     model_for_generation, model_precompile_metadata = (
                         _precompile_model_for_generation(spec.model, config_values)
                     )
-                    started = time.perf_counter()
-                    with _generation_timeout(generation_timeout_seconds):
+                    def generate_artifact() -> None:
                         if generation_slice is None:
                             Generator(resolution).generate(
                                 cell.process,
@@ -6718,6 +6790,12 @@ def _measure_pyamplicol(
                                 mode="replace",
                                 config=resolution,
                             )
+
+                    started = time.perf_counter()
+                    _run_generation_with_timeout(
+                        generate_artifact,
+                        timeout_seconds=generation_timeout_seconds,
+                    )
                     generation_seconds = time.perf_counter() - started
                 runtime_process = _single_artifact_process_id(
                     artifact_dir,
@@ -7410,14 +7488,19 @@ def _measure_pyamplicol_lc_lane(
                             source_override=model_source_override,
                         )
                     )
-                    started = time.perf_counter()
-                    with _generation_timeout(generation_timeout_seconds):
+                    def generate_artifact() -> None:
                         Generator(resolution).generate(
                             cell.process,
                             artifact_dir,
                             model=model_for_generation,
                             mode="replace",
                         )
+
+                    started = time.perf_counter()
+                    _run_generation_with_timeout(
+                        generate_artifact,
+                        timeout_seconds=generation_timeout_seconds,
+                    )
                     generation_seconds = time.perf_counter() - started
                 runtime_process = _single_artifact_process_id(
                     artifact_dir,
@@ -7901,14 +7984,19 @@ def _measure_pyamplicol_eager_complete(
                             source_override=prepared_source,
                         )
                     )
-                    started = time.perf_counter()
-                    with _generation_timeout(generation_timeout_seconds):
+                    def generate_artifact() -> None:
                         Generator(resolution).generate(
                             cell.process,
                             artifact_dir,
                             model=model_for_generation,
                             mode="replace",
                         )
+
+                    started = time.perf_counter()
+                    _run_generation_with_timeout(
+                        generate_artifact,
+                        timeout_seconds=generation_timeout_seconds,
+                    )
                     generation_seconds = time.perf_counter() - started
                 runtime_process = _single_artifact_process_id(
                     artifact_dir,
