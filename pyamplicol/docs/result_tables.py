@@ -4746,6 +4746,33 @@ def _audit_reason_bucket(record: Mapping[str, object]) -> str:
     return "current"
 
 
+AUDIT_REASON_BUCKETS: tuple[str, ...] = (
+    "entry_error",
+    "lane_missing",
+    "lane_out_of_reach",
+    "lane_timeout",
+    "missing",
+    "needs_review",
+    "stale_or_contract_refresh",
+    "timeout",
+)
+
+
+def _filter_cells_by_audit_reason_buckets(
+    cells: Sequence[CampaignCell],
+    caches: Mapping[str, Mapping[str, object]],
+    buckets: set[str] | None,
+) -> tuple[CampaignCell, ...]:
+    if buckets is None:
+        return tuple(cells)
+    filtered: list[CampaignCell] = []
+    for cell in cells:
+        record = _audit_cell_record(cell, caches)
+        if _audit_reason_bucket(record) in buckets:
+            filtered.append(cell)
+    return tuple(filtered)
+
+
 def _audit_summary_text(records: Sequence[Mapping[str, object]]) -> str:
     needs_count = sum(
         1 for record in records if record.get("needs_measurement") is True
@@ -13342,6 +13369,16 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Show only the first N fast-first cells after filtering.",
     )
+    audit.add_argument(
+        "--reason-bucket",
+        action="append",
+        choices=AUDIT_REASON_BUCKETS,
+        default=None,
+        help=(
+            "Restrict --missing-only output to one audit reason bucket; repeat "
+            "for multiple buckets."
+        ),
+    )
     populate = subparsers.add_parser(
         "populate",
         help="Run or dry-run the diagnostics/performance campaign.",
@@ -13461,6 +13498,16 @@ def _parser() -> argparse.ArgumentParser:
             "treated as stale."
         ),
     )
+    populate.add_argument(
+        "--reason-bucket",
+        action="append",
+        choices=AUDIT_REASON_BUCKETS,
+        default=None,
+        help=(
+            "With --missing-only, schedule only cells in one audit reason bucket; "
+            "repeat for multiple buckets."
+        ),
+    )
     worker = subparsers.add_parser(
         "measure-cell",
         help=argparse.SUPPRESS,
@@ -13504,6 +13551,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"validated {len(caches)} caches and {len(TABLE_INPUTS)} tables")
         return 0
     if args.command in {"audit", "populate"}:
+        if args.reason_bucket is not None and not args.missing_only:
+            parser.error("--reason-bucket requires --missing-only")
         if args.cell_id is not None:
             unknown_cell_ids = sorted(set(args.cell_id) - _known_cell_ids())
             if unknown_cell_ids:
@@ -13530,10 +13579,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             process_keys=(None if args.process_key is None else set(args.process_key)),
             variants=None if args.variant is None else set(args.variant),
             n_values=None if args.n_final is None else set(args.n_final),
-            limit=args.limit_cells,
+            limit=None if args.reason_bucket is not None else args.limit_cells,
             missing_only=bool(args.missing_only),
             caches=caches,
         )
+        cells = _filter_cells_by_audit_reason_buckets(
+            cells,
+            caches,
+            None if args.reason_bucket is None else set(args.reason_bucket),
+        )
+        if args.limit_cells is not None and args.reason_bucket is not None:
+            cells = cells[: args.limit_cells]
         records = [_audit_cell_record(cell, caches) for cell in cells]
         if args.format == "json":
             for record in records:
@@ -13572,10 +13628,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             process_keys=(None if args.process_key is None else set(args.process_key)),
             variants=None if args.variant is None else set(args.variant),
             n_values=None if args.n_final is None else set(args.n_final),
-            limit=args.limit_cells,
+            limit=None if args.reason_bucket is not None else args.limit_cells,
             missing_only=bool(args.missing_only),
             caches=caches,
         )
+        if args.reason_bucket is not None:
+            assert caches is not None
+            cells = _filter_cells_by_audit_reason_buckets(
+                cells,
+                caches,
+                set(args.reason_bucket),
+            )
+            if args.limit_cells is not None:
+                cells = cells[: args.limit_cells]
         if args.dry_run:
             for cell in cells:
                 print(json.dumps(cell.as_json(), sort_keys=True))

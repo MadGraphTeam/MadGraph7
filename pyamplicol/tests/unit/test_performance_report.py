@@ -1308,6 +1308,78 @@ def test_audit_record_exposes_lane_local_out_of_reach() -> None:
     assert "z-builtin-sm-n8-eager-jit-o3" in summary
 
 
+def test_audit_reason_bucket_filter_requires_missing_only(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        report.main(["audit", "--reason-bucket", "lane_missing"])
+
+    assert exc_info.value.code == 2
+    assert "--reason-bucket requires --missing-only" in capsys.readouterr().err
+
+
+def test_populate_dry_run_can_filter_reason_bucket(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = next(
+        item for item in report.LADDER_SPECS if item.dataset_id == "z_builtin_sm"
+    )
+    payload = report.build_ladder_cache(spec)
+    entry = next(
+        item
+        for item in payload["entries"]
+        if item["n_final"] == 8 and item["variant"] == "eager_jit_o3"
+    )
+    entry["status"] = report.ResultStatus.OUT_OF_REACH.value
+    entry["measurement"] = report._failure_measurement(
+        report.ResultStatus.OUT_OF_REACH,
+        "campaign policy stop",
+        metadata={
+            "campaign_classification": {
+                "policy": "high_multiplicity_out_of_reach_v1",
+                "status": report.ResultStatus.OUT_OF_REACH.value,
+            },
+            "cell": {
+                "dataset_id": "z_builtin_sm",
+                "n_final": 8,
+                "variant": "eager_jit_o3",
+            },
+        },
+    )
+    normalized = report.normalize_cache_payload(payload)
+    monkeypatch.setattr(
+        report,
+        "load_caches",
+        lambda _paths: {spec.cache_name: normalized},
+    )
+
+    assert (
+        report.main(
+            [
+                "populate",
+                "--dry-run",
+                "--missing-only",
+                "--dataset",
+                "z_builtin_sm",
+                "--variant",
+                "eager_jit_o3",
+                "--n-final",
+                "8",
+                "--reason-bucket",
+                "lane_missing",
+                "--refresh-pdf",
+                "never",
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert "planned 1 cells" in captured.err
+    assert "z-builtin-sm-n8-eager-jit-o3" in captured.out
+
+
 def test_ambiguous_whole_row_out_of_reach_remains_terminal() -> None:
     spec = next(
         item for item in report.LADDER_SPECS if item.dataset_id == "z_builtin_sm"
