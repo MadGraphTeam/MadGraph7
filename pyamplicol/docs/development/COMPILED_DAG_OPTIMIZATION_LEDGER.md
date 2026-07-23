@@ -453,3 +453,54 @@ Evidence:
   peak: `2.655 GiB`. `cargo fmt --all -- --check` and
   `cargo check -p rusticol-core --tests` pass. An independent read-only diff
   audit reported no actionable findings.
+
+## Milestone 5: precomposed leaf mappings
+
+Status: measured and rejected; no implementation code retained.
+
+A runtime-only experiment composed each stage's parent-local and leaf-local
+maps into ordered global-state-to-leaf layouts. It preserved duplicates and
+ordering, borrowed exact identity layouts, kept the legacy snapshot path for
+overlapping stage input/output, and left generic/exact execution and artifact
+serialization unchanged. The expected copy reduction was achieved. At union
+batch 128, stage parent copies fell from `6,075,648` to `19,456` and amplitude
+parent copies from `369,152` to zero; leaf copies remained exactly once.
+Warmed scratch reallocations remained zero and all numerical results were
+bitwise identical to milestone 4.
+
+Wall time nevertheless regressed consistently at useful batch sizes:
+
+| LC workload | Batch | Milestone 4 ms/point | Precomposed ms/point | Change |
+|---|---:|---:|---:|---:|
+| all-flow-union, fixed helicity | 1 | 1.114137 | 1.979075 | +77.63% |
+| all-flow-union, fixed helicity | 128 | 0.462946 | 0.487780 | +5.36% |
+| all-flow-union, fixed helicity | 1024 | 0.483370 | 0.521280 | +7.84% |
+| topology-replay, selected flow, helicity sum | 1 | 0.226892 | 0.230991 | +1.81% |
+| topology-replay, selected flow, helicity sum | 128 | 0.075475 | 0.076819 | +1.78% |
+| topology-replay, selected flow, helicity sum | 1024 | 0.079319 | 0.082341 | +3.81% |
+
+The direct gathers reduce copied elements but lose the locality supplied by
+the compact parent-stage slab; several later stage gathers and backend calls
+become slower. Native wall time is the retention gate, so the experiment was
+discarded in full rather than committing a counter-only improvement.
+
+Evidence:
+
+- Measurements: `/private/tmp/pyamplicol-compiled-dag-direct-leaf`.
+- Union batch 1/128/1024 SHA-256:
+  `b71d06a503a0809b8c42d1967bb5141f48fd963604cbf67f4dccc94a96438637` /
+  `8edbe0e1678fc2229a1f6b4d9435c735173ccb76a3018f0b79f26af28fe3b013` /
+  `9c276c5cedc8a99e13409c50535b2ff48d34a0ffa3bea2f6a0246579890686ea`.
+- Non-union batch 1/128/1024 SHA-256:
+  `0361cf982d1e9574f9bf281e9c322ef4039c72993037ed73cbe9a3b664ed9aca` /
+  `9b30f4599d659156a6fcccbfb2100e95f225d51bd71274013cb762cd90109e7c` /
+  `12462f9b291379701746c82fc25e9fa8704882e3fcaab9c9b5e3d992dfe30d78`.
+- Native build-input SHA-256:
+  `c8a7769c2e13d5d0c2a72f4e769acde6ab64b661f4a381900cdde652fa06a2ab`;
+  module SHA-256:
+  `f2a328a1290a257238fbc655cb42b44fcbf19305b4424f36bca5e5622d4070e8`.
+- Focused candidate rebuild watchdog peak: `1.243 GiB`; largest measurement
+  peak: `2.263 GiB`. Before the wall gate, formatting, affected-crate
+  `cargo check`, and two independent read-only audits found no correctness
+  issue. The measured implementation existed only as uncommitted work atop
+  `b232ba1` and was restored after rejection.
