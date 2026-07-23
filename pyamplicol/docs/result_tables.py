@@ -1088,6 +1088,8 @@ def _normalize_measurement(value: object) -> dict[str, object]:
         measurement.update(
             {str(key): _json_compatible(entry) for key, entry in value.items()}
         )
+    if _retryable_worker_exit_measurement(measurement):
+        return _empty_measurement()
     if _is_skip_status(
         measurement.get("status")
     ) or _timeout_measurement_exceeds_skip_cap(measurement):

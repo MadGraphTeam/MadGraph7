@@ -4613,6 +4613,18 @@ def test_failure_status_labels_render_in_cells() -> None:
     )
 
 
+def test_retryable_worker_exit_measurement_normalizes_to_missing() -> None:
+    normalized = report._normalize_measurement(
+        report._failure_measurement(
+            report.ResultStatus.ERROR,
+            "worker exited with code 134",
+            failure_kind="error",
+        )
+    )
+
+    assert normalized == report._empty_measurement()
+
+
 def test_campaign_schedule_is_fast_first_and_duplicates_sm_tables() -> None:
     cells = report._select_cells(limit=20)
     assert cells
