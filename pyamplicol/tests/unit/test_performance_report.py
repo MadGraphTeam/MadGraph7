@@ -1361,6 +1361,7 @@ def test_legacy_reference_timeout_uses_hard_child_process_boundary(
 ) -> None:
     if not hasattr(os, "fork"):
         pytest.skip("hard legacy timeout requires fork")
+    monkeypatch.setenv("SYMBOLICA_LICENSE", "test-license")
 
     cell = next(
         item
@@ -1390,6 +1391,45 @@ def test_legacy_reference_timeout_uses_hard_child_process_boundary(
     fields = report._measurement_old_matrix_fields(measurement)
     assert fields["status"] == report.ResultStatus.OUT_OF_REACH.value
     assert fields["all_flow_status"] == report.ResultStatus.OUT_OF_REACH.value
+
+
+def test_legacy_reference_runs_inline_without_symbolica_license(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("SYMBOLICA_LICENSE", raising=False)
+    cell = next(
+        item
+        for item in report._campaign_cells()
+        if item.cell_id == "z-builtin-sm-n1-jit-o3"
+    )
+    calls: list[str] = []
+
+    def reference(**_kwargs: object) -> dict[str, object]:
+        calls.append("reference")
+        measurement = report._empty_measurement()
+        measurement["status"] = report.ResultStatus.OK.value
+        return measurement
+
+    def unexpected_timeout(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("unlicensed legacy reference must not fork")
+
+    monkeypatch.setattr(report, "_measure_legacy_amplicol", reference)
+    monkeypatch.setattr(report, "_run_mapping_with_timeout", unexpected_timeout)
+
+    measurement = report._measure_legacy_amplicol_supervised(
+        cell=cell,
+        color_accuracy="lc",
+        artifact_root=tmp_path,
+        points=None,
+        limit_gib=100.0,
+        reference_timeout_seconds=0.1,
+        target_runtime=0.1,
+        jobs=1,
+    )
+
+    assert calls == ["reference"]
+    assert measurement["status"] == report.ResultStatus.OK.value
 
 
 def test_missing_only_retries_model_ladder_failures() -> None:

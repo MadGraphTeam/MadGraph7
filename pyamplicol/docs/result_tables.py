@@ -10818,7 +10818,7 @@ def _measure_legacy_amplicol_supervised(
             fixed_helicity=fixed_helicity,
         )
 
-    if reference_timeout_seconds <= 0:
+    if reference_timeout_seconds <= 0 or not _symbolica_licensed_mode_enabled():
         return dict(measure_reference())
     try:
         return _run_mapping_with_timeout(
