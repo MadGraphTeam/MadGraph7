@@ -6446,8 +6446,8 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True)
         self.add_toml_param('run', 'output_format', "lhe", gridpack=True,
             allowed=['compact_npy', 'lhe_npy', 'lhe'])
-        self.add_toml_param('run', 'verbosity', "pretty", gridpack=True,
-            allowed=['silent', 'pretty', 'log'])
+        self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
+            allowed=['silent', 'pretty', 'log', 'auto'])
         self.add_toml_param('run', 'dummy_matrix_element', False)
 
         # ---------------------------- [gridpack] ----------------------

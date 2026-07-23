@@ -97,6 +97,15 @@ def format_time(t: int, centi: bool = False):
         return f"{int(hours):02}:{int(minutes):02}:{seconds:02.0f}"
 
 
+def resolve_verbosity(verbosity: str) -> str:
+    """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
+    whether stdout is attached to a terminal; other values pass through
+    unchanged."""
+    if verbosity == "auto":
+        return "pretty" if sys.stdout.isatty() else "log"
+    return verbosity
+
+
 @dataclass
 class Channel:
     phasespace_mapping: ms.PhaseSpaceMapping
@@ -372,7 +381,7 @@ class MadgraphProcess:
         cfg.optimization_threshold = vegas_args["optimization_threshold"]
         cfg.cpu_batch_size = gen_args["cpu_batch_size"]
         cfg.gpu_batch_size = gen_args["gpu_batch_size"]
-        cfg.verbosity = run_args["verbosity"]
+        cfg.verbosity = resolve_verbosity(run_args["verbosity"])
         cfg.combine_thread_count = run_args["combine_thread_pool_size"]
         cfg.cut_efficiency_threshold = gen_args["cut_efficiency_threshold"]
         cfg.max_cut_repetitions = gen_args["max_cut_repetitions"]
@@ -492,7 +501,7 @@ class MadgraphProcess:
         run_args = self.run_card["run"]
 
         config = ms.MadnisConfig()
-        config.verbosity = run_args["verbosity"]
+        config.verbosity = resolve_verbosity(run_args["verbosity"])
         config.learning_rate = madnis_args["lr"]
         config.batches = madnis_args["train_batches"]
         config.log_interval = madnis_args["log_interval"]
