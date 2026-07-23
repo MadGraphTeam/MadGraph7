@@ -23,10 +23,14 @@ pub(super) struct F64MomentumBatchView<'a> {
 
 #[derive(Clone, Copy)]
 pub(super) enum F64MomentumPointView<'a> {
-    Contiguous {
+    ContiguousIdentity {
         values: &'a [f64],
         external_count: usize,
-        crossing_lookup: Option<&'a [InputCrossingMapEntry]>,
+    },
+    ContiguousCrossed {
+        values: &'a [f64],
+        external_count: usize,
+        crossing_lookup: &'a [InputCrossingMapEntry],
     },
     Nested(&'a [[f64; 4]]),
 }
@@ -36,9 +40,25 @@ pub(super) trait F64MomentumPoint {
 }
 
 impl F64MomentumPoint for F64MomentumPointView<'_> {
+    #[inline(always)]
     fn momentum(&self, external_index: usize) -> Option<[f64; 4]> {
         match self {
-            Self::Contiguous {
+            Self::ContiguousIdentity {
+                values,
+                external_count,
+            } => {
+                if external_index >= *external_count {
+                    return None;
+                }
+                let start = external_index * 4;
+                Some([
+                    values[start],
+                    values[start + 1],
+                    values[start + 2],
+                    values[start + 3],
+                ])
+            }
+            Self::ContiguousCrossed {
                 values,
                 external_count,
                 crossing_lookup,
@@ -46,18 +66,14 @@ impl F64MomentumPoint for F64MomentumPointView<'_> {
                 if external_index >= *external_count {
                     return None;
                 }
-                let (source_index, sign) =
-                    crossing_lookup.map_or((external_index, 1.0), |lookup| {
-                        let entry = &lookup[external_index];
-                        debug_assert_eq!(entry.target_index, external_index);
-                        (entry.source_index, entry.sign)
-                    });
-                let start = source_index * 4;
+                let entry = &crossing_lookup[external_index];
+                debug_assert_eq!(entry.target_index, external_index);
+                let start = entry.source_index * 4;
                 Some([
-                    sign * values[start],
-                    sign * values[start + 1],
-                    sign * values[start + 2],
-                    sign * values[start + 3],
+                    entry.sign * values[start],
+                    entry.sign * values[start + 1],
+                    entry.sign * values[start + 2],
+                    entry.sign * values[start + 3],
                 ])
             }
             Self::Nested(values) => values.get(external_index).copied(),
@@ -66,18 +82,21 @@ impl F64MomentumPoint for F64MomentumPointView<'_> {
 }
 
 impl F64MomentumPoint for [[f64; 4]] {
+    #[inline(always)]
     fn momentum(&self, external_index: usize) -> Option<[f64; 4]> {
         self.get(external_index).copied()
     }
 }
 
 impl F64MomentumPoint for Vec<[f64; 4]> {
+    #[inline(always)]
     fn momentum(&self, external_index: usize) -> Option<[f64; 4]> {
         self.get(external_index).copied()
     }
 }
 
 impl<const N: usize> F64MomentumPoint for [[f64; 4]; N] {
+    #[inline(always)]
     fn momentum(&self, external_index: usize) -> Option<[f64; 4]> {
         self.get(external_index).copied()
     }
@@ -151,16 +170,24 @@ impl<'a> F64MomentumBatchView<'a> {
         self.external_count
     }
 
+    #[inline(always)]
     pub(super) fn point(self, point_index: usize) -> F64MomentumPointView<'a> {
         assert!(point_index < self.point_count);
         match self.storage {
             F64MomentumBatchStorage::Contiguous(values) => {
                 let values_per_point = self.external_count * 4;
                 let start = point_index * values_per_point;
-                F64MomentumPointView::Contiguous {
-                    values: &values[start..start + values_per_point],
-                    external_count: self.external_count,
-                    crossing_lookup: self.crossing_lookup,
+                let values = &values[start..start + values_per_point];
+                match self.crossing_lookup {
+                    Some(crossing_lookup) => F64MomentumPointView::ContiguousCrossed {
+                        values,
+                        external_count: self.external_count,
+                        crossing_lookup,
+                    },
+                    None => F64MomentumPointView::ContiguousIdentity {
+                        values,
+                        external_count: self.external_count,
+                    },
                 }
             }
             F64MomentumBatchStorage::Nested(values) => {
