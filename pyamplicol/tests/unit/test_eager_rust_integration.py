@@ -32,6 +32,7 @@ from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.eager_columnar import (
     EAGER_LOWERING_INPUT_ABI,
     EagerLoweringInputV1,
+    runtime_model_parameter_records_from_eager_input,
 )
 from pyamplicol.generation.eager_lowering import (
     MappingEagerKernelResolver,
@@ -251,6 +252,30 @@ def test_plan_v3_builds_columnar_input_without_schema_or_evaluator_compilation(
         ),
     }
     assert cast(list[object], result.physics["model_parameters"])
+    eager_parameter_records = runtime_model_parameter_records_from_eager_input(
+        captured[0]
+    )
+    expected_parameters: dict[str, dict[str, object]] = {}
+    for record in eager_parameter_records:
+        runtime_name = str(record.get("runtime_name", record["name"]))
+        expected = expected_parameters.setdefault(
+            runtime_name,
+            {
+                "name": runtime_name,
+                "default_real": 0.0,
+                "default_imaginary": 0.0,
+            },
+        )
+        field = (
+            "default_imaginary"
+            if record.get("complex_component") == "imag"
+            else "default_real"
+        )
+        expected[field] = record["default"]
+    for parameter in cast(list[dict[str, object]], result.physics["model_parameters"]):
+        expected = expected_parameters[str(parameter["name"])]
+        assert parameter["default_real"] == expected["default_real"]
+        assert parameter["default_imaginary"] == expected["default_imaginary"]
     assert result.physics["selectors"] == {
         "helicity": True,
         "color_flow": True,

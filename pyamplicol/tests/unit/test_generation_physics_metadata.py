@@ -124,3 +124,55 @@ def test_eager_plan_v3_reduction_groups_are_pacbin_backed(
         ).read_text(encoding="utf-8")
     )
     Draft202012Validator(schema).validate(physics)
+
+
+def test_eager_physics_uses_authoritative_runtime_parameter_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = BuiltinSMModel()
+    dag = compile_generic_dag(build_process_ir("d d~ > z g"), model=model)
+    imaginary = float.fromhex("0x1.d8fdbd004403dp-2")
+    records = (
+        {
+            "name": "derived_coupling_88.real",
+            "kind": "derived_parameter_component",
+            "parameter_index": 0,
+            "default": 0.0,
+            "runtime_name": "derived_coupling_88",
+            "complex_component": "real",
+        },
+        {
+            "name": "derived_coupling_88.imag",
+            "kind": "derived_parameter_component",
+            "parameter_index": 1,
+            "default": imaginary,
+            "runtime_name": "derived_coupling_88",
+            "complex_component": "imag",
+        },
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("eager physics reevaluated model-parameter defaults")
+
+    monkeypatch.setattr(
+        physics_metadata,
+        "build_runtime_model_parameter_records",
+        forbidden,
+    )
+    physics = build_resolved_physics_from_dag(
+        dag,
+        model,
+        process_id="authoritative-eager-parameters",
+        native_eager_plan_v3_reduction_groups=True,
+        runtime_model_parameters=records,
+    )
+
+    assert physics["model_parameters"] == [
+        {
+            "name": "derived_coupling_88",
+            "kind": "derived",
+            "default_real": 0.0,
+            "default_imaginary": imaginary,
+            "mutable": False,
+        }
+    ]

@@ -624,9 +624,6 @@ fn runtime_parameter_slots(
     let mut result = BTreeMap::new();
     let mut complex = BTreeMap::<String, (Option<usize>, Option<usize>)>::new();
     for parameter in parameters {
-        if parameter.kind == "derived_parameter_component" {
-            continue;
-        }
         if let Some(name) = &parameter.runtime_name {
             let slots = complex.entry(name.clone()).or_default();
             let slot = match parameter.complex_component.as_deref() {
@@ -876,8 +873,14 @@ fn bind_source_mass(
             "massive eager source references unbound mass parameter {name:?}"
         ))
     })?;
-    if slots.imaginary.is_some() {
-        return Err(integrity("eager source mass parameter must be real"));
+    if slots
+        .imaginary
+        .and_then(|index| parameter_values.get(index))
+        .is_some_and(|value| *value != 0.0)
+    {
+        return Err(integrity(
+            "eager source mass parameter has a nonzero imaginary component",
+        ));
     }
     let mass = *parameter_values
         .get(slots.real)
@@ -968,9 +971,17 @@ fn validate_physics_parameters(
             || real.to_bits() != parameter.default_real.to_bits()
             || imaginary.to_bits() != parameter.default_imaginary.to_bits()
         {
-            return Err(integrity(
-                "eager runtime parameter disagrees with resolved physics",
-            ));
+            return Err(integrity(format!(
+                "eager runtime parameter {:?} disagrees with resolved physics: \
+                 runtime kind={kind:?} defaults=({:#018x},{:#018x}), \
+                 physics kind={:?} defaults=({:#018x},{:#018x})",
+                parameter.name,
+                real.to_bits(),
+                imaginary.to_bits(),
+                parameter.kind,
+                parameter.default_real.to_bits(),
+                parameter.default_imaginary.to_bits(),
+            )));
         }
     }
     Ok(())

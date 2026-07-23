@@ -141,6 +141,14 @@ impl ExecutionRuntime {
     ) -> RusticolResult<()> {
         let mut proposed = self.model_parameter_values_f64.clone();
         for (name, (real, imaginary)) in overrides {
+            if self.model_parameters.iter().any(|parameter| {
+                parameter.kind == "derived_parameter_component"
+                    && parameter.runtime_name.as_deref().unwrap_or(&parameter.name) == name
+            }) {
+                return Err(RusticolError::invalid_argument(format!(
+                    "derived model parameter {name:?} is immutable",
+                )));
+            }
             let Some(slots) = self.model_parameter_runtime_slots.get(name).copied() else {
                 return Err(RusticolError::invalid_argument(format!(
                     "model-parameter override {name:?} is not used by process {}",

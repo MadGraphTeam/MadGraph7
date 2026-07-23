@@ -46,14 +46,19 @@ def build_resolved_physics_from_dag(
     *,
     process_id: str | None = None,
     native_eager_plan_v3_reduction_groups: bool = False,
+    runtime_model_parameters: Sequence[Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """Build strict public physics without constructing runtime storage layouts."""
 
     amplitude_metadata = build_runtime_amplitude_metadata(dag, model)
-    model_parameters = build_runtime_model_parameter_records(
-        dag,
-        model,
-        amplitude_stage=amplitude_metadata,
+    model_parameters = (
+        build_runtime_model_parameter_records(
+            dag,
+            model,
+            amplitude_stage=amplitude_metadata,
+        )
+        if runtime_model_parameters is None
+        else list(runtime_model_parameters)
     )
     return build_resolved_physics_payload(
         dag,

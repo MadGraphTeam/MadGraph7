@@ -77,6 +77,7 @@ from .eager_columnar import (
     EAGER_LOWERING_INPUT_ABI,
     EagerLoweringInputV1,
     build_eager_lowering_input_v1,
+    runtime_model_parameter_records_from_eager_input,
 )
 from .eager_lowering import (
     PreparedCatalogEagerKernelIndex,
@@ -1928,6 +1929,9 @@ class GenerationBackend:
             model,
             process_id=process_name,
             native_eager_plan_v3_reduction_groups=True,
+            runtime_model_parameters=(
+                runtime_model_parameter_records_from_eager_input(lowering_input)
+            ),
         )
         return EagerPlanV3ProcessArtifact(
             process_id=process_name,

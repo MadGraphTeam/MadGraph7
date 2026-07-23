@@ -2,6 +2,22 @@
 
 use super::*;
 
+#[test]
+fn json_model_parameter_defaults_round_trip_binary64() {
+    let expected = f64::from_bits(0x3fdd_8fdb_d004_403d);
+    let encoded = serde_json::to_vec(&ModelParameter {
+        name: "derived_coupling_88".to_owned(),
+        kind: ParameterKind::Derived,
+        default_real: 0.0,
+        default_imaginary: expected,
+        mutable: false,
+    })
+    .expect("serialize model parameter");
+    let decoded: ModelParameter = serde_json::from_slice(&encoded).expect("parse model parameter");
+
+    assert_eq!(decoded.default_imaginary.to_bits(), expected.to_bits());
+}
+
 fn valid_physics() -> ProcessPhysics {
     ProcessPhysics {
         schema_version: RUNTIME_PHYSICS_SCHEMA_VERSION,

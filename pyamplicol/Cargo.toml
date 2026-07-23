@@ -26,7 +26,7 @@ libc = "0.2"
 numpy = "0.28"
 pyo3 = { version = "0.28", features = ["abi3-py311"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["raw_value"] }
+serde_json = { version = "1.0", features = ["float_roundtrip", "raw_value"] }
 sha2 = "0.10"
 symbolica = { version = "=2.1.0", default-features = true, features = ["bincode"] }
 thiserror = "2.0"

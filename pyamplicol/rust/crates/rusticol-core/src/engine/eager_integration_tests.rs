@@ -698,6 +698,27 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
         );
     }
 
+    if let Some(parameter) = parameters.iter().find(|parameter| !parameter.mutable) {
+        let before_derived_update = runtime
+            .exact_runtime_state_json()
+            .expect("eager parameter state before derived update");
+        assert!(
+            runtime
+                .set_model_parameter(
+                    &parameter.name,
+                    parameter.default,
+                    parameter.default_imaginary,
+                )
+                .is_err()
+        );
+        assert_eq!(
+            runtime
+                .exact_runtime_state_json()
+                .expect("eager parameter state after derived update"),
+            before_derived_update
+        );
+    }
+
     let before_failed_update = runtime
         .exact_runtime_state_json()
         .expect("eager parameter state before failed update");

@@ -2066,6 +2066,41 @@ def build_eager_lowering_input_v1(
     return _Builder(dag, model, resolver, process_id).build()
 
 
+def runtime_model_parameter_records_from_eager_input(
+    lowering_input: EagerLoweringInputV1,
+) -> tuple[dict[str, object], ...]:
+    """Project the authoritative eager parameter columns into physics records."""
+
+    table = lowering_input.table("model_parameters")
+    names = table.column("name_string_id")
+    kinds = table.column("kind_string_id")
+    defaults = table.column("default_value")
+    runtime_names = table.column("runtime_name_string_id")
+    components = table.column("complex_component")
+    records: list[dict[str, object]] = []
+    for row in range(table.row_count):
+        runtime_name_id = int(runtime_names[row])
+        component = int(components[row])
+        record: dict[str, object] = {
+            "name": lowering_input.string_catalog[int(names[row])],
+            "kind": lowering_input.string_catalog[int(kinds[row])],
+            "parameter_index": row,
+            "default": float(defaults[row]),
+        }
+        if runtime_name_id != MISSING_U32:
+            record["runtime_name"] = lowering_input.string_catalog[runtime_name_id]
+        if component == 0:
+            record["complex_component"] = "real"
+        elif component == 1:
+            record["complex_component"] = "imag"
+        elif component != -1:
+            raise EagerColumnarInputError(
+                f"model parameter {row} has invalid complex component {component}"
+            )
+        records.append(record)
+    return tuple(records)
+
+
 def _model_parameter_specs(
     dag: GenericDAG,
     model: Model,
@@ -2443,4 +2478,5 @@ __all__ = [
     "EagerColumnarTable",
     "EagerLoweringInputV1",
     "build_eager_lowering_input_v1",
+    "runtime_model_parameter_records_from_eager_input",
 ]
