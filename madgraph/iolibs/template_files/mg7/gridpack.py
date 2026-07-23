@@ -88,7 +88,8 @@ def main() -> None:
     parser.add_argument(
         "--seed", type=int, default=run_args.get("seed", 0),
         help="0 draws a fresh random seed; a positive integer makes the run "
-             "reproducible (bit-identical output requires --cpu_thread_pool_size 1)"
+             "reproducible at any --cpu_thread_pool_size (for --output_format lhe "
+             "also set combine_thread_pool_size = 1)"
     )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
@@ -138,7 +139,7 @@ def main() -> None:
     device_names = args.device if args.device else run_args["devices"]
     contexts = []
     device_types = []
-    for device_name in device_names:
+    for i, device_name in enumerate(device_names):
         if ":" in device_name:
             device_type, device_index_str = device_name.split(":")
             device_index = int(device_index_str)
@@ -155,7 +156,10 @@ def main() -> None:
         else:
             device = ms.cpu_device()
             pool_size = args.cpu_thread_pool_size
-        contexts.append(ms.Context(device=device, thread_count=pool_size))
+        contexts.append(ms.Context(
+            device=device, thread_count=pool_size,
+            seed=derive_seed(args.seed, i),
+        ))
 
     # set up generator configuration
     config = ms.GeneratorConfig()
