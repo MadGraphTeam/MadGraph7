@@ -10550,14 +10550,24 @@ def _measure_legacy_amplicol(
     except Exception as exc:
         status = ResultStatus.ERROR
         if isinstance(exc, ReportGenerationTimeout):
-            status = ResultStatus.TIMEOUT
+            status = _generation_timeout_status(reference_timeout_seconds)
+            message = (
+                "out of reach by campaign policy: reference generation or "
+                "profiling exceeded "
+                f"{OUT_OF_REACH_GENERATION_CAP_SECONDS:.0f} seconds"
+                if status == ResultStatus.OUT_OF_REACH
+                else str(exc)
+            )
         elif type(exc).__name__ == "LegacyOracleError" or _legacy_probe_scope_limited(
             exc
         ):
             status = ResultStatus.UNSUPPORTED
+            message = str(exc)
+        else:
+            message = str(exc)
         return _failure_measurement(
             status,
-            str(exc),
+            message,
             failure_kind=type(exc).__name__,
             artifact_path=legacy_root,
             log_path=log_path,
