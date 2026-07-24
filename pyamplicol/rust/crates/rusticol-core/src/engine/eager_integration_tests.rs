@@ -579,6 +579,8 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
     );
     let helicity_by_point = [0_u32, 1, 0, 1];
     let color_by_point = [0_u32; 4];
+    let color_by_point = (runtime.metadata().color_accuracy == "lc")
+        .then_some(color_by_point.as_slice());
     let selected_by_point = runtime
         .evaluate_f64_with_selectors(
             &selector_momenta,
@@ -586,7 +588,7 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
             None,
             None,
             Some(&helicity_by_point),
-            Some(&color_by_point),
+            color_by_point,
         )
         .expect("evaluate eager per-point selectors");
     for point_index in 0..selector_point_count {
