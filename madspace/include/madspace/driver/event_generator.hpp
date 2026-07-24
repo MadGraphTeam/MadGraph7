@@ -87,6 +87,19 @@ private:
     // -- overshooting it by an amount that depends on real scheduling timing rather
     // than on the seed.
     std::vector<bool> _channel_batch_pending;
+    // generate_deterministic() only: per-channel analogue of _ready_gen/
+    // _commit_cursor. Each channel's jobs still commit strictly in that channel's
+    // own ascending job-id order (out-of-order arrivals buffered in
+    // _channel_ready_gen until the cursor catches up), streamed as soon as they're
+    // next in line rather than deferred -- but channels no longer block each
+    // other's commits, so a channel with much costlier jobs (e.g. higher final-
+    // state multiplicity in an inclusive run) can't head-of-line-block the rest.
+    // _channel_cursor_set tracks whether _channel_commit_cursor has been
+    // initialized for the channel's current round yet; see
+    // register_dispatched_ids().
+    std::vector<std::set<std::size_t>> _channel_ready_gen;
+    std::vector<std::size_t> _channel_commit_cursor;
+    std::vector<bool> _channel_cursor_set;
     ResultQueue _result_queue;
 
     // Base seed for reproducible event generation. 0 means "seed
@@ -124,6 +137,15 @@ private:
     void survey_deterministic();
     void generate_deterministic();
     void commit_generate_deterministic(GeneratorBatchJob& job);
+    // generate_deterministic() only: scans the job ids newly added to
+    // _running_jobs by the last start_jobs() call ([first_id, end_id)) and, for
+    // any channel seen for the first time since its current round started (i.e.
+    // _channel_cursor_set is still false), initializes _channel_commit_cursor to
+    // that job's id. Safe because a channel's whole round is always dispatched
+    // atomically as one contiguous id range (see GeneratorBatchJob::vegas_batch_size),
+    // so the first id encountered for a channel in ascending order is always that
+    // round's minimum.
+    void register_dispatched_ids(std::size_t first_id, std::size_t end_id);
 
     // Size a new steady-state generation batch for a channel from fully-committed
     // data only: the channel's own observed efficiency so far (count_unweighted /
@@ -136,7 +158,14 @@ private:
     std::size_t next_batch_job_count(std::size_t channel_index, double target) const;
 
     bool start_jobs();
+    // update_integral() = update_integral_status() + update_integral_fractions().
+    // Split so generate_deterministic() can keep the status half (used for
+    // logging/progress only) fully live, per commit, while deferring the fractions
+    // half (which feeds back into per-channel scheduling decisions, see
+    // next_batch_job_count()) to once per round -- see commit_generate_deterministic().
     void update_integral();
+    void update_integral_status();
+    void update_integral_fractions();
     void update_counts();
     void reset_start_time();
     void add_timing_data(const std::string& key);

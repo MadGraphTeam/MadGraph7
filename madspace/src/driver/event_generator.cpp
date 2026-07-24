@@ -54,6 +54,9 @@ EventGenerator::EventGenerator(
     _channel_integral_fractions(channels.size(), 1.),
     _context_job_counts(contexts.size()),
     _channel_batch_pending(channels.size()),
+    _channel_ready_gen(channels.size()),
+    _channel_commit_cursor(channels.size()),
+    _channel_cursor_set(channels.size()),
     _seed(seed),
     _deterministic(seed != 0),
     _status_file(status_file) {}
@@ -258,9 +261,16 @@ void EventGenerator::generate() {
 void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
     // Ordered, single-pass commit of one job: mirrors the generate() harvest body
     // but folds unweighting in synchronously so there is exactly one commit per job.
-    // Called strictly in ascending job id, so every state mutation (cross-section
-    // accumulation, max-weight snapshot, event writes, counts, VEGAS optimisation)
-    // happens in a fixed order.
+    // Called strictly in ascending job id *within job.channel_index* (see
+    // _channel_commit_cursor), so every state mutation local to that channel
+    // (cross-section accumulation, max-weight snapshot, event writes, counts, VEGAS
+    // optimisation) happens in a fixed order. update_integral_status() runs on every
+    // commit, same as before, so logging/progress reporting stays fully live; only
+    // update_integral_fractions() -- the piece that feeds back into per-channel
+    // scheduling decisions -- is deferred to once per round in
+    // generate_deterministic(), since reading it here would make a channel's
+    // scheduling depend on how far other channels happen to have gotten in real
+    // time.
     auto& channel = _channels.at(job.channel_index);
     auto& channel_job_count = _channel_job_counts.at(job.channel_index);
     auto& context_job_count = _context_job_counts.at(job.context_index);
@@ -268,7 +278,7 @@ void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
         channel->clear_events();
     }
     channel->integrate(job);
-    update_integral();
+    update_integral_status();
     channel->update_max_weight(job.weights);
     if (job.unweight) {
         channel->unweight_job_inline(job);
@@ -286,13 +296,20 @@ void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
     print_gen_update(false);
 }
 
+void EventGenerator::register_dispatched_ids(std::size_t first_id, std::size_t end_id) {
+    for (std::size_t id = first_id; id < end_id; ++id) {
+        std::size_t channel_index = _running_jobs.at(id).channel_index;
+        if (!_channel_cursor_set.at(channel_index)) {
+            _channel_commit_cursor.at(channel_index) = id;
+            _channel_cursor_set.at(channel_index) = true;
+        }
+    }
+}
+
 void EventGenerator::generate_deterministic() {
     reset_start_time();
     print_gen_init();
-    _commit_cursor = _job_id;
-    _ready_gen.clear();
 
-    std::size_t in_flight = 0;
     while (true) {
         _abort_check_function();
 
@@ -307,6 +324,7 @@ void EventGenerator::generate_deterministic() {
             if (channel->needs_optimization()) {
                 if (!_channel_optimizing.at(channel_index)) {
                     _channel_optimizing.at(channel_index) = true;
+                    _channel_cursor_set.at(channel_index) = false;
                     _ready_jobs.push_back({
                         .channel_index = channel_index,
                         .unweight = true,
@@ -316,6 +334,7 @@ void EventGenerator::generate_deterministic() {
                 }
             } else if (!_channel_batch_pending.at(channel_index)) {
                 _channel_batch_pending.at(channel_index) = true;
+                _channel_cursor_set.at(channel_index) = false;
                 std::size_t batch_jobs = next_batch_job_count(channel_index, target);
                 // Pushed as a single ready_job with vegas_batch_size set (rather
                 // than batch_jobs separate ready_jobs) so start_jobs() dispatches
@@ -325,7 +344,9 @@ void EventGenerator::generate_deterministic() {
                 // (looking "done") as soon as whichever prefix got dispatched all
                 // commit, while the rest of the batch is still sitting undispatched --
                 // reintroducing exactly the kind of scheduling-timing-dependent
-                // overshoot this batching was meant to eliminate.
+                // overshoot this batching was meant to eliminate. It also gives this
+                // channel's round a single contiguous job-id range, which is what
+                // lets register_dispatched_ids() find its start cheaply.
                 _ready_jobs.push_back({
                     .channel_index = channel_index,
                     .unweight = true,
@@ -337,24 +358,45 @@ void EventGenerator::generate_deterministic() {
 
         std::size_t job_id_before = _job_id;
         start_jobs();
-        in_flight += _job_id - job_id_before;
+        std::size_t round_in_flight = _job_id - job_id_before;
+        register_dispatched_ids(job_id_before, _job_id);
 
-        if (in_flight > 0) {
+        // Wait for this round -- every channel's currently dispatched batch -- to
+        // finish. Each job commits as soon as it's next in line *for its own
+        // channel* (_channel_commit_cursor), streamed immediately rather than
+        // buffered; channels no longer block each other's commits. Only once the
+        // whole round has committed (round_in_flight reaches 0) do we resync the
+        // cross-channel integral fractions, since that's the one piece of state
+        // that isn't safe to read mid-round -- see commit_generate_deterministic().
+        while (round_in_flight > 0) {
             std::size_t job_id = _result_queue.wait();
-            --in_flight;
-            _ready_gen.insert(job_id);
-            while (_ready_gen.erase(_commit_cursor) > 0) {
-                commit_generate_deterministic(_running_jobs.at(_commit_cursor));
-                _running_jobs.erase(_commit_cursor);
-                ++_commit_cursor;
+            --round_in_flight;
+            auto& job = _running_jobs.at(job_id);
+            auto& ready_gen = _channel_ready_gen.at(job.channel_index);
+            auto& cursor = _channel_commit_cursor.at(job.channel_index);
+            ready_gen.insert(job_id);
+            while (ready_gen.erase(cursor) > 0) {
+                commit_generate_deterministic(_running_jobs.at(cursor));
+                _running_jobs.erase(cursor);
+                ++cursor;
             }
-        } else {
-            if (_status.done) {
-                unweight_all();
-            }
-            if (_status.done) {
-                break;
-            }
+            std::size_t job_id_refill = _job_id;
+            start_jobs();
+            round_in_flight += _job_id - job_id_refill;
+            register_dispatched_ids(job_id_refill, _job_id);
+        }
+
+        // Status (mean/error/counts, used for logging) is already fully up to date
+        // from the per-commit update_integral_status() calls above; only the
+        // fractions used for the *next* round's scheduling need to wait for the
+        // whole round to be committed.
+        update_integral_fractions();
+
+        if (_status.done) {
+            unweight_all();
+        }
+        if (_status.done) {
+            break;
         }
     }
     print_gen_update(true);
@@ -512,6 +554,11 @@ bool EventGenerator::start_jobs() {
 }
 
 void EventGenerator::update_integral() {
+    update_integral_status();
+    update_integral_fractions();
+}
+
+void EventGenerator::update_integral_status() {
     double total_mean = 0., total_var = 0.;
     std::size_t total_count = 0, total_count_opt = 0;
     std::size_t total_count_after_cuts = 0, total_count_after_cuts_opt = 0;
@@ -542,9 +589,17 @@ void EventGenerator::update_integral() {
     _status.count_after_cuts_opt = total_count_after_cuts_opt;
     _status.iterations = iterations;
     _status.optimized = optimized;
+}
+
+void EventGenerator::update_integral_fractions() {
+    // Reuses _status.mean rather than re-summing channel means, so this stays a
+    // pure function of whatever update_integral_status() last computed -- callers
+    // that want it to reflect only fully-committed-this-round data (see
+    // generate_deterministic()) just need to make sure update_integral_status() was
+    // last called from committed (not in-flight) state.
     for (auto [channel, integral_fraction] :
          zip(_channels, _channel_integral_fractions)) {
-        integral_fraction = channel->cross_section().mean() / total_mean;
+        integral_fraction = channel->cross_section().mean() / _status.mean;
         channel->set_target_count(integral_fraction * _config.target_count);
     }
 }
