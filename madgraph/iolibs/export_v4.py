@@ -9455,6 +9455,33 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             codes.append(code)
         return codes
 
+    def _color_code_tables(self, matrix_element):
+        """Per-ME colour tables for the generated fortran, or None if the ME has
+        no usable colour code: (codes, colour-slot legs, anticolour-slot legs),
+        the two slot lists 1-based so they index the fortran leg arrays.
+
+        This is ALL the colour data an ME needs, and it is per-ME rather than
+        per-(base, crossing) pair: the slot structure is flow-independent (see
+        _color_flow_slots) and the codes are label-independent, so any crossing
+        of this ME reuses the same three arrays."""
+        flows = self._module_color_flows(matrix_element)
+        if not flows:
+            return None
+        states = [l.get('state') for l in
+                  matrix_element.get('processes')[0].get_legs_with_decays()]
+        conns = [self._color_flow_canon(fl, states) for fl in flows]
+        codes = [self._color_flow_code(c) for c in conns]
+        if any(c is None for c in codes) or len(set(codes)) != len(codes):
+            return None
+        colslots, acolslots = self._color_flow_slots(conns[0])
+        if not acolslots:
+            return None
+        # flow-independence is what lets a single table serve every crossing
+        for c in conns[1:]:
+            if self._color_flow_slots(c) != (colslots, acolslots):
+                return None
+        return (codes, [l + 1 for l in colslots], [l + 1 for l in acolslots])
+
     def _router_colmap(self, router_me, base_me, cross):
         """Map each base colour-flow index to this subprocess's flow index.
 
@@ -9505,10 +9532,16 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         crossed FLAV_IDX from partition_crossing_classes; the heavy MATRIX<i> is
         not emitted. get_nhel<i> lives in auto_dsig<i>.f, so it is unaffected.
 
-        The base returns the selected colour flow in the base's flow order; a
-        per-flavor COLMAP maps it to this subprocess's flow (same topology) so
-        the event's ICOLUP is right (see _router_colmap). Momenta, PDGs and the
-        helicity index already come out in this subprocess's own convention."""
+        The base returns the selected colour flow in the base's flow order,
+        which must be translated to this subprocess's so the event's ICOLUP is
+        right. That goes through the canonical colour-flow CODE: decode the
+        base's code, relabel the legs with the crossing permutation, re-encode
+        and look the result up in this subprocess's own code table (see
+        _color_flow_code). The tables are per-ME and shared by every crossing of
+        the same base, and the same code is what _router_colmap computes at
+        generation time -- kept as the fallback for an ME with no usable code.
+        Momenta, PDGs and the helicity index already come out in this
+        subprocess's own convention."""
         # Reuse the full builder (writer=None) to get the flavor table and the
         # info/process/nexternal/max_flavor holes; nothing heavy is written.
         replace_dict = self.write_matrix_element_v4(
@@ -9523,7 +9556,10 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         # mixed-radix digits with the crossing permutation (GET_CROSS_PERM),
         # exactly the dependent-vs-base relation dep_states[k]==base_states[PERM[k]].
         encode_used = False
+        col_used = False
         baked_nhs = {}   # base_index -> baked base-NHSTATE array name
+        baked_col = {}   # base_index -> baked base colour table names
+        dep_col = self._color_code_tables(matrix_element)
         for flav0, (base_index, iflav) in enumerate(routing):
             base_me = matrix_elements[base_index]
             nflav_base = len(base_me.get_external_flavors_with_iden())
@@ -9534,9 +9570,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             dispatch.append(
                 '        CALL SMATRIX%d(P, %d, RHEL, RCOL, channel, IVEC, ANS,'
                 ' IHEL, ICOL)' % (base_index + 1, iflav))
+            perm_called = False
             # Encode the crossed helicity code (skip cross 0 = identity).
             if cross != 0:
                 encode_used = True
+                perm_called = True
                 if base_index not in baked_nhs:
                     nsname = 'XNHS%d' % (base_index + 1)
                     nhstate = [len(s) for s in
@@ -9561,9 +9599,63 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                     '        ENDDO',
                     '        IHEL = IHEL + 1',
                 ]
-            # A non-identity colmap has to be applied; skip it when it is the
-            # identity (single flow, or the flow orders already agree).
-            if colmap and colmap != list(range(1, len(colmap) + 1)):
+            # The base's flow index has to be translated to this subprocess's;
+            # skip it when the orders already agree (identity map).
+            if not (colmap and colmap != list(range(1, len(colmap) + 1))):
+                continue
+            base_col = self._color_code_tables(base_me)
+            if (dep_col and base_col
+                    and len(base_col[1]) == len(dep_col[1])
+                    and len(base_col[2]) == len(dep_col[2])):
+                # Canonical route: translate through the colour-flow CODE.
+                # Decode the base's code into its connections, relabel the legs
+                # with the crossing permutation, re-encode in this subprocess's
+                # slot order and look the result up in its own code table. The
+                # tables are per-ME (shared by every crossing of the same base),
+                # where COLMAP was one array per base-flavor pair.
+                col_used = True
+                if base_index not in baked_col:
+                    bcode, bcs, bas = base_col
+                    names = ('XCCD%d' % (base_index + 1),
+                             'XCCS%d' % (base_index + 1),
+                             'XCAS%d' % (base_index + 1))
+                    for nm, vals in zip(names, (bcode, bcs, bas)):
+                        decl.append('      INTEGER %s(%d)' % (nm, len(vals)))
+                        decl.append('      DATA %s /%s/' % (
+                            nm, ','.join(str(x) for x in vals)))
+                    baked_col[base_index] = names
+                cdn, csn, asn = baked_col[base_index]
+                ns = len(dep_col[1])
+                if not perm_called:
+                    dispatch.append(
+                        '        CALL CR%d_GET_CROSS_PERM(%d, XPERM, XSGN,'
+                        ' XDUMF)' % (base_index + 1, iflav))
+                    encode_used = True
+                dispatch += [
+                    '        IF (ICOL.GE.1.AND.ICOL.LE.%d) THEN' % len(colmap),
+                    '          XCBAS = %s(ICOL)' % cdn,
+                    '          XCNEW = 0',
+                    '          DO XCI=1,%d' % ns,
+                    '            XCL = XPERM(XDCS(XCI))',
+                    '            XCJ = 1',
+                    '            DO XCK=1,%d' % ns,
+                    '              IF (%s(XCK).EQ.XCL) XCJ = XCK' % csn,
+                    '            ENDDO',
+                    '            XCD = MOD(XCBAS / %d**(XCJ-1), %d)' % (ns, ns),
+                    '            XCL = XPERM(%s(XCD+1))' % asn,
+                    '            DO XCK=1,%d' % ns,
+                    '              IF (XDAS(XCK).EQ.XCL) XCD = XCK-1',
+                    '            ENDDO',
+                    '            XCNEW = XCNEW + XCD * %d**(XCI-1)' % ns,
+                    '          ENDDO',
+                    '          DO XCK=1,%d' % len(dep_col[0]),
+                    '            IF (XDCD(XCK).EQ.XCNEW) ICOL = XCK',
+                    '          ENDDO',
+                    '        ENDIF',
+                ]
+            else:
+                # No usable code (no colour basis, or a flow that is not a
+                # clean colour<->anticolour bijection): keep the explicit map.
                 cname = 'COLMAP_%s_%d' % (proc_id, flav0 + 1)
                 decl.append('      INTEGER %s(%d)' % (cname, len(colmap)))
                 decl.append('      DATA %s /%s/' % (
@@ -9572,6 +9664,14 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                                 ' ICOL = %s(ICOL)' % (len(colmap), cname))
         if dispatch:
             dispatch.append('      ENDIF')
+        if col_used:
+            dcode, dcs, das = dep_col
+            for nm, vals in (('XDCD', dcode), ('XDCS', dcs), ('XDAS', das)):
+                decl = ['      INTEGER %s(%d)' % (nm, len(vals)),
+                        '      DATA %s /%s/' % (
+                            nm, ','.join(str(x) for x in vals))] + decl
+            decl = ['      INTEGER XCI, XCJ, XCK, XCD, XCL, XCNEW, XCBAS'] \
+                + decl
         if encode_used:
             decl = ['      INTEGER XPERM(NEXTERNAL), XSGN(NEXTERNAL), XDUMF',
                     '      INTEGER XBDIG(NEXTERNAL), XHR, XHK'] + decl
