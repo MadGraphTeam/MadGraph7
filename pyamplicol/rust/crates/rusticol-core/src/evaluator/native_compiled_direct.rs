@@ -13,8 +13,6 @@
 
 #![allow(dead_code)]
 
-use std::any::Any;
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::ptr;
 
@@ -33,11 +31,13 @@ const NATIVE_COMPILED_DIRECT_FLAG_COMPONENT_MAJOR: u32 = 1 << 1;
 const NATIVE_COMPILED_DIRECT_FLAG_POINT_CONTIGUOUS: u32 = 1 << 2;
 const NATIVE_COMPILED_DIRECT_FLAG_FACTOR_FREE_OVERWRITE: u32 = 1 << 3;
 const NATIVE_COMPILED_DIRECT_FLAG_NO_OUTPUT_ALIAS: u32 = 1 << 4;
+const NATIVE_COMPILED_DIRECT_FLAG_NOEXCEPT: u32 = 1 << 5;
 const NATIVE_COMPILED_DIRECT_REQUIRED_FLAGS: u32 = NATIVE_COMPILED_DIRECT_FLAG_SPLIT_COMPLEX
     | NATIVE_COMPILED_DIRECT_FLAG_COMPONENT_MAJOR
     | NATIVE_COMPILED_DIRECT_FLAG_POINT_CONTIGUOUS
     | NATIVE_COMPILED_DIRECT_FLAG_FACTOR_FREE_OVERWRITE
-    | NATIVE_COMPILED_DIRECT_FLAG_NO_OUTPUT_ALIAS;
+    | NATIVE_COMPILED_DIRECT_FLAG_NO_OUTPUT_ALIAS
+    | NATIVE_COMPILED_DIRECT_FLAG_NOEXCEPT;
 const NATIVE_COMPILED_DIRECT_KNOWN_FLAGS: u32 = NATIVE_COMPILED_DIRECT_REQUIRED_FLAGS;
 const NATIVE_COMPILED_DIRECT_STATUS_OK: i32 = 0;
 
@@ -52,6 +52,27 @@ struct NativeCompiledDirectMetadataV1 {
     output_plane_count: u32,
     simd_lane_width: u32,
     reserved: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct NativeCompiledDirectDescriptorCounts {
+    input_planes: u32,
+    scalar_inputs: u32,
+    output_planes: u32,
+}
+
+impl NativeCompiledDirectDescriptorCounts {
+    fn checked_from_lengths(
+        input_planes: usize,
+        scalar_inputs: usize,
+        output_planes: usize,
+    ) -> RusticolResult<Self> {
+        Ok(Self {
+            input_planes: checked_descriptor_count(input_planes, "input-plane")?,
+            scalar_inputs: checked_descriptor_count(scalar_inputs, "scalar-input")?,
+            output_planes: checked_descriptor_count(output_planes, "output-plane")?,
+        })
+    }
 }
 
 #[repr(C)]
@@ -111,7 +132,8 @@ pub(crate) struct NativeCompiledDirectOutputBinding(pub NativeCompiledDirectAren
 pub(crate) struct LoadedNativeCompiledDirectStage {
     _library: libloading::Library,
     evaluate: NativeCompiledDirectEvaluateFunction,
-    simd_lane_width: usize,
+    descriptor_counts: NativeCompiledDirectDescriptorCounts,
+    declared_lane_width: usize,
     input_bindings: Box<[NativeCompiledDirectPlaneBinding]>,
     scalar_bindings: Box<[NativeCompiledDirectScalarBinding]>,
     output_bindings: Box<[NativeCompiledDirectOutputBinding]>,
@@ -127,8 +149,11 @@ pub(crate) struct BoundNativeCompiledDirectStage {
     outputs: Box<[NativeCompiledDirectOutputPlaneV1]>,
     _literal_values: Box<[f64]>,
     _zero_plane: AlignedF64Buffer,
+    input_count: u32,
+    scalar_count: u32,
+    output_count: u32,
     point_stride: u32,
-    simd_lane_width: usize,
+    declared_lane_width: usize,
     display_path: Box<Path>,
 }
 
@@ -149,6 +174,11 @@ impl LoadedNativeCompiledDirectStage {
             )));
         }
         validate_c_symbol(function_name)?;
+        let descriptor_counts = NativeCompiledDirectDescriptorCounts::checked_from_lengths(
+            input_bindings.len(),
+            scalar_bindings.len(),
+            output_bindings.len(),
+        )?;
         validate_static_bindings(&input_bindings, &output_bindings)?;
 
         let path = path.as_ref();
@@ -168,23 +198,17 @@ impl LoadedNativeCompiledDirectStage {
         let evaluate = unsafe {
             load_export::<NativeCompiledDirectEvaluateFunction>(&library, path, &symbol_prefix)?
         };
-        let metadata = guard_native_panic(
-            || unsafe { metadata_function() },
-            path,
-            "read metadata from",
-        )?;
-        validate_metadata(
-            metadata,
-            input_bindings.len(),
-            scalar_bindings.len(),
-            output_bindings.len(),
-            path,
-        )?;
+        // SAFETY: the authenticated producer contract assigns this symbol the
+        // fixed metadata signature. Native exports must be `noexcept`; foreign
+        // unwinding across this C boundary is not recoverable by Rust.
+        let metadata = unsafe { metadata_function() };
+        validate_metadata(metadata, descriptor_counts, path)?;
 
         Ok(Self {
             _library: library,
             evaluate,
-            simd_lane_width: metadata.simd_lane_width as usize,
+            descriptor_counts,
+            declared_lane_width: metadata.simd_lane_width as usize,
             input_bindings: input_bindings.into_boxed_slice(),
             scalar_bindings: scalar_bindings.into_boxed_slice(),
             output_bindings: output_bindings.into_boxed_slice(),
@@ -192,8 +216,8 @@ impl LoadedNativeCompiledDirectStage {
         })
     }
 
-    pub(crate) const fn simd_lane_width(&self) -> usize {
-        self.simd_lane_width
+    pub(crate) const fn declared_lane_width(&self) -> usize {
+        self.declared_lane_width
     }
 
     /// Bind the native function to persistent plane and scalar storage.
@@ -295,6 +319,16 @@ impl LoadedNativeCompiledDirectStage {
             })
             .collect::<RusticolResult<Vec<_>>>()?
             .into_boxed_slice();
+        let descriptor_counts = NativeCompiledDirectDescriptorCounts::checked_from_lengths(
+            inputs.len(),
+            scalars.len(),
+            outputs.len(),
+        )?;
+        if descriptor_counts != self.descriptor_counts {
+            return Err(RusticolError::internal(
+                "native compiled descriptor counts changed while binding persistent storage",
+            ));
+        }
 
         Ok(BoundNativeCompiledDirectStage {
             _library: self._library,
@@ -304,16 +338,19 @@ impl LoadedNativeCompiledDirectStage {
             outputs,
             _literal_values: literal_values,
             _zero_plane: zero_plane,
+            input_count: descriptor_counts.input_planes,
+            scalar_count: descriptor_counts.scalar_inputs,
+            output_count: descriptor_counts.output_planes,
             point_stride,
-            simd_lane_width: self.simd_lane_width,
+            declared_lane_width: self.declared_lane_width,
             display_path: self.display_path,
         })
     }
 }
 
 impl BoundNativeCompiledDirectStage {
-    pub(crate) const fn simd_lane_width(&self) -> usize {
-        self.simd_lane_width
+    pub(crate) const fn declared_lane_width(&self) -> usize {
+        self.declared_lane_width
     }
 
     /// Invoke the authenticated native function without allocating or packing.
@@ -336,25 +373,21 @@ impl BoundNativeCompiledDirectStage {
             )));
         }
 
-        let status = catch_unwind(AssertUnwindSafe(|| unsafe {
+        // SAFETY: load and bind authenticated the function signature and fixed
+        // descriptors. The producer contract requires `noexcept` and status
+        // returns; Rust cannot contain foreign unwinding across this C ABI.
+        let status = unsafe {
             (self.evaluate)(
                 self.inputs.as_ptr(),
-                self.inputs.len() as u32,
+                self.input_count,
                 self.scalars.as_ptr(),
-                self.scalars.len() as u32,
+                self.scalar_count,
                 self.outputs.as_ptr(),
-                self.outputs.len() as u32,
+                self.output_count,
                 point_start,
                 point_count,
             )
-        }))
-        .map_err(|payload| {
-            RusticolError::evaluation(format!(
-                "native compiled DirectApplication {} unwound into Rust: {}",
-                self.display_path.display(),
-                panic_detail(payload)
-            ))
-        })?;
+        };
         if status != NATIVE_COMPILED_DIRECT_STATUS_OK {
             return Err(RusticolError::evaluation(format!(
                 "native compiled DirectApplication {} returned status {status}",
@@ -364,7 +397,10 @@ impl BoundNativeCompiledDirectStage {
         Ok(())
     }
 
-    /// Profile one call without adding accounting work to the unprofiled path.
+    /// Profile adapter-side traffic without adding work to the unprofiled path.
+    ///
+    /// These counters describe Rust-side materialization around the call. They
+    /// cannot observe allocation or copying hidden inside a native producer.
     pub(crate) fn evaluate_profiled(
         &self,
         point_start: u32,
@@ -379,9 +415,7 @@ impl BoundNativeCompiledDirectStage {
 
 fn validate_metadata(
     metadata: NativeCompiledDirectMetadataV1,
-    input_count: usize,
-    scalar_count: usize,
-    output_count: usize,
+    descriptor_counts: NativeCompiledDirectDescriptorCounts,
     path: &Path,
 ) -> RusticolResult<()> {
     if metadata.abi_version != NATIVE_COMPILED_DIRECT_ABI_VERSION
@@ -399,24 +433,24 @@ fn validate_metadata(
     {
         return Err(RusticolError::compatibility(format!(
             "native compiled DirectApplication {} does not certify split-plane, \
-             point-contiguous, factor-free overwrite and no-alias semantics",
+             point-contiguous, factor-free overwrite, no-alias and noexcept semantics",
             path.display()
         )));
     }
     for (actual, expected, label) in [
         (
             metadata.input_plane_count,
-            u32::try_from(input_count).unwrap_or(u32::MAX),
+            descriptor_counts.input_planes,
             "input plane",
         ),
         (
             metadata.scalar_input_count,
-            u32::try_from(scalar_count).unwrap_or(u32::MAX),
+            descriptor_counts.scalar_inputs,
             "scalar input",
         ),
         (
             metadata.output_plane_count,
-            u32::try_from(output_count).unwrap_or(u32::MAX),
+            descriptor_counts.output_planes,
             "output plane",
         ),
     ] {
@@ -430,12 +464,20 @@ fn validate_metadata(
     }
     if metadata.simd_lane_width == 0 || !metadata.simd_lane_width.is_power_of_two() {
         return Err(RusticolError::compatibility(format!(
-            "native compiled DirectApplication {} has invalid SIMD lane width {}",
+            "native compiled DirectApplication {} has invalid declared lane width {}",
             path.display(),
             metadata.simd_lane_width
         )));
     }
     Ok(())
+}
+
+fn checked_descriptor_count(count: usize, label: &str) -> RusticolResult<u32> {
+    u32::try_from(count).map_err(|_| {
+        RusticolError::integrity(format!(
+            "native compiled DirectApplication {label} count {count} exceeds u32"
+        ))
+    })
 }
 
 fn validate_static_bindings(
@@ -575,30 +617,6 @@ unsafe fn load_export<T: Copy>(
     }
 }
 
-fn guard_native_panic<T>(
-    operation: impl FnOnce() -> T,
-    path: &Path,
-    action: &str,
-) -> RusticolResult<T> {
-    catch_unwind(AssertUnwindSafe(operation)).map_err(|payload| {
-        RusticolError::compatibility(format!(
-            "native compiled DirectApplication panicked while trying to {action} {}: {}",
-            path.display(),
-            panic_detail(payload)
-        ))
-    })
-}
-
-fn panic_detail(payload: Box<dyn Any + Send>) -> String {
-    if let Some(message) = payload.downcast_ref::<&str>() {
-        (*message).to_string()
-    } else if let Some(message) = payload.downcast_ref::<String>() {
-        message.clone()
-    } else {
-        "non-string panic payload".to_string()
-    }
-}
-
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
     use super::super::CompiledComplexF64Evaluator;
@@ -612,10 +630,12 @@ mod tests {
     use num_complex::Complex;
     use std::fs;
     use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
     const POINT_COUNT: usize = 129;
     const REQUIRED_FLAGS: u32 = NATIVE_COMPILED_DIRECT_REQUIRED_FLAGS;
+    static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     fn native_fixture() -> (std::path::PathBuf, std::path::PathBuf) {
         let unique = SystemTime::now()
@@ -623,8 +643,9 @@ mod tests {
             .unwrap()
             .as_nanos();
         let directory = std::env::temp_dir().join(format!(
-            "rusticol-native-compiled-direct-test-{}-{unique}",
-            std::process::id()
+            "rusticol-native-compiled-direct-test-{}-{unique}-{}",
+            std::process::id(),
+            FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed),
         ));
         fs::create_dir_all(&directory).unwrap();
         let source = directory.join("fixture.cpp");
@@ -671,8 +692,10 @@ rusticol_native_leaf_direct_application_v1_metadata() noexcept {{
   return Metadata{{1u, sizeof(Metadata), {REQUIRED_FLAGS}u, 4u, 2u, 4u, 2u, 0u}};
 }}
 
-// This is the prototype's genuine plane-native implementation.  It never
-// calls the dense function and never constructs a params/buffer/out row.
+// This is a synthetic scalar plane-loop fixture. It addresses planes directly,
+// never calls the dense function, and never constructs a params/buffer/out row.
+// The declared width of 2 exercises metadata plumbing; it is not proof that
+// this fixture contains SIMD or production compressed-O3 code.
 extern "C" int rusticol_native_leaf_direct_application_v1(
     const InputPlane* inputs,
     std::uint32_t input_count,
@@ -848,7 +871,7 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
     }
 
     #[test]
-    fn native_fused_leaf_preserves_odd_tails_and_allocates_zero_when_warm() {
+    fn synthetic_plane_loop_preserves_odd_tails_and_allocates_zero_when_warm() {
         let (directory, library) = native_fixture();
         let mut workspace = DirectArenaWorkspace::new(4, 0, POINT_COUNT as u32).unwrap();
         workspace.begin_tile(POINT_COUNT as u32).unwrap();
@@ -866,7 +889,7 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
             &parameter_im,
         )
         .unwrap();
-        assert_eq!(bound.simd_lane_width(), 2);
+        assert_eq!(bound.declared_lane_width(), 2);
 
         for (point_start, point_count) in [
             (0_u32, 1_u32),
@@ -919,11 +942,17 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
         let (result, allocation_count, allocated_bytes) =
             count_allocations(|| bound.evaluate(0, POINT_COUNT as u32));
         result.unwrap();
-        assert_eq!(allocation_count, 0, "warmed native direct call allocated");
+        assert_eq!(
+            allocation_count, 0,
+            "warmed native direct call allocated in Rust"
+        );
         assert_eq!(
             allocated_bytes, 0,
-            "warmed native direct call allocated bytes"
+            "warmed native direct call allocated bytes in Rust"
         );
+        // This accounts only for Rust adapter-side traffic. The fixture source
+        // is inspected separately to establish that its native loop also
+        // contains no dense-row wrapper.
         let mut traffic = DirectArenaTrafficCounters::default();
         bound
             .evaluate_profiled(0, POINT_COUNT as u32, &mut traffic)
@@ -940,7 +969,7 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
     }
 
     #[test]
-    fn native_fused_leaf_matches_existing_dense_gather_call_scatter() {
+    fn synthetic_plane_loop_matches_existing_dense_gather_call_scatter() {
         let (directory, library) = native_fixture();
         let mut workspace = DirectArenaWorkspace::new(4, 0, POINT_COUNT as u32).unwrap();
         workspace.begin_tile(POINT_COUNT as u32).unwrap();
@@ -1053,12 +1082,38 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
             &parameter_im,
         )
         .unwrap();
-        let attempt = catch_unwind(AssertUnwindSafe(|| status_bound.evaluate(0, 1)));
-        assert!(attempt.is_ok(), "native error status unwound");
-        let error = attempt.unwrap().unwrap_err();
+        let error = status_bound.evaluate(0, 1).unwrap_err();
         assert_eq!(error.kind(), RusticolErrorKind::Evaluation);
         assert!(error.message().contains("status 17"));
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn descriptor_counts_fail_before_any_truncating_ffi_conversion() {
+        let maximum = NativeCompiledDirectDescriptorCounts::checked_from_lengths(
+            u32::MAX as usize,
+            u32::MAX as usize,
+            u32::MAX as usize,
+        )
+        .unwrap();
+        assert_eq!(maximum.input_planes, u32::MAX);
+        assert_eq!(maximum.scalar_inputs, u32::MAX);
+        assert_eq!(maximum.output_planes, u32::MAX);
+
+        if usize::BITS > u32::BITS {
+            let too_many = usize::try_from(u64::from(u32::MAX) + 1).unwrap();
+            for error in [
+                NativeCompiledDirectDescriptorCounts::checked_from_lengths(too_many, 0, 1)
+                    .unwrap_err(),
+                NativeCompiledDirectDescriptorCounts::checked_from_lengths(0, too_many, 1)
+                    .unwrap_err(),
+                NativeCompiledDirectDescriptorCounts::checked_from_lengths(0, 0, too_many)
+                    .unwrap_err(),
+            ] {
+                assert_eq!(error.kind(), RusticolErrorKind::Integrity);
+                assert!(error.message().contains("exceeds u32"));
+            }
+        }
     }
 
     fn gather_call_scatter(
@@ -1107,7 +1162,7 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
 
     #[test]
     #[ignore = "manual interleaved native DirectApplication benchmark"]
-    fn benchmark_native_direct_against_gather_call_scatter() {
+    fn benchmark_synthetic_native_plane_loop_against_gather_call_scatter() {
         const SAMPLES: usize = 9;
         const REPEATS: usize = 10_000;
 
@@ -1193,13 +1248,15 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
         let direct_mad = median_absolute_deviation(&direct_ordered, direct_median);
         let packed_mad = median_absolute_deviation(&packed_ordered, packed_median);
         eprintln!(
-            "native-compiled-direct points={POINT_COUNT} samples={SAMPLES} repeats={REPEATS} \
+            "synthetic-native-compiled-plane-loop points={POINT_COUNT} samples={SAMPLES} \
+             repeats={REPEATS} \
              direct_ns={direct_ordered:?} packed_ns={packed_ordered:?} \
              direct_median_ns={direct_median} direct_mad_ns={direct_mad} \
              packed_median_ns={packed_median} packed_mad_ns={packed_mad} \
-             speedup={:.6} direct_allocations={direct_allocations} \
-             direct_allocated_bytes={direct_bytes} packed_allocations={packed_allocations} \
-             packed_allocated_bytes={packed_bytes}",
+             speedup={:.6} direct_rust_allocations={direct_allocations} \
+             direct_rust_allocated_bytes={direct_bytes} \
+             packed_rust_allocations={packed_allocations} \
+             packed_rust_allocated_bytes={packed_bytes}",
             packed_median as f64 / direct_median as f64,
         );
         fs::remove_dir_all(directory).unwrap();

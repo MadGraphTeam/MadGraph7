@@ -31,40 +31,52 @@ acceptance rule.
 C++ or ASM library can export:
 
 - a metadata symbol certifying split-complex, component-major,
-  point-contiguous, factor-free overwrite and no-output-alias semantics;
+  point-contiguous, factor-free overwrite, no-output-alias and non-throwing
+  semantics;
 - fixed arrays of input-plane, scalar-pointer and output-plane descriptors;
 - one `point_start, point_count` native call returning an integer status;
 - logical bindings resolved and validated once when persistent storage is
   pinned;
 - unchecked native plane execution after bounds validation, with no packet
-  buffer, gather, scatter, remap or warmed allocation.
+  buffer, gather, scatter or remap in the Rust adapter.
 
-The fixture's direct function implements the fused complex multiply/add leaf
-against the planes themselves. It does not call the dense function and never
-constructs a dense `params/buffer/out` row. The same library also exports the
-old dense function solely to provide an exact parity and timing oracle.
+The test library is a **synthetic scalar plane-loop fixture** implementing a
+small complex multiply/add leaf against the planes themselves. It does not call
+the dense function and never constructs a dense `params/buffer/out` row. Its
+metadata declares lane width two only to exercise metadata plumbing; this is
+not evidence of generated SIMD, compressed O3, or a real retained fused stage.
+The same library also exports the old dense function solely to provide a
+parity and timing oracle.
 
 The prototype validates metadata/counts, portable C symbol names, input/output
 alias rejection, arena/momentum/parameter bounds, nonempty point ranges,
-odd/tail point ranges, returned native statuses, and zero warmed allocation.
-The target-native producer must mark the C entry point non-throwing and convert
-all recoverable failures to status codes; Rust can contain a returned failure
-or Rust unwind, but cannot recover from a foreign exception, signal, or process
-termination.
+odd/tail point ranges, checked `u32` descriptor counts, and returned native
+statuses. The target-native producer must mark both C entry points `noexcept`
+and convert every recoverable failure to a status code. Rust does not and
+cannot contain foreign unwinding across an `extern "C"` boundary, nor can it
+recover from a foreign signal or process termination.
+
+Traffic counters cover only packet/gather/scatter/remap work performed by the
+Rust adapter; they cannot see hidden work inside a native function. Allocation
+counts likewise use Rust's global allocator and do not observe foreign
+`malloc`/`new`. Source inspection establishes that this synthetic fixture does
+neither, but real generated libraries require their own audit and profiler
+evidence.
 
 ## Measurement
 
 macOS AArch64, release mode, 129 points, nine interleaved samples, 10,000
 repetitions per sample:
 
-| path | median | MAD | warmed allocations |
+| path | median | MAD | warmed Rust allocations |
 |---|---:|---:|---:|
 | native plane call | 55 ns/call | 1 ns | 0 |
 | gather + scalar native calls + scatter | 343 ns/call | 2 ns | 0 |
 
-The isolated fixture ratio is `6.236x`. This is raw ABI evidence, not an
-end-to-end process claim and not evidence that a real large fused expression
-will retain the same ratio.
+The isolated synthetic fixture ratio is `6.236x`. This is raw scalar
+plane-loop/ABI evidence, not an end-to-end process claim, SIMD claim,
+compressed-O3 claim, or evidence that a real large fused expression will retain
+the same ratio.
 
 ## Producer work still required
 
