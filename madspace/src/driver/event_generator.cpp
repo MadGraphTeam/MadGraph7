@@ -53,6 +53,9 @@ EventGenerator::EventGenerator(
     _channel_integral_fractions(channels.size(), 1.),
     _context_job_counts(contexts.size()),
     _deterministic(!contexts.empty() && contexts.at(0)->seed() != 0),
+    _channel_commit_cursor(channels.size()),
+    _channel_next_seq(channels.size()),
+    _channel_pending(channels.size()),
     _status_file(status_file) {}
 
 void EventGenerator::survey() {
@@ -248,14 +251,17 @@ void EventGenerator::generate() {
 }
 
 void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
-    // Ordered, single-pass commit of one job: mirrors the generate() harvest body
-    // but folds unweighting in synchronously so there is exactly one commit per job.
-    // Called strictly in ascending job id, so every state mutation (cross-section
-    // accumulation, max-weight snapshot, event writes, counts, VEGAS optimisation)
-    // happens in a fixed order.
+    // Ordered, single-pass commit of one job: mirrors the generate() harvest body but
+    // folds unweighting in synchronously so there is exactly one commit per job.
+    // Called strictly in ascending channel_seq within each channel, so every per-channel
+    // state mutation (cross-section accumulation, max-weight snapshot, event writes,
+    // counts, VEGAS optimisation) happens in a fixed, seed-determined order.
+    //
+    // The dispatch credit (context_job_count) is released at completion time, not here,
+    // so a channel whose commit stream is stalled behind a slow job does not hold the
+    // thread pool idle -- other channels keep being dispatched and committed.
     auto& channel = _channels.at(job.channel_index);
     auto& channel_job_count = _channel_job_counts.at(job.channel_index);
-    auto& context_job_count = _context_job_counts.at(job.context_index);
     if (job.vegas_batch_size > 0 && channel_job_count == job.split_job_count) {
         channel->clear_events();
     }
@@ -268,7 +274,6 @@ void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
         update_counts();
     }
     channel_job_count -= 1 + job.unweight;
-    context_job_count -= 1;
     if (job.vegas_batch_size > 0 && channel_job_count == 0) {
         channel->optimize_vegas(job);
         _channel_optimizing.at(job.channel_index) = false;
@@ -279,13 +284,26 @@ void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
 void EventGenerator::generate_deterministic() {
     reset_start_time();
     print_gen_init();
-    _commit_cursor = _job_id;
-    _ready_gen.clear();
+
+    // Freeze the channel weights for the whole generation so each channel's target is
+    // fixed and independent of the others (see update_integral). Baseline every
+    // channel's commit cursor to its current dispatch sequence so per-channel backlogs
+    // start empty, and drop any leftover survey buffers.
+    _freeze_fractions = true;
+    for (std::size_t c = 0; c < _channels.size(); ++c) {
+        _channel_commit_cursor.at(c) = _channel_next_seq.at(c);
+        _channel_pending.at(c).clear();
+    }
 
     std::size_t target_job_count = 0;
     for (auto& context : _contexts) {
         target_job_count += 2 * context->thread_pool().thread_count();
     }
+    // How far a single channel may run ahead of its own commit cursor. Bounds the
+    // completed-but-uncommitted backlog per channel (memory) while leaving enough slack
+    // to keep the pool busy when only one slow channel remains.
+    std::size_t max_channel_backlog = 2 * target_job_count;
+
     std::size_t channel_index = 0;
     std::size_t in_flight = 0;
     while (true) {
@@ -302,6 +320,11 @@ void EventGenerator::generate_deterministic() {
                 if (integral_frac > 0 &&
                     channel->status().count_unweighted >=
                         integral_frac * _config.target_count) {
+                    continue;
+                }
+                if (_channel_next_seq.at(channel_index) -
+                        _channel_commit_cursor.at(channel_index) >=
+                    max_channel_backlog) {
                     continue;
                 }
                 if (channel->needs_optimization()) {
@@ -330,11 +353,23 @@ void EventGenerator::generate_deterministic() {
         if (in_flight > 0) {
             std::size_t job_id = _result_queue.wait();
             --in_flight;
-            _ready_gen.insert(job_id);
-            while (_ready_gen.erase(_commit_cursor) > 0) {
-                commit_generate_deterministic(_running_jobs.at(_commit_cursor));
-                _running_jobs.erase(_commit_cursor);
-                ++_commit_cursor;
+            std::size_t context_index = _running_jobs.at(job_id).context_index;
+            std::size_t chan = _running_jobs.at(job_id).channel_index;
+            std::size_t seq = _running_jobs.at(job_id).channel_seq;
+            // release the dispatch credit as soon as the job finishes computing, so a
+            // stalled commit stream never leaves the pool idle
+            --_context_job_counts.at(context_index);
+            _channel_pending.at(chan).emplace(seq, job_id);
+            // commit this channel's contiguous completed jobs in channel_seq order
+            auto& cursor = _channel_commit_cursor.at(chan);
+            auto& pending = _channel_pending.at(chan);
+            for (auto it = pending.find(cursor); it != pending.end();
+                 it = pending.find(cursor)) {
+                std::size_t committed_job_id = it->second;
+                commit_generate_deterministic(_running_jobs.at(committed_job_id));
+                _running_jobs.erase(committed_job_id);
+                pending.erase(it);
+                ++cursor;
             }
         } else {
             if (_status.done) {
@@ -461,6 +496,7 @@ bool EventGenerator::start_jobs() {
                 job.split_job_count = split_job_count * (1 + job.unweight);
                 job.job_id = _job_id;
                 job.context_index = context_index;
+                job.channel_seq = _channel_next_seq.at(job.channel_index)++;
                 _channels.at(job.channel_index)->start_job(job, _result_queue);
                 _channel_job_counts.at(job.channel_index) += 1 + job.unweight;
                 ++_job_id;
@@ -507,6 +543,13 @@ void EventGenerator::update_integral() {
     _status.count_after_cuts_opt = total_count_after_cuts_opt;
     _status.iterations = iterations;
     _status.optimized = optimized;
+    // The deterministic generate path freezes the channel weights (and hence the
+    // per-channel event targets) so that a channel's "am I done" decision depends
+    // only on its own committed count, never on how far the other channels have
+    // progressed at that instant. Reporting quantities above are still refreshed.
+    if (_freeze_fractions) {
+        return;
+    }
     for (auto [channel, integral_fraction] :
          zip(_channels, _channel_integral_fractions)) {
         integral_fraction = channel->cross_section().mean() / total_mean;

@@ -4,6 +4,7 @@
 #include <optional>
 #include <random>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -72,12 +73,25 @@ private:
     std::vector<std::size_t> _context_job_counts;
     ResultQueue _result_queue;
 
-    // Deterministic-path state. _deterministic is set from the context seed. Generate
-    // completions are buffered in _ready_gen and committed in ascending job id, with
-    // _commit_cursor pointing at the next job id to commit.
+    // Deterministic-path state. _deterministic is set from the context seed.
+    //
+    // survey_deterministic commits in a single global stream: completions buffered in
+    // _ready_gen, committed in ascending job id via _commit_cursor.
+    //
+    // generate_deterministic commits one stream per channel so a slow channel cannot
+    // stall the others: each channel's jobs commit in ascending channel_seq. Per
+    // channel, _channel_next_seq is the next dispatch sequence, _channel_commit_cursor
+    // the next to commit, and _channel_pending holds completed-but-not-yet-committed
+    // jobs (channel_seq -> job_id). Integral fractions (hence per-channel targets) are
+    // frozen while _freeze_fractions is set, so the dispatch/stop decisions depend only
+    // on each channel's own committed state, not on cross-channel commit interleaving.
     bool _deterministic = false;
     std::set<std::size_t> _ready_gen;
     std::size_t _commit_cursor = 0;
+    std::vector<std::size_t> _channel_commit_cursor;
+    std::vector<std::size_t> _channel_next_seq;
+    std::vector<std::unordered_map<std::size_t, std::size_t>> _channel_pending;
+    bool _freeze_fractions = false;
 
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;
