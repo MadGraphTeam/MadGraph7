@@ -43,6 +43,37 @@ Accepted recurrence storage-v1 payloads retain a narrowly bounded, read-only
 loader. They are authenticated as exact-factor O2 applications and cannot be
 rewritten as v3. V2 remains unsupported; v3 remains the only writer.
 
+## Rusticol risk adapters
+
+The compiled adapter loads one real compressed O3 DirectApplication v3,
+authenticates factor-free identity overwrite and all logical plane/scalar
+bindings, pins a fixed descriptor bundle to persistent arena storage, and
+invokes the unchecked entry point only after validation. Tests cover point
+ranges `1`, `2`, `3`, `127`, `(start=1,count=127)`, `128`, and `129`,
+untouched sentinels, malformed payloads, input/output and output/output alias
+rejection, literal/model-parameter scalars, panic containment, and zero warmed
+allocations.
+
+The eager adapter loads a prepared source application plus descriptor-v1,
+owns immutable binding-v2 invocation and attachment rows, and binds stable
+plane, scalar, and factor catalogs once. Tests cover two ordered rows, three
+fanout attachments, a producer-to-consumer cross-row alias, rejection of a
+same-row alias, a seven-point active tail over physical pitch eight, bitwise
+parity with a reusable-scratch gather/call/scatter oracle, checked and
+validated-unchecked calls, malformed inputs, and zero warmed allocations.
+
+These adapters remain deliberately scheduler-independent. Neither timing
+result below is an end-to-end runtime claim:
+
+| prototype | direct median | predecessor median | direct/predecessor |
+|---|---:|---:|---:|
+| compiled compressed O3, 129 points, 9 interleaved × 10,000 calls | 207 ns/call | 552 ns/call | 0.3750 |
+| eager table, 2 rows/3 attachments, 7 points, 9 interleaved × 20,000 calls | 58.496 ns/call | 62.260 ns/call | 0.939535 |
+
+The compiled predecessor is a preallocated pack/call/scatter path. The eager
+predecessor is an explicit reusable-scratch gather, ordinary SymJIT batch
+call, and ordered scatter. No unit test asserts timing.
+
 ## Validation
 
 - Rebuilt the ordered patch chain locally and reproduced the final configured
@@ -56,7 +87,12 @@ rewritten as v3. V2 remains unsupported; v3 remains the only writer.
   204 passed.
 - Generic and recurrence warmed-allocation integration tests: 8 passed,
   including genuine topology-replay and all-flow-union fixtures.
-- Observed watchdog peak: 3.646 GiB, below the 30 GiB limit.
+- Compiled Rusticol adapter: 4 release tests passed; independent raw-storage
+  safety audit returned GO; peak RSS 4.114 GiB.
+- Eager Rusticol adapter: 5 release tests passed and one manual benchmark was
+  ignored by default; peak RSS 4.041 GiB.
+- Authoritative combined candidate reruns passed the compiled 4/4 and eager
+  5/5 focused release tests, with peaks 4.033 GiB and 3.935 GiB respectively.
 
 All mutable sources, caches, targets, patch-chain copies, and test temporary
 directories used for this milestone lived inside the dedicated feature
@@ -64,8 +100,8 @@ worktree.
 
 ## Remaining prototype gates
 
-- Wire the checked ABIs into real eager and compiled Rusticol adapters and
-  benchmark each against its packet/gather/scatter predecessor.
+- Wire the validated adapters into the real eager and compiled schedulers,
+  artifact codecs, and lane-specific plans.
 - Demonstrate an end-to-end wall-time win before mass migration.
 - Implement equivalent x86-64 table callable generation; descriptor
   validation is portable, but table code generation is currently AArch64-only.

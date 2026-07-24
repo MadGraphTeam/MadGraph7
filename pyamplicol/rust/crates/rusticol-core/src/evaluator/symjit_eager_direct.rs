@@ -8,6 +8,9 @@
 //! generated table callable evaluates rows outermost and stores every output
 //! directly into its ordered destinations.
 
+// This bounded milestone is intentionally not wired into the eager scheduler yet.
+#![allow(dead_code)]
+
 use crate::direct_arena::{DirectArenaView, DirectArenaWorkspace};
 use crate::{RusticolError, RusticolResult};
 use std::any::Any;
