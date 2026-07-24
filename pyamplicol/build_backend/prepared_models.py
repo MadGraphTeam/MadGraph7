@@ -226,7 +226,7 @@ def write_candidate_packaged_prepared_model_asset(
             package_root / "_internal" / "versions.py",
             "SYMBOLICA_SERIALIZATION_ABI",
         ),
-        "symbolica_version": release["symbolica"]["python_version"],
+        "symbolica_version": contributor["symbolica"]["candidate_version"],
         "symjit_application_abi": _literal_assignment(
             package_root / "_internal" / "versions.py",
             "SYMJIT_APPLICATION_ABI",
@@ -433,6 +433,7 @@ def _validate_bundle(
         pack_dependency_abis=pack.dependency_abis,
         package_root=package_root,
         overlay=overlay,
+        mode=mode,
     )
     for kernel in pack.kernels:
         manifest = kernel.f64_evaluator_manifest
@@ -465,11 +466,19 @@ def _validate_dependency_contract(
     pack_dependency_abis: Mapping[str, object],
     package_root: Path,
     overlay: Path,
+    mode: str,
 ) -> None:
     with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
         release = tomllib.load(stream)
+    symbolica_version = release["symbolica"]["python_version"]
+    if mode == "candidate":
+        with (overlay / "dependencies" / "contributor-lock.toml").open(
+            "rb"
+        ) as stream:
+            contributor = tomllib.load(stream)
+        symbolica_version = contributor["symbolica"]["candidate_version"]
     expected = {
-        "symbolica_version": release["symbolica"]["python_version"],
+        "symbolica_version": symbolica_version,
         "ufo_model_loader_version": release["ufo_model_loader"]["required_version"],
         "symjit_version": _symjit_version(overlay),
         "symbolica_serialization_abi": _literal_assignment(
