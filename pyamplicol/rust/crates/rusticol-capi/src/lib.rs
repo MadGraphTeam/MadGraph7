@@ -1304,6 +1304,8 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Vec<String>>(json).unwrap(),
             vec![
+                "rusticol.compiled.color-contraction-walsh-c2k.v1".to_string(),
+                "rusticol.compiled.color-contraction-walsh.v1".to_string(),
                 "rusticol.compiled.color-topology-lanes.v1".to_string(),
                 "rusticol.compiled.helicity-dual-lane.v1".to_string(),
                 "rusticol.compiled.helicity-primary-recurrence.v1".to_string(),

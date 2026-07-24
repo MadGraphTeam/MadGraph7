@@ -1569,6 +1569,7 @@ fn validate_runtime_capabilities(
         )));
     }
     let known = [
+        RuntimeCapability::CompiledColorContractionWalshC2kV1,
         RuntimeCapability::CompiledColorContractionWalshV1,
         RuntimeCapability::CompiledColorTopologyLanesV1,
         RuntimeCapability::CompiledHelicityDualLaneV1,

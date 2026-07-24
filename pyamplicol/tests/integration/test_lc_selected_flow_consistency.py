@@ -131,17 +131,33 @@ def test_selected_lc_artifact_matches_complete_artifact_physical_flow(
         momenta,
         color_flows=[flow_id],
     ).total()[0]
+    complete_total = complete.evaluate(momenta, color_flows=[flow_id])[0]
     selected_total = selected.evaluate(momenta)[0]
+    assert complete_total == pytest.approx(
+        selected_total,
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
     assert selected_total.real == pytest.approx(
         complete_component.real,
-        rel=1.0e-11,
-        abs=1.0e-13,
+        rel=1.0e-12,
+        abs=1.0e-15,
     )
     assert selected_total.imag == pytest.approx(
         complete_component.imag,
-        rel=1.0e-11,
-        abs=1.0e-13,
+        rel=1.0e-12,
+        abs=1.0e-15,
     )
+    profile = complete._backend.profile(momenta, color_flows=[flow_id])
+    assert profile["resolved_materialized_component_count"] == 0
+    assert profile["total_materialized_value_count"] == len(momenta)
+    homogeneous_profile = complete._backend.profile(
+        momenta,
+        color_flow_by_point=[flow_id] * len(momenta),
+    )
+    assert homogeneous_profile["selector_plan_kind"] == "homogeneous"
+    assert homogeneous_profile["resolved_materialized_component_count"] == 0
+    assert homogeneous_profile["total_materialized_value_count"] == len(momenta)
 
 
 def test_complete_pure_gluon_replay_matches_every_sector_specialization(
@@ -455,9 +471,7 @@ def test_three_line_lc_publication_reload_and_union_components_match(
     )
 
     union_reloaded = Runtime.load(union_path)
-    reloaded_selected = union_reloaded.evaluate_resolved(
-        points, color_flows=(flow_id,)
-    )
+    reloaded_selected = union_reloaded.evaluate_resolved(points, color_flows=(flow_id,))
     assert flattened_values(reloaded_selected) == pytest.approx(
         flattened_values(union_selected),
         rel=0.0,
@@ -504,9 +518,7 @@ def test_complete_pure_gluon_fixed_helicity_preserves_every_physical_flow(
     ).generate("g g > g g", artifact, model=model)
 
     execution = json.loads(
-        (artifact / "processes/g_g_to_g_g/execution.json").read_text(
-            encoding="utf-8"
-        )
+        (artifact / "processes/g_g_to_g_g/execution.json").read_text(encoding="utf-8")
     )
     assert any(
         record["schedule_mode"] == "nested-runtime"
@@ -720,8 +732,7 @@ def test_all_flow_union_supports_complete_and_selected_runtime_axes(
     per_point = runtime.evaluate(
         (point, point),
         helicity_by_point=tuple(
-            resolved.helicity_ids[index]
-            for index in nonzero_helicity_indices
+            resolved.helicity_ids[index] for index in nonzero_helicity_indices
         ),
         color_flow_by_point=(resolved.color_ids[0], resolved.color_ids[-1]),
     )

@@ -51,16 +51,42 @@ class FactorizedColorContractionBlock:
     coset is ordered as identity, first generator, second generator, and their
     product.  The runtime validates the matrix invariance before using the
     corresponding four-point Walsh transform.
+
+    ``elementary-abelian-walsh`` generalizes the same representation to a
+    free ``C2**rank`` action.  Each coset is ordered by generator bitmask, so
+    group multiplication is bitwise XOR.
     """
 
     kind: str
-    cosets: tuple[tuple[int, int, int, int], ...]
+    cosets: tuple[tuple[int, ...], ...]
+    rank: int | None = None
 
     def __post_init__(self) -> None:
-        if self.kind != "klein-four-walsh":
-            raise ValueError(f"unknown color contraction factorization {self.kind!r}")
         if not self.cosets:
             raise ValueError("factorized color contraction coset map is empty")
+        if self.kind == "klein-four-walsh":
+            if self.rank is not None:
+                raise ValueError("Klein-four color factorization cannot declare rank")
+            expected_coset_size = 4
+        elif self.kind == "elementary-abelian-walsh":
+            if self.rank is None or self.rank < 3:
+                raise ValueError(
+                    "elementary-Abelian color factorization requires rank >= 3"
+                )
+            expected_coset_size = len(self.cosets[0])
+            if (
+                expected_coset_size & (expected_coset_size - 1)
+                or expected_coset_size.bit_length() - 1 != self.rank
+            ):
+                raise ValueError(
+                    "elementary-Abelian color factorization rank is inconsistent"
+                )
+        else:
+            raise ValueError(f"unknown color contraction factorization {self.kind!r}")
+        if any(len(coset) != expected_coset_size for coset in self.cosets):
+            raise ValueError(
+                "factorized color contraction coset size does not match its rank"
+            )
         flattened = tuple(index for coset in self.cosets for index in coset)
         if any(index < 0 for index in flattened):
             raise ValueError(
@@ -72,10 +98,10 @@ class FactorizedColorContractionBlock:
             )
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
-            "kind": self.kind,
-            "cosets": [list(coset) for coset in self.cosets],
-        }
+        cosets = [list(coset) for coset in self.cosets]
+        if self.rank is None:
+            return {"kind": self.kind, "cosets": cosets}
+        return {"kind": self.kind, "rank": self.rank, "cosets": cosets}
 
 
 @dataclass(frozen=True)

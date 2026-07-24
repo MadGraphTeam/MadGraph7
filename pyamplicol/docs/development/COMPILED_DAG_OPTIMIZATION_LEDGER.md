@@ -974,3 +974,128 @@ separate milestone. For `g g > t t~ + 4g`, rank-three H8 would reduce NLC
 the current K4 reductions to `15,104` and about `65,080`. It requires a
 variable-coset schema, load-time XOR-invariance validation, and an eight-point
 Rust butterfly; it is not emulated through an unsafe fixed-K4 encoding.
+
+## Milestone 16: portable C2^3 colour contraction and certified LC direct totals
+
+Status: validated candidate milestone.
+
+The colour-contraction wire now has a generic
+`elementary-abelian-walsh` representation, guarded by capability
+`rusticol.compiled.color-contraction-walsh-c2k.v1`. The generator proves, using
+exact arithmetic, that the proposed generators are commuting disjoint
+transpositions, that each coset is free and complete, and that the contraction
+matrix is XOR-circulant on every coset pair. Rust independently revalidates
+rank, order, partition coverage, bounds, finite values, and XOR invariance
+before accepting the plan. Malformed or merely suggestive structures fail
+closed to the ordinary Hermitian-dot contraction.
+
+The runtime uses an unnormalized Walsh transform on amplitudes and applies
+exactly one inverse subgroup order in the transformed weights. Rank three has
+a dedicated eight-point butterfly; the generic representation and runtime
+fallback support higher ranks, but generation is deliberately capped at rank
+three until larger butterflies have process-level measurements. The existing
+normalized K4 wire and capability remain byte-compatible.
+
+On built-in-SM compiled JIT O3 `g g > t t~ + 4g`, the H8 plan reduces NLC
+Hermitian dots from `15,104` to `13,032` and full-colour dots from about
+`65,080` to `32,736`:
+
+| Colour order | Batch | K4 ms/point | H8 ms/point | Change |
+|---|---:|---:|---:|---:|
+| NLC | 1 | 108.375 +/- 4.352 | 104.281 +/- 1.470 | -3.78% |
+| NLC | 128 | 22.830 +/- 0.517 | 22.431 +/- 0.189 | -1.75% |
+| Full | 1 | 109.882 +/- 0.871 | 106.479 +/- 0.316 | -3.10% |
+| Full | 128 | 26.923 +/- 0.530 | 24.717 +/- 1.039 | -8.19% |
+
+The alternating paired changes at batch 128 are `-1.87%` NLC and `-7.24%`
+full. The largest observed disagreements were `6.52e-15` relative NLC and
+`1.24e-14` relative full, within the required `rtol=1e-12`,
+`atol=1e-15`. The NLC and full H8 artifacts have IDs
+`267da50dbf4c5d42e5c70654d341b9a2b9dd60ed2fc36315ccb35923b35ceb72`
+and
+`1583647df4e8c6f32e66e9257261ff67e9a433574d6ce9ae5c5ff6d64eba8508`.
+Generation took `16m46s / 17m01s` with `11.669 / 13.691 GiB` watchdog peaks.
+The paired NLC and full result SHA-256 digests are
+`77ef4c342e42eaf169a7d0f6fdad274bd4d824a564dcd20b5a6b7d547a67d8d4`
+and
+`d6c593ea146fbe3ec738bd19c642fa09fb0f078abeaeb1c7550c45640b240331`.
+
+LC totals now bypass resolved-component construction only after a load-time
+certificate proves that the reduction groups form an exact, disjoint
+helicity-by-colour Cartesian partition, use uniform compatible routes, and
+terminate at strict leaves. Partial, duplicate, overbroad, contracted, or
+recursive layouts retain the resolved path. Profiled global and per-point
+selectors use the same certified totals lane as unprofiled evaluation.
+
+Selector methodology was also hardened. Headline selected-flow measurements
+use a complete `720 flow x 768 helicity` artifact and select physical flow
+`flow:2,4,5,6,7,8,9,1` at runtime. Direct totals agree with the sum of
+`evaluate_resolved()` from that same artifact (maximum observed relative
+difference `1.73e-15`). A generation-fixed-flow artifact is retained only as a
+diagnostic lower bound:
+
+| Batch | Fixed-flow diagnostic us/point | Complete artifact, runtime selector us/point |
+|---|---:|---:|
+| 1 | 92.950 +/- 0.649 | 96.014 +/- 0.540 |
+| 128 | 54.909 +/- 0.312 | 54.024 +/- 0.226 |
+| 1024 | 56.554 +/- 0.215 | 56.880 +/- 0.361 |
+
+The useful-batch difference is noise-sized, demonstrating that runtime flow
+selection is not the remaining gap. The selector-audited result SHA-256 is
+`6ca4cfa0038d7e2d8dab6b21e0106fadd2572234fef1fbd760eb2476fad242ab`.
+
+The complementary all-flow measurement uses the complete all-flow-union
+artifact and selects source-ordered helicity
+`h:-1,+1,-1,+1,-1,+1,-1,+1,-1` at runtime (source position 234). The
+resolved shape is `4 x 1 x 720`, and its direct total is bitwise equal to the
+resolved flow sum. Native-wall medians are
+`312.352 +/- 3.074 us/point` at batch 128 and
+`340.892 +/- 1.713 us/point` at batch 1024. The artifact ID is
+`ae47047a6f3d9f7c99ae3a8891a0b1fcf9e144ce1e1a74a1d1a6cee47ca6523b`;
+generation took `5m40s`, peaked at `6.877 GiB`, and produced 19,752
+evaluator payloads. The result SHA-256 is
+`763a7d4f444c7cd6cec1a4c4a86cc0e1ac9e4237cef4cf4817ea6b4549c41cd0`.
+
+Two independently checked legacy AmpliCol comparisons delimit the remaining
+LC gap:
+
+- For selected-flow/helicity-sum, the structurally identical same-host
+  built-in `d d~ > Z+6g` proxy is `37.850 us/point` amplitude-only and
+  `38.234 us/point` including squaring over 100,000 points. The effective DAG
+  agrees exactly with pyAmpliCol after terminal-zero filtering: 1,425
+  currents, 8,338 interactions, and 384 roots. Thus the current complete
+  pyAmpliCol artifact at batch 128 is `1.428x / 1.413x` the legacy amplitude
+  / total wall, and the residual is schedule/codegen execution rather than a
+  missing symmetry or recycling.
+- For all-flows/single-helicity, a fresh five-run, 50,000-point retime of the
+  exact 720-flow workload gives AmpliCol
+  `303.070 +/- 4.553 us/point` amplitude-only and
+  `305.878 +/- 2.838 us/point` total. PyAmpliCol batch 128 is only `1.031x /
+  1.021x` the legacy amplitude / total wall. The benchmark and linked library
+  SHA-256 digests are
+  `a2d77a257bbbce4889928e5180ede8233baed47b4b9e20459034114deb62d36c`
+  and
+  `78b46b86774de3a43600130811660d4b1d5564f7a6e79c052c8b033190f81c8d`.
+
+The archived multiplicity-matched AmpliCol NLC `g g > t t~ + 4g` result is
+`6.305 s/point`, versus H8 pyAmpliCol `22.431 ms/point` at batch 128, but it
+contains only two legacy points and is reported solely as a roughly `281x`
+diagnostic. No retained multiplicity-matched legacy full-colour measurement
+exists, so no full-colour AmpliCol ratio is claimed. The H8/K4 paired result
+above is the authoritative full-colour performance evidence.
+
+All current selector-audited Z+6g artifacts use the built-in SM. The retained
+built-in/UFO-SM comparison predates the complete-artifact selector contract,
+uses Linux x86-64 and generation-fixed axes, and is therefore diagnostic only.
+A fresh complete UFO-SM artifact remains required before claiming
+selector-compliant current-host model-source parity.
+
+Final gates passed `cargo fmt --check`, Ruff format and lint, `git diff
+--check`, 279 `rusticol-core` unit tests, 26 eager-runtime integration tests,
+10 non-panicking `rusticol-capi` unit tests, two C-ABI artifact tests, and four
+C-ABI selector tests. All substantial commands ran under the 30 GiB watchdog;
+the core suite peaked at `1.541 GiB`. The one intentionally panicking C-ABI
+unit test aborts in the current macOS Rust panic runtime before
+`catch_unwind` can observe it, including in a clean target with inherited
+Rust and dynamic-library flags cleared; it was isolated and excluded rather
+than weakening application panic containment.

@@ -123,7 +123,41 @@ struct LcResolvedReplaySourceGroup {
     entries: Vec<LcResolvedReplayEntry>,
     helicity_ids: BTreeSet<String>,
     color_ids: BTreeSet<String>,
+    materialized_sector_ids: Option<BTreeSet<i64>>,
+    direct_total_plan: Option<LcDirectTotalPlan>,
     source_component_count: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LcDirectTotalPlan {
+    mapping_index: usize,
+    materialized_sector_id: i64,
+    scale: f64,
+}
+
+fn uniform_lc_replay_total_scale(
+    replay_entry: &LcResolvedReplayEntry,
+    source_component_count: usize,
+    target_component_count: usize,
+) -> Option<f64> {
+    if source_component_count == 0 {
+        return None;
+    }
+    let mut source_scales = vec![0.0; source_component_count];
+    for route in &replay_entry.routes {
+        if route.source_index >= source_component_count
+            || route.target_index >= target_component_count
+            || !route.weight.is_finite()
+        {
+            return None;
+        }
+        source_scales[route.source_index] += route.weight;
+    }
+    let scale = source_scales[0];
+    if !scale.is_finite() || source_scales[1..].iter().any(|value| *value != scale) {
+        return None;
+    }
+    Some(scale)
 }
 
 pub const SYMJIT_APPLICATION_RUNTIME_CAPABILITY: &str = "symjit.application.complex-f64.v1";
@@ -143,6 +177,8 @@ pub const COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY: &str =
     "rusticol.compiled.helicity-primary-recurrence.v1";
 pub const COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY: &str =
     "rusticol.compiled.color-contraction-walsh.v1";
+pub const COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY: &str =
+    "rusticol.compiled.color-contraction-walsh-c2k.v1";
 pub const COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY: &str =
     "rusticol.compiled.color-topology-lanes.v1";
 #[cfg(feature = "f64-symjit")]
@@ -172,6 +208,7 @@ pub fn preflight_prepared_kernel_pack(
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCapability {
+    CompiledColorContractionWalshC2kV1,
     CompiledColorContractionWalshV1,
     CompiledColorTopologyLanesV1,
     CompiledHelicityDualLaneV1,
@@ -190,6 +227,9 @@ pub enum RuntimeCapability {
 impl RuntimeCapability {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::CompiledColorContractionWalshC2kV1 => {
+                COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY
+            }
             Self::CompiledColorContractionWalshV1 => COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
             Self::CompiledColorTopologyLanesV1 => COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
             Self::CompiledHelicityDualLaneV1 => COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
@@ -213,6 +253,8 @@ impl RuntimeCapability {
 
 pub fn supported_runtime_capabilities() -> Vec<&'static str> {
     let mut capabilities = vec![
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -1430,10 +1472,15 @@ struct GenericRepeatedColorContractionBlockManifest {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct GenericFactorizedColorContractionBlockManifest {
-    kind: String,
-    cosets: Vec<[usize; 4]>,
+#[serde(tag = "kind", deny_unknown_fields)]
+enum GenericFactorizedColorContractionBlockManifest {
+    #[serde(rename = "klein-four-walsh")]
+    KleinFourWalsh { cosets: Vec<[usize; 4]> },
+    #[serde(rename = "elementary-abelian-walsh")]
+    ElementaryAbelianWalsh {
+        rank: usize,
+        cosets: Vec<Vec<usize>>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1860,6 +1907,7 @@ struct RepeatedColorContractionBlock {
     entries: Vec<ColorContractionEntry>,
     all_weights_real: bool,
     walsh_block: Option<WalshColorContractionBlock>,
+    c2k_walsh_block: Option<C2kWalshColorContractionBlock>,
 }
 
 /// Four real symmetric blocks obtained from a normalized C2 x C2 Walsh basis.
@@ -1869,6 +1917,18 @@ struct RepeatedColorContractionBlock {
 /// a contiguous repeated-component dimension.
 struct WalshColorContractionBlock {
     cosets: Vec<[usize; 4]>,
+    entries: Vec<ColorContractionEntry>,
+}
+
+/// Real symmetric blocks diagonalized in an unnormalized C2^k Walsh basis.
+///
+/// Each coset is ordered by the generator bitmask, so the group product is
+/// integer XOR. The transformed entries carry the single inverse-subgroup-order
+/// factor. Rank three uses a dedicated eight-point butterfly; higher ranks use
+/// the same in-place radix-two transform over reusable scratch.
+struct C2kWalshColorContractionBlock {
+    subgroup_order: usize,
+    cosets: Vec<Vec<usize>>,
     entries: Vec<ColorContractionEntry>,
 }
 
@@ -1889,6 +1949,7 @@ impl ColorContractionRuntime {
         component_group_indices: Vec<usize>,
         entries: Vec<ColorContractionEntry>,
         walsh_block: Option<WalshColorContractionBlock>,
+        c2k_walsh_block: Option<C2kWalshColorContractionBlock>,
     ) -> Self {
         let singleton_output_indices = component_group_indices
             .iter()
@@ -1906,6 +1967,7 @@ impl ColorContractionRuntime {
             all_weights_real: entries.iter().all(|entry| entry.weight_im == 0.0),
             entries,
             walsh_block,
+            c2k_walsh_block,
         };
         Self {
             group_count: groups.len(),
@@ -2145,6 +2207,7 @@ fn repeated_color_contraction_block(
         all_weights_real: entries.iter().all(|entry| entry.weight_im == 0.0),
         entries,
         walsh_block: None,
+        c2k_walsh_block: None,
     })
 }
 
@@ -3101,7 +3164,7 @@ mod model_parameters;
 use model_parameters::*;
 
 mod evaluation;
-use evaluation::write_resolved_f64_totals;
+use evaluation::{resolved_f64_totals, write_resolved_f64_totals};
 mod helicity_lane;
 use helicity_lane::*;
 mod momentum;

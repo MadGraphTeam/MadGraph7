@@ -30,6 +30,7 @@ from pyamplicol.config import (
 )
 
 from .._internal.versions import (
+    COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY,
     COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
     COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
@@ -1442,10 +1443,9 @@ def _compiled_execution_lane_manifest(
     required_runtime_capabilities = set(
         _required_runtime_capabilities(stage_evaluators)
     )
-    if _runtime_schema_uses_walsh_color_contraction(runtime_schema):
-        required_runtime_capabilities.add(
-            COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
-        )
+    required_runtime_capabilities.update(
+        _runtime_schema_walsh_color_contraction_capabilities(runtime_schema)
+    )
     if serialized_model_parameters is not None:
         required_runtime_capabilities.update(
             _required_runtime_capabilities(serialized_model_parameters)
@@ -1828,13 +1828,16 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
         factorized_block = repeated.get("factorized_block")
         if factorized_block is not None:
             factorized = _mapping(factorized_block)
-            compact["factorized_block"] = {
+            compact_factorized: dict[str, object] = {
                 "kind": str(factorized["kind"]),
-                "cosets": [
-                    [int(value) for value in _sequence(coset)]
-                    for coset in _sequence(factorized["cosets"])
-                ],
             }
+            if "rank" in factorized:
+                compact_factorized["rank"] = int(factorized["rank"])
+            compact_factorized["cosets"] = [
+                [int(value) for value in _sequence(coset)]
+                for coset in _sequence(factorized["cosets"])
+            ]
+            compact["factorized_block"] = compact_factorized
         result["repeated_block"] = compact
     return result
 
@@ -2530,10 +2533,11 @@ def _compiled_process_runtime_capabilities(
     process: CompiledProcessArtifact,
 ) -> tuple[str, ...]:
     capabilities = set(_required_runtime_capabilities(process.stage_manifest))
-    if _runtime_schema_uses_walsh_color_contraction(
-        _runtime_schema_mapping(process.runtime_schema)
-    ):
-        capabilities.add(COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY)
+    capabilities.update(
+        _runtime_schema_walsh_color_contraction_capabilities(
+            _runtime_schema_mapping(process.runtime_schema)
+        )
+    )
     if process.model_parameter_evaluator is not None:
         capabilities.update(
             _required_runtime_capabilities(process.model_parameter_evaluator)
@@ -2589,26 +2593,41 @@ def _runtime_schema_uses_primary_helicity_recurrence(
 def _runtime_schema_uses_walsh_color_contraction(
     runtime_schema: Mapping[str, object],
 ) -> bool:
+    return bool(_runtime_schema_walsh_color_contraction_capabilities(runtime_schema))
+
+
+def _runtime_schema_walsh_color_contraction_capabilities(
+    runtime_schema: Mapping[str, object],
+) -> frozenset[str]:
     amplitude_stage = runtime_schema.get("amplitude_stage")
     if not isinstance(amplitude_stage, Mapping):
-        return False
+        return frozenset()
     contraction = amplitude_stage.get("color_contraction")
     if not isinstance(contraction, Mapping):
-        return False
+        return frozenset()
     repeated_block = contraction.get("repeated_block")
-    return isinstance(repeated_block, Mapping) and (
-        repeated_block.get("factorized_block") is not None
-    )
+    if not isinstance(repeated_block, Mapping):
+        return frozenset()
+    factorized_block = repeated_block.get("factorized_block")
+    if not isinstance(factorized_block, Mapping):
+        return frozenset()
+    kind = factorized_block.get("kind")
+    if kind == "klein-four-walsh":
+        return frozenset({COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY})
+    if kind == "elementary-abelian-walsh":
+        return frozenset({COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY})
+    return frozenset()
 
 
 def _compiled_execution_runtime_capabilities(
     execution: CompiledExecutionArtifact,
 ) -> tuple[str, ...]:
     capabilities = set(_required_runtime_capabilities(execution.stage_manifest))
-    if _runtime_schema_uses_walsh_color_contraction(
-        _runtime_schema_mapping(execution.runtime_schema)
-    ):
-        capabilities.add(COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY)
+    capabilities.update(
+        _runtime_schema_walsh_color_contraction_capabilities(
+            _runtime_schema_mapping(execution.runtime_schema)
+        )
+    )
     if _runtime_schema_uses_primary_helicity_recurrence(
         _runtime_schema_mapping(execution.runtime_schema),
         has_helicity_sum_execution=False,

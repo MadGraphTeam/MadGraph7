@@ -1079,15 +1079,33 @@ def test_exact_compact_complex_off_diagonal_entries_match_expanded() -> None:
     )
 
 
-def test_exact_color_contraction_ignores_walsh_acceleration_metadata() -> None:
-    groups = {group_id: object() for group_id in range(8)}
+@pytest.mark.parametrize(
+    "factorized_block",
+    [
+        {
+            "kind": "klein-four-walsh",
+            "cosets": [[0, 1, 2, 3]],
+        },
+        {
+            "kind": "elementary-abelian-walsh",
+            "rank": 3,
+            "cosets": [list(range(8))],
+        },
+    ],
+)
+def test_exact_color_contraction_ignores_walsh_acceleration_metadata(
+    factorized_block: dict[str, object],
+) -> None:
+    local_group_count = len(factorized_block["cosets"][0])
+    group_count = 2 * local_group_count
+    groups = {group_id: object() for group_id in range(group_count)}
     compact = {
-        "group_count": 8,
+        "group_count": group_count,
         "entries": [],
         "logical_entry_count": 2,
         "repeated_block": {
             "component_count": 2,
-            "component_group_ids": list(range(8)),
+            "component_group_ids": list(range(group_count)),
             "entries": [
                 {
                     "left_group_index": 0,
@@ -1096,10 +1114,7 @@ def test_exact_color_contraction_ignores_walsh_acceleration_metadata() -> None:
                     "symmetry_factor": 2.0,
                 }
             ],
-            "factorized_block": {
-                "kind": "klein-four-walsh",
-                "cosets": [[0, 1, 2, 3]],
-            },
+            "factorized_block": factorized_block,
         },
     }
     without_acceleration = copy.deepcopy(compact)

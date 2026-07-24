@@ -519,6 +519,8 @@ impl PhysicsRuntime {
                         .collect(),
                     helicity_ids,
                     color_ids,
+                    materialized_sector_ids: None,
+                    direct_total_plan: None,
                     source_component_count: helicity_indices.len() * color_indices.len(),
                 }
             })
@@ -558,6 +560,8 @@ impl ExecutionRuntime {
         helicity_id_map: &BTreeMap<String, String>,
         color_id_map: &BTreeMap<String, String>,
     ) -> RusticolResult<()> {
+        self.lc_resolved_replay_plan = None;
+        self.lc_resolved_replay_selection_cache = None;
         if let Some(reduction) = self.physics_reduction_override.as_mut() {
             remap_reduction_ids(reduction, helicity_id_map, color_id_map)?;
         }
@@ -574,6 +578,8 @@ impl ExecutionRuntime {
     }
 
     pub(super) fn attach_physics(&mut self, physics: Arc<PhysicsRuntime>) -> RusticolResult<()> {
+        self.lc_resolved_replay_plan = None;
+        self.lc_resolved_replay_selection_cache = None;
         self.physics = Some(Arc::clone(&physics));
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
             let sum_physics =
@@ -635,6 +641,17 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<Arc<LcResolvedReplaySelection>> {
+        if let Some((cached_key, selection)) = &self.lc_resolved_replay_selection_cache
+            && selected_helicity_ids.is_none()
+            && cached_key.helicity_indices.is_none()
+            && let Some(color_ids) = selected_color_ids
+            && color_ids.len() == 1
+            && let Some(color_id) = color_ids.iter().next()
+            && let Some(color_index) = physics.color_index_by_id.get(color_id)
+            && cached_key.color_indices.as_deref() == Some(std::slice::from_ref(color_index))
+        {
+            return Ok(Arc::clone(selection));
+        }
         let key =
             physics.lc_resolved_replay_selection_key(selected_helicity_ids, selected_color_ids)?;
         if let Some((cached_key, selection)) = &self.lc_resolved_replay_selection_cache
@@ -642,7 +659,67 @@ impl ExecutionRuntime {
         {
             return Ok(Arc::clone(selection));
         }
-        let selection = Arc::new(physics.select_lc_resolved_replay_plan_for_key(plan, &key)?);
+        let mut selection = physics.select_lc_resolved_replay_plan_for_key(plan, &key)?;
+        let sectors_by_id = self.lc_materialized_sectors_by_id(physics)?;
+        let sector_by_color_index = sectors_by_id
+            .iter()
+            .map(|(sector_id, sector)| (sector.color_index, *sector_id))
+            .collect::<BTreeMap<_, _>>();
+        let target_component_count = selection
+            .helicity_indices
+            .len()
+            .checked_mul(selection.color_indices.len())
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        for source_group in &mut selection.source_groups {
+            let materialized_sector_ids = source_group
+                .color_ids
+                .iter()
+                .map(|color_id| {
+                    let color_index = physics.color_index_by_id.get(color_id).ok_or_else(|| {
+                        RusticolError::integrity(format!(
+                            "LC topology replay selected unknown materialized color {color_id:?}"
+                        ))
+                    })?;
+                    sector_by_color_index.get(color_index).copied().ok_or_else(|| {
+                        RusticolError::integrity(format!(
+                            "LC topology replay has no materialized sector for color {color_id:?}"
+                        ))
+                    })
+                })
+                .collect::<RusticolResult<BTreeSet<_>>>()?;
+            source_group.direct_total_plan = None;
+            if selected_helicity_ids.is_none()
+                && let ([mapping_index], [replay_entry]) = (
+                    source_group.mapping_indices.as_slice(),
+                    source_group.entries.as_slice(),
+                )
+                && materialized_sector_ids.len() == 1
+                && let Some(materialized_sector_id) = materialized_sector_ids.iter().next().copied()
+                && let Some(scale) = uniform_lc_replay_total_scale(
+                    replay_entry,
+                    source_group.source_component_count,
+                    target_component_count,
+                )
+                && self
+                    .color_selector_runtimes
+                    .get(&materialized_sector_id)
+                    .is_some_and(|runtime| {
+                        certifies_lc_direct_total_source(
+                            runtime,
+                            &source_group.helicity_ids,
+                            &source_group.color_ids,
+                        )
+                    })
+            {
+                source_group.direct_total_plan = Some(LcDirectTotalPlan {
+                    mapping_index: *mapping_index,
+                    materialized_sector_id,
+                    scale,
+                });
+            }
+            source_group.materialized_sector_ids = Some(materialized_sector_ids);
+        }
+        let selection = Arc::new(selection);
         self.lc_resolved_replay_selection_cache = Some((key, Arc::clone(&selection)));
         Ok(selection)
     }
@@ -792,6 +869,75 @@ impl ExecutionRuntime {
         self.lc_resolved_replay_selection_cache = None;
         Ok(())
     }
+}
+
+pub(super) fn certifies_lc_direct_total_source(
+    runtime: &ExecutionRuntime,
+    helicity_ids: &BTreeSet<String>,
+    color_ids: &BTreeSet<String>,
+) -> bool {
+    if helicity_ids.is_empty()
+        || color_ids.is_empty()
+        || runtime.helicity_sum_runtime.is_some()
+        || runtime.lc_topology_replay_enabled
+        || runtime.has_compiled_helicity_execution_plan()
+    {
+        return false;
+    }
+    let Some(physics) = runtime.physics.as_deref() else {
+        return false;
+    };
+    let Some(amplitude) = runtime.amplitude_stage.as_ref() else {
+        return false;
+    };
+    if amplitude.color_contraction.is_some()
+        || physics.manifest.reduction.kind != crate::ReductionKind::LcDiagonal
+    {
+        return false;
+    }
+    let Some(expected_component_count) = helicity_ids.len().checked_mul(color_ids.len()) else {
+        return false;
+    };
+    let groups = &physics.manifest.reduction.groups;
+    if groups.is_empty()
+        || amplitude.raw_sum_groups.len() != groups.len()
+        || runtime.amplitude_output_count != groups.len()
+    {
+        return false;
+    }
+    let raw_group_ids = amplitude
+        .raw_sum_groups
+        .iter()
+        .map(|group| group.id)
+        .collect::<BTreeSet<_>>();
+    if raw_group_ids != physics.reduction_by_group_id.keys().copied().collect() {
+        return false;
+    }
+    let mut covered_members = BTreeSet::new();
+    for group in groups {
+        if group.physical_helicity_ids.is_empty()
+            || group.physical_color_ids.is_empty()
+            || !group
+                .physical_helicity_ids
+                .contains(&group.representative_helicity_id)
+            || !group
+                .physical_color_ids
+                .contains(&group.representative_color_id)
+        {
+            return false;
+        }
+        for helicity_id in &group.physical_helicity_ids {
+            for color_id in &group.physical_color_ids {
+                if !helicity_ids.contains(helicity_id)
+                    || !color_ids.contains(color_id)
+                    || !covered_members.insert((helicity_id.as_str(), color_id.as_str()))
+                {
+                    return false;
+                }
+            }
+        }
+    }
+    covered_members.len() == expected_component_count
 }
 
 fn remap_reduction_ids(

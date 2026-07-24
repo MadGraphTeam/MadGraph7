@@ -10,6 +10,7 @@ import pytest
 import pyamplicol.generation.artifact_writer as artifact_writer
 import pyamplicol.generation.service as service_module
 from pyamplicol._internal.versions import (
+    COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY,
     COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
     COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
@@ -358,8 +359,9 @@ def test_color_topology_lane_capability_is_publicly_supported() -> None:
 
 
 def test_walsh_color_contraction_capability_is_publicly_supported() -> None:
+    assert COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY in EVALUATOR_RUNTIME_CAPABILITIES
     assert (
-        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY
         in EVALUATOR_RUNTIME_CAPABILITIES
     )
 
@@ -708,9 +710,31 @@ def test_compiled_process_capabilities_use_primary_execution_lane(
     )
 
 
+@pytest.mark.parametrize(
+    ("factorized_block", "walsh_capability"),
+    [
+        (
+            {
+                "kind": "klein-four-walsh",
+                "cosets": [[0, 1, 2, 3]],
+            },
+            COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
+        ),
+        (
+            {
+                "kind": "elementary-abelian-walsh",
+                "rank": 3,
+                "cosets": [list(range(8))],
+            },
+            COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY,
+        ),
+    ],
+)
 def test_walsh_color_contraction_capability_is_lane_local_and_parent_aggregated(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    factorized_block: dict[str, object],
+    walsh_capability: str,
 ) -> None:
     artifact = _materialize_without_symbolica(monkeypatch, tmp_path)
 
@@ -720,11 +744,15 @@ def test_walsh_color_contraction_capability_is_lane_local_and_parent_aggregated(
         payload = schema.to_mapping()
         amplitude_stage = payload["amplitude_stage"]
         assert isinstance(amplitude_stage, dict)
+        cosets = factorized_block["cosets"]
+        assert isinstance(cosets, list)
+        local_group_count = 1 + max(int(index) for coset in cosets for index in coset)
+        group_count = 2 * local_group_count
         amplitude_stage["color_contraction"] = {
             "color_accuracy": "full",
             "supported": True,
             "reason": None,
-            "group_count": 8,
+            "group_count": group_count,
             "includes_color_factor": True,
             "entry_count": 0,
             "logical_entry_count": 0,
@@ -732,12 +760,9 @@ def test_walsh_color_contraction_capability_is_lane_local_and_parent_aggregated(
             "entries": [],
             "repeated_block": {
                 "component_count": 2,
-                "component_group_ids": list(range(8)),
+                "component_group_ids": list(range(group_count)),
                 "entries": [],
-                "factorized_block": {
-                    "kind": "klein-four-walsh",
-                    "cosets": [[0, 1, 2, 3]],
-                },
+                "factorized_block": factorized_block,
             },
         }
         return RuntimeExpressionSchema.from_mapping(payload)
@@ -746,29 +771,22 @@ def test_walsh_color_contraction_capability_is_lane_local_and_parent_aggregated(
         artifact,
         artifact.runtime_schema.to_mapping(),
     )
-    assert (
-        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
-        not in old_manifest["required_runtime_capabilities"]
-    )
+    assert walsh_capability not in old_manifest["required_runtime_capabilities"]
 
     primary = replace(artifact, runtime_schema=with_walsh(artifact.runtime_schema))
     primary_manifest = artifact_writer._execution_manifest(
         primary,
         primary.runtime_schema.to_mapping(),
     )
+    assert walsh_capability in primary_manifest["required_runtime_capabilities"]
     assert (
-        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
-        in primary_manifest["required_runtime_capabilities"]
-    )
-    assert (
-        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        walsh_capability
         not in primary_manifest["compiled"]["stage_evaluators"][
             "required_runtime_capabilities"
         ]
     )
-    assert (
-        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
-        in artifact_writer._compiled_process_runtime_capabilities(primary)
+    assert walsh_capability in artifact_writer._compiled_process_runtime_capabilities(
+        primary
     )
 
     assert artifact.helicity_sum_execution is not None
@@ -782,17 +800,10 @@ def test_walsh_color_contraction_capability_is_lane_local_and_parent_aggregated(
         parent.runtime_schema.to_mapping(),
     )
     auxiliary_manifest = parent_manifest["helicity_sum_execution"]
-    assert (
-        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
-        in auxiliary_manifest["required_runtime_capabilities"]
-    )
-    assert (
-        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
-        in parent_manifest["required_runtime_capabilities"]
-    )
-    assert (
-        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
-        in artifact_writer._compiled_process_runtime_capabilities(parent)
+    assert walsh_capability in auxiliary_manifest["required_runtime_capabilities"]
+    assert walsh_capability in parent_manifest["required_runtime_capabilities"]
+    assert walsh_capability in artifact_writer._compiled_process_runtime_capabilities(
+        parent
     )
 
 

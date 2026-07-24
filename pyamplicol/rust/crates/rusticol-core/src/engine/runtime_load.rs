@@ -3414,15 +3414,25 @@ fn ensure_execution_capabilities_supported(manifest: &ExecutionManifest) -> Rust
         execution_capabilities.insert(COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY.to_string());
         execution_capabilities.insert(COMPILED_RUNTIME_SELECTORS_CAPABILITY.to_string());
     }
-    if manifest
+    if let Some(factorized_block) = manifest
         .runtime_schema
         .amplitude_stage
         .color_contraction
         .as_ref()
         .and_then(|contraction| contraction.repeated_block.as_ref())
-        .is_some_and(|repeated| repeated.factorized_block.is_some())
+        .and_then(|repeated| repeated.factorized_block.as_ref())
     {
-        execution_capabilities.insert(COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY.to_string());
+        execution_capabilities.insert(
+            match factorized_block {
+                GenericFactorizedColorContractionBlockManifest::KleinFourWalsh { .. } => {
+                    COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+                }
+                GenericFactorizedColorContractionBlockManifest::ElementaryAbelianWalsh {
+                    ..
+                } => COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY,
+            }
+            .to_string(),
+        );
     }
     validate_declared_execution_capabilities(
         &manifest.required_runtime_capabilities,
@@ -3526,10 +3536,50 @@ mod walsh_color_contraction_capability_tests {
         serde_json::from_value(value).expect("deserialize Walsh capability fixture")
     }
 
+    fn c2k_manifest(has_factorized_block: bool, declares_capability: bool) -> ExecutionManifest {
+        let mut value = crate::artifact::tests::minimal_execution_manifest(
+            "p0",
+            "a b > c",
+            DIRECT,
+            crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
+        );
+        if has_factorized_block {
+            value["runtime_schema"]["amplitude_stage"]["color_contraction"] = json!({
+                "supported": true,
+                "reason": null,
+                "group_count": 16,
+                "includes_color_factor": true,
+                "entries": [],
+                "repeated_block": {
+                    "component_count": 2,
+                    "component_group_ids": [
+                        0, 1, 2, 3, 4, 5, 6, 7,
+                        8, 9, 10, 11, 12, 13, 14, 15,
+                    ],
+                    "entries": [],
+                    "factorized_block": {
+                        "kind": "elementary-abelian-walsh",
+                        "rank": 3,
+                        "cosets": [[0, 1, 2, 3, 4, 5, 6, 7]],
+                    },
+                },
+            });
+        }
+        if declares_capability {
+            value["required_runtime_capabilities"] =
+                json!([COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY, DIRECT]);
+        }
+        serde_json::from_value(value).expect("deserialize C2^k Walsh capability fixture")
+    }
+
     #[test]
     fn supported_capabilities_include_walsh_color_contraction() {
         assert!(
             supported_runtime_capabilities().contains(&COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY)
+        );
+        assert!(
+            supported_runtime_capabilities()
+                .contains(&COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY)
         );
     }
 
@@ -3550,6 +3600,23 @@ mod walsh_color_contraction_capability_tests {
                     .contains(COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY),
                 "{error}"
             );
+        }
+    }
+
+    #[test]
+    fn c2k_walsh_color_contraction_requires_its_distinct_exact_capability() {
+        ensure_execution_capabilities_supported(&c2k_manifest(true, true))
+            .expect("C2^k Walsh execution with matching capability");
+
+        for manifest in [c2k_manifest(true, false), c2k_manifest(false, true), {
+            let mut manifest = c2k_manifest(true, true);
+            manifest.required_runtime_capabilities[0] =
+                COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY.to_string();
+            manifest
+        }] {
+            let error = ensure_execution_capabilities_supported(&manifest)
+                .expect_err("C2^k Walsh capability drift must fail closed");
+            assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
         }
     }
 }

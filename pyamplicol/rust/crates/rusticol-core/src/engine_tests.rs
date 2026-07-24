@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: 0BSD
 
+use super::physics::certifies_lc_direct_total_source;
 use super::*;
 use serde_json::json;
 
@@ -1264,10 +1265,11 @@ fn compact_walsh_color_manifest_matches_expanded_repeated_reduction() {
             component_count,
             component_group_ids: (10..10 + groups.len() as i64).collect(),
             entries,
-            factorized_block: Some(GenericFactorizedColorContractionBlockManifest {
-                kind: "klein-four-walsh".to_string(),
-                cosets: vec![[0, 1, 2, 3]],
-            }),
+            factorized_block: Some(
+                GenericFactorizedColorContractionBlockManifest::KleinFourWalsh {
+                    cosets: vec![[0, 1, 2, 3]],
+                },
+            ),
         }),
     };
     let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
@@ -1304,6 +1306,350 @@ fn compact_walsh_color_manifest_matches_expanded_repeated_reduction() {
 }
 
 #[test]
+fn compact_c2k_walsh_h8_manifest_matches_expanded_repeated_reduction() {
+    let component_count = 3;
+    let local_group_count = 8;
+    let output_count = component_count * local_group_count;
+    let groups = (0..output_count)
+        .map(|group_index| {
+            repeated_test_group(
+                10 + group_index as i64,
+                (group_index * 7) % output_count,
+                100 + (group_index / component_count) as i64,
+            )
+        })
+        .collect::<Vec<_>>();
+    let kernel = [8.0, 1.0, 2.0, 0.5, 3.0, 0.25, 0.75, 0.125];
+    let entries = (0..local_group_count)
+        .flat_map(|left_group_index| {
+            (left_group_index..local_group_count).map(move |right_group_index| {
+                GenericRepeatedColorContractionEntryManifest {
+                    left_group_index,
+                    right_group_index,
+                    weight: vec![kernel[left_group_index ^ right_group_index], 0.0],
+                    symmetry_factor: if left_group_index == right_group_index {
+                        1.0
+                    } else {
+                        2.0
+                    },
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: groups.len(),
+        includes_color_factor: true,
+        entries: Vec::new(),
+        repeated_block: Some(GenericRepeatedColorContractionBlockManifest {
+            component_count,
+            component_group_ids: (10..10 + groups.len() as i64).collect(),
+            entries,
+            factorized_block: Some(
+                GenericFactorizedColorContractionBlockManifest::ElementaryAbelianWalsh {
+                    rank: 3,
+                    cosets: vec![(0..local_group_count).collect()],
+                },
+            ),
+        }),
+    };
+    let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
+        .unwrap()
+        .expect("compact C2^3 Walsh contraction");
+    let repeated = contraction
+        .repeated_block
+        .as_ref()
+        .expect("repeated contraction");
+    let walsh = repeated.c2k_walsh_block.as_ref().expect("C2^3 Walsh block");
+    assert_eq!(walsh.subgroup_order, 8);
+    assert_eq!(walsh.cosets, vec![(0..8).collect::<Vec<_>>()]);
+    assert_eq!(walsh.entries.len(), 8);
+    let logical_entries = contraction.logical_entries().collect::<Vec<_>>();
+    let outputs = (0..output_count)
+        .map(|index| {
+            let value = index as f64 + 1.0;
+            c64(0.125 * value, 0.0625 * (7.0 - value))
+        })
+        .collect::<Vec<_>>();
+    let expected =
+        legacy_color_contraction_totals(&outputs, output_count, &groups, &logical_entries)[0];
+    let mut amplitude = test_amplitude_runtime(outputs, Some(contraction));
+    amplitude.raw_sum_groups = groups;
+    let mut actual = vec![0.0];
+
+    amplitude
+        .reduce_scratch_f64_into_selected_slice(1, &mut actual, None)
+        .unwrap();
+
+    assert!(
+        (actual[0] - expected).abs() <= 1.0e-12 * expected.abs().max(1.0),
+        "C2^3 Walsh reduction {} differs from expanded repeated reduction {expected}",
+        actual[0]
+    );
+}
+
+#[test]
+fn compact_c2k_walsh_h8_multiple_cosets_matches_expanded_reference() {
+    const COMPONENT_COUNT: usize = 4;
+    const COSET_COUNT: usize = 3;
+    const SUBGROUP_ORDER: usize = 8;
+    const LOCAL_GROUP_COUNT: usize = COSET_COUNT * SUBGROUP_ORDER;
+    const OUTPUT_COUNT: usize = COMPONENT_COUNT * LOCAL_GROUP_COUNT;
+
+    // Each row is ordered by the C2^3 generator bitmask, but the local group
+    // indices deliberately form a shuffled partition.
+    let cosets = vec![
+        vec![17, 2, 21, 6, 13, 10, 1, 22],
+        vec![5, 18, 8, 15, 3, 20, 12, 7],
+        vec![23, 0, 14, 9, 19, 4, 16, 11],
+    ];
+    let mut local_coordinates = vec![(usize::MAX, usize::MAX); LOCAL_GROUP_COUNT];
+    for (coset_index, coset) in cosets.iter().enumerate() {
+        for (subgroup_index, local_group_index) in coset.iter().copied().enumerate() {
+            local_coordinates[local_group_index] = (coset_index, subgroup_index);
+        }
+    }
+    assert!(
+        local_coordinates
+            .iter()
+            .all(|coordinates| coordinates.0 != usize::MAX)
+    );
+
+    // The six independent coset-pair kernels include negative, small, and
+    // off-diagonal weights. XOR indexing makes every block exactly C2^3
+    // circulant while retaining nontrivial couplings between all cosets.
+    let kernels = [
+        [3.25, -0.5, 0.125, 1.75, -2.0, 0.0625, 0.875, -0.25],
+        [-1.5, 0.375, 2.25, -0.125, 0.75, -3.0, 0.03125, 1.0],
+        [0.625, -2.5, 0.1875, 1.125, -0.75, 0.5, 2.0, -0.0625],
+        [4.0, 0.25, -1.25, 0.5, 0.015625, -0.875, 1.5, -2.25],
+        [-0.4375, 1.875, -0.03125, 2.5, 0.75, -1.0, 0.3125, 3.0],
+        [2.75, -0.1875, 0.5625, -1.75, 1.25, 0.046875, -2.0, 0.375],
+    ];
+    let kernel_index = |left_coset: usize, right_coset: usize| match (
+        left_coset.min(right_coset),
+        left_coset.max(right_coset),
+    ) {
+        (0, 0) => 0,
+        (0, 1) => 1,
+        (0, 2) => 2,
+        (1, 1) => 3,
+        (1, 2) => 4,
+        (2, 2) => 5,
+        pair => panic!("unexpected coset pair {pair:?}"),
+    };
+    let mut entries = Vec::new();
+    for left_group_index in 0..LOCAL_GROUP_COUNT {
+        let (left_coset, left_subgroup) = local_coordinates[left_group_index];
+        for right_group_index in left_group_index..LOCAL_GROUP_COUNT {
+            let (right_coset, right_subgroup) = local_coordinates[right_group_index];
+            entries.push(GenericRepeatedColorContractionEntryManifest {
+                left_group_index,
+                right_group_index,
+                weight: vec![
+                    kernels[kernel_index(left_coset, right_coset)][left_subgroup ^ right_subgroup],
+                    0.0,
+                ],
+                symmetry_factor: if left_group_index == right_group_index {
+                    1.0
+                } else {
+                    2.0
+                },
+            });
+        }
+    }
+
+    let group_id = |mapping_slot: usize| 10_000 + 13 * mapping_slot as i64;
+    let component_group_ids = (0..OUTPUT_COUNT).map(group_id).collect::<Vec<_>>();
+    let mut group_index_by_mapping_slot = vec![usize::MAX; OUTPUT_COUNT];
+    let groups = (0..OUTPUT_COUNT)
+        .map(|group_index| {
+            let mapping_slot = (group_index * 37 + 11) % OUTPUT_COUNT;
+            group_index_by_mapping_slot[mapping_slot] = group_index;
+            repeated_test_group(
+                group_id(mapping_slot),
+                (mapping_slot * 29 + 7) % OUTPUT_COUNT,
+                500 + (mapping_slot / COMPONENT_COUNT) as i64,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        group_index_by_mapping_slot
+            .iter()
+            .all(|group_index| *group_index != usize::MAX)
+    );
+
+    // Build the independent expanded reference before moving the compact
+    // entries into the manifest. This reproduces the logical matrix for every
+    // repeated component without consulting the optimized runtime plan.
+    let group_index_by_mapping_slot = &group_index_by_mapping_slot;
+    let explicit_entries = (0..COMPONENT_COUNT)
+        .flat_map(|component_index| {
+            entries.iter().map(move |entry| ColorContractionEntry {
+                left_group_index: group_index_by_mapping_slot
+                    [entry.left_group_index * COMPONENT_COUNT + component_index],
+                right_group_index: group_index_by_mapping_slot
+                    [entry.right_group_index * COMPONENT_COUNT + component_index],
+                weight_re: entry.weight[0],
+                weight_im: entry.weight[1],
+                symmetry_factor: entry.symmetry_factor,
+            })
+        })
+        .collect::<Vec<_>>();
+    let manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: groups.len(),
+        includes_color_factor: true,
+        entries: Vec::new(),
+        repeated_block: Some(GenericRepeatedColorContractionBlockManifest {
+            component_count: COMPONENT_COUNT,
+            component_group_ids,
+            entries,
+            factorized_block: Some(
+                GenericFactorizedColorContractionBlockManifest::ElementaryAbelianWalsh {
+                    rank: 3,
+                    cosets,
+                },
+            ),
+        }),
+    };
+    let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
+        .unwrap()
+        .expect("multi-coset C2^3 Walsh contraction");
+    let repeated = contraction
+        .repeated_block
+        .as_ref()
+        .expect("repeated contraction");
+    let walsh = repeated.c2k_walsh_block.as_ref().expect("C2^3 Walsh block");
+    assert_eq!(walsh.subgroup_order, SUBGROUP_ORDER);
+    assert_eq!(walsh.cosets.len(), COSET_COUNT);
+    assert!(
+        walsh
+            .entries
+            .iter()
+            .any(|entry| entry.left_group_index != entry.right_group_index),
+        "transformed plan must retain off-diagonal coset couplings"
+    );
+
+    let point_count = 3;
+    let mut outputs = Vec::with_capacity(point_count * OUTPUT_COUNT);
+    for point_index in 0..point_count {
+        let point_scale = [1.0, 0.03125, 5.5][point_index];
+        for output_index in 0..OUTPUT_COUNT {
+            let centered = output_index as f64 - (OUTPUT_COUNT as f64 - 1.0) * 0.5;
+            let modulation = ((output_index * 17 + point_index * 5) % 19) as f64 - 9.0;
+            outputs.push(c64(
+                point_scale * (0.0234375 * centered + 0.0078125 * modulation),
+                point_scale
+                    * (-0.015625 * centered + 0.00390625 * (modulation * modulation - 13.0)),
+            ));
+        }
+    }
+    let expected =
+        legacy_color_contraction_totals(&outputs, OUTPUT_COUNT, &groups, &explicit_entries);
+    let mut amplitude = test_amplitude_runtime(outputs, Some(contraction));
+    amplitude.output_length = OUTPUT_COUNT;
+    amplitude.raw_sum_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_all_sector_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_color_sector_ids = vec![None; OUTPUT_COUNT];
+    amplitude.raw_sum_groups = groups;
+    let mut actual = vec![0.0; point_count];
+
+    amplitude
+        .reduce_scratch_f64_into_selected_slice(point_count, &mut actual, None)
+        .unwrap();
+
+    for (point_index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        let absolute_error = (actual - expected).abs();
+        let tolerance = 1.0e-15 + 1.0e-12 * expected.abs();
+        assert!(
+            absolute_error <= tolerance,
+            "multi-coset C2^3 Walsh point {point_index} differs from expanded reference: \
+             actual={actual}, expected={expected}, absolute_error={absolute_error}, \
+             tolerance={tolerance}"
+        );
+    }
+}
+
+#[test]
+fn compact_c2k_walsh_generic_rank_four_matches_expanded_reduction() {
+    let component_count = 2;
+    let local_group_count = 16;
+    let output_count = component_count * local_group_count;
+    let groups = (0..output_count)
+        .map(|group_index| {
+            repeated_test_group(
+                20 + group_index as i64,
+                group_index,
+                200 + (group_index / component_count) as i64,
+            )
+        })
+        .collect::<Vec<_>>();
+    let kernel = (0..local_group_count)
+        .map(|index| 1.0 / (index + 1) as f64)
+        .collect::<Vec<_>>();
+    let entries = (0..local_group_count)
+        .flat_map(|left_group_index| {
+            let kernel = &kernel;
+            (left_group_index..local_group_count).map(move |right_group_index| {
+                GenericRepeatedColorContractionEntryManifest {
+                    left_group_index,
+                    right_group_index,
+                    weight: vec![kernel[left_group_index ^ right_group_index], 0.0],
+                    symmetry_factor: if left_group_index == right_group_index {
+                        1.0
+                    } else {
+                        2.0
+                    },
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: groups.len(),
+        includes_color_factor: true,
+        entries: Vec::new(),
+        repeated_block: Some(GenericRepeatedColorContractionBlockManifest {
+            component_count,
+            component_group_ids: (20..20 + groups.len() as i64).collect(),
+            entries,
+            factorized_block: Some(
+                GenericFactorizedColorContractionBlockManifest::ElementaryAbelianWalsh {
+                    rank: 4,
+                    cosets: vec![(0..local_group_count).collect()],
+                },
+            ),
+        }),
+    };
+    let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
+        .unwrap()
+        .expect("compact C2^4 Walsh contraction");
+    let logical_entries = contraction.logical_entries().collect::<Vec<_>>();
+    let outputs = (0..output_count)
+        .map(|index| c64(index as f64 * 0.03125, 1.0 - index as f64 * 0.015625))
+        .collect::<Vec<_>>();
+    let expected =
+        legacy_color_contraction_totals(&outputs, output_count, &groups, &logical_entries)[0];
+    let mut amplitude = test_amplitude_runtime(outputs, Some(contraction));
+    amplitude.raw_sum_groups = groups;
+    let mut actual = vec![0.0];
+
+    amplitude
+        .reduce_scratch_f64_into_selected_slice(1, &mut actual, None)
+        .unwrap();
+
+    assert!(
+        (actual[0] - expected).abs() <= 1.0e-12 * expected.abs().max(1.0),
+        "generic C2^4 Walsh reduction {} differs from expanded repeated reduction {expected}",
+        actual[0]
+    );
+}
+
+#[test]
 fn compact_walsh_color_manifest_rejects_malformed_or_noninvariant_plans() {
     let groups = (0..8)
         .map(|group_index| {
@@ -1314,8 +1660,7 @@ fn compact_walsh_color_manifest_rejects_malformed_or_noninvariant_plans() {
             )
         })
         .collect::<Vec<_>>();
-    let manifest = |kind: &str,
-                    cosets: Vec<[usize; 4]>,
+    let manifest = |cosets: Vec<[usize; 4]>,
                     entries: Vec<GenericRepeatedColorContractionEntryManifest>| {
         GenericColorContractionManifest {
             supported: true,
@@ -1327,26 +1672,17 @@ fn compact_walsh_color_manifest_rejects_malformed_or_noninvariant_plans() {
                 component_count: 2,
                 component_group_ids: (10..18).collect(),
                 entries,
-                factorized_block: Some(GenericFactorizedColorContractionBlockManifest {
-                    kind: kind.to_string(),
-                    cosets,
-                }),
+                factorized_block: Some(
+                    GenericFactorizedColorContractionBlockManifest::KleinFourWalsh { cosets },
+                ),
             }),
         }
     };
     let cases = [
-        (
-            "unknown color contraction factorization",
-            manifest("future-transform", vec![[0, 1, 2, 3]], Vec::new()),
-        ),
-        (
-            "duplicate index",
-            manifest("klein-four-walsh", vec![[0, 1, 2, 2]], Vec::new()),
-        ),
+        ("duplicate index", manifest(vec![[0, 1, 2, 2]], Vec::new())),
         (
             "not invariant",
             manifest(
-                "klein-four-walsh",
                 vec![[0, 1, 2, 3]],
                 vec![GenericRepeatedColorContractionEntryManifest {
                     left_group_index: 0,
@@ -1365,6 +1701,128 @@ fn compact_walsh_color_manifest_rejects_malformed_or_noninvariant_plans() {
         assert!(
             error.to_string().contains(expected),
             "unexpected error for {expected}: {error}"
+        );
+    }
+
+    let unknown = serde_json::from_value::<GenericFactorizedColorContractionBlockManifest>(
+        json!({"kind": "future-transform", "cosets": [[0, 1, 2, 3]]}),
+    );
+    assert!(
+        unknown.is_err(),
+        "unknown factorization kind must fail closed"
+    );
+}
+
+#[test]
+fn compact_c2k_walsh_manifest_fails_closed_on_invalid_metadata() {
+    let groups = (0..16)
+        .map(|group_index| {
+            repeated_test_group(
+                10 + group_index as i64,
+                group_index,
+                100 + (group_index / 2) as i64,
+            )
+        })
+        .collect::<Vec<_>>();
+    let entry = |left_group_index: usize,
+                 right_group_index: usize,
+                 weight_re: f64|
+     -> GenericRepeatedColorContractionEntryManifest {
+        GenericRepeatedColorContractionEntryManifest {
+            left_group_index,
+            right_group_index,
+            weight: vec![weight_re, 0.0],
+            symmetry_factor: if left_group_index == right_group_index {
+                1.0
+            } else {
+                2.0
+            },
+        }
+    };
+    let manifest = |rank: usize,
+                    cosets: Vec<Vec<usize>>,
+                    entries: Vec<GenericRepeatedColorContractionEntryManifest>| {
+        GenericColorContractionManifest {
+            supported: true,
+            reason: None,
+            group_count: groups.len(),
+            includes_color_factor: true,
+            entries: Vec::new(),
+            repeated_block: Some(GenericRepeatedColorContractionBlockManifest {
+                component_count: 2,
+                component_group_ids: (10..26).collect(),
+                entries,
+                factorized_block: Some(
+                    GenericFactorizedColorContractionBlockManifest::ElementaryAbelianWalsh {
+                        rank,
+                        cosets,
+                    },
+                ),
+            }),
+        }
+    };
+    let canonical_coset = vec![(0..8).collect::<Vec<_>>()];
+    let cases = [
+        (
+            "rank must be at least three",
+            manifest(2, vec![(0..4).collect()], Vec::new()),
+        ),
+        (
+            "do not match rank or local groups",
+            manifest(3, vec![(0..7).collect()], Vec::new()),
+        ),
+        (
+            "duplicate index",
+            manifest(3, vec![vec![0, 1, 2, 3, 4, 5, 6, 6]], Vec::new()),
+        ),
+        (
+            "weights must be finite",
+            manifest(3, canonical_coset.clone(), vec![entry(0, 0, f64::NAN)]),
+        ),
+        (
+            "duplicate matrix entry",
+            manifest(
+                3,
+                canonical_coset.clone(),
+                vec![entry(0, 1, 1.0), entry(1, 0, 1.0)],
+            ),
+        ),
+        (
+            "not invariant",
+            manifest(3, canonical_coset.clone(), vec![entry(0, 0, 1.0)]),
+        ),
+        (
+            "subgroup order overflows",
+            manifest(usize::BITS as usize, canonical_coset, Vec::new()),
+        ),
+    ];
+    for (expected, manifest) in cases {
+        let error = match build_color_contraction_runtime(Some(&manifest), &groups) {
+            Ok(_) => panic!("malformed C2^k Walsh color contraction must fail"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains(expected),
+            "unexpected error for {expected}: {error}"
+        );
+    }
+
+    for malformed in [
+        json!({
+            "kind": "elementary-abelian-walsh",
+            "cosets": [[0, 1, 2, 3, 4, 5, 6, 7]],
+        }),
+        json!({
+            "kind": "elementary-abelian-walsh",
+            "rank": 3,
+            "cosets": [[0, 1, 2, 3, 4, 5, 6, 7]],
+            "unexpected": true,
+        }),
+    ] {
+        assert!(
+            serde_json::from_value::<GenericFactorizedColorContractionBlockManifest>(malformed)
+                .is_err(),
+            "C2^k Walsh wire metadata must be exact"
         );
     }
 }
@@ -1621,6 +2079,148 @@ fn empty_generic_runtime() -> ExecutionRuntime {
         state_scratch_f64_requires_clear: false,
         values_scratch_f64: Vec::new(),
     }
+}
+
+fn lc_direct_total_test_group(id: i64, helicity_id: &str, color_id: &str) -> crate::ReductionGroup {
+    crate::ReductionGroup {
+        id: format!("group:{id}"),
+        representative_helicity_id: helicity_id.to_string(),
+        physical_helicity_ids: vec![helicity_id.to_string()],
+        representative_color_id: color_id.to_string(),
+        physical_color_ids: vec![color_id.to_string()],
+    }
+}
+
+fn strict_lc_direct_total_test_groups() -> Vec<crate::ReductionGroup> {
+    [
+        ("hel:+-", "flow:0"),
+        ("hel:+-", "flow:1"),
+        ("hel:-+", "flow:0"),
+        ("hel:-+", "flow:1"),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, (helicity_id, color_id))| {
+        lc_direct_total_test_group(7 + index as i64, helicity_id, color_id)
+    })
+    .collect()
+}
+
+fn lc_direct_total_test_runtime(groups: Vec<crate::ReductionGroup>) -> ExecutionRuntime {
+    let mut manifest = test_physics_runtime("lc").manifest;
+    manifest.helicities[1].computed = true;
+    manifest.helicities[1].representative_id = manifest.helicities[1].id.clone();
+    let crate::ColorComponent::LcFlow(second_flow) = &mut manifest.color_components[1] else {
+        panic!("LC test physics must contain LC flows");
+    };
+    second_flow.computed = true;
+    second_flow.representative_id = second_flow.id.clone();
+    manifest.reduction.groups = groups.clone();
+    let physics = PhysicsRuntime::new(manifest).expect("valid LC direct-total test physics");
+
+    let mut amplitude = test_amplitude_runtime(vec![c64(1.0, 0.0); groups.len()], None);
+    amplitude.raw_sum_groups = groups
+        .iter()
+        .enumerate()
+        .map(|(index, group)| RawSumGroup {
+            id: parse_reduction_group_id(&group.id).expect("numeric test reduction group id"),
+            indices: vec![index],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![index as i64],
+        })
+        .collect();
+
+    let mut runtime = empty_generic_runtime();
+    runtime.amplitude_output_count = groups.len();
+    runtime.physics = Some(Arc::new(physics));
+    runtime.amplitude_stage = Some(amplitude);
+    runtime
+}
+
+fn lc_direct_total_test_selectors() -> (BTreeSet<String>, BTreeSet<String>) {
+    (
+        BTreeSet::from(["hel:+-".to_string(), "hel:-+".to_string()]),
+        BTreeSet::from(["flow:0".to_string(), "flow:1".to_string()]),
+    )
+}
+
+#[test]
+fn lc_direct_total_source_certification_accepts_exact_cartesian_partitions() {
+    let runtime = lc_direct_total_test_runtime(strict_lc_direct_total_test_groups());
+    let (helicity_ids, color_ids) = lc_direct_total_test_selectors();
+
+    assert!(certifies_lc_direct_total_source(
+        &runtime,
+        &helicity_ids,
+        &color_ids
+    ));
+
+    let grouped_runtime = lc_direct_total_test_runtime(vec![
+        crate::ReductionGroup {
+            id: "group:7".to_string(),
+            representative_helicity_id: "hel:+-".to_string(),
+            physical_helicity_ids: vec!["hel:+-".to_string(), "hel:-+".to_string()],
+            representative_color_id: "flow:0".to_string(),
+            physical_color_ids: vec!["flow:0".to_string()],
+        },
+        crate::ReductionGroup {
+            id: "group:8".to_string(),
+            representative_helicity_id: "hel:+-".to_string(),
+            physical_helicity_ids: vec!["hel:+-".to_string(), "hel:-+".to_string()],
+            representative_color_id: "flow:1".to_string(),
+            physical_color_ids: vec!["flow:1".to_string()],
+        },
+    ]);
+    assert!(certifies_lc_direct_total_source(
+        &grouped_runtime,
+        &helicity_ids,
+        &color_ids
+    ));
+}
+
+#[test]
+fn lc_direct_total_source_certification_rejects_nonexact_auxiliary_reductions() {
+    let (helicity_ids, color_ids) = lc_direct_total_test_selectors();
+
+    let mut overbroad_groups = strict_lc_direct_total_test_groups();
+    overbroad_groups[0].physical_helicity_ids = vec!["hel:+-".to_string(), "hel:-+".to_string()];
+    let overbroad = lc_direct_total_test_runtime(overbroad_groups);
+    assert!(
+        !certifies_lc_direct_total_source(&overbroad, &helicity_ids, &color_ids),
+        "an auxiliary reduction group may not cover extra source helicities"
+    );
+
+    let mut partial_groups = strict_lc_direct_total_test_groups();
+    partial_groups.pop();
+    let partial = lc_direct_total_test_runtime(partial_groups);
+    assert!(
+        !certifies_lc_direct_total_source(&partial, &helicity_ids, &color_ids),
+        "an auxiliary reduction must cover every requested source component"
+    );
+
+    let mut duplicate_groups = strict_lc_direct_total_test_groups();
+    duplicate_groups[3].representative_helicity_id = "hel:+-".to_string();
+    duplicate_groups[3].physical_helicity_ids = vec!["hel:+-".to_string()];
+    duplicate_groups[3].representative_color_id = "flow:0".to_string();
+    duplicate_groups[3].physical_color_ids = vec!["flow:0".to_string()];
+    let duplicate = lc_direct_total_test_runtime(duplicate_groups);
+    assert!(
+        !certifies_lc_direct_total_source(&duplicate, &helicity_ids, &color_ids),
+        "duplicate source members may not stand in for a missing Cartesian member"
+    );
+
+    let mut mismatched_ids = lc_direct_total_test_runtime(strict_lc_direct_total_test_groups());
+    mismatched_ids
+        .amplitude_stage
+        .as_mut()
+        .expect("test amplitude")
+        .raw_sum_groups[0]
+        .id = 999;
+    assert!(
+        !certifies_lc_direct_total_source(&mismatched_ids, &helicity_ids, &color_ids),
+        "the auxiliary evaluator groups must match the certified physics reduction"
+    );
 }
 
 fn zero_native_runtime() -> NativeRuntime {

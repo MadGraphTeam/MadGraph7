@@ -10,11 +10,15 @@ import pyamplicol.color as color
 import pyamplicol.generation.artifact_writer as artifact_writer
 from pyamplicol.color import (
     ColorContractionEntry,
+    ColorContractionTemplateEntry,
     ColorGroupDescriptor,
+    FactorizedColorContractionBlock,
+    RepeatedColorContractionBlock,
     build_color_contraction_plan,
     build_color_plan,
     color_contraction_factors,
 )
+from pyamplicol.color.contraction import _build_walsh_color_contraction_block
 from pyamplicol.color.contraction_factors import (
     _pure_adjoint_full_factor_by_relative_permutation,
     _pure_adjoint_full_factor_uncached,
@@ -315,16 +319,340 @@ def test_full_color_permutation_orbit_emits_klein_four_walsh_plan() -> None:
     factorized = block.factorized_block
     assert factorized is not None
     assert factorized.kind == "klein-four-walsh"
+    assert factorized.rank is None
     assert len(factorized.cosets) == len(plan.sectors) // 4
     assert sorted(index for coset in factorized.cosets for index in coset) == list(
         range(len(plan.sectors))
     )
     payload = contraction.to_json_dict()
+    assert "rank" not in payload["repeated_block"]["factorized_block"]
     assert payload["repeated_block"] == block.to_json_dict()
     assert _color_contraction(payload)["repeated_block"] == block.to_json_dict()
     assert artifact_writer._runtime_schema_uses_walsh_color_contraction(
         {"amplitude_stage": {"color_contraction": payload}}
     )
+
+
+def _elementary_abelian_orbit_words(rank: int) -> tuple[tuple[int, ...], ...]:
+    labels = tuple(range(2 * rank))
+    return tuple(
+        tuple(label ^ 1 if mask & (1 << (label // 2)) else label for label in labels)
+        for mask in range(1 << rank)
+    )
+
+
+def _diagonal_color_entries(
+    count: int,
+    *,
+    exceptional_weight: float | None = None,
+) -> tuple[ColorContractionTemplateEntry, ...]:
+    return tuple(
+        ColorContractionTemplateEntry(
+            left_group_index=index,
+            right_group_index=index,
+            weight_re=(
+                exceptional_weight
+                if index == 0 and exceptional_weight is not None
+                else 1.0
+            ),
+        )
+        for index in range(count)
+    )
+
+
+def test_elementary_abelian_walsh_plan_emits_measured_rank_three() -> None:
+    rank = 3
+    words = _elementary_abelian_orbit_words(rank)
+
+    factorized = _build_walsh_color_contraction_block(
+        words,
+        _diagonal_color_entries(len(words)),
+    )
+
+    assert factorized is not None
+    assert factorized.kind == "elementary-abelian-walsh"
+    assert factorized.rank == rank
+    assert factorized.cosets == (tuple(range(1 << rank)),)
+    assert factorized.to_json_dict() == {
+        "kind": "elementary-abelian-walsh",
+        "rank": rank,
+        "cosets": [list(range(1 << rank))],
+    }
+    contraction_payload = {
+        "supported": True,
+        "reason": None,
+        "group_count": 2 * len(words),
+        "includes_color_factor": True,
+        "entries": [],
+        "repeated_block": {
+            "component_count": 2,
+            "component_group_ids": list(range(2 * len(words))),
+            "entries": [],
+            "factorized_block": factorized.to_json_dict(),
+        },
+    }
+    assert (
+        _color_contraction(contraction_payload)["repeated_block"]["factorized_block"]
+        == factorized.to_json_dict()
+    )
+    assert artifact_writer._runtime_schema_walsh_color_contraction_capabilities(
+        {"amplitude_stage": {"color_contraction": contraction_payload}}
+    ) == frozenset({artifact_writer.COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY})
+
+
+def test_elementary_abelian_walsh_plan_caps_wider_orbit_at_rank_three() -> None:
+    words = _elementary_abelian_orbit_words(4)
+
+    factorized = _build_walsh_color_contraction_block(
+        words,
+        _diagonal_color_entries(len(words)),
+    )
+
+    assert factorized is not None
+    assert factorized.kind == "elementary-abelian-walsh"
+    assert factorized.rank == 3
+    assert factorized.cosets == (
+        tuple(range(8)),
+        tuple(range(8, 16)),
+    )
+
+
+def test_rank_three_walsh_recognizes_multi_coset_xor_matrix_exactly() -> None:
+    rank = 3
+    subgroup_order = 1 << rank
+    seeds = (
+        tuple(range(2 * rank)),
+        (0, 2, 1, 3, 4, 5),
+    )
+    words = tuple(
+        tuple(label ^ 1 if mask & (1 << (label // 2)) else label for label in seed)
+        for seed in seeds
+        for mask in range(subgroup_order)
+    )
+
+    def matrix_weight(left: int, right: int) -> float:
+        left_coset, left_subgroup = divmod(left, subgroup_order)
+        right_coset, right_subgroup = divmod(right, subgroup_order)
+        coset_pair = tuple(sorted((left_coset, right_coset)))
+        pair_offset = {
+            (0, 0): 8,
+            (0, 1): 24,
+            (1, 1): 40,
+        }[coset_pair]
+        return (pair_offset + (left_subgroup ^ right_subgroup) + 1) / 8.0
+
+    entries = tuple(
+        ColorContractionTemplateEntry(
+            left_group_index=left,
+            right_group_index=right,
+            weight_re=matrix_weight(left, right),
+            symmetry_factor=1.0 if left == right else 2.0,
+        )
+        for left in range(len(words))
+        for right in range(left, len(words))
+    )
+
+    factorized = _build_walsh_color_contraction_block(words, entries)
+
+    assert factorized is not None
+    assert factorized.kind == "elementary-abelian-walsh"
+    assert factorized.rank == rank
+    assert factorized.cosets == (
+        tuple(range(subgroup_order)),
+        tuple(range(subgroup_order, 2 * subgroup_order)),
+    )
+    expected_wire = {
+        "kind": "elementary-abelian-walsh",
+        "rank": rank,
+        "cosets": [
+            list(range(subgroup_order)),
+            list(range(subgroup_order, 2 * subgroup_order)),
+        ],
+    }
+    assert factorized.to_json_dict() == expected_wire
+
+    component_count = 3
+    contraction_payload = {
+        "supported": True,
+        "reason": None,
+        "group_count": component_count * len(words),
+        "includes_color_factor": True,
+        "entries": [],
+        "repeated_block": {
+            "component_count": component_count,
+            "component_group_ids": list(range(component_count * len(words))),
+            "entries": [entry.to_json_dict() for entry in entries],
+            "factorized_block": factorized.to_json_dict(),
+        },
+    }
+    assert (
+        _color_contraction(contraction_payload)["repeated_block"]["factorized_block"]
+        == expected_wire
+    )
+
+    amplitudes = tuple(
+        tuple(
+            complex(
+                (local_group + 1) * (component + 2) / 13.0,
+                (local_group - 2 * component) / 17.0,
+            )
+            for component in range(component_count)
+        )
+        for local_group in range(len(words))
+    )
+    direct = sum(
+        matrix_weight(left, right)
+        * sum(
+            (
+                amplitudes[left][component] * amplitudes[right][component].conjugate()
+            ).real
+            for component in range(component_count)
+        )
+        for left in range(len(words))
+        for right in range(len(words))
+    )
+
+    def walsh(values: list[complex] | list[float]) -> None:
+        stride = 1
+        while stride < len(values):
+            for start in range(0, len(values), 2 * stride):
+                for offset in range(stride):
+                    left = values[start + offset]
+                    right = values[start + stride + offset]
+                    values[start + offset] = left + right
+                    values[start + stride + offset] = left - right
+            stride *= 2
+
+    transformed = [
+        [
+            [
+                amplitudes[coset * subgroup_order + subgroup][component]
+                for subgroup in range(subgroup_order)
+            ]
+            for component in range(component_count)
+        ]
+        for coset in range(len(seeds))
+    ]
+    for coset_components in transformed:
+        for component_values in coset_components:
+            walsh(component_values)
+
+    factorized_total = 0.0
+    for left_coset in range(len(seeds)):
+        for right_coset in range(left_coset, len(seeds)):
+            weights = [
+                matrix_weight(
+                    left_coset * subgroup_order,
+                    right_coset * subgroup_order + subgroup,
+                )
+                for subgroup in range(subgroup_order)
+            ]
+            walsh(weights)
+            symmetry_factor = 1.0 if left_coset == right_coset else 2.0
+            for character, weight in enumerate(weights):
+                product = sum(
+                    (
+                        transformed[left_coset][component][character]
+                        * transformed[right_coset][component][character].conjugate()
+                    ).real
+                    for component in range(component_count)
+                )
+                factorized_total += symmetry_factor * weight * product / subgroup_order
+
+    assert isclose(
+        factorized_total,
+        direct,
+        rel_tol=1.0e-12,
+        abs_tol=1.0e-15,
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "rank", "cosets", "message"),
+    [
+        (
+            "klein-four-walsh",
+            2,
+            ((0, 1, 2, 3),),
+            "cannot declare rank",
+        ),
+        (
+            "elementary-abelian-walsh",
+            None,
+            (tuple(range(8)),),
+            "requires rank >= 3",
+        ),
+        (
+            "elementary-abelian-walsh",
+            2,
+            ((0, 1, 2, 3),),
+            "requires rank >= 3",
+        ),
+        (
+            "elementary-abelian-walsh",
+            3,
+            ((0, 1, 2, 3),),
+            "rank is inconsistent",
+        ),
+    ],
+)
+def test_factorized_walsh_contract_rejects_malformed_rank_metadata(
+    kind: str,
+    rank: int | None,
+    cosets: tuple[tuple[int, ...], ...],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        FactorizedColorContractionBlock(kind=kind, rank=rank, cosets=cosets)
+
+
+def test_factorized_walsh_contract_rejects_partial_local_partition() -> None:
+    factorized = FactorizedColorContractionBlock(
+        kind="elementary-abelian-walsh",
+        rank=3,
+        cosets=(tuple(range(8)),),
+    )
+
+    with pytest.raises(ValueError, match="do not partition local groups"):
+        RepeatedColorContractionBlock(
+            component_count=2,
+            component_group_ids=tuple(range(18)),
+            entries=(),
+            factorized_block=factorized,
+        )
+
+
+def test_complete_six_label_orbit_emits_rank_three_walsh_plan() -> None:
+    words = tuple(permutations(range(6)))
+
+    factorized = _build_walsh_color_contraction_block(
+        words,
+        _diagonal_color_entries(len(words)),
+    )
+
+    assert factorized is not None
+    assert factorized.kind == "elementary-abelian-walsh"
+    assert factorized.rank == 3
+    assert len(factorized.cosets) == len(words) // 8
+    assert sorted(index for coset in factorized.cosets for index in coset) == list(
+        range(len(words))
+    )
+
+
+def test_partial_or_asymmetric_rank_three_orbit_falls_back_safely() -> None:
+    words = _elementary_abelian_orbit_words(3)
+
+    partial = _build_walsh_color_contraction_block(
+        words[:-1],
+        _diagonal_color_entries(len(words) - 1),
+    )
+    asymmetric = _build_walsh_color_contraction_block(
+        words,
+        _diagonal_color_entries(len(words), exceptional_weight=2.0),
+    )
+
+    assert partial is None
+    assert asymmetric is None
 
 
 def test_nlc_permutation_orbit_emits_klein_four_walsh_plan() -> None:
@@ -354,11 +682,7 @@ def test_nlc_permutation_orbit_emits_klein_four_walsh_plan() -> None:
         range(len(nlc_plan.sectors))
     )
     assert artifact_writer._runtime_schema_uses_walsh_color_contraction(
-        {
-            "amplitude_stage": {
-                "color_contraction": nlc_contraction.to_json_dict()
-            }
-        }
+        {"amplitude_stage": {"color_contraction": nlc_contraction.to_json_dict()}}
     )
 
 
@@ -390,11 +714,7 @@ def test_malformed_nlc_permutation_orbit_falls_back_safely() -> None:
     assert malformed_contraction.repeated_block is not None
     assert malformed_contraction.repeated_block.factorized_block is None
     assert not artifact_writer._runtime_schema_uses_walsh_color_contraction(
-        {
-            "amplitude_stage": {
-                "color_contraction": malformed_contraction.to_json_dict()
-            }
-        }
+        {"amplitude_stage": {"color_contraction": malformed_contraction.to_json_dict()}}
     )
 
 

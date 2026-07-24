@@ -313,6 +313,7 @@ pub(super) fn fill_gathered_batch_from_view<'a>(
     Ok(&gathered_batch[..point_indices.len()])
 }
 
+#[cfg(test)]
 pub(super) fn write_partition_totals(
     partition_totals: &mut Vec<f64>,
     resolved: &ResolvedValues<f64>,

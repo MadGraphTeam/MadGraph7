@@ -204,7 +204,7 @@ def _build_repeated_color_contraction_block(
         component_count=len(components),
         component_group_ids=component_group_ids,
         entries=tuple(base_entries),
-        factorized_block=_build_klein_four_walsh_block(
+        factorized_block=_build_walsh_color_contraction_block(
             tuple(
                 descriptors_by_component_and_sector[0][sector_id].word
                 for sector_id in sorted_sector_ids
@@ -214,11 +214,11 @@ def _build_repeated_color_contraction_block(
     )
 
 
-def _build_klein_four_walsh_block(
+def _build_walsh_color_contraction_block(
     words: Sequence[Sequence[int]],
     entries: Sequence[ColorContractionTemplateEntry],
 ) -> FactorizedColorContractionBlock | None:
-    """Recognize an exact free C2 x C2 action on one color matrix."""
+    """Recognize an exact free elementary-Abelian action on one color matrix."""
 
     if not words:
         return None
@@ -264,44 +264,54 @@ def _build_klein_four_walsh_block(
         )
 
     def action_cosets(
-        first_action: tuple[int, ...],
-        second_action: tuple[int, ...],
-    ) -> tuple[tuple[int, int, int, int], ...] | None:
-        expected_indices = list(range(len(canonical_words)))
-        if (
-            sorted(first_action) != expected_indices
-            or sorted(second_action) != expected_indices
-            or any(
-                first_action[first_action[index]] != index
-                or second_action[second_action[index]] != index
-                or first_action[second_action[index]]
-                != second_action[first_action[index]]
-                for index in expected_indices
-            )
-        ):
+        actions: Sequence[tuple[int, ...]],
+    ) -> tuple[tuple[int, ...], ...] | None:
+        if len(actions) < 2:
             return None
-        product_action = tuple(
-            first_action[second_action[index]] for index in expected_indices
-        )
+        expected_indices = list(range(len(canonical_words)))
+        for action in actions:
+            if sorted(action) != expected_indices or any(
+                action[action[index]] != index for index in expected_indices
+            ):
+                return None
+        for first_offset, first_action in enumerate(actions):
+            for second_action in actions[first_offset + 1 :]:
+                if any(
+                    first_action[second_action[index]]
+                    != second_action[first_action[index]]
+                    for index in expected_indices
+                ):
+                    return None
+
+        group_actions: list[tuple[int, ...]] = []
+        for mask in range(1 << len(actions)):
+            action = tuple(expected_indices)
+            for generator_index, generator in enumerate(actions):
+                if mask & (1 << generator_index):
+                    action = tuple(generator[index] for index in action)
+            group_actions.append(action)
+
         remaining = set(expected_indices)
-        cosets: list[tuple[int, int, int, int]] = []
+        cosets: list[tuple[int, ...]] = []
         while remaining:
             representative = min(remaining)
-            coset = (
-                representative,
-                first_action[representative],
-                second_action[representative],
-                product_action[representative],
-            )
-            if len(set(coset)) != 4 or not set(coset).issubset(remaining):
+            coset = tuple(action[representative] for action in group_actions)
+            if len(set(coset)) != len(group_actions) or not set(coset).issubset(
+                remaining
+            ):
                 return None
             cosets.append(coset)
             remaining.difference_update(coset)
         return tuple(cosets)
 
-    def matrix_has_klein_four_blocks(
-        cosets: Sequence[tuple[int, int, int, int]],
+    def matrix_has_walsh_blocks(
+        cosets: Sequence[tuple[int, ...]],
     ) -> bool:
+        if not cosets:
+            return False
+        group_size = len(cosets[0])
+        if group_size < 4 or any(len(coset) != group_size for coset in cosets):
+            return False
         return all(
             matrix_value(
                 left_coset[left_subgroup_index],
@@ -313,9 +323,31 @@ def _build_klein_four_walsh_block(
             )
             for left_coset in cosets
             for right_coset in cosets
-            for left_subgroup_index in range(4)
-            for right_subgroup_index in range(4)
+            for left_subgroup_index in range(group_size)
+            for right_subgroup_index in range(group_size)
         )
+
+    def factorized_block(
+        actions: Sequence[tuple[int, ...]],
+    ) -> FactorizedColorContractionBlock | None:
+        # H8 is the largest physically measured transform. Preserve K4 as the
+        # fallback and do not emit wider transforms until realistic multi-coset
+        # workloads demonstrate that their locality/transform cost is useful.
+        for rank in range(min(len(actions), 3), 1, -1):
+            cosets = action_cosets(actions[:rank])
+            if cosets is None or not matrix_has_walsh_blocks(cosets):
+                continue
+            if rank == 2:
+                return FactorizedColorContractionBlock(
+                    kind="klein-four-walsh",
+                    cosets=cosets,
+                )
+            return FactorizedColorContractionBlock(
+                kind="elementary-abelian-walsh",
+                rank=rank,
+                cosets=cosets,
+            )
+        return None
 
     # Preserve the established plan for a complete scalar permutation orbit.
     positions = {
@@ -338,19 +370,19 @@ def _build_klein_four_walsh_block(
         index_by_permutation = {
             permutation: index for index, permutation in enumerate(permutations)
         }
-        if (
-            all(set(permutation) == expected_ranks for permutation in permutations)
-            and len(index_by_permutation) == math.factorial(variable_count)
-        ):
-            substitutions = (
+        if all(
+            set(permutation) == expected_ranks for permutation in permutations
+        ) and len(index_by_permutation) == math.factorial(variable_count):
+            substitutions = tuple(
                 tuple(
-                    1 if rank == 0 else 0 if rank == 1 else rank
+                    pair_start + 1
+                    if rank == pair_start
+                    else pair_start
+                    if rank == pair_start + 1
+                    else rank
                     for rank in range(variable_count)
-                ),
-                tuple(
-                    3 if rank == 2 else 2 if rank == 3 else rank
-                    for rank in range(variable_count)
-                ),
+                )
+                for pair_start in range(0, variable_count - 1, 2)
             )
             actions = tuple(
                 tuple(
@@ -361,20 +393,15 @@ def _build_klein_four_walsh_block(
                 )
                 for substitution in substitutions
             )
-            cosets = action_cosets(actions[0], actions[1])
-            if cosets is not None and matrix_has_klein_four_blocks(cosets):
-                return FactorizedColorContractionBlock(
-                    kind="klein-four-walsh",
-                    cosets=cosets,
-                )
+            block = factorized_block(actions)
+            if block is not None:
+                return block
 
     # Multi-open-line bases are often unions of permutation orbits rather than
     # one full symmetric-group orbit.  Discover exact label-swap automorphisms
     # of the actual word set and matrix; no particle or process identity is
     # assumed, and any incomplete or weight-asymmetric orbit falls back.
-    index_by_word = {
-        word: index for index, word in enumerate(canonical_words)
-    }
+    index_by_word = {word: index for index, word in enumerate(canonical_words)}
     if len(index_by_word) != len(canonical_words):
         return None
     invariant_swaps: list[tuple[tuple[int, int], tuple[int, ...]]] = []
@@ -394,17 +421,13 @@ def _build_klein_four_walsh_block(
             if matrix_is_invariant(action):
                 invariant_swaps.append(((left_label, right_label), action))
 
-    for first_offset, (first_labels, first_action) in enumerate(invariant_swaps):
-        for second_labels, second_action in invariant_swaps[first_offset + 1 :]:
-            if set(first_labels) & set(second_labels):
-                continue
-            cosets = action_cosets(first_action, second_action)
-            if cosets is not None and matrix_has_klein_four_blocks(cosets):
-                return FactorizedColorContractionBlock(
-                    kind="klein-four-walsh",
-                    cosets=cosets,
-                )
-    return None
+    selected_actions: list[tuple[int, ...]] = []
+    selected_labels: set[int] = set()
+    for labels, action in invariant_swaps:
+        if selected_labels.isdisjoint(labels):
+            selected_actions.append(action)
+            selected_labels.update(labels)
+    return factorized_block(selected_actions)
 
 
 def _binary64_bits(value: float) -> bytes:

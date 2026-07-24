@@ -10,18 +10,6 @@ struct PointSelectorProfileCounts {
 
 type ProfiledPreparedF64Batch = (Vec<Vec<[f64; 4]>>, Duration, Duration);
 
-fn resolved_totals(resolved: &ResolvedValues<f64>) -> Vec<f64> {
-    let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
-    if component_count == 0 {
-        return vec![0.0; resolved.point_count];
-    }
-    resolved
-        .values
-        .chunks(component_count)
-        .map(|point| point.iter().sum())
-        .collect()
-}
-
 fn attach_point_selector_profile(
     profile: &mut NativeRuntimeProfile,
     plan: &PointSelectorPlanProfile,
@@ -780,24 +768,31 @@ impl NativeRuntime {
         }
     }
 
-    fn run_resolved_f64_batch_profile(
+    fn run_selected_f64_batch_profile(
         &mut self,
         batch: &[Vec<[f64; 4]>],
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
-    ) -> Result<(ResolvedValues<f64>, RuntimeProfile), RusticolError> {
+    ) -> Result<(Vec<f64>, RuntimeProfile), RusticolError> {
         match &mut self.execution_lane {
             NativeExecutionLane::Compiled => {
                 self.runtime
-                    .run_resolved_f64(batch, selected_helicities, selected_colors)
+                    .run_f64_selected_totals(batch, selected_helicities, selected_colors)
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64_profile(
-                &mut self.runtime,
-                batch,
-                selected_helicities,
-                selected_colors,
-            ),
+            NativeExecutionLane::Eager(runtime) => {
+                let (resolved, mut profile) = runtime.run_resolved_f64_profile(
+                    &mut self.runtime,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                )?;
+                let materialization_start = Instant::now();
+                let values = resolved_f64_totals(&resolved)?;
+                profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+                profile.total_materialized_value_count += values.len() as u64;
+                Ok((values, profile))
+            }
         }
     }
 
@@ -869,38 +864,28 @@ impl NativeRuntime {
             self.record_resolved_warnings(helicity_ids, color_ids)?;
             let selected_helicities = selector_set(helicity_ids, "helicity")?;
             let selected_colors = selector_set(color_ids, "color component")?;
-            let (resolved, mut profile) = match &mut self.execution_lane {
-                NativeExecutionLane::Compiled => self.runtime.run_resolved_f64(
+            let (values, profile) = match &mut self.execution_lane {
+                NativeExecutionLane::Compiled => self.runtime.run_f64_selected_totals(
                     &batch,
                     selected_helicities.as_ref(),
                     selected_colors.as_ref(),
                 )?,
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64_profile(
-                    &mut self.runtime,
-                    &batch,
-                    selected_helicities.as_ref(),
-                    selected_colors.as_ref(),
-                )?,
+                NativeExecutionLane::Eager(runtime) => {
+                    let (resolved, mut profile) = runtime.run_resolved_f64_profile(
+                        &mut self.runtime,
+                        &batch,
+                        selected_helicities.as_ref(),
+                        selected_colors.as_ref(),
+                    )?;
+                    let materialization_start = Instant::now();
+                    let values = resolved_f64_totals(&resolved)?;
+                    profile.total_materialization_s +=
+                        materialization_start.elapsed().as_secs_f64();
+                    profile.total_materialized_value_count += point_count as u64;
+                    (values, profile)
+                }
             };
-            let component_count = resolved
-                .helicity_indices
-                .len()
-                .checked_mul(resolved.color_indices.len())
-                .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflow"))?;
-            if component_count == 0 {
-                return Err(RusticolError::invalid_argument(
-                    "resolved evaluation returned an empty component axis",
-                ));
-            }
-            let materialization_start = Instant::now();
-            let values: Vec<f64> = resolved
-                .values
-                .chunks(component_count)
-                .map(|point| point.iter().sum())
-                .collect();
-            profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
-            profile.total_materialized_value_count += values.len() as u64;
             (values, profile)
         } else {
             match &mut self.execution_lane {
@@ -997,7 +982,7 @@ impl NativeRuntime {
                 let effective_helicities =
                     point_helicities.as_ref().or(selected_helicities.as_ref());
                 let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                let (resolved, runtime_profile) = self.run_resolved_f64_batch_profile(
+                let (values, runtime_profile) = self.run_selected_f64_batch_profile(
                     &batch,
                     effective_helicities,
                     effective_colors,
@@ -1029,10 +1014,6 @@ impl NativeRuntime {
                     + 1
                     + usize::from(self.input_crossing_map.is_some()) * (point_count + 2))
                     as u64;
-                let materialization_start = Instant::now();
-                let values = resolved_totals(&resolved);
-                profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
-                profile.total_materialized_value_count += values.len() as u64;
                 profile.native_output_allocation_count = 1;
                 profile.total_s = total_start.elapsed().as_secs_f64();
                 if self.execution_lane.is_eager() {
@@ -1047,7 +1028,6 @@ impl NativeRuntime {
             let mut partition_profiles = Vec::new();
             let mut gather = Duration::ZERO;
             let mut scatter = Duration::ZERO;
-            let mut total_materialization = Duration::ZERO;
             let mut gather_point_count = 0usize;
             let partition_count = selector_scratch.planner.partitions().len();
             for partition_index in 0..partition_count {
@@ -1062,9 +1042,9 @@ impl NativeRuntime {
                 let effective_helicities =
                     point_helicities.as_ref().or(selected_helicities.as_ref());
                 let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                let (resolved, partition_profile) = match partition.rows {
+                let (partition_totals, partition_profile) = match partition.rows {
                     PointSelectorRows::Contiguous { start, end } => self
-                        .run_resolved_f64_batch_profile(
+                        .run_selected_f64_batch_profile(
                             &batch[start..end],
                             effective_helicities,
                             effective_colors,
@@ -1079,17 +1059,14 @@ impl NativeRuntime {
                             point_indices,
                         );
                         gather += gather_started.elapsed();
-                        self.run_resolved_f64_batch_profile(
+                        self.run_selected_f64_batch_profile(
                             gathered_batch,
                             effective_helicities,
                             effective_colors,
                         )?
                     }
                 };
-                let materialization_started = Instant::now();
-                write_partition_totals(&mut selector_scratch.partition_totals, &resolved);
-                total_materialization += materialization_started.elapsed();
-                if selector_scratch.partition_totals.len() != partition.rows.len() {
+                if partition_totals.len() != partition.rows.len() {
                     return Err(RusticolError::integrity(
                         "per-point selector partition returned the wrong number of values",
                     ));
@@ -1097,7 +1074,7 @@ impl NativeRuntime {
                 let scatter_started = Instant::now();
                 scatter_partition_totals(
                     &mut values,
-                    &selector_scratch.partition_totals,
+                    &partition_totals,
                     partition.rows,
                     &selector_scratch.planner,
                 );
@@ -1135,8 +1112,6 @@ impl NativeRuntime {
                 + 1
                 + usize::from(self.input_crossing_map.is_some()) * (point_count + 2))
                 as u64;
-            profile.total_materialization_s += profile_duration_seconds(total_materialization);
-            profile.total_materialized_value_count += values.len() as u64;
             profile.native_output_allocation_count = 1;
             profile.total_s = total_start.elapsed().as_secs_f64();
             if self.execution_lane.is_eager() {

@@ -321,7 +321,14 @@ impl ExecutionRuntime {
             return Ok(false);
         };
         let materialized_sector_ids =
-            self.lc_materialized_sector_ids_for_color_ids(&physics, &source_group.color_ids)?;
+            source_group
+                .materialized_sector_ids
+                .as_ref()
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "LC topology replay selection is missing its materialized-sector cache",
+                    )
+                })?;
         if materialized_sector_ids.len() != 1 {
             return Ok(false);
         }
@@ -352,7 +359,6 @@ impl ExecutionRuntime {
         let mapping = self
             .lc_topology_replay_mappings
             .get(*mapping_index)
-            .cloned()
             .ok_or_else(|| {
                 RusticolError::integrity(
                     "LC topology replay selection references an unknown mapping",
@@ -364,7 +370,7 @@ impl ExecutionRuntime {
             Some(apply_lc_topology_label_permutations_from_view(
                 batch,
                 self.external_count,
-                std::slice::from_ref(&mapping),
+                std::slice::from_ref(mapping),
             )?)
         };
         let evaluation_view = if let Some(expanded_batch) = expanded_batch.as_deref() {
@@ -372,6 +378,25 @@ impl ExecutionRuntime {
         } else {
             batch
         };
+        if let Some(direct_plan) = source_group.direct_total_plan {
+            if direct_plan.mapping_index != *mapping_index
+                || direct_plan.materialized_sector_id != materialized_sector_id
+            {
+                return Err(RusticolError::integrity(
+                    "LC topology replay direct-total plan disagrees with its selected source",
+                ));
+            }
+            self.color_selector_runtimes
+                .get_mut(&materialized_sector_id)
+                .expect("selector lane checked above")
+                .run_f64_into_unprofiled(evaluation_view, output)?;
+            if direct_plan.scale != 1.0 {
+                for value in output {
+                    *value *= direct_plan.scale;
+                }
+            }
+            return Ok(true);
+        }
         self.color_selector_runtimes
             .get_mut(&materialized_sector_id)
             .expect("selector lane checked above")
@@ -584,18 +609,146 @@ impl ExecutionRuntime {
         if self.has_compiled_helicity_execution_plan() {
             let (resolved, mut profile) =
                 self.run_resolved_f64_with_helicity_recurrence(batch, None, None, None)?;
-            let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
             let materialization_start = Instant::now();
-            let values: Vec<f64> = resolved
-                .values
-                .chunks_exact(component_count)
-                .map(|components| components.iter().sum())
-                .collect();
+            let values = resolved_f64_totals(&resolved)?;
             profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
             profile.total_materialized_value_count += values.len() as u64;
             return Ok((values, profile));
         }
         self.run_f64_selected(batch, None)
+    }
+
+    pub(super) fn run_f64_selected_totals(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        if selected_helicity_ids.is_none()
+            && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
+        {
+            return sum_runtime.run_f64_selected_totals(batch, None, selected_color_ids);
+        }
+        if self.lc_topology_replay_enabled
+            && selected_color_ids.is_some_and(|ids| ids.len() == 1)
+            && let Some(result) = self.try_run_f64_with_single_lc_topology_replay(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            )?
+        {
+            return Ok(result);
+        }
+        let (resolved, mut profile) =
+            self.run_resolved_f64(batch, selected_helicity_ids, selected_color_ids)?;
+        let materialization_start = Instant::now();
+        let values = resolved_f64_totals(&resolved)?;
+        profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+        profile.total_materialized_value_count += values.len() as u64;
+        Ok((values, profile))
+    }
+
+    fn try_run_f64_with_single_lc_topology_replay(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<Option<(Vec<f64>, RuntimeProfile)>> {
+        let total_start = Instant::now();
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
+            )
+        })?;
+        let replay_plan = self.cached_lc_resolved_replay_plan(&physics)?;
+        let selection = self.cached_lc_resolved_replay_selection(
+            &physics,
+            replay_plan.as_ref(),
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        let [source_group] = selection.source_groups.as_slice() else {
+            return Ok(None);
+        };
+        let [mapping_index] = source_group.mapping_indices.as_slice() else {
+            return Ok(None);
+        };
+        let [_replay_entry] = source_group.entries.as_slice() else {
+            return Ok(None);
+        };
+        let Some(direct_plan) = source_group.direct_total_plan else {
+            return Ok(None);
+        };
+        let materialized_sector_ids =
+            source_group
+                .materialized_sector_ids
+                .as_ref()
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "LC topology replay selection is missing its materialized-sector cache",
+                    )
+                })?;
+        if materialized_sector_ids.len() != 1 {
+            return Ok(None);
+        }
+        let materialized_sector_id = *materialized_sector_ids
+            .iter()
+            .next()
+            .expect("singleton materialized sector checked");
+        if direct_plan.mapping_index != *mapping_index
+            || direct_plan.materialized_sector_id != materialized_sector_id
+        {
+            return Err(RusticolError::integrity(
+                "LC topology replay direct-total plan disagrees with its selected source",
+            ));
+        }
+        let Some(selector_runtime) = self.color_selector_runtimes.get(&materialized_sector_id)
+        else {
+            return Ok(None);
+        };
+        if selected_helicity_ids.is_some()
+            || selector_runtime.helicity_sum_runtime.is_some()
+            || selector_runtime.lc_topology_replay_enabled
+            || selector_runtime.has_compiled_helicity_execution_plan()
+            || selector_runtime
+                .amplitude_stage
+                .as_ref()
+                .is_none_or(|amplitude| amplitude.color_contraction.is_some())
+        {
+            return Ok(None);
+        }
+        let mapping = self
+            .lc_topology_replay_mappings
+            .get(*mapping_index)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "LC topology replay selection references an unknown mapping",
+                )
+            })?;
+        let expanded_batch = if mapping.is_empty() {
+            None
+        } else {
+            Some(apply_lc_topology_label_permutations(
+                batch,
+                self.external_count,
+                std::slice::from_ref(mapping),
+            )?)
+        };
+        let evaluation_batch = expanded_batch.as_deref().unwrap_or(batch);
+        let (mut values, mut profile) = self
+            .color_selector_runtimes
+            .get_mut(&materialized_sector_id)
+            .expect("selector lane checked above")
+            .run_f64(evaluation_batch)?;
+        if direct_plan.scale != 1.0 {
+            for value in &mut values {
+                *value *= direct_plan.scale;
+            }
+        }
+        let total_s = total_start.elapsed().as_secs_f64();
+        profile.orchestration_s += (total_s - profile.total_s).max(0.0);
+        profile.total_s = total_s;
+        Ok(Some((values, profile)))
     }
 
     pub(super) fn run_resolved_f64(
@@ -917,14 +1070,9 @@ impl ExecutionRuntime {
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
         let (resolved, profile) =
             self.run_resolved_f64_with_lc_topology_replay(batch, None, None)?;
-        let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
         let mut profile = profile;
         let materialization_start = Instant::now();
-        let values: Vec<f64> = resolved
-            .values
-            .chunks_exact(component_count)
-            .map(|components| components.iter().sum())
-            .collect();
+        let values = resolved_f64_totals(&resolved)?;
         profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
         profile.total_materialized_value_count += values.len() as u64;
         Ok((values, profile))
@@ -1687,15 +1835,23 @@ pub(super) fn write_resolved_f64_totals(
             resolved.point_count
         )));
     }
-    let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
-    if component_count == 0 {
-        output.fill(0.0);
-        return Ok(());
-    }
-    if resolved.values.len() != resolved.point_count * component_count {
+    let component_count = resolved
+        .helicity_indices
+        .len()
+        .checked_mul(resolved.color_indices.len())
+        .ok_or_else(|| RusticolError::integrity("resolved component shape overflows usize"))?;
+    let expected_value_count = resolved
+        .point_count
+        .checked_mul(component_count)
+        .ok_or_else(|| RusticolError::integrity("resolved value shape overflows usize"))?;
+    if resolved.values.len() != expected_value_count {
         return Err(RusticolError::integrity(
             "resolved evaluation has an inconsistent component buffer length",
         ));
+    }
+    if component_count == 0 {
+        output.fill(0.0);
+        return Ok(());
     }
     for (target, components) in output
         .iter_mut()
@@ -1704,6 +1860,12 @@ pub(super) fn write_resolved_f64_totals(
         *target = components.iter().sum();
     }
     Ok(())
+}
+
+pub(super) fn resolved_f64_totals(resolved: &ResolvedValues<f64>) -> RusticolResult<Vec<f64>> {
+    let mut output = vec![0.0; resolved.point_count];
+    write_resolved_f64_totals(resolved, &mut output)?;
+    Ok(output)
 }
 
 pub(super) fn accumulate_selected_lc_replay_resolved_f64(
@@ -1873,6 +2035,74 @@ pub(super) fn select_resolved_values<T: Clone>(
 #[cfg(test)]
 mod selected_replay_tests {
     use super::*;
+
+    #[test]
+    fn recognizes_only_ordered_uniform_replay_totals() {
+        let entry = LcResolvedReplayEntry {
+            routes: vec![
+                LcResolvedReplayRoute {
+                    source_index: 0,
+                    target_index: 1,
+                    weight: 0.5,
+                },
+                LcResolvedReplayRoute {
+                    source_index: 1,
+                    target_index: 0,
+                    weight: 0.5,
+                },
+            ],
+        };
+        assert_eq!(uniform_lc_replay_total_scale(&entry, 2, 2), Some(0.5));
+
+        let mut nonuniform = entry.clone();
+        nonuniform.routes[1].weight = 1.0;
+        assert_eq!(uniform_lc_replay_total_scale(&nonuniform, 2, 2), None);
+
+        let mut reordered = entry.clone();
+        reordered.routes.swap(0, 1);
+        assert_eq!(uniform_lc_replay_total_scale(&reordered, 2, 2), Some(0.5));
+
+        let mut out_of_bounds = entry;
+        out_of_bounds.routes[1].target_index = 2;
+        assert_eq!(uniform_lc_replay_total_scale(&out_of_bounds, 2, 2), None);
+    }
+
+    #[test]
+    fn resolved_totals_validate_nonempty_and_empty_component_shapes() {
+        let resolved = ResolvedValues {
+            values: vec![1.0, 2.0, 3.0, 4.0],
+            point_count: 2,
+            helicity_indices: vec![0],
+            color_indices: vec![0, 1],
+        };
+        assert_eq!(resolved_f64_totals(&resolved).unwrap(), vec![3.0, 7.0]);
+
+        let mut truncated = resolved.clone();
+        truncated.values.pop();
+        assert!(
+            resolved_f64_totals(&truncated)
+                .unwrap_err()
+                .to_string()
+                .contains("inconsistent component buffer length")
+        );
+
+        let empty_axis = ResolvedValues {
+            values: Vec::new(),
+            point_count: 2,
+            helicity_indices: Vec::new(),
+            color_indices: vec![0],
+        };
+        assert_eq!(resolved_f64_totals(&empty_axis).unwrap(), vec![0.0, 0.0]);
+
+        let mut malformed_empty_axis = empty_axis;
+        malformed_empty_axis.values.push(1.0);
+        assert!(
+            resolved_f64_totals(&malformed_empty_axis)
+                .unwrap_err()
+                .to_string()
+                .contains("inconsistent component buffer length")
+        );
+    }
 
     #[test]
     fn accumulates_selected_routes_without_materializing_public_axis() {
