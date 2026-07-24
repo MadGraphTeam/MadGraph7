@@ -4,7 +4,8 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::recurrence::direct_lowering::{
-    RuntimeSourceChoice, effective_runtime_helicity_variant, lower_union_resolved_helicities,
+    DirectParents, RuntimeSourceChoice, effective_runtime_helicity_variant,
+    lower_union_resolved_helicities,
 };
 use crate::recurrence::direct_plan::DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
 use crate::recurrence::layout::RuntimeSourceVariantBinding;
@@ -1593,4 +1594,31 @@ fn lowering_marks_exactly_one_initializing_contribution_per_destination() {
             .keys()
             .all(|key| initialization_counts.get(key) == Some(&1))
     );
+}
+#[test]
+fn certified_parent_permutation_swaps_arena_and_momentum_operands() {
+    let parents = DirectParents {
+        parent0_component_base: 11,
+        parent1_component_base_or_sentinel: 22,
+        parent0_momentum_form_id: 33,
+        parent1_momentum_form_id_or_sentinel: 44,
+    };
+    assert_eq!(parents.permuted([0, 1]).unwrap().parent0_component_base, 11);
+    let swapped = parents.permuted([1, 0]).unwrap();
+    assert_eq!(swapped.parent0_component_base, 22);
+    assert_eq!(swapped.parent1_component_base_or_sentinel, 11);
+    assert_eq!(swapped.parent0_momentum_form_id, 44);
+    assert_eq!(swapped.parent1_momentum_form_id_or_sentinel, 33);
+}
+
+#[test]
+fn certified_parent_permutation_fails_closed_for_nonbinary_rows() {
+    let parents = DirectParents {
+        parent0_component_base: 11,
+        parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+        parent0_momentum_form_id: 33,
+        parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+    };
+    assert!(parents.permuted([1, 0]).is_err());
+    assert!(parents.permuted([0, 0]).is_err());
 }

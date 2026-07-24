@@ -111,9 +111,7 @@ def _evaluate_union_point(
                 "all-flow-union source selections are not in source-slot order"
             )
         try:
-            variant = sections.source_dispatch_variants[
-                selection.dispatch_variant_id
-            ]
+            variant = sections.source_dispatch_variants[selection.dispatch_variant_id]
         except IndexError as exc:
             raise ArtifactError(
                 "all-flow-union source selection references an absent variant"
@@ -364,9 +362,7 @@ def _execute_union_source(
         raise ArtifactError("recurrence source momentum form is absent") from exc
 
     initial = source.source_slot in plan.initial_source_slots
-    helicity = template.helicity * (
-        template.crossing_helicity_factor if initial else 1
-    )
+    helicity = template.helicity * (template.crossing_helicity_factor if initial else 1)
     chirality = template.chirality * (
         template.crossing_chirality_factor if initial else 1
     )
@@ -478,17 +474,19 @@ def _execute_finalization(
     precision: int,
 ) -> None:
     if executor.runtime_template is not None:
-        if executor.runtime_template != "rusticol.identity-finalize-in-place.v1":
+        if executor.runtime_template == "rusticol.identity-finalize-in-place.v1":
+            factor = _factor(plan, row.exact_factor_id)
+            stop = row.component_base + row.component_count
+            arena[row.component_base : stop] = [
+                _complex_mul(value, factor)
+                for value in arena[row.component_base : stop]
+            ]
+            return
+        if executor.executor_id not in plan.executor_exact_kernel_ids:
             raise CompatibilityError(
                 f"unsupported exact recurrence finalization intrinsic "
                 f"{executor.runtime_template!r}"
             )
-        factor = _factor(plan, row.exact_factor_id)
-        stop = row.component_base + row.component_count
-        arena[row.component_base : stop] = [
-            _complex_mul(value, factor) for value in arena[row.component_base : stop]
-        ]
-        return
     _execute_prepared_row(
         plan,
         executor,
@@ -511,15 +509,17 @@ def _execute_prepared_row(
     amplitudes: list[_ComplexDecimal],
     precision: int,
 ) -> None:
-    if executor.prepared_kernel_id is None:
+    kernel_id = plan.executor_exact_kernel_ids.get(
+        executor.executor_id,
+        executor.prepared_kernel_id,
+    )
+    if kernel_id is None:
         raise ArtifactError(
             f"direct executor {executor.executor_id} has no prepared exact kernel"
         )
-    kernel = plan.kernels.get(executor.prepared_kernel_id)
+    kernel = plan.kernels.get(kernel_id)
     if kernel is None:
-        raise ArtifactError(
-            f"prepared exact kernel {executor.prepared_kernel_id} is absent"
-        )
+        raise ArtifactError(f"prepared exact kernel {kernel_id} is absent")
     inputs = _kernel_inputs(
         plan,
         kernel.record.input_contracts,
@@ -573,34 +573,38 @@ def _kernel_inputs(
                 f"prepared kernel input {index} has an invalid component"
             )
         if role in {"left-current", "current"}:
+            parent = _prepared_parent_operand(plan, executor, 0)
             result.append(
                 _arena_value(
                     arena,
-                    _parent_component_base(executor.role, row, 0),
+                    _parent_component_base(executor.role, row, parent),
                     component,
                 )
             )
         elif role == "right-current":
+            parent = _prepared_parent_operand(plan, executor, 1)
             result.append(
                 _arena_value(
                     arena,
-                    _parent_component_base(executor.role, row, 1),
+                    _parent_component_base(executor.role, row, parent),
                     component,
                 )
             )
         elif role in {"left-momentum", "momentum"}:
+            operand = _prepared_parent_operand(plan, executor, 0)
             result.append(
                 _momentum_value(
                     momenta,
-                    _momentum_form_id(executor.role, row, 0),
+                    _momentum_form_id(executor.role, row, operand),
                     component,
                 )
             )
         elif role == "right-momentum":
+            operand = _prepared_parent_operand(plan, executor, 1)
             result.append(
                 _momentum_value(
                     momenta,
-                    _momentum_form_id(executor.role, row, 1),
+                    _momentum_form_id(executor.role, row, operand),
                     component,
                 )
             )
@@ -634,6 +638,28 @@ def _kernel_inputs(
                 f"unsupported exact recurrence kernel input role {role!r}"
             )
     return tuple(result)
+
+
+def _prepared_parent_operand(
+    plan: _RecurrenceExactPlan,
+    executor: _Executor,
+    operand: int,
+) -> int:
+    if executor.role != "contribution":
+        return operand
+    permutation = plan.executor_parent_permutations.get(executor.executor_id)
+    if permutation not in {(0, 1), (1, 0)}:
+        raise ArtifactError(
+            f"direct contribution executor {executor.executor_id} has no "
+            "authenticated parent permutation"
+        )
+    try:
+        return permutation[operand]
+    except IndexError as exc:  # pragma: no cover - kernel roles are validated
+        raise ArtifactError(
+            f"direct contribution executor {executor.executor_id} references "
+            f"invalid parent operand {operand}"
+        ) from exc
 
 
 def _parent_component_base(

@@ -55,6 +55,7 @@ from .recurrence_template import (
 )
 
 _PREPARED_CATALOG_ABI = "pyamplicol-prepared-kernel-catalog-v1"
+_CURRENT_WORD_REFLECTION_PROOF = "canonical-current-word-reversal-v1"
 _SUPPORTED_COLOR_RULES = frozenset(
     {
         "singlet",
@@ -109,6 +110,7 @@ def build_recurrence_template_catalog(
         transition_quantum_flows,
         transitions,
         transition_colors,
+        transition_proofs,
     ) = _build_transitions(
         model,
         recurrence_catalog.vertex_bindings,
@@ -182,7 +184,7 @@ def build_recurrence_template_catalog(
         propagators=propagators,
         closures=closures,
         color_contractions=tuple(colors_by_id.values()),
-        symmetry_proofs=propagator_proofs,
+        symmetry_proofs=(*transition_proofs, *propagator_proofs),
         runtime_helicity_contracts=runtime_helicity_contracts,
         evaluator_bindings=evaluator_bindings,
     )
@@ -1307,6 +1309,7 @@ def _build_transitions(
     tuple[QuantumFlowTemplateV1, ...],
     tuple[TransitionTemplateV1, ...],
     tuple[ColorContractionTemplateV1, ...],
+    tuple[SymmetryProofV1, ...],
 ]:
     candidates: list[
         tuple[
@@ -1318,6 +1321,7 @@ def _build_transitions(
             Any,
             tuple[str, ...],
             str,
+            tuple[ExactComplexRationalV1, str] | None,
         ]
     ] = []
     for binding in sorted(bindings, key=lambda item: item.key):
@@ -1350,6 +1354,12 @@ def _build_transitions(
             vertex,
             closure=False,
             proof_subject=kernel.canonical_signature,
+        )
+        reflection_claim = _current_word_reflection_claim(
+            model,
+            binding,
+            vertex,
+            color,
         )
         flow_variants = _probe_quantum_flows(model, vertex, binding)
         if not flow_variants:
@@ -1431,6 +1441,7 @@ def _build_transitions(
                     kernel,
                     concrete_state_ids,
                     result_state_id,
+                    reflection_claim,
                 )
             )
 
@@ -1449,6 +1460,7 @@ def _build_transitions(
             Any,
             tuple[str, ...],
             str,
+            tuple[ExactComplexRationalV1, str] | None,
         ],
     ] = {}
     for (
@@ -1460,6 +1472,7 @@ def _build_transitions(
         kernel,
         concrete_state_ids,
         result_state_id,
+        reflection_claim,
     ) in candidates:
         candidate = (
             preference,
@@ -1469,6 +1482,7 @@ def _build_transitions(
             kernel,
             concrete_state_ids,
             result_state_id,
+            reflection_claim,
         )
         existing = selected.get(alias_key)
         if existing is None or preference < existing[0]:
@@ -1477,6 +1491,7 @@ def _build_transitions(
     flows_by_id: dict[str, QuantumFlowTemplateV1] = {}
     colors: dict[str, ColorContractionTemplateV1] = {}
     transitions: list[TransitionTemplateV1] = []
+    proofs: list[SymmetryProofV1] = []
     for alias_key in sorted(selected):
         (
             _,
@@ -1486,10 +1501,20 @@ def _build_transitions(
             kernel,
             concrete_state_ids,
             result_state_id,
+            reflection_claim,
         ) = selected[alias_key]
         flows_by_id.setdefault(flow.template_id, flow)
         colors.setdefault(color.template_id, color)
         transitions.append(transition)
+        if reflection_claim is not None:
+            proofs.append(
+                _current_word_reflection_proof(
+                    transition=transition,
+                    kernel=kernel,
+                    phase=reflection_claim[0],
+                    certificate_witness_digest=reflection_claim[1],
+                )
+            )
         evaluator_requests.append(
             _EvaluatorRequest(
                 kernel=kernel,
@@ -1499,7 +1524,209 @@ def _build_transitions(
                 semantic_template_id=transition.template_id,
             )
         )
-    return tuple(flows_by_id.values()), tuple(transitions), tuple(colors.values())
+    return (
+        tuple(flows_by_id.values()),
+        tuple(transitions),
+        tuple(colors.values()),
+        tuple(proofs),
+    )
+
+
+def _current_word_reflection_claim(
+    model: Model,
+    binding: PreparedVertexBinding,
+    vertex: Vertex,
+    color: ColorContractionTemplateV1,
+) -> tuple[ExactComplexRationalV1, str] | None:
+    if color.input_representations != (8, 8) or color.output_representation != 8:
+        return None
+    context = f"adjoint-current reflection phase for vertex kind {vertex.kind}"
+
+    def phase_payload(value: object) -> dict[str, str] | None:
+        if value is None:
+            return None
+        return _exact_pair(value, context).to_dict()
+
+    callback_value = _stable_callback(
+        context,
+        lambda: model.adjoint_current_reflection_phase(vertex),
+        serializer=lambda candidate: _canonical_json(phase_payload(candidate)),
+    )
+    callback_phase = (
+        None if callback_value is None else _exact_pair(callback_value, context)
+    )
+    prepared_phase = (
+        None
+        if binding.input_exchange_factor is None
+        else _exact_pair(
+            binding.input_exchange_factor,
+            f"prepared input-exchange factor for vertex kind {vertex.kind}",
+        )
+    )
+    if prepared_phase is not None and binding.left_state != binding.right_state:
+        prepared_phase = None
+    color_claim = _adjoint_color_word_reflection_claim(color)
+    color_phase = None if color_claim is None else color_claim[0]
+    phases = tuple(
+        candidate
+        for candidate in (callback_phase, prepared_phase, color_phase)
+        if candidate is not None
+    )
+    if not phases:
+        return None
+    if any(candidate != phases[0] for candidate in phases[1:]):
+        raise RecurrenceTemplateError(
+            f"{context} has conflicting prepared, model, or color certificates"
+        )
+    phase = phases[0]
+    if phase == ExactComplexRationalV1.zero():
+        raise RecurrenceTemplateError(f"{context} must be nonzero")
+    certificate_payload = {
+        "vertex": {
+            "kind": int(vertex.kind),
+            "particles": [int(particle_id) for particle_id in vertex.particles],
+            "coupling": _exact_pair(
+                vertex.coupling,
+                f"vertex kind {vertex.kind} reflection coupling",
+            ).to_dict(),
+        },
+        "exact_phase": phase.to_dict(),
+        "prepared_input_exchange": (
+            None
+            if prepared_phase is None
+            else {
+                "equivalence_class": str(binding.equivalence_class),
+                "canonical_input_order": [
+                    int(index) for index in binding.canonical_input_order
+                ],
+                "factor": prepared_phase.to_dict(),
+                "left_state": {
+                    "particle_id": int(binding.left_state.particle_id),
+                    "identity": str(binding.left_state.identity),
+                    **binding.left_state.contract_dict(),
+                },
+                "right_state": {
+                    "particle_id": int(binding.right_state.particle_id),
+                    "identity": str(binding.right_state.identity),
+                    **binding.right_state.contract_dict(),
+                },
+            }
+        ),
+        "model_callback": (
+            None
+            if callback_phase is None
+            else {
+                "contract": "adjoint_current_reflection_phase",
+                "factor": callback_phase.to_dict(),
+            }
+        ),
+        "color_word_reversal": (
+            None
+            if color_claim is None
+            else {
+                "factor": color_phase.to_dict(),
+                "witness_digest": color_claim[1],
+            }
+        ),
+    }
+    return phase, _digest(certificate_payload)
+
+
+def _adjoint_color_word_reflection_claim(
+    color: ColorContractionTemplateV1,
+) -> tuple[ExactComplexRationalV1, str] | None:
+    """Prove reversal from paired exact ordered-word color witnesses."""
+
+    if (
+        color.input_representations != (8, 8)
+        or color.output_representation != 8
+        or len(color.transition_witnesses) != 2
+    ):
+        return None
+    by_permutation = {
+        witness.input_permutation: witness for witness in color.transition_witnesses
+    }
+    if set(by_permutation) != {(0, 1), (1, 0)}:
+        return None
+    forward = by_permutation[(0, 1)]
+    reverse = by_permutation[(1, 0)]
+
+    def swap_port(port: tuple[int, int]) -> tuple[int, int]:
+        return (1 - port[0], port[1])
+
+    swapped_pairings = tuple(
+        tuple(swap_port(port) for port in pairing)
+        for pairing in forward.input_port_pairings
+    )
+    swapped_bindings = tuple(swap_port(port) for port in forward.result_port_bindings)
+    swapped_reverse_mask = ((forward.reverse_parent_mask & 1) << 1) | (
+        (forward.reverse_parent_mask & 2) >> 1
+    )
+    if (
+        reverse.input_shape_kinds != forward.input_shape_kinds
+        or reverse.reverse_parent_mask != swapped_reverse_mask
+        or reverse.component_operation != "concatenate-join"
+        or forward.component_operation != "concatenate-join"
+        or reverse.result_component_kind != forward.result_component_kind
+        or reverse.result_component_role != forward.result_component_role
+        or reverse.result_shape_kind != forward.result_shape_kind
+        or reverse.input_port_pairings != swapped_pairings
+        or reverse.result_port_bindings != swapped_bindings
+    ):
+        return None
+
+    one = ExactComplexRationalV1.from_binary64(1.0)
+    minus_one = ExactComplexRationalV1.from_binary64(-1.0)
+    if reverse.exact_factor == forward.exact_factor:
+        phase = one
+    elif reverse.exact_factor == _multiply_exact(forward.exact_factor, minus_one):
+        phase = minus_one
+    else:
+        return None
+    witness = {
+        "proof_algorithm": "paired-adjoint-color-word-reversal-v1",
+        "color_semantic_digest": color.semantic_digest,
+        "forward": forward.to_dict(),
+        "reverse": reverse.to_dict(),
+        "exact_phase": phase.to_dict(),
+    }
+    return phase, _digest(witness)
+
+
+def _current_word_reflection_proof(
+    *,
+    transition: TransitionTemplateV1,
+    kernel: Any,
+    phase: ExactComplexRationalV1,
+    certificate_witness_digest: str,
+) -> SymmetryProofV1:
+    expression_digests = tuple(
+        _expression_digest(expression) for expression in kernel.exact_expressions
+    )
+    witness = {
+        "proof_algorithm": _CURRENT_WORD_REFLECTION_PROOF,
+        "subject_template_id": transition.template_id,
+        "input_permutation": [1, 0],
+        "exact_phase": phase.to_dict(),
+        "prepared_kernel": {
+            "contract_kind": kernel.contract_kind,
+            "canonical_signature": kernel.canonical_signature,
+            "expression_digests": list(expression_digests),
+        },
+        "certificate": {
+            "prepared_input_exchange_or_model_callback": True,
+            "witness_digest": certificate_witness_digest,
+        },
+    }
+    return SymmetryProofV1(
+        template_id=_token("proof", witness),
+        proof_algorithm=_CURRENT_WORD_REFLECTION_PROOF,
+        subject_template_ids=(transition.template_id,),
+        input_permutation=(1, 0),
+        exact_phase=phase,
+        expression_digests=expression_digests,
+        witness_digest=_digest(witness),
+    )
 
 
 def _canonical_transition_alias_key(
@@ -1692,16 +1919,10 @@ def _canonical_flavour_flow_payload(
         if len(unique_order) == 2 and set(unique_order) == {0, 1}:
             parent_orders.add(tuple(inverse_order[index] for index in unique_order))
     canonical_parent_order = (
-        next(iter(parent_orders))
-        if len(parent_orders) == 1
-        else (0, 1)
+        next(iter(parent_orders)) if len(parent_orders) == 1 else (0, 1)
     )
     result = (
-        *(
-            value
-            for parent in canonical_parent_order
-            for value in inputs[parent]
-        ),
+        *(value for parent in canonical_parent_order for value in inputs[parent]),
         result_particle,
     )
     return {

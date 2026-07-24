@@ -3,7 +3,7 @@
 use rusticol_core::RusticolError;
 use rusticol_core::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectExecutorCatalog, DirectExecutorHandle,
-    DirectFactorView, DirectMomentumView, DirectParameterView,
+    DirectFactorView, DirectMomentumView, DirectParameterView, DirectUnionSourceDispatchHandle,
 };
 use rusticol_core::recurrence::direct_runtime::DirectRecurrenceExecutionRuntime;
 use rusticol_core::recurrence::{
@@ -11,8 +11,10 @@ use rusticol_core::recurrence::{
     DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole, DirectFinalizationRow,
     DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
     DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
-    DirectRowGroupDescriptor, DirectSelectorDomainDescriptor, DirectSourceRow,
-    DirectSourceStateAssignment, ExactComplexRational, RecurrenceStrategy, SemanticDigest,
+    DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
+    DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
+    DirectSourceRow, DirectSourceStateAssignment, ExactComplexRational, RecurrenceStrategy,
+    SemanticDigest,
 };
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -101,6 +103,82 @@ unsafe extern "C" fn fill_sources(
             unsafe {
                 *arena.current_re.add(destination) = *momenta.values.add(source);
                 *arena.current_im.add(destination) = 0.0;
+            }
+        }
+    }
+    DIRECT_STATUS_OK
+}
+
+unsafe extern "C" fn fill_union_sources(
+    _context: *const c_void,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    _parameters: DirectParameterView,
+    factors: DirectFactorView,
+    rows: *const DirectSourceRow,
+    row_count: u32,
+    variants: *const DirectSourceDispatchVariantDescriptor,
+    variant_count: u32,
+    embeddings: *const DirectSourceEmbeddingRow,
+    embedding_count: u32,
+    selections: *const DirectResolvedSourceSelection,
+    selection_count: u32,
+    point_count: u32,
+) -> i32 {
+    let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
+    let variants = unsafe { std::slice::from_raw_parts(variants, variant_count as usize) };
+    let embeddings = unsafe { std::slice::from_raw_parts(embeddings, embedding_count as usize) };
+    let selections = unsafe { std::slice::from_raw_parts(selections, selection_count as usize) };
+    for selection in selections {
+        let Some(variant) = variants.get(selection.dispatch_variant_id as usize) else {
+            return STATUS_BOUNDS;
+        };
+        let Some(row) = rows.get(variant.source_row_id as usize) else {
+            return STATUS_BOUNDS;
+        };
+        if row.source_slot != selection.source_slot
+            || variant.crossing_exact_factor_id >= factors.value_count
+        {
+            return STATUS_BOUNDS;
+        }
+        let embedding_start = variant.embedding_start as usize;
+        let Some(variant_embeddings) =
+            embeddings.get(embedding_start..embedding_start + variant.embedding_count as usize)
+        else {
+            return STATUS_BOUNDS;
+        };
+        let crossing = unsafe {
+            *factors
+                .values_re
+                .add(variant.crossing_exact_factor_id as usize)
+        };
+        for embedding in variant_embeddings {
+            if embedding.source_component_or_sentinel == DIRECT_NONE_U32
+                || embedding.exact_factor_id >= factors.value_count
+            {
+                return STATUS_BOUNDS;
+            }
+            let embedding_factor =
+                unsafe { *factors.values_re.add(embedding.exact_factor_id as usize) };
+            for point in 0..point_count as usize {
+                let source = row.momentum_form_id as usize
+                    * momenta.lorentz_component_count as usize
+                    * momenta.point_stride as usize
+                    + point;
+                let destination = (row.destination_component_base as usize
+                    + embedding.full_component as usize)
+                    * arena.point_stride as usize
+                    + point;
+                if source >= momenta.scalar_len as usize
+                    || destination >= arena.current_scalar_len as usize
+                {
+                    return STATUS_BOUNDS;
+                }
+                unsafe {
+                    *arena.current_re.add(destination) =
+                        *momenta.values.add(source) * crossing * embedding_factor;
+                    *arena.current_im.add(destination) = 0.0;
+                }
             }
         }
     }
@@ -215,10 +293,11 @@ unsafe extern "C" fn accumulate_closures(
     DIRECT_STATUS_OK
 }
 
-fn topology_replay_runtime() -> DirectRecurrenceExecutionRuntime {
+fn direct_runtime(strategy: RecurrenceStrategy) -> DirectRecurrenceExecutionRuntime {
+    let is_union = strategy == RecurrenceStrategy::AllFlowUnion;
     let catalog_digest = SemanticDigest::new([0x33; 32]).unwrap();
     let plan = DirectRecurrencePlan::new(DirectRecurrencePlanParts {
-        strategy: RecurrenceStrategy::TopologyReplay,
+        strategy,
         semantic_digest: SemanticDigest::new([0x11; 32]).unwrap(),
         prepared_pack_digest: SemanticDigest::new([0x22; 32]).unwrap(),
         direct_template_catalog_digest: catalog_digest,
@@ -233,8 +312,8 @@ fn topology_replay_runtime() -> DirectRecurrenceExecutionRuntime {
         state_template_count: 2,
         source_template_count: 1,
         source_template_or_dispatch_count: 1,
-        runtime_helicity_contract_count: 0,
-        runtime_helicity_variant_count: 0,
+        runtime_helicity_contract_count: u32::from(is_union),
+        runtime_helicity_variant_count: u32::from(is_union),
         direct_executor_count: 4,
         currents: vec![
             DirectCurrentDescriptor {
@@ -310,7 +389,7 @@ fn topology_replay_runtime() -> DirectRecurrenceExecutionRuntime {
                 stage: 0,
                 role: DirectExecutorRole::Source,
                 destination_operation: DirectDestinationOperation::Initialize,
-                direct_executor_id: 0,
+                direct_executor_id: if is_union { DIRECT_NONE_U32 } else { 0 },
                 row_start: 0,
                 row_count: 1,
             },
@@ -352,21 +431,25 @@ fn topology_replay_runtime() -> DirectRecurrenceExecutionRuntime {
             word_count: 1,
         }],
         selector_words: vec![1],
-        replay_targets: vec![DirectReplayTargetDescriptor {
-            public_flow_id: 0,
-            representative_id: 0,
-            source_permutation_start: 0,
-            source_permutation_count: 1,
-            phase_exact_factor_id: 0,
-            multiplicity: 1,
-            selector_domain_id: 0,
-        }],
-        source_permutations: vec![0],
+        replay_targets: if is_union {
+            vec![]
+        } else {
+            vec![DirectReplayTargetDescriptor {
+                public_flow_id: 0,
+                representative_id: 0,
+                source_permutation_start: 0,
+                source_permutation_count: 1,
+                phase_exact_factor_id: 0,
+                multiplicity: 1,
+                selector_domain_id: 0,
+            }]
+        },
+        source_permutations: if is_union { vec![] } else { vec![0] },
         amplitude_destinations: vec![DirectAmplitudeDestinationDescriptor {
             closure_row_start: 0,
             id: 0,
             target_sector_id: 0,
-            target_helicity_id_or_sentinel: 0,
+            target_helicity_id_or_sentinel: if is_union { DIRECT_NONE_U32 } else { 0 },
             closure_row_count: 1,
             selector_domain_id: 0,
         }],
@@ -376,7 +459,7 @@ fn topology_replay_runtime() -> DirectRecurrenceExecutionRuntime {
             public_helicity_start: 0,
             id: 0,
             source_state_count: 1,
-            source_selection_count: 0,
+            source_selection_count: u32::from(is_union),
             public_helicity_count: 1,
             selector_domain_id: 0,
         }],
@@ -384,10 +467,51 @@ fn topology_replay_runtime() -> DirectRecurrenceExecutionRuntime {
             source_slot: 0,
             state_index: 0,
         }],
-        source_dispatch_variants: vec![],
-        source_embeddings: vec![],
-        source_projections: vec![],
-        resolved_source_selections: vec![],
+        source_dispatch_variants: if is_union {
+            vec![DirectSourceDispatchVariantDescriptor {
+                embedding_start: 0,
+                projection_start: 0,
+                source_row_id: 0,
+                dispatch_domain_id: 0,
+                runtime_variant_id: 0,
+                source_state_index: 0,
+                source_template_id: 0,
+                source_state_template_id: 0,
+                crossed_state_template_id: 0,
+                crossed_spin_state_class: -1,
+                direct_executor_id: 0,
+                crossing_exact_factor_id: 0,
+                embedding_count: 1,
+                projection_count: 1,
+            }]
+        } else {
+            vec![]
+        },
+        source_embeddings: if is_union {
+            vec![DirectSourceEmbeddingRow {
+                full_component: 0,
+                source_component_or_sentinel: 0,
+                exact_factor_id: 0,
+            }]
+        } else {
+            vec![]
+        },
+        source_projections: if is_union {
+            vec![DirectSourceProjectionRow {
+                source_component: 0,
+                full_component: 0,
+            }]
+        } else {
+            vec![]
+        },
+        resolved_source_selections: if is_union {
+            vec![DirectResolvedSourceSelection {
+                source_slot: 0,
+                dispatch_variant_id: 0,
+            }]
+        } else {
+            vec![]
+        },
         public_helicities: vec![-1],
         exact_factors: vec![ExactComplexRational::ONE],
     })
@@ -416,9 +540,30 @@ fn topology_replay_runtime() -> DirectRecurrenceExecutionRuntime {
         ],
     )
     .unwrap();
-    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    let mut runtime = if is_union {
+        DirectRecurrenceExecutionRuntime::new_with_union_source_dispatch(
+            plan,
+            executors,
+            4,
+            DirectUnionSourceDispatchHandle {
+                call: fill_union_sources,
+                context: std::ptr::null(),
+            },
+        )
+        .unwrap()
+    } else {
+        DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap()
+    };
     runtime.set_parameters(&[3.0], &[1.0]).unwrap();
     runtime
+}
+
+fn topology_replay_runtime() -> DirectRecurrenceExecutionRuntime {
+    direct_runtime(RecurrenceStrategy::TopologyReplay)
+}
+
+fn all_flow_union_runtime() -> DirectRecurrenceExecutionRuntime {
+    direct_runtime(RecurrenceStrategy::AllFlowUnion)
 }
 
 fn external_momenta() -> [f64; 16] {
@@ -465,6 +610,55 @@ fn warmed_topology_replay_tiles_allocate_zero_heap_bytes_and_remain_correct() {
     assert_eq!(observed_im, EXPECTED_IM);
     assert_eq!(allocation_count, 0, "warmed recurrence loop allocated");
     assert_eq!(allocated_bytes, 0, "warmed recurrence loop allocated bytes");
+    assert_eq!(runtime.counters(), Default::default());
+    assert_eq!(runtime.role_timings(), Default::default());
+    assert_eq!(runtime.activity_counters(), Default::default());
+    assert_eq!(runtime.phase_timings(), Default::default());
+}
+
+#[test]
+fn warmed_all_flow_union_tiles_allocate_zero_heap_bytes_and_remain_correct() {
+    let mut runtime = all_flow_union_runtime();
+    let selector = runtime.prepare_union_helicity_selector(0).unwrap();
+    let momenta = external_momenta();
+
+    let warm_output = runtime
+        .execute_union_tile_from_external(&selector, POINT_COUNT, &momenta)
+        .unwrap();
+    assert_eq!(warm_output.destination_re(0).unwrap(), EXPECTED_RE);
+    assert_eq!(warm_output.destination_im(0).unwrap(), EXPECTED_IM);
+    runtime.reset_counters();
+
+    let (result, allocation_count, allocated_bytes) = count_allocations(|| {
+        let mut observed_re = [0.0; POINT_COUNT as usize];
+        let mut observed_im = [0.0; POINT_COUNT as usize];
+        for _ in 0..32 {
+            let output = runtime.execute_union_tile_from_external_unprofiled(
+                &selector,
+                POINT_COUNT,
+                &momenta,
+            )?;
+            observed_re.copy_from_slice(output.destination_re(0).ok_or_else(|| {
+                RusticolError::internal("missing direct recurrence real destination")
+            })?);
+            observed_im.copy_from_slice(output.destination_im(0).ok_or_else(|| {
+                RusticolError::internal("missing direct recurrence imaginary destination")
+            })?);
+        }
+        Ok::<_, RusticolError>((observed_re, observed_im))
+    });
+
+    let (observed_re, observed_im) = result.unwrap();
+    assert_eq!(observed_re, EXPECTED_RE);
+    assert_eq!(observed_im, EXPECTED_IM);
+    assert_eq!(
+        allocation_count, 0,
+        "warmed union recurrence loop allocated"
+    );
+    assert_eq!(
+        allocated_bytes, 0,
+        "warmed union recurrence loop allocated bytes"
+    );
     assert_eq!(runtime.counters(), Default::default());
     assert_eq!(runtime.role_timings(), Default::default());
     assert_eq!(runtime.activity_counters(), Default::default());

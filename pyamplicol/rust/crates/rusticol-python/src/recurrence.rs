@@ -1297,8 +1297,10 @@ fn parse_direct_template_catalog(
                 "exact_factor_scalar_slots",
                 "input_plane_count",
                 "input_plane_projections",
+                "intrinsic_contract_digest",
                 "kind",
                 "output_alias_inputs",
+                "contribution_parent_permutation",
                 "parameter_bindings",
                 "payload_digest",
                 "payload_paths",
@@ -1340,6 +1342,33 @@ fn parse_direct_template_catalog(
                 "{context} has no executable Direct-Arena payload; rebuild the prepared model"
             )));
         }
+        let parent_permutation_values = json_array(
+            payload,
+            "contribution_parent_permutation",
+            &format!("{context} parent permutation"),
+        )?;
+        if parent_permutation_values.len() != 2 {
+            return Err(invalid(format!(
+                "{context} parent permutation must contain two entries"
+            )));
+        }
+        let mut parent_permutation = [0_u8; 2];
+        for (index, value) in parent_permutation_values.iter().enumerate() {
+            parent_permutation[index] = u8::try_from(json_value_u32(
+                value,
+                &format!("{context} parent permutation entry {index}"),
+            )?)
+            .map_err(|_| invalid(format!("{context} parent permutation exceeds u8")))?;
+        }
+        if !matches!(parent_permutation, [0, 1] | [1, 0])
+            || (parent_permutation != [0, 1]
+                && !(payload_kind == "rusticol-intrinsic"
+                    && role == DirectExecutorRole::Contribution))
+        {
+            return Err(invalid(format!(
+                "{context} has an invalid parent permutation"
+            )));
+        }
         let runtime_template = json_optional_string(
             payload,
             "runtime_template",
@@ -1350,6 +1379,27 @@ fn parse_direct_template_catalog(
             "prepared_kernel_id",
             &format!("{context} prepared-kernel ID"),
         )?;
+        let intrinsic_contract_digest = json_optional_string(
+            payload,
+            "intrinsic_contract_digest",
+            &format!("{context} intrinsic contract digest"),
+        )?;
+        if let Some(digest) = intrinsic_contract_digest {
+            semantic_digest_from_hex(digest, &format!("{context} intrinsic contract digest"))?;
+        }
+        if payload_kind == "rusticol-intrinsic"
+            && role == DirectExecutorRole::Contribution
+            && intrinsic_contract_digest.is_none()
+        {
+            return Err(invalid(format!(
+                "{context} contribution intrinsic has no certified contract digest"
+            )));
+        }
+        if payload_kind != "rusticol-intrinsic" && intrinsic_contract_digest.is_some() {
+            return Err(invalid(format!(
+                "{context} non-intrinsic payload carries an intrinsic contract digest"
+            )));
+        }
         validate_string_array(
             json_array(
                 payload,
@@ -1383,11 +1433,14 @@ fn parse_direct_template_catalog(
             if let Some(kernel_id) = prepared_kernel_id {
                 prepared_kernel_ids.insert(kernel_id);
             }
-            bindings.push(PreparedDirectExecutorBinding::evaluator(
-                role,
-                evaluator_binding_id,
-                direct_executor_id,
-            ));
+            bindings.push(
+                PreparedDirectExecutorBinding::evaluator_with_parent_permutation(
+                    role,
+                    evaluator_binding_id,
+                    direct_executor_id,
+                    parent_permutation,
+                ),
+            );
         }
     }
 
@@ -3446,11 +3499,28 @@ mod direct_binding_tests {
             "parent_component_counts": [],
             "payload_binding": {
                 "abi": DIRECT_PAYLOAD_BINDING_ABI,
+                "destination_operation": "initialize",
+                "direct_application_abi": null,
+                "exact_factor_scalar_slots": [],
+                "input_plane_count": 0,
+                "input_plane_projections": [],
+                "intrinsic_contract_digest": null,
                 "kind": "rusticol-intrinsic",
+                "output_alias_inputs": [],
+                "contribution_parent_permutation": [0, 1],
+                "parameter_bindings": [],
                 "payload_digest": digest(5),
                 "payload_paths": [],
                 "prepared_kernel_id": null,
-                "runtime_template": "rusticol.source-fill.v1"
+                "prepared_template_semantic_digest": null,
+                "role": "source",
+                "runtime_template": "rusticol.source-fill.v1",
+                "scalar_input_count": 0,
+                "scalar_projections": [],
+                "source_application_abi": null,
+                "source_application_path": null,
+                "source_application_sha256": null,
+                "state_plane_indices": []
             },
             "portable": true,
             "role": "source",

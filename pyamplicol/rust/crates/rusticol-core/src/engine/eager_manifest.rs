@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: 0BSD
 
+use super::evaluator::recurrence_intrinsic_direct::{
+    FEYNMAN_VECTOR_PROPAGATOR_TEMPLATE, RecurrenceContributionIntrinsicKind,
+    WEYL_PROPAGATOR_NEGATIVE_TEMPLATE, WEYL_PROPAGATOR_POSITIVE_TEMPLATE,
+};
 use super::*;
 use crate::{
     EAGER_HOMOGENEOUS_LINEAR_CURRENT_PROOF, EAGER_INDEPENDENT_BLOCK_SIZE, EAGER_KERNEL_ABI,
@@ -283,8 +287,10 @@ pub(super) struct RecurrenceDirectPayloadBindingManifest {
     pub(super) input_plane_count: u32,
     pub(super) scalar_input_count: u32,
     pub(super) output_alias_inputs: Vec<u32>,
+    pub(super) contribution_parent_permutation: Vec<u8>,
     pub(super) input_plane_projections: Vec<RecurrenceDirectPlaneProjectionManifest>,
     pub(super) scalar_projections: Vec<RecurrenceDirectScalarProjectionManifest>,
+    pub(super) intrinsic_contract_digest: Option<String>,
     pub(super) prepared_template_semantic_digest: Option<String>,
 }
 
@@ -320,9 +326,22 @@ pub(super) enum RecurrenceDirectPlaneProjectionManifest {
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub(super) enum RecurrenceDirectScalarProjectionManifest {
-    ExactFactor { imaginary: bool },
-    Parameter { index: u32, imaginary: bool },
-    Literal { value: f64 },
+    ExactFactor {
+        imaginary: bool,
+    },
+    Parameter {
+        index: u32,
+        imaginary: bool,
+    },
+    Literal {
+        value: f64,
+    },
+    #[serde(rename = "intrinsic-scale-v1")]
+    IntrinsicScale {
+        constant_real_bits: u64,
+        constant_imag_bits: u64,
+        parameter_index: Option<u32>,
+    },
 }
 
 impl EagerExecutionManifest {
@@ -1071,40 +1090,81 @@ impl RecurrenceDirectPayloadBindingManifest {
             ));
         }
         validate_sha256_text(&self.payload_digest, "Direct-Arena payload digest")?;
+        if !matches!(
+            self.contribution_parent_permutation.as_slice(),
+            [0, 1] | [1, 0]
+        ) || (self.contribution_parent_permutation.as_slice() != [0, 1]
+            && !(self.kind == "rusticol-intrinsic" && template.role == "contribution"))
+        {
+            return Err(RusticolError::integrity(
+                "Direct-Arena payload binding has an invalid parent permutation",
+            ));
+        }
         match self.kind.as_str() {
             "rusticol-intrinsic" => {
-                if self.prepared_kernel_id.is_some()
+                let runtime_template = self.runtime_template.as_deref().ok_or_else(|| {
+                    RusticolError::artifact("Direct-Arena intrinsic has no runtime template")
+                })?;
+                let prepared_metadata_present = self.prepared_kernel_id.is_some()
                     || !self.payload_paths.is_empty()
                     || self.source_application_path.is_some()
                     || self.source_application_sha256.is_some()
                     || self.source_application_abi.is_some()
                     || self.direct_application_abi.is_some()
-                    || self.role.is_some()
-                    || self.destination_operation.is_some()
                     || !self.exact_factor_scalar_slots.is_empty()
                     || !self.state_plane_indices.is_empty()
                     || !self.parameter_bindings.is_empty()
                     || self.input_plane_count != 0
-                    || self.scalar_input_count != 0
                     || !self.output_alias_inputs.is_empty()
                     || !self.input_plane_projections.is_empty()
-                    || !self.scalar_projections.is_empty()
-                    || self.prepared_template_semantic_digest.is_some()
-                {
+                    || self.prepared_template_semantic_digest.is_some();
+                if prepared_metadata_present {
                     return Err(RusticolError::integrity(
                         "Rusticol Direct-Arena intrinsics carry prepared-call metadata",
                     ));
                 }
-                let runtime_template = self.runtime_template.as_deref().ok_or_else(|| {
-                    RusticolError::artifact("Direct-Arena intrinsic has no runtime template")
-                })?;
-                let valid = match template.role.as_str() {
+                if template.role == "contribution" {
+                    if self.role.as_deref() != Some("contribution")
+                        || self.destination_operation.as_deref() != Some("add")
+                        || self.scalar_input_count != 1
+                        || self.scalar_projections.len() != 1
+                        || !matches!(
+                            self.scalar_projections.first(),
+                            Some(RecurrenceDirectScalarProjectionManifest::IntrinsicScale { .. })
+                        )
+                    {
+                        return Err(RusticolError::integrity(
+                            "Direct-Arena contribution intrinsic metadata is inconsistent",
+                        ));
+                    }
+                    validate_sha256_text(
+                        self.intrinsic_contract_digest
+                            .as_deref()
+                            .unwrap_or_default(),
+                        "Direct-Arena intrinsic contract digest",
+                    )?;
+                    RecurrenceContributionIntrinsicKind::from_runtime_template(runtime_template)?;
+                } else if self.role.is_some()
+                    || self.destination_operation.is_some()
+                    || self.scalar_input_count != 0
+                    || !self.scalar_projections.is_empty()
+                    || self.intrinsic_contract_digest.is_some()
+                {
+                    return Err(RusticolError::integrity(
+                        "non-contribution Direct-Arena intrinsic carries contribution metadata",
+                    ));
+                } else if !match template.role.as_str() {
                     "source" => runtime_template.starts_with("rusticol.source-fill."),
-                    "finalization" => runtime_template == "rusticol.identity-finalize-in-place.v1",
+                    "finalization" => matches!(
+                        runtime_template,
+                        "rusticol.identity-finalize-in-place.v1"
+                            | WEYL_PROPAGATOR_POSITIVE_TEMPLATE
+                            | WEYL_PROPAGATOR_NEGATIVE_TEMPLATE
+                            | FEYNMAN_VECTOR_PROPAGATOR_TEMPLATE
+                    ),
                     "closure" => runtime_template.starts_with("rusticol.closure-reduce.v1:"),
                     _ => false,
-                };
-                if !valid {
+                } {
                     return Err(RusticolError::compatibility(format!(
                         "unsupported Direct-Arena intrinsic {runtime_template:?} for role {:?}",
                         template.role
@@ -1113,6 +1173,7 @@ impl RecurrenceDirectPayloadBindingManifest {
             }
             "prepared-direct-call" => {
                 if self.runtime_template.is_some()
+                    || self.intrinsic_contract_digest.is_some()
                     || self.role.as_deref() != Some(template.role.as_str())
                     || self.destination_operation.as_deref()
                         != Some(template.destination_operation.as_str())

@@ -2,6 +2,10 @@
 
 use super::PreparedKernelPackManifest;
 use super::evaluator::recurrence_closure_direct::execute_closure_reduce_rows;
+use super::evaluator::recurrence_intrinsic_direct::{
+    FEYNMAN_VECTOR_PROPAGATOR_TEMPLATE, LoadedRecurrenceIntrinsicDirectExecutor,
+    RecurrenceIntrinsicScale, WEYL_PROPAGATOR_NEGATIVE_TEMPLATE, WEYL_PROPAGATOR_POSITIVE_TEMPLATE,
+};
 use super::evaluator::recurrence_source_direct::{
     DirectSourceDispatchDomainSpec, LoadedDirectSourceExecutor,
 };
@@ -62,6 +66,7 @@ pub(super) struct NativeRecurrenceDirectExecutorBackend {
 /// Immutable context ownership retained beside the native recurrence scheduler.
 pub(super) struct NativeRecurrenceDirectExecutorOwners {
     source: Option<LoadedDirectSourceExecutor>,
+    intrinsics: Vec<LoadedRecurrenceIntrinsicDirectExecutor>,
     #[cfg(feature = "f64-symjit")]
     symjit: Vec<LoadedSymjitDirectExecutor>,
     summary: NativeRecurrenceDirectBackendSummary,
@@ -134,11 +139,18 @@ impl NativeRecurrenceDirectExecutorBackend {
             }
             None
         };
+        let mut intrinsics = Vec::new();
         #[cfg(feature = "f64-symjit")]
         let mut symjit = Vec::new();
         let mut handles = Vec::with_capacity(direct.templates.len());
         for template in &direct.templates {
             let handle = match template.payload_binding.kind.as_str() {
+                "rusticol-intrinsic" if template.role == "contribution" => {
+                    let loaded = load_contribution_intrinsic(template)?;
+                    let handle = loaded.handle();
+                    intrinsics.push(loaded);
+                    handle
+                }
                 "rusticol-intrinsic" => load_intrinsic_handle(template, source.as_ref())?,
                 "prepared-direct-call" => {
                     #[cfg(feature = "f64-symjit")]
@@ -183,6 +195,7 @@ impl NativeRecurrenceDirectExecutorBackend {
             catalog,
             owners: NativeRecurrenceDirectExecutorOwners {
                 source,
+                intrinsics,
                 #[cfg(feature = "f64-symjit")]
                 symjit,
                 summary,
@@ -227,8 +240,8 @@ impl NativeRecurrenceDirectExecutorOwners {
     }
 
     #[cfg(test)]
-    fn owner_counts(&self) -> (usize, usize) {
-        (usize::from(self.source.is_some()), {
+    fn owner_counts(&self) -> (usize, usize, usize) {
+        (usize::from(self.source.is_some()), self.intrinsics.len(), {
             #[cfg(feature = "f64-symjit")]
             {
                 self.symjit.len()
@@ -239,6 +252,35 @@ impl NativeRecurrenceDirectExecutorOwners {
             }
         })
     }
+}
+
+fn load_contribution_intrinsic(
+    template: &RecurrenceDirectTemplateManifest,
+) -> RusticolResult<LoadedRecurrenceIntrinsicDirectExecutor> {
+    let runtime_template = template
+        .payload_binding
+        .runtime_template
+        .as_deref()
+        .ok_or_else(|| RusticolError::artifact("contribution intrinsic has no template"))?;
+    let scale = match template.payload_binding.scalar_projections.as_slice() {
+        [
+            RecurrenceDirectScalarProjectionManifest::IntrinsicScale {
+                constant_real_bits,
+                constant_imag_bits,
+                parameter_index,
+            },
+        ] => RecurrenceIntrinsicScale::new(
+            f64::from_bits(*constant_real_bits),
+            f64::from_bits(*constant_imag_bits),
+            *parameter_index,
+        )?,
+        _ => {
+            return Err(RusticolError::integrity(
+                "contribution intrinsic must carry exactly one intrinsic scale",
+            ));
+        }
+    };
+    LoadedRecurrenceIntrinsicDirectExecutor::load_runtime_template(runtime_template, scale)
 }
 
 fn load_intrinsic_handle(
@@ -275,6 +317,16 @@ fn load_intrinsic_handle(
                     "Direct-Arena identity finalization is unavailable without f64-symjit",
                 ))
             }
+        }
+        "finalization"
+            if matches!(
+                runtime_template,
+                WEYL_PROPAGATOR_POSITIVE_TEMPLATE
+                    | WEYL_PROPAGATOR_NEGATIVE_TEMPLATE
+                    | FEYNMAN_VECTOR_PROPAGATOR_TEMPLATE
+            ) =>
+        {
+            LoadedRecurrenceIntrinsicDirectExecutor::finalization_handle(runtime_template)
         }
         "closure" if runtime_template.starts_with("rusticol.closure-reduce.v1:") => {
             Ok(DirectExecutorHandle::Closure {
@@ -420,6 +472,11 @@ fn scalar_projection(
                 ));
             }
             SymjitDirectScalarProjection::Literal(value)
+        }
+        RecurrenceDirectScalarProjectionManifest::IntrinsicScale { .. } => {
+            return Err(RusticolError::integrity(
+                "intrinsic scale cannot be used by a prepared SymJIT callable",
+            ));
         }
     })
 }

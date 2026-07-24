@@ -1044,20 +1044,50 @@ def _recurrence_execution_inspection(
         summary.get("prepared_kernel_count"),
         "recurrence inspection prepared_kernel_count",
     )
-    recurrence_kernels = tuple(
-        kernel
-        for index, value in enumerate(kernels)
-        if (
-            kernel := _mapping(
+    kernel_ids = {
+        _integer(
+            _mapping(
                 value,
                 f"prepared recurrence kernel pack.kernels[{index}]",
-            )
-        ).get("contract_kind")
-        != "model-parameter"
+            ).get("kernel_id"),
+            f"prepared recurrence kernel pack.kernels[{index}].kernel_id",
+        )
+        for index, value in enumerate(kernels)
+    }
+    direct_catalog = _mapping(
+        pack.get("recurrence_direct_template"),
+        "prepared recurrence kernel pack.recurrence_direct_template",
     )
-    if prepared_kernel_count != len(recurrence_kernels):
+    direct_templates = _sequence(
+        direct_catalog.get("templates"),
+        "prepared recurrence direct templates",
+    )
+    referenced_kernel_ids: set[int] = set()
+    for index, value in enumerate(direct_templates):
+        template = _mapping(
+            value,
+            f"prepared recurrence direct templates[{index}]",
+        )
+        binding = _mapping(
+            template.get("payload_binding"),
+            f"prepared recurrence direct templates[{index}].payload_binding",
+        )
+        kernel_id = binding.get("prepared_kernel_id")
+        if kernel_id is None:
+            continue
+        parsed_kernel_id = _integer(
+            kernel_id,
+            f"prepared recurrence direct templates[{index}].prepared_kernel_id",
+        )
+        if parsed_kernel_id not in kernel_ids:
+            raise ArtifactError(
+                "recurrence direct template references an absent prepared kernel"
+            )
+        referenced_kernel_ids.add(parsed_kernel_id)
+    if prepared_kernel_count != len(referenced_kernel_ids):
         raise ArtifactError(
-            "recurrence inspection prepared-kernel count does not match its pack"
+            "recurrence inspection prepared-kernel count does not match its "
+            "direct template catalog"
         )
     semantic_components = _optional_counter(
         direct_arena,

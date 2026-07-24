@@ -30,6 +30,9 @@ pub(crate) mod recurrence_source_direct;
 #[path = "evaluator/recurrence_closure_direct.rs"]
 pub(crate) mod recurrence_closure_direct;
 
+#[path = "evaluator/recurrence_intrinsic_direct.rs"]
+pub(crate) mod recurrence_intrinsic_direct;
+
 #[path = "evaluator/stage.rs"]
 mod stage;
 pub(crate) use stage::*;

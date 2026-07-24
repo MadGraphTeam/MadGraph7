@@ -27,6 +27,7 @@ from pyamplicol.models.prepared_compile import _independent_block_contract
 from pyamplicol.models.recurrence_catalog_builder import (
     build_recurrence_template_catalog,
 )
+from pyamplicol.models.recurrence_template import ExactComplexRationalV1
 
 MODEL_ROOT = (
     Path(__file__).resolve().parents[2]
@@ -377,6 +378,61 @@ def test_builtin_and_external_runtime_helicity_contracts_cover_antifermions(
                 None,
             )
             assert variants[1].projection_full_components == (0, 1)
+
+
+def test_builtin_and_external_reflection_proofs_cover_selected_transitions(
+    builtin_catalog,
+    external_sm_catalog,
+) -> None:
+    builtin_model, builtin_prepared = builtin_catalog
+    _compiled, external_model, external_prepared = external_sm_catalog
+
+    for model, prepared in (
+        (builtin_model, builtin_prepared),
+        (external_model, external_prepared),
+    ):
+        semantic = build_recurrence_template_catalog(
+            model,
+            prepared,
+            compiled_model_digest="a" * 64,
+            prepared_kernel_pack_digest="b" * 64,
+        )
+        evaluators = {
+            semantic_template_id: evaluator
+            for evaluator in semantic.evaluator_bindings
+            for semantic_template_id in evaluator.semantic_template_ids
+        }
+        colors = {color.template_id: color for color in semantic.color_contractions}
+        expected_subjects = {
+            transition.template_id
+            for transition in semantic.transitions
+            if colors[transition.color_contraction_template_id].input_representations
+            == (8, 8)
+            and colors[transition.color_contraction_template_id].output_representation
+            == 8
+            and {
+                witness.input_permutation
+                for witness in colors[
+                    transition.color_contraction_template_id
+                ].transition_witnesses
+            }
+            == {(0, 1), (1, 0)}
+        }
+        proofs = tuple(
+            proof
+            for proof in semantic.symmetry_proofs
+            if proof.proof_algorithm == "canonical-current-word-reversal-v1"
+        )
+
+        assert expected_subjects
+        assert {proof.subject_template_ids[0] for proof in proofs} == expected_subjects
+        assert all(proof.input_permutation == (1, 0) for proof in proofs)
+        assert {proof.exact_phase for proof in proofs} == {
+            ExactComplexRationalV1.from_binary64(-1.0)
+        }
+        for proof in proofs:
+            evaluator = evaluators[proof.subject_template_ids[0]]
+            assert proof.expression_digests == evaluator.exact_expression_digests
 
 
 def test_external_sm_catalog_signatures_ignore_compiled_inventory_order(

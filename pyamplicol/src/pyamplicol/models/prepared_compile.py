@@ -154,9 +154,7 @@ def _validate_native_recurrence_template_input_v1(
         "template_input_sha256": template_input.canonical_digest,
         "catalog_digest": catalog.catalog_digest,
         "compiled_model_digest": catalog.header.compiled_model_digest,
-        "prepared_kernel_pack_digest": (
-            catalog.header.prepared_kernel_pack_digest
-        ),
+        "prepared_kernel_pack_digest": (catalog.header.prepared_kernel_pack_digest),
         "prepared_kernel_inventory_verified": True,
         "prepared_kernel_inventory_count": len(kernel_ids),
     }
@@ -465,8 +463,7 @@ def prepared_symbolica_settings(
     )
     if (
         backend == "jit"
-        and evaluator.jit.optimization_level
-        != PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+        and evaluator.jit.optimization_level != PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
     ):
         warnings.warn(
             "prepared JIT model bundles use SymJIT optimization level 2 for "
@@ -556,6 +553,7 @@ def _prepared_jit_direct_source(
             )
             for contract in record.input_contracts
         ),
+        exact_expressions=record.exact_expressions,
         output_arity=record.output_arity,
     )
 

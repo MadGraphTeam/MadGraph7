@@ -791,7 +791,11 @@ impl RecurrenceRuntimeMetadata {
                 "recurrence runtime metadata has no public color flows",
             ));
         }
-        if self.public_color_flows.len() as u64 != inspection.sector_count {
+        let expected_public_flow_count = match inspection.lc_flow_layout {
+            RecurrenceLcFlowLayout::TopologyReplay => inspection.schedule.replay_target_count,
+            RecurrenceLcFlowLayout::AllFlowUnion => inspection.sector_count,
+        };
+        if self.public_color_flows.len() as u64 != expected_public_flow_count {
             return Err(RusticolError::integrity(
                 "recurrence public color-flow count does not match the Direct-Arena sector count",
             ));
@@ -810,7 +814,7 @@ impl RecurrenceRuntimeMetadata {
                 ));
             }
             if flow.target_sector_id as usize != target_sector_id
-                || u64::from(flow.target_sector_id) >= inspection.sector_count
+                || u64::from(flow.target_sector_id) >= expected_public_flow_count
             {
                 return Err(RusticolError::integrity(
                     "recurrence public color-flow target sectors are not dense or in range",

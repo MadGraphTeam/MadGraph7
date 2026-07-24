@@ -100,9 +100,7 @@ def _scalar_union_plan() -> _RecurrenceExactPlan:
             _AmplitudeDestination(0, 0, 10, DIRECT_NONE_U32, 1, 0),
             _AmplitudeDestination(1, 1, 20, DIRECT_NONE_U32, 1, 0),
         ),
-        resolved_helicities=(
-            _ResolvedHelicity(0, 0, 0, 0, 2, 2, 2, 0),
-        ),
+        resolved_helicities=(_ResolvedHelicity(0, 0, 0, 0, 2, 2, 2, 0),),
         source_state_assignments=(
             _SourceStateAssignment(0, 0),
             _SourceStateAssignment(1, 0),
@@ -143,6 +141,8 @@ def _scalar_union_plan() -> _RecurrenceExactPlan:
         sections=sections,
         kernels={},
         executors={row.executor_id: row for row in sections.executors},
+        executor_exact_kernel_ids={},
+        executor_parent_permutations={0: (0, 1), 1: (0, 1)},
         source_templates={
             0: _SourceTemplate(
                 0, 1, 0, 0, 0, "scalar", "self-conjugate", None, 1, 1, 1
@@ -238,6 +238,7 @@ def test_union_source_zeroes_inactive_weyl_embedding_components() -> None:
 def test_exact_kernel_inputs_use_executor_binding_coupling() -> None:
     plan = _scalar_union_plan()
     plan.executor_couplings = {7: (Decimal("1.25"), Decimal("-0.5"))}
+    plan.executor_parent_permutations = {**plan.executor_parent_permutations, 7: (0, 1)}
     executor = _Executor(
         7,
         "contribution",
@@ -267,6 +268,101 @@ def test_exact_kernel_inputs_use_executor_binding_coupling() -> None:
         (Decimal("1.25"), _ZERO),
         (Decimal("-0.5"), _ZERO),
     )
+
+
+@pytest.mark.parametrize(
+    ("parent_permutation", "expected"),
+    (
+        (
+            (0, 1),
+            (
+                (Decimal(10), _ZERO),
+                (Decimal(20), _ZERO),
+                (Decimal(100), _ZERO),
+                (Decimal(200), _ZERO),
+            ),
+        ),
+        (
+            (1, 0),
+            (
+                (Decimal(20), _ZERO),
+                (Decimal(10), _ZERO),
+                (Decimal(200), _ZERO),
+                (Decimal(100), _ZERO),
+            ),
+        ),
+    ),
+)
+def test_exact_contribution_inputs_apply_authenticated_parent_permutation_once(
+    parent_permutation: tuple[int, int],
+    expected: tuple[tuple[Decimal, Decimal], ...],
+) -> None:
+    plan = _scalar_union_plan()
+    plan.executor_parent_permutations = {
+        **plan.executor_parent_permutations,
+        7: parent_permutation,
+    }
+    executor = _Executor(
+        7,
+        "contribution",
+        "add",
+        (1, 1),
+        1,
+        2,
+        3,
+        None,
+    )
+    row = _Contribution(0, 1, 0, 1, 0, 0, 0, 0)
+
+    inputs = _kernel_inputs(
+        plan,
+        (
+            {"component": 0, "role": "left-current"},
+            {"component": 0, "role": "right-current"},
+            {"component": 0, "role": "left-momentum"},
+            {"component": 0, "role": "right-momentum"},
+        ),
+        executor,
+        row,
+        (
+            (Decimal(100), _ZERO, _ZERO, _ZERO),
+            (Decimal(200), _ZERO, _ZERO, _ZERO),
+        ),
+        (),
+        ((Decimal(10), _ZERO), (Decimal(20), _ZERO)),
+    )
+
+    assert inputs == expected
+
+
+def test_exact_contribution_inputs_reject_unauthenticated_parent_permutation() -> None:
+    plan = _scalar_union_plan()
+    plan.executor_parent_permutations = {
+        **plan.executor_parent_permutations,
+        7: (0, 0),
+    }
+    executor = _Executor(
+        7,
+        "contribution",
+        "add",
+        (1, 1),
+        1,
+        2,
+        3,
+        None,
+    )
+    row = _Contribution(0, 1, 0, 1, 0, 0, 0, 0)
+
+    with pytest.raises(ArtifactError, match="authenticated parent permutation"):
+        _kernel_inputs(
+            plan,
+            ({"component": 0, "role": "left-current"},),
+            executor,
+            row,
+            (),
+            (),
+            ((Decimal(10), _ZERO), (Decimal(20), _ZERO)),
+        )
 
 
 def test_union_exact_resolved_values_sum_incoherently_by_flow(
@@ -365,9 +461,7 @@ def test_union_native_section_adapter_parses_dispatch_tables() -> None:
         "amplitude_destinations": [
             astuple(row) for row in sections.amplitude_destinations
         ],
-        "resolved_helicities": [
-            astuple(row) for row in sections.resolved_helicities
-        ],
+        "resolved_helicities": [astuple(row) for row in sections.resolved_helicities],
         "source_state_assignments": [
             astuple(row) for row in sections.source_state_assignments
         ],

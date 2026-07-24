@@ -16,6 +16,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, TypeAlias, cast
 
+from .recurrence_direct_intrinsics import (
+    RECURRENCE_INTRINSIC_SCALE_KIND,
+    CertifiedRecurrenceIntrinsic,
+    certify_recurrence_contribution_intrinsic,
+    certify_recurrence_finalization_intrinsic,
+)
 from .recurrence_template import (
     ExactComplexRationalV1,
     RecurrenceTemplateCatalog,
@@ -220,7 +226,9 @@ class RecurrenceDirectPayloadBindingV1:
     output_alias_inputs: tuple[int, ...] = ()
     input_plane_projections: tuple[str, ...] = ()
     scalar_projections: tuple[str, ...] = ()
+    intrinsic_contract_digest: str | None = None
     prepared_template_semantic_digest: str | None = None
+    contribution_parent_permutation: tuple[int, int] = (0, 1)
     abi: str = RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI
 
     def __post_init__(self) -> None:
@@ -254,6 +262,14 @@ class RecurrenceDirectPayloadBindingV1:
         output_aliases = _require_int_tuple(
             "direct output-alias inputs", self.output_alias_inputs
         )
+        parent_permutation = _require_int_tuple(
+            "direct contribution parent permutation",
+            self.contribution_parent_permutation,
+        )
+        if parent_permutation not in {(0, 1), (1, 0)}:
+            raise RecurrenceDirectTemplateError(
+                "direct contribution parent permutation must be (0, 1) or (1, 0)"
+            )
         input_plane_count = _require_nonnegative_int(
             "direct input-plane count", self.input_plane_count
         )
@@ -270,11 +286,84 @@ class RecurrenceDirectPayloadBindingV1:
                 raise RecurrenceDirectTemplateError(
                     "Rusticol direct intrinsics cannot reference bundle payloads"
                 )
-            _require_empty_prepared_call_metadata(self)
+            if self.role == "contribution":
+                if (
+                    self.destination_operation != "add"
+                    or self.scalar_input_count != 1
+                    or len(scalar_projections) != 1
+                    or self.intrinsic_contract_digest is None
+                ):
+                    raise RecurrenceDirectTemplateError(
+                        "contribution intrinsics require one certified scale"
+                    )
+                projection = json.loads(scalar_projections[0])
+                if projection.get("kind") != RECURRENCE_INTRINSIC_SCALE_KIND:
+                    raise RecurrenceDirectTemplateError(
+                        "contribution intrinsic scale has an unsupported kind"
+                    )
+                _require_sha256(
+                    "intrinsic contract digest", self.intrinsic_contract_digest
+                )
+                expected_payload_digest = _digest(
+                    {
+                        "abi": self.abi,
+                        "destination_operation": self.destination_operation,
+                        "contribution_parent_permutation": list(parent_permutation),
+                        "intrinsic_contract_digest": (self.intrinsic_contract_digest),
+                        "kind": self.kind,
+                        "role": self.role,
+                        "runtime_template": self.runtime_template,
+                        "scalar_input_count": self.scalar_input_count,
+                        "scalar_projections": [json.loads(scalar_projections[0])],
+                    }
+                )
+                if self.payload_digest != expected_payload_digest:
+                    raise RecurrenceDirectTemplateError(
+                        "contribution intrinsic payload digest does not match "
+                        "its certified metadata"
+                    )
+                if any(
+                    value not in (None, (), 0)
+                    for value in (
+                        self.direct_application_abi,
+                        exact_factor_slots,
+                        input_plane_count,
+                        input_projections,
+                        output_aliases,
+                        parameter_bindings,
+                        self.prepared_template_semantic_digest,
+                        self.source_application_abi,
+                        self.source_application_path,
+                        self.source_application_sha256,
+                        state_planes,
+                    )
+                ):
+                    raise RecurrenceDirectTemplateError(
+                        "contribution intrinsics carry prepared-call metadata"
+                    )
+            else:
+                if parent_permutation != (0, 1):
+                    raise RecurrenceDirectTemplateError(
+                        "non-contribution intrinsics require the identity "
+                        "parent permutation"
+                    )
+                if self.intrinsic_contract_digest is not None:
+                    raise RecurrenceDirectTemplateError(
+                        "non-contribution intrinsics cannot carry a contract digest"
+                    )
+                _require_empty_prepared_call_metadata(self)
         else:
+            if parent_permutation != (0, 1):
+                raise RecurrenceDirectTemplateError(
+                    "prepared direct payloads require the identity parent permutation"
+                )
             _require_nonnegative_int(
                 "direct prepared kernel id", self.prepared_kernel_id
             )
+            if self.intrinsic_contract_digest is not None:
+                raise RecurrenceDirectTemplateError(
+                    "prepared direct payloads cannot carry an intrinsic contract"
+                )
             if self.runtime_template is not None:
                 raise RecurrenceDirectTemplateError(
                     "prepared direct payloads cannot name a Rusticol template"
@@ -370,6 +459,9 @@ class RecurrenceDirectPayloadBindingV1:
     ) -> dict[str, object]:
         payload = {
             "abi": self.abi,
+            "contribution_parent_permutation": list(
+                self.contribution_parent_permutation
+            ),
             "destination_operation": self.destination_operation,
             "direct_application_abi": self.direct_application_abi,
             "exact_factor_scalar_slots": list(self.exact_factor_scalar_slots),
@@ -377,6 +469,7 @@ class RecurrenceDirectPayloadBindingV1:
             "input_plane_projections": _decode_canonical_objects(
                 self.input_plane_projections
             ),
+            "intrinsic_contract_digest": self.intrinsic_contract_digest,
             "kind": self.kind,
             "output_alias_inputs": list(self.output_alias_inputs),
             "parameter_bindings": _decode_canonical_objects(self.parameter_bindings),
@@ -406,11 +499,13 @@ class RecurrenceDirectPayloadBindingV1:
             )
         expected = {
             "abi",
+            "contribution_parent_permutation",
             "destination_operation",
             "direct_application_abi",
             "exact_factor_scalar_slots",
             "input_plane_count",
             "input_plane_projections",
+            "intrinsic_contract_digest",
             "kind",
             "output_alias_inputs",
             "parameter_bindings",
@@ -432,6 +527,7 @@ class RecurrenceDirectPayloadBindingV1:
                 "direct payload-binding fields do not match v1"
             )
         array_fields = (
+            "contribution_parent_permutation",
             "exact_factor_scalar_slots",
             "input_plane_projections",
             "output_alias_inputs",
@@ -448,6 +544,9 @@ class RecurrenceDirectPayloadBindingV1:
             abi=payload["abi"],  # type: ignore[arg-type]
             kind=payload["kind"],  # type: ignore[arg-type]
             payload_digest=payload["payload_digest"],  # type: ignore[arg-type]
+            contribution_parent_permutation=tuple(
+                payload["contribution_parent_permutation"]  # type: ignore[arg-type]
+            ),
             payload_paths=tuple(payload["payload_paths"]),  # type: ignore[arg-type]
             prepared_kernel_id=payload["prepared_kernel_id"],  # type: ignore[arg-type]
             runtime_template=payload["runtime_template"],  # type: ignore[arg-type]
@@ -474,6 +573,7 @@ class RecurrenceDirectPayloadBindingV1:
             input_plane_projections=_encode_canonical_objects(
                 payload["input_plane_projections"]  # type: ignore[arg-type]
             ),
+            intrinsic_contract_digest=payload["intrinsic_contract_digest"],  # type: ignore[arg-type]
             scalar_projections=_encode_canonical_objects(
                 payload["scalar_projections"]  # type: ignore[arg-type]
             ),
@@ -492,6 +592,7 @@ class PreparedJitDirectSourceV1:
     source_application_sha256: str
     source_application_abi: str
     input_contracts: tuple[str, ...]
+    exact_expressions: tuple[str, ...]
     output_arity: int
 
     def __post_init__(self) -> None:
@@ -508,7 +609,18 @@ class PreparedJitDirectSourceV1:
         _require_canonical_object_tuple(
             "prepared JIT direct input contracts", self.input_contracts
         )
-        _require_positive_int("prepared JIT direct output arity", self.output_arity)
+        output_arity = _require_positive_int(
+            "prepared JIT direct output arity", self.output_arity
+        )
+        expressions = _require_string_tuple(
+            "prepared JIT direct exact expressions",
+            self.exact_expressions,
+            nonempty=True,
+        )
+        if len(expressions) != output_arity:
+            raise RecurrenceDirectTemplateError(
+                "prepared JIT direct exact-expression count does not match output arity"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1042,6 +1154,7 @@ def build_recurrence_direct_template_catalog(
                     {
                         "abi": RECURRENCE_DIRECT_BACKEND_ABI,
                         "callable_signature": binding.callable_signature,
+                        "contribution_parent_permutation": [0, 1],
                         "runtime_template": binding.runtime_template,
                     }
                 ),
@@ -1100,33 +1213,63 @@ def build_recurrence_direct_template_catalog(
                             f"prepared JIT direct source for kernel {kernel_id} "
                             f"identifies kernel {source.prepared_kernel_id}"
                         )
-                    payload_binding = _build_prepared_jit_direct_binding(
-                        source=source,
-                        role=cast(DirectRole, role),
-                        parent_component_counts=parent_component_counts,
-                        destination_component_count=destination_component_count,
-                        binding_coupling=_uniform_binding_coupling(
-                            binding.semantic_template_ids,
-                            semantic_records,
-                            required=_source_uses_inline_coupling(source),
-                        ),
-                        prepared_template_semantic_digest=(
-                            _prepared_template_contract_digest(
-                                candidate,
-                                backend=backend,
-                                target_triple=target_triple,
-                                portable=portable,
-                                optimization_level=optimization_level,
-                                alignment_bytes=alignment_bytes,
-                            )
-                        ),
+                    binding_coupling = _uniform_binding_coupling(
+                        binding.semantic_template_ids,
+                        semantic_records,
+                        required=_source_uses_inline_coupling(source),
                     )
+                    certified_intrinsic = None
+                    finalization_intrinsic = None
+                    if role == "contribution":
+                        certified_intrinsic = certify_recurrence_contribution_intrinsic(
+                            exact_expressions=source.exact_expressions,
+                            input_contracts=source.input_contracts,
+                            parent_component_counts=parent_component_counts,
+                            destination_component_count=destination_component_count,
+                            binding_coupling=binding_coupling,
+                            allow_nontrivial_parent_permutation=True,
+                        )
+                    elif role == "finalization":
+                        finalization_intrinsic = (
+                            certify_recurrence_finalization_intrinsic(
+                                exact_expressions=source.exact_expressions,
+                                input_contracts=source.input_contracts,
+                                component_count=destination_component_count,
+                            )
+                        )
+                    if certified_intrinsic is not None:
+                        payload_binding = _build_certified_intrinsic_binding(
+                            certified_intrinsic
+                        )
+                    elif finalization_intrinsic is not None:
+                        payload_binding = _build_runtime_intrinsic_binding(
+                            runtime_template=finalization_intrinsic
+                        )
+                    else:
+                        payload_binding = _build_prepared_jit_direct_binding(
+                            source=source,
+                            role=cast(DirectRole, role),
+                            parent_component_counts=parent_component_counts,
+                            destination_component_count=destination_component_count,
+                            binding_coupling=binding_coupling,
+                            prepared_template_semantic_digest=(
+                                _prepared_template_contract_digest(
+                                    candidate,
+                                    backend=backend,
+                                    target_triple=target_triple,
+                                    portable=portable,
+                                    optimization_level=optimization_level,
+                                    alignment_bytes=alignment_bytes,
+                                )
+                            ),
+                        )
             if payload_binding is None:
                 payload_binding = RecurrenceDirectPayloadBindingV1(
                     kind="pending-direct-call-abi",
                     prepared_kernel_id=kernel_id,
                     payload_digest=_digest(
                         {
+                            "contribution_parent_permutation": [0, 1],
                             "kind": "pending-direct-call-abi",
                             "prepared_kernel_id": kernel_id,
                             "prepared_kernel_payload_digest": kernel_payload_digest,
@@ -1180,6 +1323,7 @@ def build_recurrence_direct_template_catalog(
                     payload_digest=_digest(
                         {
                             **identity_semantics,
+                            "contribution_parent_permutation": [0, 1],
                             "runtime_template": runtime_template,
                         }
                     ),
@@ -1418,11 +1562,13 @@ def _build_prepared_jit_direct_binding(
 
     metadata: dict[str, object] = {
         "abi": RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI,
+        "contribution_parent_permutation": [0, 1],
         "destination_operation": _DESTINATION_OPERATIONS[role],
         "direct_application_abi": SYMJIT_DIRECT_APPLICATION_ABI,
         "exact_factor_scalar_slots": [0, 1],
         "input_plane_count": len(input_plane_projections),
         "input_plane_projections": input_plane_projections,
+        "intrinsic_contract_digest": None,
         "kind": "prepared-direct-call",
         "output_alias_inputs": output_alias_inputs,
         "parameter_bindings": parameter_bindings,
@@ -1463,12 +1609,68 @@ def _build_prepared_jit_direct_binding(
     )
 
 
+def _build_certified_intrinsic_binding(
+    certified: CertifiedRecurrenceIntrinsic,
+) -> RecurrenceDirectPayloadBindingV1:
+    runtime_template = _require_nonempty(
+        "certified intrinsic runtime template",
+        certified.runtime_template,
+    )
+    contract_digest = _require_sha256(
+        "certified intrinsic contract digest",
+        certified.contract_digest,
+    )
+    scale = certified.scale_projection()
+    metadata = {
+        "abi": RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI,
+        "contribution_parent_permutation": list(certified.parent_permutation),
+        "destination_operation": "add",
+        "intrinsic_contract_digest": contract_digest,
+        "kind": "rusticol-intrinsic",
+        "role": "contribution",
+        "runtime_template": runtime_template,
+        "scalar_input_count": 1,
+        "scalar_projections": [scale],
+    }
+    return RecurrenceDirectPayloadBindingV1(
+        kind="rusticol-intrinsic",
+        payload_digest=_digest(metadata),
+        runtime_template=runtime_template,
+        role="contribution",
+        destination_operation="add",
+        scalar_input_count=1,
+        scalar_projections=_encode_canonical_objects((scale,)),
+        intrinsic_contract_digest=contract_digest,
+        contribution_parent_permutation=certified.parent_permutation,
+    )
+
+
+def _build_runtime_intrinsic_binding(
+    *,
+    runtime_template: str,
+) -> RecurrenceDirectPayloadBindingV1:
+    runtime_template = _require_nonempty(
+        "direct intrinsic runtime template", runtime_template
+    )
+    metadata = {
+        "abi": RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI,
+        "contribution_parent_permutation": [0, 1],
+        "kind": "rusticol-intrinsic",
+        "runtime_template": runtime_template,
+    }
+    return RecurrenceDirectPayloadBindingV1(
+        kind="rusticol-intrinsic",
+        payload_digest=_digest(metadata),
+        runtime_template=runtime_template,
+    )
+
+
 def _source_uses_inline_coupling(source: PreparedJitDirectSourceV1) -> bool:
     for contract in _decode_canonical_objects(source.input_contracts):
-        if (
-            isinstance(contract, Mapping)
-            and contract.get("role") in {"coupling-real", "coupling-imag"}
-        ):
+        if isinstance(contract, Mapping) and contract.get("role") in {
+            "coupling-real",
+            "coupling-imag",
+        }:
             return True
     return False
 

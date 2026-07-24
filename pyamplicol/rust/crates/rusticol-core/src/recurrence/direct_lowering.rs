@@ -84,6 +84,7 @@ impl PreparedDirectExecutorKey {
 pub struct PreparedDirectExecutorBinding {
     pub key: PreparedDirectExecutorKey,
     pub direct_executor_id: u32,
+    pub parent_permutation: [u8; 2],
 }
 
 impl PreparedDirectExecutorBinding {
@@ -98,6 +99,23 @@ impl PreparedDirectExecutorBinding {
                 evaluator_binding_id,
             },
             direct_executor_id,
+            parent_permutation: [0, 1],
+        }
+    }
+
+    pub const fn evaluator_with_parent_permutation(
+        role: DirectExecutorRole,
+        evaluator_binding_id: u32,
+        direct_executor_id: u32,
+        parent_permutation: [u8; 2],
+    ) -> Self {
+        Self {
+            key: PreparedDirectExecutorKey::Evaluator {
+                role,
+                evaluator_binding_id,
+            },
+            direct_executor_id,
+            parent_permutation,
         }
     }
 
@@ -105,6 +123,7 @@ impl PreparedDirectExecutorBinding {
         Self {
             key: PreparedDirectExecutorKey::IdentityFinalizer,
             direct_executor_id,
+            parent_permutation: [0, 1],
         }
     }
 }
@@ -117,7 +136,7 @@ impl PreparedDirectExecutorBinding {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreparedDirectExecutorCatalog {
     direct_template_catalog_digest: SemanticDigest,
-    bindings: BTreeMap<PreparedDirectExecutorKey, u32>,
+    bindings: BTreeMap<PreparedDirectExecutorKey, PreparedDirectExecutorBinding>,
     executor_roles: Box<[DirectExecutorRole]>,
 }
 
@@ -145,10 +164,15 @@ impl PreparedDirectExecutorCatalog {
                     "prepared direct-template mapping uses the missing evaluator-binding sentinel",
                 ));
             }
-            if by_key
-                .insert(binding.key, binding.direct_executor_id)
-                .is_some()
+            if !matches!(binding.parent_permutation, [0, 1] | [1, 0])
+                || (binding.parent_permutation != [0, 1]
+                    && binding.key.role() != DirectExecutorRole::Contribution)
             {
+                return Err(invalid(
+                    "prepared direct-template mapping has an invalid parent permutation",
+                ));
+            }
+            if by_key.insert(binding.key, binding).is_some() {
                 return Err(invalid(format!(
                     "prepared direct-template mapping repeats key {:?}",
                     binding.key
@@ -199,8 +223,8 @@ impl PreparedDirectExecutorCatalog {
             role,
             evaluator_binding_id,
         };
-        if let Some(id) = self.bindings.get(&key).copied() {
-            return Ok(id);
+        if let Some(binding) = self.bindings.get(&key) {
+            return Ok(binding.direct_executor_id);
         }
         if self.bindings.keys().any(|key| {
             matches!(
@@ -220,10 +244,26 @@ impl PreparedDirectExecutorCatalog {
         )))
     }
 
+    pub fn resolve_contribution(
+        &self,
+        evaluator_binding_id: u32,
+    ) -> RusticolResult<(u32, [u8; 2])> {
+        let key = PreparedDirectExecutorKey::Evaluator {
+            role: DirectExecutorRole::Contribution,
+            evaluator_binding_id,
+        };
+        let binding = self.bindings.get(&key).ok_or_else(|| {
+            invalid(format!(
+                "prepared direct-template catalog has no Contribution mapping for evaluator binding {evaluator_binding_id}"
+            ))
+        })?;
+        Ok((binding.direct_executor_id, binding.parent_permutation))
+    }
+
     pub fn resolve_identity_finalizer(&self) -> RusticolResult<u32> {
         self.bindings
             .get(&PreparedDirectExecutorKey::IdentityFinalizer)
-            .copied()
+            .map(|binding| binding.direct_executor_id)
             .ok_or_else(|| {
                 invalid(
                     "prepared direct-template catalog has no generic identity-finalizer binding",
@@ -267,11 +307,31 @@ struct ClosureDraft {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct DirectParents {
-    parent0_component_base: u32,
-    parent1_component_base_or_sentinel: u32,
-    parent0_momentum_form_id: u32,
-    parent1_momentum_form_id_or_sentinel: u32,
+pub(super) struct DirectParents {
+    pub(super) parent0_component_base: u32,
+    pub(super) parent1_component_base_or_sentinel: u32,
+    pub(super) parent0_momentum_form_id: u32,
+    pub(super) parent1_momentum_form_id_or_sentinel: u32,
+}
+
+impl DirectParents {
+    pub(super) fn permuted(self, permutation: [u8; 2]) -> RusticolResult<Self> {
+        match permutation {
+            [0, 1] => Ok(self),
+            [1, 0] if self.parent1_component_base_or_sentinel != DIRECT_NONE_U32 => Ok(Self {
+                parent0_component_base: self.parent1_component_base_or_sentinel,
+                parent1_component_base_or_sentinel: self.parent0_component_base,
+                parent0_momentum_form_id: self.parent1_momentum_form_id_or_sentinel,
+                parent1_momentum_form_id_or_sentinel: self.parent0_momentum_form_id,
+            }),
+            [1, 0] => Err(invalid(
+                "binary contribution parent permutation references an absent second parent",
+            )),
+            _ => Err(invalid(
+                "direct contribution has an invalid parent permutation",
+            )),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -567,8 +627,9 @@ fn build_direct_parts(
             EvaluatorContractKind::Vertex,
             "contribution",
         )?;
-        let executor_id = direct_executors
-            .resolve_evaluator(DirectExecutorRole::Contribution, evaluator_binding_id)?;
+        let (executor_id, parent_permutation) =
+            direct_executors.resolve_contribution(evaluator_binding_id)?;
+        let parents = parents.permuted(parent_permutation)?;
         contribution_drafts.push(ContributionDraft {
             stage: current_stage(result)?,
             executor_id,

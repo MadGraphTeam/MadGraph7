@@ -213,9 +213,7 @@ def test_verified_auxiliary_transition_mirrors_are_not_double_counted() -> None:
     # (aux, g) model bindings are one certified contribution each, not six
     # independently accumulated recurrence rows.
     assert len(transitions) == 3
-    assert {
-        transition.canonical_input_order for transition in transitions
-    } == {(0, 1)}
+    assert {transition.canonical_input_order for transition in transitions} == {(0, 1)}
 
 
 def test_concatenate_keep_alias_retains_canonical_parent_order() -> None:
@@ -398,9 +396,7 @@ class _ScalarModel(Model):
         )
 
     def recurrence_lc_color_shape_contract(self, particle_id, chirality=0):
-        return self._standard_recurrence_lc_color_shape_contract(
-            particle_id, chirality
-        )
+        return self._standard_recurrence_lc_color_shape_contract(particle_id, chirality)
 
     def recurrence_lc_source_color_contract(self, particle_id, chirality=0):
         return self._standard_recurrence_lc_source_color_contract(
@@ -469,7 +465,11 @@ def _kernel_namespace(
     )
 
 
-def _scalar_catalog(model: _ScalarModel):
+def _scalar_catalog(
+    model: _ScalarModel,
+    *,
+    vertex_expression: str = "left0*right0",
+):
     source_inputs = (PreparedKernelInput(role="momentum", component=0, symbol="p0"),)
     source = _kernel_namespace(
         contract_kind="source",
@@ -484,7 +484,7 @@ def _scalar_catalog(model: _ScalarModel):
     vertex = _kernel_namespace(
         contract_kind="vertex",
         inputs=vertex_inputs,
-        expressions=("left0*right0",),
+        expressions=(vertex_expression,),
         output_layout=("scalar:c0",),
     )
     ordered = sorted((source, vertex), key=lambda item: item.canonical_signature)
@@ -561,6 +561,182 @@ def test_model_generic_scalar_catalog_covers_source_flow_color_and_propagator() 
     }
     assert "built-in" not in catalog.canonical_json
     assert "ufo" not in catalog.canonical_json.lower()
+    assert not catalog.symmetry_proofs
+
+
+class _AdjointReflectionScalarModel(_ScalarModel):
+    def color_rep(self, pdg):
+        assert pdg == 101
+        return 8
+
+    def vertex_color_structure(self, vertex):
+        assert vertex.kind == 0
+        return "adjoint-structure-constant"
+
+    def recurrence_lc_color_transition_contract(self, vertex, *, closure):
+        assert vertex.kind == 0
+        assert not closure
+        return RecurrenceLCColorTransitionContract(
+            "adjoint-structure-constant",
+            (
+                RecurrenceLCColorWitnessContract(
+                    input_permutation=(0, 1),
+                    reverse_parent_mask=0,
+                    component_operation="concatenate-join",
+                    result_component_kind="adjoint-segment",
+                    result_component_role="active",
+                ),
+                RecurrenceLCColorWitnessContract(
+                    input_permutation=(1, 0),
+                    reverse_parent_mask=0,
+                    component_operation="concatenate-join",
+                    result_component_kind="adjoint-segment",
+                    result_component_role="active",
+                    exact_factor=(-1.0, 0.0),
+                ),
+            ),
+        )
+
+
+class _ReflectionScalarModel(_AdjointReflectionScalarModel):
+    def __init__(self, phase: tuple[float, float]) -> None:
+        super().__init__()
+        self._reflection_phase = phase
+
+    def adjoint_current_reflection_phase(self, vertex):
+        assert vertex.kind == 0
+        return self._reflection_phase
+
+
+def test_transition_reflection_proof_authenticates_kernel_and_model_callback() -> None:
+    model = _ReflectionScalarModel((-1.0, 0.0))
+    catalog = build_recurrence_template_catalog(
+        model,
+        _scalar_catalog(model),  # type: ignore[arg-type]
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+
+    proof = next(
+        item
+        for item in catalog.symmetry_proofs
+        if item.proof_algorithm == "canonical-current-word-reversal-v1"
+    )
+    assert proof.subject_template_ids == (catalog.transitions[0].template_id,)
+    assert proof.input_permutation == (1, 0)
+    assert proof.exact_phase == ExactComplexRationalV1.from_binary64(-1.0)
+    assert proof.expression_digests == (hashlib.sha256(b"left0*right0").hexdigest(),)
+
+    changed_callback_model = _ReflectionScalarModel((1.0, 0.0))
+    with pytest.raises(RecurrenceTemplateError, match="conflicting"):
+        build_recurrence_template_catalog(
+            changed_callback_model,
+            _scalar_catalog(changed_callback_model),  # type: ignore[arg-type]
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
+        )
+
+    changed_kernel_model = _ReflectionScalarModel((-1.0, 0.0))
+    changed_kernel = build_recurrence_template_catalog(
+        changed_kernel_model,
+        _scalar_catalog(  # type: ignore[arg-type]
+            changed_kernel_model,
+            vertex_expression="right0*left0",
+        ),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    ).symmetry_proofs[0]
+    assert changed_kernel.expression_digests != proof.expression_digests
+    assert changed_kernel.witness_digest != proof.witness_digest
+
+
+class _PreparedExchangeReflectionModel(_AdjointReflectionScalarModel):
+    def vertex_evaluation_equivalence(self, kind):
+        assert kind == 0
+        return VertexEvaluationEquivalence(
+            class_id="scalar-exchange-proof",
+            input_exchange_factor=(-1.0, 0.0),
+        )
+
+
+def test_transition_reflection_proof_accepts_exact_color_witness_pair() -> None:
+    model = _AdjointReflectionScalarModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        _scalar_catalog(model),  # type: ignore[arg-type]
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+
+    proof = next(
+        item
+        for item in catalog.symmetry_proofs
+        if item.proof_algorithm == "canonical-current-word-reversal-v1"
+    )
+    assert proof.subject_template_ids == (catalog.transitions[0].template_id,)
+    assert proof.input_permutation == (1, 0)
+    assert proof.exact_phase == ExactComplexRationalV1.from_binary64(-1.0)
+
+
+def test_transition_reflection_proof_accepts_prepared_input_exchange() -> None:
+    model = _PreparedExchangeReflectionModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        _scalar_catalog(model),  # type: ignore[arg-type]
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+
+    proof = next(
+        item
+        for item in catalog.symmetry_proofs
+        if item.proof_algorithm == "canonical-current-word-reversal-v1"
+    )
+    assert proof.subject_template_ids == (catalog.transitions[0].template_id,)
+    assert proof.input_permutation == (1, 0)
+    assert proof.exact_phase == ExactComplexRationalV1.from_binary64(-1.0)
+
+
+class _ConflictingPreparedExchangeReflectionModel(_PreparedExchangeReflectionModel):
+    def adjoint_current_reflection_phase(self, vertex):
+        assert vertex.kind == 0
+        return (1.0, 0.0)
+
+
+def test_prepared_and_callback_reflection_disagreement_fails_closed() -> None:
+    model = _ConflictingPreparedExchangeReflectionModel()
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="conflicting",
+    ):
+        build_recurrence_template_catalog(
+            model,
+            _scalar_catalog(model),  # type: ignore[arg-type]
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
+        )
+
+
+class _NondeterministicReflectionModel(_AdjointReflectionScalarModel):
+    def __init__(self) -> None:
+        super().__init__()
+        self._reflection_calls = 0
+
+    def adjoint_current_reflection_phase(self, vertex):
+        assert vertex.kind == 0
+        self._reflection_calls += 1
+        return ((-1.0 if self._reflection_calls % 2 else 1.0), 0.0)
+
+
+def test_nondeterministic_transition_reflection_callback_fails_closed() -> None:
+    model = _NondeterministicReflectionModel()
+    with pytest.raises(RecurrenceTemplateError, match="nondeterministic"):
+        build_recurrence_template_catalog(
+            model,
+            _scalar_catalog(model),  # type: ignore[arg-type]
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
+        )
 
 
 def test_source_fill_uses_a_generic_runtime_template() -> None:

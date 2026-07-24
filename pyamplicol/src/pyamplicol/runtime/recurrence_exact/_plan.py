@@ -12,6 +12,9 @@ from pyamplicol._internal.versions import PROCESS_ARTIFACT_SCHEMA_VERSION
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
 from pyamplicol.artifacts.manifest import ArtifactManifest
 from pyamplicol.models.prepared import PreparedKernelPack, PreparedKernelRecord
+from pyamplicol.models.recurrence_direct_template import (
+    RECURRENCE_DIRECT_IDENTITY_FINALIZER,
+)
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime.eager_exact._contracts import (
     _complex_pair,
@@ -95,6 +98,8 @@ class _RecurrenceExactPlan:
     sections: _RecurrenceExactSectionsV1
     kernels: Mapping[int, _LazyExactKernel]
     executors: Mapping[int, _Executor]
+    executor_exact_kernel_ids: Mapping[int, int]
+    executor_parent_permutations: Mapping[int, tuple[int, int]]
     source_templates: Mapping[int, _SourceTemplate]
     initial_source_slots: frozenset[int]
     executor_couplings: Mapping[int, tuple[Decimal, Decimal]]
@@ -179,16 +184,22 @@ class _RecurrenceExactPlan:
             effective_kernel_loader,
             prepared_by_name,
         )
+        executor_exact_kernel_ids = _executor_exact_kernel_ids(pack)
         result = cls(
             sections=sections,
             kernels=kernels,
             executors={row.executor_id: row for row in sections.executors},
+            executor_exact_kernel_ids=executor_exact_kernel_ids,
+            executor_parent_permutations=_executor_parent_permutations(pack),
             source_templates=_source_templates(metadata, prepared_by_name),
             initial_source_slots=_initial_source_slots(
                 metadata,
                 sections.external_source_count,
             ),
-            executor_couplings=_executor_couplings(pack),
+            executor_couplings=_executor_couplings(
+                pack,
+                executor_exact_kernel_ids,
+            ),
             prepared_defaults=defaults,
             parameter_projection=projection_rows,
             parameter_derivation=derivation,
@@ -235,21 +246,41 @@ class _RecurrenceExactPlan:
             "closure": "closure",
         }
         for executor in self.sections.executors:
-            if executor.prepared_kernel_id is None:
+            parent_permutation = self.executor_parent_permutations.get(
+                executor.executor_id
+            )
+            if parent_permutation not in {(0, 1), (1, 0)}:
+                raise ArtifactError(
+                    f"direct executor {executor.executor_id} has no authenticated "
+                    "parent permutation"
+                )
+            if executor.role != "contribution" and parent_permutation != (0, 1):
+                raise ArtifactError(
+                    f"non-contribution executor {executor.executor_id} has a "
+                    "non-identity parent permutation"
+                )
+            exact_kernel_id = self.executor_exact_kernel_ids.get(
+                executor.executor_id,
+                executor.prepared_kernel_id,
+            )
+            if exact_kernel_id is None:
                 if executor.runtime_template is None:
                     raise ArtifactError(
                         f"direct executor {executor.executor_id} has no exact binding"
                     )
                 continue
-            if executor.runtime_template is not None:
+            if (
+                executor.runtime_template is not None
+                and executor.executor_id not in self.executor_exact_kernel_ids
+            ):
                 raise ArtifactError(
                     f"direct executor {executor.executor_id} mixes exact bindings"
                 )
-            record = pack_by_id.get(executor.prepared_kernel_id)
+            record = pack_by_id.get(exact_kernel_id)
             if record is None:
                 raise ArtifactError(
                     f"direct executor {executor.executor_id} references absent "
-                    f"prepared kernel {executor.prepared_kernel_id}"
+                    f"prepared kernel {exact_kernel_id}"
                 )
             if record.contract_kind != expected_kind.get(executor.role):
                 raise ArtifactError(
@@ -280,15 +311,117 @@ class _RecurrenceExactPlan:
                     )
 
 
+def _executor_exact_kernel_ids(
+    pack: PreparedKernelPack,
+) -> Mapping[int, int]:
+    """Recover exact kernels hidden behind certified native intrinsics."""
+
+    semantic_catalog = pack.recurrence_template_catalog
+    direct_catalog = pack.recurrence_direct_template_catalog
+    if semantic_catalog is None or direct_catalog is None:
+        raise ArtifactError(
+            "exact recurrence execution requires semantic and direct template catalogs"
+        )
+    kernels = {record.kernel_id: record for record in pack.kernels}
+    expected_kind = {
+        "contribution": "vertex",
+        "finalization": "propagator",
+        "closure": "closure",
+    }
+    result: dict[int, int] = {}
+    for direct in direct_catalog.templates:
+        kernel_id = direct.payload_binding.prepared_kernel_id
+        binding_id = direct.evaluator_binding_id
+        if kernel_id is None:
+            if binding_id >= len(semantic_catalog.evaluator_bindings):
+                if (
+                    binding_id == len(semantic_catalog.evaluator_bindings)
+                    and direct.role == "finalization"
+                    and direct.payload_binding.runtime_template
+                    == RECURRENCE_DIRECT_IDENTITY_FINALIZER
+                ):
+                    continue
+                raise ArtifactError(
+                    f"direct executor {direct.direct_executor_id} references "
+                    f"absent evaluator binding {binding_id}"
+                )
+            binding = semantic_catalog.evaluator_bindings[binding_id]
+            if binding.callable_kind != "prepared-kernel":
+                continue
+            kernel_id = binding.prepared_kernel_id
+        else:
+            if binding_id >= len(semantic_catalog.evaluator_bindings):
+                raise ArtifactError(
+                    f"direct executor {direct.direct_executor_id} references "
+                    f"absent evaluator binding {binding_id}"
+                )
+            binding = semantic_catalog.evaluator_bindings[binding_id]
+        if kernel_id is None:
+            raise ArtifactError(
+                f"direct executor {direct.direct_executor_id} has an empty exact "
+                "kernel binding"
+            )
+        if binding.resolver_key != direct.evaluator_resolver_key:
+            raise ArtifactError(
+                f"direct executor {direct.direct_executor_id} resolver does not "
+                "match its semantic evaluator binding"
+            )
+        record = kernels.get(kernel_id)
+        if record is None:
+            raise ArtifactError(
+                f"direct executor {direct.direct_executor_id} references absent "
+                f"prepared kernel {kernel_id}"
+            )
+        if record.contract_kind != expected_kind.get(direct.role):
+            raise ArtifactError(
+                f"direct executor {direct.direct_executor_id} exact kernel has "
+                "the wrong role"
+            )
+        result[direct.direct_executor_id] = kernel_id
+    return result
+
+
+def _executor_parent_permutations(
+    pack: PreparedKernelPack,
+) -> Mapping[int, tuple[int, int]]:
+    """Recover authenticated prepared-kernel parent order for exact execution."""
+
+    direct_catalog = pack.recurrence_direct_template_catalog
+    if direct_catalog is None:
+        raise ArtifactError(
+            "exact recurrence execution requires a direct template catalog"
+        )
+    result: dict[int, tuple[int, int]] = {}
+    for direct in direct_catalog.templates:
+        permutation = direct.payload_binding.contribution_parent_permutation
+        if permutation not in {(0, 1), (1, 0)}:
+            raise ArtifactError(
+                f"direct executor {direct.direct_executor_id} has an invalid "
+                "parent permutation"
+            )
+        if direct.role != "contribution" and permutation != (0, 1):
+            raise ArtifactError(
+                f"non-contribution executor {direct.direct_executor_id} has a "
+                "non-identity parent permutation"
+            )
+        previous = result.setdefault(direct.direct_executor_id, permutation)
+        if previous != permutation:
+            raise ArtifactError(
+                f"direct executor {direct.direct_executor_id} has conflicting "
+                "parent permutations"
+            )
+    return result
+
+
 def _executor_couplings(
     pack: PreparedKernelPack,
+    executor_exact_kernel_ids: Mapping[int, int],
 ) -> Mapping[int, tuple[Decimal, Decimal]]:
     semantic_catalog = pack.recurrence_template_catalog
     direct_catalog = pack.recurrence_direct_template_catalog
     if semantic_catalog is None or direct_catalog is None:
         raise ArtifactError(
-            "exact recurrence execution requires semantic and direct template "
-            "catalogs"
+            "exact recurrence execution requires semantic and direct template catalogs"
         )
     semantic_records = {
         record.template_id: record
@@ -301,7 +434,7 @@ def _executor_couplings(
     kernels = {record.kernel_id: record for record in pack.kernels}
     result: dict[int, tuple[Decimal, Decimal]] = {}
     for direct in direct_catalog.templates:
-        kernel_id = direct.payload_binding.prepared_kernel_id
+        kernel_id = executor_exact_kernel_ids.get(direct.direct_executor_id)
         if kernel_id is None:
             continue
         kernel = kernels.get(kernel_id)

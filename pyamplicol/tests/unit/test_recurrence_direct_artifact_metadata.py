@@ -60,6 +60,26 @@ def _recurrence_process() -> SimpleNamespace:
     )
 
 
+def _write_prepared_pack(root: Path) -> None:
+    pack_path = root / "model" / "eager-kernel-pack.json"
+    pack_path.parent.mkdir(parents=True)
+    pack_path.write_text(
+        json.dumps(
+            {
+                "backend": "jit",
+                "kernels": [{"kernel_id": 0}, {"kernel_id": 1}],
+                "recurrence_direct_template": {
+                    "templates": [
+                        {"payload_binding": {"prepared_kernel_id": 0}},
+                        {"payload_binding": {"prepared_kernel_id": 1}},
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_direct_recurrence_versions_replace_packet_abi() -> None:
     assert (
         versions.RECURRENCE_BUILDER_INPUT_ABI
@@ -201,12 +221,7 @@ def test_inspection_rejects_retired_recurrence_before_strict_manifest_load(
 
 
 def test_direct_recurrence_inspection_exposes_arena_counters(tmp_path: Path) -> None:
-    pack_path = tmp_path / "model" / "eager-kernel-pack.json"
-    pack_path.parent.mkdir(parents=True)
-    pack_path.write_text(
-        json.dumps({"backend": "jit", "kernels": [{}, {}]}),
-        encoding="utf-8",
-    )
+    _write_prepared_pack(tmp_path)
     execution = artifact_writer._recurrence_execution_manifest(_recurrence_process())
     result = inspection._recurrence_execution_inspection(
         SimpleNamespace(root=tmp_path),
@@ -232,12 +247,7 @@ def test_direct_recurrence_inspection_exposes_arena_counters(tmp_path: Path) -> 
 def test_inspection_requires_v2_metadata_without_packet_fallback(
     tmp_path: Path,
 ) -> None:
-    pack_path = tmp_path / "model" / "eager-kernel-pack.json"
-    pack_path.parent.mkdir(parents=True)
-    pack_path.write_text(
-        json.dumps({"backend": "jit", "kernels": [{}, {}]}),
-        encoding="utf-8",
-    )
+    _write_prepared_pack(tmp_path)
     execution = artifact_writer._recurrence_execution_manifest(_recurrence_process())
     execution["recurrence_plan_abi"] = "pyamplicol-recurrence-plan-v1"
 
@@ -251,12 +261,7 @@ def test_inspection_requires_v2_metadata_without_packet_fallback(
 def test_v2_inspection_tolerates_pending_direct_counter_wiring(
     tmp_path: Path,
 ) -> None:
-    pack_path = tmp_path / "model" / "eager-kernel-pack.json"
-    pack_path.parent.mkdir(parents=True)
-    pack_path.write_text(
-        json.dumps({"backend": "jit", "kernels": [{}, {}]}),
-        encoding="utf-8",
-    )
+    _write_prepared_pack(tmp_path)
     process = _recurrence_process()
     process.inspection_summary.pop("direct_arena")
     execution = artifact_writer._recurrence_execution_manifest(process)

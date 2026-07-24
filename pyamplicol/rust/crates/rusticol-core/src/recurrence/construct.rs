@@ -18,13 +18,14 @@ use super::template::{
 use super::{
     AuthenticatedRecurrenceBuilderInput, CanonicalMomentumLinearForm, CheckedTableRange,
     ContributionKey, CurrentCoreKey, CurrentHelicityIdentity, CurrentSourceBinding,
-    DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational, ExactRational,
-    LCColorComponent, LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole,
-    LCColorParentPort, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
-    LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm, RecurrenceAmplitudeDestination,
-    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
-    RecurrenceNodeKind, RecurrenceProgram, RecurrenceReplayTarget, RecurrenceResolvedHelicity,
-    RecurrenceStrategy, SemanticDigest, SourceStateAssignment,
+    DynamicLCColorState, DynamicLCColorStateId, DynamicLCColorStateInterner, ExactComplexRational,
+    ExactRational, LCColorComponent, LCColorComponentKind, LCColorComponentOperation,
+    LCColorComponentRole, LCColorParentPort, LCColorPortWiring, LCColorSourceSeed,
+    LCColorSourceSeedOperation, LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm,
+    RecurrenceAmplitudeDestination, RecurrenceClosureTerm, RecurrenceContribution,
+    RecurrenceCurrent, RecurrenceFinalization, RecurrenceNodeKind, RecurrenceProgram,
+    RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy, SemanticDigest,
+    SourceStateAssignment,
 };
 use crate::{RusticolError, RusticolResult};
 
@@ -99,6 +100,31 @@ struct PendingCurrent {
     key: CurrentCoreKey,
     source_exact_factor: Option<ExactComplexRational>,
     contributions: BTreeMap<PendingContributionKey, ExactComplexRational>,
+    reflection: CurrentReflection,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CurrentReflection {
+    Unavailable,
+    Proven(ExactComplexRational),
+}
+
+impl CurrentReflection {
+    const fn phase(self) -> Option<ExactComplexRational> {
+        match self {
+            Self::Unavailable => None,
+            Self::Proven(phase) => Some(phase),
+        }
+    }
+
+    fn include(&mut self, candidate: Option<ExactComplexRational>) {
+        if !matches!(
+            (*self, candidate),
+            (Self::Proven(existing), Some(candidate)) if existing == candidate
+        ) {
+            *self = Self::Unavailable;
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -195,6 +221,70 @@ impl TransitionStateIndex {
     }
 }
 
+#[derive(Debug, Default)]
+struct TransitionReflectionIndex {
+    phases_by_transition: BTreeMap<u32, ExactComplexRational>,
+}
+
+impl TransitionReflectionIndex {
+    fn new(
+        template: &OwnedRecurrenceTemplateInput,
+        catalog: &TemplateCatalog<'_>,
+    ) -> RusticolResult<Self> {
+        let transitions_by_subject = template
+            .transitions
+            .iter()
+            .map(|row| (row.template_string_id, row.id))
+            .collect::<BTreeMap<_, _>>();
+        let mut result = Self::default();
+        for proof in &template.symmetry_proofs {
+            if catalog.string(proof.proof_algorithm_string_id, "symmetry proof algorithm")?
+                != "canonical-current-word-reversal-v1"
+            {
+                continue;
+            }
+            let subjects = catalog.u32_sequence(
+                proof.subject_template_sequence_id,
+                "current-word reversal proof subjects",
+            )?;
+            let [subject] = subjects else {
+                return Err(invalid(
+                    "current-word reversal proof must reference one transition",
+                ));
+            };
+            let transition_id = transitions_by_subject
+                .get(subject)
+                .copied()
+                .ok_or_else(|| {
+                    invalid("current-word reversal proof subject is not a transition")
+                })?;
+            if catalog.u32_sequence(
+                proof.input_permutation_sequence_id,
+                "current-word reversal proof permutation",
+            )? != [1, 0]
+            {
+                return Err(invalid(
+                    "current-word reversal proof must exchange two transition inputs",
+                ));
+            }
+            let phase =
+                catalog.factor(proof.exact_phase_factor_id, "current-word reversal proof")?;
+            if let Some(previous) = result.phases_by_transition.insert(transition_id, phase)
+                && previous != phase
+            {
+                return Err(invalid(
+                    "transition has conflicting current-word reversal phases",
+                ));
+            }
+        }
+        Ok(result)
+    }
+
+    fn phase(&self, transition_id: u32) -> Option<ExactComplexRational> {
+        self.phases_by_transition.get(&transition_id).copied()
+    }
+}
+
 fn canonical_state_pair([left, right]: [u32; 2]) -> (u32, u32) {
     if left <= right {
         (left, right)
@@ -208,12 +298,12 @@ fn canonical_state_pair([left, right]: [u32; 2]) -> (u32, u32) {
 /// Recurrence witnesses can join or explicitly reverse ordered components, but
 /// they never split or internally permute an existing component. A partial
 /// component must therefore occur as an oriented contiguous word in at least
-/// one materialized representative sector. Reversed public flows are handled
-/// by certified replay mappings; accepting their partial words here would
-/// materialize an unphased second current instead of an exact replay alias.
-/// This cheap forward filter prevents the builder from interning color words
-/// that exact closure reachability would discard later; final backward
-/// liveness remains authoritative.
+/// one materialized representative sector. Pure-adjoint reversed words are
+/// admitted transiently for one construction stage so reflection proofs can be
+/// finalized over the complete fan-in. A stage-final reconciliation then
+/// removes only exactly certified aliases. This cheap forward filter prevents
+/// the builder from interning unrelated color words; final backward liveness
+/// remains authoritative.
 #[derive(Debug)]
 struct MaterializedColorTargets {
     sectors: Vec<Vec<LCColorComponent>>,
@@ -256,6 +346,16 @@ impl MaterializedColorTargets {
                     .any(|target| component_can_embed(partial, target))
             })
         })
+    }
+
+    fn accepts_up_to_reflection(&self, state: &DynamicLCColorState) -> RusticolResult<bool> {
+        if self.accepts(state) {
+            return Ok(true);
+        }
+        if state.pure_adjoint_word().is_none() {
+            return Ok(false);
+        }
+        Ok(self.accepts(&state.reversed()?))
     }
 }
 
@@ -619,6 +719,7 @@ pub(super) fn build_recurrence_program_with_progress(
     let template_catalog = TemplateCatalog::new(template_input)?;
     let coupling_limits = coupling_limits(&process_catalog, &template_catalog)?;
     let propagators = propagator_by_state(template_input)?;
+    let transition_reflections = TransitionReflectionIndex::new(template_input, &template_catalog)?;
     let replay_targets = build_replay_targets(strategy, process_input, &process_catalog)?;
     let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
     let color_targets =
@@ -661,6 +762,7 @@ pub(super) fn build_recurrence_program_with_progress(
         process_input,
         template_input,
         &template_catalog,
+        &transition_reflections,
         &coupling_limits,
         &propagators,
         &color_targets,
@@ -787,6 +889,7 @@ fn build_sources(
                         template_catalog,
                         color_states,
                     )?;
+                    let reflection = source_reflection(color_states, color_id)?;
                     insert_source_current(
                         catalog_digest,
                         process_state.current_state_template_id,
@@ -801,6 +904,7 @@ fn build_sources(
                             )],
                         )?,
                         source,
+                        reflection,
                         CurrentSourceBinding::FixedTemplate(process_state.source_template_id),
                         Some(process_catalog.factor(
                             process_state.crossing_phase_factor_id,
@@ -830,6 +934,7 @@ fn build_sources(
                         template_catalog,
                         color_states,
                     )?;
+                    let reflection = source_reflection(color_states, color_id)?;
                     insert_source_current(
                         catalog_digest,
                         group.full_state_template_id,
@@ -838,6 +943,7 @@ fn build_sources(
                         group.momentum_sign,
                         CurrentHelicityIdentity::all_flow_union(group.full_spin_state_class),
                         source,
+                        reflection,
                         CurrentSourceBinding::runtime_dispatch_with_variants(
                             group.contract_id,
                             group.variants,
@@ -1122,6 +1228,7 @@ fn insert_source_current(
     momentum_sign: i32,
     helicity_identity: CurrentHelicityIdentity,
     source: SourceRow,
+    reflection: CurrentReflection,
     source_binding: CurrentSourceBinding,
     source_factor: Option<ExactComplexRational>,
     zero_orders: &[u32],
@@ -1164,9 +1271,24 @@ fn insert_source_current(
         key,
         source_exact_factor: source_factor,
         contributions: BTreeMap::new(),
+        reflection,
     });
     currents_by_size[0].push(id);
     Ok(())
+}
+
+fn source_reflection(
+    color_states: &DynamicLCColorStateInterner,
+    color_id: super::DynamicLCColorStateId,
+) -> RusticolResult<CurrentReflection> {
+    let color = color_states
+        .get(color_id)
+        .ok_or_else(|| invalid("source dynamic color state disappeared"))?;
+    Ok(if color.pure_adjoint_word().is_some() {
+        CurrentReflection::Proven(ExactComplexRational::ONE)
+    } else {
+        CurrentReflection::Unavailable
+    })
 }
 
 fn validate_crossed_source_state(
@@ -1270,6 +1392,7 @@ fn build_internal_currents(
     process: &OwnedRecurrenceProcessInput,
     template: &OwnedRecurrenceTemplateInput,
     catalog: &TemplateCatalog<'_>,
+    transition_reflections: &TransitionReflectionIndex,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
     color_targets: &MaterializedColorTargets,
@@ -1286,6 +1409,7 @@ fn build_internal_currents(
     let mut completed_contribution_count = 0usize;
     let mut completed_color_target_prune_count = 0usize;
     for target_size in 2..process.external_legs.len() {
+        let stage_current_start = currents.len();
         let mut stage = StageConstructionDiagnostics {
             target_size,
             ..StageConstructionDiagnostics::default()
@@ -1375,6 +1499,7 @@ fn build_internal_currents(
                     target_size + 1 < process.external_legs.len(),
                     template,
                     catalog,
+                    transition_reflections,
                     coupling_limits,
                     propagators,
                     color_targets,
@@ -1386,6 +1511,13 @@ fn build_internal_currents(
                 )?;
             }
         }
+        reconcile_stage_reflections(
+            stage_current_start,
+            color_states,
+            currents,
+            current_ids,
+            target_bucket,
+        )?;
         debug_assert_eq!(stage.target_size, target_size);
         debug_assert_eq!(stage.transition_candidate_count, stage.state_order_count);
         completed_contribution_count = completed_contribution_count
@@ -1421,6 +1553,7 @@ fn add_transition_contributions(
     propagate_result: bool,
     template: &OwnedRecurrenceTemplateInput,
     catalog: &TemplateCatalog<'_>,
+    transition_reflections: &TransitionReflectionIndex,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
     color_targets: &MaterializedColorTargets,
@@ -1491,16 +1624,26 @@ fn add_transition_contributions(
             "transition",
         )?,
     ])?;
+    let parent_reflections = [
+        currents[parent_ids[0] as usize].reflection,
+        currents[parent_ids[1] as usize].reflection,
+    ];
+    let parent_colors = [
+        color_states
+            .get(parents[0].dynamic_lc_color_state_id())
+            .ok_or_else(|| invalid("left dynamic color state disappeared"))?
+            .clone(),
+        color_states
+            .get(parents[1].dynamic_lc_color_state_id())
+            .ok_or_else(|| invalid("right dynamic color state disappeared"))?
+            .clone(),
+    ];
+    let reversal_masks = current_reversal_masks(&parent_colors, parent_reflections);
+    let local_reflection_phase = transition_reflections.phase(transition.id);
 
     for witness_row in catalog.witness_rows(transition.color_contraction_template_id)? {
-        let left_color = color_states
-            .get(parents[0].dynamic_lc_color_state_id())
-            .ok_or_else(|| invalid("left dynamic color state disappeared"))?;
-        let right_color = color_states
-            .get(parents[1].dynamic_lc_color_state_id())
-            .ok_or_else(|| invalid("right dynamic color state disappeared"))?;
-        if witness_row.left_shape_string_id != left_color.output_color_shape_id()
-            || witness_row.right_shape_string_id != right_color.output_color_shape_id()
+        if witness_row.left_shape_string_id != parent_colors[0].output_color_shape_id()
+            || witness_row.right_shape_string_id != parent_colors[1].output_color_shape_id()
         {
             continue;
         }
@@ -1510,107 +1653,338 @@ fn add_transition_contributions(
             "recurrence color-shape-match count",
         )?;
         let witness = catalog.witness(*witness_row)?;
-        let Some(result_color) = witness.apply(left_color, right_color)? else {
-            continue;
-        };
-        checked_diagnostic_add(
-            &mut diagnostics.color_result_count,
-            1,
-            "recurrence color-result count",
-        )?;
-        if !color_targets.accepts(&result_color) {
+        for reversal_mask in reversal_masks.iter().copied() {
+            let mut variant_colors = parent_colors.clone();
+            let mut reversal_factor = ExactComplexRational::ONE;
+            for index in 0..2 {
+                if reversal_mask & (1 << index) == 0 {
+                    continue;
+                }
+                variant_colors[index] = variant_colors[index].reversed()?;
+                reversal_factor = reversal_factor.checked_mul(
+                    parent_reflections[index]
+                        .phase()
+                        .expect("reversal mask requires a proven parent phase"),
+                )?;
+            }
+            let Some(result_color) = witness.apply(&variant_colors[0], &variant_colors[1])? else {
+                continue;
+            };
             checked_diagnostic_add(
-                &mut diagnostics.color_target_prune_count,
+                &mut diagnostics.color_result_count,
                 1,
-                "recurrence color-target prune count",
+                "recurrence color-result count",
             )?;
-            continue;
-        }
-        let result_color_id = color_states.intern(result_color)?;
-        let support = merged_support(
-            parents[0].support_source_slots(),
-            parents[1].support_source_slots(),
-        )?;
-        let helicity_identity = merged_helicity_identity(
-            parents[0].helicity_identity(),
-            parents[1].helicity_identity(),
-            quantum.result_spin_state,
-        )?;
-        let result_flavour_flow = quantum_flow_result_flavour(quantum, &parents, catalog)?;
-        let key = CurrentCoreKey::new(
-            catalog_digest,
-            RecurrenceNodeKind::Current,
-            transition.result_state_template_id,
-            result_color_id,
-            support,
-            merged_momentum(parents[0].momentum(), parents[1].momentum())?,
-            helicity_identity,
-            result_flavour_flow,
-            quantum.result_quantum_number_flow_id,
-            coupling_orders.clone(),
-            CurrentSourceBinding::None,
-            if propagate_result {
-                propagators
-                    .get(&transition.result_state_template_id)
-                    .copied()
-                    .flatten()
+            let result_reflection = current_reflection_candidate(
+                &result_color,
+                parent_reflections,
+                local_reflection_phase,
+            )?;
+            if !color_targets.accepts_up_to_reflection(&result_color)? {
+                checked_diagnostic_add(
+                    &mut diagnostics.color_target_prune_count,
+                    1,
+                    "recurrence color-target prune count",
+                )?;
+                continue;
+            }
+            let result_color_id = color_states.intern(result_color)?;
+            let support = merged_support(
+                parents[0].support_source_slots(),
+                parents[1].support_source_slots(),
+            )?;
+            let helicity_identity = merged_helicity_identity(
+                parents[0].helicity_identity(),
+                parents[1].helicity_identity(),
+                quantum.result_spin_state,
+            )?;
+            let result_flavour_flow = quantum_flow_result_flavour(quantum, &parents, catalog)?;
+            let key = CurrentCoreKey::new(
+                catalog_digest,
+                RecurrenceNodeKind::Current,
+                transition.result_state_template_id,
+                result_color_id,
+                support,
+                merged_momentum(parents[0].momentum(), parents[1].momentum())?,
+                helicity_identity,
+                result_flavour_flow,
+                quantum.result_quantum_number_flow_id,
+                coupling_orders.clone(),
+                CurrentSourceBinding::None,
+                if propagate_result {
+                    propagators
+                        .get(&transition.result_state_template_id)
+                        .copied()
+                        .flatten()
+                } else {
+                    None
+                },
+            )?;
+            let result_id = if let Some(id) = current_ids.get(&key).copied() {
+                currents[id as usize].reflection.include(result_reflection);
+                id
             } else {
-                None
-            },
-        )?;
-        let result_id = if let Some(id) = current_ids.get(&key).copied() {
-            id
-        } else {
-            let id = u32::try_from(currents.len())
-                .map_err(|_| invalid("recurrence current count exceeds u32"))?;
-            current_ids.insert(key.clone(), id);
-            currents.push(PendingCurrent {
-                key,
-                source_exact_factor: None,
-                contributions: BTreeMap::new(),
-            });
-            target_bucket.push(id);
-            id
-        };
-        let contribution_key = ContributionKey::new(
-            transition.id,
-            evaluator_parent_ids.to_vec(),
-            evaluator_parent_ids
-                .iter()
-                .map(|id| currents[*id as usize].key.current_state_template_id())
-                .collect(),
-            evaluator_parent_ids
-                .iter()
-                .map(|id| currents[*id as usize].key.momentum().clone())
-                .collect(),
-            transition.result_state_template_id,
-            quantum.id,
-            LCColorWitnessTermId::new(
-                transition.color_contraction_template_id,
-                witness_row.ordinal,
-            ),
-            catalog.digest(quantum.semantic_digest_id, "quantum-flow semantic")?,
-            transition.output_projection_string_id,
-        )?;
-        let pending_key = PendingContributionKey {
-            parent_current_ids: evaluator_parent_ids.into(),
-            key: contribution_key,
-        };
-        let factor = base_factor.checked_mul(witness.exact_factor())?;
-        aggregate_factor(
-            currents[result_id as usize]
-                .contributions
-                .entry(pending_key)
-                .or_insert(ExactComplexRational::ZERO),
-            factor,
-        )?;
-        checked_diagnostic_add(
-            &mut diagnostics.contribution_count,
-            1,
-            "recurrence contribution-attempt count",
-        )?;
+                let id = u32::try_from(currents.len())
+                    .map_err(|_| invalid("recurrence current count exceeds u32"))?;
+                current_ids.insert(key.clone(), id);
+                currents.push(PendingCurrent {
+                    key,
+                    source_exact_factor: None,
+                    contributions: BTreeMap::new(),
+                    reflection: result_reflection
+                        .map_or(CurrentReflection::Unavailable, CurrentReflection::Proven),
+                });
+                target_bucket.push(id);
+                id
+            };
+            let contribution_key = ContributionKey::new(
+                transition.id,
+                evaluator_parent_ids.to_vec(),
+                evaluator_parent_ids
+                    .iter()
+                    .map(|id| currents[*id as usize].key.current_state_template_id())
+                    .collect(),
+                evaluator_parent_ids
+                    .iter()
+                    .map(|id| currents[*id as usize].key.momentum().clone())
+                    .collect(),
+                transition.result_state_template_id,
+                quantum.id,
+                LCColorWitnessTermId::new(
+                    transition.color_contraction_template_id,
+                    witness_row.ordinal,
+                ),
+                catalog.digest(quantum.semantic_digest_id, "quantum-flow semantic")?,
+                transition.output_projection_string_id,
+            )?;
+            let pending_key = PendingContributionKey {
+                parent_current_ids: evaluator_parent_ids.into(),
+                key: contribution_key,
+            };
+            let factor = base_factor
+                .checked_mul(witness.exact_factor())?
+                .checked_mul(reversal_factor)?;
+            aggregate_factor(
+                currents[result_id as usize]
+                    .contributions
+                    .entry(pending_key)
+                    .or_insert(ExactComplexRational::ZERO),
+                factor,
+            )?;
+            checked_diagnostic_add(
+                &mut diagnostics.contribution_count,
+                1,
+                "recurrence contribution-attempt count",
+            )?;
+        }
     }
     Ok(())
+}
+
+fn current_key_with_dynamic_color(
+    key: &CurrentCoreKey,
+    dynamic_lc_color_state_id: DynamicLCColorStateId,
+) -> RusticolResult<CurrentCoreKey> {
+    CurrentCoreKey::new(
+        key.catalog_digest(),
+        key.node_kind(),
+        key.current_state_template_id(),
+        dynamic_lc_color_state_id,
+        key.support_source_slots().to_vec(),
+        key.momentum().clone(),
+        key.helicity_identity().clone(),
+        key.flavour_flow().to_vec(),
+        key.quantum_number_flow_id(),
+        key.coupling_orders().to_vec(),
+        key.source_binding().clone(),
+        key.propagator_template_id(),
+    )
+}
+
+fn reciprocal_reflection_proof(
+    left: CurrentReflection,
+    right: CurrentReflection,
+) -> RusticolResult<bool> {
+    let (Some(left), Some(right)) = (left.phase(), right.phase()) else {
+        return Ok(false);
+    };
+    Ok(left.checked_mul(right)? == ExactComplexRational::ONE)
+}
+
+/// Finalize pure-adjoint reflection aliases after every contribution to the
+/// stage's currents has been seen.
+///
+/// A contribution that lacks a reflection proof downgrades the whole current.
+/// Both orientations are then retained as exact residual states. Only a pair
+/// with reciprocal, complete fan-in proofs is compacted to its canonical
+/// orientation. Stage currents cannot depend on one another, so compacting the
+/// stage tail cannot invalidate any stored parent current ID.
+fn reconcile_stage_reflections(
+    stage_start: usize,
+    color_states: &mut DynamicLCColorStateInterner,
+    currents: &mut Vec<PendingCurrent>,
+    current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
+    target_bucket: &mut Vec<u32>,
+) -> RusticolResult<()> {
+    if stage_start > currents.len() {
+        return Err(invalid(
+            "recurrence reflection stage starts beyond current storage",
+        ));
+    }
+    let stage_end = currents.len();
+    let mut visited = vec![false; stage_end - stage_start];
+    let mut prune = vec![false; stage_end - stage_start];
+
+    for current_index in stage_start..stage_end {
+        let local_index = current_index - stage_start;
+        if visited[local_index] {
+            continue;
+        }
+        let key = currents[current_index].key.clone();
+        let color = color_states
+            .get(key.dynamic_lc_color_state_id())
+            .ok_or_else(|| invalid("reflection current color state disappeared"))?
+            .clone();
+        let Some(word) = color.pure_adjoint_word() else {
+            continue;
+        };
+        if word.len() < 2 {
+            continue;
+        }
+        let canonical = pure_adjoint_word_is_canonical(word);
+        let reversed_color_id = color_states.intern(color.reversed()?)?;
+        if reversed_color_id == key.dynamic_lc_color_state_id() {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        }
+        let reversed_key = current_key_with_dynamic_color(&key, reversed_color_id)?;
+        let Some(reversed_id) = current_ids.get(&reversed_key).copied() else {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        };
+        let reversed_index = reversed_id as usize;
+        if !(stage_start..stage_end).contains(&reversed_index) {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        }
+        let reversed_local_index = reversed_index - stage_start;
+        visited[local_index] = true;
+        visited[reversed_local_index] = true;
+
+        let reversed_color = color_states
+            .get(reversed_color_id)
+            .ok_or_else(|| invalid("reversed reflection color state disappeared"))?;
+        let Some(reversed_word) = reversed_color.pure_adjoint_word() else {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            currents[reversed_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        };
+        let reversed_canonical = pure_adjoint_word_is_canonical(reversed_word);
+        let proof_is_complete = reciprocal_reflection_proof(
+            currents[current_index].reflection,
+            currents[reversed_index].reflection,
+        )?;
+        if !proof_is_complete || canonical == reversed_canonical {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            currents[reversed_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        }
+        prune[if canonical {
+            reversed_local_index
+        } else {
+            local_index
+        }] = true;
+    }
+
+    for current in &currents[stage_start..] {
+        current_ids.remove(&current.key);
+    }
+    let stage_currents = currents.split_off(stage_start);
+    target_bucket.clear();
+    for (local_index, current) in stage_currents.into_iter().enumerate() {
+        if prune[local_index] {
+            continue;
+        }
+        if current
+            .contributions
+            .keys()
+            .flat_map(|contribution| contribution.parent_current_ids.iter().copied())
+            .any(|parent_id| parent_id as usize >= stage_start)
+        {
+            return Err(invalid(
+                "recurrence stage current depends on another current in the same stage",
+            ));
+        }
+        let current_id = u32::try_from(currents.len())
+            .map_err(|_| invalid("recurrence current count exceeds u32"))?;
+        if current_ids
+            .insert(current.key.clone(), current_id)
+            .is_some()
+        {
+            return Err(invalid(
+                "recurrence reflection reconciliation produced a duplicate current",
+            ));
+        }
+        target_bucket.push(current_id);
+        currents.push(current);
+    }
+    Ok(())
+}
+
+fn current_reversal_masks(
+    colors: &[DynamicLCColorState; 2],
+    reflections: [CurrentReflection; 2],
+) -> Vec<u8> {
+    let mut masks = vec![0_u8];
+    for index in 0..2 {
+        if reflections[index].phase().is_none()
+            || colors[index]
+                .pure_adjoint_word()
+                .is_none_or(|word| word.len() < 2)
+        {
+            continue;
+        }
+        let bit = 1_u8 << index;
+        masks.extend(masks.clone().into_iter().map(|mask| mask | bit));
+    }
+    masks
+}
+
+fn current_reflection_candidate(
+    result_color: &DynamicLCColorState,
+    parent_reflections: [CurrentReflection; 2],
+    local_phase: Option<ExactComplexRational>,
+) -> RusticolResult<Option<ExactComplexRational>> {
+    if result_color.pure_adjoint_word().is_none() {
+        return Ok(None);
+    }
+    let Some(local_phase) = local_phase else {
+        return Ok(None);
+    };
+    let Some(left) = parent_reflections[0].phase() else {
+        return Ok(None);
+    };
+    let Some(right) = parent_reflections[1].phase() else {
+        return Ok(None);
+    };
+    Ok(Some(left.checked_mul(right)?.checked_mul(local_phase)?))
+}
+
+fn pure_adjoint_word_is_canonical(word: &[u32]) -> bool {
+    if word.len() < 2 {
+        return true;
+    }
+    let (minimum_index, _) = word
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, slot)| *slot)
+        .expect("nonempty pure-adjoint word");
+    let (maximum_index, _) = word
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, slot)| *slot)
+        .expect("nonempty pure-adjoint word");
+    minimum_index < maximum_index
 }
 
 fn build_closures(
@@ -2253,6 +2627,19 @@ fn quantum_flow_result_flavour(
         .last()
         .ok_or_else(|| invalid("quantum-flow result flavour ancestry is empty"))?;
 
+    // The prepared recurrence contract has already proved that transition
+    // admission and kernel selection are independent of accumulated flavour
+    // ancestry.  In the runtime-helicity union, retaining the construction
+    // history would nevertheless split one physical current into many
+    // numerically accumulated copies.  Canonicalize it to the result species,
+    // matching the compact all-flow recurrence identity.
+    if parents
+        .iter()
+        .all(|parent| parent.helicity_identity().strategy() == RecurrenceStrategy::AllFlowUnion)
+    {
+        return Ok(vec![result_particle]);
+    }
+
     let append_result = |parent: &CurrentCoreKey| {
         let mut result = parent.flavour_flow().to_vec();
         if result.last().copied() != Some(result_particle) {
@@ -2789,6 +3176,7 @@ mod tests {
         ColorContractionRow, DigestCatalogRow, ExactFactorRow, IndexedRangeRow,
         LCColorTransitionWitnessRow, PropagatorRow, QuantumFlowRow,
     };
+    use super::super::{LCColorEndpoint, LCColorPortBinding};
     use super::*;
 
     fn digest(byte: u8) -> SemanticDigest {
@@ -2860,6 +3248,290 @@ mod tests {
         let mut incompatible = right;
         incompatible.lc_color_seed_provenance_sequence_id += 1;
         assert!(!same_union_source_dispatch_semantics(left, incompatible));
+    }
+
+    #[test]
+    fn pure_adjoint_reflection_masks_require_exact_parent_proofs() {
+        let left = DynamicLCColorState::new_port_wired(
+            1,
+            vec![
+                LCColorPortBinding::new(0, LCColorEndpoint::Back),
+                LCColorPortBinding::new(0, LCColorEndpoint::Front),
+            ],
+            vec![LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![1, 4]).unwrap()],
+        )
+        .unwrap();
+        let right = DynamicLCColorState::new_port_wired(
+            1,
+            vec![
+                LCColorPortBinding::new(0, LCColorEndpoint::Back),
+                LCColorPortBinding::new(0, LCColorEndpoint::Front),
+            ],
+            vec![LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![2, 3]).unwrap()],
+        )
+        .unwrap();
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+
+        assert_eq!(
+            current_reversal_masks(
+                &[left.clone(), right.clone()],
+                [
+                    CurrentReflection::Proven(minus_one),
+                    CurrentReflection::Proven(minus_one),
+                ],
+            ),
+            [0, 1, 2, 3],
+        );
+        assert_eq!(
+            current_reversal_masks(
+                &[left, right],
+                [
+                    CurrentReflection::Proven(minus_one),
+                    CurrentReflection::Unavailable,
+                ],
+            ),
+            [0, 1],
+        );
+    }
+
+    #[test]
+    fn pure_adjoint_result_reflection_is_phase_composed_and_canonical() {
+        let result = DynamicLCColorState::new_port_wired(
+            1,
+            vec![
+                LCColorPortBinding::new(0, LCColorEndpoint::Back),
+                LCColorPortBinding::new(0, LCColorEndpoint::Front),
+            ],
+            vec![
+                LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![1, 3, 2]).unwrap(),
+            ],
+        )
+        .unwrap();
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+        assert_eq!(
+            current_reflection_candidate(
+                &result,
+                [
+                    CurrentReflection::Proven(minus_one),
+                    CurrentReflection::Proven(minus_one),
+                ],
+                Some(minus_one),
+            )
+            .unwrap(),
+            Some(minus_one),
+        );
+        assert!(pure_adjoint_word_is_canonical(
+            result.pure_adjoint_word().unwrap()
+        ));
+        assert!(!pure_adjoint_word_is_canonical(&[3, 2, 1]));
+    }
+
+    fn reflection_test_current(
+        color_id: DynamicLCColorStateId,
+        reflection: CurrentReflection,
+    ) -> PendingCurrent {
+        PendingCurrent {
+            key: CurrentCoreKey::new(
+                digest(201),
+                RecurrenceNodeKind::Current,
+                0,
+                color_id,
+                vec![0, 1, 2],
+                CanonicalMomentumLinearForm::new(vec![
+                    MomentumTerm {
+                        source_slot: 0,
+                        coefficient: 1,
+                    },
+                    MomentumTerm {
+                        source_slot: 1,
+                        coefficient: 1,
+                    },
+                    MomentumTerm {
+                        source_slot: 2,
+                        coefficient: 1,
+                    },
+                ])
+                .unwrap(),
+                CurrentHelicityIdentity::all_flow_union(0),
+                vec![0],
+                0,
+                vec![],
+                CurrentSourceBinding::None,
+                None,
+            )
+            .unwrap(),
+            source_exact_factor: None,
+            contributions: BTreeMap::new(),
+            reflection,
+        }
+    }
+
+    fn reflection_test_states() -> (
+        DynamicLCColorStateInterner,
+        DynamicLCColorStateId,
+        DynamicLCColorStateId,
+    ) {
+        let canonical = DynamicLCColorState::new_port_wired(
+            1,
+            vec![
+                LCColorPortBinding::new(0, LCColorEndpoint::Back),
+                LCColorPortBinding::new(0, LCColorEndpoint::Front),
+            ],
+            vec![
+                LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![1, 3, 2]).unwrap(),
+            ],
+        )
+        .unwrap();
+        let reversed = canonical.reversed().unwrap();
+        let mut states = DynamicLCColorStateInterner::default();
+        let canonical_id = states.intern(canonical).unwrap();
+        let reversed_id = states.intern(reversed).unwrap();
+        (states, canonical_id, reversed_id)
+    }
+
+    #[test]
+    fn late_unproved_reflection_keeps_both_stage_orientations() {
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+        let (mut color_states, canonical_id, reversed_id) = reflection_test_states();
+        let mut late_downgrade = CurrentReflection::Proven(minus_one);
+        late_downgrade.include(None);
+        let mut currents = vec![
+            reflection_test_current(canonical_id, CurrentReflection::Proven(minus_one)),
+            reflection_test_current(reversed_id, late_downgrade),
+        ];
+        let mut current_ids = currents
+            .iter()
+            .enumerate()
+            .map(|(id, current)| (current.key.clone(), id as u32))
+            .collect::<BTreeMap<_, _>>();
+        let mut target_bucket = vec![0, 1];
+
+        reconcile_stage_reflections(
+            0,
+            &mut color_states,
+            &mut currents,
+            &mut current_ids,
+            &mut target_bucket,
+        )
+        .unwrap();
+
+        assert_eq!(currents.len(), 2);
+        assert_eq!(target_bucket, [0, 1]);
+        assert_eq!(current_ids.len(), 2);
+        assert!(
+            currents
+                .iter()
+                .all(|current| current.reflection == CurrentReflection::Unavailable)
+        );
+    }
+
+    #[test]
+    fn late_conflicting_reflection_keeps_both_stage_orientations() {
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+        let (mut color_states, canonical_id, reversed_id) = reflection_test_states();
+        let mut late_downgrade = CurrentReflection::Proven(minus_one);
+        late_downgrade.include(Some(ExactComplexRational::ONE));
+        let mut currents = vec![
+            reflection_test_current(canonical_id, CurrentReflection::Proven(minus_one)),
+            reflection_test_current(reversed_id, late_downgrade),
+        ];
+        let mut current_ids = currents
+            .iter()
+            .enumerate()
+            .map(|(id, current)| (current.key.clone(), id as u32))
+            .collect::<BTreeMap<_, _>>();
+        let mut target_bucket = vec![0, 1];
+
+        reconcile_stage_reflections(
+            0,
+            &mut color_states,
+            &mut currents,
+            &mut current_ids,
+            &mut target_bucket,
+        )
+        .unwrap();
+
+        assert_eq!(currents.len(), 2);
+        assert_eq!(target_bucket, [0, 1]);
+        assert_eq!(current_ids.len(), 2);
+        assert!(
+            currents
+                .iter()
+                .all(|current| current.reflection == CurrentReflection::Unavailable)
+        );
+    }
+
+    #[test]
+    fn nonreciprocal_reflection_proofs_keep_both_stage_orientations() {
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+        let (mut color_states, canonical_id, reversed_id) = reflection_test_states();
+        let mut currents = vec![
+            reflection_test_current(canonical_id, CurrentReflection::Proven(minus_one)),
+            reflection_test_current(
+                reversed_id,
+                CurrentReflection::Proven(ExactComplexRational::ONE),
+            ),
+        ];
+        let mut current_ids = currents
+            .iter()
+            .enumerate()
+            .map(|(id, current)| (current.key.clone(), id as u32))
+            .collect::<BTreeMap<_, _>>();
+        let mut target_bucket = vec![0, 1];
+
+        reconcile_stage_reflections(
+            0,
+            &mut color_states,
+            &mut currents,
+            &mut current_ids,
+            &mut target_bucket,
+        )
+        .unwrap();
+
+        assert_eq!(currents.len(), 2);
+        assert_eq!(target_bucket, [0, 1]);
+        assert_eq!(current_ids.len(), 2);
+        assert!(
+            currents
+                .iter()
+                .all(|current| current.reflection == CurrentReflection::Unavailable)
+        );
+    }
+
+    #[test]
+    fn complete_reciprocal_reflection_prunes_only_noncanonical_orientation() {
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+        let (mut color_states, canonical_id, reversed_id) = reflection_test_states();
+        let mut currents = vec![
+            reflection_test_current(canonical_id, CurrentReflection::Proven(minus_one)),
+            reflection_test_current(reversed_id, CurrentReflection::Proven(minus_one)),
+        ];
+        let mut current_ids = currents
+            .iter()
+            .enumerate()
+            .map(|(id, current)| (current.key.clone(), id as u32))
+            .collect::<BTreeMap<_, _>>();
+        let mut target_bucket = vec![0, 1];
+
+        reconcile_stage_reflections(
+            0,
+            &mut color_states,
+            &mut currents,
+            &mut current_ids,
+            &mut target_bucket,
+        )
+        .unwrap();
+
+        assert_eq!(currents.len(), 1);
+        assert_eq!(target_bucket, [0]);
+        assert_eq!(current_ids.len(), 1);
+        assert_eq!(currents[0].reflection.phase(), Some(minus_one));
+        let color = color_states
+            .get(currents[0].key.dynamic_lc_color_state_id())
+            .unwrap();
+        assert!(pure_adjoint_word_is_canonical(
+            color.pure_adjoint_word().unwrap()
+        ));
     }
 
     fn buffered_parent_pairs(target_size: usize, currents_by_size: &[Vec<u32>]) -> Vec<[u32; 2]> {
@@ -3270,6 +3942,7 @@ mod tests {
                 key,
                 source_exact_factor: None,
                 contributions: BTreeMap::new(),
+                reflection: CurrentReflection::Unavailable,
             });
             currents_by_size[0].push(id);
         }
@@ -3279,6 +3952,7 @@ mod tests {
             &process,
             &template,
             &template_catalog,
+            &TransitionReflectionIndex::new(&template, &template_catalog).unwrap(),
             &[],
             &BTreeMap::new(),
             &color_targets,
@@ -3338,10 +4012,31 @@ mod tests {
             )
             .unwrap()
         };
+        let adjoint_state = |slots: Vec<u32>| {
+            DynamicLCColorState::new_port_wired(
+                0,
+                vec![
+                    LCColorPortBinding::new(0, LCColorEndpoint::Back),
+                    LCColorPortBinding::new(0, LCColorEndpoint::Front),
+                ],
+                vec![LCColorComponent::new(LCColorComponentKind::AdjointSegment, slots).unwrap()],
+            )
+            .unwrap()
+        };
 
         assert!(targets.accepts(&state(vec![2, 3, 4])));
         assert!(!targets.accepts(&state(vec![4, 3, 2])));
+        assert!(
+            targets
+                .accepts_up_to_reflection(&adjoint_state(vec![4, 3, 2]))
+                .unwrap()
+        );
         assert!(!targets.accepts(&state(vec![2, 4])));
+        assert!(
+            !targets
+                .accepts_up_to_reflection(&state(vec![2, 4]))
+                .unwrap()
+        );
         assert!(!targets.accepts(&state(vec![0, 3])));
         assert!(targets.accepts(&DynamicLCColorState::new(0, None, vec![]).unwrap()));
     }

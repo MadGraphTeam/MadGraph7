@@ -552,7 +552,7 @@ impl DynamicLCColorState {
             .map(|index| &self.components[index as usize])
     }
 
-    fn reversed(&self) -> RusticolResult<Self> {
+    pub(crate) fn reversed(&self) -> RusticolResult<Self> {
         let components = self
             .components
             .iter()
@@ -571,6 +571,27 @@ impl DynamicLCColorState {
             })
             .collect();
         Self::new_port_wired(self.output_color_shape_id, result_port_bindings, components)
+    }
+
+    pub(crate) fn pure_adjoint_word(&self) -> Option<&[u32]> {
+        if self.components.len() != 1
+            || self.active_component_index != Some(0)
+            || self.result_port_bindings.len() != 2
+        {
+            return None;
+        }
+        let exposes_front = self.result_port_bindings.iter().any(|binding| {
+            binding.component_index() == 0 && binding.endpoint() == LCColorEndpoint::Front
+        });
+        let exposes_back = self.result_port_bindings.iter().any(|binding| {
+            binding.component_index() == 0 && binding.endpoint() == LCColorEndpoint::Back
+        });
+        if !exposes_front || !exposes_back {
+            return None;
+        }
+        let component = &self.components[0];
+        (component.kind() == LCColorComponentKind::AdjointSegment)
+            .then_some(component.source_slots())
     }
 
     pub fn new_port_wired(

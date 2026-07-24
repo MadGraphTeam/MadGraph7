@@ -137,6 +137,7 @@ def test_prepared_jit_direct_source_reuses_authenticated_application() -> None:
     assert source.source_application_sha256 == application_digest
     assert source.source_application_abi == "symjit-application-storage-v3"
     assert source.output_arity == 1
+    assert source.exact_expressions == record.exact_expressions
     assert json.loads(source.input_contracts[0])["role"] == "current"
 
 
@@ -215,9 +216,7 @@ def _recurrence_catalog(
         mass_parameter_id=None,
         width_parameter_id=None,
     )
-    expression_digest = hashlib.sha256(
-        b"pyamplicol::prepared_test_input"
-    ).hexdigest()
+    expression_digest = hashlib.sha256(b"pyamplicol::prepared_test_input").hexdigest()
     propagator = PropagatorTemplateV1(
         template_id="propagator:test-active",
         state_template_id=state.template_id,
@@ -608,12 +607,15 @@ def test_prepared_jit_compiler_forces_portable_o2_without_changing_public_config
 
     assert requested.jit.optimization_level == 3
     assert observed_levels == [2]
-    assert result.bundle.kernel_pack.optimization_settings[
-        "jit_optimization_level"
-    ] == 2
-    assert result.bundle.kernel_pack.kernels[0].f64_evaluator_manifest[
-        "optimization_level"
-    ] == 2
+    assert (
+        result.bundle.kernel_pack.optimization_settings["jit_optimization_level"] == 2
+    )
+    assert (
+        result.bundle.kernel_pack.kernels[0].f64_evaluator_manifest[
+            "optimization_level"
+        ]
+        == 2
+    )
     direct_catalog = result.bundle.kernel_pack.recurrence_direct_template_catalog
     assert direct_catalog is not None
     assert direct_catalog.optimization_level == 2

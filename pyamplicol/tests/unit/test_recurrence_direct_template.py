@@ -16,6 +16,9 @@ from pyamplicol.models.prepared_catalog import build_prepared_kernel_catalog
 from pyamplicol.models.recurrence_catalog_builder import (
     build_recurrence_template_catalog,
 )
+from pyamplicol.models.recurrence_direct_intrinsics import (
+    CertifiedRecurrenceIntrinsic,
+)
 from pyamplicol.models.recurrence_direct_template import (
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_IDENTITY_FINALIZER,
@@ -25,6 +28,7 @@ from pyamplicol.models.recurrence_direct_template import (
     RecurrenceDirectTemplateCatalogV1,
     RecurrenceDirectTemplateError,
     RecurrenceDirectTemplateV1,
+    _build_certified_intrinsic_binding,
     _build_prepared_jit_direct_binding,
     _uniform_binding_coupling,
     build_recurrence_direct_template_catalog,
@@ -225,6 +229,68 @@ def test_pending_binding_cannot_claim_direct_payload_paths() -> None:
         )
 
 
+def test_certified_intrinsic_parent_permutation_round_trips_and_is_authenticated() -> (
+    None
+):
+    binding = _build_certified_intrinsic_binding(
+        CertifiedRecurrenceIntrinsic(
+            runtime_template=("rusticol.recurrence-intrinsic.weyl-vector-to-weyl-a.v1"),
+            contract_digest=_DIGEST_A,
+            constant_scale=-1.0j,
+            model_parameter_index=17,
+            parent_permutation=(1, 0),
+        )
+    )
+
+    assert binding.contribution_parent_permutation == (1, 0)
+    assert binding.to_dict()["contribution_parent_permutation"] == [1, 0]
+    assert RecurrenceDirectPayloadBindingV1.from_dict(binding.to_dict()) == binding
+
+    tampered = binding.to_dict()
+    tampered["contribution_parent_permutation"] = [0, 1]
+    with pytest.raises(
+        RecurrenceDirectTemplateError,
+        match="payload digest does not match",
+    ):
+        RecurrenceDirectPayloadBindingV1.from_dict(tampered)
+
+
+@pytest.mark.parametrize(
+    "parent_permutation",
+    ((0, 0), (1, 1), (0,), (0, 1, 2)),
+)
+def test_payload_binding_rejects_malformed_parent_permutation(
+    parent_permutation: tuple[int, ...],
+) -> None:
+    with pytest.raises(
+        RecurrenceDirectTemplateError,
+        match="parent permutation must be",
+    ):
+        replace(
+            _payload_binding(),
+            contribution_parent_permutation=parent_permutation,  # type: ignore[arg-type]
+        )
+
+
+def test_only_contribution_intrinsics_allow_reversed_parents() -> None:
+    with pytest.raises(
+        RecurrenceDirectTemplateError,
+        match="non-contribution intrinsics require the identity",
+    ):
+        replace(
+            _payload_binding(kind="rusticol-intrinsic"),
+            contribution_parent_permutation=(1, 0),
+        )
+    with pytest.raises(
+        RecurrenceDirectTemplateError,
+        match="prepared direct payloads require the identity",
+    ):
+        replace(
+            _payload_binding(),
+            contribution_parent_permutation=(1, 0),
+        )
+
+
 def test_per_kernel_payload_digest_is_deterministic_and_complete() -> None:
     records = {
         "kernels/000000/application.symjit": (3, _DIGEST_A),
@@ -275,6 +341,7 @@ def test_direct_jit_binding_complexifies_real_inputs_with_shared_zero() -> None:
             )
             for contract in contracts
         ),
+        exact_expressions=("pyamplicol::prepared_output",),
         output_arity=1,
     )
 
@@ -316,6 +383,12 @@ def test_direct_jit_binding_complexifies_real_inputs_with_shared_zero() -> None:
         item.get("kind") == "parameter" and item.get("index") == 2
         for item in scalar_projections
     )
+    assert binding.contribution_parent_permutation == (0, 1)
+    with pytest.raises(
+        RecurrenceDirectTemplateError,
+        match="prepared direct payloads require the identity",
+    ):
+        replace(binding, contribution_parent_permutation=(1, 0))
 
 
 def test_direct_jit_binding_rejects_conflicting_semantic_couplings() -> None:
@@ -390,6 +463,7 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
                     )
                     for item in kernel.inputs
                 ),
+                exact_expressions=kernel.exact_expressions,
                 output_arity=kernel.output_dimension,
             )
             for kernel in prepared.kernels
@@ -437,6 +511,24 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
     assert all(
         item.payload_binding.kind == "rusticol-intrinsic" for item in identity_templates
     )
+    contribution_intrinsics = tuple(
+        item
+        for item in direct.templates
+        if item.role == "contribution"
+        and item.payload_binding.kind == "rusticol-intrinsic"
+    )
+    intrinsic_families = {
+        item.payload_binding.runtime_template for item in contribution_intrinsics
+    }
+    assert {
+        "rusticol.recurrence-intrinsic.weyl-vector-to-weyl-a.v1",
+        "rusticol.recurrence-intrinsic.weyl-vector-to-weyl-b.v1",
+    }.issubset(intrinsic_families)
+    if model_source == "ufo-sm":
+        assert any(
+            item.payload_binding.contribution_parent_permutation == (1, 0)
+            for item in contribution_intrinsics
+        )
     prepared_templates = tuple(
         item
         for item in direct.templates
@@ -465,6 +557,15 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
         item.payload_binding.payload_paths
         == (item.payload_binding.source_application_path,)
         for item in prepared_templates
+    )
+    assert all(
+        item.payload_binding.contribution_parent_permutation == (0, 1)
+        for item in prepared_templates
+    )
+    assert all(
+        item.payload_binding.contribution_parent_permutation == (0, 1)
+        for item in direct.templates
+        if item.role != "contribution"
     )
     for item in prepared_templates:
         payload = item.payload_binding.to_dict()

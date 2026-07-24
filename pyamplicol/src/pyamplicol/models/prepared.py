@@ -319,9 +319,7 @@ def _validate_recurrence_kernel_bindings(
         expected = {
             "contract kind": kernel.contract_kind,
             "callable signature": kernel.canonical_signature,
-            "input layout": _recurrence_input_contract_layout(
-                kernel.input_contracts
-            ),
+            "input layout": _recurrence_input_contract_layout(kernel.input_contracts),
             "output layout": kernel.output_layout,
             "exact expression digests": tuple(
                 hashlib.sha256(expression.encode("utf-8")).hexdigest()
@@ -384,9 +382,7 @@ def _validate_recurrence_direct_bindings(
     }
     by_kernel_id = {kernel.kernel_id: kernel for kernel in kernels}
     required: set[tuple[str, int]] = set()
-    for evaluator_binding_id, binding in enumerate(
-        semantic_catalog.evaluator_bindings
-    ):
+    for evaluator_binding_id, binding in enumerate(semantic_catalog.evaluator_bindings):
         role = role_for_contract.get(binding.contract_kind)
         if role is None:
             continue
@@ -409,9 +405,27 @@ def _validate_recurrence_direct_bindings(
             )
         payload_kernel_id = template.payload_binding.prepared_kernel_id
         if binding.callable_kind == "prepared-kernel":
-            if (
-                payload_kernel_id != binding.prepared_kernel_id
-                or payload_kernel_id not in by_kernel_id
+            prepared_payload_matches = (
+                template.payload_binding.kind == "prepared-direct-call"
+                and payload_kernel_id == binding.prepared_kernel_id
+                and payload_kernel_id in by_kernel_id
+            )
+            certified_intrinsic_matches = (
+                template.role == "contribution"
+                and template.payload_binding.kind == "rusticol-intrinsic"
+                and template.payload_binding.intrinsic_contract_digest is not None
+                and payload_kernel_id is None
+            )
+            finalization_intrinsic_matches = (
+                template.role == "finalization"
+                and template.payload_binding.kind == "rusticol-intrinsic"
+                and template.payload_binding.runtime_template is not None
+                and payload_kernel_id is None
+            )
+            if not (
+                prepared_payload_matches
+                or certified_intrinsic_matches
+                or finalization_intrinsic_matches
             ):
                 raise PreparedModelBundleError(
                     "direct recurrence prepared payload does not match semantic "
@@ -1101,13 +1115,13 @@ class PreparedKernelPack:
         repr=False,
         compare=False,
     )
-    _recurrence_direct_template_catalog: (
-        RecurrenceDirectTemplateCatalogV1 | None
-    ) = field(
-        init=False,
-        repr=False,
-        compare=False,
-        default=None,
+    _recurrence_direct_template_catalog: RecurrenceDirectTemplateCatalogV1 | None = (
+        field(
+            init=False,
+            repr=False,
+            compare=False,
+            default=None,
+        )
     )
 
     def __post_init__(self) -> None:
@@ -1240,8 +1254,7 @@ class PreparedKernelPack:
             for variant in variants:
                 _validate_portable_jit_manifest(
                     variant.f64_evaluator_manifest,
-                    "kernel "
-                    f"{variant.base_kernel_id} variant {variant.variant_id!r}",
+                    f"kernel {variant.base_kernel_id} variant {variant.variant_id!r}",
                 )
         recurrence_template = self.recurrence_template
         if recurrence_template is not None:
@@ -1844,10 +1857,8 @@ def write_prepared_model_bundle(
             "prepared bundle member"
         )
     direct_catalog = kernel_pack.recurrence_direct_template_catalog
-    if (
-        direct_catalog is not None
-        and direct_catalog.compiled_model_digest
-        != _sha256(_canonical_json(frozen_model))
+    if direct_catalog is not None and direct_catalog.compiled_model_digest != _sha256(
+        _canonical_json(frozen_model)
     ):
         raise PreparedModelBundleError(
             "direct recurrence template compiled-model digest does not match "
@@ -2047,9 +2058,7 @@ def load_prepared_model_bundle(path: Path) -> PreparedModelBundle:
                 _mapping(manifest.get("kernel_pack"), "manifest.kernel_pack")
             )
             direct_catalog = kernel_pack.recurrence_direct_template_catalog
-            has_manifest_direct_digest = (
-                "direct_template_catalog_digest" in manifest
-            )
+            has_manifest_direct_digest = "direct_template_catalog_digest" in manifest
             if direct_catalog is None:
                 if has_manifest_direct_digest:
                     raise PreparedModelBundleError(

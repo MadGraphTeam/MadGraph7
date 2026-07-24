@@ -575,7 +575,50 @@ def test_builtin_lc_all_flow_union_recurrence_matches_compiled(
         _PROCESS,
         compiled_artifact,
     )
+    _assert_all_flow_union_artifacts_match(
+        recurrence_artifact,
+        compiled_artifact,
+    )
 
+
+def test_ufo_sm_lc_all_flow_union_recurrence_matches_compiled(
+    tmp_path: Path,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Exercise the model-generic union lane with the prepared UFO-SM."""
+
+    recurrence_artifact = tmp_path / "recurrence-ufo-union"
+    compiled_artifact = tmp_path / "compiled-ufo-union"
+    Generator(
+        _generation_config(
+            "recurrence",
+            lc_flow_layout="all-flow-union",
+        )
+    ).generate(
+        _PROCESS,
+        recurrence_artifact,
+        model=ufo_sm_recurrence_jit_o2_model,
+    )
+    Generator(
+        _generation_config(
+            "compiled",
+            lc_flow_layout="all-flow-union",
+        )
+    ).generate(
+        _PROCESS,
+        compiled_artifact,
+        model=ufo_sm_recurrence_jit_o2_model,
+    )
+    _assert_all_flow_union_artifacts_match(
+        recurrence_artifact,
+        compiled_artifact,
+    )
+
+
+def _assert_all_flow_union_artifacts_match(
+    recurrence_artifact: Path,
+    compiled_artifact: Path,
+) -> None:
     point = tuple(
         tuple(float(component) for component in particle.momentum)
         for particle in generic_validation_point(_PROCESS)

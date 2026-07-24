@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import json
 import math
 import os
@@ -231,6 +232,53 @@ def _reference_color_order(gluon_count: int) -> tuple[int, ...]:
     return (2, *range(4, 4 + gluon_count), 1, 3)
 
 
+def _parse_flow_word(requested: str) -> tuple[int, ...] | None:
+    if not requested.startswith("flow:"):
+        return None
+    raw = requested.removeprefix("flow:")
+    if not raw:
+        raise HarnessError("flow ID must contain at least one label")
+    try:
+        word = tuple(int(label) for label in raw.split(","))
+    except ValueError as error:
+        raise HarnessError(f"invalid flow ID {requested!r}") from error
+    if not word or any(label <= 0 for label in word):
+        raise HarnessError(f"invalid flow ID {requested!r}")
+    return word
+
+
+def _generation_selected_flow_word(
+    arguments: argparse.Namespace,
+) -> tuple[int, ...] | None:
+    if not arguments.specialize_flow_at_generation:
+        return None
+    if arguments.lc_flow_layout != "topology-replay":
+        raise HarnessError(
+            "generation-time flow specialization is available only for topology-replay"
+        )
+    parsed = _parse_flow_word(arguments.color_flow)
+    if parsed is not None:
+        return parsed
+    try:
+        ordinal = int(arguments.color_flow, 10)
+    except ValueError as error:
+        raise HarnessError(
+            "generation-time flow specialization requires a stable flow ID or "
+            "the first flow ordinal"
+        ) from error
+    if ordinal != 1:
+        raise HarnessError(
+            "generation-time flow specialization currently supports ordinal 1 "
+            "or an explicit stable flow ID"
+        )
+    if arguments.process_expression is not None:
+        raise HarnessError(
+            "generation-time flow specialization for custom processes requires "
+            "an explicit stable flow ID"
+        )
+    return _reference_color_order(arguments.gluon_count)
+
+
 def _generation_config(
     execution_mode: str,
     *,
@@ -346,19 +394,30 @@ def _generate_worker(arguments: argparse.Namespace) -> dict[str, object]:
                 }
             prepared_access_seconds = time.perf_counter() - prepared_access_started
             generation_started = time.perf_counter()
-            Generator(
-                _generation_config(
-                    arguments.mode,
-                    validation_samples=arguments.validation_samples,
-                    lc_flow_layout=arguments.lc_flow_layout,
-                    point_tile_size=arguments.point_tile_size,
-                    jit_optimization_level=arguments.jit_optimization_level,
-                    gluon_count=(
-                        arguments.gluon_count
-                        if arguments.process_expression is None
-                        else None
-                    ),
+            config = _generation_config(
+                arguments.mode,
+                validation_samples=arguments.validation_samples,
+                lc_flow_layout=arguments.lc_flow_layout,
+                point_tile_size=arguments.point_tile_size,
+                jit_optimization_level=arguments.jit_optimization_level,
+                gluon_count=(
+                    arguments.gluon_count
+                    if arguments.process_expression is None
+                    else None
                 ),
+            )
+            selected_flow_word = _generation_selected_flow_word(arguments)
+            if selected_flow_word is not None:
+                config = dataclasses.replace(
+                    config,
+                    process=dataclasses.replace(
+                        config.process,
+                        reference_color_order=selected_flow_word,
+                        selected_color_sector_ids=(0,),
+                    ),
+                )
+            Generator(
+                config,
                 progress=StreamProgressSink(sys.stderr),
             ).generate(
                 _selected_process(arguments),
@@ -379,6 +438,11 @@ def _generate_worker(arguments: argparse.Namespace) -> dict[str, object]:
         "generation_wall_seconds": time.perf_counter() - generation_started,
         "generation_reused": False,
         "peak_rss": _resource_peak(),
+        "specialized_flow_word": (
+            None
+            if selected_flow_word is None
+            else list(int(label) for label in selected_flow_word)
+        ),
         "model_source": {
             **model_record,
             "access_seconds": prepared_access_seconds,
@@ -557,6 +621,10 @@ def _worker_parser() -> argparse.ArgumentParser:
         default=2,
     )
     parser.add_argument("--prepared-model", type=Path)
+    parser.add_argument(
+        "--specialize-flow-at-generation",
+        action="store_true",
+    )
     return parser
 
 
@@ -728,6 +796,11 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
                     "--lc-flow-layout",
                     arguments.lc_flow_layout,
                     *(
+                        ("--specialize-flow-at-generation",)
+                        if arguments.specialize_flow_at_generation
+                        else ()
+                    ),
+                    *(
                         ()
                         if arguments.prepared_model is None
                         else ("--prepared-model", str(arguments.prepared_model))
@@ -860,6 +933,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
                 if arguments.prepared_model is None
                 else str(arguments.prepared_model.resolve())
             ),
+            "specialize_flow_at_generation": (arguments.specialize_flow_at_generation),
             "external_watchdog_required_for_long_runs": True,
         },
         "generation": generation,
@@ -957,6 +1031,14 @@ def parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="replace both artifacts before profiling",
+    )
+    result.add_argument(
+        "--specialize-flow-at-generation",
+        action="store_true",
+        help=(
+            "for topology-replay, generate a true one-flow artifact using the "
+            "requested stable flow ID or ordinal 1"
+        ),
     )
     result.add_argument(
         "--reuse-only",
