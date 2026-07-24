@@ -2142,3 +2142,102 @@ class TestColorFlowCode(unittest.TestCase):
                                      % (proc, code, sorted(back), sorted(conns)))
                     checked += 1
         self.assertTrue(checked, 'no colour flow was round-tripped')
+
+
+class TestMadeventColorFlowRatio(unittest.TestCase):
+    """End-to-end guard on the COLOUR written to the LHE, for p p > t t~.
+
+    Every event's colour tags must form a clean colour<->anticolour bijection
+    once the initial-state legs swap roles (the canonical form the colour-flow
+    code is built on): each colour label is matched by exactly one anticolour
+    label. That is the colour analogue of "the helicity is one of the physical
+    states", and it is what breaks first if the colour flow written to the event
+    is ever rebuilt wrongly -- e.g. when the tags start being decoded from the
+    canonical colour-flow code instead of read from the ICOLUP table.
+
+    On top of the structure it pins the physics: g g > t t~ dominates, and its
+    TWO colour flows are both populated and balanced (they are related by the
+    symmetry of the two ways to connect the gluons to the top line). A colour
+    selection that got stuck on one flow, or that produced a wrong topology,
+    fails here. Runs a small madevent generation, so it is a slow test.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_col_ratio_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    @staticmethod
+    def _canon(parts):
+        """{colour label: [legs]}, {anticolour label: [legs]} with initial-state
+        legs swapping the two roles."""
+        col, anti = {}, {}
+        for i, p in enumerate(parts):
+            c, a = int(p.color1), int(p.color2)
+            if p.status == -1:
+                c, a = a, c
+            if c:
+                col.setdefault(c, []).append(i)
+            if a:
+                anti.setdefault(a, []).append(i)
+        return col, anti
+
+    def test_color_flow_ratio_pp_ttx(self):
+        from madgraph import MG5DIR
+        from madgraph.various import lhe_parser
+        outdir = pjoin(self.tmpdir, 'ttx')
+        card = pjoin(self.tmpdir, 'cmd.txt')
+        with open(card, 'w') as f:
+            f.write('generate p p > t t~\n'
+                    'output madevent %s -f\n'
+                    'launch\n'
+                    'set nevents 2000\n'
+                    'set iseed 555\n' % outdir)
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+
+        lhe = pjoin(outdir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        self.assertTrue(os.path.isfile(lhe),
+                        'madevent produced no LHE file (%s)' % lhe)
+
+        nevt = ngg = 0
+        gg_flows = {}
+        for event in lhe_parser.EventFile(lhe):
+            parts = [p for p in event]
+            nevt += 1
+            col, anti = self._canon(parts)
+            # (1) structure: a perfect colour <-> anticolour matching
+            self.assertEqual(set(col), set(anti),
+                             'colour labels do not pair with anticolour labels '
+                             '(event %d): %s vs %s' % (nevt, sorted(col),
+                                                       sorted(anti)))
+            self.assertTrue(col, 'event %d carries no colour at all' % nevt)
+            for lbl, legs in col.items():
+                self.assertEqual(len(legs), 1,
+                                 'colour label %s appears on %d legs (event %d)'
+                                 % (lbl, len(legs), nevt))
+                self.assertEqual(len(anti[lbl]), 1,
+                                 'anticolour label %s appears on %d legs '
+                                 '(event %d)' % (lbl, len(anti[lbl]), nevt))
+            ini = sorted(int(p.pid) for p in parts if p.status == -1)
+            if ini == [21, 21]:
+                ngg += 1
+                key = tuple(sorted((col[l][0], anti[l][0]) for l in col))
+                gg_flows[key] = gg_flows.get(key, 0) + 1
+
+        self.assertGreater(nevt, 100, 'too few events generated (%d)' % nevt)
+        # (2) physics: gluon fusion dominates t t~ at the LHC
+        self.assertGreater(ngg / nevt, 0.6,
+                           'g g > t t~ should dominate, got %.3f' % (ngg / nevt))
+        # (3) it has exactly two colour flows, both populated and balanced
+        self.assertEqual(len(gg_flows), 2,
+                         'g g > t t~ should show exactly 2 colour flows, got '
+                         '%d: %s' % (len(gg_flows), gg_flows))
+        for key, cnt in gg_flows.items():
+            self.assertEqual(len(key), 3,
+                             'g g > t t~ flow should have 3 colour connections, '
+                             'got %d: %s' % (len(key), key))
+            self.assertTrue(0.25 < cnt / ngg < 0.75,
+                            'g g > t t~ colour flows unbalanced: %s of %d'
+                            % (gg_flows, ngg))
