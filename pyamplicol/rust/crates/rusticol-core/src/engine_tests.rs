@@ -947,6 +947,66 @@ fn plane_native_totals(
     totals
 }
 
+fn with_plane_native_amplitudes<T>(
+    outputs: &[Complex<f64>],
+    batch_size: usize,
+    output_length: usize,
+    reduce: impl FnOnce(crate::direct_arena::DirectAmplitudePlanes<'_>) -> T,
+) -> T {
+    assert_eq!(outputs.len(), batch_size * output_length);
+    let mut workspace =
+        crate::direct_arena::DirectArenaWorkspace::new(0, output_length as u32, batch_size as u32)
+            .unwrap();
+    workspace.begin_tile(batch_size as u32).unwrap();
+    let stride = workspace.point_stride() as usize;
+    const PAD_RE: f64 = 73.0;
+    const PAD_IM: f64 = -91.0;
+    {
+        let (_, _, values_re, values_im) = workspace.split_slices_mut();
+        values_re.fill(PAD_RE);
+        values_im.fill(PAD_IM);
+        for point in 0..batch_size {
+            for component in 0..output_length {
+                let value = outputs[point * output_length + component];
+                values_re[component * stride + point] = value.re;
+                values_im[component * stride + point] = value.im;
+            }
+        }
+    }
+    let reduced = {
+        let (values_re, values_im) = workspace.amplitude_slices();
+        let planes = crate::direct_arena::DirectAmplitudePlanes::new(
+            values_re,
+            values_im,
+            stride as u32,
+            batch_size as u32,
+        )
+        .unwrap();
+        reduce(planes)
+    };
+    let (values_re, values_im) = workspace.amplitude_slices();
+    for component in 0..output_length {
+        assert!(
+            values_re[component * stride + batch_size..(component + 1) * stride]
+                .iter()
+                .all(|value| *value == PAD_RE)
+        );
+        assert!(
+            values_im[component * stride + batch_size..(component + 1) * stride]
+                .iter()
+                .all(|value| *value == PAD_IM)
+        );
+    }
+    reduced
+}
+
+fn assert_resolved_values_equal(left: &ResolvedValues<f64>, right: &ResolvedValues<f64>) {
+    assert_eq!(left.point_count, right.point_count);
+    assert_eq!(left.helicity_indices, right.helicity_indices);
+    assert_eq!(left.color_indices, right.color_indices);
+    assert_eq!(left.values, right.values);
+}
+
 #[test]
 fn plane_native_lc_totals_match_selected_row_major_odd_tail_and_structural_zero() {
     const POINT_COUNT: usize = 129;
@@ -1157,6 +1217,38 @@ fn resolved_lc_reduction_expands_symmetries_and_structural_zeros() {
 }
 
 #[test]
+fn plane_native_lc_resolved_matches_full_and_selected_row_major_odd_tail() {
+    const POINT_COUNT: usize = 129;
+    let physics = test_physics_runtime("lc");
+    let outputs = (0..POINT_COUNT)
+        .map(|point| c64(point as f64 * 0.03125 - 2.0, point as f64 * -0.015625 + 1.0))
+        .collect::<Vec<_>>();
+    let mut amplitude = test_amplitude_runtime(outputs.clone(), None);
+    amplitude.output_length = 1;
+    amplitude.raw_sum_weights = vec![1.0];
+    amplitude.raw_sum_all_sector_weights = vec![1.0];
+    amplitude.raw_sum_color_sector_ids = vec![None];
+    amplitude.raw_sum_groups[0].indices = vec![0];
+    let selected_helicities = BTreeSet::from(["hel:-+".to_string()]);
+    let selected_colors = BTreeSet::from(["flow:1".to_string()]);
+
+    for (helicities, colors) in [
+        (None, None),
+        (Some(&selected_helicities), Some(&selected_colors)),
+    ] {
+        let row_major = amplitude
+            .reduce_scratch_f64_resolved(POINT_COUNT, &physics, 1.75, helicities, colors)
+            .unwrap();
+        let plane_native = with_plane_native_amplitudes(&outputs, POINT_COUNT, 1, |planes| {
+            amplitude
+                .reduce_planes_f64_resolved(planes, &physics, 1.75, helicities, colors)
+                .unwrap()
+        });
+        assert_resolved_values_equal(&plane_native, &row_major);
+    }
+}
+
+#[test]
 fn plane_native_lc_resolved_routes_preserve_row_major_order() {
     let physics = test_physics_runtime("lc");
     let outputs = vec![c64(2.0, -0.5)];
@@ -1325,6 +1417,252 @@ fn contracted_reductions_have_one_color_component_and_sum_to_total() {
         assert_eq!(resolved.values, vec![18.0, 18.0]);
         assert_eq!(resolved.values.iter().sum::<f64>(), 36.0);
     }
+}
+
+#[test]
+fn plane_native_nlc_and_full_resolved_match_row_major_odd_tail() {
+    const POINT_COUNT: usize = 129;
+    let outputs = (0..POINT_COUNT)
+        .map(|point| c64(point as f64 * 0.0625 - 3.0, point as f64 * -0.03125 + 0.75))
+        .collect::<Vec<_>>();
+    let selected_helicities = BTreeSet::from(["hel:-+".to_string()]);
+    let root_factors = [Some(c64(0.75, -0.25))];
+
+    for color_accuracy in ["nlc", "full"] {
+        let physics = test_physics_runtime(color_accuracy);
+        let groups = [RawSumGroup {
+            id: 7,
+            indices: vec![0],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![0],
+        }];
+        let contraction = || {
+            ColorContractionRuntime::new(
+                &groups,
+                vec![ColorContractionEntry {
+                    left_group_index: 0,
+                    right_group_index: 0,
+                    weight_re: 2.0,
+                    weight_im: 0.0,
+                    symmetry_factor: 1.0,
+                }],
+            )
+        };
+        let mut amplitude = test_amplitude_runtime(outputs.clone(), Some(contraction()));
+        amplitude.output_length = 1;
+        amplitude.raw_sum_weights = vec![1.0];
+        amplitude.raw_sum_all_sector_weights = vec![1.0];
+        amplitude.raw_sum_color_sector_ids = vec![None];
+        amplitude.raw_sum_groups[0].indices = vec![0];
+        let row_major = amplitude
+            .reduce_scratch_f64_resolved(
+                POINT_COUNT,
+                &physics,
+                2.0,
+                Some(&selected_helicities),
+                None,
+            )
+            .unwrap();
+        let plane_native = with_plane_native_amplitudes(&outputs, POINT_COUNT, 1, |planes| {
+            amplitude
+                .reduce_planes_f64_resolved(planes, &physics, 2.0, Some(&selected_helicities), None)
+                .unwrap()
+        });
+        assert_resolved_values_equal(&plane_native, &row_major);
+
+        let row_major_materialized = amplitude
+            .reduce_scratch_f64_for_materialized_helicity(
+                POINT_COUNT,
+                &physics,
+                2.0,
+                0,
+                &root_factors,
+                None,
+            )
+            .unwrap();
+        let plane_native_materialized =
+            with_plane_native_amplitudes(&outputs, POINT_COUNT, 1, |planes| {
+                amplitude
+                    .reduce_planes_f64_for_materialized_helicity(
+                        planes,
+                        &physics,
+                        2.0,
+                        0,
+                        &root_factors,
+                        None,
+                    )
+                    .unwrap()
+            });
+        assert_resolved_values_equal(&plane_native_materialized, &row_major_materialized);
+    }
+}
+
+#[test]
+fn plane_native_materialized_helicity_resolved_and_add_into_match_lc_odd_tail() {
+    const POINT_COUNT: usize = 129;
+    const OUTPUT_COUNT: usize = 2;
+    let physics = test_physics_runtime("lc");
+    let outputs = (0..POINT_COUNT)
+        .flat_map(|point| {
+            (0..OUTPUT_COUNT).map(move |output| {
+                c64(
+                    (point * 7 + output * 3) as f64 * 0.03125 - 1.5,
+                    (point * 5 + output * 11) as f64 * -0.015625 + 0.25,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let root_factors = [Some(c64(0.75, -0.25)), Some(c64(-0.5, 0.125))];
+    let mut amplitude = test_amplitude_runtime(outputs.clone(), None);
+    amplitude.output_length = OUTPUT_COUNT;
+    amplitude.raw_sum_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_all_sector_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_color_sector_ids = vec![None; OUTPUT_COUNT];
+    amplitude.raw_sum_groups[0].indices = vec![0, 1];
+    let selected_colors = BTreeSet::from(["flow:1".to_string()]);
+
+    for colors in [None, Some(&selected_colors)] {
+        let row_major = amplitude
+            .reduce_scratch_f64_for_materialized_helicity(
+                POINT_COUNT,
+                &physics,
+                1.25,
+                0,
+                &root_factors,
+                colors,
+            )
+            .unwrap();
+        let plane_native =
+            with_plane_native_amplitudes(&outputs, POINT_COUNT, OUTPUT_COUNT, |planes| {
+                amplitude
+                    .reduce_planes_f64_for_materialized_helicity(
+                        planes,
+                        &physics,
+                        1.25,
+                        0,
+                        &root_factors,
+                        colors,
+                    )
+                    .unwrap()
+            });
+        assert_resolved_values_equal(&plane_native, &row_major);
+
+        let initial = (0..POINT_COUNT)
+            .map(|point| point as f64 * 0.125 - 4.0)
+            .collect::<Vec<_>>();
+        let mut row_major_totals = initial.clone();
+        amplitude
+            .reduce_scratch_f64_for_materialized_helicity_add_into(
+                POINT_COUNT,
+                &physics,
+                1.25,
+                0,
+                &root_factors,
+                colors,
+                &mut row_major_totals,
+            )
+            .unwrap();
+        let mut plane_native_totals = initial;
+        with_plane_native_amplitudes(&outputs, POINT_COUNT, OUTPUT_COUNT, |planes| {
+            amplitude
+                .reduce_planes_f64_for_materialized_helicity_add_into(
+                    planes,
+                    &physics,
+                    1.25,
+                    0,
+                    &root_factors,
+                    colors,
+                    &mut plane_native_totals,
+                )
+                .unwrap()
+        });
+        assert_eq!(plane_native_totals, row_major_totals);
+    }
+}
+
+#[cfg(not(feature = "f64-symjit"))]
+#[test]
+fn warmed_plane_native_materialized_helicity_add_into_allocates_zero() {
+    const POINT_COUNT: usize = 129;
+    const OUTPUT_COUNT: usize = 2;
+    let physics = test_physics_runtime("lc");
+    let outputs = (0..POINT_COUNT)
+        .flat_map(|point| {
+            (0..OUTPUT_COUNT).map(move |output| {
+                c64(
+                    (point * 7 + output * 3) as f64 * 0.03125 - 1.5,
+                    (point * 5 + output * 11) as f64 * -0.015625 + 0.25,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let root_factors = [Some(c64(0.75, -0.25)), Some(c64(-0.5, 0.125))];
+    let selected_colors = BTreeSet::from(["flow:1".to_string()]);
+    let mut amplitude = test_amplitude_runtime(outputs.clone(), None);
+    amplitude.output_length = OUTPUT_COUNT;
+    amplitude.raw_sum_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_all_sector_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_color_sector_ids = vec![None; OUTPUT_COUNT];
+    amplitude.raw_sum_groups[0].indices = vec![0, 1];
+
+    let mut workspace =
+        crate::direct_arena::DirectArenaWorkspace::new(0, OUTPUT_COUNT as u32, POINT_COUNT as u32)
+            .unwrap();
+    workspace.begin_tile(POINT_COUNT as u32).unwrap();
+    let stride = workspace.point_stride() as usize;
+    {
+        let (_, _, values_re, values_im) = workspace.split_slices_mut();
+        for point in 0..POINT_COUNT {
+            for component in 0..OUTPUT_COUNT {
+                let value = outputs[point * OUTPUT_COUNT + component];
+                values_re[component * stride + point] = value.re;
+                values_im[component * stride + point] = value.im;
+            }
+        }
+    }
+    let (values_re, values_im) = workspace.amplitude_slices();
+    let planes = crate::direct_arena::DirectAmplitudePlanes::new(
+        values_re,
+        values_im,
+        stride as u32,
+        POINT_COUNT as u32,
+    )
+    .unwrap();
+    let mut totals = vec![0.0; POINT_COUNT];
+    amplitude
+        .reduce_planes_f64_for_materialized_helicity_add_into(
+            planes,
+            &physics,
+            1.25,
+            0,
+            &root_factors,
+            Some(&selected_colors),
+            &mut totals,
+        )
+        .unwrap();
+    totals.fill(0.0);
+    let (result, allocation_count, allocated_bytes) =
+        super::evaluator::native_direct::tests::count_allocations(|| {
+            amplitude.reduce_planes_f64_for_materialized_helicity_add_into(
+                planes,
+                &physics,
+                1.25,
+                0,
+                &root_factors,
+                Some(&selected_colors),
+                &mut totals,
+            )
+        });
+    result.unwrap();
+    assert_eq!(
+        allocation_count, 0,
+        "warmed materialized-helicity plane accumulator allocated"
+    );
+    assert_eq!(
+        allocated_bytes, 0,
+        "warmed materialized-helicity plane accumulator allocated bytes"
+    );
 }
 
 fn repeated_test_group(id: i64, output_index: usize, sector_id: i64) -> RawSumGroup {
