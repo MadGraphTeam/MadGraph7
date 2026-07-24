@@ -8,20 +8,42 @@ trait AmplitudeSamples: Copy {
 }
 
 #[derive(Clone, Copy)]
-struct RowMajorAmplitudeSamples {
-    values: *const Complex<f64>,
-    len: usize,
+struct RowMajorAmplitudeSamples<'a> {
+    values: &'a [Complex<f64>],
+    point_count: usize,
+    output_length: usize,
 }
 
-impl AmplitudeSamples for RowMajorAmplitudeSamples {
+impl<'a> RowMajorAmplitudeSamples<'a> {
+    fn new(
+        values: &'a [Complex<f64>],
+        point_count: usize,
+        output_length: usize,
+    ) -> RusticolResult<Self> {
+        let expected = point_count.checked_mul(output_length).ok_or_else(|| {
+            RusticolError::invalid_argument("generic amplitude output dimensions overflow")
+        })?;
+        if values.len() != expected {
+            return Err(RusticolError::invalid_argument(format!(
+                "generic amplitude output buffer has length {}, expected {expected}",
+                values.len()
+            )));
+        }
+        Ok(Self {
+            values,
+            point_count,
+            output_length,
+        })
+    }
+}
+
+impl AmplitudeSamples for RowMajorAmplitudeSamples<'_> {
     #[inline(always)]
     fn value(self, row: usize, output: usize, output_length: usize) -> Complex<f64> {
-        let index = row * output_length + output;
-        debug_assert!(index < self.len);
-        // SAFETY: the row-major constructor records the immutable amplitude
-        // buffer's exact length. Reduction never mutates that buffer and all
-        // point/output dimensions are validated before the first access.
-        unsafe { *self.values.add(index) }
+        debug_assert_eq!(output_length, self.output_length);
+        debug_assert!(row < self.point_count);
+        debug_assert!(output < self.output_length);
+        self.values[row * self.output_length + output]
     }
 }
 
@@ -226,6 +248,7 @@ impl AmplitudeRuntime {
             output_scratch_f64: Vec::new(),
             resolved_source_row_scratch_f64: Vec::new(),
             resolved_target_row_scratch_f64: Vec::new(),
+            routed_reduction_scratch: RoutedReductionScratch::default(),
             evaluator_output_order,
             evaluator: EvaluatorGroup::load_from_store(&stage.evaluator, payloads)?,
         })
@@ -477,22 +500,23 @@ impl AmplitudeRuntime {
         raw_sums: &mut [f64],
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
     ) -> RusticolResult<()> {
-        if self.output_scratch_f64.len() != batch_size * self.output_length {
-            return Err(RusticolError::invalid_argument(format!(
-                "generic amplitude output buffer has length {}, expected {}",
-                self.output_scratch_f64.len(),
-                batch_size * self.output_length
-            )));
-        }
-        let samples = RowMajorAmplitudeSamples {
-            values: self.output_scratch_f64.as_ptr(),
-            len: self.output_scratch_f64.len(),
-        };
-        self.reduce_amplitude_samples_f64_into_selected_slice(
+        let samples = RowMajorAmplitudeSamples::new(
+            &self.output_scratch_f64,
+            batch_size,
+            self.output_length,
+        )?;
+        Self::reduce_amplitude_samples_f64_into_selected_slice(
             samples,
             batch_size,
             raw_sums,
             selected_color_sector_ids,
+            self.output_length,
+            &self.raw_sum_weights,
+            &self.raw_sum_all_sector_weights,
+            &self.raw_sum_color_sector_ids,
+            &self.raw_sum_groups,
+            self.has_coherent_groups,
+            &mut self.color_contraction,
         )
     }
 
@@ -514,20 +538,34 @@ impl AmplitudeRuntime {
             )));
         }
         let batch_size = amplitudes.point_count() as usize;
-        self.reduce_amplitude_samples_f64_into_selected_slice(
+        Self::reduce_amplitude_samples_f64_into_selected_slice(
             amplitudes,
             batch_size,
             raw_sums,
             selected_color_sector_ids,
+            self.output_length,
+            &self.raw_sum_weights,
+            &self.raw_sum_all_sector_weights,
+            &self.raw_sum_color_sector_ids,
+            &self.raw_sum_groups,
+            self.has_coherent_groups,
+            &mut self.color_contraction,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn reduce_amplitude_samples_f64_into_selected_slice<S: AmplitudeSamples>(
-        &mut self,
         amplitudes: S,
         batch_size: usize,
         raw_sums: &mut [f64],
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
+        output_length: usize,
+        raw_sum_weights: &[f64],
+        raw_sum_all_sector_weights: &[f64],
+        raw_sum_color_sector_ids: &[Option<i64>],
+        raw_sum_groups: &[RawSumGroup],
+        has_coherent_groups: bool,
+        color_contraction: &mut Option<ColorContractionRuntime>,
     ) -> RusticolResult<()> {
         if raw_sums.len() != batch_size {
             return Err(RusticolError::invalid_argument(format!(
@@ -536,13 +574,13 @@ impl AmplitudeRuntime {
             )));
         }
         raw_sums.fill(0.0);
-        if let Some(contraction) = self.color_contraction.as_mut() {
+        if let Some(contraction) = color_contraction.as_mut() {
             if selected_color_sector_ids.is_some() {
                 return Err(RusticolError::invalid_argument(
                     "LC color-sector runtime selection is only supported for leading-colour diagonal artifacts",
                 ));
             }
-            if self.raw_sum_groups.len() != contraction.group_count {
+            if raw_sum_groups.len() != contraction.group_count {
                 return Err(RusticolError::invalid_argument(
                     "colour contraction group count does not match coherent groups",
                 ));
@@ -565,7 +603,7 @@ impl AmplitudeRuntime {
                                         row,
                                         output_indices
                                             [local_group_index * component_count + component_index],
-                                        self.output_length,
+                                        output_length,
                                     )
                                 };
                                 let x0 = source(coset[0]);
@@ -618,7 +656,7 @@ impl AmplitudeRuntime {
                                             row,
                                             output_indices[local_group_index * component_count
                                                 + component_index],
-                                            self.output_length,
+                                            output_length,
                                         )
                                     };
                                     let x0 = source(coset[0]);
@@ -682,7 +720,7 @@ impl AmplitudeRuntime {
                                             row,
                                             output_indices[local_group_index * component_count
                                                 + component_index],
-                                            self.output_length,
+                                            output_length,
                                         );
                                     }
                                     let mut stride = 1;
@@ -734,7 +772,7 @@ impl AmplitudeRuntime {
                         for (target, output_index) in
                             contraction.group_scratch_f64.iter_mut().zip(output_indices)
                         {
-                            *target = amplitudes.value(row, *output_index, self.output_length);
+                            *target = amplitudes.value(row, *output_index, output_length);
                         }
                     } else {
                         for (target, group_index) in contraction
@@ -743,8 +781,8 @@ impl AmplitudeRuntime {
                             .zip(&repeated_block.component_group_indices)
                         {
                             let mut sum = c64(0.0, 0.0);
-                            for output_index in &self.raw_sum_groups[*group_index].indices {
-                                sum += amplitudes.value(row, *output_index, self.output_length);
+                            for output_index in &raw_sum_groups[*group_index].indices {
+                                sum += amplitudes.value(row, *output_index, output_length);
                             }
                             *target = sum;
                         }
@@ -785,10 +823,10 @@ impl AmplitudeRuntime {
                 .resize(batch_size * contraction.group_count, c64(0.0, 0.0));
             for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
                 let group_row = row * contraction.group_count;
-                for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
+                for (group_index, group) in raw_sum_groups.iter().enumerate() {
                     let mut sum = c64(0.0, 0.0);
                     for index in &group.indices {
-                        sum += amplitudes.value(row, *index, self.output_length);
+                        sum += amplitudes.value(row, *index, output_length);
                     }
                     contraction.group_scratch_f64[group_row + group_index] = sum;
                 }
@@ -803,14 +841,14 @@ impl AmplitudeRuntime {
             return Ok(());
         }
         for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
-            if self.has_coherent_groups {
-                for group in &self.raw_sum_groups {
+            if has_coherent_groups {
+                for group in raw_sum_groups {
                     if !raw_sum_group_is_selected(group, selected_color_sector_ids) {
                         continue;
                     }
                     let mut sum = c64(0.0, 0.0);
                     for index in &group.indices {
-                        sum += amplitudes.value(row, *index, self.output_length);
+                        sum += amplitudes.value(row, *index, output_length);
                     }
                     let weight = if selected_color_sector_ids.is_none() {
                         group.all_sector_weight
@@ -821,18 +859,18 @@ impl AmplitudeRuntime {
                 }
                 continue;
             }
-            for index in 0..self.output_length {
+            for index in 0..output_length {
                 if !raw_sum_index_is_selected(
-                    self.raw_sum_color_sector_ids.get(index).copied().flatten(),
+                    raw_sum_color_sector_ids.get(index).copied().flatten(),
                     selected_color_sector_ids,
                 ) {
                     continue;
                 }
-                let value = amplitudes.value(row, index, self.output_length);
+                let value = amplitudes.value(row, index, output_length);
                 let weight = if selected_color_sector_ids.is_none() {
-                    self.raw_sum_all_sector_weights[index]
+                    raw_sum_all_sector_weights[index]
                 } else {
-                    self.raw_sum_weights[index]
+                    raw_sum_weights[index]
                 };
                 *raw_sum += weight * (value.re * value.re + value.im * value.im);
             }
@@ -1052,18 +1090,12 @@ impl AmplitudeRuntime {
         target_component_count: usize,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        if self.output_scratch_f64.len() != batch_size * self.output_length {
-            return Err(RusticolError::invalid_argument(format!(
-                "generic amplitude output buffer has length {}, expected {}",
-                self.output_scratch_f64.len(),
-                batch_size * self.output_length
-            )));
-        }
-        let amplitudes = RowMajorAmplitudeSamples {
-            values: self.output_scratch_f64.as_ptr(),
-            len: self.output_scratch_f64.len(),
-        };
-        self.reduce_amplitude_samples_f64_routed_totals_into(
+        let amplitudes = RowMajorAmplitudeSamples::new(
+            &self.output_scratch_f64,
+            batch_size,
+            self.output_length,
+        )?;
+        Self::reduce_amplitude_samples_f64_routed_totals_into(
             amplitudes,
             batch_size,
             physics,
@@ -1074,6 +1106,13 @@ impl AmplitudeRuntime {
             source_component_count,
             target_component_count,
             output,
+            self.output_length,
+            &self.raw_sum_groups,
+            self.has_coherent_groups,
+            self.color_contraction.is_some(),
+            &mut self.resolved_source_row_scratch_f64,
+            &mut self.resolved_target_row_scratch_f64,
+            &mut self.routed_reduction_scratch,
         )
     }
 
@@ -1100,7 +1139,7 @@ impl AmplitudeRuntime {
                 self.output_length
             )));
         }
-        self.reduce_amplitude_samples_f64_routed_totals_into(
+        Self::reduce_amplitude_samples_f64_routed_totals_into(
             amplitudes,
             amplitudes.point_count() as usize,
             physics,
@@ -1111,12 +1150,18 @@ impl AmplitudeRuntime {
             source_component_count,
             target_component_count,
             output,
+            self.output_length,
+            &self.raw_sum_groups,
+            self.has_coherent_groups,
+            self.color_contraction.is_some(),
+            &mut self.resolved_source_row_scratch_f64,
+            &mut self.resolved_target_row_scratch_f64,
+            &mut self.routed_reduction_scratch,
         )
     }
 
     #[allow(clippy::too_many_arguments)]
     fn reduce_amplitude_samples_f64_routed_totals_into<S: AmplitudeSamples>(
-        &mut self,
         amplitudes: S,
         batch_size: usize,
         physics: &PhysicsRuntime,
@@ -1127,6 +1172,13 @@ impl AmplitudeRuntime {
         source_component_count: usize,
         target_component_count: usize,
         output: &mut [f64],
+        output_length: usize,
+        raw_sum_groups: &[RawSumGroup],
+        has_coherent_groups: bool,
+        has_color_contraction: bool,
+        resolved_source_row_scratch_f64: &mut Vec<f64>,
+        resolved_target_row_scratch_f64: &mut Vec<f64>,
+        scratch: &mut RoutedReductionScratch,
     ) -> RusticolResult<()> {
         if output.len() != batch_size {
             return Err(RusticolError::invalid_argument(format!(
@@ -1134,12 +1186,12 @@ impl AmplitudeRuntime {
                 output.len()
             )));
         }
-        if self.color_contraction.is_some() {
+        if has_color_contraction {
             return Err(RusticolError::invalid_argument(
                 "LC topology replay does not support contracted color reduction",
             ));
         }
-        if !self.has_coherent_groups {
+        if !has_coherent_groups {
             return Err(RusticolError::invalid_argument(
                 "resolved evaluation requires coherent amplitude-group metadata",
             ));
@@ -1147,11 +1199,13 @@ impl AmplitudeRuntime {
 
         let helicity_count = physics.manifest.helicities.len();
         let color_count = physics.manifest.color_components.len();
-        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
-        let color_indices = physics.selected_color_indices(selected_color_ids)?;
-        let expected_source_component_count = helicity_indices
+        physics
+            .selected_helicity_indices_into(selected_helicity_ids, &mut scratch.helicity_indices)?;
+        physics.selected_color_indices_into(selected_color_ids, &mut scratch.color_indices)?;
+        let expected_source_component_count = scratch
+            .helicity_indices
             .len()
-            .checked_mul(color_indices.len())
+            .checked_mul(scratch.color_indices.len())
             .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
         if source_component_count != expected_source_component_count {
             return Err(RusticolError::integrity(format!(
@@ -1159,16 +1213,19 @@ impl AmplitudeRuntime {
             )));
         }
 
-        let mut selected_helicity_positions = vec![None; helicity_count];
-        for (position, index) in helicity_indices.iter().copied().enumerate() {
-            selected_helicity_positions[index] = Some(position);
+        scratch.helicity_positions.clear();
+        scratch.helicity_positions.resize(helicity_count, None);
+        for (position, index) in scratch.helicity_indices.iter().copied().enumerate() {
+            scratch.helicity_positions[index] = Some(position);
         }
-        let mut selected_color_positions = vec![None; color_count];
-        for (position, index) in color_indices.iter().copied().enumerate() {
-            selected_color_positions[index] = Some(position);
+        scratch.color_positions.clear();
+        scratch.color_positions.resize(color_count, None);
+        for (position, index) in scratch.color_indices.iter().copied().enumerate() {
+            scratch.color_positions[index] = Some(position);
         }
-        let mut selected_member_weights_by_group = Vec::with_capacity(self.raw_sum_groups.len());
-        for group in &self.raw_sum_groups {
+        scratch.selected_member_weights.clear();
+        scratch.selected_member_weight_ranges.clear();
+        for group in raw_sum_groups {
             let reduction = physics
                 .reduction_by_group_id
                 .get(&group.id)
@@ -1178,47 +1235,51 @@ impl AmplitudeRuntime {
                         group.id
                     ))
                 })?;
-            selected_member_weights_by_group.push(
-                physics
-                    .normalized_member_weights(reduction)?
-                    .into_iter()
-                    .filter_map(|(helicity_index, color_index, weight)| {
-                        Some((
-                            selected_helicity_positions[helicity_index]?,
-                            selected_color_positions[color_index]?,
-                            weight,
-                        ))
-                    })
-                    .collect::<Vec<_>>(),
-            );
+            physics.normalized_member_weights_into(reduction, &mut scratch.raw_member_weights)?;
+            let start = scratch.selected_member_weights.len();
+            for (helicity_index, color_index, weight) in scratch.raw_member_weights.iter().copied()
+            {
+                let (Some(helicity_position), Some(color_position)) = (
+                    scratch.helicity_positions[helicity_index],
+                    scratch.color_positions[color_index],
+                ) else {
+                    continue;
+                };
+                scratch
+                    .selected_member_weights
+                    .push((helicity_position, color_position, weight));
+            }
+            scratch
+                .selected_member_weight_ranges
+                .push(start..scratch.selected_member_weights.len());
         }
 
-        self.resolved_source_row_scratch_f64
-            .resize(source_component_count, 0.0);
-        self.resolved_target_row_scratch_f64
-            .resize(target_component_count, 0.0);
+        resolved_source_row_scratch_f64.resize(source_component_count, 0.0);
+        resolved_target_row_scratch_f64.resize(target_component_count, 0.0);
         for (row, target_total) in output.iter_mut().enumerate() {
-            let source_row = &mut self.resolved_source_row_scratch_f64;
+            let source_row = &mut *resolved_source_row_scratch_f64;
             source_row.fill(0.0);
-            for (group, member_weights) in self
-                .raw_sum_groups
+            for (group, member_weight_range) in raw_sum_groups
                 .iter()
-                .zip(&selected_member_weights_by_group)
+                .zip(&scratch.selected_member_weight_ranges)
             {
                 let mut sum = c64(0.0, 0.0);
                 for index in &group.indices {
-                    sum += amplitudes.value(row, *index, self.output_length);
+                    sum += amplitudes.value(row, *index, output_length);
                 }
                 let contribution = normalization_factor
                     * group.all_sector_weight
                     * (sum.re * sum.re + sum.im * sum.im);
-                for (helicity_position, color_position, weight) in member_weights {
-                    source_row[*helicity_position * color_indices.len() + *color_position] +=
+                for (helicity_position, color_position, weight) in
+                    &scratch.selected_member_weights[member_weight_range.clone()]
+                {
+                    source_row
+                        [*helicity_position * scratch.color_indices.len() + *color_position] +=
                         contribution * weight;
                 }
             }
 
-            let target_row = &mut self.resolved_target_row_scratch_f64;
+            let target_row = &mut *resolved_target_row_scratch_f64;
             target_row.fill(0.0);
             for route in &replay_entry.routes {
                 if route.source_index >= source_component_count

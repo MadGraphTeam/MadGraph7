@@ -884,6 +884,7 @@ fn test_amplitude_runtime(
         output_scratch_f64: outputs,
         resolved_source_row_scratch_f64: Vec::new(),
         resolved_target_row_scratch_f64: Vec::new(),
+        routed_reduction_scratch: RoutedReductionScratch::default(),
         evaluator_output_order: None,
         evaluator: empty_evaluator_group(),
     }
@@ -983,6 +984,16 @@ fn plane_native_lc_totals_match_selected_row_major_odd_tail_and_structural_zero(
     }
 }
 
+#[test]
+fn row_major_reduction_dimensions_fail_closed_before_indexing() {
+    let mut amplitude = test_amplitude_runtime(vec![c64(1.0, 0.0), c64(2.0, 0.0)], None);
+    let error = amplitude
+        .reduce_scratch_f64_into_selected_slice(usize::MAX, &mut [], None)
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::InvalidArgument);
+    assert!(error.to_string().contains("dimensions overflow"));
+}
+
 #[cfg(not(feature = "f64-symjit"))]
 #[test]
 fn warmed_plane_native_reduction_allocates_zero() {
@@ -1034,6 +1045,93 @@ fn warmed_plane_native_reduction_allocates_zero() {
     result.unwrap();
     assert_eq!(allocation_count, 0, "warmed plane reduction allocated");
     assert_eq!(allocated_bytes, 0, "warmed plane reduction allocated bytes");
+}
+
+#[cfg(not(feature = "f64-symjit"))]
+#[test]
+fn warmed_plane_native_repeated_contracted_reduction_allocates_zero() {
+    const POINT_COUNT: usize = 129;
+    const COMPONENT_COUNT: usize = 8;
+    const OUTPUT_COUNT: usize = COMPONENT_COUNT * 2;
+    let groups = (0..OUTPUT_COUNT)
+        .map(|output_index| {
+            repeated_test_group(
+                10 + output_index as i64,
+                output_index,
+                if output_index < COMPONENT_COUNT {
+                    100
+                } else {
+                    200
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    let entries = (0..COMPONENT_COUNT)
+        .map(|component| ColorContractionEntry {
+            left_group_index: component,
+            right_group_index: COMPONENT_COUNT + component,
+            weight_re: 0.75,
+            weight_im: 0.0,
+            symmetry_factor: 2.0,
+        })
+        .collect::<Vec<_>>();
+    let outputs = (0..POINT_COUNT * OUTPUT_COUNT)
+        .map(|index| {
+            c64(
+                (index * 13 % 101) as f64 * 0.03125 - 1.0,
+                (index * 19 % 103) as f64 * -0.015625 + 0.5,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut amplitude = reduction_test_amplitude(OUTPUT_COUNT, outputs.clone(), groups, entries);
+    let repeated = amplitude
+        .color_contraction
+        .as_ref()
+        .and_then(|contraction| contraction.repeated_block.as_ref())
+        .unwrap();
+    assert_eq!(repeated.component_count, COMPONENT_COUNT);
+    assert!(repeated.all_weights_real);
+
+    let mut workspace =
+        crate::direct_arena::DirectArenaWorkspace::new(0, OUTPUT_COUNT as u32, POINT_COUNT as u32)
+            .unwrap();
+    workspace.begin_tile(POINT_COUNT as u32).unwrap();
+    let stride = workspace.point_stride() as usize;
+    {
+        let (_, _, values_re, values_im) = workspace.split_slices_mut();
+        for point in 0..POINT_COUNT {
+            for component in 0..OUTPUT_COUNT {
+                let value = outputs[point * OUTPUT_COUNT + component];
+                values_re[component * stride + point] = value.re;
+                values_im[component * stride + point] = value.im;
+            }
+        }
+    }
+    let (values_re, values_im) = workspace.amplitude_slices();
+    let planes = crate::direct_arena::DirectAmplitudePlanes::new(
+        values_re,
+        values_im,
+        stride as u32,
+        POINT_COUNT as u32,
+    )
+    .unwrap();
+    let mut totals = vec![0.0; POINT_COUNT];
+    amplitude
+        .reduce_planes_f64_into_selected_slice(planes, &mut totals, None)
+        .unwrap();
+    let (result, allocation_count, allocated_bytes) =
+        super::evaluator::native_direct::tests::count_allocations(|| {
+            amplitude.reduce_planes_f64_into_selected_slice(planes, &mut totals, None)
+        });
+    result.unwrap();
+    assert_eq!(
+        allocation_count, 0,
+        "warmed repeated NLC/full contraction allocated"
+    );
+    assert_eq!(
+        allocated_bytes, 0,
+        "warmed repeated NLC/full contraction allocated bytes"
+    );
 }
 
 #[test]
@@ -1128,6 +1226,71 @@ fn plane_native_lc_resolved_routes_preserve_row_major_order() {
         )
         .unwrap();
     assert_eq!(plane_native, row_major);
+}
+
+#[cfg(not(feature = "f64-symjit"))]
+#[test]
+fn warmed_plane_native_selected_lc_routes_allocate_zero() {
+    let physics = test_physics_runtime("lc");
+    let outputs = vec![c64(2.0, -0.5)];
+    let mut amplitude = test_amplitude_runtime(outputs.clone(), None);
+    let replay = LcResolvedReplayEntry {
+        routes: vec![LcResolvedReplayRoute {
+            source_index: 0,
+            target_index: 0,
+            weight: 1.25,
+        }],
+    };
+    let helicities = BTreeSet::from(["hel:-+".to_string()]);
+    let colors = BTreeSet::from(["flow:1".to_string()]);
+    let mut workspace = crate::direct_arena::DirectArenaWorkspace::new(0, 1, 1).unwrap();
+    workspace.begin_tile(1).unwrap();
+    let stride = workspace.point_stride();
+    {
+        let (_, _, values_re, values_im) = workspace.split_slices_mut();
+        values_re[0] = outputs[0].re;
+        values_im[0] = outputs[0].im;
+    }
+    let (values_re, values_im) = workspace.amplitude_slices();
+    let planes =
+        crate::direct_arena::DirectAmplitudePlanes::new(values_re, values_im, stride, 1).unwrap();
+    let mut totals = [0.0];
+    amplitude
+        .reduce_planes_f64_routed_totals_into(
+            planes,
+            &physics,
+            4.0,
+            Some(&helicities),
+            Some(&colors),
+            &replay,
+            1,
+            1,
+            &mut totals,
+        )
+        .unwrap();
+    let (result, allocation_count, allocated_bytes) =
+        super::evaluator::native_direct::tests::count_allocations(|| {
+            amplitude.reduce_planes_f64_routed_totals_into(
+                planes,
+                &physics,
+                4.0,
+                Some(&helicities),
+                Some(&colors),
+                &replay,
+                1,
+                1,
+                &mut totals,
+            )
+        });
+    result.unwrap();
+    assert_eq!(
+        allocation_count, 0,
+        "warmed selected LC routed reduction allocated"
+    );
+    assert_eq!(
+        allocated_bytes, 0,
+        "warmed selected LC routed reduction allocated bytes"
+    );
 }
 
 #[test]
@@ -1226,6 +1389,7 @@ fn reduction_test_amplitude(
         output_scratch_f64: outputs,
         resolved_source_row_scratch_f64: Vec::new(),
         resolved_target_row_scratch_f64: Vec::new(),
+        routed_reduction_scratch: RoutedReductionScratch::default(),
         evaluator_output_order: None,
         evaluator: empty_evaluator_group(),
     }

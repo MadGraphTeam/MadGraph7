@@ -3325,6 +3325,17 @@ struct StageRuntime {
     evaluator: EvaluatorGroup,
 }
 
+#[derive(Default)]
+struct RoutedReductionScratch {
+    helicity_indices: Vec<usize>,
+    color_indices: Vec<usize>,
+    helicity_positions: Vec<Option<usize>>,
+    color_positions: Vec<Option<usize>>,
+    raw_member_weights: Vec<(usize, usize, f64)>,
+    selected_member_weights: Vec<(usize, usize, f64)>,
+    selected_member_weight_ranges: Vec<std::ops::Range<usize>>,
+}
+
 struct AmplitudeRuntime {
     output_length: usize,
     raw_sum_weights: Vec<f64>,
@@ -3340,6 +3351,7 @@ struct AmplitudeRuntime {
     output_scratch_f64: Vec<Complex<f64>>,
     resolved_source_row_scratch_f64: Vec<f64>,
     resolved_target_row_scratch_f64: Vec<f64>,
+    routed_reduction_scratch: RoutedReductionScratch,
     evaluator_output_order: Option<Vec<usize>>,
     evaluator: EvaluatorGroup,
 }
