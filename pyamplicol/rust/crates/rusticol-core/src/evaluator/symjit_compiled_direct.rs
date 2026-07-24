@@ -17,15 +17,16 @@ use std::path::Path;
 use std::ptr;
 
 use symjit::{
-    Config, DIRECT_APPLICATION_STORAGE_ABI, DIRECT_NO_ALIAS, DIRECT_STATUS_OK, Defuns,
-    DirectApplication, DirectCallable, DirectDestinationOperation, DirectOutputScale, DirectPlane,
-    DirectScalar, Storage,
+    Application, Config, DIRECT_APPLICATION_STORAGE_ABI, DIRECT_NO_ALIAS, DIRECT_STATUS_OK, Defuns,
+    DirectApplication, DirectApplicationMetadata, DirectCallable, DirectDestinationOperation,
+    DirectInputBinding, DirectOutputScale, DirectPlane, DirectScalar, Storage,
 };
 
 use crate::direct_arena::{
     AlignedF64Buffer, DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
     validate_direct_views,
 };
+use crate::engine::SYMJIT_APPLICATION_STORAGE_ABI;
 use crate::{RusticolError, RusticolResult};
 
 /// One split-complex plane in the persistent compiled-stage arena.
@@ -58,6 +59,14 @@ pub(crate) enum CompiledDirectScalarBinding {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct CompiledDirectOutputBinding(pub CompiledDirectArenaPlane);
 
+/// Raw-input routing used while lowering an ordinary compiled O3 application
+/// into the factor-free DirectApplication ABI.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CompiledDirectSourceInputBinding {
+    Plane(u32),
+    Scalar(u32),
+}
+
 /// Loaded but not yet pinned compiled-stage application.
 pub(crate) struct LoadedSymjitCompiledDirectStage {
     callable: DirectCallable,
@@ -85,6 +94,136 @@ pub(crate) struct BoundSymjitCompiledDirectStage {
 }
 
 impl LoadedSymjitCompiledDirectStage {
+    /// Lower one ordinary complex-f64 O3 application into DirectApplication
+    /// storage, then load it through the same authenticated direct path as a
+    /// natively-produced direct artifact.
+    ///
+    /// This is intentionally a cold-path bridge for the prototype. It accepts
+    /// only the current source ABI and exactly preserves the already-fused
+    /// application's instruction stream and output order.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn load_source_bytes(
+        bytes: &[u8],
+        display_path: impl AsRef<Path>,
+        source_application_abi: &str,
+        source_input_bindings: Vec<CompiledDirectSourceInputBinding>,
+        input_bindings: Vec<CompiledDirectPlaneBinding>,
+        scalar_bindings: Vec<CompiledDirectScalarBinding>,
+        output_bindings: Vec<CompiledDirectOutputBinding>,
+    ) -> RusticolResult<Self> {
+        let display_path = display_path.as_ref();
+        if source_application_abi != SYMJIT_APPLICATION_STORAGE_ABI {
+            return Err(RusticolError::compatibility(format!(
+                "unsupported compiled source application ABI {source_application_abi:?}; \
+                 expected {SYMJIT_APPLICATION_STORAGE_ABI:?}"
+            )));
+        }
+
+        let mut loader_config = Config::default();
+        loader_config.set_defuns(Defuns::new());
+        let mut input = bytes;
+        let application = guard_symjit_panic(
+            || Application::load(&mut input, &loader_config),
+            display_path,
+            "load source",
+        )?
+        .map_err(|error| {
+            RusticolError::compatibility(format!(
+                "could not load compiled source application {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        if !input.is_empty() {
+            return Err(RusticolError::integrity(format!(
+                "compiled source application {} has {} trailing bytes",
+                display_path.display(),
+                input.len()
+            )));
+        }
+        if application.count_states != 0
+            || application.count_diffs != 0
+            || application.count_params != source_input_bindings.len()
+            || application.count_obs != output_bindings.len()
+        {
+            return Err(RusticolError::integrity(format!(
+                "compiled source application {} has counts states={}, params={}, outputs={}, \
+                 diffs={}; expected 0, {}, {}, 0",
+                display_path.display(),
+                application.count_states,
+                application.count_params,
+                application.count_obs,
+                application.count_diffs,
+                source_input_bindings.len(),
+                output_bindings.len()
+            )));
+        }
+        if application.config.opt_level() != 3
+            || !application.config.is_complex()
+            || !application.config.symbolica()
+            || application.config.direct()
+        {
+            return Err(RusticolError::compatibility(format!(
+                "compiled source application {} is not an indirect complex Symbolica O3 \
+                 application",
+                display_path.display()
+            )));
+        }
+
+        let direct_inputs = source_input_bindings
+            .into_iter()
+            .map(|binding| match binding {
+                CompiledDirectSourceInputBinding::Plane(index) => DirectInputBinding::Plane(index),
+                CompiledDirectSourceInputBinding::Scalar(index) => {
+                    DirectInputBinding::Scalar(index)
+                }
+            })
+            .collect::<Vec<_>>();
+        let direct_metadata = DirectApplicationMetadata::new_with_output_scale(
+            DirectDestinationOperation::Initialize,
+            DirectOutputScale::Identity,
+            Vec::new(),
+            direct_inputs,
+            u32::try_from(input_bindings.len()).map_err(|_| {
+                RusticolError::integrity(
+                    "compiled Direct-Arena input plane count exceeds the u32 ABI",
+                )
+            })?,
+            u32::try_from(scalar_bindings.len()).map_err(|_| {
+                RusticolError::integrity(
+                    "compiled Direct-Arena scalar input count exceeds the u32 ABI",
+                )
+            })?,
+            vec![DIRECT_NO_ALIAS; output_bindings.len()],
+        )
+        .map_err(|error| {
+            RusticolError::integrity(format!(
+                "could not describe compiled Direct-Arena application {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        let direct = DirectApplication::new(application, direct_metadata).map_err(|error| {
+            RusticolError::compatibility(format!(
+                "could not lower compiled source application {} to DirectApplication: {error}",
+                display_path.display()
+            ))
+        })?;
+        let mut direct_bytes = Vec::new();
+        direct.save(&mut direct_bytes).map_err(|error| {
+            RusticolError::internal(format!(
+                "could not serialize lowered compiled Direct-Arena application {}: {error}",
+                display_path.display()
+            ))
+        })?;
+        Self::load_bytes(
+            &direct_bytes,
+            display_path,
+            DIRECT_APPLICATION_STORAGE_ABI,
+            input_bindings,
+            scalar_bindings,
+            output_bindings,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn load_bytes(
         bytes: &[u8],
@@ -372,10 +511,7 @@ fn validate_static_bindings(
                 "compiled Direct-Arena output binding {index} aliases an earlier output"
             )));
         }
-        if inputs
-            .iter()
-            .any(|input| *input == CompiledDirectPlaneBinding::Arena(output.0))
-        {
+        if inputs.contains(&CompiledDirectPlaneBinding::Arena(output.0)) {
             return Err(RusticolError::integrity(format!(
                 "compiled Direct-Arena output binding {index} aliases an input plane"
             )));

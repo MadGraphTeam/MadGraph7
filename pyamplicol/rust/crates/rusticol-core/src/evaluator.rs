@@ -27,6 +27,8 @@ pub(crate) use symjit::*;
 #[cfg(feature = "f64-symjit")]
 #[path = "evaluator/symjit_direct.rs"]
 pub(crate) mod symjit_direct;
+#[cfg(all(test, feature = "f64-symjit"))]
+pub(crate) use symjit_direct::tests::count_allocations as count_test_allocations;
 
 #[cfg(feature = "f64-symjit")]
 #[path = "evaluator/symjit_compiled_direct.rs"]
