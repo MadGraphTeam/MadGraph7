@@ -534,10 +534,13 @@ void ChannelEventGenerator::start_job(
         });
 }
 
-void ChannelEventGenerator::start_unweight_job(
+void ChannelEventGenerator::prepare_unweight_job(GeneratorBatchJob& job) const {
+    job.max_weight = _max_weight;
+}
+
+void ChannelEventGenerator::submit_unweight_job(
     GeneratorBatchJob& job, ResultQueue& result_queue
 ) {
-    job.max_weight = _max_weight;
     _contexts.at(job.context_index)
         ->thread_pool()
         .submit([this, &job, &result_queue]() {
@@ -559,22 +562,11 @@ void ChannelEventGenerator::start_unweight_job(
         });
 }
 
-void ChannelEventGenerator::unweight_job_inline(GeneratorBatchJob& job) {
-    auto& runtimes = _runtimes.at(job.context_index);
-    auto& context = _contexts.at(job.context_index);
-    job.max_weight = _max_weight;
-    std::optional<std::uint64_t> seed = job.rng_seed == 0
-        ? std::nullopt
-        : std::optional(mix_seed(job.rng_seed, {kPhaseUnweight}));
-    std::vector<Tensor> unweighter_args(
-        job.events.begin(), job.events.begin() + _field_indices.random
-    );
-    unweighter_args.push_back(Tensor(job.max_weight, context->device()));
-    TensorVec unw_events = runtimes.unweighter->run(unweighter_args, seed);
-    job.unweighted_events.clear();
-    for (auto& item : unw_events) {
-        job.unweighted_events.push_back(item.cpu());
-    }
+void ChannelEventGenerator::start_unweight_job(
+    GeneratorBatchJob& job, ResultQueue& result_queue
+) {
+    prepare_unweight_job(job);
+    submit_unweight_job(job, result_queue);
 }
 
 std::size_t ChannelEventGenerator::next_vegas_batch_size() {

@@ -100,6 +100,25 @@ private:
     std::vector<std::set<std::size_t>> _channel_ready_gen;
     std::vector<std::size_t> _channel_commit_cursor;
     std::vector<bool> _channel_cursor_set;
+    // generate_deterministic() only: second, independent per-channel cursor/buffer
+    // for the unweight stage's completions, analogous to _channel_ready_gen/
+    // _channel_commit_cursor but for a job's *second* commit (see
+    // commit_unweight_stage()). A job's generate-stage and unweight-stage commits
+    // are tracked separately because they arrive as two distinct completion events
+    // (see ChannelEventGenerator::submit_unweight_job), but both cursors are reset
+    // together in register_dispatched_ids() since a job's unweight-stage id is the
+    // same as its generate-stage id.
+    std::vector<std::set<std::size_t>> _channel_unweight_ready;
+    std::vector<std::size_t> _channel_unweight_cursor;
+    // generate_deterministic() only: per-context queue of job ids awaiting
+    // unweight-stage dispatch. Populated by commit_generate_stage() (via
+    // ChannelEventGenerator::prepare_unweight_job(), which snapshots max_weight at
+    // that fixed, job-id-ordered point) and drained with priority by start_jobs(),
+    // ahead of any new regular batch dispatch -- otherwise, since a single
+    // _ready_jobs entry can now cover an entire channel round, unweight jobs (whose
+    // generation work is already done and just needs finishing, possibly via a
+    // costly GPU device-to-host copy) could get stuck behind it.
+    std::vector<std::vector<std::size_t>> _context_unweight_queue;
     ResultQueue _result_queue;
 
     // Base seed for reproducible event generation. 0 means "seed
@@ -136,15 +155,31 @@ private:
     // thread count.
     void survey_deterministic();
     void generate_deterministic();
-    void commit_generate_deterministic(GeneratorBatchJob& job);
+    // Per-channel-ordered commit of a job's generate stage: cross-section
+    // accumulation, max-weight update, and (if job.unweight) capturing max_weight
+    // and queuing the job for prioritized unweight dispatch -- see
+    // _context_unweight_queue. Does not itself write events; that happens once the
+    // (separately ordered) unweight stage commits, in commit_unweight_stage().
+    void commit_generate_stage(GeneratorBatchJob& job);
+    // Per-channel-ordered commit of a job's unweight stage: writes the unweighted
+    // events and updates counts. Called once job.unweighted_events is populated,
+    // strictly in job-id order per channel (see _channel_unweight_cursor), same as
+    // commit_generate_stage() but independently sequenced.
+    void commit_unweight_stage(GeneratorBatchJob& job);
+    // Shared tail of both commit steps: once a job's channel_job_count reaches
+    // zero (both stages committed), runs the batch-completion action
+    // (optimize_vegas / release _channel_optimizing, or release
+    // _channel_batch_pending) that used to be keyed off channel_job_count hitting a
+    // magic value mid-stream in the old single-stage commit.
+    void finish_channel_job(const GeneratorBatchJob& job);
     // generate_deterministic() only: scans the job ids newly added to
     // _running_jobs by the last start_jobs() call ([first_id, end_id)) and, for
     // any channel seen for the first time since its current round started (i.e.
-    // _channel_cursor_set is still false), initializes _channel_commit_cursor to
-    // that job's id. Safe because a channel's whole round is always dispatched
-    // atomically as one contiguous id range (see GeneratorBatchJob::vegas_batch_size),
-    // so the first id encountered for a channel in ascending order is always that
-    // round's minimum.
+    // _channel_cursor_set is still false), initializes _channel_commit_cursor and
+    // _channel_unweight_cursor to that job's id. Safe because a channel's whole
+    // round is always dispatched atomically as one contiguous id range (see
+    // GeneratorBatchJob::vegas_batch_size), so the first id encountered for a
+    // channel in ascending order is always that round's minimum.
     void register_dispatched_ids(std::size_t first_id, std::size_t end_id);
 
     // Size a new steady-state generation batch for a channel from fully-committed
@@ -157,7 +192,13 @@ private:
     // keep all worker threads busy.
     std::size_t next_batch_job_count(std::size_t channel_index, double target) const;
 
-    bool start_jobs();
+    // Dispatches from _context_unweight_queue (with priority, per context) and
+    // then _ready_jobs, up to each context's capacity. Returns the number of
+    // unweight jobs actually (re-)dispatched this call -- unlike a newly dispatched
+    // regular job, resubmitting a job for its unweight stage doesn't consume a new
+    // id, so callers that track in-flight completions via _job_id deltas (see
+    // generate_deterministic()) need this separately.
+    std::size_t start_jobs();
     // update_integral() = update_integral_status() + update_integral_fractions().
     // Split so generate_deterministic() can keep the status half (used for
     // logging/progress only) fully live, per commit, while deferring the fractions

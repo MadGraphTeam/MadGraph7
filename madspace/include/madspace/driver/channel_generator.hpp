@@ -68,12 +68,21 @@ public:
         bool is_survey,
         std::size_t survey_pass
     );
+    // Snapshots the channel's current max weight into job.max_weight. Split out
+    // from submit_unweight_job() so the deterministic generation path can capture
+    // it at a fixed, job-id-ordered point (see EventGenerator::commit_generate_stage)
+    // while deferring the actual thread-pool submission to a later, priority-ordered
+    // dispatch pass (see EventGenerator::_context_unweight_queue).
+    void prepare_unweight_job(GeneratorBatchJob& job) const;
+    // Submits the unweighting work for job to the thread pool of the *same*
+    // context the job's generation ran on (important on GPU: unweighting reads
+    // device tensors and does a device-to-host copy, so it must run against the
+    // context that owns them). Assumes job.max_weight and job.rng_seed are already
+    // set (see prepare_unweight_job / start_job).
+    void submit_unweight_job(GeneratorBatchJob& job, ResultQueue& result_queue);
+    // prepare_unweight_job() + submit_unweight_job() in one call, for callers that
+    // don't need to separate capture from dispatch.
     void start_unweight_job(GeneratorBatchJob& job, ResultQueue& result_queue);
-    // Synchronous unweighting used by the deterministic generation path: runs the
-    // unweighter on the calling (harvest) thread against the current max weight so
-    // that it happens in a fixed, job-id-ordered position instead of as a separate
-    // asynchronously-scheduled job.
-    void unweight_job_inline(GeneratorBatchJob& job);
     std::size_t next_vegas_batch_size();
     void clear_events();
     void update_max_weight(Tensor weights);
