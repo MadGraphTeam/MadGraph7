@@ -1804,7 +1804,7 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
     repeated_block = record.get("repeated_block")
     if repeated_block is not None:
         repeated = _mapping(repeated_block)
-        result["repeated_block"] = {
+        compact: dict[str, object] = {
             "component_count": int(repeated["component_count"]),
             "component_group_ids": [
                 int(value) for value in _sequence(repeated["component_group_ids"])
@@ -1820,6 +1820,17 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
                 for item in _sequence(repeated["entries"])
             ],
         }
+        factorized_block = repeated.get("factorized_block")
+        if factorized_block is not None:
+            factorized = _mapping(factorized_block)
+            compact["factorized_block"] = {
+                "kind": str(factorized["kind"]),
+                "cosets": [
+                    [int(value) for value in _sequence(coset)]
+                    for coset in _sequence(factorized["cosets"])
+                ],
+            }
+        result["repeated_block"] = compact
     return result
 
 

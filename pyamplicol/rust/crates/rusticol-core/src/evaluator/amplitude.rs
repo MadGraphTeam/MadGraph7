@@ -479,6 +479,55 @@ impl AmplitudeRuntime {
                     .resize(contraction.group_count, c64(0.0, 0.0));
                 for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
                     let row_offset = row * self.output_length;
+                    if let (Some(walsh_block), Some(output_indices)) = (
+                        repeated_block.walsh_block.as_ref(),
+                        repeated_block.singleton_output_indices.as_deref(),
+                    ) {
+                        let component_count = repeated_block.component_count;
+                        let coset_count = walsh_block.cosets.len();
+                        for (coset_index, coset) in walsh_block.cosets.iter().enumerate() {
+                            for component_index in 0..component_count {
+                                let source = |local_group_index: usize| {
+                                    amplitudes[row_offset
+                                        + output_indices
+                                            [local_group_index * component_count + component_index]]
+                                };
+                                let x0 = source(coset[0]);
+                                let x1 = source(coset[1]);
+                                let x2 = source(coset[2]);
+                                let x3 = source(coset[3]);
+                                let sum01 = x0 + x1;
+                                let difference01 = x0 - x1;
+                                let sum23 = x2 + x3;
+                                let difference23 = x2 - x3;
+                                let targets = [
+                                    (sum01 + sum23) * 0.5,
+                                    (difference01 + difference23) * 0.5,
+                                    (sum01 - sum23) * 0.5,
+                                    (difference01 - difference23) * 0.5,
+                                ];
+                                for (character_index, value) in targets.into_iter().enumerate() {
+                                    contraction.group_scratch_f64[((character_index
+                                        * coset_count
+                                        + coset_index)
+                                        * component_count)
+                                        + component_index] = value;
+                                }
+                            }
+                        }
+                        for entry in &walsh_block.entries {
+                            let left_start = entry.left_group_index * component_count;
+                            let right_start = entry.right_group_index * component_count;
+                            let product_re = sum_real_hermitian_products(
+                                &contraction.group_scratch_f64
+                                    [left_start..left_start + component_count],
+                                &contraction.group_scratch_f64
+                                    [right_start..right_start + component_count],
+                            );
+                            *raw_sum += entry.symmetry_factor * entry.weight_re * product_re;
+                        }
+                        continue;
+                    }
                     if let Some(output_indices) = repeated_block.singleton_output_indices.as_deref()
                     {
                         for (target, output_index) in
@@ -1930,11 +1979,17 @@ pub(crate) fn build_color_contraction_runtime(
                 symmetry_factor: entry.symmetry_factor,
             });
         }
+        let walsh_block = build_walsh_color_contraction_block(
+            repeated.factorized_block.as_ref(),
+            groups_per_component,
+            &entries,
+        )?;
         return Ok(Some(ColorContractionRuntime::from_repeated_block(
             groups,
             repeated.component_count,
             component_group_indices,
             entries,
+            walsh_block,
         )));
     }
     let mut entries = Vec::with_capacity(manifest.entries.len());
@@ -1964,6 +2019,156 @@ pub(crate) fn build_color_contraction_runtime(
         });
     }
     Ok(Some(ColorContractionRuntime::new(groups, entries)))
+}
+
+fn build_walsh_color_contraction_block(
+    manifest: Option<&GenericFactorizedColorContractionBlockManifest>,
+    local_group_count: usize,
+    entries: &[ColorContractionEntry],
+) -> RusticolResult<Option<WalshColorContractionBlock>> {
+    let Some(manifest) = manifest else {
+        return Ok(None);
+    };
+    if manifest.kind != "klein-four-walsh" {
+        return Err(RusticolError::invalid_argument(format!(
+            "unknown color contraction factorization {:?}",
+            manifest.kind
+        )));
+    }
+    let mapped_group_count = manifest.cosets.len().checked_mul(4).ok_or_else(|| {
+        RusticolError::invalid_argument("factorized color contraction coset count overflows")
+    })?;
+    if manifest.cosets.is_empty() || mapped_group_count != local_group_count {
+        return Err(RusticolError::invalid_argument(
+            "factorized color contraction cosets do not match local groups",
+        ));
+    }
+    let mut mapped_groups = vec![false; local_group_count];
+    for coset in &manifest.cosets {
+        for local_group_index in coset {
+            let Some(mapped) = mapped_groups.get_mut(*local_group_index) else {
+                return Err(RusticolError::invalid_argument(
+                    "factorized color contraction coset index is out of bounds",
+                ));
+            };
+            if *mapped {
+                return Err(RusticolError::invalid_argument(
+                    "factorized color contraction cosets contain a duplicate index",
+                ));
+            }
+            *mapped = true;
+        }
+    }
+
+    let matrix_size = local_group_count
+        .checked_mul(local_group_count)
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("factorized color contraction matrix size overflows")
+        })?;
+    let mut matrix = vec![0.0; matrix_size];
+    let mut seen_pairs = BTreeSet::new();
+    for entry in entries {
+        if entry.weight_im != 0.0 {
+            return Err(RusticolError::invalid_argument(
+                "factorized color contraction requires real weights",
+            ));
+        }
+        if !entry.weight_re.is_finite() || !entry.symmetry_factor.is_finite() {
+            return Err(RusticolError::invalid_argument(
+                "factorized color contraction weights must be finite",
+            ));
+        }
+        let (left, right) = if entry.left_group_index <= entry.right_group_index {
+            (entry.left_group_index, entry.right_group_index)
+        } else {
+            (entry.right_group_index, entry.left_group_index)
+        };
+        if !seen_pairs.insert((left, right)) {
+            return Err(RusticolError::invalid_argument(
+                "factorized color contraction has a duplicate matrix entry",
+            ));
+        }
+        let weight = if left == right {
+            entry.symmetry_factor * entry.weight_re
+        } else {
+            0.5 * entry.symmetry_factor * entry.weight_re
+        };
+        if !weight.is_finite() {
+            return Err(RusticolError::invalid_argument(
+                "factorized color contraction matrix weight is not finite",
+            ));
+        }
+        matrix[left * local_group_count + right] = weight;
+        matrix[right * local_group_count + left] = weight;
+    }
+
+    for left_coset in &manifest.cosets {
+        for right_coset in &manifest.cosets {
+            for left_subgroup_index in 0..4 {
+                for right_subgroup_index in 0..4 {
+                    let actual = matrix[left_coset[left_subgroup_index] * local_group_count
+                        + right_coset[right_subgroup_index]];
+                    let expected = matrix[left_coset[0] * local_group_count
+                        + right_coset[left_subgroup_index ^ right_subgroup_index]];
+                    if actual != expected {
+                        return Err(RusticolError::invalid_argument(
+                            "factorized color contraction matrix is not invariant under its Klein-four action",
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    let coset_count = manifest.cosets.len();
+    let mut transformed_entries = Vec::new();
+    let characters = [
+        [1.0, 1.0, 1.0, 1.0],
+        [1.0, -1.0, 1.0, -1.0],
+        [1.0, 1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0, 1.0],
+    ];
+    for (character_index, character) in characters.iter().enumerate() {
+        for left_coset_index in 0..coset_count {
+            for right_coset_index in left_coset_index..coset_count {
+                let left_coset = manifest.cosets[left_coset_index];
+                let right_coset = manifest.cosets[right_coset_index];
+                let values = [
+                    matrix[left_coset[0] * local_group_count + right_coset[0]],
+                    matrix[left_coset[0] * local_group_count + right_coset[1]],
+                    matrix[left_coset[0] * local_group_count + right_coset[2]],
+                    matrix[left_coset[0] * local_group_count + right_coset[3]],
+                ];
+                let mut weight = 0.0;
+                for (sign, value) in character.iter().zip(values) {
+                    weight += sign * value;
+                }
+                if !weight.is_finite() {
+                    return Err(RusticolError::invalid_argument(
+                        "factorized color contraction Walsh weight is not finite",
+                    ));
+                }
+                if weight == 0.0 {
+                    continue;
+                }
+                transformed_entries.push(ColorContractionEntry {
+                    left_group_index: character_index * coset_count + left_coset_index,
+                    right_group_index: character_index * coset_count + right_coset_index,
+                    weight_re: weight,
+                    weight_im: 0.0,
+                    symmetry_factor: if left_coset_index == right_coset_index {
+                        1.0
+                    } else {
+                        2.0
+                    },
+                });
+            }
+        }
+    }
+    Ok(Some(WalshColorContractionBlock {
+        cosets: manifest.cosets.clone(),
+        entries: transformed_entries,
+    }))
 }
 
 pub(crate) fn generic_root_group_id(

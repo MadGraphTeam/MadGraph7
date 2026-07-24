@@ -1188,6 +1188,7 @@ fn compact_repeated_color_manifest_builds_without_expanded_entries() {
                     symmetry_factor: 1.0,
                 },
             ],
+            factorized_block: None,
         }),
     };
     let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
@@ -1221,6 +1222,154 @@ fn compact_repeated_color_manifest_builds_without_expanded_entries() {
 }
 
 #[test]
+fn compact_walsh_color_manifest_matches_expanded_repeated_reduction() {
+    let component_count = 3;
+    let output_indices = [7, 0, 10, 3, 5, 11, 1, 8, 4, 9, 2, 6];
+    let groups = output_indices
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(group_index, output_index)| {
+            repeated_test_group(
+                10 + group_index as i64,
+                output_index,
+                100 + (group_index / component_count) as i64,
+            )
+        })
+        .collect::<Vec<_>>();
+    let kernel = [4.0, 1.0, 2.0, 0.5];
+    let entries = (0..4)
+        .flat_map(|left_group_index| {
+            (left_group_index..4).map(move |right_group_index| {
+                GenericRepeatedColorContractionEntryManifest {
+                    left_group_index,
+                    right_group_index,
+                    weight: vec![kernel[left_group_index ^ right_group_index], 0.0],
+                    symmetry_factor: if left_group_index == right_group_index {
+                        1.0
+                    } else {
+                        2.0
+                    },
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: groups.len(),
+        includes_color_factor: true,
+        entries: Vec::new(),
+        repeated_block: Some(GenericRepeatedColorContractionBlockManifest {
+            component_count,
+            component_group_ids: (10..10 + groups.len() as i64).collect(),
+            entries,
+            factorized_block: Some(GenericFactorizedColorContractionBlockManifest {
+                kind: "klein-four-walsh".to_string(),
+                cosets: vec![[0, 1, 2, 3]],
+            }),
+        }),
+    };
+    let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
+        .unwrap()
+        .expect("compact Walsh contraction");
+    let repeated = contraction
+        .repeated_block
+        .as_ref()
+        .expect("repeated contraction");
+    let walsh = repeated.walsh_block.as_ref().expect("Walsh block");
+    assert_eq!(walsh.cosets, vec![[0, 1, 2, 3]]);
+    assert_eq!(walsh.entries.len(), 4);
+    let logical_entries = contraction.logical_entries().collect::<Vec<_>>();
+    let outputs = (0..12)
+        .map(|index| {
+            let value = index as f64 + 1.0;
+            c64(0.25 * value, 0.125 * (5.0 - value))
+        })
+        .collect::<Vec<_>>();
+    let expected = legacy_color_contraction_totals(&outputs, 12, &groups, &logical_entries)[0];
+    let mut amplitude = test_amplitude_runtime(outputs, Some(contraction));
+    amplitude.raw_sum_groups = groups;
+    let mut actual = vec![0.0];
+
+    amplitude
+        .reduce_scratch_f64_into_selected_slice(1, &mut actual, None)
+        .unwrap();
+
+    assert!(
+        (actual[0] - expected).abs() <= 1.0e-12 * expected.abs().max(1.0),
+        "Walsh reduction {} differs from expanded repeated reduction {expected}",
+        actual[0]
+    );
+}
+
+#[test]
+fn compact_walsh_color_manifest_rejects_malformed_or_noninvariant_plans() {
+    let groups = (0..8)
+        .map(|group_index| {
+            repeated_test_group(
+                10 + group_index as i64,
+                group_index,
+                100 + (group_index / 2) as i64,
+            )
+        })
+        .collect::<Vec<_>>();
+    let manifest = |kind: &str,
+                    cosets: Vec<[usize; 4]>,
+                    entries: Vec<GenericRepeatedColorContractionEntryManifest>| {
+        GenericColorContractionManifest {
+            supported: true,
+            reason: None,
+            group_count: groups.len(),
+            includes_color_factor: true,
+            entries: Vec::new(),
+            repeated_block: Some(GenericRepeatedColorContractionBlockManifest {
+                component_count: 2,
+                component_group_ids: (10..18).collect(),
+                entries,
+                factorized_block: Some(GenericFactorizedColorContractionBlockManifest {
+                    kind: kind.to_string(),
+                    cosets,
+                }),
+            }),
+        }
+    };
+    let cases = [
+        (
+            "unknown color contraction factorization",
+            manifest("future-transform", vec![[0, 1, 2, 3]], Vec::new()),
+        ),
+        (
+            "duplicate index",
+            manifest("klein-four-walsh", vec![[0, 1, 2, 2]], Vec::new()),
+        ),
+        (
+            "not invariant",
+            manifest(
+                "klein-four-walsh",
+                vec![[0, 1, 2, 3]],
+                vec![GenericRepeatedColorContractionEntryManifest {
+                    left_group_index: 0,
+                    right_group_index: 0,
+                    weight: vec![1.0, 0.0],
+                    symmetry_factor: 1.0,
+                }],
+            ),
+        ),
+    ];
+    for (expected, manifest) in cases {
+        let error = match build_color_contraction_runtime(Some(&manifest), &groups) {
+            Ok(_) => panic!("malformed Walsh color contraction must fail"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains(expected),
+            "unexpected error for {expected}: {error}"
+        );
+    }
+}
+
+#[test]
 fn compact_repeated_color_manifest_rejects_duplicate_group_mapping() {
     let groups = vec![
         repeated_test_group(10, 0, 100),
@@ -1236,6 +1385,7 @@ fn compact_repeated_color_manifest_rejects_duplicate_group_mapping() {
             component_count: 2,
             component_group_ids: vec![10, 10],
             entries: Vec::new(),
+            factorized_block: None,
         }),
     };
     let error = match build_color_contraction_runtime(Some(&manifest), &groups) {
@@ -1272,6 +1422,7 @@ fn compact_repeated_color_manifest_rejects_malformed_storage() {
                 weight,
                 symmetry_factor: 1.0,
             }],
+            factorized_block: None,
         })
     };
     let malformed = [

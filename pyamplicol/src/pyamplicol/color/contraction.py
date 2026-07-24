@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 import struct
 from collections.abc import Sequence
 
@@ -21,6 +22,7 @@ from .contraction_types import (
     ColorContractionPlan,
     ColorContractionTemplateEntry,
     ColorGroupDescriptor,
+    FactorizedColorContractionBlock,
     RepeatedColorContractionBlock,
 )
 from .plan import GenericColorPlan, LCColorSector
@@ -202,6 +204,144 @@ def _build_repeated_color_contraction_block(
         component_count=len(components),
         component_group_ids=component_group_ids,
         entries=tuple(base_entries),
+        factorized_block=(
+            _build_klein_four_walsh_block(
+                tuple(
+                    descriptors_by_component_and_sector[0][sector_id].word
+                    for sector_id in sorted_sector_ids
+                ),
+                tuple(base_entries),
+            )
+            if accuracy == "full"
+            else None
+        ),
+    )
+
+
+def _build_klein_four_walsh_block(
+    words: Sequence[Sequence[int]],
+    entries: Sequence[ColorContractionTemplateEntry],
+) -> FactorizedColorContractionBlock | None:
+    """Recognize a complete scalar permutation orbit with a free C2 x C2 action."""
+
+    if not words:
+        return None
+    canonical_word = tuple(words[0])
+    if len(set(canonical_word)) != len(canonical_word):
+        return None
+    if any(
+        len(word) != len(canonical_word)
+        or len(set(word)) != len(word)
+        or set(word) != set(canonical_word)
+        for word in words
+    ):
+        return None
+
+    positions = {
+        label: tuple(tuple(word).index(label) for word in words)
+        for label in canonical_word
+    }
+    variable_labels = tuple(
+        label for label in canonical_word if len(set(positions[label])) > 1
+    )
+    variable_count = len(variable_labels)
+    if variable_count < 4 or len(words) != math.factorial(variable_count):
+        return None
+    rank_by_label = {
+        label: rank for rank, label in enumerate(sorted(variable_labels))
+    }
+    permutations = tuple(
+        tuple(rank_by_label[label] for label in word if label in rank_by_label)
+        for word in words
+    )
+    expected_ranks = set(range(variable_count))
+    if any(set(permutation) != expected_ranks for permutation in permutations):
+        return None
+    index_by_permutation = {
+        permutation: index for index, permutation in enumerate(permutations)
+    }
+    if len(index_by_permutation) != math.factorial(variable_count):
+        return None
+
+    first_generator = tuple(
+        1 if rank == 0 else 0 if rank == 1 else rank
+        for rank in range(variable_count)
+    )
+    second_generator = tuple(
+        3 if rank == 2 else 2 if rank == 3 else rank
+        for rank in range(variable_count)
+    )
+
+    def act(
+        substitution: tuple[int, ...], permutation: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        return tuple(substitution[rank] for rank in permutation)
+
+    product_generator = tuple(
+        first_generator[second_generator[rank]]
+        for rank in range(variable_count)
+    )
+    substitutions = (
+        tuple(range(variable_count)),
+        first_generator,
+        second_generator,
+        product_generator,
+    )
+    remaining = set(range(len(permutations)))
+    cosets: list[tuple[int, int, int, int]] = []
+    while remaining:
+        representative_index = min(remaining)
+        representative = permutations[representative_index]
+        try:
+            coset = tuple(
+                index_by_permutation[act(substitution, representative)]
+                for substitution in substitutions
+            )
+        except KeyError:
+            return None
+        if len(set(coset)) != 4 or not set(coset).issubset(remaining):
+            return None
+        cosets.append((coset[0], coset[1], coset[2], coset[3]))
+        remaining.difference_update(coset)
+
+    matrix: dict[tuple[int, int], float] = {}
+    for entry in entries:
+        if (
+            entry.weight_im != 0.0
+            or not math.isfinite(entry.weight_re)
+            or not math.isfinite(entry.symmetry_factor)
+        ):
+            return None
+        left, right = sorted((entry.left_group_index, entry.right_group_index))
+        if (left, right) in matrix:
+            return None
+        weight = (
+            entry.symmetry_factor * entry.weight_re
+            if left == right
+            else 0.5 * entry.symmetry_factor * entry.weight_re
+        )
+        if not math.isfinite(weight):
+            return None
+        matrix[(left, right)] = weight
+
+    def matrix_value(left: int, right: int) -> float:
+        return matrix.get((min(left, right), max(left, right)), 0.0)
+
+    for left_coset in cosets:
+        for right_coset in cosets:
+            for left_subgroup_index in range(4):
+                for right_subgroup_index in range(4):
+                    if matrix_value(
+                        left_coset[left_subgroup_index],
+                        right_coset[right_subgroup_index],
+                    ) != matrix_value(
+                        left_coset[0],
+                        right_coset[left_subgroup_index ^ right_subgroup_index],
+                    ):
+                        return None
+    return FactorizedColorContractionBlock(
+        kind="klein-four-walsh",
+        cosets=tuple(cosets),
     )
 
 
@@ -275,6 +415,7 @@ __all__ = [
     "ColorContractionPlan",
     "ColorContractionTemplateEntry",
     "ColorGroupDescriptor",
+    "FactorizedColorContractionBlock",
     "RepeatedColorContractionBlock",
     "build_color_contraction_plan",
     "color_contraction_factor",

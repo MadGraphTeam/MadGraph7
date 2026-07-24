@@ -748,3 +748,110 @@ values are
 `40a6f1a9b3ce90b796b5f2b7918726491f312610cc46d1bfcef3318c30f65561`.
 A final seven-sample installed-binary canary retained the same
 `2.00e-16` maximum relative difference.
+
+## Milestone 12: persistent AoSoA state and composed full-stage gathers
+
+Status: measured and rejected; neither prototype is retained.
+
+The first prototype kept the full compiled state in a dense referenced-slot
+AoSoA arena across stages. It was eligible only when every stage and amplitude
+leaf used the same non-threaded SymJIT SIMD width; scalar, threaded, mixed,
+profiled, and exact execution retained the row-major fallback. The plan
+precomposed every global-to-leaf map, handled selectors and odd tails, and
+preserved bitwise totals on the retained artifacts. It nevertheless enlarged
+and fragmented the active working set while still gathering each leaf into
+contiguous evaluator input. Native batch-128 measurements rejected it:
+
+| Workload | `0dde005` ms/point | Persistent AoSoA ms/point | Change |
+|---|---:|---:|---:|
+| Z+6g selected flow, helicity sum | 0.082898 | 0.091534 | +10.42% |
+| Z+6g all-flow union, fixed helicity | 0.688121 | 1.026229 | +49.14% |
+| `g g > t t~ + 3g`, NLC canary | 1.779332 | 2.446874 | +37.52% |
+
+The union window was noisy, but the direction and the two independent
+regressions were decisive. Batch-128 union peak RSS reached `1.608 GiB`, and
+the runtime could retain both the AoSoA and row-major arenas after crossing
+between profiled and unprofiled paths. The build peaked at `1.302 GiB`.
+
+The smaller follow-up reused the selector lane's already-composed
+global-state-to-leaf mappings for ordinary full chunked stages, avoiding the
+parent-stage slab without changing evaluator layout. This was allocation-free
+and exact, but random global gathers lost the parent slab's locality. Union
+improved only `0.421021 -> 0.418381 ms/point` (`-0.63%`, noisy), while
+`g g > t t~ + 3g` NLC regressed
+`1.662814 -> 1.790170 ms/point` (`+7.66%`). It too was removed.
+
+These A/B results reject copy-count reduction by itself. A future state-layout
+change must tile the live working set or change the evaluator ABI so that it
+also improves locality; it should not add a workload-adaptive policy merely
+to hide these regressions.
+
+## Milestone 13: exact Klein-four Walsh full-colour contraction
+
+Status: validated for a compact full-colour milestone.
+
+One-quark-line full-colour permutation orbits now carry an optional,
+generation-time `klein-four-walsh` plan when their complete scalar
+permutation matrix is exactly invariant under a free
+`C2 x C2` subgroup action. Recognition is structural and works for eligible
+`S_m` orbits; it does not contain a process ID, an `S5` constant, an
+architecture threshold, or runtime tuning. The generator retains the compact
+logical repeated entries for exact, resolved, and unsupported fallbacks.
+NLC deliberately remains on its sparse expanded reducer.
+
+Rust validates the coset partition, finite real weights, unique matrix
+entries, and exact subgroup invariance at load. It then derives four real
+symmetric blocks once. The f64 totals-only singleton path fuses the existing
+coherent-output gather with normalized four-point Walsh transforms and
+contracts contiguous helicity components. For
+`g g > t t~ + 3g`, the plan maps 120 flows into 30 cosets and reduces the hot
+upper-triangular work from 7,260 to 1,812 Hermitian dots.
+
+A controlled A/B used one generated evaluator payload and one candidate
+runtime. The control artifact differed only by removing the optional
+factorized plan and updating its canonical payload and artifact digests:
+
+| Batch | Expanded median +/- MAD ms/point | Walsh median +/- MAD ms/point | Change |
+|---:|---:|---:|---:|
+| 128 | 2.028861 +/- 0.038119 | 1.715008 +/- 0.018649 | -15.47% |
+| 1024 | 1.955683 +/- 0.001316 | 1.700167 +/- 0.016882 | -13.07% |
+
+The maximum observed total disagreement was `4.14e-25` absolute and
+`8.00e-16` relative. A fresh NLC fallback canary was bitwise exact and moved
+`1.564733 -> 1.552362 ms/point`; the selected-flow and union LC fallbacks
+were also bitwise exact with no regression. The generated execution JSON grew
+by only 488 bytes; total artifact bytes were effectively unchanged
+(`148,729,429 -> 148,724,640`). Comparable generation phase sums were
+`57.207 -> 55.261 s`, and the candidate generation watchdog peak was
+`1.159 GiB`.
+
+The standalone proof, including a conservative no-vectorization build, is
+under `/private/tmp/pyamplicol-s5-walsh-proof`. Focused evidence comprises
+13 Python contraction tests, two malformed/parity Walsh Rust tests, four
+repeated-colour Rust tests, Ruff, rustfmt, affected-crate checks, a guarded
+candidate build (`1.286 GiB` peak), and native artifact evaluations.
+
+## Milestone 14: selected-flow backend gap audit
+
+Status: accounting complete; no code change retained.
+
+The selected Z+6g closure is already equivalent to legacy AmpliCol after its
+terminal-zero filter: pyAmpliCol has 8,338 interactions, 1,425 currents, and
+384 roots, versus 8,324, 1,422, and 382. The 14-interaction difference is
+`0.17%` and cannot explain a roughly 23 microsecond backend gap.
+
+The actual 13 SymJIT applets instead contain `2,869,640` bytes of AArch64 SIMD
+machine code, about 50.8 times the legacy library's `56,532` bytes of hot
+text. Small applets sustain 15--17 GInstr/s, while the 300--730 KiB late-stage
+applets fall to 5--6.5 GInstr/s. SymJIT already executes fewer arithmetic
+instructions per point through two-lane NEON, so the remaining gap is
+instruction-fetch/front-end locality rather than absent SIMD or missing DAG
+recycling.
+
+The credible generic direction is compact, table-driven repeated-Lorentz
+microkernels or generalized MIR outlining while retaining vector-across-point
+execution. A kernelized lowering has a measured-throughput ceiling of roughly
+26--37 microseconds in the selected backend and a credible 15--25 microsecond
+gain. Cross-chunk shared prologues could recover another 3--8 microseconds:
+late stages duplicate 1,847 of 6,962 unique chunk inputs. Naively enlarging
+applets remains rejected by milestone 10.

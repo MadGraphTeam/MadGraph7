@@ -1419,6 +1419,15 @@ struct GenericRepeatedColorContractionBlockManifest {
     component_count: usize,
     component_group_ids: Vec<i64>,
     entries: Vec<GenericRepeatedColorContractionEntryManifest>,
+    #[serde(default)]
+    factorized_block: Option<GenericFactorizedColorContractionBlockManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericFactorizedColorContractionBlockManifest {
+    kind: String,
+    cosets: Vec<[usize; 4]>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1844,6 +1853,17 @@ struct RepeatedColorContractionBlock {
     singleton_output_indices: Option<Vec<usize>>,
     entries: Vec<ColorContractionEntry>,
     all_weights_real: bool,
+    walsh_block: Option<WalshColorContractionBlock>,
+}
+
+/// Four real symmetric blocks obtained from a normalized C2 x C2 Walsh basis.
+///
+/// The cosets map canonical local color groups to each four-point input
+/// transform. Entries address the transformed character/coset axis and retain
+/// a contiguous repeated-component dimension.
+struct WalshColorContractionBlock {
+    cosets: Vec<[usize; 4]>,
+    entries: Vec<ColorContractionEntry>,
 }
 
 impl ColorContractionRuntime {
@@ -1862,6 +1882,7 @@ impl ColorContractionRuntime {
         component_count: usize,
         component_group_indices: Vec<usize>,
         entries: Vec<ColorContractionEntry>,
+        walsh_block: Option<WalshColorContractionBlock>,
     ) -> Self {
         let singleton_output_indices = component_group_indices
             .iter()
@@ -1878,6 +1899,7 @@ impl ColorContractionRuntime {
             singleton_output_indices,
             all_weights_real: entries.iter().all(|entry| entry.weight_im == 0.0),
             entries,
+            walsh_block,
         };
         Self {
             group_count: groups.len(),
@@ -2116,6 +2138,7 @@ fn repeated_color_contraction_block(
         singleton_output_indices,
         all_weights_real: entries.iter().all(|entry| entry.weight_im == 0.0),
         entries,
+        walsh_block: None,
     })
 }
 

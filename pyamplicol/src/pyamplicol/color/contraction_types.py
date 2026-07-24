@@ -44,10 +44,46 @@ class ColorContractionTemplateEntry:
 
 
 @dataclass(frozen=True)
+class FactorizedColorContractionBlock:
+    """A compact transform plan for one repeated color matrix.
+
+    ``klein-four-walsh`` records a free action of a Klein-four subgroup.  Each
+    coset is ordered as identity, first generator, second generator, and their
+    product.  The runtime validates the matrix invariance before using the
+    corresponding four-point Walsh transform.
+    """
+
+    kind: str
+    cosets: tuple[tuple[int, int, int, int], ...]
+
+    def __post_init__(self) -> None:
+        if self.kind != "klein-four-walsh":
+            raise ValueError(f"unknown color contraction factorization {self.kind!r}")
+        if not self.cosets:
+            raise ValueError("factorized color contraction coset map is empty")
+        flattened = tuple(index for coset in self.cosets for index in coset)
+        if any(index < 0 for index in flattened):
+            raise ValueError(
+                "factorized color contraction coset map has a negative index"
+            )
+        if len(set(flattened)) != len(flattened):
+            raise ValueError(
+                "factorized color contraction coset map contains duplicate indices"
+            )
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "cosets": [list(coset) for coset in self.cosets],
+        }
+
+
+@dataclass(frozen=True)
 class RepeatedColorContractionBlock:
     component_count: int
     component_group_ids: tuple[int, ...]
     entries: tuple[ColorContractionTemplateEntry, ...]
+    factorized_block: FactorizedColorContractionBlock | None = None
 
     def __post_init__(self) -> None:
         if self.component_count < 2:
@@ -73,17 +109,28 @@ class RepeatedColorContractionBlock:
             raise ValueError(
                 "repeated color contraction entry references an unknown local group"
             )
+        if self.factorized_block is not None:
+            flattened = tuple(
+                index for coset in self.factorized_block.cosets for index in coset
+            )
+            if sorted(flattened) != list(range(local_group_count)):
+                raise ValueError(
+                    "factorized color contraction cosets do not partition local groups"
+                )
 
     @property
     def local_group_count(self) -> int:
         return len(self.component_group_ids) // self.component_count
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "component_count": self.component_count,
             "component_group_ids": list(self.component_group_ids),
             "entries": [entry.to_json_dict() for entry in self.entries],
         }
+        if self.factorized_block is not None:
+            result["factorized_block"] = self.factorized_block.to_json_dict()
+        return result
 
 
 @dataclass(frozen=True)
