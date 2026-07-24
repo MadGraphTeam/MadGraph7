@@ -72,11 +72,10 @@ public:
         nested_vector3<std::size_t> permutations;
         nested_vector2<std::size_t> diagram_indices;
         nested_vector3<std::size_t> diagram_color_indices;
-        nested_vector3<std::tuple<int, int>> color_flows;
+        nested_vector2<std::tuple<int, int>> color_flows;
         std::unordered_map<int, int> pdg_color_types;
         nested_vector2<double> helicities;
         nested_vector3<int> pdg_ids;
-        std::vector<std::size_t> matrix_flavor_indices;
     };
 
     LHECompleter(const std::vector<SubprocArgs>& subproc_args, double bw_cutoff);
@@ -97,7 +96,7 @@ private:
     struct SubprocData {
         int process_id;
         std::size_t color_offset, pdg_id_offset, helicity_offset, mass_offset;
-        std::size_t particle_count, color_count, flavor_count, matrix_flavor_count;
+        std::size_t particle_count, color_count, flavor_count;
         std::size_t diagram_count, helicity_count;
     };
     struct PropagatorData {
@@ -111,7 +110,7 @@ private:
     std::vector<double> _masses;
     std::vector<std::tuple<int, int>> _colors;
     std::vector<double> _helicities;
-    std::vector<std::array<std::size_t, 3>> _pdg_id_index_and_count;
+    std::vector<std::array<std::size_t, 2>> _pdg_id_and_count;
     std::vector<int> _pdg_ids;
     std::unordered_map<std::size_t, std::array<std::size_t, 3>>
         _propagator_index_and_count;
@@ -119,6 +118,41 @@ private:
     std::vector<std::tuple<int, int>> _propagator_colors;
     double _bw_cutoff;
     std::size_t _max_particle_count;
+
+    std::size_t append_helicities(const SubprocArgs& args);
+    std::size_t append_colors(const SubprocArgs& args, std::size_t particle_count);
+    void append_pdg_ids(const SubprocArgs& args, std::size_t particle_count);
+    void append_masses(const Topology& first_topo);
+    std::pair<std::size_t, std::size_t>
+    build_propagators(std::size_t subproc_index, const SubprocArgs& args);
+    void init_propagator_data(
+        const Topology& topo,
+        const SubprocArgs& args,
+        const std::vector<std::size_t>& colors,
+        const std::vector<std::size_t>& permutation,
+        std::vector<double>& e_min,
+        std::vector<int>& momentum_masks,
+        std::vector<std::tuple<int, int>>& prop_colors,
+        std::vector<int>& resonant_prop_indices
+    ) const;
+    void find_resonant_propagators(
+        const Topology& topo,
+        const SubprocArgs& args,
+        const std::vector<std::size_t>& colors,
+        std::size_t prop_offset,
+        std::vector<double>& e_min,
+        std::vector<int>& momentum_masks,
+        std::vector<std::tuple<int, int>>& prop_colors,
+        std::vector<int>& resonant_prop_indices
+    );
+    void record_propagator_colors(
+        std::size_t subproc_index,
+        std::size_t diag_index,
+        const std::vector<std::size_t>& colors,
+        std::size_t prop_offset,
+        const std::vector<std::tuple<int, int>>& prop_colors,
+        const std::vector<int>& resonant_prop_indices
+    );
 
     LHECompleter() = default;
     friend void to_json(nlohmann::json& j, const LHECompleter& lhe_completer);

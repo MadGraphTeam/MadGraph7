@@ -10032,10 +10032,19 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
         if self._me_curr_exporter:
             self._curr_exporter.grouped_mode = 'gpu'
-            # temporary should be passed to 
+            # temporary should be passed to
             # self._curr_exporter.grouped_mode = self._me_curr_exporter.grouped_mode
             # or the most restricted of the two
-            
+
+        # When the flavor-mask optimization is disabled (`--mask=False`) the
+        # matrix element must be directly evaluable for *every* flavor
+        # combination, not just one representative per permutation class.  Ask
+        # the flavor machinery to enumerate all combinations: permutation-
+        # duplicate diagrams then keep a valid flavor and are not trimmed, while
+        # genuinely unphysical diagrams (no flavor at all) are still removed.
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = \
+            not getattr(self._curr_exporter, 'use_flavor_mask', True)
+
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
 
         calls = 0

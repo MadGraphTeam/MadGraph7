@@ -51,6 +51,9 @@ namespace mg5amcCpu
       for (int i = 0; i < max_flavor; ++i) {
           partner1[i] = -1;
           partner2[i] = -1;
+          value[i] = nullptr; // flavor slots with no coupling stay null so the
+                              // cIPF_value setup (value[j] ? *value[j] : 0) does
+                              // not dereference an uninitialised pointer
       }
     }
   };

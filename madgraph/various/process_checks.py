@@ -207,11 +207,33 @@ class MatrixElementEvaluator(object):
         process = matrix_element.get('processes')[0]
         model = process.get('model')
 
-        # Extract per-leg flavor indices for FLV_Coupling / merged-particle models.
-        # For legs without an explicit flavor tag the value is -1 (no flavor).
+        # Build the per-leg flavor index array passed to smatrix, using exactly
+        # the convention the Fortran/C++ standalone drivers build into their
+        # FLAV_TABLE (e.g. `DATA FLAV_TABLE / 1, 3, 1, 1 /`):
+        #   * a merged leg carries the 1-based *position* of its flavor inside
+        #     the merged group (e.g. vt is position 3 of {12,14,16}), and
+        #   * every other leg carries index 1 -- NOT the physical PDG and NOT
+        #     -1.  The unmerged partner of a single-merged-leg FLV vertex is
+        #     always flavor index 1 (see FLV_Coupling.get_partner_indices), so
+        #     PARTNER(1)=<merged pos> resolves the coupling.
+        # The leg 'flavor' tag stores the physical PDG, so convert it here.
+        # NB: for the light quarks the PDG (1..4) already equals the position,
+        # which is why this used to appear correct and only broke for a single
+        # merged lepton/neutrino paired with an unmerged partner, e.g.
+        # `w+ vt~ > z ta+` (vt is position 3, the tau must be index 1 -- passing
+        # -1 short-circuited the flavor check and returned zero).
+        merged = model.get('merged_particles') or {}
+        def _flavor_group_pos(leg):
+            tag = leg.get('flavor')
+            if not tag:
+                return 1
+            pdg = abs(tag[0])
+            for sub_ids in merged.values():
+                if pdg in sub_ids:
+                    return list(sub_ids).index(pdg) + 1
+            return 1
         legs = process.get('legs')
-        flavor = [leg.get('flavor')[0] if leg.get('flavor') else -1
-                  for leg in legs]
+        flavor = [_flavor_group_pos(leg) for leg in legs]
 
         if "matrix_elements" not in self.stored_quantities:
             self.stored_quantities['matrix_elements'] = []

@@ -31,6 +31,16 @@ import json
 import tomllib
 import argparse
 
+
+def resolve_verbosity(verbosity: str) -> str:
+    """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
+    whether stdout is attached to a terminal; other values pass through
+    unchanged."""
+    if verbosity == "auto":
+        return "pretty" if sys.stdout.isatty() else "log"
+    return verbosity
+
+
 def main() -> None:
     # load run card and metadata. Use the RunCardMG7 representation when the
     # madgraph package is importable; gridpacks are meant to be portable, so
@@ -70,7 +80,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log"]
+        choices=["none", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
@@ -133,7 +143,7 @@ def main() -> None:
     config.freeze_max_weight_after = args.freeze_max_weight_after
     config.cpu_batch_size = args.cpu_batch_size
     config.gpu_batch_size = args.gpu_batch_size
-    config.verbosity = args.verbosity
+    config.verbosity = resolve_verbosity(args.verbosity)
     config.combine_thread_count = run_args["combine_thread_pool_size"]
     config.cut_efficiency_threshold = gen_args["cut_efficiency_threshold"]
     config.max_cut_repetitions = gen_args["max_cut_repetitions"]

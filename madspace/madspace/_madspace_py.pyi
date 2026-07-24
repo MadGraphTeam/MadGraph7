@@ -581,7 +581,7 @@ class EventGenerator:
     def channel_status(self) -> list[GeneratorStatus]: ...
     def channels(self) -> list[ChannelEventGenerator]: ...
     def combine_to_compact_npy(self, file_name: str) -> None: ...
-    def combine_to_lhe(self, file_name: str, lhe_completer: LHECompleter) -> None: ...
+    def combine_to_lhe(self, file_name: str, lhe_completer: LHECompleter, meta: LHEMeta = ...) -> None: ...
     def combine_to_lhe_npy(
         self, file_name: str, lhe_completer: LHECompleter
     ) -> None: ...
@@ -1300,6 +1300,16 @@ class LHECompleter:
         subproc_args: collections.abc.Sequence[SubprocArgs],
         bw_cutoff: typing.SupportsFloat,
     ) -> None: ...
+    def complete_event_data(
+        self,
+        event: LHEEvent,
+        subprocess_index: typing.SupportsInt,
+        diagram_index: typing.SupportsInt,
+        color_index: typing.SupportsInt,
+        flavor_index: typing.SupportsInt,
+        helicity_index: typing.SupportsInt,
+        rand_gen: RandGen,
+    ) -> None: ...
     def save(self, file: str) -> None: ...
     @property
     def max_particle_count(self) -> int: ...
@@ -1985,10 +1995,185 @@ class MatrixElement(FunctionGenerator):
     def particle_count(self) -> int: ...
 
 class MatrixElementApi:
+    class UmamiInputKey:
+        """
+        Members:
+
+          momenta_in
+
+          alpha_s_in
+
+          flavor_index_in
+
+          random_color_in
+
+          random_helicity_in
+
+          random_diagram_in
+
+          helicity_index_in
+
+          diagram_index_in
+
+          channel_index_in
+        """
+
+        __members__: typing.ClassVar[
+            dict[str, MatrixElementApi.UmamiInputKey]
+        ]  # value = {'momenta_in': <UmamiInputKey.momenta_in: 0>, 'alpha_s_in': <UmamiInputKey.alpha_s_in: 1>, 'flavor_index_in': <UmamiInputKey.flavor_index_in: 2>, 'random_color_in': <UmamiInputKey.random_color_in: 3>, 'random_helicity_in': <UmamiInputKey.random_helicity_in: 4>, 'random_diagram_in': <UmamiInputKey.random_diagram_in: 5>, 'helicity_index_in': <UmamiInputKey.helicity_index_in: 6>, 'diagram_index_in': <UmamiInputKey.diagram_index_in: 7>, 'channel_index_in': <UmamiInputKey.channel_index_in: 8>}
+        alpha_s_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.alpha_s_in: 1>
+        channel_index_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.channel_index_in: 8>
+        diagram_index_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.diagram_index_in: 7>
+        flavor_index_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.flavor_index_in: 2>
+        helicity_index_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.helicity_index_in: 6>
+        momenta_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.momenta_in: 0>
+        random_color_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.random_color_in: 3>
+        random_diagram_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.random_diagram_in: 5>
+        random_helicity_in: typing.ClassVar[
+            MatrixElementApi.UmamiInputKey
+        ]  # value = <UmamiInputKey.random_helicity_in: 4>
+        def __eq__(self, other: typing.Any) -> bool: ...
+        def __getstate__(self) -> int: ...
+        def __hash__(self) -> int: ...
+        def __index__(self) -> int: ...
+        @typing.overload
+        def __init__(self, value: typing.SupportsInt) -> None: ...
+        @typing.overload
+        def __init__(self, name: str) -> None: ...
+        def __int__(self) -> int: ...
+        def __ne__(self, other: typing.Any) -> bool: ...
+        def __repr__(self) -> str: ...
+        def __setstate__(self, state: typing.SupportsInt) -> None: ...
+        def __str__(self) -> str: ...
+        @property
+        def name(self) -> str: ...
+        @property
+        def value(self) -> int: ...
+
+    class UmamiOutputKey:
+        """
+        Members:
+
+          matrix_element_out
+
+          diagram_amp2_out
+
+          color_index_out
+
+          helicity_index_out
+
+          diagram_index_out
+
+          gpu_stream_out
+        """
+
+        __members__: typing.ClassVar[
+            dict[str, MatrixElementApi.UmamiOutputKey]
+        ]  # value = {'matrix_element_out': <UmamiOutputKey.matrix_element_out: 0>, 'diagram_amp2_out': <UmamiOutputKey.diagram_amp2_out: 1>, 'color_index_out': <UmamiOutputKey.color_index_out: 2>, 'helicity_index_out': <UmamiOutputKey.helicity_index_out: 3>, 'diagram_index_out': <UmamiOutputKey.diagram_index_out: 4>, 'gpu_stream_out': <UmamiOutputKey.gpu_stream_out: 5>}
+        color_index_out: typing.ClassVar[
+            MatrixElementApi.UmamiOutputKey
+        ]  # value = <UmamiOutputKey.color_index_out: 2>
+        diagram_amp2_out: typing.ClassVar[
+            MatrixElementApi.UmamiOutputKey
+        ]  # value = <UmamiOutputKey.diagram_amp2_out: 1>
+        diagram_index_out: typing.ClassVar[
+            MatrixElementApi.UmamiOutputKey
+        ]  # value = <UmamiOutputKey.diagram_index_out: 4>
+        gpu_stream_out: typing.ClassVar[
+            MatrixElementApi.UmamiOutputKey
+        ]  # value = <UmamiOutputKey.gpu_stream_out: 5>
+        helicity_index_out: typing.ClassVar[
+            MatrixElementApi.UmamiOutputKey
+        ]  # value = <UmamiOutputKey.helicity_index_out: 3>
+        matrix_element_out: typing.ClassVar[
+            MatrixElementApi.UmamiOutputKey
+        ]  # value = <UmamiOutputKey.matrix_element_out: 0>
+        def __eq__(self, other: typing.Any) -> bool: ...
+        def __getstate__(self) -> int: ...
+        def __hash__(self) -> int: ...
+        def __index__(self) -> int: ...
+        @typing.overload
+        def __init__(self, value: typing.SupportsInt) -> None: ...
+        @typing.overload
+        def __init__(self, name: str) -> None: ...
+        def __int__(self) -> int: ...
+        def __ne__(self, other: typing.Any) -> bool: ...
+        def __repr__(self) -> str: ...
+        def __setstate__(self, state: typing.SupportsInt) -> None: ...
+        def __str__(self) -> str: ...
+        @property
+        def name(self) -> str: ...
+        @property
+        def value(self) -> int: ...
+
+    alpha_s_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.alpha_s_in: 1>
+    channel_index_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.channel_index_in: 8>
+    color_index_out: typing.ClassVar[
+        MatrixElementApi.UmamiOutputKey
+    ]  # value = <UmamiOutputKey.color_index_out: 2>
+    diagram_amp2_out: typing.ClassVar[
+        MatrixElementApi.UmamiOutputKey
+    ]  # value = <UmamiOutputKey.diagram_amp2_out: 1>
+    diagram_index_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.diagram_index_in: 7>
+    diagram_index_out: typing.ClassVar[
+        MatrixElementApi.UmamiOutputKey
+    ]  # value = <UmamiOutputKey.diagram_index_out: 4>
+    flavor_index_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.flavor_index_in: 2>
+    gpu_stream_out: typing.ClassVar[
+        MatrixElementApi.UmamiOutputKey
+    ]  # value = <UmamiOutputKey.gpu_stream_out: 5>
+    helicity_index_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.helicity_index_in: 6>
+    helicity_index_out: typing.ClassVar[
+        MatrixElementApi.UmamiOutputKey
+    ]  # value = <UmamiOutputKey.helicity_index_out: 3>
+    matrix_element_out: typing.ClassVar[
+        MatrixElementApi.UmamiOutputKey
+    ]  # value = <UmamiOutputKey.matrix_element_out: 0>
+    momenta_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.momenta_in: 0>
+    random_color_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.random_color_in: 3>
+    random_diagram_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.random_diagram_in: 5>
+    random_helicity_in: typing.ClassVar[
+        MatrixElementApi.UmamiInputKey
+    ]  # value = <UmamiInputKey.random_helicity_in: 4>
     def diagram_count(self) -> int: ...
     def helicity_count(self) -> int: ...
     def index(self) -> int: ...
     def particle_count(self) -> int: ...
+    def required_inputs(self) -> list[bool]: ...
+    def supported_inputs(self) -> list[bool]: ...
+    def supported_outputs(self) -> list[bool]: ...
 
 class MomentumPreprocessing(FunctionGenerator):
     def __init__(self, particle_count: typing.SupportsInt) -> None: ...
@@ -2423,6 +2608,12 @@ class PropagatorChannelWeights(FunctionGenerator):
         ],
     ) -> None: ...
 
+class RandGen:
+    @typing.overload
+    def __init__(self) -> None: ...
+    @typing.overload
+    def __init__(self, seed: typing.SupportsInt) -> None: ...
+
 class RunningCoupling(FunctionGenerator):
     def __init__(self, grid: AlphaSGrid, prefix: str = "") -> None: ...
 
@@ -2454,9 +2645,7 @@ class SubprocArgs:
             collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]]
         ] = [],
         color_flows: collections.abc.Sequence[
-            collections.abc.Sequence[
-                collections.abc.Sequence[tuple[typing.SupportsInt, typing.SupportsInt]]
-            ]
+            collections.abc.Sequence[tuple[typing.SupportsInt, typing.SupportsInt]]
         ] = [],
         pdg_color_types: collections.abc.Mapping[
             typing.SupportsInt, typing.SupportsInt
@@ -2467,17 +2656,14 @@ class SubprocArgs:
         pdg_ids: collections.abc.Sequence[
             collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]]
         ] = [],
-        matrix_flavor_indices: collections.abc.Sequence[typing.SupportsInt] = [],
     ) -> None: ...
     @property
-    def color_flows(self) -> list[list[list[tuple[int, int]]]]: ...
+    def color_flows(self) -> list[list[tuple[int, int]]]: ...
     @color_flows.setter
     def color_flows(
         self,
         arg0: collections.abc.Sequence[
-            collections.abc.Sequence[
-                collections.abc.Sequence[tuple[typing.SupportsInt, typing.SupportsInt]]
-            ]
+            collections.abc.Sequence[tuple[typing.SupportsInt, typing.SupportsInt]]
         ],
     ) -> None: ...
     @property
@@ -2502,12 +2688,6 @@ class SubprocArgs:
     def helicities(
         self,
         arg0: collections.abc.Sequence[collections.abc.Sequence[typing.SupportsFloat]],
-    ) -> None: ...
-    @property
-    def matrix_flavor_indices(self) -> list[int]: ...
-    @matrix_flavor_indices.setter
-    def matrix_flavor_indices(
-        self, arg0: collections.abc.Sequence[typing.SupportsInt]
     ) -> None: ...
     @property
     def pdg_color_types(self) -> dict[int, int]: ...
