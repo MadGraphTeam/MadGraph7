@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import shutil
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -19,7 +21,9 @@ from pyamplicol._internal.versions import (
 from pyamplicol.evaluators.execution_schema import evaluator_runtime_capabilities
 from pyamplicol.evaluators.symbolica_adapters import (
     _ChunkedSymbolicaEvaluator,
+    _compiled_complex_custom_header,
     _compiled_runtime_capability,
+    _CompiledComplexEvaluatorAdapter,
     _JITSymbolicaEvaluatorAdapter,
 )
 from pyamplicol.evaluators.symbolica_compile import _chunk_parameter_indices
@@ -55,6 +59,18 @@ class _MappedEvaluator:
     def evaluate_complex(self, rows: Any) -> np.ndarray:
         values = np.asarray(rows, dtype=np.complex128)
         return values.sum(axis=1, keepdims=True)
+
+
+class _FakeCompiledEvaluator:
+    def __init__(self) -> None:
+        self.compile_kwargs: dict[str, object] | None = None
+
+    def save(self) -> bytes:
+        return b"symbolica-evaluator-state"
+
+    def compile(self, *_args: object, **kwargs: object) -> _MappedEvaluator:
+        self.compile_kwargs = kwargs
+        return _MappedEvaluator(1)
 
 
 def _jit_adapter(
@@ -167,6 +183,98 @@ def test_compiled_capability_distinguishes_cpp_and_asm() -> None:
     assert _compiled_runtime_capability({"compiled_inline_asm": "default"}) == (
         SYMBOLICA_ASM_RUNTIME_CAPABILITY
     )
+
+
+def test_cpp_adapter_supplies_nested_complex_literal_compatibility_header(
+    tmp_path: Path,
+) -> None:
+    evaluator = _FakeCompiledEvaluator()
+    settings = SymbolicaEvaluatorSettings(
+        backend="compiled-complex",
+        compiled_inline_asm="none",
+        compiled_output_dir=str(tmp_path),
+    )
+
+    _CompiledComplexEvaluatorAdapter(
+        evaluator,
+        settings,
+        "cpp literal",
+        input_len=1,
+        output_len=1,
+    )
+
+    assert evaluator.compile_kwargs is not None
+    assert evaluator.compile_kwargs["custom_header"] == (
+        _compiled_complex_custom_header(settings)
+    )
+    assert "pyamplicol_complex_literal" in str(
+        evaluator.compile_kwargs["custom_header"]
+    )
+
+
+def test_asm_adapter_does_not_use_cpp_literal_compatibility_header(
+    tmp_path: Path,
+) -> None:
+    evaluator = _FakeCompiledEvaluator()
+    settings = SymbolicaEvaluatorSettings(
+        backend="compiled-complex",
+        compiled_inline_asm="default",
+        compiled_output_dir=str(tmp_path),
+    )
+
+    _CompiledComplexEvaluatorAdapter(
+        evaluator,
+        settings,
+        "asm literal",
+        input_len=1,
+        output_len=1,
+    )
+
+    assert evaluator.compile_kwargs is not None
+    assert "custom_header" not in evaluator.compile_kwargs
+
+
+def test_cpp_literal_compatibility_header_executes_nested_constructors(
+    tmp_path: Path,
+) -> None:
+    compiler = shutil.which("c++") or shutil.which("g++")
+    if compiler is None:
+        pytest.skip("a C++ compiler is required for the compatibility smoke")
+    settings = SymbolicaEvaluatorSettings(
+        backend="compiled-complex",
+        compiled_inline_asm="none",
+    )
+    header = _compiled_complex_custom_header(settings)
+    assert header is not None
+    source = tmp_path / "nested-complex.cpp"
+    executable = tmp_path / "nested-complex"
+    source.write_text(
+        f"""
+#include <cmath>
+#include <complex>
+{header}
+
+template<typename T>
+T evaluate(T value) {{
+    return value * T(T(5e-1), T(1e0));
+}}
+
+int main() {{
+    const auto result = evaluate(std::complex<double>(2.0, 3.0));
+    return std::abs(result.real() + 2.0) < 1e-15
+        && std::abs(result.imag() - 3.5) < 1e-15 ? 0 : 1;
+}}
+""",
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [compiler, "-std=c++17", str(source), "-o", str(executable)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run([str(executable)], check=True)
 
 
 def test_artifact_writer_preserves_direct_symjit_contract(tmp_path: Path) -> None:
