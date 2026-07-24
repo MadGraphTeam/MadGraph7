@@ -6,8 +6,18 @@ use super::*;
 #[inline(always)]
 fn sum_real_hermitian_products(left: &[Complex<f64>], right: &[Complex<f64>]) -> f64 {
     debug_assert_eq!(left.len(), right.len());
-    let mut sums = [0.0; 4];
+    // Eight independent chains cover the wide repeated-helicity blocks while
+    // the four-lane remainder preserves the smaller-block execution shape.
+    let mut sums = [0.0; 8];
     let mut index = 0;
+    while index + 8 <= left.len() {
+        for lane in 0..8 {
+            let left_value = left[index + lane];
+            let right_value = right[index + lane];
+            sums[lane] += left_value.re * right_value.re + left_value.im * right_value.im;
+        }
+        index += 8;
+    }
     while index + 4 <= left.len() {
         for lane in 0..4 {
             let left_value = left[index + lane];
@@ -22,7 +32,7 @@ fn sum_real_hermitian_products(left: &[Complex<f64>], right: &[Complex<f64>]) ->
         sums[0] += left_value.re * right_value.re + left_value.im * right_value.im;
         index += 1;
     }
-    (sums[0] + sums[1]) + (sums[2] + sums[3])
+    ((sums[0] + sums[1]) + (sums[2] + sums[3])) + ((sums[4] + sums[5]) + (sums[6] + sums[7]))
 }
 
 #[inline(always)]

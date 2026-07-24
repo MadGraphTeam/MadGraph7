@@ -620,7 +620,8 @@ disagreement was `1.55e-23` and maximum relative disagreement was below
 
 ## Milestone 9: direct portable SymJIT AoSoA execution
 
-Status: validated for commit and main integration.
+Status: validated and integrated into `main` at
+`44242aec31cc8c26da0455cc7baee89f156bc2f4`.
 
 The compiled-DAG runtime now packs fused stage leaves directly into SymJIT's
 native complex SIMD block layout and invokes the already-loaded SIMD machine
@@ -694,3 +695,56 @@ Validation evidence:
   a clean 14-test compiled-focused subset. Two built-in eager cases remain
   blocked by the documented stale packaged prepared-model candidate
   fingerprint; policy and metadata checks were not weakened.
+
+## Milestone 10: static output-chunk coarsening
+
+Status: measured and rejected; no default or runtime policy change retained.
+
+A generation-only experiment raised the existing fixed SymJIT output chunk
+from 512 to 1024. For `g g > t t~ + 3g` NLC this cut packed members from 456
+to 238 and payload bytes from `146,975,129` to `145,620,586`. A controlled
+same-process, alternating batch-128 A/B gave `1.752226 -> 1.704814 ms/point`
+(`-3.05%`) with identical values. The JIT phase, however, rose from
+`46.082 s` to `57.067 s` (`+23.84%`).
+
+More importantly, the same policy regressed the latency-sensitive
+topology-replay Z+6g selected-flow/helicity-sum lane:
+
+| Batch | Chunk 512 ms/point | Chunk 1024 ms/point | Paired change |
+|---:|---:|---:|---:|
+| 128 | 0.082496 | 0.087987 | +7.16% |
+| 1024 | 0.081863 | 0.085225 | +4.28% |
+
+Generation there remained essentially unchanged (`4.021 -> 4.076 s` JIT),
+so the regression is generated-code locality rather than a resource trade.
+The fixed larger-chunk policy and a stage-wide single-applet direction are
+therefore rejected. Evidence is under
+`/private/tmp/pyamplicol-dag-chunk1024-44242ae`.
+
+## Milestone 11: wider repeated-colour Hermitian accumulation
+
+Status: validated for a compact runtime milestone.
+
+The real-weight repeated-colour kernel now carries eight independent
+Hermitian-product dependency chains for wide repeated-helicity blocks, with
+the prior four-chain shape retained for the remainder. This changes neither
+artifact storage nor generation, uses ordinary portable scalar Rust, and
+gives LLVM more independent work on both Arm and x86.
+
+Five alternating outer samples against a frozen exact-`44242ae` wheel at
+batch 128 gave:
+
+| `g g > t t~ + 3g` accuracy | `44242ae` ms/point | Wider kernel ms/point | Median paired change |
+|---|---:|---:|---:|
+| full | 1.938389 | 1.902407 | -1.20% |
+| NLC | 1.638698 | 1.625563 | -0.67% |
+
+The maximum relative numerical difference was `2.00e-16` for full colour and
+zero for NLC. Focused real/complex repeated-block and compact-manifest Rust
+tests pass together with rustfmt, affected-crate check, and `git diff --check`.
+The final focused build peaked at `1.276 GiB`; its wheel/native-module SHA-256
+values are
+`43f594e062f154c4a9921dd0a2eac7e8c336f07dd996e5a4edf5e44575297bbc` /
+`40a6f1a9b3ce90b796b5f2b7918726491f312610cc46d1bfcef3318c30f65561`.
+A final seven-sample installed-binary canary retained the same
+`2.00e-16` maximum relative difference.
