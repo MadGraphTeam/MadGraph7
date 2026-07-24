@@ -329,6 +329,24 @@ def test_complete_lc_fixed_helicity_selection_composes_with_flow_replay(
         ),
     )
     runtime = Runtime.load(artifact)
+    flow_id = "flow:2,4,5,1"
+    selected_flow = runtime.evaluate((point,), color_flows=(flow_id,))[0]
+    selected_flow_exact = runtime.evaluate(
+        (point,),
+        color_flows=(flow_id,),
+        precision=32,
+    )[0]
+    assert selected_flow == pytest.approx(
+        complex(selected_flow_exact),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert selected_flow.real == pytest.approx(
+        0.00022626601239021538,
+        rel=1.0e-11,
+        abs=1.0e-15,
+    )
+
     helicity_id = "h:-1,+1,-1,+1,-1"
     complete = runtime.evaluate_resolved((point,))
     helicity_index = complete.helicity_ids.index(helicity_id)

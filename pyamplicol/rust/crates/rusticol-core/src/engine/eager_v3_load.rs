@@ -91,10 +91,12 @@ pub(super) fn load_eager_v3_native_runtime(
     let container = open_verified_eager_v3_runtime_container(artifact, evaluator_root, manifest)?;
     let decoded =
         super::eager_v3_decode::decode_eager_v3_runtime(&container, manifest, &pack.manifest)?;
+    let color_selector_ids = native_color_selector_ids(&decoded, physics)?;
     hydrate_native_reduction_groups(
         physics,
         &decoded.reduction_groups,
         &decoded.reduction_entries,
+        &color_selector_ids,
     )?;
     let mut common =
         super::eager_v3_common::build_eager_v3_common_runtime(&decoded, manifest, physics.clone())?;
@@ -187,10 +189,12 @@ pub(super) fn load_eager_v3_exact_sections(
     let container = open_verified_eager_v3_runtime_container(artifact, evaluator_root, manifest)?;
     let decoded =
         super::eager_v3_decode::decode_eager_v3_runtime(&container, manifest, &pack.manifest)?;
+    let color_selector_ids = native_color_selector_ids(&decoded, physics)?;
     hydrate_native_reduction_groups(
         physics,
         &decoded.reduction_groups,
         &decoded.reduction_entries,
+        &color_selector_ids,
     )?;
 
     let amplitude_stage = exact_amplitude_stage(&decoded, manifest)?;
@@ -577,6 +581,7 @@ fn hydrate_native_reduction_groups(
     physics: &mut ProcessPhysicsV1,
     groups: &[crate::EagerPlanReductionGroupRow],
     entries: &[crate::EagerPlanReductionEntryRow],
+    color_selector_ids: &[String],
 ) -> RusticolResult<()> {
     let Some(value) = physics
         .extensions
@@ -653,7 +658,7 @@ fn hydrate_native_reduction_groups(
                     group.coherent_group_id, selector.left_id
                 ))
             })?;
-            let color = physics.color_components.get(color_index).ok_or_else(|| {
+            let color_id = color_selector_ids.get(color_index).ok_or_else(|| {
                 RusticolError::integrity(format!(
                     "compact native reduction group {} references unknown color selector {}",
                     group.coherent_group_id, selector.right_id
@@ -663,7 +668,7 @@ fn hydrate_native_reduction_groups(
                 physical_helicity_ids.push(helicity.id.clone());
             }
             if seen_colors.insert(selector.right_id) {
-                physical_color_ids.push(color.id().to_string());
+                physical_color_ids.push(color_id.clone());
             }
         }
 
@@ -675,14 +680,12 @@ fn hydrate_native_reduction_groups(
             })?
             .id
             .clone();
-        let representative_color_id = physics
-            .color_components
+        let representative_color_id = color_selector_ids
             .get(representative.right_id as usize)
             .ok_or_else(|| {
                 RusticolError::integrity("compact native representative color is absent")
             })?
-            .id()
-            .to_string();
+            .clone();
         hydrated.push(crate::ReductionGroup {
             id: format!("reduction:{}", group.coherent_group_id),
             representative_helicity_id,
@@ -694,6 +697,141 @@ fn hydrate_native_reduction_groups(
     physics.reduction.groups = hydrated;
     physics.validate()?;
     Ok(())
+}
+
+fn native_color_selector_ids(
+    decoded: &DecodedEagerRuntimeV3,
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<Vec<String>> {
+    let catalog = native_color_selector_catalog(physics)?;
+    decoded
+        .color_selectors
+        .iter()
+        .map(|selector| {
+            let word =
+                eager_u32_sequence(decoded, selector.word_sequence_id, "color selector word")?;
+            let representative_word = eager_u32_sequence(
+                decoded,
+                selector.representative_word_sequence_id,
+                "color selector representative word",
+            )?;
+            resolve_native_color_selector_id(
+                &catalog,
+                word,
+                representative_word,
+                selector.computed != 0,
+            )
+        })
+        .collect()
+}
+
+fn eager_u32_sequence<'a>(
+    decoded: &'a DecodedEagerRuntimeV3,
+    sequence_id: u32,
+    context: &str,
+) -> RusticolResult<&'a [u32]> {
+    let range = decoded
+        .u32_sequence_ranges
+        .get(sequence_id as usize)
+        .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "compact native {context} references unknown sequence {sequence_id}"
+            ))
+        })?;
+    let start = usize::try_from(range.start).map_err(|_| {
+        RusticolError::artifact(format!("compact native {context} start exceeds usize"))
+    })?;
+    let count = usize::try_from(range.count).map_err(|_| {
+        RusticolError::artifact(format!("compact native {context} count exceeds usize"))
+    })?;
+    let stop = start.checked_add(count).ok_or_else(|| {
+        RusticolError::artifact(format!("compact native {context} range overflows"))
+    })?;
+    decoded.u32_sequence_values.get(start..stop).ok_or_else(|| {
+        RusticolError::integrity(format!("compact native {context} range is out of bounds"))
+    })
+}
+
+type NativeColorSelectorCatalog = BTreeMap<Vec<u32>, (String, Vec<u32>, bool)>;
+
+fn native_color_selector_catalog(
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<NativeColorSelectorCatalog> {
+    let by_id = physics
+        .color_components
+        .iter()
+        .map(|component| (component.id(), component))
+        .collect::<BTreeMap<_, _>>();
+    let mut result = BTreeMap::new();
+    for component in &physics.color_components {
+        let (word, representative_word, computed) = match component {
+            crate::ColorComponent::LcFlow(flow) => {
+                let representative =
+                    by_id.get(flow.representative_id.as_str()).ok_or_else(|| {
+                        RusticolError::integrity(format!(
+                            "compact native color selector {:?} has no representative",
+                            flow.id
+                        ))
+                    })?;
+                let crate::ColorComponent::LcFlow(representative) = representative else {
+                    return Err(RusticolError::integrity(format!(
+                        "compact native LC color selector {:?} has a contracted representative",
+                        flow.id
+                    )));
+                };
+                (
+                    u32_color_word(&flow.word, &flow.id)?,
+                    u32_color_word(&representative.word, &representative.id)?,
+                    flow.computed,
+                )
+            }
+            crate::ColorComponent::ContractedColor(_) => (Vec::new(), Vec::new(), true),
+        };
+        if result
+            .insert(
+                word.clone(),
+                (component.id().to_string(), representative_word, computed),
+            )
+            .is_some()
+        {
+            return Err(RusticolError::integrity(format!(
+                "public physics contains duplicate color word {word:?}"
+            )));
+        }
+    }
+    Ok(result)
+}
+
+fn u32_color_word(word: &[usize], color_id: &str) -> RusticolResult<Vec<u32>> {
+    word.iter()
+        .copied()
+        .map(|label| {
+            u32::try_from(label).map_err(|_| {
+                RusticolError::artifact(format!(
+                    "public color component {color_id:?} contains a label exceeding u32"
+                ))
+            })
+        })
+        .collect()
+}
+
+fn resolve_native_color_selector_id(
+    catalog: &NativeColorSelectorCatalog,
+    word: &[u32],
+    representative_word: &[u32],
+    computed: bool,
+) -> RusticolResult<String> {
+    let (id, expected_representative, expected_computed) = catalog.get(word).ok_or_else(|| {
+        RusticolError::integrity(format!(
+            "compact native color selector word {word:?} is absent from public physics"
+        ))
+    })?;
+    if *expected_computed != computed || expected_representative != representative_word {
+        return Err(RusticolError::integrity(format!(
+            "compact native color selector {id:?} is inconsistent with public physics"
+        )));
+    }
+    Ok(id.clone())
 }
 
 impl NativeReductionGroupsDescriptor {
@@ -992,7 +1130,7 @@ mod compact_reduction_tests {
     use super::*;
     use crate::{
         ColorAccuracy, ColorComponent, ContractedColor, Coverage, ExternalParticle, Helicity,
-        ParticleRole, Reduction, ReductionKind, SelectorCapabilities,
+        LcColorFlow, ParticleRole, Reduction, ReductionKind, SelectorCapabilities,
     };
     use serde_json::json;
 
@@ -1112,7 +1250,13 @@ mod compact_reduction_tests {
         let mut physics = compact_physics();
         let entries = [selector(7, 0, 0), selector(7, 1, 0), selector(7, 0, 0)];
 
-        hydrate_native_reduction_groups(&mut physics, &[group()], &entries).unwrap();
+        hydrate_native_reduction_groups(
+            &mut physics,
+            &[group()],
+            &entries,
+            &["contracted".to_string()],
+        )
+        .unwrap();
 
         let hydrated = &physics.reduction.groups[0];
         assert_eq!(hydrated.id, "reduction:7");
@@ -1123,6 +1267,84 @@ mod compact_reduction_tests {
     }
 
     #[test]
+    fn resolves_lc_selectors_by_numeric_word_instead_of_public_string_order() {
+        let mut physics = compact_physics();
+        physics.color_accuracy = ColorAccuracy::Lc;
+        physics.coverage.color = "complete".to_string();
+        physics.coverage.color_kind = "physical-lc-flows".to_string();
+        physics.reduction.kind = ReductionKind::LcDiagonal;
+        physics.selectors.color_flow = true;
+        physics.external_particles = (0..10)
+            .map(|index| ExternalParticle {
+                index,
+                label: index + 1,
+                particle: format!("particle-{index}"),
+                pdg: index as i32 + 1,
+                role: if index < 2 {
+                    ParticleRole::Initial
+                } else {
+                    ParticleRole::Final
+                },
+                momentum_slot: index,
+                momentum_components: [
+                    "E".to_string(),
+                    "px".to_string(),
+                    "py".to_string(),
+                    "pz".to_string(),
+                ],
+            })
+            .collect();
+        physics.helicities[0].values = vec![1; 10];
+        physics.helicities[1].values = vec![-1; 10];
+        physics.color_components = vec![
+            ColorComponent::LcFlow(LcColorFlow {
+                id: "flow:2,10,7,8,9,1".to_string(),
+                index: 0,
+                word: vec![2, 10, 7, 8, 9, 1],
+                computed: false,
+                representative_id: "flow:2,7,8,9,10,1".to_string(),
+                coefficient: 1.0,
+            }),
+            ColorComponent::LcFlow(LcColorFlow {
+                id: "flow:2,7,8,9,10,1".to_string(),
+                index: 1,
+                word: vec![2, 7, 8, 9, 10, 1],
+                computed: true,
+                representative_id: "flow:2,7,8,9,10,1".to_string(),
+                coefficient: 1.0,
+            }),
+        ];
+
+        let catalog = native_color_selector_catalog(&physics).unwrap();
+        let computed = resolve_native_color_selector_id(
+            &catalog,
+            &[2, 7, 8, 9, 10, 1],
+            &[2, 7, 8, 9, 10, 1],
+            true,
+        )
+        .unwrap();
+        let alias = resolve_native_color_selector_id(
+            &catalog,
+            &[2, 10, 7, 8, 9, 1],
+            &[2, 7, 8, 9, 10, 1],
+            false,
+        )
+        .unwrap();
+        assert_eq!(computed, "flow:2,7,8,9,10,1");
+        assert_eq!(alias, "flow:2,10,7,8,9,1");
+
+        let entries = [selector(7, 0, 0), selector(7, 1, 1), selector(7, 0, 0)];
+        hydrate_native_reduction_groups(&mut physics, &[group()], &entries, &[computed, alias])
+            .unwrap();
+        let hydrated = &physics.reduction.groups[0];
+        assert_eq!(hydrated.representative_color_id, "flow:2,7,8,9,10,1");
+        assert_eq!(
+            hydrated.physical_color_ids,
+            ["flow:2,7,8,9,10,1", "flow:2,10,7,8,9,1"]
+        );
+    }
+
+    #[test]
     fn rejects_descriptor_group_count_mismatch() {
         let mut physics = compact_physics();
         physics
@@ -1130,7 +1352,9 @@ mod compact_reduction_tests {
             .get_mut(NATIVE_REDUCTION_GROUPS_EXTENSION_KEY)
             .unwrap()["group_count"] = json!(2);
 
-        let error = hydrate_native_reduction_groups(&mut physics, &[group()], &[]).unwrap_err();
+        let error =
+            hydrate_native_reduction_groups(&mut physics, &[group()], &[], &["contracted".into()])
+                .unwrap_err();
 
         assert!(error.to_string().contains("declares 2 groups"));
     }
@@ -1143,7 +1367,9 @@ mod compact_reduction_tests {
             .get_mut(NATIVE_REDUCTION_GROUPS_EXTENSION_KEY)
             .unwrap()["storage_abi"] = json!("pacbin-v0");
 
-        let error = hydrate_native_reduction_groups(&mut physics, &[group()], &[]).unwrap_err();
+        let error =
+            hydrate_native_reduction_groups(&mut physics, &[group()], &[], &["contracted".into()])
+                .unwrap_err();
 
         assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
         assert!(error.to_string().contains("regenerate"));
@@ -1156,6 +1382,7 @@ mod compact_reduction_tests {
             &mut physics,
             &[group()],
             &[selector(6, 0, 0), selector(6, 1, 0), selector(6, 0, 0)],
+            &["contracted".into()],
         )
         .unwrap_err();
         assert!(owner_error.to_string().contains("invalid selector member"));
@@ -1165,6 +1392,7 @@ mod compact_reduction_tests {
             &mut physics,
             &[group()],
             &[selector(7, 99, 0), selector(7, 0, 0), selector(7, 0, 0)],
+            &["contracted".into()],
         )
         .unwrap_err();
         assert!(
