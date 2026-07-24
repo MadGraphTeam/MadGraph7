@@ -20,10 +20,13 @@ from pyamplicol.models.recurrence_direct_intrinsics import (
     CertifiedRecurrenceIntrinsic,
 )
 from pyamplicol.models.recurrence_direct_template import (
+    NATIVE_DIRECT_APPLICATION_ABI,
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_IDENTITY_FINALIZER,
     RECURRENCE_DIRECT_TEMPLATE_ABI,
     PreparedJitDirectSourceV1,
+    PreparedNativeDirectCallableSpecV1,
+    PreparedNativeDirectSourceV1,
     RecurrenceDirectPayloadBindingV1,
     RecurrenceDirectTemplateCatalogV1,
     RecurrenceDirectTemplateError,
@@ -31,7 +34,9 @@ from pyamplicol.models.recurrence_direct_template import (
     _build_certified_intrinsic_binding,
     _build_prepared_jit_direct_binding,
     _uniform_binding_coupling,
+    build_prepared_native_direct_callable_specs,
     build_recurrence_direct_template_catalog,
+    native_direct_entry_point,
     prepared_kernel_payload_digest,
 )
 from pyamplicol.models.recurrence_template import ExactComplexRationalV1
@@ -427,6 +432,24 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
         compiled_model_digest=_DIGEST_A,
         prepared_kernel_pack_digest=_DIGEST_C,
     )
+    native_specs = build_prepared_native_direct_callable_specs(
+        semantic,
+        prepared.by_id,
+    )
+    assert native_specs
+    assert all(spec.role != "source" for spec in native_specs.values())
+    assert all(
+        spec.native_entry_point
+        == native_direct_entry_point(spec.role, spec.prepared_kernel_id)
+        for spec in native_specs.values()
+    )
+    if model_source == "built-in":
+        assert native_specs[20].parent_component_shapes == ((2, 2), (4, 2))
+        assert native_specs[22].parent_component_shapes == ((2, 2), (2, 4))
+        assert all(
+            len(native_specs[kernel_id].parent_component_shapes) == 2
+            for kernel_id in (20, 22, 29, 32, 40, 51)
+        )
     direct = build_recurrence_direct_template_catalog(
         semantic,
         backend="jit",
@@ -586,4 +609,116 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
         RecurrenceDirectTemplateCatalogV1.from_dict(json.loads(direct.canonical_json))
         == direct
     )
+    native_direct = build_recurrence_direct_template_catalog(
+        semantic,
+        backend="cpp",
+        target_triple="x86_64-linux",
+        portable=False,
+        optimization_level=3,
+        prepared_kernel_pack_digest=_DIGEST_C,
+        prepared_kernel_contract_digest=_DIGEST_D,
+        prepared_kernel_payload_digest=_DIGEST_E,
+        optimization_settings_digest=_DIGEST_F,
+        prepared_kernel_payload_digests={
+            kernel.kernel_id: hashlib.sha256(
+                f"{kernel.kernel_id}:{kernel.canonical_signature}".encode()
+            ).hexdigest()
+            for kernel in prepared.kernels
+        },
+        prepared_native_sources={
+            kernel_id: PreparedNativeDirectSourceV1(
+                prepared_kernel_id=kernel_id,
+                role=spec.role,
+                native_entry_point=spec.native_entry_point,
+                source_application_path=(
+                    f"kernels/{kernel_id:06d}/libprepared-native.so"
+                ),
+                source_application_sha256=hashlib.sha256(
+                    f"native-library:{kernel_id}".encode()
+                ).hexdigest(),
+                source_application_abi="symbolica.compiled-cpp.complex-f64.v1",
+                input_contracts=spec.input_contracts,
+                exact_expressions=spec.exact_expressions,
+                output_arity=spec.output_arity,
+            )
+            for kernel_id, spec in native_specs.items()
+        },
+    )
+    native_prepared = tuple(
+        item
+        for item in native_direct.templates
+        if item.payload_binding.prepared_kernel_id is not None
+    )
+    assert native_prepared
+    assert all(
+        item.payload_binding.kind == "prepared-direct-call"
+        and item.payload_binding.direct_application_abi
+        == NATIVE_DIRECT_APPLICATION_ABI
+        and item.payload_binding.native_entry_point
+        == native_direct_entry_point(
+            item.role,
+            item.payload_binding.prepared_kernel_id,
+        )
+        for item in native_prepared
+    )
+    assert native_direct.executable
     assert model_source not in direct.canonical_json
+
+
+def test_native_direct_specs_merge_shapes_but_reject_semantic_conflicts() -> None:
+    import pyamplicol.models.recurrence_direct_template as direct_template
+
+    common = {
+        "prepared_kernel_id": 20,
+        "role": "contribution",
+        "native_entry_point": native_direct_entry_point(
+            "contribution",
+            20,
+        ),
+        "input_contracts": (
+            json.dumps(
+                {"component": 1, "role": "left-current"},
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        ),
+        "exact_expressions": ("test::out0", "test::out1"),
+        "output_arity": 2,
+        "destination_component_counts": (2,),
+    }
+    narrow = PreparedNativeDirectCallableSpecV1(
+        **common,
+        parent_component_shapes=((2, 2),),
+    )
+    wide = replace(
+        narrow,
+        parent_component_shapes=((4, 2),),
+        destination_component_counts=(2, 4),
+    )
+    merged = direct_template._merge_prepared_native_direct_callable_specs(
+        narrow, wide
+    )
+
+    assert merged.parent_component_shapes == ((2, 2), (4, 2))
+    assert merged.destination_component_counts == (2, 4)
+
+    incompatible = replace(wide, exact_expressions=("other::out0", "other::out1"))
+    with pytest.raises(RecurrenceDirectTemplateError, match="exact_expressions"):
+        direct_template._merge_prepared_native_direct_callable_specs(
+            narrow, incompatible
+        )
+
+    out_of_bounds = replace(
+        narrow,
+        input_contracts=(
+            json.dumps(
+                {"component": 2, "role": "left-current"},
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        ),
+    )
+    with pytest.raises(RecurrenceDirectTemplateError, match="outside"):
+        direct_template._validate_prepared_native_direct_projection_bounds(
+            out_of_bounds
+        )

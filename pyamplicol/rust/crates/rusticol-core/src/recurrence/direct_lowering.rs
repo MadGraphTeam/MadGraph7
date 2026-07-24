@@ -1148,7 +1148,7 @@ fn lower_union_source(
     )?;
     let assignment = arena_assignment(arena, current.id())?;
     let full_state = state_row(templates, contract.full_state_template_id)?;
-    if assignment.component_count != u32::from(full_state.dimension) {
+    if assignment.component_count != full_state.dimension {
         return Err(invalid(format!(
             "source current {} arena width does not match runtime-helicity full state",
             current.id()
@@ -1792,14 +1792,16 @@ fn arena_assignment(
     })
 }
 
-fn intern_momentum_forms(
-    program: &RecurrenceProgram,
-    external_source_count: u32,
-) -> RusticolResult<(
+type DirectMomentumTables = (
     BTreeMap<CanonicalMomentumLinearForm, u32>,
     Vec<DirectMomentumFormDescriptor>,
     Vec<DirectMomentumTerm>,
-)> {
+);
+
+fn intern_momentum_forms(
+    program: &RecurrenceProgram,
+    external_source_count: u32,
+) -> RusticolResult<DirectMomentumTables> {
     let forms = program
         .currents()
         .iter()
@@ -2075,15 +2077,17 @@ fn lower_resolved_helicities(
     Ok((descriptors, source_states, public_helicities))
 }
 
-pub(super) fn lower_union_resolved_helicities(
-    choices_by_source: &[Vec<RuntimeSourceChoice>],
-    retained_helicity_count: u64,
-) -> RusticolResult<(
+type DirectUnionResolvedHelicityTables = (
     Vec<DirectResolvedHelicityDescriptor>,
     Vec<DirectSourceStateAssignment>,
     Vec<DirectResolvedSourceSelection>,
     Vec<i32>,
-)> {
+);
+
+pub(super) fn lower_union_resolved_helicities(
+    choices_by_source: &[Vec<RuntimeSourceChoice>],
+    retained_helicity_count: u64,
+) -> RusticolResult<DirectUnionResolvedHelicityTables> {
     if choices_by_source.is_empty() || choices_by_source.iter().any(Vec::is_empty) {
         return Err(invalid(
             "all-flow-union runtime source choices do not cover every external source",

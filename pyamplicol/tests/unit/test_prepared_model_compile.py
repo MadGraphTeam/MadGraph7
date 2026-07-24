@@ -20,6 +20,11 @@ from pyamplicol.models.prepared_compile import (
     prepare_model_bundle,
     prepared_symbolica_settings,
 )
+from pyamplicol.models.recurrence_direct_template import (
+    NATIVE_DIRECT_APPLICATION_ABI,
+    PreparedNativeDirectCallableSpecV1,
+    native_direct_entry_point,
+)
 from pyamplicol.models.recurrence_template import (
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
@@ -139,6 +144,480 @@ def test_prepared_jit_direct_source_reuses_authenticated_application() -> None:
     assert source.output_arity == 1
     assert source.exact_expressions == record.exact_expressions
     assert json.loads(source.input_contracts[0])["role"] == "current"
+
+
+def _native_direct_spec(
+    kernel: PreparedKernelSpec,
+) -> PreparedNativeDirectCallableSpecV1:
+    return PreparedNativeDirectCallableSpecV1(
+        prepared_kernel_id=kernel.kernel_id,
+        role="finalization",
+        native_entry_point=native_direct_entry_point(
+            "finalization",
+            kernel.kernel_id,
+        ),
+        input_contracts=tuple(
+            json.dumps(
+                item.to_dict(),
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            for item in kernel.inputs
+        ),
+        exact_expressions=kernel.exact_expressions,
+        output_arity=kernel.output_dimension,
+        parent_component_shapes=((1,), (4,)),
+        destination_component_counts=(1, 4),
+    )
+
+
+def test_prepared_native_direct_source_reuses_authenticated_library() -> None:
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    library_path = "kernels/000000/libprepared-native"
+    library_digest = hashlib.sha256(b"native-library").hexdigest()
+    kernel = _catalog().kernels[0]
+    spec = _native_direct_spec(kernel)
+    record = PreparedKernelRecord(
+        kernel_id=kernel.kernel_id,
+        contract_kind=kernel.contract_kind,
+        canonical_signature=kernel.canonical_signature,
+        input_arity=kernel.input_arity,
+        output_arity=kernel.output_dimension,
+        input_layout=tuple(
+            f"{item.role}:{item.component}" for item in kernel.inputs
+        ),
+        input_contracts=tuple(item.to_dict() for item in kernel.inputs),
+        output_layout=kernel.output_layout,
+        exact_expressions=kernel.exact_expressions,
+        exact_evaluator_state_path="kernels/000000/exact.evaluator.bin",
+        f64_evaluator_manifest={
+            "library_path": library_path,
+            "runtime_capability": "symbolica.compiled-cpp.complex-f64.v1",
+        },
+    )
+
+    source = prepared_compile._prepared_native_direct_source(
+        record,
+        spec=spec,
+        payload_identity_records={
+            library_path: (17, library_digest),
+            record.exact_evaluator_state_path: (
+                7,
+                hashlib.sha256(b"exact").hexdigest(),
+            ),
+        },
+    )
+
+    assert source.prepared_kernel_id == 0
+    assert source.role == "finalization"
+    assert source.native_entry_point == spec.native_entry_point
+    assert source.source_application_path == library_path
+    assert source.source_application_sha256 == library_digest
+    assert (
+        source.source_application_abi
+        == "symbolica.compiled-cpp.complex-f64.v1"
+    )
+
+
+def test_native_split_real_header_exports_scalar_and_direct_abis() -> None:
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    kernel = _catalog().kernels[0]
+    spec = _native_direct_spec(kernel)
+    header = prepared_compile._native_split_real_custom_header(
+        kernel,
+        raw_function_name="prepared_split",
+        complex_function_name="prepared",
+        direct_spec=spec,
+    )
+
+    assert "prepared_complexf64_get_buffer_len" in header
+    assert "prepared_complexf64(" in header
+    assert spec.native_entry_point in header
+    assert "DirectArenaView arena" in header
+    assert "DirectMomentumView momenta" in header
+    assert "DirectParameterView parameters" in header
+    assert "DirectFactorView factors" in header
+    assert "const DirectFinalizationRow* rows" in header
+    assert "row.component_count == 1u" in header
+    assert "row.component_count == 4u" in header
+    assert "std::vector" not in header
+    assert "malloc(" not in header
+    assert "EagerKernelInput" not in header
+    assert NATIVE_DIRECT_APPLICATION_ABI not in header
+    assert "static_assert(sizeof(DirectArenaView) == 56u)" in header
+    assert "static_assert(sizeof(DirectClosureRow) == 40u)" in header
+    assert "PAC_DIRECT_MAX_SCRATCH_DOUBLES" in header
+    assert "raw_buffer_len > PAC_DIRECT_MAX_SCRATCH_DOUBLES" in header
+    asm_header = prepared_compile._native_split_real_custom_header(
+        kernel,
+        raw_function_name="prepared_split",
+        complex_function_name="prepared",
+        direct_spec=spec,
+        raw_parameters_const=True,
+    )
+    assert (
+        'extern "C" void prepared_split_realf64('
+        "const double*, double*, double*);"
+    ) in asm_header
+
+
+def test_native_direct_header_reads_binding_coupling_from_context() -> None:
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    inputs = (
+        PreparedKernelInput(
+            role="coupling-real",
+            component=0,
+            symbol="prepared::coupling_re",
+        ),
+        PreparedKernelInput(
+            role="coupling-imag",
+            component=0,
+            symbol="prepared::coupling_im",
+        ),
+    )
+    kernel = PreparedKernelSpec(
+        kernel_id=17,
+        contract_kind="vertex",
+        canonical_signature="7" * 64,
+        exact_expressions=("prepared::coupling_re+prepared::coupling_im",),
+        inputs=inputs,
+        output_layout=("scalar:c0",),
+    )
+    spec = PreparedNativeDirectCallableSpecV1(
+        prepared_kernel_id=kernel.kernel_id,
+        role="contribution",
+        native_entry_point=native_direct_entry_point(
+            "contribution", kernel.kernel_id
+        ),
+        input_contracts=tuple(
+            json.dumps(
+                item.to_dict(),
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            for item in inputs
+        ),
+        exact_expressions=kernel.exact_expressions,
+        output_arity=1,
+        parent_component_shapes=((1, 1),),
+        destination_component_counts=(1,),
+    )
+    header = prepared_compile._native_split_real_custom_header(
+        kernel,
+        raw_function_name="prepared_split",
+        complex_function_name="prepared",
+        direct_spec=spec,
+    )
+
+    assert "struct DirectNativeBindingContextV1" in header
+    assert "if (context == nullptr) return 1;" in header
+    assert "binding_context->coupling_re" in header
+    assert "binding_context->coupling_im" in header
+
+
+@pytest.mark.parametrize("backend", ["cpp", "asm"])
+def test_native_direct_complex_contract_matches_exact_arithmetic(
+    tmp_path: Path,
+    backend: str,
+) -> None:
+    """Exercise coupling context, complex parameters, and row factors together."""
+
+    import ctypes
+
+    from symbolica import Expression
+
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    inputs = (
+        PreparedKernelInput(
+            role="current",
+            component=0,
+            symbol="test::current",
+        ),
+        PreparedKernelInput(
+            role="coupling-real",
+            component=0,
+            symbol="test::coupling_re",
+        ),
+        PreparedKernelInput(
+            role="coupling-imag",
+            component=0,
+            symbol="test::coupling_im",
+        ),
+        PreparedKernelInput(
+            role="model-parameter",
+            component=0,
+            symbol="test::model_parameter",
+            model_parameter_name="model.complex_parameter",
+            model_parameter_index=0,
+        ),
+    )
+    expression = (
+        "(test::coupling_re+sqrt(-1)*test::coupling_im)"
+        "*test::model_parameter*test::current"
+    )
+    kernel = PreparedKernelSpec(
+        kernel_id=73,
+        contract_kind="vertex",
+        canonical_signature="9" * 64,
+        exact_expressions=(expression,),
+        inputs=inputs,
+        output_layout=("scalar:c0",),
+    )
+    spec = PreparedNativeDirectCallableSpecV1(
+        prepared_kernel_id=kernel.kernel_id,
+        role="contribution",
+        native_entry_point=native_direct_entry_point(
+            "contribution",
+            kernel.kernel_id,
+        ),
+        input_contracts=tuple(
+            json.dumps(
+                item.to_dict(),
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            for item in inputs
+        ),
+        exact_expressions=kernel.exact_expressions,
+        output_arity=1,
+        parent_component_shapes=((1, 1),),
+        destination_component_counts=(1,),
+    )
+    settings = prepared_symbolica_settings(EvaluatorConfig(backend=backend))
+    manifest = prepared_compile._compile_native_split_real_kernel(
+        kernel,
+        outputs=(Expression.parse(expression),),
+        parameters=[Expression.parse(item.symbol) for item in inputs],
+        real_parameters=(1, 2),
+        settings=settings,
+        staging=tmp_path,
+        direct_spec=spec,
+    )
+
+    class Arena(ctypes.Structure):
+        _fields_ = [
+            ("current_re", ctypes.POINTER(ctypes.c_double)),
+            ("current_im", ctypes.POINTER(ctypes.c_double)),
+            ("current_scalar_len", ctypes.c_uint64),
+            ("amplitude_re", ctypes.POINTER(ctypes.c_double)),
+            ("amplitude_im", ctypes.POINTER(ctypes.c_double)),
+            ("amplitude_scalar_len", ctypes.c_uint64),
+            ("point_stride", ctypes.c_uint32),
+        ]
+
+    class Momentum(ctypes.Structure):
+        _fields_ = [
+            ("values", ctypes.POINTER(ctypes.c_double)),
+            ("scalar_len", ctypes.c_uint64),
+            ("form_count", ctypes.c_uint32),
+            ("lorentz_component_count", ctypes.c_uint16),
+            ("point_stride", ctypes.c_uint32),
+        ]
+
+    class Values(ctypes.Structure):
+        _fields_ = [
+            ("values_re", ctypes.POINTER(ctypes.c_double)),
+            ("values_im", ctypes.POINTER(ctypes.c_double)),
+            ("value_count", ctypes.c_uint32),
+        ]
+
+    class Context(ctypes.Structure):
+        _fields_ = [
+            ("coupling_re", ctypes.c_double),
+            ("coupling_im", ctypes.c_double),
+        ]
+
+    class ContributionRow(ctypes.Structure):
+        _fields_ = [
+            ("parent0_component_base", ctypes.c_uint32),
+            ("parent1_component_base_or_sentinel", ctypes.c_uint32),
+            ("parent0_momentum_form_id", ctypes.c_uint32),
+            ("parent1_momentum_form_id_or_sentinel", ctypes.c_uint32),
+            ("destination_component_base", ctypes.c_uint32),
+            ("exact_factor_id", ctypes.c_uint32),
+            ("selector_domain_id", ctypes.c_uint32),
+            ("flags", ctypes.c_uint32),
+        ]
+
+    current_re = (ctypes.c_double * 2)(17.0, 0.0)
+    current_im = (ctypes.c_double * 2)(19.0, 0.0)
+    amplitudes_re = (ctypes.c_double * 1)(0.0)
+    amplitudes_im = (ctypes.c_double * 1)(0.0)
+    momentum_values = (ctypes.c_double * 1)(0.0)
+    parameter_re = (ctypes.c_double * 1)(5.0)
+    parameter_im = (ctypes.c_double * 1)(7.0)
+    factor_re = (ctypes.c_double * 1)(11.0)
+    factor_im = (ctypes.c_double * 1)(13.0)
+    arena = Arena(
+        current_re,
+        current_im,
+        2,
+        amplitudes_re,
+        amplitudes_im,
+        1,
+        1,
+    )
+    momenta = Momentum(momentum_values, 1, 1, 4, 1)
+    parameters = Values(parameter_re, parameter_im, 1)
+    factors = Values(factor_re, factor_im, 1)
+    context = Context(2.0, 3.0)
+    row = ContributionRow(0, 0xFFFFFFFF, 0, 0xFFFFFFFF, 1, 0, 0, 1)
+
+    library = ctypes.CDLL(str(manifest["library_path"]))
+    function = getattr(library, spec.native_entry_point)
+    function.argtypes = (
+        ctypes.c_void_p,
+        Arena,
+        Momentum,
+        Values,
+        Values,
+        ctypes.POINTER(ContributionRow),
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+    )
+    function.restype = ctypes.c_int
+    status = function(
+        ctypes.byref(context),
+        arena,
+        momenta,
+        parameters,
+        factors,
+        ctypes.byref(row),
+        1,
+        1,
+    )
+
+    expected = (17 + 19j) * (2 + 3j) * (5 + 7j) * (11 + 13j)
+    assert status == 0
+    assert complex(current_re[1], current_im[1]) == pytest.approx(
+        expected,
+        rel=1.0e-14,
+        abs=1.0e-14,
+    )
+
+
+def test_native_split_real_contract_keeps_certified_real_inputs_real() -> None:
+    from symbolica import Expression
+
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    momentum = Expression.parse("test::p0")
+    current = Expression.parse("test::current0")
+    split_parameters, split_outputs = (
+        prepared_compile._split_complex_kernel_contract(
+            17,
+            outputs=(current / (momentum**2 + 1),),
+            parameters=[momentum, current],
+            real_parameters=(0,),
+        )
+    )
+
+    assert len(split_parameters) == 4
+    momentum_imaginary = split_parameters[1].to_canonical_string()
+    assert all(
+        momentum_imaginary
+        not in expression.to_canonical_string()
+        for expression in split_outputs
+    )
+    assert split_outputs[0].is_real()
+    assert split_outputs[1].is_real()
+
+
+def test_native_split_real_contract_supports_only_certified_real_roots() -> None:
+    from symbolica import Expression
+
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    real_parameter = Expression.parse("test::real_parameter")
+    complex_parameter = Expression.parse("test::complex_parameter")
+    split_parameters, split_outputs = (
+        prepared_compile._split_complex_kernel_contract(
+            19,
+            outputs=(
+                Expression.parse(
+                    "test::real_parameter^(1/2)"
+                    "+test::real_parameter^(-1/2)"
+                    "+test::real_parameter^(3/2)"
+                ),
+            ),
+            parameters=[real_parameter],
+            real_parameters=(0,),
+        )
+    )
+
+    admitted_symbols = {
+        symbol.to_atom_tree().head for symbol in split_parameters
+    }
+    assert prepared_compile._is_structurally_real_expression(
+        split_outputs[0],
+        admitted_symbols=admitted_symbols,
+    )
+    assert split_outputs[1].to_canonical_string() == "0"
+    with pytest.raises(PreparedModelBundleError, match="complex expression"):
+        prepared_compile._split_complex_kernel_contract(
+            20,
+            outputs=(Expression.parse("test::complex_parameter^(1/2)"),),
+            parameters=[complex_parameter],
+            real_parameters=(),
+        )
+    with pytest.raises(
+        PreparedModelBundleError,
+        match="unsupported real non-integer power",
+    ):
+        prepared_compile._split_complex_kernel_contract(
+            21,
+            outputs=(Expression.parse("test::real_parameter^(1/3)"),),
+            parameters=[real_parameter],
+            real_parameters=(0,),
+        )
+
+
+def test_native_real_parameter_indices_follow_catalog_domains() -> None:
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    kernel = PreparedKernelSpec(
+        kernel_id=23,
+        contract_kind="propagator",
+        canonical_signature="8" * 64,
+        exact_expressions=("test::p+test::mass+test::phase",),
+        inputs=(
+            PreparedKernelInput(
+                role="momentum",
+                component=0,
+                symbol="test::p",
+            ),
+            PreparedKernelInput(
+                role="model-parameter",
+                component=0,
+                symbol="test::mass",
+                model_parameter_name="particle.23.mass",
+                model_parameter_index=0,
+            ),
+            PreparedKernelInput(
+                role="model-parameter",
+                component=0,
+                symbol="test::phase",
+                model_parameter_name="model.phase",
+                model_parameter_index=1,
+            ),
+        ),
+        output_layout=("scalar:c0",),
+    )
+
+    assert prepared_compile._real_kernel_parameter_indices(
+        kernel,
+        real_model_parameter_names=frozenset({"particle.23.mass"}),
+    ) == (0, 1)
 
 
 def _block_catalog() -> PreparedKernelCatalog:

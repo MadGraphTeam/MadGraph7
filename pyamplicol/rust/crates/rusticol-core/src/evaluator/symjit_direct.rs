@@ -7,6 +7,7 @@
 //! once at load, hot calls build only pointer descriptors on the stack, and
 //! generated O2 code mutates persistent arena destinations directly.
 
+#[cfg(test)]
 use super::recurrence_intrinsic_direct::execute_identity_finalization_rows;
 use crate::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectClosureExecutor, DirectContributionExecutor,
@@ -26,13 +27,14 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::ptr;
 use symjit::{
-    Config, DIRECT_APPLICATION_STORAGE_ABI, DIRECT_EXACT_FACTOR_IMAG_SCALAR,
-    DIRECT_EXACT_FACTOR_REAL_SCALAR, DIRECT_NO_ALIAS, DIRECT_STATUS_EXECUTION_FAILED,
-    DIRECT_STATUS_INVALID_ARGUMENT, DIRECT_STATUS_INVALID_CONTEXT, Defuns, DirectApplication,
-    DirectApplicationMetadata, DirectCallable,
+    Config, DIRECT_EXACT_FACTOR_IMAG_SCALAR, DIRECT_EXACT_FACTOR_REAL_SCALAR, DIRECT_NO_ALIAS,
+    DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT, DIRECT_STATUS_INVALID_CONTEXT,
+    Defuns, DirectApplication, DirectApplicationMetadata, DirectCallable,
     DirectDestinationOperation as SymjitDestinationOperation, DirectInputBinding, DirectPlane,
-    DirectScalar, Storage,
+    DirectScalar,
 };
+#[cfg(test)]
+use symjit::{DIRECT_APPLICATION_STORAGE_ABI, Storage};
 
 const MAX_DIRECT_PLANES: usize = 512;
 const MAX_DIRECT_SCALARS: usize = 256;
@@ -190,6 +192,7 @@ struct DescriptorCache {
 }
 
 impl LoadedSymjitDirectExecutor {
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn load_bytes(
         bytes: &[u8],
@@ -556,6 +559,7 @@ unsafe extern "C" fn execute_closure_rows(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn invoke_typed_rows<T: DirectTypedRow>(
     context: *const c_void,
     arena: DirectArenaView,

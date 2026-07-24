@@ -1987,6 +1987,7 @@ fn pure_adjoint_word_is_canonical(word: &[u32]) -> bool {
     minimum_index < maximum_index
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_closures(
     process: &OwnedRecurrenceProcessInput,
     process_catalog: &ProcessCatalog<'_>,
@@ -2215,6 +2216,7 @@ fn add_closure_terms(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finish_program(
     strategy: RecurrenceStrategy,
     process_catalog: &ProcessCatalog<'_>,

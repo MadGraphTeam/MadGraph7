@@ -2007,14 +2007,14 @@ impl ColorContractionRuntime {
     }
 
     fn logical_entries(&self) -> ColorContractionEntries<'_> {
-        if self.entries.is_empty() {
-            if let Some(block) = self.repeated_block.as_ref() {
-                return ColorContractionEntries::Repeated {
-                    block,
-                    component_index: 0,
-                    entry_index: 0,
-                };
-            }
+        if self.entries.is_empty()
+            && let Some(block) = self.repeated_block.as_ref()
+        {
+            return ColorContractionEntries::Repeated {
+                block,
+                component_index: 0,
+                entry_index: 0,
+            };
         }
         ColorContractionEntries::Expanded(self.entries.iter().copied())
     }
@@ -3277,28 +3277,6 @@ enum NativeExecutionLane {
     Eager(Box<EagerNativeRuntime>),
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     Recurrence(Box<RecurrenceNativeRuntime>),
-}
-
-impl NativeExecutionLane {
-    fn is_eager(&self) -> bool {
-        match self {
-            Self::Compiled => false,
-            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Eager(_) => true,
-            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Recurrence(_) => false,
-        }
-    }
-
-    fn is_recurrence(&self) -> bool {
-        match self {
-            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Recurrence(_) => true,
-            Self::Compiled => false,
-            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::Eager(_) => false,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug)]

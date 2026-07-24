@@ -69,6 +69,7 @@ impl RecurrenceFinalizationIntrinsicKind {
 }
 
 impl RecurrenceContributionIntrinsicKind {
+    #[cfg(test)]
     pub(crate) const fn runtime_template(self) -> &'static str {
         match self {
             Self::WeylVectorToWeylPositive => WEYL_VECTOR_TO_WEYL_POSITIVE_TEMPLATE,
@@ -136,6 +137,7 @@ impl RecurrenceIntrinsicScale {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn unit() -> Self {
         Self {
             literal_re: 1.0,
@@ -2000,30 +2002,6 @@ unsafe fn set_scaled_current(
     unsafe {
         *arena.current_re.add(offset) = contribution.re;
         *arena.current_im.add(offset) = contribution.im;
-    }
-}
-
-#[inline(always)]
-unsafe fn set_scaled_current_pair(
-    arena: DirectArenaView,
-    component: u32,
-    stride: usize,
-    point: usize,
-    value: SimdComplex2,
-    scale: ComplexValue,
-) {
-    let scale_re = f64x2::new([scale.re, scale.re]);
-    let scale_im = f64x2::new([scale.im, scale.im]);
-    let contribution_re = value.re * scale_re - value.im * scale_im;
-    let contribution_im = value.re * scale_im + value.im * scale_re;
-    let re = unsafe { core::mem::transmute::<f64x2, [f64; 2]>(contribution_re) };
-    let im = unsafe { core::mem::transmute::<f64x2, [f64; 2]>(contribution_im) };
-    let offset = component as usize * stride + point;
-    unsafe {
-        *arena.current_re.add(offset) = re[0];
-        *arena.current_re.add(offset + 1) = re[1];
-        *arena.current_im.add(offset) = im[0];
-        *arena.current_im.add(offset + 1) = im[1];
     }
 }
 

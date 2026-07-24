@@ -1442,8 +1442,9 @@ fn compact_c2k_walsh_h8_multiple_cosets_matches_expanded_reference() {
     let mut entries = Vec::new();
     for left_group_index in 0..LOCAL_GROUP_COUNT {
         let (left_coset, left_subgroup) = local_coordinates[left_group_index];
-        for right_group_index in left_group_index..LOCAL_GROUP_COUNT {
-            let (right_coset, right_subgroup) = local_coordinates[right_group_index];
+        for (right_group_index, &(right_coset, right_subgroup)) in
+            local_coordinates.iter().enumerate().skip(left_group_index)
+        {
             entries.push(GenericRepeatedColorContractionEntryManifest {
                 left_group_index,
                 right_group_index,

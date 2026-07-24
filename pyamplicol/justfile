@@ -74,6 +74,7 @@ rust-check:
 
 rust-test:
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- test --workspace --locked
+    {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- test --locked -p rusticol-core --no-default-features --features f64-compiled native_role_exports_load_and_remain_callable_while_owners_move
 
 # Complete source gate used before any release artifact is retained.
 source-gate:

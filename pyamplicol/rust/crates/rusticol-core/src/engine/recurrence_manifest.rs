@@ -238,7 +238,8 @@ pub(super) struct RecurrenceParameterProjection {
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceSourceTemplate {
     pub(super) source_template_id: u32,
-    pub(super) current_state_template_id: u32,
+    #[serde(rename = "current_state_template_id")]
+    pub(super) _current_state_template_id: u32,
     pub(super) dimension: u64,
     pub(super) helicity: i32,
     pub(super) chirality: i32,

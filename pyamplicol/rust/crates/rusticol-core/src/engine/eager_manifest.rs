@@ -29,6 +29,7 @@ const RECURRENCE_DIRECT_CANONICALIZATION_ABI_V1: &str = "pyamplicol-canonical-js
 const RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI_V1: &str =
     "pyamplicol-recurrence-direct-payload-binding-v1";
 const SYMJIT_DIRECT_APPLICATION_STORAGE_V1_ABI: &str = "symjit-direct-application-storage-v1";
+const NATIVE_DIRECT_APPLICATION_V1_ABI: &str = "pyamplicol-recurrence-native-direct-library-v1";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -279,6 +280,7 @@ pub(super) struct RecurrenceDirectPayloadBindingManifest {
     pub(super) source_application_sha256: Option<String>,
     pub(super) source_application_abi: Option<String>,
     pub(super) direct_application_abi: Option<String>,
+    pub(super) native_entry_point: Option<String>,
     pub(super) role: Option<String>,
     pub(super) destination_operation: Option<String>,
     pub(super) exact_factor_scalar_slots: Vec<u32>,
@@ -1040,7 +1042,7 @@ impl RecurrenceDirectTemplateManifest {
             || self.evaluator_resolver_key.is_empty()
             || self.semantic_template_ids.is_empty()
             || self.parent_arity as usize != self.parent_component_counts.len()
-            || self.parent_component_counts.iter().any(|count| *count == 0)
+            || self.parent_component_counts.contains(&0)
             || self.destination_component_count == 0
             || self.alignment_bytes == 0
             || !self.alignment_bytes.is_power_of_two()
@@ -1111,6 +1113,7 @@ impl RecurrenceDirectPayloadBindingManifest {
                     || self.source_application_sha256.is_some()
                     || self.source_application_abi.is_some()
                     || self.direct_application_abi.is_some()
+                    || self.native_entry_point.is_some()
                     || !self.exact_factor_scalar_slots.is_empty()
                     || !self.state_plane_indices.is_empty()
                     || !self.parameter_bindings.is_empty()
@@ -1177,10 +1180,6 @@ impl RecurrenceDirectPayloadBindingManifest {
                     || self.role.as_deref() != Some(template.role.as_str())
                     || self.destination_operation.as_deref()
                         != Some(template.destination_operation.as_str())
-                    || self.direct_application_abi.as_deref()
-                        != Some(SYMJIT_DIRECT_APPLICATION_STORAGE_V1_ABI)
-                    || self.source_application_abi.as_deref()
-                        != Some(SYMJIT_APPLICATION_STORAGE_V3_ABI)
                     || self.exact_factor_scalar_slots != [0, 1]
                     || self.input_plane_count as usize != self.input_plane_projections.len()
                     || self.scalar_input_count as usize != self.scalar_projections.len()
@@ -1220,15 +1219,55 @@ impl RecurrenceDirectPayloadBindingManifest {
                 let evaluator = kernel.f64_evaluator_manifest.as_object().ok_or_else(|| {
                     RusticolError::artifact("prepared kernel evaluator metadata is not an object")
                 })?;
-                if evaluator.get("application_path").and_then(Value::as_str) != Some(source_path)
-                    || evaluator.get("application_abi").and_then(Value::as_str)
-                        != self.source_application_abi.as_deref()
-                    || evaluator.get("optimization_level").and_then(Value::as_u64)
-                        != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
-                {
-                    return Err(RusticolError::integrity(
-                        "Direct-Arena callable source does not match its portable O2 prepared kernel",
-                    ));
+                match template.backend.as_str() {
+                    "jit" => {
+                        if self.direct_application_abi.as_deref()
+                            != Some(SYMJIT_DIRECT_APPLICATION_STORAGE_V1_ABI)
+                            || self.source_application_abi.as_deref()
+                                != Some(SYMJIT_APPLICATION_STORAGE_V3_ABI)
+                            || self.native_entry_point.is_some()
+                            || evaluator.get("application_path").and_then(Value::as_str)
+                                != Some(source_path)
+                            || evaluator.get("application_abi").and_then(Value::as_str)
+                                != self.source_application_abi.as_deref()
+                            || evaluator.get("optimization_level").and_then(Value::as_u64)
+                                != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
+                        {
+                            return Err(RusticolError::integrity(
+                                "Direct-Arena callable source does not match its portable O2 prepared kernel",
+                            ));
+                        }
+                    }
+                    backend @ ("cpp" | "asm") => {
+                        let expected_source_abi = match backend {
+                            "cpp" => SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY,
+                            "asm" => SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY,
+                            _ => unreachable!("native Direct-Arena backend was matched above"),
+                        };
+                        let expected_entry_point = format!(
+                            "pyamplicol_recurrence_direct_{}_k{kernel_id:08x}_v1",
+                            template.role
+                        );
+                        if self.direct_application_abi.as_deref()
+                            != Some(NATIVE_DIRECT_APPLICATION_V1_ABI)
+                            || self.source_application_abi.as_deref() != Some(expected_source_abi)
+                            || self.native_entry_point.as_deref()
+                                != Some(expected_entry_point.as_str())
+                            || evaluator.get("kind").and_then(Value::as_str)
+                                != Some("compiled-complex-evaluator")
+                            || evaluator.get("library_path").and_then(Value::as_str)
+                                != Some(source_path)
+                        {
+                            return Err(RusticolError::integrity(
+                                "Direct-Arena callable source does not match its target-native prepared kernel",
+                            ));
+                        }
+                    }
+                    other => {
+                        return Err(RusticolError::compatibility(format!(
+                            "unsupported Direct-Arena prepared-call backend {other:?}"
+                        )));
+                    }
                 }
                 if self
                     .state_plane_indices

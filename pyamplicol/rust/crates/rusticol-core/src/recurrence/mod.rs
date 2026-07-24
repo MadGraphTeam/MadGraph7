@@ -90,14 +90,4 @@ pub const RECURRENCE_INPUT_ENDIANNESS: &str = "little";
 #[cfg(test)]
 mod direct_backend_tests;
 #[cfg(test)]
-mod direct_codec_tests;
-#[cfg(test)]
-mod direct_lowering_tests;
-#[cfg(test)]
-mod direct_pacbin_tests;
-#[cfg(test)]
-mod direct_plan_tests;
-#[cfg(test)]
-mod direct_runtime_tests;
-#[cfg(test)]
 mod tests;

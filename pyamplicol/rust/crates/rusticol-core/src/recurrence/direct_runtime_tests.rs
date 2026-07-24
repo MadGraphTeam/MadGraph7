@@ -1008,7 +1008,7 @@ fn runtime_clamps_the_effective_tile_to_workspace_and_rejects_an_oversized_point
     )
     .unwrap();
     let runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
-    let per_point_bytes = (256 * 2 + 1 * 2 + 1 * 4) * std::mem::size_of::<f64>();
+    let per_point_bytes = (256 * 2 + 2 + 4) * std::mem::size_of::<f64>();
     let expected_tile = (1024 * 1024 / per_point_bytes) as u32;
     assert_eq!(runtime.point_tile_size(), expected_tile);
     assert!(runtime.point_tile_size() < 1024);

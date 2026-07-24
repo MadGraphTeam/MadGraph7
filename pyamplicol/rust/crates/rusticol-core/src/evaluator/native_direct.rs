@@ -19,6 +19,12 @@ use std::ptr;
 
 const NATIVE_DIRECT_SYMBOL_PREFIX: &str = "pyamplicol_recurrence_direct";
 
+#[repr(C)]
+struct NativeDirectBindingContextV1 {
+    coupling_re: f64,
+    coupling_im: f64,
+}
+
 /// Owns one loaded native Direct-Arena executor and its dynamic library.
 ///
 /// Moving this value is safe because the copied function pointer addresses the
@@ -27,8 +33,11 @@ const NATIVE_DIRECT_SYMBOL_PREFIX: &str = "pyamplicol_recurrence_direct";
 /// `DirectExecutorCatalog`.
 pub(crate) struct LoadedNativeDirectExecutor {
     _library: libloading::Library,
+    _binding_context: Option<Box<NativeDirectBindingContextV1>>,
     handle: DirectExecutorHandle,
+    #[cfg(test)]
     role: DirectExecutorRole,
+    #[cfg(test)]
     prepared_kernel_id: u32,
 }
 
@@ -44,6 +53,7 @@ impl LoadedNativeDirectExecutor {
         role: DirectExecutorRole,
         prepared_kernel_id: u32,
         exported_symbol: &str,
+        binding_coupling: Option<(f64, f64)>,
     ) -> RusticolResult<Self> {
         validate_c_symbol(exported_symbol)?;
         let expected_symbol = native_direct_symbol_name(role, prepared_kernel_id)?;
@@ -53,6 +63,11 @@ impl LoadedNativeDirectExecutor {
                  {role:?} and prepared kernel {prepared_kernel_id}; expected \
                  {expected_symbol:?}"
             )));
+        }
+        if binding_coupling.is_some_and(|(re, im)| !re.is_finite() || !im.is_finite()) {
+            return Err(RusticolError::integrity(
+                "native Direct-Arena binding coupling must be finite",
+            ));
         }
 
         let path = path.as_ref();
@@ -65,7 +80,15 @@ impl LoadedNativeDirectExecutor {
                 path.display()
             ))
         })?;
-        let context = ptr::null();
+        let binding_context = binding_coupling.map(|(coupling_re, coupling_im)| {
+            Box::new(NativeDirectBindingContextV1 {
+                coupling_re,
+                coupling_im,
+            })
+        });
+        let context = binding_context
+            .as_deref()
+            .map_or(ptr::null(), |value| std::ptr::from_ref(value).cast());
         let handle = match role {
             DirectExecutorRole::Contribution => {
                 let call = unsafe {
@@ -94,8 +117,11 @@ impl LoadedNativeDirectExecutor {
 
         Ok(Self {
             _library: library,
+            _binding_context: binding_context,
             handle,
+            #[cfg(test)]
             role,
+            #[cfg(test)]
             prepared_kernel_id,
         })
     }
@@ -105,10 +131,12 @@ impl LoadedNativeDirectExecutor {
         self.handle
     }
 
+    #[cfg(test)]
     pub(crate) const fn role(&self) -> DirectExecutorRole {
         self.role
     }
 
+    #[cfg(test)]
     pub(crate) const fn prepared_kernel_id(&self) -> u32 {
         self.prepared_kernel_id
     }
@@ -278,9 +306,13 @@ mod tests {
         } else {
             "libnative_direct_fixture.so"
         });
-        fs::write(
-            &source,
-            r#"#include <stdint.h>
+        let contribution_symbol =
+            native_direct_symbol_name(DirectExecutorRole::Contribution, CONTRIBUTION_ID).unwrap();
+        let finalization_symbol =
+            native_direct_symbol_name(DirectExecutorRole::Finalization, FINALIZATION_ID).unwrap();
+        let closure_symbol =
+            native_direct_symbol_name(DirectExecutorRole::Closure, CLOSURE_ID).unwrap();
+        let fixture = r#"#include <stdint.h>
 
 typedef struct {
     double *current_re;
@@ -308,6 +340,11 @@ typedef struct {
 
 typedef DirectParameterView DirectFactorView;
 
+typedef struct {
+    double coupling_re;
+    double coupling_im;
+} DirectNativeBindingContextV1;
+
 #define DIRECT_ARGS \
     const void *context, \
     DirectArenaView arena, \
@@ -318,23 +355,32 @@ typedef DirectParameterView DirectFactorView;
     uint32_t row_count, \
     uint32_t point_count
 
-int pyamplicol_recurrence_direct_contribution_k00000007_v1(DIRECT_ARGS) {
-    (void)context; (void)arena; (void)momenta; (void)parameters; (void)factors; (void)rows;
-    return 1000 + (int)row_count + (int)point_count;
+int __CONTRIBUTION_SYMBOL__(DIRECT_ARGS) {
+    (void)arena; (void)momenta; (void)parameters; (void)factors; (void)rows;
+    int binding_offset = 0;
+    if (context != 0) {
+        const DirectNativeBindingContextV1 *binding =
+            (const DirectNativeBindingContextV1 *)context;
+        binding_offset =
+            (int)(100.0 * binding->coupling_re + 10.0 * binding->coupling_im);
+    }
+    return 1000 + binding_offset + (int)row_count + (int)point_count;
 }
 
-int pyamplicol_recurrence_direct_finalization_k0000000b_v1(DIRECT_ARGS) {
+int __FINALIZATION_SYMBOL__(DIRECT_ARGS) {
     (void)context; (void)arena; (void)momenta; (void)parameters; (void)factors; (void)rows;
     return 2000 + (int)row_count + (int)point_count;
 }
 
-int pyamplicol_recurrence_direct_closure_k0000000d_v1(DIRECT_ARGS) {
+int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
     (void)context; (void)arena; (void)momenta; (void)parameters; (void)factors; (void)rows;
     return 3000 + (int)row_count + (int)point_count;
 }
-"#,
-        )
-        .unwrap();
+"#
+        .replace("__CONTRIBUTION_SYMBOL__", &contribution_symbol)
+        .replace("__FINALIZATION_SYMBOL__", &finalization_symbol)
+        .replace("__CLOSURE_SYMBOL__", &closure_symbol);
+        fs::write(&source, fixture).unwrap();
         let compiler = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
         let mut command = Command::new(compiler);
         if cfg!(target_os = "macos") {
@@ -395,11 +441,11 @@ int pyamplicol_recurrence_direct_closure_k0000000d_v1(DIRECT_ARGS) {
     #[test]
     fn deterministic_symbols_encode_role_and_prepared_kernel_id() {
         assert_eq!(
-            native_direct_symbol_name(DirectExecutorRole::Contribution, CONTRIBUTION_ID).unwrap(),
+            native_direct_symbol_name(DirectExecutorRole::Contribution, CONTRIBUTION_ID,).unwrap(),
             "pyamplicol_recurrence_direct_contribution_k00000007_v1"
         );
         assert_eq!(
-            native_direct_symbol_name(DirectExecutorRole::Finalization, FINALIZATION_ID).unwrap(),
+            native_direct_symbol_name(DirectExecutorRole::Finalization, FINALIZATION_ID,).unwrap(),
             "pyamplicol_recurrence_direct_finalization_k0000000b_v1"
         );
         assert_eq!(
@@ -413,7 +459,7 @@ int pyamplicol_recurrence_direct_closure_k0000000d_v1(DIRECT_ARGS) {
             RusticolErrorKind::InvalidArgument
         );
         assert_eq!(
-            native_direct_symbol_name(DirectExecutorRole::Contribution, DIRECT_NONE_U32)
+            native_direct_symbol_name(DirectExecutorRole::Contribution, DIRECT_NONE_U32,)
                 .unwrap_err()
                 .kind(),
             RusticolErrorKind::InvalidArgument
@@ -429,6 +475,7 @@ int pyamplicol_recurrence_direct_closure_k0000000d_v1(DIRECT_ARGS) {
                 DirectExecutorRole::Contribution,
                 CONTRIBUTION_ID,
                 symbol,
+                None,
             ));
             assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
         }
@@ -440,15 +487,26 @@ int pyamplicol_recurrence_direct_closure_k0000000d_v1(DIRECT_ARGS) {
             DirectExecutorRole::Closure,
             CONTRIBUTION_ID,
             &contribution_symbol,
+            None,
         ));
         assert_eq!(error.kind(), RusticolErrorKind::Integrity);
         assert!(error.message().contains("expected"));
 
         let error = expect_load_error(LoadedNativeDirectExecutor::load(
             nonexistent,
+            DirectExecutorRole::Contribution,
+            CONTRIBUTION_ID,
+            &contribution_symbol,
+            Some((f64::NAN, 0.0)),
+        ));
+        assert_eq!(error.kind(), RusticolErrorKind::Integrity);
+
+        let error = expect_load_error(LoadedNativeDirectExecutor::load(
+            nonexistent,
             DirectExecutorRole::Source,
             0,
             "pyamplicol_recurrence_direct_source_k00000000_v1",
+            None,
         ));
         assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
     }
@@ -466,7 +524,7 @@ int pyamplicol_recurrence_direct_closure_k0000000d_v1(DIRECT_ARGS) {
         for (role, prepared_kernel_id, _) in specifications {
             let symbol = native_direct_symbol_name(role, prepared_kernel_id).unwrap();
             let owner =
-                LoadedNativeDirectExecutor::load(&library, role, prepared_kernel_id, &symbol)
+                LoadedNativeDirectExecutor::load(&library, role, prepared_kernel_id, &symbol, None)
                     .unwrap();
             assert_eq!(owner.role(), role);
             assert_eq!(owner.prepared_kernel_id(), prepared_kernel_id);
@@ -524,6 +582,47 @@ int pyamplicol_recurrence_direct_closure_k0000000d_v1(DIRECT_ARGS) {
             assert_eq!(status, expected);
         }
 
+        let contribution_symbol =
+            native_direct_symbol_name(DirectExecutorRole::Contribution, CONTRIBUTION_ID).unwrap();
+        let first_context = LoadedNativeDirectExecutor::load(
+            &library,
+            DirectExecutorRole::Contribution,
+            CONTRIBUTION_ID,
+            &contribution_symbol,
+            Some((2.0, 3.0)),
+        )
+        .unwrap();
+        let first_handle = first_context.handle();
+        let second_context = LoadedNativeDirectExecutor::load(
+            &library,
+            DirectExecutorRole::Contribution,
+            CONTRIBUTION_ID,
+            &contribution_symbol,
+            Some((-1.0, 4.0)),
+        )
+        .unwrap();
+        let second_handle = second_context.handle();
+        owners.push(first_context);
+        owners.push(second_context);
+        for (handle, expected) in [(first_handle, 1_238), (second_handle, 948)] {
+            let DirectExecutorHandle::Contribution { call, context } = handle else {
+                panic!("context fixture must load a contribution");
+            };
+            let status = unsafe {
+                call(
+                    context,
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    ptr::null(),
+                    3,
+                    5,
+                )
+            };
+            assert_eq!(status, expected);
+        }
+
         #[cfg(not(feature = "f64-symjit"))]
         {
             let DirectExecutorHandle::Contribution { call, context } = handles[0] else {
@@ -559,6 +658,7 @@ int pyamplicol_recurrence_direct_closure_k0000000d_v1(DIRECT_ARGS) {
             DirectExecutorRole::Contribution,
             23,
             &missing_symbol,
+            None,
         ));
         assert_eq!(error.kind(), RusticolErrorKind::Evaluation);
 

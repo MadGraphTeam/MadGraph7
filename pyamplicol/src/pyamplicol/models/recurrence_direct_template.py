@@ -4,8 +4,8 @@
 This module deliberately describes executable ownership without adapting the
 existing packed eager-kernel ABI. Portable JIT bindings reference the existing
 ``application.symjit`` payload and authenticate the load-time Direct-Arena
-transform. Backends without that narrow callable remain typed
-``pending-direct-call-abi`` handoff records.
+transform. Target-native C++/ASM bindings reference a split-real shared library
+that exports the same typed arena/row contract directly.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, TypeAlias, cast
 
 from .recurrence_direct_intrinsics import (
@@ -35,6 +35,7 @@ RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
 )
 RECURRENCE_DIRECT_IDENTITY_FINALIZER = "rusticol.identity-finalize-in-place.v1"
 SYMJIT_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
+NATIVE_DIRECT_APPLICATION_ABI = "pyamplicol-recurrence-native-direct-library-v1"
 
 DirectRole: TypeAlias = Literal["source", "contribution", "finalization", "closure"]
 DirectDestinationOperation: TypeAlias = Literal[
@@ -64,6 +65,12 @@ _CONTRACT_ROLES = {
 _BACKENDS = frozenset({"jit", "cpp", "asm"})
 _PAYLOAD_BINDING_KINDS = frozenset(
     {"rusticol-intrinsic", "prepared-direct-call", "pending-direct-call-abi"}
+)
+_NATIVE_SOURCE_APPLICATION_ABIS = frozenset(
+    {
+        "symbolica.compiled-cpp.complex-f64.v1",
+        "symbolica.compiled-asm.complex-f64.v1",
+    }
 )
 _HEX = frozenset("0123456789abcdef")
 
@@ -184,6 +191,7 @@ def _require_empty_prepared_call_metadata(
         "exact_factor_scalar_slots": binding.exact_factor_scalar_slots,
         "input_plane_count": binding.input_plane_count,
         "input_plane_projections": binding.input_plane_projections,
+        "native_entry_point": binding.native_entry_point,
         "output_alias_inputs": binding.output_alias_inputs,
         "parameter_bindings": binding.parameter_bindings,
         "prepared_template_semantic_digest": (
@@ -216,6 +224,7 @@ class RecurrenceDirectPayloadBindingV1:
     source_application_sha256: str | None = None
     source_application_abi: str | None = None
     direct_application_abi: str | None = None
+    native_entry_point: str | None = None
     role: DirectRole | None = None
     destination_operation: DirectDestinationOperation | None = None
     exact_factor_scalar_slots: tuple[int, ...] = ()
@@ -394,10 +403,23 @@ class RecurrenceDirectPayloadBindingV1:
                 _require_nonempty(
                     "direct source application ABI", self.source_application_abi
                 )
-                if self.direct_application_abi != SYMJIT_DIRECT_APPLICATION_ABI:
+                if self.direct_application_abi not in {
+                    SYMJIT_DIRECT_APPLICATION_ABI,
+                    NATIVE_DIRECT_APPLICATION_ABI,
+                }:
                     raise RecurrenceDirectTemplateError(
                         "prepared direct-call binding has an unsupported direct "
                         "application ABI"
+                    )
+                if self.direct_application_abi == SYMJIT_DIRECT_APPLICATION_ABI:
+                    if self.native_entry_point is not None:
+                        raise RecurrenceDirectTemplateError(
+                            "prepared JIT direct-call bindings cannot name a native "
+                            "entry point"
+                        )
+                else:
+                    _require_nonempty(
+                        "native direct-call entry point", self.native_entry_point
                     )
                 if self.role not in _ROLE_INDEX or self.role == "source":
                     raise RecurrenceDirectTemplateError(
@@ -487,6 +509,8 @@ class RecurrenceDirectPayloadBindingV1:
             "source_application_sha256": self.source_application_sha256,
             "state_plane_indices": list(self.state_plane_indices),
         }
+        if self.native_entry_point is not None:
+            payload["native_entry_point"] = self.native_entry_point
         if include_payload_digest:
             payload["payload_digest"] = self.payload_digest
         return payload
@@ -522,7 +546,10 @@ class RecurrenceDirectPayloadBindingV1:
             "source_application_sha256",
             "state_plane_indices",
         }
-        if set(payload) != expected:
+        optional = {"native_entry_point"}
+        if not expected.issubset(payload) or not set(payload).issubset(
+            expected | optional
+        ):
             raise RecurrenceDirectTemplateError(
                 "direct payload-binding fields do not match v1"
             )
@@ -543,6 +570,7 @@ class RecurrenceDirectPayloadBindingV1:
         return cls(
             abi=payload["abi"],  # type: ignore[arg-type]
             kind=payload["kind"],  # type: ignore[arg-type]
+            native_entry_point=payload.get("native_entry_point"),  # type: ignore[arg-type]
             payload_digest=payload["payload_digest"],  # type: ignore[arg-type]
             contribution_parent_permutation=tuple(
                 payload["contribution_parent_permutation"]  # type: ignore[arg-type]
@@ -621,6 +649,165 @@ class PreparedJitDirectSourceV1:
             raise RecurrenceDirectTemplateError(
                 "prepared JIT direct exact-expression count does not match output arity"
             )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedNativeDirectCallableSpecV1:
+    """Compile-time contract for one target-native Direct-Arena export."""
+
+    prepared_kernel_id: int
+    role: DirectRole
+    native_entry_point: str
+    input_contracts: tuple[str, ...]
+    exact_expressions: tuple[str, ...]
+    output_arity: int
+    parent_component_shapes: tuple[tuple[int, ...], ...]
+    destination_component_counts: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        kernel_id = _require_nonnegative_int(
+            "prepared native direct kernel ID", self.prepared_kernel_id
+        )
+        if self.role not in _ROLE_INDEX or self.role == "source":
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct callables require a non-source role"
+            )
+        expected_entry_point = native_direct_entry_point(self.role, kernel_id)
+        if self.native_entry_point != expected_entry_point:
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct entry point does not authenticate its "
+                "role and kernel ID"
+            )
+        _require_canonical_object_tuple(
+            "prepared native direct input contracts", self.input_contracts
+        )
+        output_arity = _require_positive_int(
+            "prepared native direct output arity", self.output_arity
+        )
+        expressions = _require_string_tuple(
+            "prepared native direct exact expressions",
+            self.exact_expressions,
+            nonempty=True,
+        )
+        if len(expressions) != output_arity:
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct exact-expression count does not match "
+                "output arity"
+            )
+        if (
+            not isinstance(self.parent_component_shapes, tuple)
+            or not self.parent_component_shapes
+        ):
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct parent shapes must be nonempty"
+            )
+        shapes = tuple(
+            _require_int_tuple(
+                "prepared native direct parent component shape", shape
+            )
+            for shape in self.parent_component_shapes
+        )
+        if (
+            shapes != tuple(sorted(set(shapes)))
+            or len({len(shape) for shape in shapes}) != 1
+        ):
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct parent shapes must be sorted, unique, "
+                "and have one arity"
+            )
+        if any(count == 0 for shape in shapes for count in shape):
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct parent component counts must be positive"
+            )
+        destination_counts = _require_int_tuple(
+            "prepared native direct destination component counts",
+            self.destination_component_counts,
+        )
+        if (
+            not destination_counts
+            or destination_counts != tuple(sorted(set(destination_counts)))
+            or any(count == 0 for count in destination_counts)
+        ):
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct destination counts must be sorted, "
+                "unique, and positive"
+            )
+        if self.output_arity > min(destination_counts):
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct output exceeds a destination shape"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedNativeDirectSourceV1:
+    """Authenticated native library and one typed Direct-Arena export."""
+
+    prepared_kernel_id: int
+    role: DirectRole
+    native_entry_point: str
+    source_application_path: str
+    source_application_sha256: str
+    source_application_abi: str
+    input_contracts: tuple[str, ...]
+    exact_expressions: tuple[str, ...]
+    output_arity: int
+
+    def __post_init__(self) -> None:
+        kernel_id = _require_nonnegative_int(
+            "prepared native direct source kernel ID", self.prepared_kernel_id
+        )
+        if self.role not in _ROLE_INDEX or self.role == "source":
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct sources require a non-source role"
+            )
+        if self.native_entry_point != native_direct_entry_point(self.role, kernel_id):
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct source entry point is not canonical"
+            )
+        _require_canonical_object_tuple(
+            "prepared native direct source input contracts", self.input_contracts
+        )
+        output_arity = _require_positive_int(
+            "prepared native direct source output arity", self.output_arity
+        )
+        if len(
+            _require_string_tuple(
+                "prepared native direct source exact expressions",
+                self.exact_expressions,
+                nonempty=True,
+            )
+        ) != output_arity:
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct source expression count does not match "
+                "its output arity"
+            )
+        _require_nonempty(
+            "prepared native direct source path", self.source_application_path
+        )
+        _require_sha256(
+            "prepared native direct source digest", self.source_application_sha256
+        )
+        if self.source_application_abi not in _NATIVE_SOURCE_APPLICATION_ABIS:
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct source has an unsupported application ABI"
+            )
+
+
+def native_direct_entry_point(role: DirectRole, prepared_kernel_id: int) -> str:
+    """Return the role- and kernel-authenticated native C export."""
+
+    kernel_id = _require_nonnegative_int(
+        "prepared native direct kernel ID", prepared_kernel_id
+    )
+    if kernel_id == 0xFFFFFFFF:
+        raise RecurrenceDirectTemplateError(
+            "prepared native direct kernel ID cannot use the missing-ID sentinel"
+        )
+    if role not in _ROLE_INDEX or role == "source":
+        raise RecurrenceDirectTemplateError(
+            "prepared native Direct-Arena exports require a non-source role"
+        )
+    return f"pyamplicol_recurrence_direct_{role}_k{kernel_id:08x}_v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1079,6 +1266,189 @@ class RecurrenceDirectTemplateCatalogV1:
         )
 
 
+def build_prepared_native_direct_callable_specs(
+    recurrence_catalog: RecurrenceTemplateCatalog,
+    prepared_kernels: Mapping[int, object],
+) -> dict[int, PreparedNativeDirectCallableSpecV1]:
+    """Project model-generic semantic bindings into one native export per kernel.
+
+    Inline couplings remain evaluator-binding-specific immutable contexts.
+    They are validated here but deliberately excluded from callable identity,
+    allowing one prepared Lorentz kernel to serve every compatible transition.
+    """
+
+    if not isinstance(recurrence_catalog, RecurrenceTemplateCatalog):
+        raise TypeError(
+            "native direct callable construction requires a validated recurrence "
+            "catalog"
+        )
+    states = {state.template_id: state for state in recurrence_catalog.current_states}
+    semantic_records = {
+        record.template_id: record
+        for records in (
+            recurrence_catalog.sources,
+            recurrence_catalog.transitions,
+            recurrence_catalog.propagators,
+            recurrence_catalog.closures,
+        )
+        for record in records
+    }
+    result: dict[int, PreparedNativeDirectCallableSpecV1] = {}
+    for binding in recurrence_catalog.evaluator_bindings:
+        if binding.callable_kind != "prepared-kernel":
+            continue
+        role = _CONTRACT_ROLES.get(binding.contract_kind)
+        if role is None:
+            continue
+        if role == "source":
+            raise RecurrenceDirectTemplateError(
+                "prepared native recurrence sources are unsupported; source "
+                "filling must remain Rusticol-owned"
+            )
+        assert binding.prepared_kernel_id is not None
+        kernel_id = binding.prepared_kernel_id
+        kernel = prepared_kernels.get(kernel_id)
+        if kernel is None:
+            raise RecurrenceDirectTemplateError(
+                f"native direct callable references absent prepared kernel {kernel_id}"
+            )
+        inputs = tuple(getattr(kernel, "inputs", ()))
+        exact_expressions = tuple(getattr(kernel, "exact_expressions", ()))
+        output_arity = len(exact_expressions)
+        if getattr(kernel, "kernel_id", None) != kernel_id:
+            raise RecurrenceDirectTemplateError(
+                f"native direct kernel inventory entry {kernel_id} identifies "
+                f"{getattr(kernel, 'kernel_id', None)!r}"
+            )
+        if getattr(kernel, "contract_kind", None) != binding.contract_kind:
+            raise RecurrenceDirectTemplateError(
+                f"native direct kernel {kernel_id} contract kind does not match "
+                "its recurrence evaluator binding"
+            )
+        input_contracts = tuple(
+            _canonical_json(item.to_dict()) for item in inputs
+        )
+        concrete_parent_component_counts = tuple(
+            states[state_id].dimension for state_id in binding.input_state_template_ids
+        )
+        parent_component_counts = _canonical_parent_component_counts(
+            binding.semantic_template_ids,
+            semantic_records,
+            concrete_parent_component_counts,
+        )
+        destination_component_count = (
+            states[binding.output_state_template_id].dimension
+            if binding.output_state_template_id is not None
+            else 1
+        )
+        _uniform_binding_coupling(
+            binding.semantic_template_ids,
+            semantic_records,
+            required=_input_contracts_use_inline_coupling(input_contracts),
+        )
+        spec = PreparedNativeDirectCallableSpecV1(
+            prepared_kernel_id=kernel_id,
+            role=cast(DirectRole, role),
+            native_entry_point=native_direct_entry_point(
+                cast(DirectRole, role), kernel_id
+            ),
+            input_contracts=input_contracts,
+            exact_expressions=exact_expressions,
+            output_arity=output_arity,
+            parent_component_shapes=(parent_component_counts,),
+            destination_component_counts=(destination_component_count,),
+        )
+        _validate_prepared_native_direct_projection_bounds(spec)
+        previous = result.get(kernel_id)
+        result[kernel_id] = (
+            spec
+            if previous is None
+            else _merge_prepared_native_direct_callable_specs(previous, spec)
+        )
+    return result
+
+
+def _merge_prepared_native_direct_callable_specs(
+    left: PreparedNativeDirectCallableSpecV1,
+    right: PreparedNativeDirectCallableSpecV1,
+) -> PreparedNativeDirectCallableSpecV1:
+    identity_fields = (
+        "prepared_kernel_id",
+        "role",
+        "native_entry_point",
+        "input_contracts",
+        "exact_expressions",
+        "output_arity",
+    )
+    conflicts = tuple(
+        name for name in identity_fields if getattr(left, name) != getattr(right, name)
+    )
+    left_parent_arity = len(left.parent_component_shapes[0])
+    right_parent_arity = len(right.parent_component_shapes[0])
+    if left_parent_arity != right_parent_arity:
+        conflicts += ("parent_arity",)
+    if conflicts:
+        raise RecurrenceDirectTemplateError(
+            f"prepared native kernel {left.prepared_kernel_id} has incompatible "
+            "recurrence bindings for "
+            + ", ".join(conflicts)
+        )
+    merged = replace(
+        left,
+        parent_component_shapes=tuple(
+            sorted(set(left.parent_component_shapes + right.parent_component_shapes))
+        ),
+        destination_component_counts=tuple(
+            sorted(
+                set(
+                    left.destination_component_counts
+                    + right.destination_component_counts
+                )
+            )
+        ),
+    )
+    _validate_prepared_native_direct_projection_bounds(merged)
+    return merged
+
+
+def _validate_prepared_native_direct_projection_bounds(
+    spec: PreparedNativeDirectCallableSpecV1,
+) -> None:
+    parent_arity = len(spec.parent_component_shapes[0])
+    for raw_contract in spec.input_contracts:
+        try:
+            contract = json.loads(raw_contract)
+        except (TypeError, ValueError) as exc:
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct input contract is not valid JSON"
+            ) from exc
+        if not isinstance(contract, Mapping):
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct input contract must be an object"
+            )
+        role = contract.get("role")
+        if role not in {"left-current", "right-current", "current"}:
+            continue
+        component = contract.get("component")
+        if type(component) is not int or component < 0:
+            raise RecurrenceDirectTemplateError(
+                "prepared native direct current projection must use a "
+                "nonnegative component"
+            )
+        parent = 1 if role == "right-current" else 0
+        if parent >= parent_arity:
+            raise RecurrenceDirectTemplateError(
+                f"prepared native direct {role} projection has no parent"
+            )
+        if any(
+            component >= shape[parent] for shape in spec.parent_component_shapes
+        ):
+            raise RecurrenceDirectTemplateError(
+                f"prepared native direct {role} component {component} is outside "
+                "an admitted parent shape"
+            )
+
+
 def build_recurrence_direct_template_catalog(
     recurrence_catalog: RecurrenceTemplateCatalog,
     *,
@@ -1095,16 +1465,17 @@ def build_recurrence_direct_template_catalog(
         Mapping[int, RecurrenceDirectPayloadBindingV1] | None
     ) = None,
     prepared_jit_sources: Mapping[int, PreparedJitDirectSourceV1] | None = None,
+    prepared_native_sources: Mapping[int, PreparedNativeDirectSourceV1] | None = None,
     alignment_bytes: int = 64,
 ) -> RecurrenceDirectTemplateCatalogV1:
     """Derive stable direct executors from one authenticated semantic catalog.
 
     ``prepared_jit_sources`` references each existing portable O2
     ``application.symjit`` and derives its authenticated load-time direct
-    transform. ``prepared_direct_payload_bindings`` remains the typed handoff
-    for target-native C++/ASM direct calls. Omitting both records prepared
-    kernels as pending and never treats their packed eager evaluator as a
-    direct call.
+    transform. ``prepared_native_sources`` references target-native split-real
+    libraries and their typed exported entry points. Omitting both records
+    prepared kernels as pending and never treats their packed eager evaluator
+    as a direct call.
     """
 
     if not isinstance(recurrence_catalog, RecurrenceTemplateCatalog):
@@ -1124,6 +1495,26 @@ def build_recurrence_direct_template_catalog(
     }
     supplied_direct = dict(prepared_direct_payload_bindings or {})
     jit_sources = dict(prepared_jit_sources or {})
+    native_sources = dict(prepared_native_sources or {})
+    if backend == "jit" and native_sources:
+        raise RecurrenceDirectTemplateError(
+            "prepared JIT direct catalogs cannot reference native direct sources"
+        )
+    if backend in {"cpp", "asm"} and jit_sources:
+        raise RecurrenceDirectTemplateError(
+            "prepared native direct catalogs cannot reference SymJIT sources"
+        )
+    expected_native_source_abi = {
+        "cpp": "symbolica.compiled-cpp.complex-f64.v1",
+        "asm": "symbolica.compiled-asm.complex-f64.v1",
+    }.get(backend)
+    if expected_native_source_abi is not None:
+        for kernel_id, source in native_sources.items():
+            if source.source_application_abi != expected_native_source_abi:
+                raise RecurrenceDirectTemplateError(
+                    f"prepared {backend} direct source for kernel {kernel_id} "
+                    "has the wrong target-native application ABI"
+                )
     candidates: list[dict[str, object]] = []
 
     for evaluator_binding_id, binding in enumerate(
@@ -1205,18 +1596,24 @@ def build_recurrence_direct_template_catalog(
         if binding.callable_kind != "rusticol-template":
             assert binding.prepared_kernel_id is not None
             kernel_id = binding.prepared_kernel_id
-            if payload_binding is None and backend == "jit":
-                source = jit_sources.get(kernel_id)
+            if payload_binding is None:
+                source = (
+                    jit_sources.get(kernel_id)
+                    if backend == "jit"
+                    else native_sources.get(kernel_id)
+                )
                 if source is not None:
                     if source.prepared_kernel_id != kernel_id:
                         raise RecurrenceDirectTemplateError(
-                            f"prepared JIT direct source for kernel {kernel_id} "
+                            f"prepared direct source for kernel {kernel_id} "
                             f"identifies kernel {source.prepared_kernel_id}"
                         )
                     binding_coupling = _uniform_binding_coupling(
                         binding.semantic_template_ids,
                         semantic_records,
-                        required=_source_uses_inline_coupling(source),
+                        required=_input_contracts_use_inline_coupling(
+                            source.input_contracts
+                        ),
                     )
                     certified_intrinsic = None
                     finalization_intrinsic = None
@@ -1245,8 +1642,26 @@ def build_recurrence_direct_template_catalog(
                         payload_binding = _build_runtime_intrinsic_binding(
                             runtime_template=finalization_intrinsic
                         )
-                    else:
+                    elif isinstance(source, PreparedJitDirectSourceV1):
                         payload_binding = _build_prepared_jit_direct_binding(
+                            source=source,
+                            role=cast(DirectRole, role),
+                            parent_component_counts=parent_component_counts,
+                            destination_component_count=destination_component_count,
+                            binding_coupling=binding_coupling,
+                            prepared_template_semantic_digest=(
+                                _prepared_template_contract_digest(
+                                    candidate,
+                                    backend=backend,
+                                    target_triple=target_triple,
+                                    portable=portable,
+                                    optimization_level=optimization_level,
+                                    alignment_bytes=alignment_bytes,
+                                )
+                            ),
+                        )
+                    else:
+                        payload_binding = _build_prepared_native_direct_binding(
                             source=source,
                             role=cast(DirectRole, role),
                             parent_component_counts=parent_component_counts,
@@ -1609,6 +2024,58 @@ def _build_prepared_jit_direct_binding(
     )
 
 
+def _build_prepared_native_direct_binding(
+    *,
+    source: PreparedNativeDirectSourceV1,
+    role: DirectRole,
+    parent_component_counts: tuple[int, ...],
+    destination_component_count: int,
+    binding_coupling: ExactComplexRationalV1 | None,
+    prepared_template_semantic_digest: str,
+) -> RecurrenceDirectPayloadBindingV1:
+    """Bind one native export while authenticating JIT-equivalent projections."""
+
+    if source.role != role:
+        raise RecurrenceDirectTemplateError(
+            "prepared native direct source role does not match its template"
+        )
+    if source.native_entry_point != native_direct_entry_point(
+        role, source.prepared_kernel_id
+    ):
+        raise RecurrenceDirectTemplateError(
+            "prepared native direct source entry point is not canonical"
+        )
+    # The scalar and plane projection contract is backend-independent. Reuse the
+    # established JIT projection derivation only as authenticated metadata; the
+    # native executable consumes arena views and typed rows directly and never
+    # packs these projections at runtime.
+    projected = _build_prepared_jit_direct_binding(
+        source=PreparedJitDirectSourceV1(
+            prepared_kernel_id=source.prepared_kernel_id,
+            source_application_path=source.source_application_path,
+            source_application_sha256=source.source_application_sha256,
+            source_application_abi=source.source_application_abi,
+            input_contracts=source.input_contracts,
+            exact_expressions=source.exact_expressions,
+            output_arity=source.output_arity,
+        ),
+        role=role,
+        parent_component_counts=parent_component_counts,
+        destination_component_count=destination_component_count,
+        binding_coupling=binding_coupling,
+        prepared_template_semantic_digest=prepared_template_semantic_digest,
+    )
+    metadata = projected._prepared_call_fields(include_payload_digest=False)
+    metadata["direct_application_abi"] = NATIVE_DIRECT_APPLICATION_ABI
+    metadata["native_entry_point"] = source.native_entry_point
+    return replace(
+        projected,
+        direct_application_abi=NATIVE_DIRECT_APPLICATION_ABI,
+        native_entry_point=source.native_entry_point,
+        payload_digest=_digest(metadata),
+    )
+
+
 def _build_certified_intrinsic_binding(
     certified: CertifiedRecurrenceIntrinsic,
 ) -> RecurrenceDirectPayloadBindingV1:
@@ -1666,7 +2133,13 @@ def _build_runtime_intrinsic_binding(
 
 
 def _source_uses_inline_coupling(source: PreparedJitDirectSourceV1) -> bool:
-    for contract in _decode_canonical_objects(source.input_contracts):
+    return _input_contracts_use_inline_coupling(source.input_contracts)
+
+
+def _input_contracts_use_inline_coupling(
+    input_contracts: Sequence[str],
+) -> bool:
+    for contract in _decode_canonical_objects(input_contracts):
         if isinstance(contract, Mapping) and contract.get("role") in {
             "coupling-real",
             "coupling-imag",
@@ -1797,6 +2270,7 @@ def prepared_kernel_payload_digest(
 
 
 __all__ = [
+    "NATIVE_DIRECT_APPLICATION_ABI",
     "RECURRENCE_DIRECT_BACKEND_ABI",
     "RECURRENCE_DIRECT_CANONICALIZATION_ABI",
     "RECURRENCE_DIRECT_IDENTITY_FINALIZER",
@@ -1804,10 +2278,14 @@ __all__ = [
     "RECURRENCE_DIRECT_TEMPLATE_ABI",
     "SYMJIT_DIRECT_APPLICATION_ABI",
     "PreparedJitDirectSourceV1",
+    "PreparedNativeDirectCallableSpecV1",
+    "PreparedNativeDirectSourceV1",
     "RecurrenceDirectPayloadBindingV1",
     "RecurrenceDirectTemplateCatalogV1",
     "RecurrenceDirectTemplateError",
     "RecurrenceDirectTemplateV1",
+    "build_prepared_native_direct_callable_specs",
     "build_recurrence_direct_template_catalog",
+    "native_direct_entry_point",
     "prepared_kernel_payload_digest",
 ]

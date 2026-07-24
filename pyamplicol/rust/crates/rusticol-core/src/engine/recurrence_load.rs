@@ -365,16 +365,18 @@ fn load_plan(
     Ok(plan)
 }
 
-fn build_common_runtime(
-    plan: &DirectRecurrencePlan,
-    manifest: &RecurrenceExecutionManifest,
-    physics: &ProcessPhysicsV1,
-) -> RusticolResult<(
+type RecurrenceCommonRuntimeParts = (
     ExecutionRuntime,
     Vec<crate::EagerComplex64>,
     Vec<RecurrenceParameterProjectionEntry>,
     Vec<DirectSourceDispatchDomainSpec>,
-)> {
+);
+
+fn build_common_runtime(
+    plan: &DirectRecurrencePlan,
+    manifest: &RecurrenceExecutionManifest,
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<RecurrenceCommonRuntimeParts> {
     let metadata = &manifest.runtime_metadata;
     let runtime_parameters = metadata
         .runtime_parameters

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
-use super::PreparedKernelPackManifest;
+#[cfg(feature = "f64-compiled")]
+use super::evaluator::native_direct::LoadedNativeDirectExecutor;
 use super::evaluator::recurrence_closure_direct::execute_closure_reduce_rows;
 use super::evaluator::recurrence_intrinsic_direct::{
     FEYNMAN_VECTOR_PROPAGATOR_TEMPLATE, LoadedRecurrenceIntrinsicDirectExecutor,
@@ -14,6 +15,7 @@ use super::evaluator::recurrence_source_direct::{
 use super::evaluator::symjit_direct::{
     LoadedSymjitDirectExecutor, SymjitDirectPlaneProjection, SymjitDirectScalarProjection,
 };
+use super::{PreparedKernelManifest, PreparedKernelPackManifest};
 use crate::artifact::EvaluatorPayloadStore;
 use crate::recurrence::direct_backend::{
     DirectExecutorCatalog, DirectExecutorHandle, DirectUnionSourceDispatchHandle,
@@ -32,11 +34,10 @@ use symjit::{
 };
 
 #[cfg(feature = "f64-symjit")]
+use super::eager_manifest::RecurrenceDirectPlaneProjectionManifest;
 use super::eager_manifest::{
-    RecurrenceDirectParameterBindingManifest, RecurrenceDirectPlaneProjectionManifest,
-};
-use super::eager_manifest::{
-    RecurrenceDirectScalarProjectionManifest, RecurrenceDirectTemplateManifest,
+    RecurrenceDirectParameterBindingManifest, RecurrenceDirectScalarProjectionManifest,
+    RecurrenceDirectTemplateManifest,
 };
 
 /// Authenticated identity of one loaded Direct-Arena recurrence executor catalog.
@@ -53,8 +54,8 @@ pub(super) struct NativeRecurrenceDirectBackendSummary {
 /// Context owners backing a loaded Direct-Arena executor catalog.
 ///
 /// Handles stored in `catalog` address immutable heap allocations owned by
-/// `source` and `symjit`. Those owners therefore must remain alive for every
-/// direct runtime call.
+/// `source`, `symjit`, and `native`. Those owners therefore must remain alive
+/// for every direct runtime call.
 pub(super) struct NativeRecurrenceDirectExecutorBackend {
     catalog: DirectExecutorCatalog,
     owners: NativeRecurrenceDirectExecutorOwners,
@@ -63,9 +64,11 @@ pub(super) struct NativeRecurrenceDirectExecutorBackend {
 /// Immutable context ownership retained beside the native recurrence scheduler.
 pub(super) struct NativeRecurrenceDirectExecutorOwners {
     source: Option<LoadedDirectSourceExecutor>,
-    intrinsics: Vec<LoadedRecurrenceIntrinsicDirectExecutor>,
+    _intrinsics: Vec<LoadedRecurrenceIntrinsicDirectExecutor>,
     #[cfg(feature = "f64-symjit")]
-    symjit: Vec<LoadedSymjitDirectExecutor>,
+    _symjit: Vec<LoadedSymjitDirectExecutor>,
+    #[cfg(feature = "f64-compiled")]
+    _native: Vec<LoadedNativeDirectExecutor>,
     summary: NativeRecurrenceDirectBackendSummary,
 }
 
@@ -104,7 +107,7 @@ impl NativeRecurrenceDirectExecutorBackend {
         expected_catalog_digest: &str,
         source_domains: Vec<DirectSourceDispatchDomainSpec>,
     ) -> RusticolResult<Self> {
-        #[cfg(not(feature = "f64-symjit"))]
+        #[cfg(not(any(feature = "f64-symjit", feature = "f64-compiled")))]
         let _ = payloads;
         let pack: PreparedKernelPackManifest =
             serde_json::from_slice(manifest_json).map_err(|error| {
@@ -139,6 +142,8 @@ impl NativeRecurrenceDirectExecutorBackend {
         let mut intrinsics = Vec::new();
         #[cfg(feature = "f64-symjit")]
         let mut symjit = Vec::new();
+        #[cfg(feature = "f64-compiled")]
+        let mut native = Vec::new();
         let mut handles = Vec::with_capacity(direct.templates.len());
         for template in &direct.templates {
             let handle = match template.payload_binding.kind.as_str() {
@@ -149,21 +154,43 @@ impl NativeRecurrenceDirectExecutorBackend {
                     handle
                 }
                 "rusticol-intrinsic" => load_intrinsic_handle(template, source.as_ref())?,
-                "prepared-direct-call" => {
-                    #[cfg(feature = "f64-symjit")]
-                    {
-                        let loaded = load_symjit_executor(template, payloads)?;
-                        let handle = loaded.handle();
-                        symjit.push(loaded);
-                        handle
+                "prepared-direct-call" => match template.backend.as_str() {
+                    "jit" => {
+                        #[cfg(feature = "f64-symjit")]
+                        {
+                            let loaded = load_symjit_executor(template, payloads)?;
+                            let handle = loaded.handle();
+                            symjit.push(loaded);
+                            handle
+                        }
+                        #[cfg(not(feature = "f64-symjit"))]
+                        {
+                            return Err(RusticolError::compatibility(
+                                "Direct-Arena JIT recurrence execution requires the f64-symjit feature",
+                            ));
+                        }
                     }
-                    #[cfg(not(feature = "f64-symjit"))]
-                    {
-                        return Err(RusticolError::compatibility(
-                            "Direct-Arena JIT recurrence execution requires the f64-symjit feature",
-                        ));
+                    "cpp" | "asm" => {
+                        #[cfg(feature = "f64-compiled")]
+                        {
+                            let loaded = load_native_executor(template, &pack, payloads)?;
+                            let handle = loaded.handle();
+                            native.push(loaded);
+                            handle
+                        }
+                        #[cfg(not(feature = "f64-compiled"))]
+                        {
+                            return Err(RusticolError::compatibility(
+                                "Direct-Arena C++/ASM recurrence execution requires the f64-compiled feature",
+                            ));
+                        }
                     }
-                }
+                    other => {
+                        return Err(RusticolError::compatibility(format!(
+                            "unsupported Direct-Arena prepared-call backend {other:?}"
+                        )));
+                    }
+                },
                 other => {
                     return Err(RusticolError::compatibility(format!(
                         "unsupported Direct-Arena executor binding {other:?}"
@@ -192,20 +219,14 @@ impl NativeRecurrenceDirectExecutorBackend {
             catalog,
             owners: NativeRecurrenceDirectExecutorOwners {
                 source,
-                intrinsics,
+                _intrinsics: intrinsics,
                 #[cfg(feature = "f64-symjit")]
-                symjit,
+                _symjit: symjit,
+                #[cfg(feature = "f64-compiled")]
+                _native: native,
                 summary,
             },
         })
-    }
-
-    pub(super) fn catalog(&self) -> &DirectExecutorCatalog {
-        &self.catalog
-    }
-
-    pub(super) fn summary(&self) -> &NativeRecurrenceDirectBackendSummary {
-        &self.owners.summary
     }
 
     /// Split the lightweight handle catalog from the contexts that it addresses.
@@ -235,20 +256,130 @@ impl NativeRecurrenceDirectExecutorOwners {
                 )
             })
     }
+}
 
-    #[cfg(test)]
-    fn owner_counts(&self) -> (usize, usize, usize) {
-        (usize::from(self.source.is_some()), self.intrinsics.len(), {
-            #[cfg(feature = "f64-symjit")]
-            {
-                self.symjit.len()
-            }
-            #[cfg(not(feature = "f64-symjit"))]
-            {
-                0
-            }
-        })
+#[cfg(feature = "f64-compiled")]
+fn load_native_executor(
+    template: &RecurrenceDirectTemplateManifest,
+    pack: &PreparedKernelPackManifest,
+    payloads: &EvaluatorPayloadStore,
+) -> RusticolResult<LoadedNativeDirectExecutor> {
+    let binding = &template.payload_binding;
+    let library_path = binding.source_application_path.as_deref().ok_or_else(|| {
+        RusticolError::artifact("native Direct-Arena prepared call has no library payload")
+    })?;
+    let exported_symbol = binding.native_entry_point.as_deref().ok_or_else(|| {
+        RusticolError::artifact("native Direct-Arena prepared call has no exported symbol")
+    })?;
+    let prepared_kernel_id = binding.prepared_kernel_id.ok_or_else(|| {
+        RusticolError::artifact("native Direct-Arena prepared call has no kernel ID")
+    })?;
+    let kernel = pack
+        .kernels
+        .iter()
+        .find(|kernel| kernel.kernel_id == prepared_kernel_id)
+        .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "native Direct-Arena prepared kernel {prepared_kernel_id} is absent"
+            ))
+        })?;
+    let binding_coupling = native_binding_coupling(binding, kernel)?;
+    LoadedNativeDirectExecutor::load(
+        payloads.physical_path(library_path)?,
+        direct_role(&template.role)?,
+        prepared_kernel_id,
+        exported_symbol,
+        binding_coupling,
+    )
+}
+
+#[cfg(feature = "f64-compiled")]
+fn native_binding_coupling(
+    binding: &super::eager_manifest::RecurrenceDirectPayloadBindingManifest,
+    kernel: &PreparedKernelManifest,
+) -> RusticolResult<Option<(f64, f64)>> {
+    let expected_parameter_bindings =
+        kernel.input_contracts.len().checked_mul(2).ok_or_else(|| {
+            RusticolError::artifact("native Direct-Arena input count exceeds usize")
+        })?;
+    if binding.parameter_bindings.len() != expected_parameter_bindings {
+        return Err(RusticolError::integrity(format!(
+            "native Direct-Arena kernel {} has {} parameter bindings, expected {}",
+            kernel.kernel_id,
+            binding.parameter_bindings.len(),
+            expected_parameter_bindings,
+        )));
     }
+
+    let mut coupling_re = None;
+    let mut coupling_im = None;
+    for (input_index, input) in kernel.input_contracts.iter().enumerate() {
+        let destination = match input.role.as_str() {
+            "coupling-real" => &mut coupling_re,
+            "coupling-imag" => &mut coupling_im,
+            _ => continue,
+        };
+        if destination.is_some() {
+            return Err(RusticolError::integrity(format!(
+                "native Direct-Arena kernel {} repeats {:?}",
+                kernel.kernel_id, input.role
+            )));
+        }
+        let base = input_index * 2;
+        *destination = Some(native_literal_binding(
+            binding,
+            base,
+            &format!("kernel {} {} input", kernel.kernel_id, input.role),
+        )?);
+        let imaginary = native_literal_binding(
+            binding,
+            base + 1,
+            &format!("kernel {} {} imaginary input", kernel.kernel_id, input.role),
+        )?;
+        if imaginary != 0.0 {
+            return Err(RusticolError::integrity(format!(
+                "native Direct-Arena kernel {} coupling input has a nonzero imaginary scalar lane",
+                kernel.kernel_id
+            )));
+        }
+    }
+    if coupling_re.is_none() && coupling_im.is_none() {
+        return Ok(None);
+    }
+    Ok(Some((
+        coupling_re.unwrap_or(0.0),
+        coupling_im.unwrap_or(0.0),
+    )))
+}
+
+#[cfg(feature = "f64-compiled")]
+fn native_literal_binding(
+    binding: &super::eager_manifest::RecurrenceDirectPayloadBindingManifest,
+    parameter_index: usize,
+    label: &str,
+) -> RusticolResult<f64> {
+    let scalar_index = match binding.parameter_bindings.get(parameter_index) {
+        Some(RecurrenceDirectParameterBindingManifest::Scalar { index }) => *index,
+        _ => {
+            return Err(RusticolError::integrity(format!(
+                "native Direct-Arena {label} is not bound to a scalar"
+            )));
+        }
+    };
+    let value = match binding.scalar_projections.get(scalar_index as usize) {
+        Some(RecurrenceDirectScalarProjectionManifest::Literal { value }) => *value,
+        _ => {
+            return Err(RusticolError::integrity(format!(
+                "native Direct-Arena {label} is not an immutable literal"
+            )));
+        }
+    };
+    if !value.is_finite() {
+        return Err(RusticolError::integrity(format!(
+            "native Direct-Arena {label} is non-finite"
+        )));
+    }
+    Ok(value)
 }
 
 fn load_contribution_intrinsic(

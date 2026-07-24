@@ -525,7 +525,7 @@ impl<'a> FermionPairingInputView<'a> {
             self.exact_integers.iter().map(|row| row.integer_id),
         )?;
         for (index, row) in self.exact_integers.iter().copied().enumerate() {
-            if !matches!(row.sign, -1 | 0 | 1) {
+            if !matches!(row.sign, -1..=1) {
                 return Err(invalid(format!(
                     "exact integer {index} has an invalid sign"
                 )));
@@ -3344,7 +3344,10 @@ mod tests {
             let source_permutation_start = rule_source_slot_permutations.len();
             rule_source_slot_permutations.extend(0..next_source_slot);
             let lineage_start = rule_lineages.len();
-            rule_lineages.extend(std::iter::repeat(RECURRENCE_NO_FERMION_LINE).take(source_count));
+            rule_lineages.extend(std::iter::repeat_n(
+                RECURRENCE_NO_FERMION_LINE,
+                source_count,
+            ));
             rules.push(FermionPairingRuleRow {
                 rule_id: u32::try_from(rule_id).expect("test rule count fits u32"),
                 class_pairing_index_range: test_range(class_index_start, pairing_classes.len()),

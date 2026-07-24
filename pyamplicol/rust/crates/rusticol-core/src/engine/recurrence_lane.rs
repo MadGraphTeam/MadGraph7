@@ -1164,25 +1164,23 @@ fn validate_recurrence_selector_ids(
     selected_helicities: Option<&BTreeSet<String>>,
     selected_colors: Option<&BTreeSet<String>>,
 ) -> RusticolResult<()> {
-    if let Some(ids) = selected_helicities {
-        if let Some(id) = ids
+    if let Some(ids) = selected_helicities
+        && let Some(id) = ids
             .iter()
             .find(|id| !physics.helicity_index_by_id.contains_key(*id))
-        {
-            return Err(RusticolError::selector(format!(
-                "unknown resolved helicity id {id:?}"
-            )));
-        }
+    {
+        return Err(RusticolError::selector(format!(
+            "unknown resolved helicity id {id:?}"
+        )));
     }
-    if let Some(ids) = selected_colors {
-        if let Some(id) = ids
+    if let Some(ids) = selected_colors
+        && let Some(id) = ids
             .iter()
             .find(|id| !physics.color_index_by_id.contains_key(*id))
-        {
-            return Err(RusticolError::selector(format!(
-                "unknown resolved color component id {id:?}"
-            )));
-        }
+    {
+        return Err(RusticolError::selector(format!(
+            "unknown resolved color component id {id:?}"
+        )));
     }
     Ok(())
 }

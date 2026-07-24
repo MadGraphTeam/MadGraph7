@@ -24,10 +24,9 @@ use crate::{RusticolError, RusticolResult};
 use std::ffi::{c_int, c_void};
 use std::ptr;
 
-// Recompile the established generic source formulas in this evaluator module
-// instead of maintaining a second set of physics expressions.
-#[path = "../wavefunctions.rs"]
-mod source_wavefunctions;
+// Reuse the established generic source formulas instead of maintaining a
+// second set of physics expressions.
+use crate::engine::wavefunctions as source_wavefunctions;
 
 const STATUS_INVALID_CONTEXT: c_int = 1;
 const STATUS_INVALID_ARGUMENT: c_int = 2;
@@ -108,14 +107,12 @@ impl DirectSourceTemplateSpec {
                     "direct recurrence Weyl source chirality must be -1 or +1",
                 ));
             }
-            DirectSourceWavefunctionFamily::Vector if !matches!(self.helicity, -1 | 0 | 1) => {
+            DirectSourceWavefunctionFamily::Vector if !matches!(self.helicity, -1..=1) => {
                 return Err(RusticolError::invalid_argument(
                     "direct recurrence vector source helicity must be -1, 0, or +1",
                 ));
             }
-            DirectSourceWavefunctionFamily::Spin2
-                if !matches!(self.helicity, -2 | -1 | 0 | 1 | 2) =>
-            {
+            DirectSourceWavefunctionFamily::Spin2 if !matches!(self.helicity, -2..=2) => {
                 return Err(RusticolError::invalid_argument(
                     "direct recurrence spin-2 source helicity must be between -2 and +2",
                 ));
@@ -791,6 +788,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn invoke(
         executor: &LoadedDirectSourceExecutor,
         rows: &[DirectSourceRow],

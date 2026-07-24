@@ -1288,7 +1288,7 @@ fn parse_direct_template_catalog(
             json_field(template, "payload_binding", &context)?,
             &format!("{context} payload binding"),
         )?;
-        require_json_fields(
+        require_json_fields_with_optional(
             payload,
             &[
                 "abi",
@@ -1315,6 +1315,7 @@ fn parse_direct_template_catalog(
                 "source_application_sha256",
                 "state_plane_indices",
             ],
+            &["native_entry_point"],
             &format!("{context} payload binding"),
         )?;
         require_json_string_value(
@@ -1379,6 +1380,37 @@ fn parse_direct_template_catalog(
             "prepared_kernel_id",
             &format!("{context} prepared-kernel ID"),
         )?;
+        let native_entry_point = match payload.get("native_entry_point") {
+            None | Some(JsonValue::Null) => None,
+            Some(JsonValue::String(value)) if !value.is_empty() => Some(value.as_str()),
+            Some(_) => {
+                return Err(invalid(format!(
+                    "{context} native entry point must be a nonempty string or null"
+                )));
+            }
+        };
+        match (payload_kind, backend) {
+            ("prepared-direct-call", "cpp" | "asm") => {
+                let kernel_id = prepared_kernel_id.ok_or_else(|| {
+                    invalid(format!(
+                        "{context} native prepared call has no prepared-kernel ID"
+                    ))
+                })?;
+                let expected =
+                    format!("pyamplicol_recurrence_direct_{role_text}_k{kernel_id:08x}_v1");
+                if native_entry_point != Some(expected.as_str()) {
+                    return Err(invalid(format!(
+                        "{context} native prepared call has a noncanonical entry point"
+                    )));
+                }
+            }
+            _ if native_entry_point.is_some() => {
+                return Err(invalid(format!(
+                    "{context} non-native payload carries a native entry point"
+                )));
+            }
+            _ => {}
+        }
         let intrinsic_contract_digest = json_optional_string(
             payload,
             "intrinsic_contract_digest",
@@ -1556,13 +1588,24 @@ fn require_json_fields(
     expected: &[&str],
     context: &str,
 ) -> RusticolResult<()> {
+    require_json_fields_with_optional(object, expected, &[], context)
+}
+
+fn require_json_fields_with_optional(
+    object: &JsonMap<String, JsonValue>,
+    expected: &[&str],
+    optional: &[&str],
+    context: &str,
+) -> RusticolResult<()> {
     let expected = expected.iter().copied().collect::<BTreeSet<_>>();
+    let optional = optional.iter().copied().collect::<BTreeSet<_>>();
+    let allowed = expected.union(&optional).copied().collect::<BTreeSet<_>>();
     let actual = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
-    if actual == expected {
+    if expected.is_subset(&actual) && actual.is_subset(&allowed) {
         return Ok(());
     }
     let missing = expected.difference(&actual).copied().collect::<Vec<_>>();
-    let unexpected = actual.difference(&expected).copied().collect::<Vec<_>>();
+    let unexpected = actual.difference(&allowed).copied().collect::<Vec<_>>();
     Err(invalid(format!(
         "{context} fields do not match direct-template-v1; missing={missing:?}, unexpected={unexpected:?}"
     )))
@@ -3506,6 +3549,7 @@ mod direct_binding_tests {
                 "input_plane_projections": [],
                 "intrinsic_contract_digest": null,
                 "kind": "rusticol-intrinsic",
+                "native_entry_point": null,
                 "output_alias_inputs": [],
                 "contribution_parent_permutation": [0, 1],
                 "parameter_bindings": [],
