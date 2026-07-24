@@ -14,6 +14,10 @@ mod compiled;
 #[cfg(feature = "f64-compiled")]
 pub(crate) use compiled::*;
 
+#[cfg(feature = "f64-compiled")]
+#[path = "evaluator/native_direct.rs"]
+pub(crate) mod native_direct;
+
 #[cfg(feature = "f64-symjit")]
 #[path = "evaluator/symjit.rs"]
 mod symjit;

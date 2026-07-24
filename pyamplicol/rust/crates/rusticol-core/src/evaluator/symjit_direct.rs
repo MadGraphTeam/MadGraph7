@@ -7,6 +7,7 @@
 //! once at load, hot calls build only pointer descriptors on the stack, and
 //! generated O2 code mutates persistent arena destinations directly.
 
+use super::recurrence_intrinsic_direct::execute_identity_finalization_rows;
 use crate::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectClosureExecutor, DirectContributionExecutor,
     DirectExecutorHandle, DirectFactorView, DirectFinalizationExecutor, DirectMomentumView,
@@ -1033,76 +1034,6 @@ fn resolve_scalar(
         SymjitDirectScalarProjection::Literal(value) => ptr::from_ref(value),
     };
     Some(unsafe { DirectScalar::from_raw(pointer) })
-}
-
-/// One generic identity finalizer for every non-propagating state.
-///
-/// The prepared catalog resolves exactly this one function. Per-state
-/// dimensions are deliberately read from `row.component_count`.
-pub(crate) unsafe extern "C" fn execute_identity_finalization_rows(
-    _context: *const c_void,
-    arena: DirectArenaView,
-    _momenta: DirectMomentumView,
-    _parameters: DirectParameterView,
-    factors: DirectFactorView,
-    rows: *const DirectFinalizationRow,
-    row_count: u32,
-    point_count: u32,
-) -> c_int {
-    if rows.is_null()
-        || row_count == 0
-        || point_count == 0
-        || arena.point_stride == 0
-        || point_count > arena.point_stride
-    {
-        return DIRECT_STATUS_INVALID_ARGUMENT;
-    }
-    if arena.current_re.is_null()
-        || arena.current_im.is_null()
-        || factors.values_re.is_null()
-        || factors.values_im.is_null()
-    {
-        return DIRECT_STATUS_INVALID_ARGUMENT;
-    }
-
-    let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
-    for row in rows {
-        if row.component_count == 0 || row.exact_factor_id >= factors.value_count {
-            return STATUS_BOUNDS;
-        }
-        let factor_re = unsafe { *factors.values_re.add(row.exact_factor_id as usize) };
-        let factor_im = unsafe { *factors.values_im.add(row.exact_factor_id as usize) };
-        for component in 0..u64::from(row.component_count) {
-            let plane = match u64::from(row.component_base).checked_add(component) {
-                Some(value) => value,
-                None => return STATUS_BOUNDS,
-            };
-            let offset = match plane.checked_mul(u64::from(arena.point_stride)) {
-                Some(value) => value,
-                None => return STATUS_BOUNDS,
-            };
-            let end = match offset.checked_add(u64::from(point_count)) {
-                Some(value) => value,
-                None => return STATUS_BOUNDS,
-            };
-            if end > arena.current_scalar_len {
-                return STATUS_BOUNDS;
-            }
-            let Ok(offset) = usize::try_from(offset) else {
-                return STATUS_BOUNDS;
-            };
-            for point in 0..point_count as usize {
-                let index = offset + point;
-                let value_re = unsafe { *arena.current_re.add(index) };
-                let value_im = unsafe { *arena.current_im.add(index) };
-                unsafe {
-                    *arena.current_re.add(index) = factor_re * value_re - factor_im * value_im;
-                    *arena.current_im.add(index) = factor_re * value_im + factor_im * value_re;
-                }
-            }
-        }
-    }
-    DIRECT_STATUS_OK
 }
 
 fn guard_symjit_panic<T>(

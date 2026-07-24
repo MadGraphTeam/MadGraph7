@@ -5,6 +5,7 @@ use super::evaluator::recurrence_closure_direct::execute_closure_reduce_rows;
 use super::evaluator::recurrence_intrinsic_direct::{
     FEYNMAN_VECTOR_PROPAGATOR_TEMPLATE, LoadedRecurrenceIntrinsicDirectExecutor,
     RecurrenceIntrinsicScale, WEYL_PROPAGATOR_NEGATIVE_TEMPLATE, WEYL_PROPAGATOR_POSITIVE_TEMPLATE,
+    execute_identity_finalization_rows,
 };
 use super::evaluator::recurrence_source_direct::{
     DirectSourceDispatchDomainSpec, LoadedDirectSourceExecutor,
@@ -12,7 +13,6 @@ use super::evaluator::recurrence_source_direct::{
 #[cfg(feature = "f64-symjit")]
 use super::evaluator::symjit_direct::{
     LoadedSymjitDirectExecutor, SymjitDirectPlaneProjection, SymjitDirectScalarProjection,
-    execute_identity_finalization_rows,
 };
 use crate::artifact::EvaluatorPayloadStore;
 use crate::recurrence::direct_backend::{
@@ -22,24 +22,21 @@ use crate::recurrence::{DirectExecutorRole, DirectRecurrencePlan, SemanticDigest
 use crate::{RusticolError, RusticolResult, VerifiedArtifact};
 #[cfg(feature = "f64-symjit")]
 use sha2::{Digest, Sha256};
-#[cfg(feature = "f64-symjit")]
-use std::ffi::c_void;
 use std::path::Path;
 #[cfg(feature = "f64-symjit")]
 use std::path::PathBuf;
-#[cfg(feature = "f64-symjit")]
-use std::ptr;
 #[cfg(feature = "f64-symjit")]
 use symjit::{
     DirectApplicationMetadata, DirectDestinationOperation as SymjitDestinationOperation,
     DirectInputBinding,
 };
 
-use super::eager_manifest::RecurrenceDirectTemplateManifest;
 #[cfg(feature = "f64-symjit")]
 use super::eager_manifest::{
     RecurrenceDirectParameterBindingManifest, RecurrenceDirectPlaneProjectionManifest,
-    RecurrenceDirectScalarProjectionManifest,
+};
+use super::eager_manifest::{
+    RecurrenceDirectScalarProjectionManifest, RecurrenceDirectTemplateManifest,
 };
 
 /// Authenticated identity of one loaded Direct-Arena recurrence executor catalog.
@@ -304,19 +301,10 @@ fn load_intrinsic_handle(
             })
         }
         "finalization" if runtime_template == "rusticol.identity-finalize-in-place.v1" => {
-            #[cfg(feature = "f64-symjit")]
-            {
-                Ok(DirectExecutorHandle::Finalization {
-                    call: execute_identity_finalization_rows,
-                    context: ptr::null::<c_void>(),
-                })
-            }
-            #[cfg(not(feature = "f64-symjit"))]
-            {
-                Err(RusticolError::compatibility(
-                    "Direct-Arena identity finalization is unavailable without f64-symjit",
-                ))
-            }
+            Ok(DirectExecutorHandle::Finalization {
+                call: execute_identity_finalization_rows,
+                context: std::ptr::null::<std::ffi::c_void>(),
+            })
         }
         "finalization"
             if matches!(
@@ -331,7 +319,7 @@ fn load_intrinsic_handle(
         "closure" if runtime_template.starts_with("rusticol.closure-reduce.v1:") => {
             Ok(DirectExecutorHandle::Closure {
                 call: execute_closure_reduce_rows,
-                context: std::ptr::null::<c_void>(),
+                context: std::ptr::null::<std::ffi::c_void>(),
             })
         }
         _ => Err(RusticolError::compatibility(format!(

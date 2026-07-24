@@ -233,6 +233,76 @@ impl LoadedRecurrenceIntrinsicDirectExecutor {
     }
 }
 
+/// One generic identity finalizer for every non-propagating state.
+///
+/// The prepared catalog resolves exactly this one function. Per-state
+/// dimensions are deliberately read from `row.component_count`.
+pub(crate) unsafe extern "C" fn execute_identity_finalization_rows(
+    _context: *const c_void,
+    arena: DirectArenaView,
+    _momenta: DirectMomentumView,
+    _parameters: DirectParameterView,
+    factors: DirectFactorView,
+    rows: *const DirectFinalizationRow,
+    row_count: u32,
+    point_count: u32,
+) -> c_int {
+    if rows.is_null()
+        || row_count == 0
+        || point_count == 0
+        || arena.point_stride == 0
+        || point_count > arena.point_stride
+    {
+        return STATUS_INVALID_ARGUMENT;
+    }
+    if arena.current_re.is_null()
+        || arena.current_im.is_null()
+        || factors.values_re.is_null()
+        || factors.values_im.is_null()
+    {
+        return STATUS_INVALID_ARGUMENT;
+    }
+
+    let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
+    for row in rows {
+        if row.component_count == 0 || row.exact_factor_id >= factors.value_count {
+            return STATUS_BOUNDS;
+        }
+        let factor_re = unsafe { *factors.values_re.add(row.exact_factor_id as usize) };
+        let factor_im = unsafe { *factors.values_im.add(row.exact_factor_id as usize) };
+        for component in 0..u64::from(row.component_count) {
+            let plane = match u64::from(row.component_base).checked_add(component) {
+                Some(value) => value,
+                None => return STATUS_BOUNDS,
+            };
+            let offset = match plane.checked_mul(u64::from(arena.point_stride)) {
+                Some(value) => value,
+                None => return STATUS_BOUNDS,
+            };
+            let end = match offset.checked_add(u64::from(point_count)) {
+                Some(value) => value,
+                None => return STATUS_BOUNDS,
+            };
+            if end > arena.current_scalar_len {
+                return STATUS_BOUNDS;
+            }
+            let Ok(offset) = usize::try_from(offset) else {
+                return STATUS_BOUNDS;
+            };
+            for point in 0..point_count as usize {
+                let index = offset + point;
+                let value_re = unsafe { *arena.current_re.add(index) };
+                let value_im = unsafe { *arena.current_im.add(index) };
+                unsafe {
+                    *arena.current_re.add(index) = factor_re * value_re - factor_im * value_im;
+                    *arena.current_im.add(index) = factor_re * value_im + factor_im * value_re;
+                }
+            }
+        }
+    }
+    DIRECT_STATUS_OK
+}
+
 #[derive(Clone, Copy)]
 struct ComplexValue {
     re: f64,
@@ -2129,6 +2199,72 @@ mod tests {
                 "rusticol.recurrence.contribution.unknown.v1"
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn identity_finalization_is_backend_neutral_and_bounds_checked() {
+        let stride = 3usize;
+        let point_count = 2usize;
+        let mut current_re = vec![1.0, 2.0, 99.0, 3.0, 4.0, 88.0];
+        let mut current_im = vec![5.0, 6.0, 77.0, 7.0, 8.0, 66.0];
+        let factors_re = [2.0];
+        let factors_im = [-1.0];
+        let (arena, momenta, parameters, factors) = views(
+            &mut current_re,
+            &mut current_im,
+            stride as u32,
+            &[],
+            &[],
+            &factors_re,
+            &factors_im,
+        );
+        let row = DirectFinalizationRow {
+            component_base: 0,
+            component_count: 2,
+            momentum_form_id: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+
+        assert_eq!(
+            unsafe {
+                execute_identity_finalization_rows(
+                    ptr::null(),
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    ptr::from_ref(&row),
+                    1,
+                    point_count as u32,
+                )
+            },
+            DIRECT_STATUS_OK
+        );
+        assert_eq!(current_re, vec![7.0, 10.0, 99.0, 13.0, 16.0, 88.0]);
+        assert_eq!(current_im, vec![9.0, 10.0, 77.0, 11.0, 12.0, 66.0]);
+
+        let out_of_bounds = DirectFinalizationRow {
+            component_base: 1,
+            component_count: 2,
+            ..row
+        };
+        assert_eq!(
+            unsafe {
+                execute_identity_finalization_rows(
+                    ptr::null(),
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    ptr::from_ref(&out_of_bounds),
+                    1,
+                    point_count as u32,
+                )
+            },
+            STATUS_BOUNDS
         );
     }
 
