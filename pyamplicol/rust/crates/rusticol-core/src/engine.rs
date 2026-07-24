@@ -1621,6 +1621,18 @@ enum EvaluatorManifest {
     },
 }
 
+/// One leaf in the canonical evaluator preorder used by loading, selector
+/// coverage, and Direct-Arena lowering.
+///
+/// Keeping the composed root-input map and output range together prevents
+/// independently implemented flattening walks from silently assigning
+/// selector chunk indices to different leaves.
+struct EvaluatorLeafLayout<'a> {
+    evaluator: &'a EvaluatorManifest,
+    input_indices: Vec<usize>,
+    output_range: std::ops::Range<usize>,
+}
+
 impl EvaluatorManifest {
     fn io_len(&self) -> RusticolResult<(usize, usize)> {
         match self {
@@ -1702,11 +1714,12 @@ impl EvaluatorManifest {
         }
     }
 
-    fn leaf_input_indices(&self) -> RusticolResult<Vec<Vec<usize>>> {
-        fn append_leaf_inputs(
-            evaluator: &EvaluatorManifest,
+    fn leaf_layout(&self) -> RusticolResult<Vec<EvaluatorLeafLayout<'_>>> {
+        fn append_leaf_layouts<'a>(
+            evaluator: &'a EvaluatorManifest,
             parent_inputs: &[usize],
-            leaf_inputs: &mut Vec<Vec<usize>>,
+            output_cursor: &mut usize,
+            leaves: &mut Vec<EvaluatorLeafLayout<'a>>,
         ) -> RusticolResult<()> {
             match evaluator {
                 EvaluatorManifest::Chunked {
@@ -1736,34 +1749,53 @@ impl EvaluatorManifest {
                                         })
                                     })
                                     .collect::<RusticolResult<Vec<_>>>()?;
-                                append_leaf_inputs(chunk, &mapped, leaf_inputs)?;
+                                append_leaf_layouts(chunk, &mapped, output_cursor, leaves)?;
                             }
                         }
                         None => {
                             for chunk in chunks {
-                                append_leaf_inputs(chunk, parent_inputs, leaf_inputs)?;
+                                append_leaf_layouts(chunk, parent_inputs, output_cursor, leaves)?;
                             }
                         }
                     }
                 }
                 _ => {
-                    let input_len = evaluator.io_len()?.0;
+                    let (input_len, output_len) = evaluator.io_len()?;
                     if input_len != parent_inputs.len() {
                         return Err(RusticolError::artifact(
                             "evaluator leaf input mapping has an inconsistent length",
                         ));
                     }
-                    leaf_inputs.push(parent_inputs.to_vec());
+                    if output_len == 0 {
+                        return Err(RusticolError::artifact(
+                            "evaluator leaf has an empty output range",
+                        ));
+                    }
+                    let output_stop = output_cursor.checked_add(output_len).ok_or_else(|| {
+                        RusticolError::artifact("evaluator leaf output range overflows usize")
+                    })?;
+                    leaves.push(EvaluatorLeafLayout {
+                        evaluator,
+                        input_indices: parent_inputs.to_vec(),
+                        output_range: *output_cursor..output_stop,
+                    });
+                    *output_cursor = output_stop;
                 }
             }
             Ok(())
         }
 
-        let root_input_len = self.io_len()?.0;
+        let (root_input_len, root_output_len) = self.io_len()?;
         let root_inputs = (0..root_input_len).collect::<Vec<_>>();
-        let mut leaf_inputs = Vec::new();
-        append_leaf_inputs(self, &root_inputs, &mut leaf_inputs)?;
-        Ok(leaf_inputs)
+        let mut output_cursor = 0;
+        let mut leaves = Vec::new();
+        append_leaf_layouts(self, &root_inputs, &mut output_cursor, &mut leaves)?;
+        if output_cursor != root_output_len {
+            return Err(RusticolError::artifact(
+                "evaluator leaf output ranges do not cover the root output",
+            ));
+        }
+        Ok(leaves)
     }
 }
 
@@ -3299,6 +3331,30 @@ enum NativeExecutionLane {
     Eager(Box<EagerNativeRuntime>),
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     Recurrence(Box<RecurrenceNativeRuntime>),
+}
+
+impl NativeExecutionLane {
+    const fn is_eager(&self) -> bool {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            matches!(self, Self::Eager(_))
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            false
+        }
+    }
+
+    const fn is_recurrence(&self) -> bool {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            matches!(self, Self::Recurrence(_))
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            false
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

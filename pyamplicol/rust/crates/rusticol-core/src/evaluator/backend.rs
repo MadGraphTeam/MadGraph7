@@ -15,16 +15,30 @@ impl EvaluatorGroup {
     ) -> RusticolResult<Self> {
         ensure_evaluator_capabilities_supported(manifest)?;
         let (input_len, _) = manifest.io_len()?;
+        let leaf_layout = manifest.leaf_layout()?;
         let mut evaluators = Vec::new();
         let mut input_mappings = Vec::new();
-        flatten_evaluators_with_mappings(
-            manifest,
-            payloads,
-            None,
-            input_len,
-            &mut evaluators,
-            &mut input_mappings,
-        )?;
+        for leaf in &leaf_layout {
+            let before = evaluators.len();
+            flatten_evaluators_from_store(leaf.evaluator, payloads, &mut evaluators)?;
+            if evaluators.len() != before + 1 {
+                return Err(RusticolError::integrity(
+                    "canonical evaluator leaf layout did not load exactly one evaluator",
+                ));
+            }
+            let mapping = if leaf.input_indices.len() == input_len
+                && leaf
+                    .input_indices
+                    .iter()
+                    .enumerate()
+                    .all(|(expected, index)| expected == *index)
+            {
+                None
+            } else {
+                Some(leaf.input_indices.clone())
+            };
+            input_mappings.push(mapping);
+        }
         let input_mapping_spans = input_mappings
             .iter()
             .map(|mapping| {
@@ -34,7 +48,7 @@ impl EvaluatorGroup {
                     .unwrap_or_default()
             })
             .collect();
-        let output_len = evaluators.iter().map(|e| e.output_len).sum();
+        let output_len = leaf_layout.last().map_or(0, |leaf| leaf.output_range.end);
         Ok(Self {
             evaluators,
             input_len,
@@ -2097,104 +2111,6 @@ impl LoadedEvaluator {
                     .map_err(RusticolError::evaluation)
             }
         }
-    }
-}
-
-fn flatten_evaluators_with_mappings(
-    manifest: &EvaluatorManifest,
-    payloads: &EvaluatorPayloadStore,
-    inherited_mapping: Option<&[usize]>,
-    root_input_len: usize,
-    output: &mut Vec<LoadedEvaluator>,
-    input_mappings: &mut Vec<Option<Vec<usize>>>,
-) -> RusticolResult<()> {
-    if let EvaluatorManifest::Chunked {
-        input_len,
-        chunk_input_indices,
-        chunks,
-        ..
-    } = manifest
-    {
-        manifest.io_len()?;
-        match (input_len, chunk_input_indices) {
-            (None, None) => {
-                for chunk in chunks {
-                    flatten_evaluators_with_mappings(
-                        chunk,
-                        payloads,
-                        inherited_mapping,
-                        root_input_len,
-                        output,
-                        input_mappings,
-                    )?;
-                }
-            }
-            (Some(_), Some(chunk_indices)) => {
-                for (chunk, indices) in chunks.iter().zip(chunk_indices) {
-                    let composed =
-                        compose_input_mapping(inherited_mapping, indices, root_input_len);
-                    flatten_evaluators_with_mappings(
-                        chunk,
-                        payloads,
-                        composed.as_deref(),
-                        root_input_len,
-                        output,
-                        input_mappings,
-                    )?;
-                }
-            }
-            _ => unreachable!("chunk input metadata was validated above"),
-        }
-        return Ok(());
-    }
-
-    let (leaf_input_len, _) = manifest.io_len()?;
-    let mapping = inherited_mapping.map(ToOwned::to_owned);
-    if let Some(indices) = mapping.as_ref()
-        && indices.len() != leaf_input_len
-    {
-        return Err(RusticolError::artifact(
-            "flattened evaluator input map does not match leaf input length",
-        ));
-    }
-    let normalized = mapping.and_then(|indices| {
-        if indices.len() == root_input_len
-            && indices
-                .iter()
-                .enumerate()
-                .all(|(expected, index)| expected == *index)
-        {
-            None
-        } else {
-            Some(indices)
-        }
-    });
-    flatten_evaluators_from_store(manifest, payloads, output)?;
-    input_mappings.push(normalized);
-    Ok(())
-}
-
-fn compose_input_mapping(
-    inherited_mapping: Option<&[usize]>,
-    child_indices: &[usize],
-    root_input_len: usize,
-) -> Option<Vec<usize>> {
-    let composed = match inherited_mapping {
-        Some(parent_indices) => child_indices
-            .iter()
-            .map(|index| parent_indices[*index])
-            .collect::<Vec<_>>(),
-        None => child_indices.to_vec(),
-    };
-    if composed.len() == root_input_len
-        && composed
-            .iter()
-            .enumerate()
-            .all(|(expected, index)| expected == *index)
-    {
-        None
-    } else {
-        Some(composed)
     }
 }
 

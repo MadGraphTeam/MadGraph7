@@ -17,7 +17,7 @@ use std::path::Path;
 use std::ptr;
 
 use symjit::{
-    Application, Config, DIRECT_APPLICATION_STORAGE_ABI, DIRECT_NO_ALIAS, DIRECT_STATUS_OK, Defuns,
+    Config, DIRECT_APPLICATION_STORAGE_ABI, DIRECT_NO_ALIAS, DIRECT_STATUS_OK, Defuns,
     DirectApplication, DirectApplicationMetadata, DirectCallable, DirectDestinationOperation,
     DirectInputBinding, DirectOutputScale, DirectPlane, DirectScalar, Storage,
 };
@@ -87,7 +87,6 @@ pub(crate) struct BoundSymjitCompiledDirectStage {
     planes: Box<[DirectPlane]>,
     scalars: Box<[DirectScalar]>,
     _literal_values: Box<[f64]>,
-    _zero_plane: AlignedF64Buffer,
     point_stride: u32,
     simd_lane_width: usize,
     display_path: Box<Path>,
@@ -118,56 +117,7 @@ impl LoadedSymjitCompiledDirectStage {
                  expected {SYMJIT_APPLICATION_STORAGE_ABI:?}"
             )));
         }
-
-        let mut loader_config = Config::default();
-        loader_config.set_defuns(Defuns::new());
-        let mut input = bytes;
-        let application = guard_symjit_panic(
-            || Application::load(&mut input, &loader_config),
-            display_path,
-            "load source",
-        )?
-        .map_err(|error| {
-            RusticolError::compatibility(format!(
-                "could not load compiled source application {}: {error}",
-                display_path.display()
-            ))
-        })?;
-        if !input.is_empty() {
-            return Err(RusticolError::integrity(format!(
-                "compiled source application {} has {} trailing bytes",
-                display_path.display(),
-                input.len()
-            )));
-        }
-        if application.count_states != 0
-            || application.count_diffs != 0
-            || application.count_params != source_input_bindings.len()
-            || application.count_obs != output_bindings.len()
-        {
-            return Err(RusticolError::integrity(format!(
-                "compiled source application {} has counts states={}, params={}, outputs={}, \
-                 diffs={}; expected 0, {}, {}, 0",
-                display_path.display(),
-                application.count_states,
-                application.count_params,
-                application.count_obs,
-                application.count_diffs,
-                source_input_bindings.len(),
-                output_bindings.len()
-            )));
-        }
-        if application.config.opt_level() != 3
-            || !application.config.is_complex()
-            || !application.config.symbolica()
-            || application.config.direct()
-        {
-            return Err(RusticolError::compatibility(format!(
-                "compiled source application {} is not an indirect complex Symbolica O3 \
-                 application",
-                display_path.display()
-            )));
-        }
+        validate_static_bindings(&input_bindings, &output_bindings)?;
 
         let direct_inputs = source_input_bindings
             .into_iter()
@@ -201,23 +151,30 @@ impl LoadedSymjitCompiledDirectStage {
                 display_path.display()
             ))
         })?;
-        let direct = DirectApplication::new(application, direct_metadata).map_err(|error| {
+        let mut loader_config = Config::default();
+        loader_config.set_defuns(Defuns::new());
+        let mut input = bytes;
+        let direct = guard_symjit_panic(
+            || DirectApplication::from_source_storage(&mut input, &loader_config, direct_metadata),
+            display_path,
+            "lower source for",
+        )?
+        .map_err(|error| {
             RusticolError::compatibility(format!(
                 "could not lower compiled source application {} to DirectApplication: {error}",
                 display_path.display()
             ))
         })?;
-        let mut direct_bytes = Vec::new();
-        direct.save(&mut direct_bytes).map_err(|error| {
-            RusticolError::internal(format!(
-                "could not serialize lowered compiled Direct-Arena application {}: {error}",
-                display_path.display()
-            ))
-        })?;
-        Self::load_bytes(
-            &direct_bytes,
+        if !input.is_empty() {
+            return Err(RusticolError::integrity(format!(
+                "compiled source application {} has {} trailing bytes",
+                display_path.display(),
+                input.len()
+            )));
+        }
+        Self::finish_application(
+            direct,
             display_path,
-            DIRECT_APPLICATION_STORAGE_ABI,
             input_bindings,
             scalar_bindings,
             output_bindings,
@@ -246,7 +203,7 @@ impl LoadedSymjitCompiledDirectStage {
         let mut loader_config = Config::default();
         loader_config.set_defuns(Defuns::new());
         let mut input = bytes;
-        let mut application = guard_symjit_panic(
+        let application = guard_symjit_panic(
             || DirectApplication::load(&mut input, &loader_config),
             &display_path,
             "load",
@@ -265,6 +222,22 @@ impl LoadedSymjitCompiledDirectStage {
             )));
         }
 
+        Self::finish_application(
+            application,
+            &display_path,
+            input_bindings,
+            scalar_bindings,
+            output_bindings,
+        )
+    }
+
+    fn finish_application(
+        mut application: DirectApplication,
+        display_path: &Path,
+        input_bindings: Vec<CompiledDirectPlaneBinding>,
+        scalar_bindings: Vec<CompiledDirectScalarBinding>,
+        output_bindings: Vec<CompiledDirectOutputBinding>,
+    ) -> RusticolResult<Self> {
         let metadata = application.metadata();
         if metadata.destination_operation != DirectDestinationOperation::Initialize
             || metadata.output_scale != DirectOutputScale::Identity
@@ -323,7 +296,7 @@ impl LoadedSymjitCompiledDirectStage {
             input_bindings: input_bindings.into_boxed_slice(),
             scalar_bindings: scalar_bindings.into_boxed_slice(),
             output_bindings: output_bindings.into_boxed_slice(),
-            display_path,
+            display_path: display_path.into(),
         })
     }
 
@@ -331,11 +304,12 @@ impl LoadedSymjitCompiledDirectStage {
     ///
     /// # Safety
     ///
-    /// All allocations referenced by `arena`, `momenta`, and `parameters` must
-    /// remain alive and retain their address and declared length until the
-    /// returned bound stage is dropped. While `evaluate` is running, no other
-    /// code may read or mutate the arena, and no code may mutate momentum or
-    /// parameter storage. The owning runtime must enforce those exclusivity and
+    /// All allocations referenced by `arena`, `momenta`, `parameters`, and
+    /// `zero_plane` must remain alive and retain their address and declared
+    /// length until the returned bound stage is dropped. The shared zero plane
+    /// must remain immutable. While `evaluate` is running, no other code may
+    /// read or mutate the arena, and no code may mutate momentum or parameter
+    /// storage. The owning runtime must enforce those exclusivity and
     /// immutability requirements even when the backing allocations are shared
     /// through another synchronized owner.
     pub(crate) unsafe fn bind(
@@ -343,6 +317,7 @@ impl LoadedSymjitCompiledDirectStage {
         arena: DirectArenaView,
         momenta: DirectMomentumView,
         parameters: DirectParameterView,
+        zero_plane: &AlignedF64Buffer,
     ) -> RusticolResult<BoundSymjitCompiledDirectStage> {
         validate_direct_views(
             arena,
@@ -356,7 +331,17 @@ impl LoadedSymjitCompiledDirectStage {
         )?;
 
         let point_stride = arena.point_stride;
-        let zero_plane = AlignedF64Buffer::zeroed(point_stride as usize, "compiled zero plane")?;
+        if zero_plane.len() != point_stride as usize {
+            return Err(RusticolError::integrity(format!(
+                "compiled shared zero plane has length {}, expected {point_stride}",
+                zero_plane.len()
+            )));
+        }
+        if zero_plane.as_slice().iter().any(|value| *value != 0.0) {
+            return Err(RusticolError::integrity(
+                "compiled shared zero plane contains a nonzero value",
+            ));
+        }
         let mut literal_values = Vec::new();
         literal_values
             .try_reserve_exact(self.scalar_bindings.len())
@@ -389,7 +374,7 @@ impl LoadedSymjitCompiledDirectStage {
                 ))
             })?;
         for binding in self.input_bindings.iter().copied() {
-            planes.push(resolve_input_plane(binding, arena, momenta, &zero_plane)?);
+            planes.push(resolve_input_plane(binding, arena, momenta, zero_plane)?);
         }
         for binding in self.output_bindings.iter().copied() {
             planes.push(resolve_arena_plane(binding.0, arena)?);
@@ -432,7 +417,6 @@ impl LoadedSymjitCompiledDirectStage {
             planes: planes.into_boxed_slice(),
             scalars: scalars.into_boxed_slice(),
             _literal_values: literal_values,
-            _zero_plane: zero_plane,
             point_stride,
             simd_lane_width: self.simd_lane_width,
             display_path: self.display_path,
@@ -834,12 +818,14 @@ mod tests {
         let stride = workspace.point_stride() as usize;
         fill_compiled_inputs(&mut workspace, 129);
         let momenta = AlignedF64Buffer::zeroed(4 * stride, "compiled test momenta").unwrap();
+        let zero_plane = AlignedF64Buffer::zeroed(stride, "compiled shared zero").unwrap();
         let arena = workspace.view().unwrap();
         let bound = unsafe {
             loaded.bind(
                 arena,
                 momentum_view(&momenta, arena.point_stride),
                 empty_parameters(),
+                &zero_plane,
             )
         }
         .unwrap();
@@ -924,12 +910,14 @@ mod tests {
         fill_compiled_inputs(&mut workspace, POINT_COUNT);
         let stride = workspace.point_stride() as usize;
         let momenta = AlignedF64Buffer::zeroed(4 * stride, "compiled benchmark momenta").unwrap();
+        let zero_plane = AlignedF64Buffer::zeroed(stride, "compiled shared zero").unwrap();
         let arena = workspace.view().unwrap();
         let bound = unsafe {
             loaded.bind(
                 arena,
                 momentum_view(&momenta, arena.point_stride),
                 empty_parameters(),
+                &zero_plane,
             )
         }
         .unwrap();
@@ -1066,9 +1054,17 @@ mod tests {
             values_im: parameter_im.as_ptr(),
             value_count: 1,
         };
+        let zero_plane = AlignedF64Buffer::zeroed(stride as usize, "compiled shared zero").unwrap();
         let arena = workspace.view().unwrap();
-        let bound =
-            unsafe { loaded.bind(arena, momentum_view(&momenta, stride), parameters) }.unwrap();
+        let bound = unsafe {
+            loaded.bind(
+                arena,
+                momentum_view(&momenta, stride),
+                parameters,
+                &zero_plane,
+            )
+        }
+        .unwrap();
         bound.evaluate(0, 9).unwrap();
         let (current_re, current_im) = workspace.current_slices();
         assert!(
@@ -1159,9 +1155,15 @@ mod tests {
         let stride = workspace.point_stride();
         let momenta =
             AlignedF64Buffer::zeroed(4 * stride as usize, "compiled bounds momenta").unwrap();
+        let zero_plane = AlignedF64Buffer::zeroed(stride as usize, "compiled shared zero").unwrap();
         let arena = workspace.view().unwrap();
         let error = match unsafe {
-            loaded.bind(arena, momentum_view(&momenta, stride), empty_parameters())
+            loaded.bind(
+                arena,
+                momentum_view(&momenta, stride),
+                empty_parameters(),
+                &zero_plane,
+            )
         } {
             Ok(_) => panic!("out-of-bounds momentum binding unexpectedly succeeded"),
             Err(error) => error,

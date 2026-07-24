@@ -1690,8 +1690,7 @@ fn legacy_color_contraction_totals(
                     group
                         .indices
                         .iter()
-                        .map(|index| row[*index])
-                        .sum::<Complex<f64>>()
+                        .fold(Complex::new(0.0, 0.0), |total, index| total + row[*index])
                 })
                 .collect::<Vec<_>>();
             entries.iter().fold(0.0, |total, entry| {

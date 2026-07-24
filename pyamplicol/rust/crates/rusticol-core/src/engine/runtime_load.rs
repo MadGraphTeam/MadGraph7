@@ -523,11 +523,11 @@ fn compiled_input_current_ids_by_chunk(
 
     stage
         .evaluator
-        .leaf_input_indices()?
+        .leaf_layout()?
         .into_iter()
-        .map(|input_indices| {
+        .map(|leaf| {
             let mut current_ids = BTreeSet::new();
-            for parameter_index in input_indices {
+            for parameter_index in leaf.input_indices {
                 let component = components_by_parameter
                     .get(parameter_index)
                     .and_then(|component| *component)
@@ -835,7 +835,7 @@ fn validate_compiled_selector_schedule_closure(
     Ok(())
 }
 
-fn build_compiled_color_execution_plan(
+pub(super) fn build_compiled_color_execution_plan(
     evaluators: &GenericStageEvaluatorArtifactsManifest,
     schema: &ExecutionPlan,
     replay_materialized_sector_ids: &BTreeSet<i64>,
@@ -986,45 +986,12 @@ fn compiled_color_domains_by_chunk(
 fn evaluator_output_chunk_ranges(
     evaluator: &EvaluatorManifest,
 ) -> RusticolResult<Vec<(usize, usize)>> {
-    fn append_ranges(
-        evaluator: &EvaluatorManifest,
-        offset: &mut usize,
-        ranges: &mut Vec<(usize, usize)>,
-    ) -> RusticolResult<()> {
-        match evaluator {
-            EvaluatorManifest::Chunked { chunks, .. } => {
-                if chunks.is_empty() {
-                    return Err(RusticolError::artifact(
-                        "helicity recurrence evaluator has an empty chunk list",
-                    ));
-                }
-                for chunk in chunks {
-                    append_ranges(chunk, offset, ranges)?;
-                }
-            }
-            _ => {
-                let output_len = evaluator.io_len()?.1;
-                if output_len == 0 {
-                    return Err(RusticolError::artifact(
-                        "helicity recurrence evaluator has an empty output chunk",
-                    ));
-                }
-                let stop = offset.checked_add(output_len).ok_or_else(|| {
-                    RusticolError::artifact(
-                        "helicity recurrence evaluator output range overflows usize",
-                    )
-                })?;
-                ranges.push((*offset, stop));
-                *offset = stop;
-            }
-        }
-        Ok(())
-    }
-
-    let mut ranges = Vec::new();
-    let mut offset = 0;
-    append_ranges(evaluator, &mut offset, &mut ranges)?;
-    Ok(ranges)
+    evaluator.leaf_layout().map(|layout| {
+        layout
+            .into_iter()
+            .map(|leaf| (leaf.output_range.start, leaf.output_range.end))
+            .collect()
+    })
 }
 
 fn validate_evaluator_output_ranges(
