@@ -14,15 +14,12 @@ generated LC layouts:
 The prepared-model build is amortized and excluded from process-generation
 timings. Both prepared bundles use portable SymJIT optimization level 2.
 
-The measurements below were refreshed from the Direct-Arena source-freeze
-working tree based on
-`24519b286c8c130d732b94a8ea7023389f434e08`. The benchmark extension had
-fingerprint
-`f60f7d37548971dfbc408cba2e393072a937edc8b234c186933cbc9b12ed87b8`.
+The measurements below were refreshed from exact committed checkpoint
+`585456ed1726c43eef3ce35c7a126c17730e8a0d`. The loaded release extension
+and source tree had the same native-input digest,
+`a0d05eafc7236a44bc22de1a68c0f1f3839166e99668be4c60551f75a2399ec0`.
 All substantial generation and profiling commands ran under the 30 GiB
-watchdog. The subsequent fail-closed replay-validation patch changes neither
-valid schedules nor the runtime loop and passed the complete focused
-prepared/native suite.
+watchdog.
 
 ## Runtime Results
 
@@ -33,15 +30,15 @@ batch and repetition contract.
 | Model or reference | Layout/workload | Batch | Wall (us/pt) | Recurrence schedule (us/pt) | Relative to AmpliCol |
 |---|---|---:|---:|---:|---:|
 | Original AmpliCol | mode 1, selected flow/helicity sum | 100,000 points | 39.401 total | 38.945 amplitude | 1.000 |
-| Built-in SM recurrence | topology replay | 128 | 36.733 | 35.877 | 0.932 |
-| Built-in SM recurrence | topology replay | 1024 | 36.870 | 36.489 | 0.936 |
-| UFO-SM recurrence | topology replay | 128 | 38.613 | 37.826 | 0.980 |
-| UFO-SM recurrence | topology replay | 1024 | 38.699 | 37.809 | 0.982 |
+| Built-in SM recurrence | topology replay | 128 | 37.690 | 36.839 | 0.957 |
+| Built-in SM recurrence | topology replay | 1024 | 37.398 | 36.538 | 0.949 |
+| UFO-SM recurrence | topology replay | 128 | 37.986 | 37.568 | 0.964 |
+| UFO-SM recurrence | topology replay | 1024 | 37.879 | 37.041 | 0.961 |
 | Original AmpliCol | dynamic mode 2, all flows/single helicity | direct probe | 312.385 total | 306.148 amplitude | 1.000 |
-| Built-in SM recurrence | all-flow union | 128 | 312.176 | 310.545 | 0.999 |
-| Built-in SM recurrence | all-flow union | 1024 | 312.681 | 309.635 | 1.001 |
-| UFO-SM recurrence | all-flow union | 128 | 341.096 | 338.885 | 1.092 |
-| UFO-SM recurrence | all-flow union | 1024 | 341.664 | 340.617 | 1.094 |
+| Built-in SM recurrence | all-flow union | 128 | 335.793 | 331.977 | 1.075 |
+| Built-in SM recurrence | all-flow union | 1024 | 325.772 | 319.992 | 1.043 |
+| UFO-SM recurrence | all-flow union | 128 | 365.471 | 365.922 | 1.170 |
+| UFO-SM recurrence | all-flow union | 1024 | 365.043 | 355.412 | 1.169 |
 
 Both model implementations pass the `1.20x` runtime gate for both layouts.
 Prepared contribution bindings now carry an authenticated parent permutation,
@@ -67,10 +64,10 @@ ten-sample post-build validation used by this developer harness.
 
 | Model | Layout | Construction (s) | Phase total (s) | Outer wall (s) | Peak RSS (GiB) | Artifact (MiB) |
 |---|---|---:|---:|---:|---:|---:|
-| Built-in SM | topology replay | 2.346 | 3.608 | 6.685 | 0.372 | 9.75 |
-| UFO-SM | topology replay | 2.779 | 4.599 | 8.802 | 0.404 | 17.35 |
-| Built-in SM | all-flow union | 7.283 | 8.537 | 25.928 | 0.502 | 10.27 |
-| UFO-SM | all-flow union | 8.830 | 10.647 | 30.542 | 0.608 | 17.87 |
+| Built-in SM | topology replay | 1.492 | 2.810 | 6.051 | 0.360 | 9.76 |
+| UFO-SM | topology replay | 1.664 | 3.396 | 7.634 | 0.412 | 17.35 |
+| Built-in SM | all-flow union | 3.412 | 4.692 | 25.246 | 0.369 | 10.22 |
+| UFO-SM | all-flow union | 3.643 | 5.373 | 24.765 | 0.408 | 17.82 |
 
 The preserved same-host AmpliCol mode-1 measurement required approximately
 `3.047 s` for process-specific recurrence emission and library compilation
@@ -163,18 +160,27 @@ stage-complete proofs remove the noncanonical orientation.
 | Built-in/UFO structural and component parity | PASS |
 | No `GenericDAG` or process-specific evaluator compilation | PASS |
 | Direct-Arena zero packing/scatter contract | PASS |
-| Independent architecture-audit closure | PENDING |
+| Independent architecture-audit closure | PASS |
 | Focused Python/Rust/native-allocation suite | PASS |
 | C++/ASM Direct-Arena backend parity | PASS |
 
-The runtime and structural measurements above remain valid, but the stricter
-architecture review requires closure reconstruction completeness to be bound
-to the executed Rust closure rows before this gate can pass. Fresh exact-source
-built-in/UFO-SM
-`Z+2g` checks also exercise the same direct-arena callable contract for JIT,
-C++, and ASM in both LC layouts. Across all 96 resolved components, the worst
-C++/ASM-to-JIT difference is `2.03e-20` absolute and `1.77e-13` relative.
-Repeating the comparison after setting the Z mass to `100` gives the same
-bound, and warmed native lifetime/allocation tests report zero allocations.
-The C++ and ASM checks establish backend parity without claiming a separate
-`Z+6g` performance result for those scalar backends.
+The exact-checkpoint acceptance includes 251 focused Python unit tests, 22
+public recurrence integration tests, 202 Rust recurrence tests, and the guarded
+`p p > j j j j` process-set test. The latter produces 11 bindings backed by
+8 schedules and 3 exact aliases. Genuine topology-replay and all-flow-union
+`Z+6g` artifacts perform zero heap allocations over repeated warmed native
+`evaluate_f64_into` calls.
+
+The independent post-implementation audit accepted checkpoint
+`585456ed1726c43eef3ce35c7a126c17730e8a0d`. It found no remaining LC
+correctness, architecture, performance, or allocation blocker. The missing
+native ordered-forest inspector is recorded as observability debt; production
+state identity preserves those ordered forests exactly.
+
+Fresh built-in/UFO-SM `Z+2g` checks also exercise the same Direct-Arena
+callable contract for JIT, C++, and ASM in both LC layouts. Across all 96
+resolved components, the worst C++/ASM-to-JIT difference is `2.03e-20`
+absolute and `1.77e-13` relative. Repeating the comparison after setting the
+Z mass to `100` gives the same bound. The C++ and ASM checks establish backend
+parity without claiming a separate `Z+6g` performance result for those scalar
+backends.

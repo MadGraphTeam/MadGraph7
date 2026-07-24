@@ -178,7 +178,7 @@ allocations.
       packet packing or edge-wise evaluator dispatch.
 - [x] Built-in and equivalent UFO physics produce matching state,
       contribution, and closure topology after explicit model-state mapping.
-- [ ] A fresh independent reviewer has checked the implementation against this
+- [x] A fresh independent reviewer has checked the implementation against this
       audit after the builder and runtime exist.
 
 ## Source-Freeze Audit Checklist And Results
@@ -190,10 +190,10 @@ Direct-Arena v2; the packetized v1 runtime has been removed.
 
 Audit date: 2026-07-24
 
-Source freeze status: **candidate ready for the final independent re-audit**.
-The implementation blockers identified by the original audit are closed.
-Approval remains withheld until the exact committed source is rebuilt,
-remeasured, and independently reviewed.
+Source freeze status: **accepted for LC recurrence** at checkpoint
+`585456ed1726c43eef3ce35c7a126c17730e8a0d`. The implementation blockers
+identified by the original audit are closed. The exact committed source was
+rebuilt, remeasured, and independently reviewed.
 
 ### Proven In Current Sources
 
@@ -231,10 +231,16 @@ acceptance evidence.
 
 ### Remaining Source-Freeze Gates
 
-- [ ] Rebuild from the exact committed checkpoint and repeat the LC correctness,
+- [x] Rebuild from the exact committed checkpoint and repeat the LC correctness,
       allocation, process-set, and qq_Z6g performance evidence.
-- [ ] A fresh independent reviewer rechecks the completed builder, both
+- [x] A fresh independent reviewer rechecks the completed builder, both
       layouts, process-set sharing, and runtime against this audit.
+
+The final independent review found no LC correctness, architecture,
+performance, or allocation blocker. It classified the missing bounded native
+ordered-forest inspector as nonblocking observability debt because ordered
+components, active ports, and dynamic color-state IDs remain part of production
+current identity.
 
 The closure-rooted builder no longer constructs the historical ten-times-larger
 forward candidate graph. It streams demanded states backward from physical
