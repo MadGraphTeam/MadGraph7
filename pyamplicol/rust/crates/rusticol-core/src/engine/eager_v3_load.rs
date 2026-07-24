@@ -852,7 +852,7 @@ impl NativeReductionGroupsDescriptor {
     }
 }
 
-fn open_verified_eager_v3_runtime_container(
+pub(super) fn open_verified_eager_v3_runtime_container(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,
     manifest: &EagerV3ExecutionManifest,
@@ -892,7 +892,7 @@ fn open_verified_eager_v3_runtime_container(
     super::eager_v3_manifest::open_eager_v3_runtime_container(evaluator_root, manifest)
 }
 
-fn prepare_plan_v3_parameter_state(
+pub(super) fn prepare_plan_v3_parameter_state(
     pack: &PreparedKernelPackManifest,
     decoded: &DecodedEagerRuntimeV3,
     runtime_parameters: &[GenericRuntimeModelParameterManifest],

@@ -488,6 +488,238 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[cfg(all(feature = "f64-symjit", target_arch = "aarch64"))]
+#[test]
+#[ignore = "retained real-artifact Direct-Arena stage oracle and interleaved timing evidence"]
+fn retained_ddbar_z3g_multistage_invocations_match_packet_execution() {
+    use crate::eager_runtime::{
+        EagerDirectPreparedKernel, EagerPlanV3Sections, run_retained_multistage_oracle,
+        select_retained_multistage_candidate,
+    };
+    use symjit::{Application, Config, Defuns, Storage};
+
+    const ARTIFACT_ENV: &str = "PYAMPLICOL_EAGER_DIRECT_REAL_ARTIFACT";
+    const PROCESS_ID: &str = "d_dbar_to_z_g_g_g";
+    const POINTS: u32 = 129;
+    const SAMPLES: usize = 7;
+    const REPETITIONS: usize = 100;
+
+    let root = std::env::var_os(ARTIFACT_ENV)
+        .map(PathBuf::from)
+        .expect("set PYAMPLICOL_EAGER_DIRECT_REAL_ARTIFACT to the retained eager artifact");
+    let native = NativeRuntime::load(&root, Some(PROCESS_ID), None)
+        .expect("load retained eager artifact through the production runtime");
+    let artifact = VerifiedArtifact::open(&root).expect("verify retained eager artifact");
+    let selection = artifact
+        .select_process(Some(PROCESS_ID))
+        .expect("select retained eager process");
+    let (loaded, evaluator_root) =
+        load_verified_evaluator(&artifact, &selection).expect("load eager execution manifest");
+    let LoadedExecutionManifest::EagerV3(manifest) = loaded else {
+        panic!("retained artifact is not eager plan-v3");
+    };
+    let pack = super::eager_v3_load::load_eager_v3_prepared_pack(&artifact, &manifest)
+        .expect("load retained prepared kernel pack");
+    let container = super::eager_v3_load::open_verified_eager_v3_runtime_container(
+        &artifact,
+        &evaluator_root,
+        &manifest,
+    )
+    .expect("open retained eager runtime container");
+    let decoded =
+        super::eager_v3_decode::decode_eager_v3_runtime(&container, &manifest, &pack.manifest)
+            .expect("decode retained eager plan-v3");
+    let payloads = artifact
+        .evaluator_payload_store(&pack.payload_root)
+        .expect("open retained evaluator payload store");
+    let (projection, couplings, _model_parameter_evaluator) =
+        super::eager_v3_load::prepare_plan_v3_parameter_state(
+            &pack.manifest,
+            &decoded,
+            &native.runtime.model_parameters,
+            &payloads,
+        )
+        .expect("prepare retained eager parameter projection");
+    let prepared_parameter_count =
+        u32::try_from(projection.parameter_count).expect("prepared parameter count fits u32");
+    let sections = EagerPlanV3Sections {
+        kernels: &decoded.kernel_specs,
+        prepared_parameter_count,
+        currents: &decoded.currents,
+        values: &decoded.values,
+        momenta: &decoded.momenta,
+        parameters: &decoded.parameters,
+        stages: &decoded.stages,
+        couplings: &couplings,
+        invocations: &decoded.invocations,
+        attachments: &decoded.attachments,
+        finalizations: &decoded.finalizations,
+        closures: &decoded.closures,
+        direct_coefficients: &decoded.direct_coefficients,
+        selector_domains: &decoded.selector_domains,
+        selector_memberships: &decoded.selector_memberships,
+        reduction_groups: &decoded.reduction_groups,
+        reduction_entries: &decoded.reduction_entries,
+        exact_factors: &decoded.exact_factors,
+        color_contraction_entry_start: decoded.color_contraction_entry_start,
+        color_contraction_entry_count: decoded.color_contraction_entry_count,
+    };
+    let candidate =
+        select_retained_multistage_candidate(sections).expect("select genuine retained stage run");
+    let kernel = decoded
+        .kernel_specs
+        .iter()
+        .find(|kernel| kernel.kernel_id == candidate.kernel_id)
+        .expect("candidate kernel spec");
+    let kernel_manifest = pack
+        .manifest
+        .kernels
+        .iter()
+        .find(|kernel| kernel.kernel_id == candidate.kernel_id)
+        .expect("candidate prepared kernel manifest");
+    let application_path = kernel_manifest
+        .f64_evaluator_manifest
+        .get("application_path")
+        .and_then(Value::as_str)
+        .expect("candidate SymJIT application path");
+    let application_source = payloads
+        .source(application_path)
+        .expect("resolve candidate SymJIT application");
+    let source_bytes = application_source
+        .read()
+        .expect("read candidate SymJIT application")
+        .into_owned();
+    let mut config = Config::default();
+    config.set_defuns(Defuns::new());
+    let mut input = source_bytes.as_slice();
+    let source_application =
+        Application::load(&mut input, &config).expect("decode candidate SymJIT application");
+    assert!(
+        input.is_empty(),
+        "candidate SymJIT application has trailing bytes"
+    );
+    let descriptor = symjit_eager_direct::eager_direct_table_metadata(
+        u32::try_from(kernel.inputs.len()).expect("candidate input width fits u32"),
+        kernel.output_component_count,
+    )
+    .expect("construct retained eager table metadata")
+    .encode_descriptor(&source_application)
+    .expect("encode retained eager table descriptor");
+    let prepared = EagerDirectPreparedKernel {
+        kernel_id: candidate.kernel_id,
+        role: kernel.role,
+        inputs: &kernel.inputs,
+        output_component_count: kernel.output_component_count,
+        source_application: &source_bytes,
+        descriptor: &descriptor,
+        display_path: PathBuf::from(application_source.display_name()),
+    };
+
+    let mut scalar_pack = pack.manifest.clone();
+    scalar_pack
+        .kernels
+        .retain(|entry| entry.kernel_id == candidate.kernel_id);
+    scalar_pack.kernel_variants.clear();
+    let mut backend = PreparedEvaluatorBackend::load_from_store(&scalar_pack, &payloads)
+        .expect("load retained scalar packet oracle");
+    let mut model_parameters =
+        vec![crate::EagerComplex64::new(0.0, 0.0); projection.parameter_count];
+    for entry in &projection.entries {
+        let real = native.runtime.model_parameter_values_f64[entry.runtime_real_index];
+        let imaginary = entry
+            .runtime_imaginary_index
+            .map(|index| native.runtime.model_parameter_values_f64[index])
+            .unwrap_or(0.0);
+        model_parameters[entry.prepared_index] = crate::EagerComplex64::new(real, imaginary);
+    }
+
+    let evidence = run_retained_multistage_oracle(
+        sections,
+        &[prepared],
+        candidate,
+        &mut backend,
+        &model_parameters,
+        POINTS,
+        SAMPLES,
+        REPETITIONS,
+    )
+    .expect("retained Direct-Arena stage must match actual packet execution");
+    for variant in [evidence.full, evidence.selected] {
+        variant
+            .direct_call_traffic
+            .validate_direct()
+            .expect("direct invocation slice has no forbidden materialization traffic");
+        assert!(variant.comparison_count > 0);
+    }
+    eprintln!(
+        "retained eager Direct-Arena stage oracle: artifact={} process={} \
+         stage_position={} stage_index={} kernel_id={} selector_group={} points={} \
+         full_rows={}/{} destinations={} comparisons={} bitwise={}/{} \
+         full_max_abs={:.6e} full_max_rel={:.6e} \
+         full_direct_ns={:.3} full_direct_mad_ns={:.3} \
+         full_packet_ns={:.3} full_packet_mad_ns={:.3} full_ratio={:.6} \
+         full_init_write_bytes={} full_factor_fill_bytes={} \
+         full_packet_input_bytes/call={} full_packet_output_bytes/call={} \
+         full_packet_scatter_bytes/call={} \
+         selected_rows={}/{} comparisons={} bitwise={}/{} \
+         selected_max_abs={:.6e} selected_max_rel={:.6e} \
+         selected_direct_ns={:.3} selected_direct_mad_ns={:.3} \
+         selected_packet_ns={:.3} selected_packet_mad_ns={:.3} selected_ratio={:.6} \
+         selected_init_write_bytes={} selected_factor_fill_bytes={} \
+         selected_packet_input_bytes/call={} selected_packet_output_bytes/call={} \
+         selected_packet_scatter_bytes/call={} \
+         direct_call_traffic_full={:?} direct_call_traffic_selected={:?}",
+        root.display(),
+        PROCESS_ID,
+        evidence.candidate.stage_position,
+        evidence.candidate.stage_index,
+        evidence.candidate.kernel_id,
+        evidence.candidate.selector_group_id,
+        POINTS,
+        evidence.full.invocation_count,
+        evidence.full.attachment_count,
+        evidence.candidate.distinct_destination_count,
+        evidence.full.comparison_count,
+        evidence.full.bitwise_comparison_count,
+        evidence.full.comparison_count,
+        evidence.full.maximum_absolute_error,
+        evidence.full.maximum_relative_error,
+        evidence.full.direct_median_ns,
+        evidence.full.direct_mad_ns,
+        evidence.full.packet_median_ns,
+        evidence.full.packet_mad_ns,
+        evidence.full.direct_over_packet,
+        evidence.full.arena_initialization_write_bytes,
+        evidence.full.factor_fill_write_bytes,
+        evidence.full.packet_input_materialization_bytes_per_call,
+        evidence.full.packet_output_materialization_bytes_per_call,
+        evidence.full.packet_scatter_bytes_per_call,
+        evidence.selected.invocation_count,
+        evidence.selected.attachment_count,
+        evidence.selected.comparison_count,
+        evidence.selected.bitwise_comparison_count,
+        evidence.selected.comparison_count,
+        evidence.selected.maximum_absolute_error,
+        evidence.selected.maximum_relative_error,
+        evidence.selected.direct_median_ns,
+        evidence.selected.direct_mad_ns,
+        evidence.selected.packet_median_ns,
+        evidence.selected.packet_mad_ns,
+        evidence.selected.direct_over_packet,
+        evidence.selected.arena_initialization_write_bytes,
+        evidence.selected.factor_fill_write_bytes,
+        evidence
+            .selected
+            .packet_input_materialization_bytes_per_call,
+        evidence
+            .selected
+            .packet_output_materialization_bytes_per_call,
+        evidence.selected.packet_scatter_bytes_per_call,
+        evidence.full.direct_call_traffic,
+        evidence.selected.direct_call_traffic,
+    );
+}
+
 #[cfg(feature = "f64-symjit")]
 #[test]
 fn generated_eager_artifact_loads_when_fixture_is_supplied() {

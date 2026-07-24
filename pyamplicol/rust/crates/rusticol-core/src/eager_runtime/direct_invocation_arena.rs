@@ -12,7 +12,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use crate::direct_arena::{
@@ -29,11 +29,16 @@ use crate::{
 };
 
 use super::plan::{ComponentRange, EagerExecutionPlan, ScheduledAttachment, ScheduledInvocation};
-use super::{EagerComplex64, EagerKernelInput, EagerPlanV3Sections};
+use super::{
+    EagerComplex64, EagerKernelInput, EagerKernelRole, EagerKernelSpec, EagerPlanV3Sections,
+};
 
 /// One prepared source application and its portable eager table descriptor.
 pub(crate) struct EagerDirectPreparedKernel<'a> {
     pub kernel_id: u32,
+    pub role: EagerKernelRole,
+    pub inputs: &'a [EagerKernelInput],
+    pub output_component_count: u32,
     pub source_application: &'a [u8],
     pub descriptor: &'a [u8],
     pub display_path: PathBuf,
@@ -182,6 +187,27 @@ impl EagerDirectInvocationPrototype {
                 plan.stages.len()
             )));
         }
+        Self::from_validated_plan_stage(
+            sections,
+            plan,
+            prepared,
+            active_groups,
+            tile_capacity,
+            0,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn from_validated_plan_stage(
+        sections: EagerPlanV3Sections<'_>,
+        plan: EagerExecutionPlan,
+        prepared: &[EagerDirectPreparedKernel<'_>],
+        active_groups: Option<&[u32]>,
+        tile_capacity: u32,
+        stage_position: usize,
+        kernel_filter: Option<u32>,
+    ) -> RusticolResult<Self> {
         validate_active_groups(&plan, active_groups)?;
         let catalog = SemanticCatalog::new(sections)?;
         let layout = derive_event_layout(sections, catalog)?;
@@ -221,7 +247,11 @@ impl EagerDirectInvocationPrototype {
             plane_bindings.push(EagerDirectArenaPlaneBinding::CurrentImag(component));
         }
 
-        let stage = &plan.stages[0];
+        let stage = plan.stages.get(stage_position).ok_or_else(|| {
+            RusticolError::invalid_argument(format!(
+                "eager direct stage position {stage_position} is out of bounds"
+            ))
+        })?;
         let mut applications = BTreeMap::new();
         for artifact in prepared {
             if applications.contains_key(&artifact.kernel_id) {
@@ -230,6 +260,13 @@ impl EagerDirectInvocationPrototype {
                     artifact.kernel_id
                 )));
             }
+            let kernel = plan.kernels.get(&artifact.kernel_id).ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "eager direct prepared catalog references unknown kernel {}",
+                    artifact.kernel_id
+                ))
+            })?;
+            validate_callable_identity(kernel, artifact)?;
             applications.insert(
                 artifact.kernel_id,
                 LoadedSymjitEagerDirectTable::load_prepared_application_bytes(
@@ -245,6 +282,11 @@ impl EagerDirectInvocationPrototype {
 
         let mut calls = Vec::new();
         let mut factor_specs = Vec::new();
+        // Selector specialization changes which contribution is the first
+        // retained write to a current. Recompute overwrite/add semantics in
+        // exactly the retained, stable execution order rather than inheriting
+        // flags from the full schedule.
+        let mut selected_written_currents = BTreeSet::new();
         let mut cursor = 0usize;
         while cursor < stage.invocations.len() {
             let kernel_id = stage.invocations[cursor].row.kernel_id;
@@ -252,6 +294,10 @@ impl EagerDirectInvocationPrototype {
                 .iter()
                 .position(|row| row.row.kernel_id != kernel_id)
                 .map_or(stage.invocations.len(), |offset| cursor + offset);
+            if kernel_filter.is_some_and(|selected| selected != kernel_id) {
+                cursor = run_stop;
+                continue;
+            }
             let kernel = plan.kernels.get(&kernel_id).ok_or_else(|| {
                 RusticolError::internal(format!("eager direct schedule lost kernel {kernel_id}"))
             })?;
@@ -300,7 +346,10 @@ impl EagerDirectInvocationPrototype {
                     push_u32(&mut attachment_bytes, factor_index);
                     push_u32(
                         &mut attachment_bytes,
-                        u32::from(!attachment.initializes_current),
+                        retained_attachment_operation(
+                            &mut selected_written_currents,
+                            attachment.row.result_current_id,
+                        ),
                     );
                     factor_specs.push(FactorSpec {
                         factor: EagerComplex64::new(
@@ -355,6 +404,41 @@ impl EagerDirectInvocationPrototype {
             momentum_ranges,
             traffic: DirectArenaTrafficCounters::default(),
         })
+    }
+
+    /// Extract one invocation-only stage slice from a fully validated
+    /// multistage plan for the retained-artifact oracle. This test-only entry
+    /// point does not relax the production constructor: finalization, closure,
+    /// and whole-plan multistage execution remain fail-closed.
+    #[cfg(test)]
+    pub(crate) fn from_multistage_stage_for_test(
+        sections: EagerPlanV3Sections<'_>,
+        prepared: &[EagerDirectPreparedKernel<'_>],
+        active_groups: Option<&[u32]>,
+        tile_capacity: u32,
+        stage_position: usize,
+        kernel_id: u32,
+    ) -> RusticolResult<Self> {
+        if tile_capacity == 0 {
+            return Err(invalid(
+                "eager direct invocation tile capacity must be positive",
+            ));
+        }
+        let plan = EagerExecutionPlan::from_plan_v3_sections(sections)?;
+        if plan.stages.len() < 2 {
+            return Err(RusticolError::compatibility(
+                "the retained-artifact stage oracle requires a genuine multistage eager plan",
+            ));
+        }
+        Self::from_validated_plan_stage(
+            sections,
+            plan,
+            prepared,
+            active_groups,
+            tile_capacity,
+            stage_position,
+            Some(kernel_id),
+        )
     }
 
     pub(crate) fn layout(&self) -> &DirectArenaLayout {
@@ -548,6 +632,715 @@ impl EagerDirectInvocationPrototype {
         self.traffic.validate_direct()?;
         Ok(())
     }
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EagerDirectRetainedStageCandidate {
+    pub(crate) stage_position: usize,
+    pub(crate) stage_index: u32,
+    pub(crate) kernel_id: u32,
+    pub(crate) selector_group_id: u32,
+    pub(crate) full_invocation_count: usize,
+    pub(crate) full_attachment_count: usize,
+    pub(crate) selected_invocation_count: usize,
+    pub(crate) selected_attachment_count: usize,
+    pub(crate) distinct_destination_count: usize,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EagerDirectRetainedStageVariantEvidence {
+    pub(crate) invocation_count: usize,
+    pub(crate) attachment_count: usize,
+    pub(crate) comparison_count: usize,
+    pub(crate) bitwise_comparison_count: usize,
+    pub(crate) maximum_absolute_error: f64,
+    pub(crate) maximum_relative_error: f64,
+    pub(crate) direct_median_ns: f64,
+    pub(crate) direct_mad_ns: f64,
+    pub(crate) packet_median_ns: f64,
+    pub(crate) packet_mad_ns: f64,
+    pub(crate) direct_over_packet: f64,
+    pub(crate) direct_call_traffic: DirectArenaTrafficCounters,
+    pub(crate) arena_initialization_write_bytes: u64,
+    pub(crate) factor_fill_write_bytes: u64,
+    pub(crate) packet_input_materialization_bytes_per_call: u64,
+    pub(crate) packet_output_materialization_bytes_per_call: u64,
+    pub(crate) packet_scatter_bytes_per_call: u64,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EagerDirectRetainedStageEvidence {
+    pub(crate) candidate: EagerDirectRetainedStageCandidate,
+    pub(crate) full: EagerDirectRetainedStageVariantEvidence,
+    pub(crate) selected: EagerDirectRetainedStageVariantEvidence,
+}
+
+/// Pick a retained-artifact kernel run that proves both a genuine multi-row,
+/// multi-destination table and nontrivial runtime selector pruning.
+#[cfg(test)]
+pub(crate) fn select_retained_multistage_candidate(
+    sections: EagerPlanV3Sections<'_>,
+) -> RusticolResult<EagerDirectRetainedStageCandidate> {
+    let plan = EagerExecutionPlan::from_plan_v3_sections(sections)?;
+    if plan.stages.len() < 2 {
+        return Err(RusticolError::compatibility(
+            "the retained eager stage oracle requires a multistage plan",
+        ));
+    }
+    let selector = plan.selector_domains.as_ref().ok_or_else(|| {
+        RusticolError::compatibility(
+            "the retained eager stage oracle requires runtime selector domains",
+        )
+    })?;
+    let mut best = None;
+    for (stage_position, stage) in plan.stages.iter().enumerate() {
+        let mut cursor = 0;
+        while cursor < stage.invocations.len() {
+            let kernel_id = stage.invocations[cursor].row.kernel_id;
+            let stop = stage.invocations[cursor..]
+                .iter()
+                .position(|row| row.row.kernel_id != kernel_id)
+                .map_or(stage.invocations.len(), |offset| cursor + offset);
+            let run = &stage.invocations[cursor..stop];
+            let full_attachment_count = run
+                .iter()
+                .map(|invocation| invocation.attachment_range.len())
+                .sum::<usize>();
+            let distinct_destinations = run
+                .iter()
+                .flat_map(|invocation| {
+                    stage.attachments[invocation.attachment_range.clone()]
+                        .iter()
+                        .map(|attachment| attachment.row.result_current_id)
+                })
+                .collect::<BTreeSet<_>>();
+            if run.len() >= 2 && distinct_destinations.len() >= 2 {
+                for &group_id in &selector.group_ids {
+                    let groups = [group_id];
+                    let (selected_invocations, selected_attachments) =
+                        retained_run_counts(&plan, stage, run, Some(&groups))?;
+                    if selected_invocations == 0 || selected_invocations >= run.len() {
+                        continue;
+                    }
+                    let candidate = EagerDirectRetainedStageCandidate {
+                        stage_position,
+                        stage_index: stage.stage_index,
+                        kernel_id,
+                        selector_group_id: group_id,
+                        full_invocation_count: run.len(),
+                        full_attachment_count,
+                        selected_invocation_count: selected_invocations,
+                        selected_attachment_count: selected_attachments,
+                        distinct_destination_count: distinct_destinations.len(),
+                    };
+                    if best
+                        .as_ref()
+                        .is_none_or(|previous: &EagerDirectRetainedStageCandidate| {
+                            (
+                                candidate.full_invocation_count,
+                                candidate.distinct_destination_count,
+                                candidate.selected_invocation_count,
+                            ) > (
+                                previous.full_invocation_count,
+                                previous.distinct_destination_count,
+                                previous.selected_invocation_count,
+                            )
+                        })
+                    {
+                        best = Some(candidate);
+                    }
+                }
+            }
+            cursor = stop;
+        }
+    }
+    best.ok_or_else(|| {
+        RusticolError::compatibility(
+            "retained eager plan has no multi-row/multi-destination kernel run with nontrivial selector pruning",
+        )
+    })
+}
+
+#[cfg(test)]
+fn retained_run_counts(
+    plan: &EagerExecutionPlan,
+    stage: &super::plan::EagerStagePlan,
+    run: &[ScheduledInvocation],
+    active_groups: Option<&[u32]>,
+) -> RusticolResult<(usize, usize)> {
+    let mut invocations = 0;
+    let mut attachments = 0;
+    for invocation in run {
+        if !row_active(plan, invocation.selector_domain_id, active_groups)? {
+            continue;
+        }
+        let retained = stage.attachments[invocation.attachment_range.clone()]
+            .iter()
+            .map(|attachment| row_active(plan, attachment.selector_domain_id, active_groups))
+            .collect::<RusticolResult<Vec<_>>>()?
+            .into_iter()
+            .filter(|active| *active)
+            .count();
+        if retained != 0 {
+            invocations += 1;
+            attachments += retained;
+        }
+    }
+    Ok((invocations, attachments))
+}
+
+/// Execute one real retained multistage artifact's chosen invocation run
+/// through both the Direct-Arena table ABI and the established packet
+/// gather/evaluate/scatter implementation.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn run_retained_multistage_oracle<B: super::EagerKernelBackend>(
+    sections: EagerPlanV3Sections<'_>,
+    prepared: &[EagerDirectPreparedKernel<'_>],
+    candidate: EagerDirectRetainedStageCandidate,
+    backend: &mut B,
+    model_parameters: &[EagerComplex64],
+    point_count: u32,
+    sample_count: usize,
+    repetitions: usize,
+) -> RusticolResult<EagerDirectRetainedStageEvidence> {
+    if point_count == 0 || sample_count < 3 || sample_count.is_multiple_of(2) || repetitions == 0 {
+        return Err(invalid(
+            "retained eager stage oracle needs points, odd sample count >= 3, and repetitions",
+        ));
+    }
+    let selected_groups = [candidate.selector_group_id];
+    let full = run_retained_stage_variant(
+        sections,
+        prepared,
+        candidate,
+        backend,
+        model_parameters,
+        point_count,
+        sample_count,
+        repetitions,
+        None,
+    )?;
+    let selected = run_retained_stage_variant(
+        sections,
+        prepared,
+        candidate,
+        backend,
+        model_parameters,
+        point_count,
+        sample_count,
+        repetitions,
+        Some(&selected_groups),
+    )?;
+    if full.invocation_count != candidate.full_invocation_count
+        || full.attachment_count != candidate.full_attachment_count
+        || selected.invocation_count != candidate.selected_invocation_count
+        || selected.attachment_count != candidate.selected_attachment_count
+    {
+        return Err(RusticolError::internal(
+            "retained eager stage oracle selection counts changed after candidate selection",
+        ));
+    }
+    Ok(EagerDirectRetainedStageEvidence {
+        candidate,
+        full,
+        selected,
+    })
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn run_retained_stage_variant<B: super::EagerKernelBackend>(
+    sections: EagerPlanV3Sections<'_>,
+    prepared: &[EagerDirectPreparedKernel<'_>],
+    candidate: EagerDirectRetainedStageCandidate,
+    backend: &mut B,
+    model_parameters: &[EagerComplex64],
+    point_count: u32,
+    sample_count: usize,
+    repetitions: usize,
+    active_groups: Option<&[u32]>,
+) -> RusticolResult<EagerDirectRetainedStageVariantEvidence> {
+    use std::hint::black_box;
+
+    use super::execute::execute_stage;
+    use super::plan::{EagerStagePlan, mark_initial_current_writes};
+    use super::runtime::{EagerWorkspace, KernelPacket, PacketRole, StageSchedule};
+
+    let packet_plan = EagerExecutionPlan::from_plan_v3_sections(sections)?;
+    let source_stage = packet_plan
+        .stages
+        .get(candidate.stage_position)
+        .ok_or_else(|| invalid("retained eager candidate stage is out of bounds"))?;
+    if source_stage.stage_index != candidate.stage_index {
+        return Err(RusticolError::internal(
+            "retained eager candidate stage identity changed",
+        ));
+    }
+    let kernel = packet_plan
+        .kernels
+        .get(&candidate.kernel_id)
+        .ok_or_else(|| invalid("retained eager candidate kernel is absent"))?;
+
+    let mut invocations = Vec::new();
+    let mut attachments = Vec::new();
+    for invocation in &source_stage.invocations {
+        if invocation.row.kernel_id != candidate.kernel_id
+            || !row_active(&packet_plan, invocation.selector_domain_id, active_groups)?
+        {
+            continue;
+        }
+        let attachment_start = attachments.len();
+        for attachment in &source_stage.attachments[invocation.attachment_range.clone()] {
+            if row_active(&packet_plan, attachment.selector_domain_id, active_groups)? {
+                attachments.push(*attachment);
+            }
+        }
+        if attachments.len() == attachment_start {
+            continue;
+        }
+        let mut retained = invocation.clone();
+        retained.attachment_range = attachment_start..attachments.len();
+        invocations.push(retained);
+    }
+    if invocations.len() < 1 || attachments.len() < 1 {
+        return Err(RusticolError::internal(
+            "retained eager stage variant unexpectedly has no work",
+        ));
+    }
+    let zero_current_ranges = mark_initial_current_writes(&invocations, &mut attachments, &[]);
+    let stage = EagerStagePlan {
+        stage_index: source_stage.stage_index,
+        current_component_count: source_stage.current_component_count,
+        invocations,
+        attachments,
+        finalization_copies: Vec::new(),
+        finalizations: Vec::new(),
+        zero_current_ranges,
+    };
+    let packet = KernelPacket {
+        role: PacketRole::Invocation,
+        kernel_id: candidate.kernel_id,
+        independent_block_size: 1,
+        item_range: 0..stage.invocations.len(),
+        input_components: kernel.inputs.len(),
+        output_components: kernel.output_component_count as usize,
+        linear_finalization: None,
+    };
+    let schedule = StageSchedule {
+        invocation_packets: vec![packet],
+        finalization_packets: Vec::new(),
+    };
+
+    let points = point_count as usize;
+    let values = deterministic_complex_components(packet_plan.values.component_count, points);
+    let momenta = deterministic_real_components(packet_plan.momenta.component_count, points);
+    let couplings = packet_plan
+        .couplings
+        .iter()
+        .copied()
+        .map(|row| resolve_coupling(row, model_parameters))
+        .collect::<Vec<_>>();
+    let packet_complex_count = stage
+        .invocations
+        .len()
+        .checked_mul(points)
+        .and_then(|lanes| {
+            kernel
+                .inputs
+                .len()
+                .checked_add(kernel.output_component_count as usize)
+                .and_then(|width| lanes.checked_mul(width))
+        })
+        .ok_or_else(|| invalid("retained eager packet workspace overflows"))?;
+    let mut packet_workspace = EagerWorkspace {
+        tile_capacity: points,
+        values: values.clone(),
+        currents: vec![
+            EagerComplex64::new(0.0, 0.0);
+            source_stage.current_component_count * points
+        ],
+        amplitudes: vec![EagerComplex64::new(0.0, 0.0); packet_plan.amplitude_count * points],
+        reduction_groups: vec![
+            EagerComplex64::new(0.0, 0.0);
+            packet_plan.reduction_groups.len() * points
+        ],
+        couplings,
+        reduced: vec![0.0; points],
+        packet: vec![EagerComplex64::new(0.0, 0.0); packet_complex_count],
+    };
+
+    let mut direct = EagerDirectInvocationPrototype::from_multistage_stage_for_test(
+        sections,
+        prepared,
+        active_groups,
+        point_count,
+        candidate.stage_position,
+        candidate.kernel_id,
+    )?;
+    initialize_all_retained_stage_inputs(
+        &mut direct,
+        &stage,
+        point_count,
+        &values,
+        &momenta,
+        model_parameters,
+    )?;
+    direct.execute_preinitialized_invocations(point_count)?;
+    execute_stage(
+        &stage,
+        &schedule,
+        &packet_plan.kernels,
+        &mut packet_workspace,
+        backend,
+        points,
+        0,
+        points,
+        &momenta,
+        model_parameters,
+    )?;
+    let mut comparison_count = 0;
+    let mut bitwise_comparison_count = 0;
+    let mut maximum_absolute_error = 0.0_f64;
+    let mut maximum_relative_error = 0.0_f64;
+    let mut compared = BTreeSet::new();
+    for attachment in &stage.attachments {
+        for component in 0..attachment.current.len {
+            if !compared.insert((attachment.row.result_current_id, component)) {
+                continue;
+            }
+            for point in 0..points {
+                let actual = direct.current_value(
+                    attachment.row.result_current_id,
+                    component as u32,
+                    point as u32,
+                )?;
+                let expected = packet_workspace.currents
+                    [(attachment.current.start + component) * points + point];
+                if (actual.re.to_bits(), actual.im.to_bits())
+                    == (expected.re.to_bits(), expected.im.to_bits())
+                {
+                    bitwise_comparison_count += 1;
+                } else {
+                    for (actual_part, expected_part) in
+                        [(actual.re, expected.re), (actual.im, expected.im)]
+                    {
+                        let absolute = (actual_part - expected_part).abs();
+                        let relative = absolute / expected_part.abs().max(f64::MIN_POSITIVE);
+                        maximum_absolute_error = maximum_absolute_error.max(absolute);
+                        maximum_relative_error = maximum_relative_error.max(relative);
+                        if absolute > 1.0e-15 + 1.0e-12 * expected_part.abs() {
+                            return Err(RusticolError::integrity(format!(
+                                "retained eager Direct-Arena stage differs from packet execution for \
+                                 current {} component {component} point {point}: \
+                                 {actual:?} != {expected:?}",
+                                attachment.row.result_current_id
+                            )));
+                        }
+                    }
+                }
+                comparison_count += 1;
+            }
+        }
+    }
+
+    let mut direct_samples = Vec::with_capacity(sample_count);
+    let mut packet_samples = Vec::with_capacity(sample_count);
+    for sample in 0..sample_count {
+        if sample.is_multiple_of(2) {
+            direct_samples.push(measure_repeated(repetitions, || {
+                direct.execute_preinitialized_invocations(point_count)
+            })?);
+            packet_samples.push(measure_repeated(repetitions, || {
+                execute_stage(
+                    &stage,
+                    &schedule,
+                    &packet_plan.kernels,
+                    &mut packet_workspace,
+                    backend,
+                    points,
+                    0,
+                    points,
+                    &momenta,
+                    model_parameters,
+                )
+            })?);
+        } else {
+            packet_samples.push(measure_repeated(repetitions, || {
+                execute_stage(
+                    &stage,
+                    &schedule,
+                    &packet_plan.kernels,
+                    &mut packet_workspace,
+                    backend,
+                    points,
+                    0,
+                    points,
+                    &momenta,
+                    model_parameters,
+                )
+            })?);
+            direct_samples.push(measure_repeated(repetitions, || {
+                direct.execute_preinitialized_invocations(point_count)
+            })?);
+        }
+    }
+    black_box(direct.current_value(stage.attachments[0].row.result_current_id, 0, 0)?);
+    black_box(packet_workspace.currents[stage.attachments[0].current.start * points]);
+    let (direct_median_ns, direct_mad_ns) = median_mad(&mut direct_samples);
+    let (packet_median_ns, packet_mad_ns) = median_mad(&mut packet_samples);
+    let direct_call_traffic = direct.traffic();
+    direct_call_traffic.validate_direct()?;
+
+    let used_value_components = stage
+        .invocations
+        .iter()
+        .flat_map(|invocation| {
+            [
+                invocation.row.left_value_slot_id,
+                invocation.row.right_value_slot_id,
+            ]
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|slot| direct.value_ranges[slot as usize].len as u64)
+        .sum::<u64>();
+    let arena_initialization_write_bytes = [
+        direct.layout.component_count() as u64,
+        used_value_components,
+        packet_plan.momenta.component_count as u64,
+        (packet_plan.couplings.len() as u64).saturating_mul(2),
+        packet_plan.parameter_count as u64,
+    ]
+    .into_iter()
+    .sum::<u64>()
+    .saturating_mul(u64::from(point_count))
+    .saturating_mul(16);
+    let factor_fill_write_bytes = (direct.factor_specs.len() as u64).saturating_mul(16);
+    let lane_count = (stage.invocations.len() as u64).saturating_mul(u64::from(point_count));
+    let packet_input_materialization_bytes_per_call = lane_count
+        .saturating_mul(kernel.inputs.len() as u64)
+        .saturating_mul(16);
+    let packet_output_materialization_bytes_per_call = lane_count
+        .saturating_mul(u64::from(kernel.output_component_count))
+        .saturating_mul(16);
+    let packet_scatter_bytes_per_call = (stage.attachments.len() as u64)
+        .saturating_mul(u64::from(point_count))
+        .saturating_mul(u64::from(kernel.output_component_count))
+        .saturating_mul(16);
+
+    Ok(EagerDirectRetainedStageVariantEvidence {
+        invocation_count: stage.invocations.len(),
+        attachment_count: stage.attachments.len(),
+        comparison_count,
+        bitwise_comparison_count,
+        maximum_absolute_error,
+        maximum_relative_error,
+        direct_median_ns,
+        direct_mad_ns,
+        packet_median_ns,
+        packet_mad_ns,
+        direct_over_packet: direct_median_ns / packet_median_ns,
+        direct_call_traffic,
+        arena_initialization_write_bytes,
+        factor_fill_write_bytes,
+        packet_input_materialization_bytes_per_call,
+        packet_output_materialization_bytes_per_call,
+        packet_scatter_bytes_per_call,
+    })
+}
+
+#[cfg(test)]
+fn deterministic_complex_components(components: usize, points: usize) -> Vec<EagerComplex64> {
+    (0..components)
+        .flat_map(|component| {
+            (0..points).map(move |point| {
+                let seed = (component * points + point + 1) as f64;
+                EagerComplex64::new(seed.mul_add(0.000_976_562_5, 0.25), -seed / 2048.0)
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+fn deterministic_real_components(components: usize, points: usize) -> Vec<f64> {
+    (0..components)
+        .flat_map(|component| {
+            (0..points).map(move |point| {
+                let seed = (component * points + point + 1) as f64;
+                seed.mul_add(0.001_953_125, 0.5)
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+fn initialize_all_retained_stage_inputs(
+    direct: &mut EagerDirectInvocationPrototype,
+    stage: &super::plan::EagerStagePlan,
+    point_count: u32,
+    values: &[EagerComplex64],
+    momenta: &[f64],
+    model_parameters: &[EagerComplex64],
+) -> RusticolResult<()> {
+    validate_component_buffer(
+        "retained-stage values",
+        values.len(),
+        direct.plan.values.component_count,
+        point_count,
+    )?;
+    validate_component_buffer(
+        "retained-stage momenta",
+        momenta.len(),
+        direct.plan.momenta.component_count,
+        point_count,
+    )?;
+    if model_parameters.len() != direct.plan.parameter_count {
+        return Err(invalid(
+            "retained-stage model parameter count does not match the plan",
+        ));
+    }
+    direct.workspace.begin_tile(point_count)?;
+    direct
+        .workspace
+        .clear_current_active(0, direct.layout.component_count())?;
+    let stride = direct.workspace.arena().point_stride() as usize;
+    let points = point_count as usize;
+    {
+        let (real, imaginary, _, _) = direct.workspace.split_arena_slices_mut();
+        let used_value_slots = stage
+            .invocations
+            .iter()
+            .flat_map(|invocation| {
+                [
+                    invocation.row.left_value_slot_id,
+                    invocation.row.right_value_slot_id,
+                ]
+            })
+            .collect::<BTreeSet<_>>();
+        for slot in used_value_slots {
+            let range = direct.value_ranges[slot as usize];
+            let semantic = direct.catalog.value(slot)?;
+            for component in 0..range.len {
+                let physical = assigned_component(
+                    &direct.layout,
+                    semantic,
+                    count_u32(component, "retained value component")?,
+                )? as usize;
+                let target = physical * stride;
+                let source = (range.start + component) * points;
+                for point in 0..points {
+                    let value = values[source + point];
+                    real[target + point] = value.re;
+                    imaginary[target + point] = value.im;
+                }
+            }
+        }
+        for (slot, range) in direct.momentum_ranges.iter().copied().enumerate() {
+            let semantic = direct.catalog.momentum(slot as u32)?;
+            for component in 0..range.len {
+                let physical = assigned_component(
+                    &direct.layout,
+                    semantic,
+                    count_u32(component, "retained momentum component")?,
+                )? as usize;
+                let target = physical * stride;
+                let source = (range.start + component) * points;
+                for point in 0..points {
+                    real[target + point] = momenta[source + point];
+                    imaginary[target + point] = 0.0;
+                }
+            }
+        }
+        for (coupling_id, row) in direct.plan.couplings.iter().copied().enumerate() {
+            let coupling = resolve_coupling(row, model_parameters);
+            fill_real_input_plane(
+                real,
+                imaginary,
+                stride,
+                assigned_component(
+                    &direct.layout,
+                    direct.catalog.coupling_real(coupling_id as u32)?,
+                    0,
+                )?,
+                points,
+                coupling.re,
+            );
+            fill_real_input_plane(
+                real,
+                imaginary,
+                stride,
+                assigned_component(
+                    &direct.layout,
+                    direct.catalog.coupling_imag(coupling_id as u32)?,
+                    0,
+                )?,
+                points,
+                coupling.im,
+            );
+        }
+        for (parameter_id, value) in model_parameters.iter().copied().enumerate() {
+            let physical = assigned_component(
+                &direct.layout,
+                direct.catalog.parameter(parameter_id as u32)?,
+                0,
+            )? as usize;
+            let target = physical * stride;
+            real[target..target + points].fill(value.re);
+            imaginary[target..target + points].fill(value.im);
+        }
+    }
+    {
+        let (factor_re, factor_im) = direct.workspace.factors_mut();
+        for (index, spec) in direct.factor_specs.iter().copied().enumerate() {
+            let coupling = resolve_coupling(
+                direct.plan.couplings[spec.coupling_slot_id as usize],
+                model_parameters,
+            );
+            let scale = match spec.output_factor_source {
+                EAGER_OUTPUT_FACTOR_NONE => 1.0,
+                EAGER_OUTPUT_FACTOR_COUPLING_REAL => coupling.re,
+                EAGER_OUTPUT_FACTOR_COUPLING_IMAG => coupling.im,
+                _ => {
+                    return Err(RusticolError::integrity(
+                        "retained eager factor has an invalid output-factor source",
+                    ));
+                }
+            };
+            factor_re[index] = spec.factor.re * scale;
+            factor_im[index] = spec.factor.im * scale;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn measure_repeated(
+    repetitions: usize,
+    mut operation: impl FnMut() -> RusticolResult<()>,
+) -> RusticolResult<f64> {
+    use std::time::Instant;
+
+    let started = Instant::now();
+    for _ in 0..repetitions {
+        operation()?;
+    }
+    Ok(started.elapsed().as_nanos() as f64 / repetitions as f64)
+}
+
+#[cfg(test)]
+fn median_mad(values: &mut [f64]) -> (f64, f64) {
+    values.sort_by(f64::total_cmp);
+    let median = values[values.len() / 2];
+    let mut deviations = values
+        .iter()
+        .map(|value| (value - median).abs())
+        .collect::<Vec<_>>();
+    deviations.sort_by(f64::total_cmp);
+    (median, deviations[deviations.len() / 2])
 }
 
 fn derive_event_layout(
@@ -867,6 +1660,12 @@ fn row_active(
     let Some(active_groups) = active_groups else {
         return Ok(true);
     };
+    // An explicitly empty runtime selector is a structural zero, including
+    // for legacy/domain-less rows. It must never fall through to an
+    // unconditional row.
+    if active_groups.is_empty() {
+        return Ok(false);
+    }
     let Some(domain) = domain else {
         return Ok(true);
     };
@@ -879,6 +1678,10 @@ fn row_active(
     Ok(members
         .iter()
         .any(|member| active_groups.binary_search(member).is_ok()))
+}
+
+fn retained_attachment_operation(written_currents: &mut BTreeSet<u32>, current_id: u32) -> u32 {
+    u32::from(!written_currents.insert(current_id))
 }
 
 fn validate_active_groups(
@@ -904,6 +1707,29 @@ fn validate_active_groups(
     {
         return Err(invalid(format!(
             "eager direct selector references unknown group {unknown}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_callable_identity(
+    kernel: &EagerKernelSpec,
+    prepared: &EagerDirectPreparedKernel<'_>,
+) -> RusticolResult<()> {
+    if prepared.role != kernel.role
+        || prepared.inputs != kernel.inputs
+        || prepared.output_component_count != kernel.output_component_count
+    {
+        return Err(RusticolError::integrity(format!(
+            "eager direct callable identity for kernel {} does not match its plan spec: \
+             role {:?}/{:?}, ordered inputs {:?}/{:?}, output width {}/{}",
+            kernel.kernel_id,
+            prepared.role,
+            kernel.role,
+            prepared.inputs,
+            kernel.inputs,
+            prepared.output_component_count,
+            kernel.output_component_count,
         )));
     }
     Ok(())
@@ -1186,8 +2012,16 @@ mod tests {
         descriptor: &'a [u8],
         active_groups: Option<&[u32]>,
     ) -> EagerDirectInvocationPrototype {
+        let inputs = [
+            EagerKernelInput::FirstCurrentComponent(0),
+            EagerKernelInput::SecondCurrentComponent(0),
+            EagerKernelInput::CouplingReal,
+        ];
         let artifact = EagerDirectPreparedKernel {
             kernel_id: 10,
+            role: EagerKernelRole::Vertex,
+            inputs: &inputs,
+            output_component_count: 1,
             source_application: source,
             descriptor,
             display_path: PathBuf::from("real-plan-v3-eager-k10.symjit"),
@@ -1269,6 +2103,77 @@ mod tests {
         }
         assert_eq!(direct.traffic().calls, 0);
         direct.traffic().validate_direct().unwrap();
+    }
+
+    #[test]
+    fn empty_runtime_selector_prunes_domainless_rows_too() {
+        let fixture = fanout_fixture();
+        let plan = EagerExecutionPlan::from_plan_v3_sections(fixture.sections()).unwrap();
+        assert!(!row_active(&plan, None, Some(&[])).unwrap());
+        assert!(row_active(&plan, None, Some(&[7])).unwrap());
+    }
+
+    #[test]
+    fn selector_pruning_recomputes_first_retained_current_write() {
+        // The full schedule marked the first row as the initializer. Runtime
+        // selection prunes it and retains the second row, whose stale
+        // full-plan flag was "add".
+        let original_initializes = [true, false];
+        let retained = [false, true];
+        let mut written = BTreeSet::new();
+        let operations = original_initializes
+            .into_iter()
+            .zip(retained)
+            .filter_map(|(_original, keep)| {
+                keep.then(|| retained_attachment_operation(&mut written, 23))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(operations, [0], "first retained write must overwrite");
+
+        // Lock the bitwise reason this cannot reuse the stale flag: assigning
+        // -0 preserves its sign, while adding -0 to a cleared +0 loses it.
+        let contribution = -0.0_f64;
+        let mut recomputed = 0.0_f64;
+        if operations[0] == 0 {
+            recomputed = contribution;
+        } else {
+            recomputed += contribution;
+        }
+        let mut stale = 0.0_f64;
+        stale += contribution;
+        assert_eq!(recomputed.to_bits(), contribution.to_bits());
+        assert_ne!(stale.to_bits(), contribution.to_bits());
+    }
+
+    #[test]
+    fn matching_dimension_callable_with_wrong_semantic_identity_is_rejected() {
+        let fixture = fanout_fixture();
+        let (source, descriptor) = source_and_descriptor();
+        let wrong_inputs = [
+            EagerKernelInput::SecondCurrentComponent(0),
+            EagerKernelInput::FirstCurrentComponent(0),
+            EagerKernelInput::CouplingReal,
+        ];
+        let artifact = EagerDirectPreparedKernel {
+            kernel_id: 10,
+            role: EagerKernelRole::Vertex,
+            inputs: &wrong_inputs,
+            output_component_count: 1,
+            source_application: &source,
+            descriptor: &descriptor,
+            display_path: PathBuf::from("wrong-semantic-identity.symjit"),
+        };
+        let result = EagerDirectInvocationPrototype::from_plan_v3_sections(
+            fixture.sections(),
+            &[artifact],
+            None,
+            129,
+        );
+        let Err(error) = result else {
+            panic!("matching dimensions must not authenticate the wrong callable");
+        };
+        assert!(error.to_string().contains("callable identity"));
+        assert!(error.to_string().contains("ordered inputs"));
     }
 
     #[test]

@@ -198,6 +198,10 @@ impl EagerExecutionProfile {
 
 #[cfg(feature = "f64-symjit")]
 mod direct_invocation_arena;
+#[cfg(all(test, feature = "f64-symjit"))]
+pub(crate) use direct_invocation_arena::{
+    EagerDirectPreparedKernel, run_retained_multistage_oracle, select_retained_multistage_candidate,
+};
 mod execute;
 mod plan;
 mod plan_v3;
