@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use crate::direct_arena::{
     DirectArenaInterval, DirectArenaLayout, DirectArenaTrafficCounters, assign_direct_arena,
 };
-use crate::evaluator::symjit_eager_direct::{
+use crate::engine::symjit_eager_direct::{
     EAGER_DIRECT_SOURCE_APPLICATION_ABI, EAGER_DIRECT_TABLE_BINDING_ABI,
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI, EagerDirectArenaPlaneBinding, EagerDirectTableRows,
     EagerDirectTableWorkspace, LoadedSymjitEagerDirectTable,
@@ -524,6 +524,12 @@ impl EagerDirectInvocationPrototype {
                 factor_im[index] = spec.factor.im * scale;
             }
         }
+        self.execute_preinitialized_invocations(point_count)
+    }
+
+    /// Execute immutable table rows after the caller has initialized the
+    /// arena and factor catalog for the active tile.
+    fn execute_preinitialized_invocations(&mut self, point_count: u32) -> RusticolResult<()> {
         for call in &self.calls {
             self.traffic
                 .record_call(call.rows.invocation_count(), point_count);
@@ -1020,7 +1026,7 @@ fn validate_component_buffer(
     Ok(())
 }
 
-fn row_range<T>(rows: &[T], start: u64, count: u64, label: &str) -> RusticolResult<&[T]> {
+fn row_range<'a, T>(rows: &'a [T], start: u64, count: u64, label: &str) -> RusticolResult<&'a [T]> {
     let start = usize::try_from(start)
         .map_err(|_| invalid(format!("eager direct {label} start exceeds usize")))?;
     let count = usize::try_from(count)
@@ -1042,4 +1048,305 @@ fn push_u32(output: &mut Vec<u8>, value: u32) {
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
+}
+
+#[cfg(all(test, target_arch = "aarch64"))]
+mod tests {
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    use symjit::{Applet, Application, Compiler, Config, Expr, Storage};
+
+    use super::super::plan_v3_tests::Fixture;
+    use super::*;
+    use crate::engine::count_allocations;
+    use crate::engine::symjit_eager_direct::eager_direct_table_metadata;
+
+    fn source_application() -> Application {
+        let mut config = Config::default();
+        config.set_opt_level(2);
+        config.set_complex(true);
+        config.set_symbolica(true);
+        config.set_simd(true);
+        config.set_fast_complex(false);
+        let x = Expr::var("x");
+        let y = Expr::var("y");
+        let coupling = Expr::var("coupling");
+        Compiler::with_config(config)
+            .compile_params(&[], &[&x + &y], &[x, y, coupling])
+            .unwrap()
+    }
+
+    fn ordinary_applet() -> Applet {
+        let mut source = source_application();
+        source.prepare_simd();
+        source.seal().unwrap()
+    }
+
+    fn source_and_descriptor() -> (Vec<u8>, Vec<u8>) {
+        let source = source_application();
+        let descriptor = eager_direct_table_metadata(3, 1)
+            .unwrap()
+            .encode_descriptor(&source)
+            .unwrap();
+        let mut bytes = Vec::new();
+        source.save(&mut bytes).unwrap();
+        (bytes, descriptor)
+    }
+
+    fn fanout_fixture() -> Fixture {
+        let mut fixture = Fixture::new();
+        fixture.currents.push(crate::EagerPlanCurrentRow {
+            current_id: 3,
+            component_start: 3,
+            component_count: 1,
+            momentum_slot_id: 3,
+            flags: 0,
+        });
+        fixture.values.push(crate::EagerPlanValueRow {
+            value_slot_id: 3,
+            current_id: 3,
+            component_start: 3,
+            component_count: 1,
+            kind: crate::EagerValueSlotKind::Unpropagated,
+        });
+        fixture.momenta.push(crate::EagerPlanMomentumRow {
+            momentum_slot_id: 3,
+            bitset_id: 3,
+            component_start: 12,
+            component_count: 4,
+        });
+        let mut second_attachment = fixture.attachments[0];
+        second_attachment.result_current_id = 3;
+        fixture.attachments.push(second_attachment);
+        fixture.invocations[0].attachment_count = 2;
+        fixture.stages[0].attachment_count = 2;
+        fixture.stages[0].finalization_count = 2;
+        let mut second_finalization = fixture.finalizations[0];
+        second_finalization.current_id = 3;
+        second_finalization.unpropagated_value_slot_id = 3;
+        second_finalization.momentum_slot_id = 3;
+        fixture.finalizations.push(second_finalization);
+        let mut second_closure = fixture.closures[0];
+        second_closure.root_id = 1;
+        second_closure.left_value_slot_id = 3;
+        fixture.closures.push(second_closure);
+        fixture
+    }
+
+    fn inputs(points: usize) -> (Vec<EagerComplex64>, Vec<f64>) {
+        let mut values = vec![EagerComplex64::new(-91.0, 37.0); 4 * points];
+        for point in 0..points {
+            values[point] = EagerComplex64::new(1.0 + point as f64 / 8.0, -0.25 * point as f64);
+            values[points + point] =
+                EagerComplex64::new(3.0 + point as f64 / 4.0, 0.5 * point as f64);
+        }
+        let momenta = (0..16 * points).map(|index| index as f64 / 16.0).collect();
+        (values, momenta)
+    }
+
+    struct PacketOracle {
+        applet: Applet,
+        inputs: Vec<EagerComplex64>,
+        outputs: Vec<EagerComplex64>,
+        currents: Vec<EagerComplex64>,
+    }
+
+    impl PacketOracle {
+        fn new(capacity: usize) -> Self {
+            Self {
+                applet: ordinary_applet(),
+                inputs: vec![EagerComplex64::new(0.0, 0.0); 3 * capacity],
+                outputs: vec![EagerComplex64::new(0.0, 0.0); capacity],
+                currents: vec![EagerComplex64::new(0.0, 0.0); capacity],
+            }
+        }
+
+        fn evaluate(&mut self, points: usize, values: &[EagerComplex64]) {
+            for point in 0..points {
+                self.inputs[3 * point] = values[point];
+                self.inputs[3 * point + 1] = values[points + point];
+                self.inputs[3 * point + 2] = EagerComplex64::new(2.0, 3.0);
+            }
+            self.applet.evaluate_matrix(
+                &self.inputs[..3 * points],
+                &mut self.outputs[..points],
+                points,
+            );
+            for point in 0..points {
+                let contribution = self.outputs[point] * EagerComplex64::new(15.0, 0.0);
+                self.currents[point] = contribution;
+            }
+        }
+    }
+
+    fn prototype<'a>(
+        fixture: &Fixture,
+        source: &'a [u8],
+        descriptor: &'a [u8],
+        active_groups: Option<&[u32]>,
+    ) -> EagerDirectInvocationPrototype {
+        let artifact = EagerDirectPreparedKernel {
+            kernel_id: 10,
+            source_application: source,
+            descriptor,
+            display_path: PathBuf::from("real-plan-v3-eager-k10.symjit"),
+        };
+        EagerDirectInvocationPrototype::from_plan_v3_sections(
+            fixture.sections(),
+            &[artifact],
+            active_groups,
+            129,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn real_plan_v3_rows_match_packet_oracle_for_fanout_and_tails() {
+        let fixture = fanout_fixture();
+        let (source, descriptor) = source_and_descriptor();
+        let mut direct = prototype(&fixture, &source, &descriptor, None);
+        assert!(
+            direct.layout().reused_semantic_components() > 0,
+            "event-derived layout should reuse at least one dead semantic range"
+        );
+        let mut packet = PacketOracle::new(129);
+        for points in [7_usize, 127, 128, 129] {
+            let (values, momenta) = inputs(points);
+            direct
+                .evaluate_invocations(points as u32, &values, &momenta, &[])
+                .unwrap();
+            packet.evaluate(points, &values);
+            for (point, expected) in packet.currents[..points].iter().copied().enumerate() {
+                let actual = direct.current_value(2, 0, point as u32).unwrap();
+                assert_eq!(
+                    (actual.re.to_bits(), actual.im.to_bits()),
+                    (expected.re.to_bits(), expected.im.to_bits()),
+                    "point {point} at tail {points}"
+                );
+                let second = direct.current_value(3, 0, point as u32).unwrap();
+                assert_eq!(
+                    (second.re.to_bits(), second.im.to_bits()),
+                    (expected.re.to_bits(), expected.im.to_bits()),
+                    "second fanout destination at point {point} tail {points}"
+                );
+            }
+        }
+        let traffic = direct.traffic();
+        assert!(traffic.calls >= 4);
+        assert!(traffic.rows >= 4);
+        assert_eq!(
+            (
+                traffic.packet_input_bytes,
+                traffic.packet_output_bytes,
+                traffic.gather_bytes,
+                traffic.scatter_bytes,
+                traffic.remap_bytes,
+            ),
+            (0, 0, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn empty_runtime_selector_is_a_structural_zero_without_a_table_call() {
+        let fixture = fanout_fixture();
+        let mut direct = EagerDirectInvocationPrototype::from_plan_v3_sections(
+            fixture.sections(),
+            &[],
+            Some(&[]),
+            129,
+        )
+        .unwrap();
+        let (values, momenta) = inputs(129);
+        direct
+            .evaluate_invocations(129, &values, &momenta, &[])
+            .unwrap();
+        for point in 0..129 {
+            let actual = direct.current_value(2, 0, point).unwrap();
+            assert_eq!((actual.re.to_bits(), actual.im.to_bits()), (0, 0));
+            let second = direct.current_value(3, 0, point).unwrap();
+            assert_eq!((second.re.to_bits(), second.im.to_bits()), (0, 0));
+        }
+        assert_eq!(direct.traffic().calls, 0);
+        direct.traffic().validate_direct().unwrap();
+    }
+
+    #[test]
+    fn warmed_real_plan_v3_invocation_slice_allocates_zero() {
+        let fixture = fanout_fixture();
+        let (source, descriptor) = source_and_descriptor();
+        let mut direct = prototype(&fixture, &source, &descriptor, None);
+        let (values, momenta) = inputs(129);
+        direct
+            .evaluate_invocations(129, &values, &momenta, &[])
+            .unwrap();
+        let (result, allocations, bytes) =
+            count_allocations(|| direct.evaluate_invocations(129, &values, &momenta, &[]));
+        result.unwrap();
+        assert_eq!((allocations, bytes), (0, 0));
+    }
+
+    #[test]
+    #[ignore = "local interleaved native timing evidence; no timing assertion"]
+    fn benchmark_real_plan_v3_direct_slice_against_packet_execution() {
+        const SAMPLES: usize = 9;
+        const REPETITIONS: usize = 10_000;
+        const POINTS: usize = 129;
+
+        let fixture = fanout_fixture();
+        let (source, descriptor) = source_and_descriptor();
+        let mut direct = prototype(&fixture, &source, &descriptor, None);
+        let (values, momenta) = inputs(POINTS);
+        let mut packet = PacketOracle::new(POINTS);
+        direct
+            .evaluate_invocations(POINTS as u32, &values, &momenta, &[])
+            .unwrap();
+        packet.evaluate(POINTS, &values);
+
+        let mut direct_ns = Vec::with_capacity(SAMPLES);
+        let mut packet_ns = Vec::with_capacity(SAMPLES);
+        for sample in 0..SAMPLES {
+            if sample.is_multiple_of(2) {
+                direct_ns.push(measure_direct(&mut direct, REPETITIONS));
+                packet_ns.push(measure_packet(&mut packet, &values, REPETITIONS));
+            } else {
+                packet_ns.push(measure_packet(&mut packet, &values, REPETITIONS));
+                direct_ns.push(measure_direct(&mut direct, REPETITIONS));
+            }
+        }
+        direct_ns.sort_by(f64::total_cmp);
+        packet_ns.sort_by(f64::total_cmp);
+        let direct_median = direct_ns[SAMPLES / 2];
+        let packet_median = packet_ns[SAMPLES / 2];
+        eprintln!(
+            "eager real-plan-v3 invocation benchmark: samples={SAMPLES} \
+             repetitions={REPETITIONS} points={POINTS} \
+             direct_median_ns/call={direct_median:.3} \
+             packet_median_ns/call={packet_median:.3} \
+             direct_over_packet={:.6}",
+            direct_median / packet_median
+        );
+    }
+
+    fn measure_direct(direct: &mut EagerDirectInvocationPrototype, repetitions: usize) -> f64 {
+        let started = Instant::now();
+        for _ in 0..repetitions {
+            direct.execute_preinitialized_invocations(129).unwrap();
+        }
+        black_box(direct.current_value(2, 0, 0).unwrap());
+        started.elapsed().as_nanos() as f64 / repetitions as f64
+    }
+
+    fn measure_packet(
+        packet: &mut PacketOracle,
+        values: &[EagerComplex64],
+        repetitions: usize,
+    ) -> f64 {
+        let started = Instant::now();
+        for _ in 0..repetitions {
+            packet.evaluate(129, values);
+        }
+        black_box(packet.currents[0]);
+        started.elapsed().as_nanos() as f64 / repetitions as f64
+    }
 }

@@ -196,6 +196,7 @@ impl EagerExecutionProfile {
     }
 }
 
+#[cfg(feature = "f64-symjit")]
 mod direct_invocation_arena;
 mod execute;
 mod plan;

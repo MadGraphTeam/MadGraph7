@@ -3491,6 +3491,10 @@ use point_selectors::*;
 
 #[path = "evaluator.rs"]
 mod evaluator;
+#[cfg(all(test, feature = "f64-symjit"))]
+pub(crate) use evaluator::symjit_direct::tests::count_allocations;
+#[cfg(feature = "f64-symjit")]
+pub(crate) use evaluator::symjit_eager_direct;
 use evaluator::*;
 
 #[path = "wavefunctions.rs"]
