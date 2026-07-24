@@ -96,6 +96,8 @@ def _scalar_union_plan() -> _RecurrenceExactPlan:
         momentum_terms=(_MomentumTerm(0, 1), _MomentumTerm(1, 1)),
         replay_targets=(),
         source_permutations=(),
+        replay_momentum_signs=(),
+        replay_helicity_map=(),
         amplitude_destinations=(
             _AmplitudeDestination(0, 0, 10, DIRECT_NONE_U32, 1, 0),
             _AmplitudeDestination(1, 1, 20, DIRECT_NONE_U32, 1, 0),
@@ -458,6 +460,8 @@ def test_union_native_section_adapter_parses_dispatch_tables() -> None:
         "momentum_terms": [astuple(row) for row in sections.momentum_terms],
         "replay_targets": [],
         "source_permutations": [],
+        "replay_momentum_signs": [],
+        "replay_helicity_map": [],
         "amplitude_destinations": [
             astuple(row) for row in sections.amplitude_destinations
         ],
@@ -498,6 +502,15 @@ def test_union_native_section_adapter_parses_dispatch_tables() -> None:
     assert parsed.source_dispatch_variants == sections.source_dispatch_variants
     assert parsed.resolved_source_selections == sections.resolved_source_selections
 
+    raw["public_flow_ids"] = [10, 10, 20]
+    parsed = _parse_exact_sections(raw, sections.process_id)
+    assert parsed.public_flow_ids == (10, 10, 20)
+
+    raw["public_flow_ids"] = [10, 10]
+    with pytest.raises(ArtifactError, match="not completely covered"):
+        _parse_exact_sections(raw, sections.process_id)
+
+    raw["public_flow_ids"] = [10, 20]
     raw["resolved_source_selections"] = [(0, 0)]
     with pytest.raises(ArtifactError, match="does not cover every external source"):
         _parse_exact_sections(raw, sections.process_id)

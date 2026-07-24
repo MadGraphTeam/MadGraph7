@@ -60,7 +60,13 @@ def _evaluate_replay_point(
     ]
     if len(permutation) != sections.external_source_count:
         raise ArtifactError("recurrence replay permutation has invalid width")
-    momenta = _momentum_forms(plan, point, permutation)
+    momentum_signs = sections.replay_momentum_signs[
+        target.source_permutation_start : target.source_permutation_start
+        + target.source_permutation_count
+    ]
+    if len(momentum_signs) != sections.external_source_count:
+        raise ArtifactError("recurrence replay momentum-sign map has invalid width")
+    momenta = _momentum_forms(plan, point, permutation, momentum_signs)
     amplitudes = list(
         _execute_schedule(
             plan,
@@ -258,6 +264,7 @@ def _momentum_forms(
     plan: _RecurrenceExactPlan,
     point: _Point,
     permutation: Sequence[int],
+    momentum_signs: Sequence[int] | None = None,
 ) -> tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...]:
     result = []
     terms = plan.sections.momentum_terms
@@ -271,7 +278,10 @@ def _momentum_forms(
                 raise ArtifactError(
                     "recurrence momentum form references an absent external source"
                 ) from exc
-            coefficient = Decimal(term.coefficient)
+            replay_sign = (
+                1 if momentum_signs is None else momentum_signs[term.source_slot]
+            )
+            coefficient = Decimal(term.coefficient * replay_sign)
             for component in range(4):
                 values[component] += coefficient * source[component]
         result.append((values[0], values[1], values[2], values[3]))

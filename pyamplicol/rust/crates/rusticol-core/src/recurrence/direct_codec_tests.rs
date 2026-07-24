@@ -9,7 +9,15 @@ fn direct_codec_round_trips_deterministically() {
     let first = encode_recurrence_direct_plan_v2(&plan).unwrap();
     let second = encode_recurrence_direct_plan_v2(&plan).unwrap();
     assert_eq!(first, second);
-    assert_eq!(decode_recurrence_direct_plan_v2(&first).unwrap(), plan);
+    let decoded = decode_recurrence_direct_plan_v2(&first).unwrap();
+    assert_eq!(
+        decoded
+            .closure_proofs()
+            .three_line_traversal_certificates()
+            .len(),
+        1
+    );
+    assert_eq!(decoded, plan);
 }
 
 #[test]
@@ -50,4 +58,19 @@ fn direct_codec_rejects_nonzero_reserved_fields() {
     bytes[12..16].copy_from_slice(&1_u32.to_le_bytes());
     let error = decode_recurrence_direct_plan_v2(&bytes).unwrap_err();
     assert!(error.to_string().contains("header flags"));
+}
+
+#[test]
+fn direct_codec_authenticates_three_line_traversal_payloads() {
+    let mut bytes = encode_recurrence_direct_plan_v2(&valid_plan()).unwrap();
+    let last = bytes
+        .last_mut()
+        .expect("encoded three-line proof payload is nonempty");
+    *last ^= 1;
+    let error = decode_recurrence_direct_plan_v2(&bytes).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("three-line traversal proof digest mismatch")
+    );
 }

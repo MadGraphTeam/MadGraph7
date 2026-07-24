@@ -4,15 +4,15 @@
 
 use super::eager_manifest::PreparedKernelPackManifest;
 use super::evaluator::recurrence_source_direct::{
-    DirectSourceDispatchDomainSpec, DirectSourceOrientation, DirectSourceTemplateSpec,
-    DirectSourceWavefunctionFamily,
+    DirectSourceDispatchDomainSpec, DirectSourceDispatchKey, DirectSourceDispatchVariantSpec,
+    DirectSourceOrientation, DirectSourceTemplateSpec, DirectSourceWavefunctionFamily,
 };
 use super::recurrence_backend::NativeRecurrenceDirectExecutorBackend;
 use super::recurrence_manifest::*;
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::recurrence::{
-    DirectRecurrencePlan, RECURRENCE_DIRECT_PLAN_MEMBER, decode_recurrence_direct_plan_v2,
+    DirectRecurrencePlan, RECURRENCE_DIRECT_SCHEDULE_MEMBER, decode_recurrence_direct_plan_v2,
 };
 
 pub(super) struct LoadedRecurrenceRuntime {
@@ -107,7 +107,11 @@ pub(super) fn load_recurrence_exact_sections(
     Ok(NativeRecurrenceExactSections {
         process_id: manifest.key.clone(),
         strategy: plan.strategy().as_str().to_string(),
-        semantic_digest: plan.semantic_digest().to_string(),
+        semantic_digest: manifest
+            .plan
+            .process_binding
+            .process_semantic_digest
+            .clone(),
         runtime_layout_digest: plan.runtime_layout_digest().to_string(),
         current_arena_components: plan.current_arena_components(),
         amplitude_destination_count: plan.amplitude_destination_count(),
@@ -123,6 +127,8 @@ pub(super) fn load_recurrence_exact_sections(
         momentum_terms: plan.momentum_terms().to_vec(),
         replay_targets: plan.replay_targets().to_vec(),
         source_permutations: plan.source_permutations().to_vec(),
+        replay_momentum_signs: plan.replay_momentum_signs().to_vec(),
+        replay_helicity_map: plan.replay_helicity_map().to_vec(),
         amplitude_destinations: plan.amplitude_destinations().to_vec(),
         resolved_helicities: plan.resolved_helicities().to_vec(),
         public_helicities: plan.public_helicities().to_vec(),
@@ -176,6 +182,7 @@ fn public_flow_ids(
         }
     };
     let mut seen = BTreeSet::new();
+    let strategy = plan.strategy();
     let result = metadata
         .public_color_flows
         .iter()
@@ -191,18 +198,26 @@ fn public_flow_ids(
                     "recurrence public color-flow binding references a non-LC component",
                 ));
             }
-            if binding.target_sector_id >= plan.physical_sector_count()
-                || !available.contains(&binding.target_sector_id)
-                || !seen.insert(binding.target_sector_id)
+            let plan_sector_id = match strategy {
+                crate::recurrence::RecurrenceStrategy::TopologyReplay => binding.target_sector_id,
+                crate::recurrence::RecurrenceStrategy::AllFlowUnion => {
+                    binding.construction_sector_id
+                }
+            };
+            if plan_sector_id >= plan.physical_sector_count()
+                || !available.contains(&plan_sector_id)
+                || (strategy == crate::recurrence::RecurrenceStrategy::TopologyReplay
+                    && !seen.insert(plan_sector_id))
             {
                 return Err(RusticolError::integrity(
                     "recurrence public color-flow target is absent or repeated in the direct plan",
                 ));
             }
-            Ok(binding.target_sector_id)
+            seen.insert(plan_sector_id);
+            Ok(plan_sector_id)
         })
         .collect::<RusticolResult<Vec<_>>>()?;
-    if result.len() != available.len() {
+    if seen != available {
         return Err(RusticolError::integrity(
             "recurrence direct-plan flow destinations do not match the public color-flow axis",
         ));
@@ -299,35 +314,22 @@ fn load_plan(
     evaluator_root: &Path,
     manifest: &RecurrenceExecutionManifest,
 ) -> RusticolResult<DirectRecurrencePlan> {
-    let container = &manifest.plan.runtime_container;
-    let path = evaluator_root.join(&container.path);
-    let relative = path.strip_prefix(artifact.root()).map_err(|_| {
-        RusticolError::security("recurrence runtime container escapes the artifact root")
-    })?;
-    let logical_path = relative
-        .components()
-        .map(|component| match component {
-            std::path::Component::Normal(part) => part.to_str().ok_or_else(|| {
-                RusticolError::security("recurrence runtime container path is not valid UTF-8")
-            }),
-            _ => Err(RusticolError::security(
-                "recurrence runtime container path is not canonical",
-            )),
-        })
-        .collect::<RusticolResult<Vec<_>>>()?
-        .join("/");
-    let payload = artifact.payload(&logical_path)?;
+    let container = &manifest.plan.runtime_schedule;
+    let path = artifact.root().join(&container.path);
+    let payload = artifact.payload(&container.path)?;
     if payload.role != PayloadRole::EvaluatorState
         || payload.media_type != "application/octet-stream"
-        || payload.process_id.as_deref() != Some(manifest.key.as_str())
+        || payload.process_id.is_some()
         || payload.executable
         || payload.size_bytes != container.size_bytes
         || payload.sha256 != container.sha256
     {
         return Err(RusticolError::integrity(
-            "recurrence runtime container disagrees with its authenticated payload",
+            "recurrence root schedule disagrees with its authenticated payload",
         ));
     }
+
+    let process_remap = validate_process_binding(artifact, evaluator_root, manifest)?;
 
     let reader = PacbinReader::open(&path)?;
     let index = reader.index();
@@ -346,14 +348,19 @@ fn load_plan(
             "recurrence runtime PACBIN metadata disagrees with execution.json",
         ));
     }
-    let member = reader.member(RECURRENCE_DIRECT_PLAN_MEMBER)?;
+    let member = reader.member(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
     if member.kind() != PacbinMemberKind::RecurrenceDirectPlan {
         return Err(RusticolError::compatibility(
             "recurrence runtime PACBIN contains an incompatible plan member",
         ));
     }
-    let bytes = reader.member_bytes(RECURRENCE_DIRECT_PLAN_MEMBER)?;
+    let bytes = reader.member_bytes(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
     let plan = decode_recurrence_direct_plan_v2(bytes)?;
+    if plan.semantic_digest().to_string() != manifest.plan.process_binding.schedule_digest {
+        return Err(RusticolError::integrity(
+            "recurrence root schedule digest disagrees with its process binding",
+        ));
+    }
     if plan.prepared_pack_digest().to_string() != manifest.prepared_kernel_pack_digest
         || plan.direct_template_catalog_digest().to_string()
             != manifest.direct_template_catalog_digest
@@ -362,7 +369,542 @@ fn load_plan(
             "direct recurrence plan authentication digests disagree with execution.json",
         ));
     }
-    Ok(plan)
+    apply_process_remap(plan, &process_remap)
+}
+
+fn validate_process_binding(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &RecurrenceExecutionManifest,
+) -> RusticolResult<RecurrenceProcessRemap> {
+    let binding = &manifest.plan.process_binding;
+    let relative_root = evaluator_root
+        .strip_prefix(artifact.root())
+        .map_err(|_| RusticolError::security("recurrence process root escapes the artifact"))?;
+    let logical = relative_root.join(&binding.path);
+    let logical = logical
+        .to_str()
+        .ok_or_else(|| RusticolError::security("recurrence process-binding path is not UTF-8"))?;
+    let record = artifact.payload(logical)?;
+    if record.role != PayloadRole::EvaluatorState
+        || record.process_id.as_deref() != Some(manifest.key.as_str())
+        || record.size_bytes != binding.size_bytes
+        || record.sha256 != binding.sha256
+    {
+        return Err(RusticolError::integrity(
+            "recurrence process-binding payload disagrees with execution.json",
+        ));
+    }
+    let bytes = artifact.read_payload(logical)?;
+    const HEADER_SIZE: usize = 160;
+    if bytes.len() < HEADER_SIZE || &bytes[..8] != b"PACRDBN2" {
+        return Err(RusticolError::compatibility(
+            "unsupported recurrence process-binding payload",
+        ));
+    }
+    let u32_at = |offset: usize| {
+        bytes
+            .get(offset..offset + 4)
+            .and_then(|raw| raw.try_into().ok())
+            .map(u32::from_le_bytes)
+            .ok_or_else(|| RusticolError::artifact("truncated recurrence process binding"))
+    };
+    if u32_at(8)? != 2 {
+        return Err(RusticolError::compatibility(
+            "unsupported recurrence process-binding version",
+        ));
+    }
+    let process_len = usize::try_from(u32_at(12)?)
+        .map_err(|_| RusticolError::artifact("recurrence process ID is too large"))?;
+    let word_count = usize::try_from(u32_at(16)?)
+        .map_err(|_| RusticolError::artifact("recurrence support mask is too large"))?;
+    let process_start = HEADER_SIZE;
+    let process_end = process_start
+        .checked_add(process_len)
+        .ok_or_else(|| RusticolError::artifact("recurrence process binding overflows"))?;
+    if bytes.get(20..52) != Some(decode_sha256(&binding.schedule_digest)?.as_slice())
+        || bytes.get(52..84) != Some(decode_sha256(&binding.process_semantic_digest)?.as_slice())
+        || bytes.get(84..116) != Some(decode_sha256(&binding.remap.bijection_digest)?.as_slice())
+        || bytes.get(process_start..process_end) != Some(manifest.key.as_bytes())
+        || word_count == 0
+    {
+        return Err(RusticolError::integrity(
+            "recurrence process-binding payload is inconsistent",
+        ));
+    }
+    let mut cursor = process_end;
+    let words = read_u64_values(
+        &bytes,
+        &mut cursor,
+        u32::try_from(word_count)
+            .map_err(|_| RusticolError::artifact("recurrence support mask is too large"))?,
+        "recurrence support mask",
+    )?;
+    if words != binding.process_support_words {
+        return Err(RusticolError::integrity(
+            "recurrence process support mask is inconsistent",
+        ));
+    }
+    let counts = (0..11)
+        .map(|index| u32_at(116 + index * 4))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let source_slots = read_u32_rows(&bytes, &mut cursor, counts[0], 1, "source-slot remap")?
+        .into_iter()
+        .map(|row| row[0])
+        .collect();
+    let source_momentum_signs =
+        read_i32_values(&bytes, &mut cursor, counts[0], "source momentum signs")?;
+    let source_helicity_signs =
+        read_i32_values(&bytes, &mut cursor, counts[0], "source helicity signs")?;
+    let source_state_offsets = read_u32_rows(
+        &bytes,
+        &mut cursor,
+        counts[0].checked_add(1).ok_or_else(|| {
+            RusticolError::artifact("recurrence source-state offset count overflows")
+        })?,
+        1,
+        "source-state remap offsets",
+    )?
+    .into_iter()
+    .map(|row| row[0])
+    .collect::<Vec<_>>();
+    let source_state_count = source_state_offsets
+        .last()
+        .copied()
+        .ok_or_else(|| RusticolError::artifact("recurrence source-state remap has no offsets"))?;
+    let source_state_indices = read_u32_rows(
+        &bytes,
+        &mut cursor,
+        source_state_count,
+        1,
+        "source-state remap indices",
+    )?
+    .into_iter()
+    .map(|row| row[0])
+    .collect();
+    let public_flow_ids = read_u32_rows(&bytes, &mut cursor, counts[1], 1, "public-flow remap")?
+        .into_iter()
+        .map(|row| row[0])
+        .collect();
+    let physical_sector_ids =
+        read_u32_rows(&bytes, &mut cursor, counts[2], 1, "physical-sector remap")?
+            .into_iter()
+            .map(|row| row[0])
+            .collect();
+    let state_templates = RecurrenceSparseBijection {
+        count: counts[3],
+        changes: read_u32_pairs(&bytes, &mut cursor, counts[7], "state-template remap")?,
+    };
+    let source_templates = RecurrenceSparseBijection {
+        count: counts[4],
+        changes: read_u32_pairs(&bytes, &mut cursor, counts[8], "source-template remap")?,
+    };
+    let direct_executors = RecurrenceSparseBijection {
+        count: counts[5],
+        changes: read_u32_pairs(&bytes, &mut cursor, counts[9], "direct-executor remap")?,
+    };
+    let parameter_slots = RecurrenceSparseBijection {
+        count: counts[6],
+        changes: read_u32_pairs(&bytes, &mut cursor, counts[10], "parameter-slot remap")?,
+    };
+    if cursor != bytes.len() {
+        return Err(RusticolError::integrity(
+            "recurrence process-binding payload has trailing bytes",
+        ));
+    }
+    let decoded = RecurrenceProcessRemap {
+        bijection_digest: binding.remap.bijection_digest.clone(),
+        source_slots,
+        source_momentum_signs,
+        source_helicity_signs,
+        source_state_offsets,
+        source_state_indices,
+        public_flow_ids,
+        physical_sector_ids,
+        state_templates,
+        source_templates,
+        direct_executors,
+        parameter_slots,
+    };
+    if decoded != binding.remap {
+        return Err(RusticolError::integrity(
+            "recurrence process-binding binary remap disagrees with execution.json",
+        ));
+    }
+    Ok(decoded)
+}
+
+fn read_u32_pairs(
+    bytes: &[u8],
+    cursor: &mut usize,
+    count: u32,
+    context: &str,
+) -> RusticolResult<Vec<[u32; 2]>> {
+    read_u32_rows(bytes, cursor, count, 2, context)?
+        .into_iter()
+        .map(|row| {
+            row.try_into()
+                .map_err(|_| RusticolError::internal("u32 pair width drifted"))
+        })
+        .collect()
+}
+
+fn read_u32_rows(
+    bytes: &[u8],
+    cursor: &mut usize,
+    row_count: u32,
+    row_width: usize,
+    context: &str,
+) -> RusticolResult<Vec<Vec<u32>>> {
+    let value_count = usize::try_from(row_count)
+        .ok()
+        .and_then(|count| count.checked_mul(row_width))
+        .ok_or_else(|| RusticolError::artifact(format!("{context} count overflows")))?;
+    let byte_count = value_count
+        .checked_mul(4)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} byte size overflows")))?;
+    let end = cursor
+        .checked_add(byte_count)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} range overflows")))?;
+    let payload = bytes
+        .get(*cursor..end)
+        .ok_or_else(|| RusticolError::artifact(format!("truncated {context}")))?;
+    *cursor = end;
+    payload
+        .chunks_exact(row_width * 4)
+        .map(|row| {
+            row.chunks_exact(4)
+                .map(|raw| {
+                    raw.try_into()
+                        .map(u32::from_le_bytes)
+                        .map_err(|_| RusticolError::artifact(format!("truncated {context}")))
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn read_i32_values(
+    bytes: &[u8],
+    cursor: &mut usize,
+    count: u32,
+    context: &str,
+) -> RusticolResult<Vec<i32>> {
+    let count = usize::try_from(count)
+        .map_err(|_| RusticolError::artifact(format!("{context} count exceeds usize")))?;
+    let byte_count = count
+        .checked_mul(4)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} byte size overflows")))?;
+    let end = cursor
+        .checked_add(byte_count)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} range overflows")))?;
+    let payload = bytes
+        .get(*cursor..end)
+        .ok_or_else(|| RusticolError::artifact(format!("truncated {context}")))?;
+    *cursor = end;
+    payload
+        .chunks_exact(4)
+        .map(|raw| {
+            raw.try_into()
+                .map(i32::from_le_bytes)
+                .map_err(|_| RusticolError::artifact(format!("truncated {context}")))
+        })
+        .collect()
+}
+
+fn read_u64_values(
+    bytes: &[u8],
+    cursor: &mut usize,
+    count: u32,
+    context: &str,
+) -> RusticolResult<Vec<u64>> {
+    let count = usize::try_from(count)
+        .map_err(|_| RusticolError::artifact(format!("{context} count exceeds usize")))?;
+    let byte_count = count
+        .checked_mul(8)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} byte size overflows")))?;
+    let end = cursor
+        .checked_add(byte_count)
+        .ok_or_else(|| RusticolError::artifact(format!("{context} range overflows")))?;
+    let payload = bytes
+        .get(*cursor..end)
+        .ok_or_else(|| RusticolError::artifact(format!("truncated {context}")))?;
+    *cursor = end;
+    payload
+        .chunks_exact(8)
+        .map(|raw| {
+            raw.try_into()
+                .map(u64::from_le_bytes)
+                .map_err(|_| RusticolError::artifact(format!("truncated {context}")))
+        })
+        .collect()
+}
+
+fn apply_process_remap(
+    plan: DirectRecurrencePlan,
+    remap: &RecurrenceProcessRemap,
+) -> RusticolResult<DirectRecurrencePlan> {
+    let source_count = usize::try_from(plan.external_source_count())
+        .map_err(|_| RusticolError::artifact("recurrence source count exceeds usize"))?;
+    let topology_flow_count = match plan.strategy() {
+        crate::recurrence::RecurrenceStrategy::TopologyReplay => Some(plan.replay_targets().len()),
+        crate::recurrence::RecurrenceStrategy::AllFlowUnion => None,
+    };
+    if remap.source_slots.len() != source_count
+        || remap.source_momentum_signs.len() != source_count
+        || remap.source_helicity_signs.len() != source_count
+        || topology_flow_count.is_some_and(|flow_count| remap.public_flow_ids.len() != flow_count)
+        || remap.physical_sector_ids.len() != plan.physical_sector_count() as usize
+        || remap.state_templates.count != plan.state_template_count()
+        || remap.source_templates.count != plan.source_template_count()
+        || remap.direct_executors.count != plan.direct_executor_count()
+        || remap.parameter_slots.count != plan.parameter_value_count()
+    {
+        return Err(RusticolError::integrity(
+            "recurrence process remap domain counts disagree with the root schedule",
+        ));
+    }
+    let identity = remap
+        .source_slots
+        .iter()
+        .enumerate()
+        .all(|(index, value)| *value as usize == index)
+        && remap.source_momentum_signs.iter().all(|value| *value == 1)
+        && remap.source_helicity_signs.iter().all(|value| *value == 1)
+        && remap
+            .source_state_offsets
+            .windows(2)
+            .enumerate()
+            .all(|(source_slot, window)| {
+                let start = window[0] as usize;
+                let stop = window[1] as usize;
+                remap.source_state_indices[start..stop]
+                    .iter()
+                    .enumerate()
+                    .all(|(state_index, value)| *value as usize == state_index)
+                    && source_slot < remap.source_slots.len()
+            })
+        && remap
+            .public_flow_ids
+            .iter()
+            .enumerate()
+            .all(|(index, value)| *value as usize == index)
+        && remap
+            .physical_sector_ids
+            .iter()
+            .enumerate()
+            .all(|(index, value)| *value as usize == index)
+        && remap.state_templates.changes.is_empty()
+        && remap.source_templates.changes.is_empty()
+        && remap.direct_executors.changes.is_empty()
+        && remap.parameter_slots.changes.is_empty();
+    if identity {
+        return Ok(plan);
+    }
+    if plan.strategy() != crate::recurrence::RecurrenceStrategy::TopologyReplay {
+        return Err(RusticolError::compatibility(
+            "cross-process recurrence sharing currently supports topology-replay schedules only",
+        ));
+    }
+    if !remap.parameter_slots.changes.is_empty() {
+        return Err(RusticolError::compatibility(
+            "cross-process recurrence sharing does not support prepared-parameter reordering",
+        ));
+    }
+
+    let mut parts = plan.into_parts();
+    for current in &mut parts.currents {
+        current.state_template_id =
+            sparse_bijection_value(&remap.state_templates, current.state_template_id)?;
+    }
+    for source in &mut parts.sources {
+        source.source_slot = *remap
+            .source_slots
+            .get(source.source_slot as usize)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence source row is outside the process source remap",
+                )
+            })?;
+        source.source_template_or_dispatch_domain = sparse_bijection_value(
+            &remap.source_templates,
+            source.source_template_or_dispatch_domain,
+        )?;
+    }
+    for group in &mut parts.row_groups {
+        group.direct_executor_id =
+            sparse_bijection_value(&remap.direct_executors, group.direct_executor_id)?;
+    }
+    for target in &mut parts.replay_targets {
+        target.public_flow_id = *remap
+            .public_flow_ids
+            .get(target.public_flow_id as usize)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence replay target is outside the public-flow remap",
+                )
+            })?;
+        let start = usize::try_from(target.source_permutation_start).map_err(|_| {
+            RusticolError::artifact("recurrence replay permutation offset exceeds usize")
+        })?;
+        let stop = start
+            .checked_add(target.source_permutation_count as usize)
+            .ok_or_else(|| {
+                RusticolError::artifact("recurrence replay permutation range overflows")
+            })?;
+        let permutations = parts
+            .source_permutations
+            .get_mut(start..stop)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence replay permutation is outside the root schedule",
+                )
+            })?;
+        let momentum_signs = parts
+            .replay_momentum_signs
+            .get_mut(start..stop)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence replay momentum signs are outside the root schedule",
+                )
+            })?;
+        for (source_slot, momentum_sign) in permutations.iter_mut().zip(momentum_signs.iter_mut()) {
+            let root_slot = *source_slot as usize;
+            *source_slot = *remap.source_slots.get(root_slot).ok_or_else(|| {
+                RusticolError::integrity("recurrence replay source is outside the process remap")
+            })?;
+            *momentum_sign = momentum_sign
+                .checked_mul(*remap.source_momentum_signs.get(root_slot).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "recurrence replay source has no process momentum sign",
+                    )
+                })?)
+                .ok_or_else(|| {
+                    RusticolError::integrity("recurrence replay momentum sign overflows")
+                })?;
+        }
+    }
+    for descriptor in &parts.resolved_helicities {
+        let start = usize::try_from(descriptor.public_helicity_start).map_err(|_| {
+            RusticolError::artifact("recurrence public-helicity offset exceeds usize")
+        })?;
+        let stop = start
+            .checked_add(descriptor.public_helicity_count as usize)
+            .ok_or_else(|| RusticolError::artifact("recurrence public-helicity range overflows"))?;
+        let source = parts
+            .public_helicities
+            .get(start..stop)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence public-helicity vector is outside the root schedule",
+                )
+            })?
+            .to_vec();
+        if source.len() != source_count {
+            return Err(RusticolError::integrity(
+                "recurrence public-helicity width disagrees with the process remap",
+            ));
+        }
+        let target = parts
+            .public_helicities
+            .get_mut(start..stop)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence public-helicity vector is outside the root schedule",
+                )
+            })?;
+        for (root_slot, value) in source.into_iter().enumerate() {
+            let target_slot = remap.source_slots[root_slot] as usize;
+            target[target_slot] = value
+                .checked_mul(remap.source_helicity_signs[root_slot])
+                .ok_or_else(|| RusticolError::integrity("recurrence public helicity overflows"))?;
+        }
+    }
+    for descriptor in &parts.resolved_helicities {
+        let start = usize::try_from(descriptor.source_state_start).map_err(|_| {
+            RusticolError::artifact("recurrence source-state assignment offset exceeds usize")
+        })?;
+        let stop = start
+            .checked_add(descriptor.source_state_count as usize)
+            .ok_or_else(|| {
+                RusticolError::artifact("recurrence source-state assignment range overflows")
+            })?;
+        let source = parts
+            .source_state_assignments
+            .get(start..stop)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence source-state assignment range is outside the root schedule",
+                )
+            })?
+            .to_vec();
+        if source.len() != source_count {
+            return Err(RusticolError::integrity(
+                "recurrence source-state assignment width disagrees with the process remap",
+            ));
+        }
+        let target = parts
+            .source_state_assignments
+            .get_mut(start..stop)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence source-state assignment range is outside the root schedule",
+                )
+            })?;
+        for assignment in source {
+            let target_slot = *remap
+                .source_slots
+                .get(assignment.source_slot as usize)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "recurrence source-state assignment is outside the process remap",
+                    )
+                })?;
+            let state_start = *remap
+                .source_state_offsets
+                .get(assignment.source_slot as usize)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "recurrence source-state assignment has no remap offset",
+                    )
+                })? as usize;
+            let state_stop = *remap
+                .source_state_offsets
+                .get(assignment.source_slot as usize + 1)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "recurrence source-state assignment has no remap limit",
+                    )
+                })? as usize;
+            let target_state_index = *remap
+                .source_state_indices
+                .get(state_start..state_stop)
+                .and_then(|values| values.get(assignment.state_index as usize))
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "recurrence source-state assignment is outside its state remap",
+                    )
+                })?;
+            target[target_slot as usize] = crate::recurrence::DirectSourceStateAssignment {
+                source_slot: target_slot,
+                state_index: target_state_index,
+            };
+        }
+    }
+    DirectRecurrencePlan::new(parts)
+}
+
+fn sparse_bijection_value(mapping: &RecurrenceSparseBijection, value: u32) -> RusticolResult<u32> {
+    if value >= mapping.count {
+        return Err(RusticolError::integrity(
+            "recurrence process remap input is outside its domain",
+        ));
+    }
+    Ok(mapping
+        .changes
+        .binary_search_by_key(&value, |change| change[0])
+        .map(|index| mapping.changes[index][1])
+        .unwrap_or(value))
 }
 
 type RecurrenceCommonRuntimeParts = (
@@ -581,7 +1123,8 @@ fn build_direct_source_domains(
         .collect::<BTreeMap<_, _>>();
     let domain_count = usize::try_from(plan.source_template_or_dispatch_count())
         .map_err(|_| RusticolError::artifact("recurrence source-domain count exceeds usize"))?;
-    let mut variants = vec![BTreeMap::<i32, DirectSourceTemplateSpec>::new(); domain_count];
+    let mut variants =
+        vec![BTreeMap::<DirectSourceDispatchKey, DirectSourceTemplateSpec>::new(); domain_count];
 
     match plan.strategy() {
         crate::recurrence::RecurrenceStrategy::TopologyReplay => {
@@ -613,7 +1156,7 @@ fn build_direct_source_domains(
                 insert_source_domain_variant(
                     &mut variants,
                     row.source_template_or_dispatch_domain,
-                    row.spin_state_class,
+                    DirectSourceDispatchKey::SpinStateClass(row.spin_state_class),
                     spec,
                 )?;
             }
@@ -655,7 +1198,10 @@ fn build_direct_source_domains(
                 insert_source_domain_variant(
                     &mut variants,
                     variant.dispatch_domain_id,
-                    variant.crossed_spin_state_class,
+                    DirectSourceDispatchKey::RuntimeVariant {
+                        source_row_id: variant.source_row_id,
+                        runtime_variant_id: variant.runtime_variant_id,
+                    },
                     spec,
                 )?;
             }
@@ -664,9 +1210,9 @@ fn build_direct_source_domains(
 
     let inert = variants
         .iter()
-        .flat_map(BTreeMap::values)
+        .flat_map(BTreeMap::iter)
         .next()
-        .copied()
+        .map(|(key, spec)| (*key, *spec))
         .ok_or_else(|| RusticolError::integrity("recurrence direct plan has no source rows"))?;
     Ok(variants
         .into_iter()
@@ -675,28 +1221,34 @@ fn build_direct_source_domains(
             // for one process. Unreferenced slots remain inert but preserve the
             // stable IDs addressed by DirectSourceRow.
             variants: if domain.is_empty() {
-                vec![inert]
+                vec![DirectSourceDispatchVariantSpec {
+                    key: inert.0,
+                    template: inert.1,
+                }]
             } else {
-                domain.into_values().collect()
+                domain
+                    .into_iter()
+                    .map(|(key, template)| DirectSourceDispatchVariantSpec { key, template })
+                    .collect()
             },
         })
         .collect())
 }
 
 fn insert_source_domain_variant(
-    domains: &mut [BTreeMap<i32, DirectSourceTemplateSpec>],
+    domains: &mut [BTreeMap<DirectSourceDispatchKey, DirectSourceTemplateSpec>],
     domain_id: u32,
-    spin_state_class: i32,
+    key: DirectSourceDispatchKey,
     spec: DirectSourceTemplateSpec,
 ) -> RusticolResult<()> {
     let domain = domains.get_mut(domain_id as usize).ok_or_else(|| {
         RusticolError::integrity("recurrence direct source-domain ID is out of bounds")
     })?;
-    if let Some(previous) = domain.insert(spin_state_class, spec)
+    if let Some(previous) = domain.insert(key, spec)
         && previous != spec
     {
         return Err(RusticolError::integrity(
-            "recurrence source domain maps one spin class to different SourceIR semantics",
+            "recurrence source domain maps one dispatch key to different SourceIR semantics",
         ));
     }
     Ok(())
@@ -918,4 +1470,22 @@ fn decode_sha256(value: &str) -> RusticolResult<[u8; 32]> {
         })?;
     }
     Ok(output)
+}
+
+#[cfg(test)]
+mod binding_decode_tests {
+    use super::read_u64_values;
+
+    #[test]
+    fn truncated_support_words_return_an_artifact_error() {
+        let mut cursor = 0;
+        let error = read_u64_values(&[0; 7], &mut cursor, 1, "recurrence support mask")
+            .expect_err("truncated support words must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("truncated recurrence support mask")
+        );
+        assert_eq!(cursor, 0);
+    }
 }

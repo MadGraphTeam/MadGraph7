@@ -124,21 +124,36 @@ impl DirectSourceTemplateSpec {
 }
 
 /// One row-addressable source-template or runtime-dispatch domain.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum DirectSourceDispatchKey {
+    SpinStateClass(i32),
+    RuntimeVariant {
+        source_row_id: u32,
+        runtime_variant_id: u32,
+    },
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DirectSourceDispatchVariantSpec {
+    pub(crate) key: DirectSourceDispatchKey,
+    pub(crate) template: DirectSourceTemplateSpec,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct DirectSourceDispatchDomainSpec {
-    pub(crate) variants: Vec<DirectSourceTemplateSpec>,
+    pub(crate) variants: Vec<DirectSourceDispatchVariantSpec>,
 }
 
 struct DirectSourceDispatchDomain {
-    variants: Box<[DirectSourceTemplateSpec]>,
+    variants: Box<[DirectSourceDispatchVariantSpec]>,
 }
 
 impl DirectSourceDispatchDomain {
-    fn resolve(&self, spin_state_class: i32) -> Option<DirectSourceTemplateSpec> {
+    fn resolve(&self, key: DirectSourceDispatchKey) -> Option<DirectSourceTemplateSpec> {
         self.variants
-            .binary_search_by_key(&spin_state_class, |variant| variant.spin_state_class)
+            .binary_search_by_key(&key, |variant| variant.key)
             .ok()
-            .map(|index| self.variants[index])
+            .map(|index| self.variants[index].template)
     }
 }
 
@@ -178,19 +193,24 @@ impl LoadedDirectSourceExecutor {
                     "direct recurrence source dispatch domain {domain_index} is empty"
                 )));
             }
-            domain
-                .variants
-                .sort_unstable_by_key(|variant| variant.spin_state_class);
+            domain.variants.sort_unstable_by_key(|variant| variant.key);
             for variant in &domain.variants {
-                variant.validate()?;
+                variant.template.validate()?;
+            }
+            if domain.variants.windows(2).any(|pair| {
+                std::mem::discriminant(&pair[0].key) != std::mem::discriminant(&pair[1].key)
+            }) {
+                return Err(RusticolError::invalid_argument(format!(
+                    "direct recurrence source dispatch domain {domain_index} mixes spin and runtime-variant keys"
+                )));
             }
             if domain
                 .variants
                 .windows(2)
-                .any(|pair| pair[0].spin_state_class == pair[1].spin_state_class)
+                .any(|pair| pair[0].key == pair[1].key)
             {
                 return Err(RusticolError::invalid_argument(format!(
-                    "direct recurrence source dispatch domain {domain_index} repeats a spin-state class"
+                    "direct recurrence source dispatch domain {domain_index} repeats a dispatch key"
                 )));
             }
             loaded.push(DirectSourceDispatchDomain {
@@ -262,7 +282,9 @@ unsafe extern "C" fn execute_direct_source_rows(
         else {
             return STATUS_BOUNDS;
         };
-        let Some(template) = domain.resolve(row.spin_state_class) else {
+        let Some(template) = domain.resolve(DirectSourceDispatchKey::SpinStateClass(
+            row.spin_state_class,
+        )) else {
             return STATUS_BOUNDS;
         };
         if row.momentum_form_id >= momenta.form_count || row.exact_factor_id >= factors.value_count
@@ -488,9 +510,15 @@ unsafe extern "C" fn execute_direct_union_source_rows(
         let Some(domain) = context.domains.get(variant.dispatch_domain_id as usize) else {
             return STATUS_BOUNDS;
         };
-        let Some(template) = domain.resolve(variant.crossed_spin_state_class) else {
+        let Some(template) = domain.resolve(DirectSourceDispatchKey::RuntimeVariant {
+            source_row_id: variant.source_row_id,
+            runtime_variant_id: variant.runtime_variant_id,
+        }) else {
             return STATUS_BOUNDS;
         };
+        if template.spin_state_class != variant.crossed_spin_state_class {
+            return STATUS_EXECUTION_FAILED;
+        }
         if u32::from(template.family.component_count()) != variant.projection_count {
             return STATUS_EXECUTION_FAILED;
         }
@@ -766,7 +794,29 @@ mod tests {
 
     fn domain(variant: DirectSourceTemplateSpec) -> DirectSourceDispatchDomainSpec {
         DirectSourceDispatchDomainSpec {
-            variants: vec![variant],
+            variants: vec![DirectSourceDispatchVariantSpec {
+                key: DirectSourceDispatchKey::SpinStateClass(variant.spin_state_class),
+                template: variant,
+            }],
+        }
+    }
+
+    fn runtime_domain(
+        variants: impl IntoIterator<Item = (u32, DirectSourceTemplateSpec)>,
+    ) -> DirectSourceDispatchDomainSpec {
+        DirectSourceDispatchDomainSpec {
+            variants: variants
+                .into_iter()
+                .map(
+                    |(runtime_variant_id, template)| DirectSourceDispatchVariantSpec {
+                        key: DirectSourceDispatchKey::RuntimeVariant {
+                            source_row_id: 0,
+                            runtime_variant_id,
+                        },
+                        template,
+                    },
+                )
+                .collect(),
         }
     }
 
@@ -996,21 +1046,27 @@ mod tests {
     fn dispatch_domains_select_crossed_fermion_state_without_packing() {
         let executor = LoadedDirectSourceExecutor::load(vec![DirectSourceDispatchDomainSpec {
             variants: vec![
-                DirectSourceTemplateSpec {
-                    spin_state_class: 1,
-                    family: DirectSourceWavefunctionFamily::WeylFermion,
-                    orientation: DirectSourceOrientation::Particle,
-                    helicity: 1,
-                    chirality: 1,
-                    mass_parameter_index: None,
+                DirectSourceDispatchVariantSpec {
+                    key: DirectSourceDispatchKey::SpinStateClass(1),
+                    template: DirectSourceTemplateSpec {
+                        spin_state_class: 1,
+                        family: DirectSourceWavefunctionFamily::WeylFermion,
+                        orientation: DirectSourceOrientation::Particle,
+                        helicity: 1,
+                        chirality: 1,
+                        mass_parameter_index: None,
+                    },
                 },
-                DirectSourceTemplateSpec {
-                    spin_state_class: -1,
-                    family: DirectSourceWavefunctionFamily::WeylFermion,
-                    orientation: DirectSourceOrientation::Antiparticle,
-                    helicity: -1,
-                    chirality: -1,
-                    mass_parameter_index: None,
+                DirectSourceDispatchVariantSpec {
+                    key: DirectSourceDispatchKey::SpinStateClass(-1),
+                    template: DirectSourceTemplateSpec {
+                        spin_state_class: -1,
+                        family: DirectSourceWavefunctionFamily::WeylFermion,
+                        orientation: DirectSourceOrientation::Antiparticle,
+                        helicity: -1,
+                        chirality: -1,
+                        mass_parameter_index: None,
+                    },
                 },
             ],
         }])
@@ -1041,6 +1097,110 @@ mod tests {
             assert_eq!(current_re[component], -value.im);
             assert_eq!(current_im[component], value.re);
         }
+    }
+
+    #[test]
+    fn runtime_variants_preserve_distinct_source_semantics_for_one_spin_class() {
+        let particle = DirectSourceTemplateSpec {
+            spin_state_class: 1,
+            family: DirectSourceWavefunctionFamily::WeylFermion,
+            orientation: DirectSourceOrientation::Particle,
+            helicity: 1,
+            chirality: 1,
+            mass_parameter_index: None,
+        };
+        let antiparticle = DirectSourceTemplateSpec {
+            orientation: DirectSourceOrientation::Antiparticle,
+            ..particle
+        };
+        let executor = LoadedDirectSourceExecutor::load(vec![runtime_domain([
+            (3, particle),
+            (7, antiparticle),
+        ])])
+        .expect("runtime variant identity must distinguish equal spin classes");
+        let domain = &executor.context.domains[0];
+
+        assert_eq!(
+            domain
+                .resolve(DirectSourceDispatchKey::RuntimeVariant {
+                    source_row_id: 0,
+                    runtime_variant_id: 3,
+                })
+                .expect("particle runtime variant")
+                .orientation,
+            DirectSourceOrientation::Particle
+        );
+        assert_eq!(
+            domain
+                .resolve(DirectSourceDispatchKey::RuntimeVariant {
+                    source_row_id: 0,
+                    runtime_variant_id: 7,
+                })
+                .expect("antiparticle runtime variant")
+                .orientation,
+            DirectSourceOrientation::Antiparticle
+        );
+        assert!(
+            domain
+                .resolve(DirectSourceDispatchKey::SpinStateClass(1))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn runtime_variants_distinguish_crossed_source_rows_in_one_contract() {
+        let incoming = DirectSourceTemplateSpec {
+            spin_state_class: -1,
+            family: DirectSourceWavefunctionFamily::Vector,
+            orientation: DirectSourceOrientation::SelfConjugate,
+            helicity: -1,
+            chirality: 0,
+            mass_parameter_index: None,
+        };
+        let outgoing = DirectSourceTemplateSpec {
+            spin_state_class: 1,
+            helicity: 1,
+            ..incoming
+        };
+        let executor = LoadedDirectSourceExecutor::load(vec![DirectSourceDispatchDomainSpec {
+            variants: vec![
+                DirectSourceDispatchVariantSpec {
+                    key: DirectSourceDispatchKey::RuntimeVariant {
+                        source_row_id: 0,
+                        runtime_variant_id: 3,
+                    },
+                    template: incoming,
+                },
+                DirectSourceDispatchVariantSpec {
+                    key: DirectSourceDispatchKey::RuntimeVariant {
+                        source_row_id: 2,
+                        runtime_variant_id: 3,
+                    },
+                    template: outgoing,
+                },
+            ],
+        }])
+        .expect("one runtime variant may have distinct crossed source-row semantics");
+        let domain = &executor.context.domains[0];
+
+        assert_eq!(
+            domain
+                .resolve(DirectSourceDispatchKey::RuntimeVariant {
+                    source_row_id: 0,
+                    runtime_variant_id: 3,
+                })
+                .expect("incoming source row"),
+            incoming
+        );
+        assert_eq!(
+            domain
+                .resolve(DirectSourceDispatchKey::RuntimeVariant {
+                    source_row_id: 2,
+                    runtime_variant_id: 3,
+                })
+                .expect("outgoing source row"),
+            outgoing
+        );
     }
 
     #[test]
@@ -1184,7 +1344,16 @@ mod tests {
         };
         assert!(
             LoadedDirectSourceExecutor::load(vec![DirectSourceDispatchDomainSpec {
-                variants: vec![duplicate, duplicate],
+                variants: vec![
+                    DirectSourceDispatchVariantSpec {
+                        key: DirectSourceDispatchKey::SpinStateClass(1),
+                        template: duplicate,
+                    },
+                    DirectSourceDispatchVariantSpec {
+                        key: DirectSourceDispatchKey::SpinStateClass(1),
+                        template: duplicate,
+                    },
+                ],
             }])
             .is_err()
         );
@@ -1215,14 +1384,17 @@ mod tests {
 
     #[test]
     fn union_dispatch_embeds_weyl_source_into_full_state_and_zeros_inactive_components() {
-        let executor = LoadedDirectSourceExecutor::load(vec![domain(DirectSourceTemplateSpec {
-            spin_state_class: 1,
-            family: DirectSourceWavefunctionFamily::WeylFermion,
-            orientation: DirectSourceOrientation::Particle,
-            helicity: 1,
-            chirality: 1,
-            mass_parameter_index: None,
-        })])
+        let executor = LoadedDirectSourceExecutor::load(vec![runtime_domain([(
+            0,
+            DirectSourceTemplateSpec {
+                spin_state_class: 1,
+                family: DirectSourceWavefunctionFamily::WeylFermion,
+                orientation: DirectSourceOrientation::Particle,
+                helicity: 1,
+                chirality: 1,
+                mass_parameter_index: None,
+            },
+        )])])
         .unwrap();
         let rows = [source_row(0, 0, 0, 0, 0)];
         let variants = [DirectSourceDispatchVariantDescriptor {
@@ -1326,14 +1498,17 @@ mod tests {
 
     #[test]
     fn union_dispatch_rejects_malformed_selection_variant_and_embedding_ranges() {
-        let executor = LoadedDirectSourceExecutor::load(vec![domain(DirectSourceTemplateSpec {
-            spin_state_class: 0,
-            family: DirectSourceWavefunctionFamily::Scalar,
-            orientation: DirectSourceOrientation::SelfConjugate,
-            helicity: 0,
-            chirality: 0,
-            mass_parameter_index: None,
-        })])
+        let executor = LoadedDirectSourceExecutor::load(vec![runtime_domain([(
+            0,
+            DirectSourceTemplateSpec {
+                spin_state_class: 0,
+                family: DirectSourceWavefunctionFamily::Scalar,
+                orientation: DirectSourceOrientation::SelfConjugate,
+                helicity: 0,
+                chirality: 0,
+                mass_parameter_index: None,
+            },
+        )])])
         .unwrap();
         let rows = [source_row(0, 0, 0, 0, 0)];
         let base_variant = DirectSourceDispatchVariantDescriptor {

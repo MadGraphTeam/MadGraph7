@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pyamplicol import _rusticol
 from pyamplicol.color.plan import (
     build_color_plan,
     build_lc_topology_replay_plan,
@@ -48,8 +47,8 @@ _UFO_SM_ROOT = (
 )
 
 
-def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
-    summaries: dict[str, dict[str, object]] = {}
+def test_sm_process_projects_model_generic_topology_replay_input() -> None:
+    summaries: dict[str, dict[str, int]] = {}
     dag_shapes: dict[str, tuple[int, int]] = {}
     for model_source in ("built-in", "ufo-sm"):
         if model_source == "built-in":
@@ -146,63 +145,42 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
             for state in leg.source_states
         )
 
-        result = _rusticol._validate_recurrence_builder_input_v1(
-            build_recurrence_builder_input_v1(logical),
-            build_recurrence_template_input_v1(recurrence_catalog),
-            construct_schedule=True,
+        columnar = build_recurrence_builder_input_v1(logical)
+        build_recurrence_template_input_v1(recurrence_catalog)
+        assert len(columnar.digest) == 64
+        assert len(columnar.fermion_pairing_digest or "") == 64
+        assert columnar.table("external_legs").row_count == len(process.legs)
+        assert columnar.table("physical_lc_sectors").row_count == (
+            color_plan.sector_count
         )
-
-        assert result["composite_authenticated"] is True
-        assert result["schedule_constructed"] is True
-        schedule = result["inspection_summary"]["schedule"]
-        assert schedule["source_current_count"] > 0
-        assert schedule["current_count"] > schedule["source_current_count"]
-        assert schedule["current_count_by_support_size"][3] > 0
-        assert schedule["contribution_count"] > 0
-        assert len(schedule["referenced_quantum_flow_template_ids"]) >= 2
-        assert schedule["finalization_count"] > 0
-        assert (
-            schedule["identity_finalization_count_by_support_size"][3]
-            == schedule["current_count_by_support_size"][3]
+        assert columnar.table("public_lc_flows").row_count == color_plan.sector_count
+        assert columnar.table("replay_partitions").row_count == len(
+            logical.replay_partitions
         )
-        assert schedule["propagated_finalization_count_by_support_size"][3] == 0
-        assert schedule["target_sector_count"] == color_plan.sector_count
-        assert schedule["resolved_helicity_count"] > 1
-        assert (
-            schedule["retained_helicity_count"]
-            >= schedule["resolved_helicity_count"]
+        assert columnar.table("replay_targets").row_count == sum(
+            len(partition.targets) for partition in logical.replay_partitions
         )
-        assert schedule["structural_zero_helicity_count"] == (
-            schedule["retained_helicity_count"] - schedule["resolved_helicity_count"]
-        )
-        assert schedule["structural_zero_helicity_count"] > 0
-        assert schedule["amplitude_destination_count"] <= (
-            schedule["target_sector_count"] * schedule["resolved_helicity_count"]
-        )
-        assert schedule["closure_term_count"] > 0
-        summaries[model_source] = schedule
+        assert columnar.table("source_states").row_count > len(process.legs)
+        summaries[model_source] = {
+            table.name: table.row_count
+            for table in columnar.tables
+            if table.name
+            in {
+                "external_legs",
+                "physical_lc_sectors",
+                "public_lc_flows",
+                "replay_partitions",
+                "replay_targets",
+                "source_states",
+            }
+        }
         dag_shapes[model_source] = (len(dag.currents), len(dag.interactions))
-        assert schedule["current_count"] == len(dag.currents)
-        assert schedule["contribution_count"] == len(dag.interactions)
 
-    for field in (
-        "current_count_by_support_size",
-        "contribution_count",
-        "finalization_count",
-        "identity_finalization_count_by_support_size",
-        "propagated_finalization_count_by_support_size",
-        "retained_helicity_count",
-        "resolved_helicity_count",
-        "structural_zero_helicity_count",
-        "amplitude_destination_count",
-        "target_sector_count",
-        "closure_term_count",
-    ):
-        assert summaries["built-in"][field] == summaries["ufo-sm"][field]
+    assert summaries["built-in"] == summaries["ufo-sm"]
     assert dag_shapes == {"built-in": (31, 34), "ufo-sm": (31, 34)}
 
 
-def test_sm_recurrence_closure_topologies_match_without_forest_aliases() -> None:
+def test_sm_recurrence_closure_projections_match_without_forest_aliases() -> None:
     """Exercise every LC closure family before public recurrence dispatch."""
 
     expressions = (
@@ -212,7 +190,7 @@ def test_sm_recurrence_closure_topologies_match_without_forest_aliases() -> None
         "d d~ > d d~",
         "d d~ > u u~ s s~",
     )
-    summaries: dict[str, dict[str, dict[str, object]]] = {}
+    summaries: dict[str, dict[str, tuple[int, ...]]] = {}
     compiled_ufo = compile_model_source(
         _UFO_SM_ROOT / "sm.json",
         restriction=str((_UFO_SM_ROOT / "restrict_default.json").resolve()),
@@ -229,7 +207,6 @@ def test_sm_recurrence_closure_topologies_match_without_forest_aliases() -> None
             compiled_model_digest=_COMPILED_MODEL_DIGEST,
             prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
         )
-        template_input = build_recurrence_template_input_v1(recurrence_catalog)
         summaries[model_source] = {}
         for expression in expressions:
             process = (
@@ -262,60 +239,43 @@ def test_sm_recurrence_closure_topologies_match_without_forest_aliases() -> None
                 ),
                 model=model,
             )
-            result = _rusticol._validate_recurrence_builder_input_v1(
-                build_recurrence_builder_input_v1(logical),
-                template_input,
-                construct_schedule=True,
-            )
-            pairing = result["inspection_summary"]["fermion_pairing"]
+            columnar = build_recurrence_builder_input_v1(logical)
+            pairing = logical.fermion_pairing_catalog
             assert pairing is not None
-            assert pairing["source_count"] == len(process.legs)
-            assert len(pairing["columnar_digest"]) == 64
-            assert len(pairing["topology_digest"]) == 64
-            assert len(pairing["semantic_digest"]) == 64
-            assert pairing["rule_count"] >= 1
-            schedule = result["inspection_summary"]["schedule"]
-            assert schedule["closure_term_count"] >= schedule["target_sector_count"]
-            assert schedule["amplitude_destination_count"] > 0
+            assert pairing.source_count == len(process.legs)
+            assert len(columnar.fermion_pairing_digest or "") == 64
+            assert len(pairing.topology_digest) == 64
+            assert len(pairing.semantic_digest) == 64
+            assert len(pairing.rules) >= 1
+            assert columnar.table("physical_lc_sectors").row_count == (
+                color_plan.sector_count
+            )
+            assert columnar.table("replay_targets").row_count == sum(
+                len(partition.targets) for partition in logical.replay_partitions
+            )
             if expression == "g g > g g":
-                assert schedule["retained_helicity_count"] == 16
-                assert schedule["resolved_helicity_count"] == 6
-                assert schedule["structural_zero_helicity_count"] == 10
+                assert not pairing.endpoints
+                assert not pairing.pairing_classes
+                assert len(pairing.rules) == 1
             elif expression == "d d~ > u u~":
-                assert schedule["current_count_by_support_size"][3] > 0
-                assert pairing["endpoint_count"] == 4
-                assert pairing["pairing_class_count"] == 2
-                assert pairing["rule_count"] == 1
+                assert len(pairing.endpoints) == 4
+                assert len(pairing.pairing_classes) == 2
+                assert len(pairing.rules) == 1
             elif expression == "d d~ > d d~":
-                assert pairing["endpoint_count"] == 4
-                assert pairing["pairing_class_count"] == 1
-                assert pairing["rule_count"] == 2
+                assert len(pairing.endpoints) == 4
+                assert len(pairing.pairing_classes) == 1
+                assert len(pairing.rules) == 2
             elif expression == "d d~ > u u~ s s~":
-                assert pairing["endpoint_count"] == 6
-                assert pairing["pairing_class_count"] == 3
-                assert pairing["rule_count"] == 1
-            summaries[model_source][expression] = schedule
-
-    for expression in expressions:
-        for field in (
-            "current_count_by_support_size",
-            "contribution_count",
-            "finalization_count",
-            "resolved_helicity_count",
-            "structural_zero_helicity_count",
-            "amplitude_destination_count",
-            "target_sector_count",
-            "closure_term_count",
-        ):
-            assert summaries["built-in"][expression][field] == summaries["ufo-sm"][
-                expression
-            ][field], (
-                expression,
-                field,
-                summaries["built-in"][expression][field],
-                summaries["ufo-sm"][expression][field],
+                assert len(pairing.endpoints) == 6
+                assert len(pairing.pairing_classes) == 3
+                assert len(pairing.rules) == 1
+            summaries[model_source][expression] = (
+                len(pairing.endpoints),
+                len(pairing.pairing_classes),
+                len(pairing.rules),
+                color_plan.sector_count,
+                columnar.table("replay_targets").row_count,
             )
 
-    three_line = summaries["built-in"]["d d~ > u u~ s s~"]
-    assert three_line["target_sector_count"] > 1
-    assert three_line["closure_term_count"] > three_line["amplitude_destination_count"]
+    assert summaries["built-in"] == summaries["ufo-sm"]
+    assert summaries["built-in"]["d d~ > u u~ s s~"][3] > 1

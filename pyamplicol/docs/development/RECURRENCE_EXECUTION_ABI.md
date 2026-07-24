@@ -1,8 +1,9 @@
 # Recurrence Execution ABI
 
-This document freezes the first implementation boundary for LC recurrence
-execution. It is normative for the feature branch until an explicit ABI version
-change is committed.
+This document freezes the current implementation boundary for LC recurrence
+execution. Direct-Arena v2 is the sole recurrence ABI. The pre-release
+packetized v1 design has been removed and has no loader, converter, fixture, or
+artifact compatibility contract.
 
 ## Ownership Boundary
 
@@ -30,9 +31,28 @@ Rust owns:
 The production recurrence path must not construct a `GenericDAG`, expanded
 Python recurrence rows, or process-specific symbolic evaluator applications.
 
-## Versioned Contracts
+## Current Versioned Contracts
 
-The v1 implementation introduces these exact identifiers:
+The current implementation uses these exact identifiers:
+
+```text
+pyamplicol-recurrence-builder-input-v2
+pyamplicol-recurrence-direct-template-v1
+pyamplicol-recurrence-plan-v2
+pyamplicol-recurrence-runtime-layout-v2
+pyamplicol-runtime-recurrence-execution
+rusticol.recurrence-direct-backend.v1
+rusticol.recurrence-direct-arena.complex-f64.v1
+rusticol.recurrence-color.lc.v1
+RecurrenceDirectPlan
+plan/recurrence-direct-plan-v2.bin
+```
+
+Process artifacts retain schema v3 and PACBIN retains `pacbin-v1` framing.
+Pre-release recurrence contracts require no compatibility loader. Existing
+compiled and eager artifacts and prepared-kernel ABI v1 remain valid.
+
+These packet-runtime identifiers are removed:
 
 ```text
 pyamplicol-recurrence-template-v1
@@ -40,14 +60,13 @@ pyamplicol-recurrence-builder-input-v1
 pyamplicol-recurrence-builder-result-v1
 pyamplicol-recurrence-plan-v1
 pyamplicol-recurrence-runtime-layout-v1
-pyamplicol-runtime-recurrence-execution
 rusticol.recurrence-runtime.complex-f64.v1
-rusticol.recurrence-color.lc.v1
+RecurrenceRuntimePlan
+plan/recurrence-plan-v1.bin
 ```
 
-Process artifacts retain schema v3 and PACBIN retains `pacbin-v1` framing.
-Pre-release recurrence contracts require no compatibility loader. Existing
-compiled and eager artifacts and prepared-kernel ABI v1 remain valid.
+Old recurrence artifacts fail from their small execution metadata with a
+regeneration message. Their PACBIN payloads are never decoded.
 
 ## Exact Scalar Contract
 
@@ -68,7 +87,7 @@ coefficient is aggregated through binary64 arithmetic or `fsum`. Runtime f64
 coefficients are derived only after the exact proof and schedule digest have
 been finalized.
 
-## Prepared Recurrence Template
+## Prepared Direct Template
 
 The optional prepared-model companion is a content-addressed semantic catalog
 above the existing callable-kernel catalog. Old prepared bundles remain valid
@@ -120,7 +139,7 @@ flow predicate without also declaring its recurrence contract, or whose
 declaration and callback disagree, fails closed before process construction.
 The callback is never approximated in Rust.
 
-The v1 quantum-number-flow operation is `particle-static-result`: every
+The current quantum-number-flow operation is `particle-static-result`: every
 transition to one current-state template must carry the same canonical result
 quantum-number flow. Both the declared flavour operation and this result-state
 invariant are revalidated against the stored witness columns in Python and
@@ -138,8 +157,8 @@ closed.
 
 ## Builder Input
 
-`pyamplicol-recurrence-builder-input-v1` is passed to the private
-`_lower_recurrence_runtime_v1` binding as contiguous, read-only columns.
+`pyamplicol-recurrence-builder-input-v2` is passed to the private
+`_lower_recurrence_direct_v2` binding as contiguous, read-only columns.
 
 Logical sections are:
 
@@ -257,8 +276,8 @@ color * symmetry * kernel equivalence * exchange * parent phases * flow coupling
 `CurrentValueKey` hashes the core key, sorted exact contribution vector, and
 propagator template. A value-class relation `candidate = phase * representative`
 requires topologically prior parent witnesses, exact coefficient equality for
-every contribution, and a certified homogeneous-linear propagator. Recurrence
-v1 permits only nonzero, parameter-independent exact phases.
+every contribution, and a certified homogeneous-linear propagator. Direct-Arena
+v2 permits only nonzero, parameter-independent exact phases.
 
 Closures additionally bind the closure template, ordered parent classes and
 states, coupling binding, exact LC topology, exact `Nc` polynomial, external
@@ -296,7 +315,7 @@ Each independently proven simplification remains active. An unsupported proof
 is localized to its smallest residual schedule and cannot disable other proven
 reuse. No numerical probe equality is a production proof.
 
-## Builder Result And PACBIN
+## Direct Plan And PACBIN
 
 Rust writes `recurrence-runtime.pacbin` directly to a unique staged path and
 returns only bounded metadata:
@@ -311,42 +330,61 @@ phase timings
 inspection summary
 ```
 
-The root container stores schedules by semantic digest and process bindings by
-process ID. Prepared evaluator payloads remain in the separate root
-`evaluators.pacbin`.
-
-PACBIN member kinds are:
+The process container stores one Direct-Arena plan member:
 
 ```text
-RecurrenceRuntimeMetadata = 6
-RecurrenceRuntimeTable = 7
+member kind: RecurrenceDirectPlan
+member path: plan/recurrence-direct-plan-v2.bin
 ```
 
-The exact member inventory is versioned by the runtime-layout ABI. The initial
-inventory contains metadata, string and sequence catalogs, exact and f64 factor
-tables, process bindings, selector axes/domains, source routes, current states,
-contributions, finalizations, closures, reductions, proofs, and inspection
-summaries.
+The plan contains fixed-width source, contribution, finalization, closure,
+momentum-form, selector/replay, factor, arena-layout, and row-group sections.
+Prepared direct executors remain in the separate root `evaluators.pacbin`.
 
 The container is authenticated and memory-mapped. Loading decodes directly into
-the final immutable `RecurrenceProgram` and shares it through `Arc`; mutable
-parameters, warnings, selector caches, aliases, scratch space, and execution
-slots remain runtime-local.
+the final immutable Direct-Arena plan; mutable parameters, warnings, selector
+caches, arena/workspace storage, and execution slots remain runtime-local.
 
 ## Runtime Contract
 
 `RecurrenceExecutionRuntime` is a separate lane selected once at load time. Its
 inner loop does not branch through compiled or eager behavior.
 
-It uses component-major storage with points contiguous, kernel-homogeneous
-microprogram ranges, one backend call per packet, direct accumulation, and one
-finalization per current. Stable selector grouping is automatic; already
-contiguous selector groups bypass reordering.
+It uses aligned split-complex component-major arenas with points contiguous,
+direct row groups, direct contribution accumulation, and one finalization per
+current. There are no recurrence kernel packets, packed evaluator inputs,
+packet outputs, attachments, or scatter pass. Stable selector grouping is
+automatic; already contiguous selector groups bypass reordering.
 
 `evaluate_f64_into` guarantees caller-owned output. Zero warmed native heap
 allocation is promised only by a prepared selector plan through
 `evaluate_prepared_f64_into`; unseen shapes or selector signatures return
 `WouldAllocate` instead of allocating.
+
+## Process-Set Schedule Sharing
+
+Process sets publish one authenticated root schedule per exact semantic
+digest and one compact `pyamplicol-recurrence-process-binding-v2` payload per
+concrete process. A binding carries:
+
+- a source-slot permutation with momentum and helicity signs;
+- an explicit per-source source-state permutation;
+- public-flow and physical-sector domains;
+- fail-closed state-template, source-template, direct-executor, and prepared
+  parameter bijections;
+- process support words and an exact process-bijection digest.
+
+Cross-process sharing is currently restricted to complete topology-replay
+schedules with identity physical-sector numbering. All model, kernel,
+crossing, color, closure, selector, parameter, and fermion-pairing contracts
+must map exactly. Parameter reordering and all-flow-union sharing fail closed.
+Rust authenticates the JSON declaration against the binary binding before
+applying it, validates every dense/ragged bijection, and reconstructs a final
+typed plan without changing the root schedule payload.
+
+For the guarded `p p > j j j j` acceptance, 11 concrete process bindings
+intern to 8 schedules. Every representative shared binding is compared
+component by component with an independently generated standalone artifact.
 
 ## Differential Verification
 

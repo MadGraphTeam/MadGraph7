@@ -2640,6 +2640,8 @@ pub struct NativeRecurrenceExactSections {
     pub momentum_terms: Vec<crate::recurrence::DirectMomentumTerm>,
     pub replay_targets: Vec<crate::recurrence::DirectReplayTargetDescriptor>,
     pub source_permutations: Vec<u32>,
+    pub replay_momentum_signs: Vec<i32>,
+    pub replay_helicity_map: Vec<u32>,
     pub amplitude_destinations: Vec<crate::recurrence::DirectAmplitudeDestinationDescriptor>,
     pub resolved_helicities: Vec<crate::recurrence::DirectResolvedHelicityDescriptor>,
     pub public_helicities: Vec<i32>,

@@ -1,24 +1,28 @@
 // SPDX-License-Identifier: 0BSD
 
-use rusticol_core::RusticolError;
 use rusticol_core::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectExecutorCatalog, DirectExecutorHandle,
     DirectFactorView, DirectMomentumView, DirectParameterView, DirectUnionSourceDispatchHandle,
 };
 use rusticol_core::recurrence::direct_runtime::DirectRecurrenceExecutionRuntime;
 use rusticol_core::recurrence::{
-    DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
-    DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole, DirectFinalizationRow,
-    DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
-    DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
-    DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
-    DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
-    DirectSourceRow, DirectSourceStateAssignment, ExactComplexRational, RecurrenceStrategy,
-    SemanticDigest,
+    CheckedTableRange, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
+    ClosureProofMetadataV2, DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor,
+    DirectClosureRow, DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation,
+    DirectExecutorRole, DirectFinalizationRow, DirectMomentumFormDescriptor, DirectMomentumTerm,
+    DirectNodeKind, DirectRecurrencePlan, DirectRecurrencePlanParts, DirectReplayTargetDescriptor,
+    DirectResolvedHelicityDescriptor, DirectResolvedSourceSelection, DirectRowGroupDescriptor,
+    DirectSelectorDomainDescriptor, DirectSourceDispatchVariantDescriptor,
+    DirectSourceEmbeddingRow, DirectSourceProjectionRow, DirectSourceRow,
+    DirectSourceStateAssignment, ExactComplexRational, RecurrenceStrategy, SemanticDigest,
+    closure_component_factor_digest_v2, closure_selector_domain_digest_v2,
 };
+use rusticol_core::{NativeRuntime, RusticolError};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::ffi::c_void;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 thread_local! {
     static TRACK_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
@@ -75,6 +79,9 @@ const STATUS_BOUNDS: i32 = 2;
 const POINT_COUNT: u32 = 4;
 const EXPECTED_RE: [f64; 4] = [3.0, 6.0, 9.0, 12.0];
 const EXPECTED_IM: [f64; 4] = [1.0, 2.0, 3.0, 4.0];
+const REAL_ARTIFACT_REPETITIONS: usize = 8;
+const TOPOLOGY_ARTIFACT_ENV: &str = "RUSTICOL_RECURRENCE_TOPOLOGY_ALLOCATION_ARTIFACT";
+const UNION_ARTIFACT_ENV: &str = "RUSTICOL_RECURRENCE_UNION_ALLOCATION_ARTIFACT";
 
 unsafe extern "C" fn fill_sources(
     _context: *const c_void,
@@ -439,12 +446,16 @@ fn direct_runtime(strategy: RecurrenceStrategy) -> DirectRecurrenceExecutionRunt
                 representative_id: 0,
                 source_permutation_start: 0,
                 source_permutation_count: 1,
+                helicity_map_start: 0,
+                helicity_map_count: 1,
                 phase_exact_factor_id: 0,
                 multiplicity: 1,
                 selector_domain_id: 0,
             }]
         },
         source_permutations: if is_union { vec![] } else { vec![0] },
+        replay_momentum_signs: if is_union { vec![] } else { vec![1] },
+        replay_helicity_map: if is_union { vec![] } else { vec![0] },
         amplitude_destinations: vec![DirectAmplitudeDestinationDescriptor {
             closure_row_start: 0,
             id: 0,
@@ -514,6 +525,48 @@ fn direct_runtime(strategy: RecurrenceStrategy) -> DirectRecurrenceExecutionRunt
         },
         public_helicities: vec![-1],
         exact_factors: vec![ExactComplexRational::ONE],
+        closure_proofs: ClosureProofMetadataV2::new(
+            vec![
+                ClosureProofContributionV2::new(
+                    0,
+                    0,
+                    Some(0),
+                    (!is_union).then_some(0),
+                    0,
+                    SemanticDigest::new([0x41; 32]).unwrap(),
+                    None,
+                    vec![1],
+                    vec![Some(1)],
+                    vec![SemanticDigest::new([0x42; 32]).unwrap()],
+                    vec![SemanticDigest::new([0x43; 32]).unwrap()],
+                    vec![0],
+                    vec![0],
+                    vec![0],
+                    0,
+                    SemanticDigest::new([0x44; 32]).unwrap(),
+                    None,
+                    vec![],
+                    None,
+                    ExactComplexRational::ONE,
+                    1,
+                )
+                .unwrap(),
+            ],
+            vec![
+                ClosureExecutionProofGroupV2::new(
+                    0,
+                    Some(0),
+                    Some(0),
+                    CheckedTableRange::new(0, 1),
+                    ExactComplexRational::ONE,
+                    closure_component_factor_digest_v2(&[ExactComplexRational::ONE]).unwrap(),
+                    closure_selector_domain_digest_v2(&[1]).unwrap(),
+                )
+                .unwrap(),
+            ],
+            vec![],
+        )
+        .unwrap(),
     })
     .unwrap();
 
@@ -663,4 +716,169 @@ fn warmed_all_flow_union_tiles_allocate_zero_heap_bytes_and_remain_correct() {
     assert_eq!(runtime.role_timings(), Default::default());
     assert_eq!(runtime.activity_counters(), Default::default());
     assert_eq!(runtime.phase_timings(), Default::default());
+}
+
+fn genuine_artifact_path(environment_name: &str) -> Option<PathBuf> {
+    let Some(path) = std::env::var_os(environment_name) else {
+        eprintln!("skipping genuine recurrence allocation proof: {environment_name} is not set");
+        return None;
+    };
+    let path = PathBuf::from(path);
+    assert!(
+        path.is_dir(),
+        "{environment_name} does not name an artifact directory: {}",
+        path.display()
+    );
+    Some(path)
+}
+
+fn validation_momenta(runtime: &NativeRuntime) -> Vec<f64> {
+    let metadata = runtime.metadata();
+    let path = runtime
+        .root()
+        .join("processes")
+        .join(&metadata.representative_process_key)
+        .join("validation-momenta.json");
+    let payload: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap_or_else(|error| {
+            panic!(
+                "could not read recurrence validation momenta {}: {error}",
+                path.display()
+            )
+        }))
+        .unwrap_or_else(|error| {
+            panic!(
+                "could not parse recurrence validation momenta {}: {error}",
+                path.display()
+            )
+        });
+    let point = payload["points"][0]
+        .as_array()
+        .expect("recurrence validation payload must contain one point");
+    assert_eq!(
+        point.len(),
+        metadata.external_count,
+        "recurrence validation point has the wrong external multiplicity"
+    );
+    point
+        .iter()
+        .flat_map(|leg| {
+            leg["momentum"]
+                .as_array()
+                .expect("validation leg must contain four momentum components")
+                .iter()
+                .map(|component| {
+                    component
+                        .as_str()
+                        .map(str::parse::<f64>)
+                        .transpose()
+                        .expect("validation momentum string must be binary64")
+                        .or_else(|| component.as_f64())
+                        .expect("validation momentum component must be numeric")
+                })
+        })
+        .collect()
+}
+
+fn assert_recurrence_layout(artifact: &Path, process_id: &str, expected_layout: &str) {
+    let path = artifact
+        .join("processes")
+        .join(process_id)
+        .join("execution.json");
+    let execution: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap_or_else(|error| {
+            panic!(
+                "could not read recurrence execution manifest {}: {error}",
+                path.display()
+            )
+        }))
+        .unwrap_or_else(|error| {
+            panic!(
+                "could not parse recurrence execution manifest {}: {error}",
+                path.display()
+            )
+        });
+    assert_eq!(
+        execution["recurrence_summary"]["lc_flow_layout"].as_str(),
+        Some(expected_layout),
+        "genuine allocation fixture has the wrong LC layout"
+    );
+    assert_eq!(
+        execution["required_runtime_capabilities"]
+            .as_array()
+            .expect("recurrence capabilities must be an array")
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .filter(|capability| {
+                *capability == "rusticol.recurrence-direct-arena.complex-f64.v1"
+            })
+            .count(),
+        1,
+        "genuine allocation fixture must require Direct-Arena"
+    );
+}
+
+fn prove_genuine_artifact_warmed_loop_allocates_nothing(artifact: PathBuf, expected_layout: &str) {
+    let mut runtime =
+        NativeRuntime::load(&artifact, None, None).expect("load genuine recurrence artifact");
+    let metadata = runtime.metadata();
+    assert_eq!(metadata.execution_mode, "recurrence");
+    assert_recurrence_layout(
+        &artifact,
+        &metadata.representative_process_key,
+        expected_layout,
+    );
+
+    // Loading prepares every replay-flow or union-helicity selector. Momentum
+    // parsing, output ownership, and SymJIT descriptor creation also stay
+    // outside the counted region.
+    let momenta = validation_momenta(&runtime);
+    let point_count = 1;
+    let mut output = vec![f64::NAN; point_count];
+    runtime
+        .evaluate_f64_into(&momenta, point_count, &mut output)
+        .expect("warm genuine recurrence evaluation");
+    runtime
+        .evaluate_f64_into(&momenta, point_count, &mut output)
+        .expect("warm genuine recurrence descriptor caches");
+    let expected = output.clone();
+    assert!(
+        expected.iter().all(|value| value.is_finite()),
+        "genuine recurrence warmup returned a non-finite total"
+    );
+
+    let (result, allocation_count, allocated_bytes) = count_allocations(|| {
+        for _ in 0..REAL_ARTIFACT_REPETITIONS {
+            runtime.evaluate_f64_into(&momenta, point_count, &mut output)?;
+            std::hint::black_box(output.as_slice());
+        }
+        Ok::<(), RusticolError>(())
+    });
+    result.expect("repeat genuine warmed recurrence evaluation");
+
+    assert_eq!(output, expected, "genuine recurrence output changed");
+    assert_eq!(
+        allocation_count, 0,
+        "genuine warmed recurrence loop allocated"
+    );
+    assert_eq!(
+        allocated_bytes, 0,
+        "genuine warmed recurrence loop allocated bytes"
+    );
+}
+
+#[test]
+fn genuine_topology_replay_artifact_warmed_loop_allocates_zero_heap_bytes() {
+    let Some(artifact) = genuine_artifact_path(TOPOLOGY_ARTIFACT_ENV) else {
+        return;
+    };
+    prove_genuine_artifact_warmed_loop_allocates_nothing(artifact, "topology-replay");
+}
+
+#[test]
+fn genuine_all_flow_union_artifact_warmed_loop_allocates_zero_heap_bytes() {
+    let Some(artifact) = genuine_artifact_path(UNION_ARTIFACT_ENV) else {
+        return;
+    };
+    prove_genuine_artifact_warmed_loop_allocates_nothing(artifact, "all-flow-union");
 }

@@ -11,7 +11,12 @@ use super::direct_plan::{
     DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
     DirectSourceRow, DirectSourceStateAssignment,
 };
-use super::{ExactComplexRational, ExactRational, RecurrenceStrategy, SemanticDigest};
+use super::{
+    CheckedTableRange, ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2,
+    ClosureProofContributionV2, ClosureProofMetadataV2, ExactComplexRational, ExactRational,
+    RecurrenceStrategy, ReflectionCertificateV1, SemanticDigest, ThreeLineTraversalCertificateV1,
+    ThreeLineTraversalKindV1,
+};
 use crate::{RusticolError, RusticolResult};
 
 const MAGIC: &[u8; 8] = b"PACRDAP2";
@@ -67,6 +72,42 @@ impl Writer {
 
     fn digest(&mut self, digest: SemanticDigest) -> RusticolResult<()> {
         self.raw(digest.as_bytes())
+    }
+
+    fn optional_u32(&mut self, value: Option<u32>) -> RusticolResult<()> {
+        self.u32(value.unwrap_or(u32::MAX))
+    }
+
+    fn exact(&mut self, value: ExactComplexRational) -> RusticolResult<()> {
+        for rational in [value.real(), value.imag()] {
+            self.i128(rational.numerator())?;
+            self.i128(rational.denominator())?;
+        }
+        Ok(())
+    }
+
+    fn u32_slice(&mut self, label: &str, values: &[u32]) -> RusticolResult<()> {
+        self.count(label, values.len())?;
+        for value in values {
+            self.u32(*value)?;
+        }
+        Ok(())
+    }
+
+    fn optional_u32_slice(&mut self, label: &str, values: &[Option<u32>]) -> RusticolResult<()> {
+        self.count(label, values.len())?;
+        for value in values {
+            self.optional_u32(*value)?;
+        }
+        Ok(())
+    }
+
+    fn digest_slice(&mut self, label: &str, values: &[SemanticDigest]) -> RusticolResult<()> {
+        self.count(label, values.len())?;
+        for value in values {
+            self.digest(*value)?;
+        }
+        Ok(())
     }
 
     fn count(&mut self, label: &str, count: usize) -> RusticolResult<()> {
@@ -143,6 +184,39 @@ impl<'a> Reader<'a> {
         SemanticDigest::new(bytes).map_err(|error| invalid(error.message()))
     }
 
+    fn optional_u32(&mut self, label: &str) -> RusticolResult<Option<u32>> {
+        let value = self.u32(label)?;
+        Ok((value != u32::MAX).then_some(value))
+    }
+
+    fn exact(&mut self, label: &str) -> RusticolResult<ExactComplexRational> {
+        Ok(ExactComplexRational::new(
+            read_rational(self, &format!("{label} real"))?,
+            read_rational(self, &format!("{label} imaginary"))?,
+        ))
+    }
+
+    fn u32_vec(&mut self, label: &str) -> RusticolResult<Vec<u32>> {
+        let count = self.count(label, 4)?;
+        (0..count)
+            .map(|_| self.u32(label))
+            .collect::<RusticolResult<Vec<_>>>()
+    }
+
+    fn optional_u32_vec(&mut self, label: &str) -> RusticolResult<Vec<Option<u32>>> {
+        let count = self.count(label, 4)?;
+        (0..count)
+            .map(|_| self.optional_u32(label))
+            .collect::<RusticolResult<Vec<_>>>()
+    }
+
+    fn digest_vec(&mut self, label: &str) -> RusticolResult<Vec<SemanticDigest>> {
+        let count = self.count(label, 32)?;
+        (0..count)
+            .map(|_| self.digest(label))
+            .collect::<RusticolResult<Vec<_>>>()
+    }
+
     fn count(&mut self, label: &str, row_bytes: usize) -> RusticolResult<usize> {
         let count = self.u64(&format!("{label} count"))?;
         if count > MAX_ROWS {
@@ -193,6 +267,20 @@ pub fn encode_recurrence_direct_plan_v2(plan: &DirectRecurrencePlan) -> Rusticol
     writer.digest(plan.prepared_pack_digest())?;
     writer.digest(plan.direct_template_catalog_digest())?;
     writer.digest(plan.runtime_layout_digest())?;
+    writer.digest(
+        plan.closure_proofs()
+            .expected_semantic_completeness_digest(),
+    )?;
+    writer.u64(
+        plan.closure_proofs()
+            .candidate_domain_certificate()
+            .accepted_candidate_count(),
+    )?;
+    writer.digest(
+        plan.closure_proofs()
+            .candidate_domain_certificate()
+            .accepted_candidate_digest(),
+    )?;
 
     writer.count("currents", plan.currents().len())?;
     writer.count("sources", plan.sources().len())?;
@@ -206,6 +294,8 @@ pub fn encode_recurrence_direct_plan_v2(plan: &DirectRecurrencePlan) -> Rusticol
     writer.count("selector words", plan.selector_words().len())?;
     writer.count("replay targets", plan.replay_targets().len())?;
     writer.count("source permutations", plan.source_permutations().len())?;
+    writer.count("replay momentum signs", plan.replay_momentum_signs().len())?;
+    writer.count("replay helicity map", plan.replay_helicity_map().len())?;
     writer.count(
         "amplitude destinations",
         plan.amplitude_destinations().len(),
@@ -227,6 +317,21 @@ pub fn encode_recurrence_direct_plan_v2(plan: &DirectRecurrencePlan) -> Rusticol
     )?;
     writer.count("public helicities", plan.public_helicities().len())?;
     writer.count("exact factors", plan.exact_factors().len())?;
+    writer.count(
+        "closure proof contributions",
+        plan.closure_proofs().contributions().len(),
+    )?;
+    writer.count("closure proof groups", plan.closure_proofs().groups().len())?;
+    writer.count(
+        "reflection certificates",
+        plan.closure_proofs().reflection_certificates().len(),
+    )?;
+    writer.count(
+        "three-line traversal certificates",
+        plan.closure_proofs()
+            .three_line_traversal_certificates()
+            .len(),
+    )?;
 
     for row in plan.currents() {
         writer.u32(row.semantic_current_id)?;
@@ -328,11 +433,19 @@ pub fn encode_recurrence_direct_plan_v2(plan: &DirectRecurrencePlan) -> Rusticol
         writer.u32(row.representative_id)?;
         writer.u64(row.source_permutation_start)?;
         writer.u32(row.source_permutation_count)?;
+        writer.u64(row.helicity_map_start)?;
+        writer.u32(row.helicity_map_count)?;
         writer.u32(row.phase_exact_factor_id)?;
         writer.u32(row.multiplicity)?;
         writer.u32(row.selector_domain_id)?;
     }
     for value in plan.source_permutations() {
+        writer.u32(*value)?;
+    }
+    for value in plan.replay_momentum_signs() {
+        writer.i32(*value)?;
+    }
+    for value in plan.replay_helicity_map() {
         writer.u32(*value)?;
     }
     for row in plan.amplitude_destinations() {
@@ -399,10 +512,103 @@ pub fn encode_recurrence_direct_plan_v2(plan: &DirectRecurrencePlan) -> Rusticol
         writer.i32(*value)?;
     }
     for value in plan.exact_factors() {
-        for rational in [value.real(), value.imag()] {
-            writer.i128(rational.numerator())?;
-            writer.i128(rational.denominator())?;
-        }
+        writer.exact(*value)?;
+    }
+    for row in plan.closure_proofs().contributions() {
+        writer.u32(row.id())?;
+        writer.u32(row.target_sector_id())?;
+        writer.optional_u32(row.target_destination_id())?;
+        writer.optional_u32(row.target_helicity_id())?;
+        writer.u32(row.closure_template_id())?;
+        writer.digest(row.closure_template_semantic_digest())?;
+        writer.optional_u32(row.quantum_flow_template_id())?;
+        writer.u32_slice(
+            "closure construction builder-parent IDs",
+            row.construction_parent_builder_ids(),
+        )?;
+        writer.optional_u32_slice(
+            "closure construction runtime-parent IDs",
+            row.construction_parent_runtime_ids(),
+        )?;
+        writer.digest_slice(
+            "closure construction parent semantic digests",
+            row.construction_parent_semantic_digests(),
+        )?;
+        writer.digest_slice(
+            "closure construction parent color digests",
+            row.construction_parent_color_digests(),
+        )?;
+        writer.u32_slice(
+            "closure construction parent permutation",
+            row.construction_parent_permutation(),
+        )?;
+        writer.u32_slice(
+            "closure reconstruction parent permutation",
+            row.reconstruction_parent_permutation(),
+        )?;
+        writer.u32_slice(
+            "closure evaluator parent permutation",
+            row.evaluator_parent_permutation(),
+        )?;
+        writer.u32(row.color_witness_term_id())?;
+        writer.digest(row.color_witness_proof_digest())?;
+        writer.optional_u32(row.three_line_certificate_id())?;
+        writer.u32_slice(
+            "closure pairing certificates",
+            row.pairing_certificate_ids(),
+        )?;
+        writer.optional_u32(row.reflection_certificate_id())?;
+        writer.exact(row.exact_factor())?;
+        writer.u32(row.multiplicity())?;
+    }
+    for row in plan.closure_proofs().groups() {
+        writer.u32(row.id())?;
+        writer.optional_u32(row.emitted_runtime_closure_term_id())?;
+        writer.optional_u32(row.emitted_direct_closure_row_id())?;
+        writer.u64(row.contribution_range().start)?;
+        writer.u64(row.contribution_range().count)?;
+        writer.exact(row.exact_summed_factor())?;
+        writer.digest(row.component_factor_digest())?;
+        writer.digest(row.candidate_selector_domain_digest())?;
+        writer.digest(row.selector_domain_digest())?;
+    }
+    for row in plan.closure_proofs().reflection_certificates() {
+        writer.u32(row.id())?;
+        writer.digest(row.orbit_identity())?;
+        writer.digest(row.reciprocal_identity())?;
+        writer.u32_slice("reflection source permutation", row.source_permutation())?;
+        writer.exact(row.exact_phase())?;
+        writer.u32(u32::from(row.fixed_point()))?;
+        writer.u32(row.orbit_size())?;
+        writer.u32(row.proof_algorithm_id())?;
+        writer.digest(row.proof_digest())?;
+    }
+    for row in plan.closure_proofs().three_line_traversal_certificates() {
+        writer.u32(row.id())?;
+        writer.u32(row.sector_id())?;
+        writer.u32(row.kind().code())?;
+        writer.u32(row.sink_block_ordinal())?;
+        writer.u32_slice(
+            "three-line reference block order",
+            row.reference_block_order(),
+        )?;
+        writer.u32_slice("three-line witness block order", row.witness_block_order())?;
+        writer.u32_slice("three-line block permutation", row.block_permutation())?;
+        writer.u32_slice(
+            "three-line reference source order",
+            row.reference_source_order(),
+        )?;
+        writer.u32_slice(
+            "three-line witness source order",
+            row.witness_source_order(),
+        )?;
+        writer.u32_slice(
+            "three-line source-position permutation",
+            row.source_position_permutation(),
+        )?;
+        writer.u32(row.closure_anchor_source_slot())?;
+        writer.u32(row.pairing_rule_id())?;
+        writer.digest(row.proof_digest())?;
     }
     Ok(writer.bytes)
 }
@@ -442,6 +648,12 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
     let prepared_pack_digest = reader.digest("prepared-pack digest")?;
     let direct_template_catalog_digest = reader.digest("direct-template catalog digest")?;
     let expected_runtime_layout_digest = reader.digest("runtime-layout digest")?;
+    let expected_closure_proof_digest =
+        reader.digest("closure-proof semantic completeness digest")?;
+    let closure_candidate_domain_certificate = ClosureCandidateDomainCertificateV1::new(
+        reader.u64("closure candidate-domain count")?,
+        reader.digest("closure candidate-domain digest")?,
+    );
 
     let current_count = reader.count("currents", 44)?;
     let source_count = reader.count("sources", 28)?;
@@ -453,8 +665,10 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
     let momentum_term_count = reader.count("momentum terms", 8)?;
     let selector_domain_count = reader.count("selector domains", 16)?;
     let selector_word_count = reader.count("selector words", 8)?;
-    let replay_target_count = reader.count("replay targets", 32)?;
+    let replay_target_count = reader.count("replay targets", 44)?;
     let source_permutation_count = reader.count("source permutations", 4)?;
+    let replay_momentum_sign_count = reader.count("replay momentum signs", 4)?;
+    let replay_helicity_map_count = reader.count("replay helicity map", 4)?;
     let amplitude_destination_descriptor_count = reader.count("amplitude destinations", 32)?;
     let resolved_helicity_count = reader.count("resolved helicities", 44)?;
     let source_state_assignment_count = reader.count("source-state assignments", 8)?;
@@ -464,6 +678,11 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
     let resolved_source_selection_count = reader.count("resolved source selections", 8)?;
     let public_helicity_count = reader.count("public helicities", 4)?;
     let exact_factor_count = reader.count("exact factors", 64)?;
+    let closure_proof_contribution_count = reader.count("closure proof contributions", 0)?;
+    let closure_proof_group_count = reader.count("closure proof groups", 0)?;
+    let reflection_certificate_count = reader.count("reflection certificates", 0)?;
+    let three_line_traversal_certificate_count =
+        reader.count("three-line traversal certificates", 0)?;
 
     let mut currents = Vec::with_capacity(current_count);
     for _ in 0..current_count {
@@ -622,6 +841,8 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
             representative_id: reader.u32("replay representative")?,
             source_permutation_start: reader.u64("replay permutation start")?,
             source_permutation_count: reader.u32("replay permutation count")?,
+            helicity_map_start: reader.u64("replay helicity-map start")?,
+            helicity_map_count: reader.u32("replay helicity-map count")?,
             phase_exact_factor_id: reader.u32("replay phase factor")?,
             multiplicity: reader.u32("replay multiplicity")?,
             selector_domain_id: reader.u32("replay selector domain")?,
@@ -630,6 +851,14 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
     let mut source_permutations = Vec::with_capacity(source_permutation_count);
     for _ in 0..source_permutation_count {
         source_permutations.push(reader.u32("source permutation")?);
+    }
+    let mut replay_momentum_signs = Vec::with_capacity(replay_momentum_sign_count);
+    for _ in 0..replay_momentum_sign_count {
+        replay_momentum_signs.push(reader.i32("replay momentum sign")?);
+    }
+    let mut replay_helicity_map = Vec::with_capacity(replay_helicity_map_count);
+    for _ in 0..replay_helicity_map_count {
+        replay_helicity_map.push(reader.u32("replay helicity map")?);
     }
     let mut amplitude_destinations = Vec::with_capacity(amplitude_destination_descriptor_count);
     for _ in 0..amplitude_destination_descriptor_count {
@@ -719,12 +948,121 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
     }
     let mut exact_factors = Vec::with_capacity(exact_factor_count);
     for _ in 0..exact_factor_count {
-        exact_factors.push(ExactComplexRational::new(
-            read_rational(&mut reader, "exact-factor real")?,
-            read_rational(&mut reader, "exact-factor imaginary")?,
-        ));
+        exact_factors.push(reader.exact("exact factor")?);
+    }
+    let mut closure_proof_contributions = Vec::with_capacity(closure_proof_contribution_count);
+    for _ in 0..closure_proof_contribution_count {
+        closure_proof_contributions.push(ClosureProofContributionV2::new(
+            reader.u32("closure proof contribution ID")?,
+            reader.u32("closure proof target sector")?,
+            reader.optional_u32("closure proof target destination")?,
+            reader.optional_u32("closure proof target helicity")?,
+            reader.u32("closure proof template")?,
+            reader.digest("closure proof template semantic digest")?,
+            reader.optional_u32("closure proof quantum flow")?,
+            reader.u32_vec("closure construction builder-parent IDs")?,
+            reader.optional_u32_vec("closure construction runtime-parent IDs")?,
+            reader.digest_vec("closure construction parent semantic digests")?,
+            reader.digest_vec("closure construction parent color digests")?,
+            reader.u32_vec("closure construction parent permutation")?,
+            reader.u32_vec("closure reconstruction parent permutation")?,
+            reader.u32_vec("closure evaluator parent permutation")?,
+            reader.u32("closure color witness term")?,
+            reader.digest("closure color witness proof digest")?,
+            reader.optional_u32("closure three-line certificate")?,
+            reader.u32_vec("closure pairing certificates")?,
+            reader.optional_u32("closure reflection certificate")?,
+            reader.exact("closure proof contribution factor")?,
+            reader.u32("closure proof contribution multiplicity")?,
+        )?);
+    }
+    let mut closure_proof_groups = Vec::with_capacity(closure_proof_group_count);
+    for _ in 0..closure_proof_group_count {
+        closure_proof_groups.push(
+            ClosureExecutionProofGroupV2::new_with_candidate_selector_domain(
+                reader.u32("closure proof group ID")?,
+                reader.optional_u32("closure proof group runtime term")?,
+                reader.optional_u32("closure proof group direct row")?,
+                CheckedTableRange::new(
+                    reader.u64("closure proof group contribution start")?,
+                    reader.u64("closure proof group contribution count")?,
+                ),
+                reader.exact("closure proof group summed factor")?,
+                reader.digest("closure proof group component-factor digest")?,
+                reader.digest("closure proof group candidate-selector digest")?,
+                reader.digest("closure proof group selector-domain digest")?,
+            )?,
+        );
+    }
+    let mut reflection_certificates = Vec::with_capacity(reflection_certificate_count);
+    for _ in 0..reflection_certificate_count {
+        let id = reader.u32("reflection certificate ID")?;
+        let orbit_identity = reader.digest("reflection orbit identity")?;
+        let reciprocal_identity = reader.digest("reflection reciprocal identity")?;
+        let source_permutation = reader.u32_vec("reflection source permutation")?;
+        let exact_phase = reader.exact("reflection exact phase")?;
+        let fixed_point = match reader.u32("reflection fixed-point flag")? {
+            0 => false,
+            1 => true,
+            value => {
+                return Err(invalid(format!(
+                    "reflection fixed-point flag must be 0 or 1, found {value}"
+                )));
+            }
+        };
+        reflection_certificates.push(ReflectionCertificateV1::new(
+            id,
+            orbit_identity,
+            reciprocal_identity,
+            source_permutation,
+            exact_phase,
+            fixed_point,
+            reader.u32("reflection orbit size")?,
+            reader.u32("reflection proof algorithm")?,
+            reader.digest("reflection proof digest")?,
+        )?);
+    }
+    let mut three_line_traversal_certificates =
+        Vec::with_capacity(three_line_traversal_certificate_count);
+    for _ in 0..three_line_traversal_certificate_count {
+        let id = reader.u32("three-line traversal certificate ID")?;
+        let sector_id = reader.u32("three-line traversal sector")?;
+        let kind = ThreeLineTraversalKindV1::try_from(reader.u32("three-line traversal kind")?)
+            .map_err(|error| invalid(error.message()))?;
+        let sink_block_ordinal = reader.u32("three-line traversal sink block")?;
+        let reference_block_order = reader.u32_vec("three-line reference block order")?;
+        let witness_block_order = reader.u32_vec("three-line witness block order")?;
+        let block_permutation = reader.u32_vec("three-line block permutation")?;
+        let reference_source_order = reader.u32_vec("three-line reference source order")?;
+        let witness_source_order = reader.u32_vec("three-line witness source order")?;
+        let source_position_permutation =
+            reader.u32_vec("three-line source-position permutation")?;
+        three_line_traversal_certificates.push(ThreeLineTraversalCertificateV1::new(
+            id,
+            sector_id,
+            kind,
+            sink_block_ordinal,
+            reference_block_order,
+            witness_block_order,
+            block_permutation,
+            reference_source_order,
+            witness_source_order,
+            source_position_permutation,
+            reader.u32("three-line closure anchor source slot")?,
+            reader.u32("three-line pairing rule")?,
+            reader.digest("three-line traversal proof digest")?,
+        )?);
     }
     reader.finish()?;
+    let closure_proofs =
+        ClosureProofMetadataV2::new_with_three_line_certificates_candidate_domain_and_expected_digest(
+            closure_proof_contributions,
+            closure_proof_groups,
+            reflection_certificates,
+            three_line_traversal_certificates,
+            closure_candidate_domain_certificate,
+            expected_closure_proof_digest,
+        )?;
 
     let plan = DirectRecurrencePlan::new(DirectRecurrencePlanParts {
         strategy,
@@ -757,6 +1095,8 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
         selector_words,
         replay_targets,
         source_permutations,
+        replay_momentum_signs,
+        replay_helicity_map,
         amplitude_destinations,
         resolved_helicities,
         source_state_assignments,
@@ -766,6 +1106,7 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
         resolved_source_selections,
         public_helicities,
         exact_factors,
+        closure_proofs,
     })?;
     if plan.runtime_layout_digest() != expected_runtime_layout_digest {
         return Err(invalid("runtime-layout digest mismatch"));

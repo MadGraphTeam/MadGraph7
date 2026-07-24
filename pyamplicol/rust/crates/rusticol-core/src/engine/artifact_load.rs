@@ -369,16 +369,25 @@ fn validate_loaded_execution_references(
         }
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         LoadedExecutionManifest::Recurrence(manifest) => {
-            let relative_root = evaluator_root.strip_prefix(artifact.root()).map_err(|_| {
-                RusticolError::security("recurrence runtime root escapes the verified artifact")
-            })?;
-            let relative = relative_root.join(&manifest.plan.runtime_container.path);
-            let relative = relative.to_str().ok_or_else(|| {
-                RusticolError::security("recurrence runtime container path is not valid UTF-8")
-            })?;
-            if artifact.payload(relative)?.role != PayloadRole::EvaluatorState {
+            let schedule = artifact.payload(&manifest.plan.runtime_schedule.path)?;
+            if schedule.role != PayloadRole::EvaluatorState || schedule.process_id.is_some() {
                 return Err(RusticolError::security(
-                    "recurrence runtime container is not an evaluator-state payload",
+                    "recurrence root schedule is not an unbound evaluator-state payload",
+                ));
+            }
+            let relative_root = evaluator_root.strip_prefix(artifact.root()).map_err(|_| {
+                RusticolError::security("recurrence process root escapes the verified artifact")
+            })?;
+            let binding = relative_root.join(&manifest.plan.process_binding.path);
+            let binding = binding.to_str().ok_or_else(|| {
+                RusticolError::security("recurrence process-binding path is not valid UTF-8")
+            })?;
+            let binding = artifact.payload(binding)?;
+            if binding.role != PayloadRole::EvaluatorState
+                || binding.process_id.as_deref() != Some(manifest.key.as_str())
+            {
+                return Err(RusticolError::security(
+                    "recurrence process binding is not owned by its process",
                 ));
             }
             Ok(())

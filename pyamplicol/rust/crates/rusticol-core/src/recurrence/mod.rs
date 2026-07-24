@@ -37,7 +37,7 @@ pub use direct_lowering::{
     PreparedDirectExecutorKey, lower_recurrence_direct_plan_v2, lower_recurrence_direct_v2,
 };
 pub use direct_pacbin::{
-    RECURRENCE_DIRECT_PLAN_MEMBER, RecurrenceDirectPacbinMetadata,
+    RECURRENCE_DIRECT_SCHEDULE_MEMBER, RecurrenceDirectPacbinMetadata,
     load_recurrence_direct_plan_pacbin, write_recurrence_direct_plan_pacbin,
 };
 pub use direct_plan::{
@@ -64,9 +64,14 @@ pub use layout::{
     RecurrenceNodeKind, RecurrenceStrategy, SemanticDigest, SourceStateAssignment,
 };
 pub use program::{
-    RecurrenceAmplitudeDestination, RecurrenceClosureTerm, RecurrenceContribution,
-    RecurrenceCurrent, RecurrenceFinalization, RecurrenceProgram, RecurrenceReplayTarget,
-    RecurrenceResolvedHelicity,
+    ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
+    ClosureProofMetadataV2, RecurrenceAmplitudeDestination, RecurrenceClosureTerm,
+    RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization, RecurrenceProgram,
+    RecurrenceReplayTarget, RecurrenceResolvedHelicity, ReflectionCertificateV1,
+    ThreeLineTraversalCertificateV1, ThreeLineTraversalKindV1, closure_component_factor_digest_v2,
+    closure_proof_semantic_completeness_digest_v2,
+    closure_proof_semantic_completeness_digest_with_three_line_v2,
+    closure_selector_domain_digest_v2, three_line_traversal_proof_digest_v1,
 };
 /// Semantic prepared-model companion ABI.
 pub const RECURRENCE_TEMPLATE_ABI: &str = "pyamplicol-recurrence-template-v1";

@@ -363,7 +363,7 @@ class RecurrenceExactExecutor:
             ): index
             for index, record in enumerate(helicity_records)
         }
-        direct_vectors = {}
+        direct_to_physics = {}
         for descriptor in sections.resolved_helicities:
             start = descriptor.public_helicity_start
             stop = start + descriptor.public_helicity_count
@@ -372,15 +372,24 @@ class RecurrenceExactExecutor:
                 raise ArtifactError(
                     "recurrence direct helicity has invalid source coverage"
                 )
-            direct_vectors[descriptor.helicity_id] = vector
+            try:
+                direct_to_physics[descriptor.helicity_id] = physics_by_values[
+                    tuple(vector)
+                ]
+            except KeyError as exc:
+                raise ArtifactError(
+                    "recurrence direct helicity is absent from public physics coverage"
+                ) from exc
 
         result = []
         for target in self._replay_by_color:
-            start = target.source_permutation_start
-            stop = start + target.source_permutation_count
-            permutation = sections.source_permutations[start:stop]
-            if sorted(permutation) != list(range(sections.external_source_count)):
-                raise ArtifactError("recurrence replay source mapping is not bijective")
+            start = target.helicity_map_start
+            stop = start + target.helicity_map_count
+            helicity_map = sections.replay_helicity_map[start:stop]
+            if len(helicity_map) != len(sections.resolved_helicities):
+                raise ArtifactError(
+                    "recurrence replay helicity mapping has incomplete coverage"
+                )
             destinations = [DIRECT_NONE_U32] * sections.amplitude_destination_count
             for destination in sections.amplitude_destinations:
                 direct_id = destination.target_helicity_id
@@ -388,21 +397,18 @@ class RecurrenceExactExecutor:
                     raise ArtifactError(
                         "topology-replay destination has no resolved helicity"
                     )
-                representative = direct_vectors.get(direct_id)
-                if representative is None:
+                if direct_id >= len(helicity_map):
                     raise ArtifactError(
-                        "recurrence destination references an absent direct helicity"
+                        "recurrence destination helicity is absent from replay mapping"
                     )
-                public = [0] * sections.external_source_count
-                for representative_slot, helicity in enumerate(representative):
-                    public[permutation[representative_slot]] = helicity
+                mapped_id = helicity_map[direct_id]
                 try:
-                    destinations[destination.destination_id] = physics_by_values[
-                        tuple(public)
+                    destinations[destination.destination_id] = direct_to_physics[
+                        mapped_id
                     ]
                 except KeyError as exc:
                     raise ArtifactError(
-                        "recurrence replay maps a helicity outside public coverage"
+                        "recurrence replay maps to an absent direct helicity"
                     ) from exc
             if any(value == DIRECT_NONE_U32 for value in destinations):
                 raise ArtifactError(

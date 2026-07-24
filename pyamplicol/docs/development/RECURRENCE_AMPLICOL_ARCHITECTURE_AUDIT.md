@@ -164,18 +164,132 @@ allocations.
 
 ## Hard Review Checklist
 
-- [ ] Executable partial LC color-state ABI is implemented and independently
+- [x] Executable partial LC color-state ABI is implemented and independently
       validated.
-- [ ] Topology replay uses local source ancestry rather than complete helicity.
-- [ ] All-flow union uses runtime-helicity placeholders and is graph-size
+- [x] Topology replay uses local source ancestry rather than complete helicity.
+- [x] All-flow union uses runtime-helicity placeholders and is graph-size
       independent of retained helicity count.
-- [ ] No `GenericDAG` or flow-by-helicity-by-edge materialization exists.
-- [ ] Stored contribution count equals the sum of each current's fan-in.
-- [ ] Every non-source propagated current has exactly one finalization.
-- [ ] Exact closure/reconstruction term coverage is complete.
-- [ ] Process-set schedule sharing is implemented and measured.
-- [ ] Backend packet sizes demonstrate batched rather than edge-wise calls.
-- [ ] Built-in and equivalent UFO physics produce matching state,
+- [x] No `GenericDAG` or flow-by-helicity-by-edge materialization exists.
+- [x] Stored contribution count equals the sum of each current's fan-in.
+- [x] Every non-source propagated current has exactly one finalization.
+- [x] Exact closure/reconstruction term coverage is complete.
+- [x] Process-set schedule sharing is implemented and measured.
+- [x] Direct row-group counters demonstrate typed grouped execution rather than
+      packet packing or edge-wise evaluator dispatch.
+- [x] Built-in and equivalent UFO physics produce matching state,
       contribution, and closure topology after explicit model-state mapping.
 - [ ] A fresh independent reviewer has checked the implementation against this
       audit after the builder and runtime exist.
+
+## Source-Freeze Audit Checklist And Results
+
+This section records the post-Direct-Arena source-freeze audit. It supersedes
+the historical implementation-status paragraph above, which is retained to
+show what the original audit reviewed. The current recurrence ABI is
+Direct-Arena v2; the packetized v1 runtime has been removed.
+
+Audit date: 2026-07-24
+
+Source freeze status: **candidate ready for the final independent re-audit**.
+The implementation blockers identified by the original audit are closed.
+Approval remains withheld until the exact committed source is rebuilt,
+remeasured, and independently reviewed.
+
+### Proven In Current Sources
+
+- [x] Direct-Arena v2 is a separate runtime lane and does not route recurrence
+      through eager packets, packed evaluator inputs, attachments, or scatter.
+- [x] Dynamic partial LC color state and layout-specific helicity identity are
+      part of recurrence state identity.
+- [x] Topology replay uses local source ancestry; all-flow union excludes
+      numerical helicity from non-source current identity.
+- [x] Closure rows bind complete proof groups, including exact signs and
+      reconstruction terms.
+- [x] Replay source transport fails closed across initial/final crossing roles,
+      source-template contracts, momentum signs, and crossing phases.
+- [x] Stored final topology-replay and all-flow-union counts agree with the
+      corresponding retained AmpliCol counts for the tracked LC ladder.
+- [x] Built-in and UFO-SM use the same model-generic recurrence catalog and
+      builder path.
+
+### Test And Documentation Closure
+
+- [x] Direct-Arena v2 is documented as the sole current recurrence ABI;
+      recurrence v1 identifiers are explicitly removed.
+- [x] Built-in and UFO-SM all-flow-union tests pass for folded pure-gluon
+      reflection and same-flavour reconstruction.
+- [x] Built-in and UFO-SM all-flow-union tests pass multiple-open-line closure
+      semantics.
+- [x] Native f64 and exact Python agree component-wise for every difficult
+      all-flow-union case.
+- [x] Recurrence artifacts, rather than compiled artifacts, pass homogeneous,
+      alternating, deterministic-random, and pre-grouped per-point selector
+      tests for both layouts.
+
+Unchecked items remain source-freeze gates. Test presence alone is not
+acceptance evidence.
+
+### Remaining Source-Freeze Gates
+
+- [ ] Rebuild from the exact committed checkpoint and repeat the LC correctness,
+      allocation, process-set, and qq_Z6g performance evidence.
+- [ ] A fresh independent reviewer rechecks the completed builder, both
+      layouts, process-set sharing, and runtime against this audit.
+
+The closure-rooted builder no longer constructs the historical ten-times-larger
+forward candidate graph. It streams demanded states backward from physical
+closures and validates dependencies forward. Process-set interning is also
+implemented: the guarded `p p > j j j j` acceptance has 11 concrete process
+bindings, 8 unique schedules, and 3 exact aliases. Representative aliases
+match independently generated artifacts component by component.
+
+### Counter Semantics
+
+The final qq_Z6g topology schedule has 1,425 currents, 8,338 contributions,
+384 closure terms, and 45 reachable dynamic color states for both built-in SM
+and UFO-SM. The earlier count of 72 dynamic color states was the complete
+pre-liveness catalog; 27 entries belonged only to discarded candidates.
+Closure-rooted construction interns only reachable states, so 45 is the
+correct final-schedule count.
+
+The current 69 row groups are not an expansion from the earlier reported 44
+kernel packets. The definitions differ. The 69 groups cover every typed
+`(stage, direct_executor_id)` range:
+
+- 9 source groups for 19 rows;
+- 41 contribution groups for 8,338 rows;
+- 17 finalization groups for 858 rows;
+- 2 closure groups for 384 rows.
+
+The old packet count omitted source work, identity finalizations, and direct
+closures. Direct-Arena executes one typed handle per group and point tile;
+there are no packed input/output buffers, attachments, or scatter rows.
+
+### Focused Test Results
+
+Command:
+
+```console
+SYMBOLICA_LICENSE=... .venv/bin/python tools/ci/memory_watchdog.py \
+  --limit-gib 30 -- .venv/bin/python -m pytest \
+  tests/integration/test_recurrence_generation_runtime.py::test_builtin_lc_recurrence_artifact_loads_and_matches_compiled \
+  tests/integration/test_recurrence_generation_runtime.py::test_builtin_lc_all_flow_union_recurrence_matches_compiled \
+  tests/integration/test_recurrence_prepared_execution.py::test_direct_arena_all_flow_union_difficult_semantics \
+  -q
+```
+
+Current pre-freeze results on 2026-07-24:
+
+- 112 focused Python unit tests passed, with one guarded process-set test
+  skipped from the unguarded unit run;
+- 22 public recurrence integration tests passed across built-in/UFO-SM,
+  topology replay, all-flow union, pure-gluon reflection, same-flavour
+  reconstruction, and three open quark lines;
+- the guarded `p p > j j j j` process-set test passed in 16.31 seconds with
+  0.719 GiB peak RSS;
+- 202 focused Rust recurrence tests passed;
+- malformed ragged source-state mappings and truncated support words are
+  rejected without panics.
+
+These are pre-freeze results. The exact committed checkpoint must still be
+rebuilt and rerun before the independent reviewer may approve the source.

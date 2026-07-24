@@ -124,6 +124,67 @@ def _validation_points(process_expression: str) -> _Points:
     )
 
 
+def _assert_recurrence_per_point_selector_patterns(
+    artifact: Path,
+    point: _Point,
+    *,
+    expected_layout: str,
+) -> None:
+    """Exercise recurrence-native selector grouping without a compiled fallback."""
+
+    execution_files = tuple((artifact / "processes").glob("*/execution.json"))
+    assert len(execution_files) == 1
+    execution = json.loads(execution_files[0].read_text(encoding="utf-8"))
+    assert execution["kind"] == _RECURRENCE_KIND
+    assert execution["recurrence_plan_abi"] == "pyamplicol-recurrence-plan-v2"
+    assert execution["runtime_layout_abi"] == "pyamplicol-recurrence-runtime-layout-v2"
+    assert execution["recurrence_summary"]["lc_flow_layout"] == expected_layout
+    assert set(execution["required_runtime_capabilities"]) == _RECURRENCE_CAPABILITIES
+    assert inspect_artifact(artifact).processes[0].execution_mode == "recurrence"
+
+    runtime = Runtime.load(artifact)
+    resolved = runtime.evaluate_resolved((point,))
+    helicity_ids = tuple(
+        helicity.id
+        for helicity in runtime.physics.helicities
+        if not helicity.structural_zero
+    )
+    color_ids = resolved.color_ids
+    assert len(helicity_ids) >= 2
+    assert len(color_ids) >= 2
+    selector_pairs = (
+        (helicity_ids[0], color_ids[0]),
+        (helicity_ids[-1], color_ids[-1]),
+    )
+    patterns = {
+        "homogeneous": (selector_pairs[0],) * 8,
+        "alternating": selector_pairs * 4,
+        "random": tuple(selector_pairs[index] for index in (1, 0, 1, 1, 0, 0, 1, 0)),
+        "pre-grouped": (selector_pairs[0],) * 4 + (selector_pairs[1],) * 4,
+    }
+
+    for name, selectors in patterns.items():
+        points = (point,) * len(selectors)
+        actual = runtime.evaluate(
+            points,
+            helicity_by_point=tuple(selector[0] for selector in selectors),
+            color_flow_by_point=tuple(selector[1] for selector in selectors),
+        )
+        expected = tuple(
+            runtime.evaluate(
+                (point,),
+                helicities=(helicity_id,),
+                color_flows=(color_id,),
+            )[0]
+            for helicity_id, color_id in selectors
+        )
+        assert actual == pytest.approx(
+            expected,
+            rel=1.0e-12,
+            abs=1.0e-15,
+        ), name
+
+
 def _assert_topology_replay_structure(
     artifact: Path,
     process_expression: str,
@@ -447,9 +508,10 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
     assert execution["kind"] == _RECURRENCE_KIND
     assert execution["plan"]["kind"] == _RECURRENCE_KIND
     assert execution["recurrence_summary"]["lc_flow_layout"] == "topology-replay"
-    runtime_container = execution["plan"]["runtime_container"]
-    assert runtime_container["storage_abi"] == "pacbin-v1"
-    assert runtime_container["member_count"] >= 1
+    runtime_schedule = execution["plan"]["runtime_schedule"]
+    assert runtime_schedule["storage_abi"] == "pacbin-v1"
+    assert runtime_schedule["member_count"] >= 1
+    assert execution["plan"]["process_binding"]["path"] == "recurrence-binding.bin"
     z_masses = {
         row["outgoing_pdg"]: row["mass"]
         for row in execution["runtime_metadata"]["particle_masses"]
@@ -465,14 +527,16 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         "particle.23.mass"
     }
 
-    runtime_path = process_root / runtime_container["path"]
-    assert runtime_path == process_root / "recurrence-runtime.pacbin"
+    runtime_path = recurrence_artifact / runtime_schedule["path"]
+    assert runtime_path.parent.parent.parent == recurrence_artifact / "recurrence"
     assert runtime_path.is_file()
-    assert runtime_path.stat().st_size == runtime_container["size_bytes"]
+    assert runtime_path.stat().st_size == runtime_schedule["size_bytes"]
     payloads = {record.path: record for record in manifest.payloads}
     runtime_payload = payloads[runtime_path.relative_to(recurrence_artifact).as_posix()]
     assert runtime_payload.size_bytes == runtime_path.stat().st_size
-    assert runtime_payload.sha256 == runtime_container["sha256"]
+    assert runtime_payload.sha256 == runtime_schedule["sha256"]
+    binding_path = process_root / execution["plan"]["process_binding"]["path"]
+    assert binding_path.is_file()
     assert (recurrence_artifact / "evaluators.pacbin").is_file()
 
     recurrence, compiled, points = _assert_topology_replay_artifacts_match(
@@ -485,6 +549,12 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         compiled,
         points,
     )
+    if process_expression == _PROCESS:
+        _assert_recurrence_per_point_selector_patterns(
+            recurrence_artifact,
+            points[0],
+            expected_layout="topology-replay",
+        )
 
     # Prepared packs own the model-parameter derivation kernel. Recurrence must
     # refresh derived parameters after an independent runtime update exactly as
@@ -578,6 +648,11 @@ def test_builtin_lc_all_flow_union_recurrence_matches_compiled(
     _assert_all_flow_union_artifacts_match(
         recurrence_artifact,
         compiled_artifact,
+    )
+    _assert_recurrence_per_point_selector_patterns(
+        recurrence_artifact,
+        _validation_points(_PROCESS)[0],
+        expected_layout="all-flow-union",
     )
 
 

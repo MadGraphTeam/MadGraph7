@@ -1557,6 +1557,8 @@ fn recurrence_exact_sections_to_python(
                     row.representative_id,
                     row.source_permutation_start,
                     row.source_permutation_count,
+                    row.helicity_map_start,
+                    row.helicity_map_count,
                     row.phase_exact_factor_id,
                     row.multiplicity,
                     row.selector_domain_id,
@@ -1565,6 +1567,8 @@ fn recurrence_exact_sections_to_python(
             .collect::<Vec<_>>(),
     )?;
     result.set_item("source_permutations", sections.source_permutations)?;
+    result.set_item("replay_momentum_signs", sections.replay_momentum_signs)?;
+    result.set_item("replay_helicity_map", sections.replay_helicity_map)?;
     result.set_item(
         "source_state_assignments",
         sections

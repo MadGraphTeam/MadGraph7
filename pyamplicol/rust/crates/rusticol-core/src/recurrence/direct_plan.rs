@@ -9,7 +9,10 @@ use std::collections::BTreeSet;
 
 use sha2::{Digest, Sha256};
 
-use super::{ExactComplexRational, RecurrenceStrategy, SemanticDigest};
+use super::{
+    ClosureProofMetadataV2, ExactComplexRational, RecurrenceStrategy, SemanticDigest,
+    closure_component_factor_digest_v2, closure_selector_domain_digest_v2,
+};
 use crate::{RusticolError, RusticolResult};
 
 pub const RECURRENCE_DIRECT_PLAN_ABI: &str = "pyamplicol-recurrence-plan-v2";
@@ -159,7 +162,17 @@ pub struct DirectClosureRow {
     pub component_factor_start: u32,
     pub component_count: u16,
     pub selector_domain_id: u32,
+    /// Cold closure-proof group ID. Runtime executors deliberately ignore it.
+    ///
+    /// This occupies the former unused closure flags word, preserving the
+    /// native 40-byte row layout.
     pub flags: u32,
+}
+
+impl DirectClosureRow {
+    pub const fn proof_group_id(&self) -> u32 {
+        self.flags
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -201,6 +214,8 @@ pub struct DirectReplayTargetDescriptor {
     pub representative_id: u32,
     pub source_permutation_start: u64,
     pub source_permutation_count: u32,
+    pub helicity_map_start: u64,
+    pub helicity_map_count: u32,
     pub phase_exact_factor_id: u32,
     pub multiplicity: u32,
     pub selector_domain_id: u32,
@@ -311,6 +326,8 @@ pub struct DirectRecurrencePlanParts {
     pub selector_words: Vec<u64>,
     pub replay_targets: Vec<DirectReplayTargetDescriptor>,
     pub source_permutations: Vec<u32>,
+    pub replay_momentum_signs: Vec<i32>,
+    pub replay_helicity_map: Vec<u32>,
     pub amplitude_destinations: Vec<DirectAmplitudeDestinationDescriptor>,
     pub resolved_helicities: Vec<DirectResolvedHelicityDescriptor>,
     pub source_state_assignments: Vec<DirectSourceStateAssignment>,
@@ -320,6 +337,7 @@ pub struct DirectRecurrencePlanParts {
     pub resolved_source_selections: Vec<DirectResolvedSourceSelection>,
     pub public_helicities: Vec<i32>,
     pub exact_factors: Vec<ExactComplexRational>,
+    pub closure_proofs: ClosureProofMetadataV2,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -463,6 +481,14 @@ impl DirectRecurrencePlan {
         &self.parts.source_permutations
     }
 
+    pub fn replay_momentum_signs(&self) -> &[i32] {
+        &self.parts.replay_momentum_signs
+    }
+
+    pub fn replay_helicity_map(&self) -> &[u32] {
+        &self.parts.replay_helicity_map
+    }
+
     pub fn amplitude_destinations(&self) -> &[DirectAmplitudeDestinationDescriptor] {
         &self.parts.amplitude_destinations
     }
@@ -497,6 +523,10 @@ impl DirectRecurrencePlan {
 
     pub fn exact_factors(&self) -> &[ExactComplexRational] {
         &self.parts.exact_factors
+    }
+
+    pub const fn closure_proofs(&self) -> &ClosureProofMetadataV2 {
+        &self.parts.closure_proofs
     }
 
     pub fn into_parts(self) -> DirectRecurrencePlanParts {
@@ -625,6 +655,16 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     if parts.exact_factors.is_empty() {
         return Err(invalid("plan must contain at least one exact factor"));
     }
+    if parts.replay_momentum_signs.len() != parts.source_permutations.len()
+        || parts
+            .replay_momentum_signs
+            .iter()
+            .any(|sign| !matches!(sign, -1 | 1))
+    {
+        return Err(invalid(
+            "replay momentum signs must align one-to-one with source permutations",
+        ));
+    }
 
     validate_ranges(
         "momentum form",
@@ -651,7 +691,16 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             .iter()
             .map(|row| (row.source_permutation_start, row.source_permutation_count)),
         parts.source_permutations.len(),
-        false,
+        true,
+    )?;
+    validate_ranges(
+        "replay helicity map",
+        parts
+            .replay_targets
+            .iter()
+            .map(|row| (row.helicity_map_start, row.helicity_map_count)),
+        parts.replay_helicity_map.len(),
+        true,
     )?;
     validate_ranges(
         "amplitude destination closure",
@@ -1229,6 +1278,37 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                 "replay target {index} source mapping is not a permutation"
             )));
         }
+        match parts.strategy {
+            RecurrenceStrategy::TopologyReplay => {
+                if target.helicity_map_count != resolved_helicity_count {
+                    return Err(invalid(format!(
+                        "replay target {index} helicity map covers {} of {resolved_helicity_count} resolved helicities",
+                        target.helicity_map_count
+                    )));
+                }
+                let start = usize::try_from(target.helicity_map_start)
+                    .map_err(|_| invalid("replay helicity-map start exceeds usize"))?;
+                let count = usize::try_from(target.helicity_map_count)
+                    .map_err(|_| invalid("replay helicity-map count exceeds usize"))?;
+                let end = start
+                    .checked_add(count)
+                    .ok_or_else(|| invalid("replay helicity-map range overflows usize"))?;
+                let values = &parts.replay_helicity_map[start..end];
+                let unique = values.iter().copied().collect::<BTreeSet<_>>();
+                if unique.len() != count || unique.iter().copied().ne(0..resolved_helicity_count) {
+                    return Err(invalid(format!(
+                        "replay target {index} helicity mapping is not a bijection"
+                    )));
+                }
+            }
+            RecurrenceStrategy::AllFlowUnion => {
+                if target.helicity_map_count != 0 {
+                    return Err(invalid(format!(
+                        "all-flow-union replay target {index} carries a helicity map"
+                    )));
+                }
+            }
+        }
     }
 
     for (index, destination) in parts.amplitude_destinations.iter().enumerate() {
@@ -1367,6 +1447,187 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
 
     validate_row_groups(parts)?;
     validate_contribution_initialization(parts)?;
+    validate_closure_proofs(parts)?;
+    Ok(())
+}
+
+fn validate_closure_proofs(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
+    parts
+        .closure_proofs
+        .validate_tables()
+        .map_err(|error| invalid(error.message()))?;
+    let current_bases = parts
+        .currents
+        .iter()
+        .map(|current| (current.semantic_current_id, current.component_base))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut row_owner = vec![None; parts.closures.len()];
+    let mut term_owner = vec![None; parts.closures.len()];
+
+    for group in parts.closure_proofs.groups() {
+        let Some(term_id) = group.emitted_runtime_closure_term_id() else {
+            if group.emitted_direct_closure_row_id().is_some() {
+                return Err(invalid(format!(
+                    "exact-zero closure proof group {} references a direct closure row",
+                    group.id()
+                )));
+            }
+            continue;
+        };
+        let term_slot = term_owner.get_mut(term_id as usize).ok_or_else(|| {
+            invalid(format!(
+                "closure proof group {} references out-of-range runtime term {term_id}",
+                group.id()
+            ))
+        })?;
+        if term_slot.replace(group.id()).is_some() {
+            return Err(invalid(format!(
+                "runtime closure term {term_id} belongs to multiple proof groups"
+            )));
+        }
+        let row_id = group.emitted_direct_closure_row_id().ok_or_else(|| {
+            invalid(format!(
+                "nonzero closure proof group {} has no direct closure row",
+                group.id()
+            ))
+        })?;
+        let row = parts.closures.get(row_id as usize).ok_or_else(|| {
+            invalid(format!(
+                "closure proof group {} references out-of-range direct row {row_id}",
+                group.id()
+            ))
+        })?;
+        if row_owner[row_id as usize].replace(group.id()).is_some() {
+            return Err(invalid(format!(
+                "direct closure row {row_id} belongs to multiple proof groups"
+            )));
+        }
+        if row.proof_group_id() != group.id() {
+            return Err(invalid(format!(
+                "direct closure row {row_id} names proof group {}, expected {}",
+                row.proof_group_id(),
+                group.id()
+            )));
+        }
+        let runtime_factor = parts.exact_factors[row.exact_factor_id as usize];
+        if runtime_factor != group.exact_summed_factor() {
+            return Err(invalid(format!(
+                "direct closure row {row_id} factor does not match proof group {}",
+                group.id()
+            )));
+        }
+
+        let component_start = row.component_factor_start as usize;
+        let component_end = component_start
+            .checked_add(row.component_count as usize)
+            .ok_or_else(|| invalid("closure component-factor range overflows usize"))?;
+        let component_factors = parts
+            .exact_factors
+            .get(component_start..component_end)
+            .ok_or_else(|| invalid("closure component-factor range is out of bounds"))?;
+        if closure_component_factor_digest_v2(component_factors)
+            .map_err(|error| invalid(error.message()))?
+            != group.component_factor_digest()
+        {
+            return Err(invalid(format!(
+                "direct closure row {row_id} component-factor digest does not match proof group {}",
+                group.id()
+            )));
+        }
+
+        let selector = parts
+            .selector_domains
+            .get(row.selector_domain_id as usize)
+            .ok_or_else(|| invalid("closure selector domain is absent"))?;
+        let selector_start = selector.word_start as usize;
+        let selector_end = selector_start
+            .checked_add(selector.word_count as usize)
+            .ok_or_else(|| invalid("closure selector-domain range overflows usize"))?;
+        let selector_words = parts
+            .selector_words
+            .get(selector_start..selector_end)
+            .ok_or_else(|| invalid("closure selector-domain range is out of bounds"))?;
+        if closure_selector_domain_digest_v2(selector_words)
+            .map_err(|error| invalid(error.message()))?
+            != group.selector_domain_digest()
+        {
+            return Err(invalid(format!(
+                "direct closure row {row_id} selector-domain digest does not match proof group {}",
+                group.id()
+            )));
+        }
+
+        let contribution_range = group
+            .contribution_range()
+            .as_usize_range(
+                parts.closure_proofs.contributions().len(),
+                &format!("closure proof group {} contribution", group.id()),
+            )
+            .map_err(|error| invalid(error.message()))?;
+        let contributions = &parts.closure_proofs.contributions()[contribution_range];
+        let representative = &contributions[0];
+        if Some(row.amplitude_destination_id) != representative.target_destination_id() {
+            return Err(invalid(format!(
+                "direct closure row {row_id} destination does not match proof group {}",
+                group.id()
+            )));
+        }
+        let parent_ids = representative
+            .evaluator_parent_runtime_ids()
+            .ok_or_else(|| {
+                invalid(format!(
+                    "nonzero closure proof group {} has no complete runtime-parent binding",
+                    group.id()
+                ))
+            })?;
+        let expected_parent0 = *current_bases.get(&parent_ids[0]).ok_or_else(|| {
+            invalid(format!(
+                "closure proof group {} references absent semantic parent {}",
+                group.id(),
+                parent_ids[0]
+            ))
+        })?;
+        let expected_parent1 = parent_ids
+            .get(1)
+            .map(|parent_id| {
+                current_bases.get(parent_id).copied().ok_or_else(|| {
+                    invalid(format!(
+                        "closure proof group {} references absent semantic parent {parent_id}",
+                        group.id()
+                    ))
+                })
+            })
+            .transpose()?
+            .unwrap_or(DIRECT_NONE_U32);
+        if parent_ids.len() > 2
+            || row.parent0_component_base != expected_parent0
+            || row.parent1_component_base_or_sentinel != expected_parent1
+        {
+            return Err(invalid(format!(
+                "direct closure row {row_id} parents do not match proof group {}",
+                group.id()
+            )));
+        }
+    }
+
+    if let Some((row_id, _)) = row_owner
+        .iter()
+        .enumerate()
+        .find(|(_, owner)| owner.is_none())
+    {
+        return Err(invalid(format!(
+            "direct closure row {row_id} has no closure proof group"
+        )));
+    }
+    if let Some((term_id, _)) = term_owner
+        .iter()
+        .enumerate()
+        .find(|(_, owner)| owner.is_none())
+    {
+        return Err(invalid(format!(
+            "runtime closure term {term_id} has no closure proof group"
+        )));
+    }
     Ok(())
 }
 
@@ -1764,8 +2025,10 @@ fn digest_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<SemanticDig
     for row in &parts.replay_targets {
         hash_u32s!(row.public_flow_id, row.representative_id);
         hash.update(row.source_permutation_start.to_le_bytes());
+        hash.update(row.helicity_map_start.to_le_bytes());
         hash_u32s!(
             row.source_permutation_count,
+            row.helicity_map_count,
             row.phase_exact_factor_id,
             row.multiplicity,
             row.selector_domain_id,
@@ -1773,6 +2036,14 @@ fn digest_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<SemanticDig
     }
     count!(parts.source_permutations);
     for value in &parts.source_permutations {
+        hash.update(value.to_le_bytes());
+    }
+    count!(parts.replay_momentum_signs);
+    for value in &parts.replay_momentum_signs {
+        hash.update(value.to_le_bytes());
+    }
+    count!(parts.replay_helicity_map);
+    for value in &parts.replay_helicity_map {
         hash.update(value.to_le_bytes());
     }
     count!(parts.amplitude_destinations);
@@ -1851,6 +2122,12 @@ fn digest_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<SemanticDig
             hash.update(rational.denominator().to_le_bytes());
         }
     }
+    hash.update(
+        parts
+            .closure_proofs
+            .expected_semantic_completeness_digest()
+            .as_bytes(),
+    );
     SemanticDigest::new(hash.finalize().into())
 }
 

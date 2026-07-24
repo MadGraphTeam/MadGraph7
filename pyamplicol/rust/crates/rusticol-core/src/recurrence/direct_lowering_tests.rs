@@ -892,6 +892,7 @@ fn count_fixture_program(
                 0,
                 target,
                 permutation,
+                vec![1; external_count],
                 if target == 0 {
                     ExactComplexRational::ONE
                 } else {

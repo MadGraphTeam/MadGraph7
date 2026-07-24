@@ -41,7 +41,7 @@ _ALLOWED_DTYPES = frozenset(dtype.str for dtype in (_U8, _U32, _U64, _I32))
 
 
 class RecurrenceColumnarInputError(ValueError):
-    """A logical record or primitive recurrence column violates ABI v1."""
+    """A logical record or primitive recurrence column violates ABI v2."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +163,13 @@ class RecurrenceExternalLegV1:
             raise RecurrenceColumnarInputError(
                 "one external leg cannot expose a public helicity more than once"
             )
+        source_template_ids = tuple(
+            state.source_template_id for state in self.source_states
+        )
+        if len(set(source_template_ids)) != len(source_template_ids):
+            raise RecurrenceColumnarInputError(
+                "one external leg cannot expose a source template more than once"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,7 +276,7 @@ class RecurrenceReplayTargetV1:
     """Exact mapping from a replay representative to one physical sector.
 
     Both permutations are gather mappings: representative slot ``i`` receives
-    target slot ``permutation[i]``.  They are equal in recurrence ABI v1; both
+    target slot ``permutation[i]``.  They are equal in recurrence ABI v2; both
     names are retained to keep the proof and runtime contracts explicit.
     """
 
@@ -728,7 +735,7 @@ class RecurrenceBuilderInputV1:
         expected_names = tuple(sorted(_TABLE_SCHEMAS))
         if names != expected_names:
             raise RecurrenceColumnarInputError(
-                "recurrence columnar tables must match the sorted v1 inventory; "
+                "recurrence columnar tables must match the sorted v2 inventory; "
                 f"got {names!r}"
             )
         self._validate_schemas()
@@ -1627,7 +1634,7 @@ def _validate_logical_relations(
         )
     if not sectors:
         raise RecurrenceColumnarInputError(
-            "recurrence v1 requires at least one physical LC sector"
+            "recurrence v2 requires at least one physical LC sector"
         )
     flow_ids = tuple(flow.flow_id for flow in public_flows)
     if flow_ids != tuple(range(len(flow_ids))):
@@ -1648,14 +1655,28 @@ def _validate_logical_relations(
             len(external_legs),
             "public flow source-slot permutation",
         )
+        _validate_source_contract_permutation(
+            external_legs,
+            flow.source_slot_permutation,
+            f"public LC flow {flow.flow_id}",
+        )
         construction_word = sectors[flow.construction_sector_id].word_source_slots
         mapped_word = tuple(
             flow.source_slot_permutation[source_slot]
             for source_slot in construction_word
         )
-        if mapped_word != flow.word_source_slots:
+        construction_sector = sectors[flow.construction_sector_id]
+        reflected_trace = (
+            construction_sector.kind == "single-trace"
+            and len(construction_word) > 2
+            and flow.word_source_slots
+            == (construction_word[0], *reversed(construction_word[1:]))
+            and flow.source_slot_permutation == tuple(range(len(external_legs)))
+        )
+        if mapped_word != flow.word_source_slots and not reflected_trace:
             raise RecurrenceColumnarInputError(
-                "public flow word does not match its gather permutation"
+                "public flow word is neither its gathered construction word nor "
+                "an anchored folded-trace reflection"
             )
 
     roles = tuple(item.role for item in digests)
@@ -1829,9 +1850,14 @@ def _validate_logical_relations(
             )
             if target.external_permutation != target.source_slot_permutation:
                 raise RecurrenceColumnarInputError(
-                    "recurrence ABI v1 requires identical replay external and "
+                    "recurrence ABI v2 requires identical replay external and "
                     "source-slot permutations"
                 )
+            _validate_source_contract_permutation(
+                external_legs,
+                target.source_slot_permutation,
+                f"replay target sector {target.sector_id}",
+            )
             mapped_word = tuple(
                 target.source_slot_permutation[source_slot]
                 for source_slot in representative_word
@@ -1868,6 +1894,11 @@ def _validate_logical_relations(
         if len(set(selected_slots)) != len(selected_slots):
             raise RecurrenceColumnarInputError(
                 "selected source generation coverage repeats a source slot"
+            )
+        if tuple(sorted(selected_slots)) != tuple(range(len(external_legs))):
+            raise RecurrenceColumnarInputError(
+                "selected source generation coverage must retain at least one "
+                "state for every external source slot"
             )
         for item in selected_sources:
             source_slot = _require_index(
@@ -2467,6 +2498,40 @@ def _validate_permutation(values: Sequence[int], size: int, context: str) -> Non
         raise RecurrenceColumnarInputError(
             f"{context} must be a permutation of [0, {size})"
         )
+
+
+def _validate_source_contract_permutation(
+    external_legs: Sequence[RecurrenceExternalLegV1],
+    permutation: Sequence[int],
+    context: str,
+) -> None:
+    for representative_slot, target_slot in enumerate(permutation):
+        representative = external_legs[representative_slot]
+        target = external_legs[target_slot]
+        if representative.is_initial != target.is_initial:
+            raise RecurrenceColumnarInputError(
+                f"{context} maps source slot {representative_slot} across the "
+                "initial/final crossing boundary"
+            )
+        representative_contracts = {
+            state.source_template_id: (
+                state.momentum_sign,
+                state.crossing_phase.canonical_key,
+            )
+            for state in representative.source_states
+        }
+        target_contracts = {
+            state.source_template_id: (
+                state.momentum_sign,
+                state.crossing_phase.canonical_key,
+            )
+            for state in target.source_states
+        }
+        if representative_contracts != target_contracts:
+            raise RecurrenceColumnarInputError(
+                f"{context} maps source slot {representative_slot} onto slot "
+                f"{target_slot} with a different source crossing contract"
+            )
 
 
 def _require_index(value: int, bound: int, context: str) -> int:

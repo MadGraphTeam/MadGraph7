@@ -1247,7 +1247,12 @@ fn union_destination_ids(
                 })
         })
         .collect::<RusticolResult<Vec<_>>>()?;
-    if result.len() != destination_by_sector.len() {
+    if result.iter().copied().collect::<BTreeSet<_>>()
+        != destination_by_sector
+            .values()
+            .copied()
+            .collect::<BTreeSet<_>>()
+    {
         return Err(RusticolError::integrity(
             "all-flow-union amplitude destinations do not match the public flow axis",
         ));
@@ -1260,74 +1265,13 @@ fn replay_destination_helicity_maps(
     replay_selectors: &[DirectReplaySelectorPlan],
     direct_helicity_to_physics: &[usize],
 ) -> RusticolResult<Vec<Vec<usize>>> {
-    let source_count = usize::try_from(plan.external_source_count())
-        .map_err(|_| RusticolError::artifact("recurrence source count exceeds usize"))?;
-    let mut physics_by_public_helicity = BTreeMap::<Vec<i32>, usize>::new();
-    for descriptor in plan.resolved_helicities() {
-        let start = usize::try_from(descriptor.public_helicity_start).map_err(|_| {
-            RusticolError::integrity("recurrence public-helicity range start exceeds usize")
-        })?;
-        let count = usize::try_from(descriptor.public_helicity_count).map_err(|_| {
-            RusticolError::integrity("recurrence public-helicity count exceeds usize")
-        })?;
-        if count != source_count {
-            return Err(RusticolError::integrity(format!(
-                "recurrence resolved helicity {} covers {count} public sources, expected {source_count}",
-                descriptor.id
-            )));
-        }
-        let end = start.checked_add(count).ok_or_else(|| {
-            RusticolError::integrity("recurrence public-helicity range overflows usize")
-        })?;
-        let public_helicities = plan.public_helicities().get(start..end).ok_or_else(|| {
-            RusticolError::integrity("recurrence public-helicity range is out of bounds")
-        })?;
-        let physics_index = direct_helicity_to_physics
-            .get(descriptor.id as usize)
-            .copied()
-            .ok_or_else(|| {
-                RusticolError::integrity("recurrence direct helicity has no public physics mapping")
-            })?;
-        if physics_by_public_helicity
-            .insert(public_helicities.to_vec(), physics_index)
-            .is_some()
-        {
-            return Err(RusticolError::integrity(
-                "recurrence direct plan contains duplicate public helicity assignments",
-            ));
-        }
-    }
-
     let mut result = Vec::with_capacity(replay_selectors.len());
-    let mut public = vec![0_i32; source_count];
-    let mut assigned = vec![false; source_count];
     for selector in replay_selectors {
-        let mut direct_to_physics = vec![usize::MAX; plan.resolved_helicities().len()];
-        for descriptor in plan.resolved_helicities() {
-            let start = usize::try_from(descriptor.public_helicity_start).map_err(|_| {
-                RusticolError::integrity("recurrence public-helicity range start exceeds usize")
-            })?;
-            let end = start.checked_add(source_count).ok_or_else(|| {
-                RusticolError::integrity("recurrence public-helicity range overflows usize")
-            })?;
-            let representative = plan.public_helicities().get(start..end).ok_or_else(|| {
-                RusticolError::integrity("recurrence public-helicity range is out of bounds")
-            })?;
-            map_representative_helicity_to_public(
-                representative,
-                selector.source_permutation(),
-                &mut public,
-                &mut assigned,
-            )?;
-            direct_to_physics[descriptor.id as usize] = physics_by_public_helicity
-                .get(public.as_slice())
-                .copied()
-                .ok_or_else(|| {
-                    RusticolError::integrity(format!(
-                        "recurrence replay flow {} maps a representative helicity outside retained public coverage",
-                        selector.public_flow_id()
-                    ))
-                })?;
+        if selector.helicity_map().len() != plan.resolved_helicities().len() {
+            return Err(RusticolError::integrity(format!(
+                "recurrence replay flow {} has incomplete helicity coverage",
+                selector.public_flow_id()
+            )));
         }
 
         let mut destinations = Vec::with_capacity(plan.amplitude_destinations().len());
@@ -1337,13 +1281,21 @@ fn replay_destination_helicity_maps(
                     "topology-replay amplitude destination lacks a resolved helicity",
                 ));
             }
-            let physics_index = direct_to_physics
+            let mapped_direct_id = selector
+                .helicity_map()
                 .get(destination.target_helicity_id_or_sentinel as usize)
                 .copied()
-                .filter(|index| *index != usize::MAX)
                 .ok_or_else(|| {
                     RusticolError::integrity(
-                        "recurrence amplitude destination helicity is not publicly mapped",
+                        "recurrence amplitude destination helicity is not replay-mapped",
+                    )
+                })?;
+            let physics_index = direct_helicity_to_physics
+                .get(mapped_direct_id as usize)
+                .copied()
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "recurrence replay helicity has no public physics mapping",
                     )
                 })?;
             destinations.push(physics_index);
@@ -1351,41 +1303,6 @@ fn replay_destination_helicity_maps(
         result.push(destinations);
     }
     Ok(result)
-}
-
-fn map_representative_helicity_to_public(
-    representative: &[i32],
-    representative_to_public: &[u32],
-    public: &mut [i32],
-    assigned: &mut [bool],
-) -> RusticolResult<()> {
-    let source_count = representative.len();
-    if representative_to_public.len() != source_count
-        || public.len() != source_count
-        || assigned.len() != source_count
-    {
-        return Err(RusticolError::integrity(
-            "recurrence replay permutation has inconsistent source coverage",
-        ));
-    }
-    assigned.fill(false);
-    for (representative_slot, helicity) in representative.iter().copied().enumerate() {
-        let public_slot = usize::try_from(representative_to_public[representative_slot])
-            .map_err(|_| RusticolError::integrity("recurrence replay source slot exceeds usize"))?;
-        if public_slot >= source_count || assigned[public_slot] {
-            return Err(RusticolError::integrity(
-                "recurrence replay permutation is not bijective",
-            ));
-        }
-        public[public_slot] = helicity;
-        assigned[public_slot] = true;
-    }
-    if assigned.contains(&false) {
-        return Err(RusticolError::integrity(
-            "recurrence replay permutation does not cover every source",
-        ));
-    }
-    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -1454,27 +1371,5 @@ fn direct_profile(
         reduction_s: profile_duration_seconds(reduction),
         total_s: profile_duration_seconds(total),
         ..RuntimeProfile::default()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::map_representative_helicity_to_public;
-
-    #[test]
-    fn replay_helicity_mapping_uses_representative_to_public_direction() {
-        let mut public = vec![0; 3];
-        let mut assigned = vec![false; 3];
-
-        map_representative_helicity_to_public(
-            &[10, 20, 30],
-            &[1, 2, 0],
-            &mut public,
-            &mut assigned,
-        )
-        .expect("three-cycle replay permutation should be valid");
-
-        assert_eq!(public, vec![30, 10, 20]);
-        assert_eq!(assigned, vec![true, true, true]);
     }
 }

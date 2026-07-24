@@ -696,7 +696,7 @@ fn writer_is_deterministic_and_supports_runtime_member_kinds() {
                 )
                 .unwrap(),
                 PacbinWriteMember::from_bytes(
-                    "plan/recurrence-direct-plan-v2.bin",
+                    "schedule/recurrence-direct-schedule-v2.bin",
                     PacbinMemberKind::RecurrenceDirectPlan,
                     b"recurrence-direct-plan-payload",
                 )
@@ -718,7 +718,7 @@ fn writer_is_deterministic_and_supports_runtime_member_kinds() {
     );
     assert_eq!(
         reader
-            .member("plan/recurrence-direct-plan-v2.bin")
+            .member("schedule/recurrence-direct-schedule-v2.bin")
             .unwrap()
             .kind(),
         PacbinMemberKind::RecurrenceDirectPlan

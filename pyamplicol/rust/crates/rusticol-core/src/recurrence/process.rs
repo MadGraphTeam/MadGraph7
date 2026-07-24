@@ -2,7 +2,7 @@
 
 //! Checked process-wide input for the compact recurrence builder.
 //!
-//! The Python producer encodes `pyamplicol-recurrence-builder-input-v1` as
+//! The Python producer encodes `pyamplicol-recurrence-builder-input-v2` as
 //! little-endian structure-of-arrays tables.  A boundary decoder can zip those
 //! columns into the fixed-width row types below and then construct
 //! [`OwnedRecurrenceProcessInput`].  This module validates process semantics
@@ -2197,6 +2197,7 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 &format!("external leg {source_slot} source states"),
             )?;
             let mut helicities = BTreeSet::new();
+            let mut source_template_ids = BTreeSet::new();
             for (state_index, row_index) in rows.enumerate() {
                 let state = self.source_states[row_index];
                 if state.source_slot != source_slot_u32 {
@@ -2217,6 +2218,12 @@ impl<'a> RecurrenceProcessInputView<'a> {
                     return Err(invalid(format!(
                         "external leg {source_slot} repeats public helicity {}",
                         state.public_helicity
+                    )));
+                }
+                if !source_template_ids.insert(state.source_template_id) {
+                    return Err(invalid(format!(
+                        "external leg {source_slot} repeats source template {}",
+                        state.source_template_id
                     )));
                 }
                 if !matches!(state.momentum_sign, -1 | 1) {
@@ -2452,6 +2459,10 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 self.external_legs.len(),
                 &format!("public LC flow {flow_index} source permutation"),
             )?;
+            self.validate_source_contract_permutation(
+                permutation,
+                &format!("public LC flow {flow_index}"),
+            )?;
             let construction_word = self.sequence(
                 construction_sector.word_sequence_id,
                 &format!("public LC flow {flow_index} construction word"),
@@ -2460,12 +2471,26 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 flow.word_sequence_id,
                 &format!("public LC flow {flow_index} word"),
             )?;
-            validate_mapped_word(
-                construction_word,
-                permutation,
-                public_word,
-                &format!("public LC flow {flow_index}"),
-            )?;
+            let reflected_trace = construction_sector.kind()? == ProcessLCSectorKind::SingleTrace
+                && construction_word.len() > 2
+                && permutation
+                    .iter()
+                    .copied()
+                    .eq(0..u32::try_from(permutation.len())
+                        .map_err(|_| invalid("public LC flow source count exceeds u32"))?)
+                && public_word.first() == construction_word.first()
+                && public_word[1..]
+                    .iter()
+                    .copied()
+                    .eq(construction_word[1..].iter().rev().copied());
+            if !reflected_trace {
+                validate_mapped_word(
+                    construction_word,
+                    permutation,
+                    public_word,
+                    &format!("public LC flow {flow_index}"),
+                )?;
+            }
         }
         Ok(())
     }
@@ -2575,6 +2600,10 @@ impl<'a> RecurrenceProcessInputView<'a> {
                         "replay target row {row_index} external and source permutations differ"
                     )));
                 }
+                self.validate_source_contract_permutation(
+                    source_permutation,
+                    &format!("replay target row {row_index}"),
+                )?;
                 let target_word_id =
                     self.physical_lc_sectors[target.sector_id as usize].word_sequence_id;
                 let target_word = self.sequence(
@@ -2609,16 +2638,73 @@ impl<'a> RecurrenceProcessInputView<'a> {
         Ok(())
     }
 
+    fn validate_source_contract_permutation(
+        self,
+        permutation: &[u32],
+        context: &str,
+    ) -> RusticolResult<()> {
+        for (representative_slot, target_slot) in permutation.iter().copied().enumerate() {
+            let target_slot = required_reference(
+                target_slot,
+                self.external_legs.len(),
+                "replay target source slot",
+            )?;
+            let representative = self.external_legs[representative_slot];
+            let target = self.external_legs[target_slot];
+            if representative.is_initial != target.is_initial {
+                return Err(invalid(format!(
+                    "{context} maps source slot {representative_slot} across the initial/final crossing boundary"
+                )));
+            }
+            let contracts = |leg: ProcessExternalLegRow,
+                             label: &str|
+             -> RusticolResult<BTreeMap<u32, (i32, u32)>> {
+                let rows = leg.source_state_range.as_usize_range(
+                    self.source_states.len(),
+                    &format!("{context} {label} source states"),
+                )?;
+                let mut result = BTreeMap::new();
+                for row_index in rows {
+                    let state = self.source_states[row_index];
+                    if result
+                        .insert(
+                            state.source_template_id,
+                            (state.momentum_sign, state.crossing_phase_factor_id),
+                        )
+                        .is_some()
+                    {
+                        return Err(invalid(format!(
+                            "{context} {label} repeats source template {}",
+                            state.source_template_id
+                        )));
+                    }
+                }
+                Ok(result)
+            };
+            let representative_contracts = contracts(representative, "representative")?;
+            let target_contracts = contracts(target, "target")?;
+            if representative_contracts != target_contracts {
+                return Err(invalid(format!(
+                    "{context} maps source slot {representative_slot} onto slot {target_slot} with a different source crossing contract"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn validate_generation_coverage(
         self,
         selected_flow_mode: bool,
         selected_source_mode: bool,
     ) -> RusticolResult<()> {
-        if self.header[0].strategy()? == RecurrenceStrategy::AllFlowUnion
-            && (selected_flow_mode || selected_source_mode)
-        {
+        if selected_flow_mode == self.selected_public_flow_coverage.is_empty() {
             return Err(invalid(
-                "all-flow-union recurrence input cannot carry generation-selected flow or source coverage",
+                "selected-flow mode disagrees with generation coverage rows",
+            ));
+        }
+        if selected_source_mode == self.selected_source_coverage.is_empty() {
+            return Err(invalid(
+                "selected-source mode disagrees with generation coverage rows",
             ));
         }
         let selected_flows = self
@@ -2634,6 +2720,7 @@ impl<'a> RecurrenceProcessInputView<'a> {
         )?;
 
         let mut previous = None;
+        let mut covered_source_slots = BTreeSet::new();
         for (row_index, row) in self.selected_source_coverage.iter().copied().enumerate() {
             let key = (row.source_slot, row.source_state_index);
             if let Some(previous) = previous
@@ -2658,6 +2745,12 @@ impl<'a> RecurrenceProcessInputView<'a> {
                     row.source_state_index, row.source_slot
                 )));
             }
+            covered_source_slots.insert(row.source_slot);
+        }
+        if selected_source_mode && covered_source_slots.len() != self.external_legs.len() {
+            return Err(invalid(
+                "selected source coverage must retain at least one state for every external source slot",
+            ));
         }
         Ok(())
     }
@@ -3440,6 +3533,221 @@ mod tests {
             string_ranges,
             string_bytes,
         }
+    }
+
+    fn generation_coverage_view<'a>(
+        header: &'a [ProcessHeaderRow],
+        external_legs: &'a [ProcessExternalLegRow],
+        public_lc_flows: &'a [ProcessPublicLCFlowRow],
+        selected_public_flow_coverage: &'a [ProcessSelectedPublicFlowRow],
+        selected_source_coverage: &'a [ProcessSelectedSourceStateRow],
+    ) -> RecurrenceProcessInputView<'a> {
+        RecurrenceProcessInputView {
+            input_abi: RECURRENCE_BUILDER_INPUT_ABI,
+            declared_input_digest: SemanticDigest::new(test_digest(31))
+                .expect("test process digest is nonzero"),
+            fermion_pairing: None,
+            bitset_ranges: &[],
+            bitset_words: &[],
+            coupling_limits: &[],
+            digest_catalog: &[],
+            exact_factors: &[],
+            external_legs,
+            header,
+            header_digests: &[],
+            lc_open_strings: &[],
+            normalization: &[],
+            parameter_projection: &[],
+            physical_lc_sectors: &[],
+            public_lc_flows,
+            replay_partitions: &[],
+            replay_targets: &[],
+            selected_public_flow_coverage,
+            selected_source_coverage,
+            semantic_template_references: &[],
+            source_states: &[],
+            string_ranges: &[],
+            string_bytes: &[],
+            u32_sequence_ranges: &[],
+            u32_sequence_values: &[],
+        }
+    }
+
+    fn generation_coverage_header(
+        strategy: RecurrenceStrategy,
+        selected_flow_mode: bool,
+        selected_source_mode: bool,
+    ) -> ProcessHeaderRow {
+        ProcessHeaderRow {
+            schema_version: RECURRENCE_PROCESS_INPUT_SCHEMA_VERSION,
+            abi_string_id: 0,
+            process_id_string_id: 0,
+            layout: u8::try_from(strategy.as_u32()).expect("strategy fits u8"),
+            selected_flow_mode: u8::from(selected_flow_mode),
+            selected_source_mode: u8::from(selected_source_mode),
+            external_leg_count: 2,
+            physical_sector_count: 0,
+            public_flow_count: 2,
+            replay_partition_count: 0,
+            coupling_limit_count: 0,
+            parameter_projection_count: 0,
+            process_support_mask_id: 0,
+        }
+    }
+
+    fn generation_coverage_external_legs() -> [ProcessExternalLegRow; 2] {
+        [
+            ProcessExternalLegRow {
+                source_slot: 0,
+                public_label: 1,
+                physical_pdg: 1,
+                outgoing_pdg: 1,
+                is_initial: 1,
+                is_fermionic: 1,
+                source_state_range: test_range(0, 2),
+                momentum_mask_id: 0,
+                support_mask_id: 0,
+            },
+            ProcessExternalLegRow {
+                source_slot: 1,
+                public_label: 2,
+                physical_pdg: -1,
+                outgoing_pdg: -1,
+                is_initial: 1,
+                is_fermionic: 1,
+                source_state_range: test_range(2, 2),
+                momentum_mask_id: 0,
+                support_mask_id: 0,
+            },
+        ]
+    }
+
+    fn generation_coverage_public_flows() -> [ProcessPublicLCFlowRow; 2] {
+        [
+            ProcessPublicLCFlowRow {
+                flow_id: 0,
+                public_id_string_id: 0,
+                construction_sector_id: 0,
+                word_sequence_id: 0,
+                source_slot_permutation_sequence_id: 0,
+                reduction_weight_factor_id: 0,
+            },
+            ProcessPublicLCFlowRow {
+                flow_id: 1,
+                public_id_string_id: 0,
+                construction_sector_id: 0,
+                word_sequence_id: 0,
+                source_slot_permutation_sequence_id: 0,
+                reduction_weight_factor_id: 0,
+            },
+        ]
+    }
+
+    #[test]
+    fn all_flow_union_accepts_generation_specialized_coverage() {
+        let header = [generation_coverage_header(
+            RecurrenceStrategy::AllFlowUnion,
+            true,
+            true,
+        )];
+        let external_legs = generation_coverage_external_legs();
+        let public_flows = generation_coverage_public_flows();
+        let selected_flows = [ProcessSelectedPublicFlowRow { flow_id: 1 }];
+        let selected_sources = [
+            ProcessSelectedSourceStateRow {
+                source_slot: 0,
+                source_state_index: 1,
+            },
+            ProcessSelectedSourceStateRow {
+                source_slot: 1,
+                source_state_index: 0,
+            },
+        ];
+        let input = generation_coverage_view(
+            &header,
+            &external_legs,
+            &public_flows,
+            &selected_flows,
+            &selected_sources,
+        );
+
+        input
+            .validate_generation_coverage(true, true)
+            .expect("all-flow-union accepts valid generation specialization");
+    }
+
+    #[test]
+    fn all_flow_union_accepts_omitted_generation_axes() {
+        let header = [generation_coverage_header(
+            RecurrenceStrategy::AllFlowUnion,
+            false,
+            false,
+        )];
+        let external_legs = generation_coverage_external_legs();
+        let public_flows = generation_coverage_public_flows();
+        let input = generation_coverage_view(&header, &external_legs, &public_flows, &[], &[]);
+
+        input
+            .validate_generation_coverage(false, false)
+            .expect("omitted union axes retain complete coverage");
+    }
+
+    #[test]
+    fn selected_source_coverage_rejects_missing_external_slot() {
+        let header = [generation_coverage_header(
+            RecurrenceStrategy::AllFlowUnion,
+            false,
+            true,
+        )];
+        let external_legs = generation_coverage_external_legs();
+        let public_flows = generation_coverage_public_flows();
+        let selected_sources = [ProcessSelectedSourceStateRow {
+            source_slot: 0,
+            source_state_index: 1,
+        }];
+        let input = generation_coverage_view(
+            &header,
+            &external_legs,
+            &public_flows,
+            &[],
+            &selected_sources,
+        );
+
+        let error = input
+            .validate_generation_coverage(false, true)
+            .expect_err("partial source coverage must fail closed");
+        assert!(error.to_string().contains("every external source slot"));
+    }
+
+    #[test]
+    fn selected_union_coverage_rejects_out_of_range_rows() {
+        let header = [generation_coverage_header(
+            RecurrenceStrategy::AllFlowUnion,
+            true,
+            true,
+        )];
+        let external_legs = generation_coverage_external_legs();
+        let public_flows = generation_coverage_public_flows();
+        let selected_flows = [ProcessSelectedPublicFlowRow { flow_id: 2 }];
+        let selected_sources = [
+            ProcessSelectedSourceStateRow {
+                source_slot: 0,
+                source_state_index: 0,
+            },
+            ProcessSelectedSourceStateRow {
+                source_slot: 1,
+                source_state_index: 2,
+            },
+        ];
+        let input = generation_coverage_view(
+            &header,
+            &external_legs,
+            &public_flows,
+            &selected_flows,
+            &selected_sources,
+        );
+
+        assert!(input.validate_generation_coverage(true, true).is_err());
     }
 
     #[test]

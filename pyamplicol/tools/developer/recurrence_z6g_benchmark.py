@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PREPARED_MODEL_ID = "built-in-sm-jit-o2"
 DEFAULT_BATCH_SIZES = (128, 1024)
 RESULT_KIND = "pyamplicol-recurrence-z6g-benchmark"
-RESULT_SCHEMA = 1
+RESULT_SCHEMA = 2
 _WORKER_MARKER = "PYAMPLICOL_RECURRENCE_Z6G_WORKER_RESULT="
 
 
@@ -527,6 +527,11 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
     selected_total = runtime.evaluate(selected_points, **selectors)[0]
     selected_resolved = runtime.evaluate_resolved(selected_points, **selectors)
     resolved_total = selected_resolved.total()[0]
+    resolved_components = [
+        _complex_payload(value)
+        for helicity_row in selected_resolved.values[0]
+        for value in helicity_row
+    ]
     absolute = abs(complex(selected_total) - complex(resolved_total))
     relative = absolute / max(
         abs(complex(selected_total)), abs(complex(resolved_total)), 1.0e-300
@@ -583,6 +588,9 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
             "absolute_difference": absolute,
             "relative_difference": relative,
             "passes": absolute <= 1.0e-15 or relative <= 1.0e-12,
+            "resolved_helicity_ids": list(selected_resolved.helicity_ids),
+            "resolved_color_ids": list(selected_resolved.color_ids),
+            "resolved_components": resolved_components,
         },
         "profiles": profiles,
     }
@@ -707,6 +715,47 @@ def _comparison(left: object, right: object) -> dict[str, object]:
         "absolute_difference": absolute,
         "relative_difference": relative,
         "passes": absolute <= 1.0e-15 or relative <= 1.0e-12,
+    }
+
+
+def _resolved_component_comparison(
+    recurrence: Mapping[str, object],
+    compiled: Mapping[str, object],
+) -> dict[str, object]:
+    recurrence_components = recurrence.get("resolved_components")
+    compiled_components = compiled.get("resolved_components")
+    if not isinstance(recurrence_components, list) or not isinstance(
+        compiled_components, list
+    ):
+        raise HarnessError("profile workers omitted resolved component values")
+    axes_match = (
+        recurrence.get("resolved_helicity_ids")
+        == compiled.get("resolved_helicity_ids")
+        and recurrence.get("resolved_color_ids")
+        == compiled.get("resolved_color_ids")
+        and len(recurrence_components) == len(compiled_components)
+    )
+    maximum_absolute = 0.0
+    maximum_relative = 0.0
+    components_pass = True
+    for recurrence_value, compiled_value in zip(
+        recurrence_components,
+        compiled_components,
+        strict=False,
+    ):
+        left = complex(*recurrence_value)
+        right = complex(*compiled_value)
+        absolute = abs(left - right)
+        relative = absolute / max(abs(left), abs(right), 1.0e-300)
+        maximum_absolute = max(maximum_absolute, absolute)
+        maximum_relative = max(maximum_relative, relative)
+        components_pass &= absolute <= 1.0e-15 + 1.0e-12 * abs(right)
+    return {
+        "axes_match": axes_match,
+        "component_count": len(recurrence_components),
+        "maximum_absolute_difference": maximum_absolute,
+        "maximum_relative_difference": maximum_relative,
+        "passes": axes_match and components_pass,
     }
 
 
@@ -872,6 +921,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
             )
 
     comparison: dict[str, object] | None = None
+    component_comparison: dict[str, object] | None = None
     selectors_match: bool | None = None
     passes: bool | None = None
     if {"recurrence", "compiled"}.issubset(profiles):
@@ -885,6 +935,10 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
             recurrence_validation["selected_total"],
             compiled_validation["selected_total"],
         )
+        component_comparison = _resolved_component_comparison(
+            recurrence_validation,
+            compiled_validation,
+        )
         selectors_match = (
             profiles["recurrence"]["selector_contract"]
             == profiles["compiled"]["selector_contract"]
@@ -893,6 +947,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
             bool(recurrence_validation["passes"])
             and bool(compiled_validation["passes"])
             and bool(comparison["passes"])
+            and bool(component_comparison["passes"])
             and selectors_match
         )
     payload: dict[str, object] = {
@@ -940,6 +995,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         "profiles": profiles,
         "selector_contracts_match": selectors_match,
         "selected_flow_validation": comparison,
+        "resolved_component_validation": component_comparison,
     }
     _write_json_atomic(result_json, payload)
     payload["result_json"] = str(result_json)

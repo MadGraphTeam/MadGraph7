@@ -17,8 +17,8 @@ use rusticol_core::recurrence::{
     AuthenticatedRecurrenceBuilderInput, CheckedTableRange, DirectExecutorRole,
     DirectRecurrencePlan, DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding,
     PreparedDirectExecutorCatalog, RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_DIRECT_PLAN_ABI,
-    RECURRENCE_DIRECT_PLAN_MEMBER, RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
-    RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI, RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
     RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceStrategy, SemanticDigest,
     checked_usize, lower_recurrence_direct_plan_v2, write_recurrence_direct_plan_pacbin,
 };
@@ -796,7 +796,47 @@ struct NativeDirectLoweringResult {
     direct_executor_count: u32,
     prepared_kernel_count: usize,
     resolved_helicities: Vec<Vec<i32>>,
+    construction: RecurrenceConstructionMetrics,
     timings: DirectLoweringTimings,
+}
+
+#[derive(Clone, Debug, Default)]
+struct RecurrenceConstructionMetrics {
+    peak_current_count: usize,
+    peak_contribution_count: usize,
+    peak_dynamic_color_state_count: usize,
+    color_target_prune_count: usize,
+    candidate_parent_pair_count_by_stage: BTreeMap<usize, usize>,
+}
+
+impl RecurrenceConstructionMetrics {
+    fn include(&mut self, progress: &RecurrenceBuildProgress) {
+        self.peak_current_count = self.peak_current_count.max(progress.current_count);
+        self.peak_contribution_count = self
+            .peak_contribution_count
+            .max(progress.contribution_count);
+        self.peak_dynamic_color_state_count = self
+            .peak_dynamic_color_state_count
+            .max(progress.dynamic_color_state_count);
+        self.color_target_prune_count = self
+            .color_target_prune_count
+            .max(progress.color_target_prune_count);
+        if let Some(stage_index) = progress.stage_index {
+            self.candidate_parent_pair_count_by_stage
+                .entry(stage_index)
+                .and_modify(|count| {
+                    *count = (*count).max(progress.candidate_parent_pair_count);
+                })
+                .or_insert(progress.candidate_parent_pair_count);
+        }
+    }
+
+    fn candidate_parent_pair_count(&self) -> usize {
+        self.candidate_parent_pair_count_by_stage
+            .values()
+            .copied()
+            .sum()
+    }
 }
 
 struct AuthenticatedDirectTemplateCatalog {
@@ -811,6 +851,7 @@ struct AuthenticatedDirectTemplateCatalog {
     prepared_template_input,
     direct_template_catalog_json,
     prepared_kernel_pack_digest,
+    schedule_semantic_digest,
     destination,
     *,
     point_tile_size,
@@ -824,6 +865,7 @@ pub(crate) fn _lower_recurrence_direct_v2(
     prepared_template_input: &Bound<'_, PyAny>,
     direct_template_catalog_json: &Bound<'_, PyBytes>,
     prepared_kernel_pack_digest: String,
+    schedule_semantic_digest: String,
     destination: PathBuf,
     point_tile_size: u32,
     workspace_mib: u32,
@@ -834,6 +876,7 @@ pub(crate) fn _lower_recurrence_direct_v2(
     let prepared_template = parse_prepared_template_input(prepared_template_input)?;
     let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
     validate_sha256_text(&prepared_kernel_pack_digest, "prepared kernel pack digest")?;
+    validate_sha256_text(&schedule_semantic_digest, "recurrence schedule digest")?;
     let python_extraction_seconds = extraction_started.elapsed().as_secs_f64();
 
     let native = py
@@ -845,6 +888,7 @@ pub(crate) fn _lower_recurrence_direct_v2(
                 prepared_template,
                 &direct_template_catalog_json,
                 &prepared_kernel_pack_digest,
+                &schedule_semantic_digest,
                 &destination,
                 point_tile_size,
                 workspace_mib,
@@ -862,6 +906,7 @@ fn lower_recurrence_direct(
     prepared_template: PreparedTemplateInput,
     direct_template_catalog_json: &[u8],
     prepared_kernel_pack_digest: &str,
+    schedule_semantic_digest: &str,
     destination: &std::path::Path,
     point_tile_size: u32,
     workspace_mib: u32,
@@ -905,12 +950,18 @@ fn lower_recurrence_direct(
     let process = decode_process_input(&input)?.validate()?;
     let process_id = process.summary().process_id().to_owned();
     let strategy = process.summary().strategy();
-    let semantic_digest = process.semantic_identity().process_digest();
+    let semantic_digest =
+        semantic_digest_from_hex(schedule_semantic_digest, "recurrence schedule digest")?;
     let template = prepared_template.into_core()?.validate()?;
     let authenticated = AuthenticatedRecurrenceBuilderInput::new(process, template)?;
 
     let semantic_started = Instant::now();
-    let program = authenticated.build_with_progress(progress)?;
+    let mut construction = RecurrenceConstructionMetrics::default();
+    let mut tracked_progress = |snapshot: RecurrenceBuildProgress| {
+        construction.include(&snapshot);
+        progress(snapshot)
+    };
+    let program = authenticated.build_with_progress(&mut tracked_progress)?;
     let semantic_construction_seconds = semantic_started.elapsed().as_secs_f64();
 
     let direct_lowering_started = Instant::now();
@@ -973,6 +1024,7 @@ fn lower_recurrence_direct(
         direct_executor_count: plan.direct_executor_count(),
         prepared_kernel_count: direct_catalog.prepared_kernel_count,
         resolved_helicities,
+        construction,
         timings: DirectLoweringTimings {
             python_extraction_seconds,
             catalog_authentication_seconds,
@@ -1859,6 +1911,35 @@ fn direct_lowering_mapping(
     schedule.set_item("exact_factor_count", native.exact_factor_count)?;
     inspection.set_item("schedule", schedule)?;
 
+    let construction = PyDict::new(py);
+    construction.set_item("peak_current_count", native.construction.peak_current_count)?;
+    construction.set_item(
+        "peak_contribution_count",
+        native.construction.peak_contribution_count,
+    )?;
+    construction.set_item(
+        "peak_dynamic_color_state_count",
+        native.construction.peak_dynamic_color_state_count,
+    )?;
+    construction.set_item(
+        "color_target_prune_count",
+        native.construction.color_target_prune_count,
+    )?;
+    construction.set_item(
+        "candidate_parent_pair_count",
+        native.construction.candidate_parent_pair_count(),
+    )?;
+    construction.set_item(
+        "peak_to_final_current_ratio",
+        native.construction.peak_current_count as f64 / native.current_count.max(1) as f64,
+    )?;
+    construction.set_item(
+        "peak_to_final_contribution_ratio",
+        native.construction.peak_contribution_count as f64
+            / native.contribution_count.max(1) as f64,
+    )?;
+    inspection.set_item("construction", construction)?;
+
     let direct_arena = PyDict::new(py);
     direct_arena.set_item("semantic_component_count", native.semantic_component_count)?;
     direct_arena.set_item("current_arena_components", native.current_arena_components)?;
@@ -1877,7 +1958,7 @@ fn direct_lowering_mapping(
     inspection.set_item("direct_arena", direct_arena)?;
 
     let member = PyDict::new(py);
-    member.set_item("path", RECURRENCE_DIRECT_PLAN_MEMBER)?;
+    member.set_item("path", RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
     member.set_item("size_bytes", native.plan_payload_size)?;
     member.set_item("sha256", native.plan_sha256)?;
     member.set_item("container_size_bytes", native.container_size)?;

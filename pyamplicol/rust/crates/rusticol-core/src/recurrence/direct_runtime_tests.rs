@@ -16,10 +16,11 @@ use crate::recurrence::direct_runtime::{
 use crate::recurrence::exact::{ExactComplexRational, ExactRational};
 #[allow(unused_imports)]
 use crate::recurrence::{
+    ClosureExecutionProofGroupV2, ClosureProofContributionV2, ClosureProofMetadataV2,
     DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectCurrentDescriptor,
     DirectDestinationOperation, DirectExecutorRole, DirectMomentumFormDescriptor, DirectNodeKind,
     DirectResolvedHelicityDescriptor, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
-    RecurrenceStrategy, SemanticDigest,
+    RecurrenceStrategy, SemanticDigest, closure_component_factor_digest_v2,
 };
 use std::ffi::c_void;
 
@@ -203,6 +204,67 @@ fn complex_rational(
     )
 }
 
+fn replace_single_closure_proof_factor(
+    parts: &mut crate::recurrence::DirectRecurrencePlanParts,
+    exact_factor: ExactComplexRational,
+    runtime_parent_ids: Option<Vec<Option<u32>>>,
+) {
+    let contribution = &parts.closure_proofs.contributions()[0];
+    let contribution = ClosureProofContributionV2::new(
+        contribution.id(),
+        contribution.target_sector_id(),
+        contribution.target_destination_id(),
+        contribution.target_helicity_id(),
+        contribution.closure_template_id(),
+        contribution.closure_template_semantic_digest(),
+        contribution.quantum_flow_template_id(),
+        contribution.construction_parent_builder_ids().to_vec(),
+        runtime_parent_ids
+            .unwrap_or_else(|| contribution.construction_parent_runtime_ids().to_vec()),
+        contribution.construction_parent_semantic_digests().to_vec(),
+        contribution.construction_parent_color_digests().to_vec(),
+        contribution.construction_parent_permutation().to_vec(),
+        contribution.reconstruction_parent_permutation().to_vec(),
+        contribution.evaluator_parent_permutation().to_vec(),
+        contribution.color_witness_term_id(),
+        contribution.color_witness_proof_digest(),
+        contribution.three_line_certificate_id(),
+        contribution.pairing_certificate_ids().to_vec(),
+        contribution.reflection_certificate_id(),
+        exact_factor,
+        contribution.multiplicity(),
+    )
+    .unwrap();
+    let group = &parts.closure_proofs.groups()[0];
+    let closure = &parts.closures[group.emitted_direct_closure_row_id().unwrap() as usize];
+    let component_start = closure.component_factor_start as usize;
+    let component_end = component_start + closure.component_count as usize;
+    let component_factor_digest =
+        closure_component_factor_digest_v2(&parts.exact_factors[component_start..component_end])
+            .unwrap();
+    let group = ClosureExecutionProofGroupV2::new_with_candidate_selector_domain(
+        group.id(),
+        group.emitted_runtime_closure_term_id(),
+        group.emitted_direct_closure_row_id(),
+        group.contribution_range(),
+        exact_factor,
+        component_factor_digest,
+        group.candidate_selector_domain_digest(),
+        group.selector_domain_digest(),
+    )
+    .unwrap();
+    parts.closure_proofs = ClosureProofMetadataV2::new_with_three_line_certificates(
+        vec![contribution],
+        vec![group],
+        parts.closure_proofs.reflection_certificates().to_vec(),
+        parts
+            .closure_proofs
+            .three_line_traversal_certificates()
+            .to_vec(),
+    )
+    .unwrap();
+}
+
 #[cfg(any())]
 fn synthetic_plan_and_executors() -> (DirectRecurrencePlan, DirectExecutorCatalog) {
     let plan = DirectRecurrencePlan::new(DirectRecurrencePlanParts {
@@ -349,6 +411,8 @@ fn synthetic_plan_and_executors() -> (DirectRecurrencePlan, DirectExecutorCatalo
                 representative_id: 0,
                 source_permutation_start: 0,
                 source_permutation_count: 2,
+                helicity_map_start: 0,
+                helicity_map_count: 1,
                 phase_exact_factor_id: 3,
                 multiplicity: 1,
                 selector_domain_id: 0,
@@ -358,12 +422,16 @@ fn synthetic_plan_and_executors() -> (DirectRecurrencePlan, DirectExecutorCatalo
                 representative_id: 0,
                 source_permutation_start: 2,
                 source_permutation_count: 2,
+                helicity_map_start: 1,
+                helicity_map_count: 1,
                 phase_exact_factor_id: 4,
                 multiplicity: 2,
                 selector_domain_id: 0,
             },
         ],
         source_permutations: vec![0, 1, 1, 0],
+        replay_momentum_signs: vec![1, 1, 1, 1],
+        replay_helicity_map: vec![0, 0],
         amplitude_destinations: vec![DirectAmplitudeDestinationDescriptor {
             closure_row_start: 0,
             id: 0,
@@ -436,6 +504,8 @@ fn synthetic_plan_and_executors() -> (DirectRecurrencePlan, DirectExecutorCatalo
             representative_id: 0,
             source_permutation_start: 0,
             source_permutation_count: 2,
+            helicity_map_start: 0,
+            helicity_map_count: 1,
             phase_exact_factor_id: 3,
             multiplicity: 1,
             selector_domain_id: 0,
@@ -445,12 +515,16 @@ fn synthetic_plan_and_executors() -> (DirectRecurrencePlan, DirectExecutorCatalo
             representative_id: 0,
             source_permutation_start: 2,
             source_permutation_count: 2,
+            helicity_map_start: 1,
+            helicity_map_count: 1,
             phase_exact_factor_id: 4,
             multiplicity: 2,
             selector_domain_id: 0,
         },
     ];
     parts.source_permutations = vec![0, 1, 1, 0];
+    parts.replay_momentum_signs = vec![1, 1, 1, 1];
+    parts.replay_helicity_map = vec![0, 0];
     parts.resolved_helicities[0].source_state_count = 2;
     parts.resolved_helicities[0].public_helicity_count = 2;
     parts.source_state_assignments = vec![
@@ -471,6 +545,7 @@ fn synthetic_plan_and_executors() -> (DirectRecurrencePlan, DirectExecutorCatalo
         ExactComplexRational::ONE,
         complex_rational(0, 1, 1, 1),
     ];
+    replace_single_closure_proof_factor(&mut parts, rational(-1, 1), None);
     let plan = DirectRecurrencePlan::new(parts).unwrap();
     let executors = DirectExecutorCatalog::new(
         &plan,
@@ -733,6 +808,7 @@ fn a_reused_source_slot_is_cleared_before_the_later_current_accumulates() {
         flags: 0,
     });
     parts.closures[0].parent0_component_base = 0;
+    replace_single_closure_proof_factor(&mut parts, ExactComplexRational::ONE, Some(vec![Some(2)]));
     parts.row_groups = vec![
         DirectRowGroupDescriptor {
             stage: 0,

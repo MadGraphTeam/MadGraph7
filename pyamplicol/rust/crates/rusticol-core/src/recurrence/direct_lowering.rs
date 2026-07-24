@@ -26,8 +26,10 @@ use super::template::{
     ValidatedRecurrenceTemplateInput,
 };
 use super::{
-    CanonicalMomentumLinearForm, CurrentSourceBinding, ExactComplexRational, RecurrenceCurrent,
-    RecurrenceNodeKind, RecurrenceProgram, RecurrenceStrategy, SemanticDigest,
+    CanonicalMomentumLinearForm, ClosureProofMetadataV2, CurrentSourceBinding,
+    ExactComplexRational, RecurrenceCurrent, RecurrenceNodeKind, RecurrenceProgram,
+    RecurrenceStrategy, SemanticDigest, SourceStateAssignment, closure_component_factor_digest_v2,
+    closure_selector_domain_digest_v2,
 };
 use crate::{RusticolError, RusticolResult};
 
@@ -863,6 +865,68 @@ fn build_direct_parts(
             draft.semantic_closure_id,
         )
     });
+    let mut closure_row_by_term = vec![DIRECT_NONE_U32; program.closure_terms().len()];
+    let universal_selector_digest =
+        closure_selector_domain_digest_v2(&[u64::MAX]).map_err(|error| invalid(error.message()))?;
+    let mut lowered_proof_groups = program.closure_proofs().groups().to_vec();
+    for (row_index, draft) in closure_drafts.iter_mut().enumerate() {
+        let row_id = u32_len("closure row", row_index)?;
+        let term_slot = closure_row_by_term
+            .get_mut(draft.semantic_closure_id as usize)
+            .ok_or_else(|| invalid("closure draft semantic term ID is out of bounds"))?;
+        if *term_slot != DIRECT_NONE_U32 {
+            return Err(invalid(format!(
+                "semantic closure term {} lowered more than once",
+                draft.semantic_closure_id
+            )));
+        }
+        *term_slot = row_id;
+        let group = program
+            .closure_proofs()
+            .group_for_runtime_term(draft.semantic_closure_id)
+            .ok_or_else(|| {
+                invalid(format!(
+                    "semantic closure term {} has no proof group",
+                    draft.semantic_closure_id
+                ))
+            })?;
+        draft.row.flags = group.id();
+        let component_start = draft.row.component_factor_start as usize;
+        let component_end = component_start
+            .checked_add(draft.row.component_count as usize)
+            .ok_or_else(|| invalid("closure component-factor range exceeds usize"))?;
+        let component_digest = closure_component_factor_digest_v2(
+            exact_factors
+                .get(component_start..component_end)
+                .ok_or_else(|| invalid("closure component-factor range is out of bounds"))?,
+        )
+        .map_err(|error| invalid(error.message()))?;
+        lowered_proof_groups[group.id() as usize] = group.with_direct_closure_binding(
+            Some(row_id),
+            component_digest,
+            universal_selector_digest,
+        )?;
+    }
+    if closure_row_by_term
+        .iter()
+        .any(|row_id| *row_id == DIRECT_NONE_U32)
+    {
+        return Err(invalid(
+            "not every semantic closure term was lowered to a direct row",
+        ));
+    }
+    let closure_proofs =
+        ClosureProofMetadataV2::new_with_three_line_certificates_and_candidate_domain(
+            program.closure_proofs().contributions().to_vec(),
+            lowered_proof_groups,
+            program.closure_proofs().reflection_certificates().to_vec(),
+            program
+                .closure_proofs()
+                .three_line_traversal_certificates()
+                .to_vec(),
+            program.closure_proofs().candidate_domain_certificate(),
+        )
+        .map_err(|error| invalid(error.message()))?;
 
     let mut source_row_by_current = vec![DIRECT_NONE_U32; program.currents().len()];
     for (row_index, draft) in source_drafts.iter().enumerate() {
@@ -940,28 +1004,6 @@ fn build_direct_parts(
     )?;
     row_groups.sort_by_key(|row_group| (row_group.stage, row_group.role, row_group.row_start));
 
-    let mut source_permutations = Vec::new();
-    let mut replay_targets = Vec::with_capacity(program.replay_targets().len());
-    for target in program.replay_targets() {
-        let source_permutation_start = u64::try_from(source_permutations.len())
-            .map_err(|_| invalid("source permutation table exceeds u64"))?;
-        source_permutations.extend_from_slice(target.source_slot_permutation());
-        replay_targets.push(DirectReplayTargetDescriptor {
-            public_flow_id: target.target_sector_id(),
-            representative_id: target.materialized_sector_id(),
-            source_permutation_start,
-            source_permutation_count: u32_len(
-                "replay source permutation",
-                target.source_slot_permutation().len(),
-            )?,
-            phase_exact_factor_id: exact_factor_id(&exact_factor_ids, target.amplitude_factor())?,
-            // RecurrenceProgram stores one exact row per public target and has
-            // no separate orbit-multiplicity field.
-            multiplicity: 1,
-            selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
-        });
-    }
-
     let amplitude_destinations = lower_amplitude_destinations(program, &closure_drafts)?;
     let (
         resolved_helicities,
@@ -979,6 +1021,8 @@ fn build_direct_parts(
             program.retained_helicity_count(),
         )?,
     };
+    let (replay_targets, source_permutations, replay_momentum_signs, replay_helicity_map) =
+        lower_replay_targets(program, &exact_factor_ids)?;
 
     let state_template_count = u32_len("state template", input.current_states.len())?;
     let source_template_count = u32_len("source template", input.sources.len())?;
@@ -1041,6 +1085,8 @@ fn build_direct_parts(
         selector_words: vec![u64::MAX],
         replay_targets,
         source_permutations,
+        replay_momentum_signs,
+        replay_helicity_map,
         amplitude_destinations,
         resolved_helicities,
         source_state_assignments,
@@ -1050,6 +1096,7 @@ fn build_direct_parts(
         resolved_source_selections,
         public_helicities,
         exact_factors,
+        closure_proofs,
     })
 }
 
@@ -2033,6 +2080,180 @@ fn lower_amplitude_destinations(
         ));
     }
     Ok(result)
+}
+
+type DirectReplayTables = (
+    Vec<DirectReplayTargetDescriptor>,
+    Vec<u32>,
+    Vec<i32>,
+    Vec<u32>,
+);
+
+fn lower_replay_targets(
+    program: &RecurrenceProgram,
+    exact_factor_ids: &BTreeMap<ExactComplexRational, u32>,
+) -> RusticolResult<DirectReplayTables> {
+    if program.strategy() == RecurrenceStrategy::AllFlowUnion {
+        if !program.replay_targets().is_empty() {
+            return Err(invalid(
+                "all-flow-union program unexpectedly carries replay targets",
+            ));
+        }
+        return Ok((Vec::new(), Vec::new(), Vec::new(), Vec::new()));
+    }
+
+    let mut source_template_by_state = BTreeMap::<(u32, u32), u32>::new();
+    let mut source_state_by_template = BTreeMap::<(u32, u32), u32>::new();
+    for current in program
+        .currents()
+        .iter()
+        .filter(|current| current.is_source())
+    {
+        let source_slot = only_source_slot(current)?;
+        let source_template_id = match current.key().source_binding() {
+            CurrentSourceBinding::FixedTemplate(source_template_id) => *source_template_id,
+            _ => {
+                return Err(invalid(format!(
+                    "topology-replay source current {} has no fixed source template",
+                    current.id()
+                )));
+            }
+        };
+        let ancestry = current.key().helicity_identity().local_source_states();
+        if ancestry.len() != 1 || ancestry[0].source_slot() != source_slot {
+            return Err(invalid(format!(
+                "topology-replay source current {} has invalid local source ancestry",
+                current.id()
+            )));
+        }
+        let state_index = ancestry[0].state_index();
+        if source_template_by_state
+            .insert((source_slot, state_index), source_template_id)
+            .is_some_and(|previous| previous != source_template_id)
+        {
+            return Err(invalid(format!(
+                "source slot {source_slot} state {state_index} has inconsistent source templates"
+            )));
+        }
+        if source_state_by_template
+            .insert((source_slot, source_template_id), state_index)
+            .is_some_and(|previous| previous != state_index)
+        {
+            return Err(invalid(format!(
+                "source slot {source_slot} template {source_template_id} is not a unique source state"
+            )));
+        }
+    }
+
+    let resolved_by_states = program
+        .resolved_helicities()
+        .iter()
+        .map(|helicity| (helicity.source_states().to_vec(), helicity.id()))
+        .collect::<BTreeMap<_, _>>();
+    if resolved_by_states.len() != program.resolved_helicities().len() {
+        return Err(invalid(
+            "topology-replay program repeats a resolved source-state assignment",
+        ));
+    }
+
+    let source_count = usize::try_from(external_source_count(program)?)
+        .map_err(|_| invalid("external source count exceeds usize"))?;
+    let mut source_permutations = Vec::new();
+    let mut replay_momentum_signs = Vec::new();
+    let mut replay_helicity_map = Vec::new();
+    let mut replay_targets = Vec::with_capacity(program.replay_targets().len());
+    for target in program.replay_targets() {
+        let source_permutation_start = u64::try_from(source_permutations.len())
+            .map_err(|_| invalid("source permutation table exceeds u64"))?;
+        source_permutations.extend_from_slice(target.source_slot_permutation());
+        replay_momentum_signs.extend_from_slice(target.source_momentum_signs());
+
+        let helicity_map_start = u64::try_from(replay_helicity_map.len())
+            .map_err(|_| invalid("replay helicity-map table exceeds u64"))?;
+        for helicity in program.resolved_helicities() {
+            let mut mapped = vec![None; source_count];
+            for assignment in helicity.source_states().iter().copied() {
+                let representative_slot = assignment.source_slot();
+                let source_template_id = source_template_by_state
+                    .get(&(representative_slot, assignment.state_index()))
+                    .copied()
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "resolved helicity {} source slot {representative_slot} state {} has no source template",
+                            helicity.id(),
+                            assignment.state_index()
+                        ))
+                    })?;
+                let target_slot = target
+                    .source_slot_permutation()
+                    .get(representative_slot as usize)
+                    .copied()
+                    .ok_or_else(|| invalid("replay source permutation is out of bounds"))?;
+                let target_state_index = source_state_by_template
+                    .get(&(target_slot, source_template_id))
+                    .copied()
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "replay target {} cannot transport source template {source_template_id} from slot {representative_slot} to slot {target_slot}",
+                            target.target_sector_id()
+                        ))
+                    })?;
+                let target_index = usize::try_from(target_slot)
+                    .map_err(|_| invalid("replay target source slot exceeds usize"))?;
+                if target_index >= source_count || mapped[target_index].is_some() {
+                    return Err(invalid(format!(
+                        "replay target {} source mapping is not bijective",
+                        target.target_sector_id()
+                    )));
+                }
+                mapped[target_index] =
+                    Some(SourceStateAssignment::new(target_slot, target_state_index));
+            }
+            let mapped = mapped
+                .into_iter()
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "replay target {} does not map every source state",
+                        target.target_sector_id()
+                    ))
+                })?;
+            let mapped_id = resolved_by_states.get(&mapped).copied().ok_or_else(|| {
+                invalid(format!(
+                    "replay target {} maps resolved helicity {} outside retained source-state coverage",
+                    target.target_sector_id(),
+                    helicity.id()
+                ))
+            })?;
+            replay_helicity_map.push(mapped_id);
+        }
+
+        replay_targets.push(DirectReplayTargetDescriptor {
+            public_flow_id: target.target_sector_id(),
+            representative_id: target.materialized_sector_id(),
+            source_permutation_start,
+            source_permutation_count: u32_len(
+                "replay source permutation",
+                target.source_slot_permutation().len(),
+            )?,
+            helicity_map_start,
+            helicity_map_count: u32_len(
+                "replay helicity map",
+                program.resolved_helicities().len(),
+            )?,
+            phase_exact_factor_id: exact_factor_id(exact_factor_ids, target.amplitude_factor())?,
+            // RecurrenceProgram stores one exact row per public target and has
+            // no separate orbit-multiplicity field.
+            multiplicity: 1,
+            selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
+        });
+    }
+    Ok((
+        replay_targets,
+        source_permutations,
+        replay_momentum_signs,
+        replay_helicity_map,
+    ))
 }
 
 fn lower_resolved_helicities(

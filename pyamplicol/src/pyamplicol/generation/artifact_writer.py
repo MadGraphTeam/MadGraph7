@@ -11,6 +11,7 @@ import re
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
@@ -72,6 +73,14 @@ from .evaluator_container import (
     PacbinReader,
     write_pacbin_atomic,
 )
+from .recurrence_schedule_sharing import (
+    RECURRENCE_PROCESS_BINDING_ABI,
+    RECURRENCE_SCHEDULE_INDEX_PATH,
+    RECURRENCE_SCHEDULE_SHARING_SCHEMA_VERSION,
+    RecurrenceProcessRemap,
+    RecurrenceScheduleSharingPlan,
+    intern_recurrence_schedules,
+)
 from .validation import ValidationPointRecord, validation_point_map
 
 if TYPE_CHECKING:
@@ -113,8 +122,9 @@ RECURRENCE_RUNTIME_CONTAINER_KIND = "pyamplicol-recurrence-runtime-container"
 RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
 RECURRENCE_RUNTIME_STORAGE_ABI = "pacbin-v1"
 _RECURRENCE_RUNTIME_CONTAINER_PATH = "recurrence-runtime.pacbin"
-_RECURRENCE_DIRECT_PLAN_MEMBER_PATH = "plan/recurrence-direct-plan-v2.bin"
+_RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = "schedule/recurrence-direct-schedule-v2.bin"
 _MAX_RECURRENCE_EXECUTION_SUMMARY_BYTES = 1 << 20
+_RECURRENCE_SCHEDULE_SHARING_EXTENSION = "recurrence_schedule_sharing"
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
     {
@@ -224,12 +234,13 @@ class RecurrenceProcessArtifact:
     external_pdgs: tuple[int, ...]
     aliases: tuple[Mapping[str, object], ...]
     physics: Mapping[str, object]
-    recurrence_runtime_path: Path
-    recurrence_runtime_size_bytes: int
-    recurrence_runtime_sha256: str
-    recurrence_runtime_member_count: int
-    recurrence_runtime_unpacked_size_bytes: int
-    recurrence_runtime_index_sha256: str
+    recurrence_schedule_path: Path
+    recurrence_schedule_digest: str
+    recurrence_schedule_size_bytes: int
+    recurrence_schedule_sha256: str
+    recurrence_schedule_member_count: int
+    recurrence_schedule_unpacked_size_bytes: int
+    recurrence_schedule_index_sha256: str
     builder_input_sha256: str
     prepared_kernel_pack_digest: str
     direct_template_catalog_digest: str
@@ -241,6 +252,8 @@ class RecurrenceProcessArtifact:
     recurrence_summary: Mapping[str, object]
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+    recurrence_process_remap: RecurrenceProcessRemap
+    process_support_mask: int = 1
 
 
 ProcessArtifact = (
@@ -347,10 +360,10 @@ class _EvaluatorPayloadCollector:
         *,
         process_id: str | None,
         media_type: str | None = None,
-    ) -> None:
+    ) -> PayloadRecord:
         kind = _packed_evaluator_member_kind(relative)
         if kind is None:
-            self._builder.add_bytes(
+            return self._builder.add_bytes(
                 relative,
                 content,
                 role="evaluator-state",
@@ -358,8 +371,7 @@ class _EvaluatorPayloadCollector:
                 target=self._target,
                 process_id=process_id,
             )
-            return
-        self._builder.add_bytes(
+        record = self._builder.add_bytes(
             relative,
             content,
             role="evaluator-state",
@@ -368,6 +380,7 @@ class _EvaluatorPayloadCollector:
             process_id=process_id,
         )
         self._register_staged_source(relative, kind)
+        return record
 
     def add_stream(
         self,
@@ -504,6 +517,33 @@ def _evaluator_payload_container_extension(index: PacbinIndex) -> dict[str, obje
     }
 
 
+def _write_recurrence_schedule_roots(
+    builder: ArtifactBuilder,
+    evaluator_payloads: _EvaluatorPayloadCollector,
+    plan: RecurrenceScheduleSharingPlan,
+) -> dict[str, object]:
+    """Stage each interned schedule once and publish its root binding index."""
+
+    for schedule in plan.schedules:
+        record = evaluator_payloads.add_file(
+            schedule.artifact_path,
+            schedule.source_path,
+            process_id=None,
+        )
+        if record.sha256 != schedule.sha256 or record.size_bytes != schedule.size_bytes:
+            raise ValueError(
+                f"interned recurrence schedule {schedule.digest} changed before "
+                "root publication"
+            )
+    index_record = builder.add_json(
+        RECURRENCE_SCHEDULE_INDEX_PATH,
+        plan.to_mapping(),
+        role="evaluator-manifest",
+        compact=True,
+    )
+    return plan.extension_mapping(index_sha256=index_record.sha256)
+
+
 def write_schema_v3_artifact(
     destination: str | Path,
     *,
@@ -551,6 +591,21 @@ def write_schema_v3_artifact(
         compiled_model=compiled_model,
         processes=processes,
     )
+    recurrence_processes = tuple(
+        process
+        for process in processes
+        if isinstance(process, RecurrenceProcessArtifact)
+    )
+    if existing is not None and recurrence_processes:
+        raise ValueError(
+            "recurrence root schedules and process bindings are immutable; "
+            "regenerate the recurrence process set instead of appending"
+        )
+    recurrence_sharing_plan = (
+        intern_recurrence_schedules(recurrence_processes)
+        if existing is None and recurrence_processes
+        else None
+    )
     _validate_append_compatibility(
         existing,
         producer=producer,
@@ -591,6 +646,15 @@ def write_schema_v3_artifact(
             builder,
             existing=existing,
             target=target,
+        )
+        recurrence_sharing_extension = (
+            _write_recurrence_schedule_roots(
+                builder,
+                evaluator_payloads,
+                recurrence_sharing_plan,
+            )
+            if recurrence_sharing_plan is not None
+            else None
         )
         if existing is None:
             if progress_callback is not None:
@@ -643,6 +707,7 @@ def write_schema_v3_artifact(
                 builder,
                 process,
                 evaluator_payloads=evaluator_payloads,
+                recurrence_sharing=recurrence_sharing_plan,
             )
             process_records.append(record)
             evaluator_entries.append(evaluator_entry)
@@ -669,6 +734,7 @@ def write_schema_v3_artifact(
             eager_pack_identity=eager_pack_identity,
             execution_manifest_sha256_by_process=(execution_manifest_sha256_by_process),
             evaluator_payload_container=evaluator_payload_container,
+            recurrence_schedule_sharing=recurrence_sharing_extension,
         )
         builder.finalize(
             kind=(
@@ -961,6 +1027,7 @@ def _write_process_payloads(
     process: ProcessArtifact,
     *,
     evaluator_payloads: _EvaluatorPayloadCollector,
+    recurrence_sharing: RecurrenceScheduleSharingPlan | None = None,
 ) -> tuple[dict[str, object], dict[str, object], str]:
     prefix = f"processes/{process.process_id}"
     physics_path = f"{prefix}/physics.json"
@@ -1007,16 +1074,32 @@ def _write_process_payloads(
             process_id=process.process_id,
         )
     elif isinstance(process, RecurrenceProcessArtifact):
-        runtime_path = f"{prefix}/{_RECURRENCE_RUNTIME_CONTAINER_PATH}"
-        runtime_record = evaluator_payloads.add_file(
-            runtime_path,
-            process.recurrence_runtime_path,
+        if recurrence_sharing is None:
+            raise ValueError(
+                "recurrence artifacts require root schedule and process-binding "
+                "publication"
+            )
+        binding = recurrence_sharing.binding(process.process_id)
+        schedule = recurrence_sharing.schedule(binding.schedule_digest)
+        binding_record = evaluator_payloads.add_bytes(
+            binding.artifact_path,
+            binding.payload,
             process_id=process.process_id,
         )
-        _validate_staged_recurrence_runtime(process, runtime_record)
+        if binding_record.sha256 != binding.sha256 or binding_record.size_bytes != len(
+            binding.payload
+        ):
+            raise ValueError(
+                f"recurrence process binding {process.process_id!r} changed "
+                "during publication"
+            )
         execution_record = builder.add_bytes(
             execution_path,
-            _bounded_recurrence_execution_summary(process),
+            _bounded_recurrence_execution_summary(
+                process,
+                schedule_path=schedule.artifact_path,
+                binding=binding.to_mapping(),
+            ),
             role="evaluator-manifest",
             media_type="application/json",
             process_id=process.process_id,
@@ -1125,26 +1208,6 @@ def _validate_staged_eager_runtime(
         )
 
 
-def _validate_staged_recurrence_runtime(
-    process: RecurrenceProcessArtifact,
-    record: PayloadRecord,
-) -> None:
-    if process.recurrence_runtime_size_bytes <= 0:
-        raise ValueError("Rust recurrence runtime payload must not be empty")
-    payload_sha256 = _canonical_sha256(
-        process.recurrence_runtime_sha256,
-        "Rust recurrence runtime payload SHA-256",
-    )
-    if (
-        record.size_bytes != process.recurrence_runtime_size_bytes
-        or record.sha256 != payload_sha256
-    ):
-        raise ValueError(
-            "Rust recurrence runtime payload changed after lowering and before "
-            "publication"
-        )
-
-
 def _bounded_eager_execution_summary(
     process: EagerPlanV3ProcessArtifact,
 ) -> bytes:
@@ -1245,11 +1308,18 @@ def _eager_plan_v3_execution_manifest(
 
 def _bounded_recurrence_execution_summary(
     process: RecurrenceProcessArtifact,
+    *,
+    schedule_path: str,
+    binding: Mapping[str, object],
 ) -> bytes:
     try:
         content = (
             json.dumps(
-                _recurrence_execution_manifest(process),
+                _recurrence_execution_manifest(
+                    process,
+                    schedule_path=schedule_path,
+                    binding=binding,
+                ),
                 ensure_ascii=True,
                 allow_nan=False,
                 separators=(",", ":"),
@@ -1271,6 +1341,9 @@ def _bounded_recurrence_execution_summary(
 
 def _recurrence_execution_manifest(
     process: RecurrenceProcessArtifact,
+    *,
+    schedule_path: str,
+    binding: Mapping[str, object],
 ) -> dict[str, object]:
     capabilities = sorted(
         {
@@ -1278,32 +1351,32 @@ def _recurrence_execution_manifest(
             RECURRENCE_COLOR_RUNTIME_CAPABILITY,
         }
     )
-    runtime_container = {
+    runtime_schedule = {
         "kind": RECURRENCE_RUNTIME_CONTAINER_KIND,
         "schema_version": RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION,
         "storage_abi": RECURRENCE_RUNTIME_STORAGE_ABI,
-        "path": _RECURRENCE_RUNTIME_CONTAINER_PATH,
-        "plan_member_path": _RECURRENCE_DIRECT_PLAN_MEMBER_PATH,
+        "path": schedule_path,
+        "plan_member_path": _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH,
         "size_bytes": _nonnegative_integer(
-            process.recurrence_runtime_size_bytes,
+            process.recurrence_schedule_size_bytes,
             "Rust recurrence runtime payload size",
             minimum=1,
         ),
         "sha256": _canonical_sha256(
-            process.recurrence_runtime_sha256,
+            process.recurrence_schedule_sha256,
             "Rust recurrence runtime payload SHA-256",
         ),
         "member_count": _nonnegative_integer(
-            process.recurrence_runtime_member_count,
+            process.recurrence_schedule_member_count,
             "Rust recurrence runtime member count",
             minimum=1,
         ),
         "unpacked_size_bytes": _nonnegative_integer(
-            process.recurrence_runtime_unpacked_size_bytes,
+            process.recurrence_schedule_unpacked_size_bytes,
             "Rust recurrence runtime unpacked size",
         ),
         "index_sha256": _canonical_sha256(
-            process.recurrence_runtime_index_sha256,
+            process.recurrence_schedule_index_sha256,
             "Rust recurrence runtime index SHA-256",
         ),
     }
@@ -1327,7 +1400,8 @@ def _recurrence_execution_manifest(
             "recurrence direct-template catalog SHA-256",
         ),
         "required_runtime_capabilities": capabilities,
-        "runtime_container": runtime_container,
+        "runtime_schedule": runtime_schedule,
+        "process_binding": _deep_plain(binding),
         "inspection_summary": _deep_plain(process.inspection_summary),
     }
     return {
@@ -1389,7 +1463,10 @@ def _execution_manifest(
     compiler_schema: Mapping[str, object],
 ) -> dict[str, object]:
     if isinstance(process, RecurrenceProcessArtifact):
-        return _recurrence_execution_manifest(process)
+        raise TypeError(
+            "recurrence execution manifests require an interned root schedule "
+            "and process binding"
+        )
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return _eager_plan_v3_execution_manifest(process)
     if isinstance(process, EagerProcessArtifact):
@@ -2946,6 +3023,7 @@ def _extensions(
     eager_pack_identity: Mapping[str, object] | None,
     execution_manifest_sha256_by_process: Mapping[str, str],
     evaluator_payload_container: Mapping[str, object] | None,
+    recurrence_schedule_sharing: Mapping[str, object] | None,
 ) -> dict[str, object]:
     result = {} if existing is None else _plain_mapping(existing.extensions)
     previous = result.get("generation")
@@ -2997,6 +3075,10 @@ def _extensions(
     result["generation"] = generation
     if eager_pack_identity is not None:
         result[_EAGER_PACK_IDENTITY_EXTENSION] = _plain_mapping(eager_pack_identity)
+    if recurrence_schedule_sharing is not None:
+        result[_RECURRENCE_SCHEDULE_SHARING_EXTENSION] = _plain_mapping(
+            recurrence_schedule_sharing
+        )
     if evaluator_payload_container is None:
         result.pop(_EVALUATOR_PAYLOAD_CONTAINER_EXTENSION, None)
     else:
@@ -3034,6 +3116,7 @@ def _call_api_bundle_hook(
 def _validate_artifact_references(manifest: ArtifactManifest) -> None:
     declared = {record.path for record in manifest.payloads}
     _validate_evaluator_payload_container(manifest)
+    _validate_recurrence_schedule_sharing(manifest)
     required = {
         str(manifest.configuration["requested_path"]),
         str(manifest.configuration["effective_path"]),
@@ -3064,6 +3147,280 @@ def _validate_artifact_references(manifest: ArtifactManifest) -> None:
         raise ValueError(
             "artifact contains undeclared files: " + ", ".join(sorted(undeclared))
         )
+
+
+def _validate_recurrence_schedule_sharing(manifest: ArtifactManifest) -> None:
+    raw = manifest.extensions.get(_RECURRENCE_SCHEDULE_SHARING_EXTENSION)
+    if raw is None:
+        return
+    extension = _mapping(raw)
+    expected_fields = {
+        "kind",
+        "schema_version",
+        "index_path",
+        "index_sha256",
+        "schedule_count",
+        "binding_count",
+        "schedule_alias_count",
+        "runtime_ownership",
+        "interning_phase",
+    }
+    if set(extension) != expected_fields:
+        raise ValueError("recurrence schedule-sharing extension fields are invalid")
+    if (
+        extension.get("kind") != "pyamplicol-recurrence-schedule-sharing"
+        or extension.get("schema_version") != RECURRENCE_SCHEDULE_SHARING_SCHEMA_VERSION
+        or extension.get("index_path") != RECURRENCE_SCHEDULE_INDEX_PATH
+        or extension.get("runtime_ownership") != "root-schedule-plus-process-binding"
+        or extension.get("interning_phase") != "before-direct-lowering"
+    ):
+        raise ValueError("recurrence schedule-sharing extension is incompatible")
+    records = {record.path: record for record in manifest.payloads}
+    index_record = records.get(RECURRENCE_SCHEDULE_INDEX_PATH)
+    if (
+        index_record is None
+        or index_record.role != "evaluator-manifest"
+        or index_record.process_id is not None
+        or index_record.sha256 != extension.get("index_sha256")
+    ):
+        raise ValueError("recurrence schedule-sharing index record is invalid")
+    index = _mapping(
+        json.loads(
+            (manifest.root / RECURRENCE_SCHEDULE_INDEX_PATH).read_text(encoding="utf-8")
+        )
+    )
+    if (
+        index.get("kind") != extension["kind"]
+        or index.get("schema_version") != extension["schema_version"]
+        or index.get("runtime_ownership") != extension["runtime_ownership"]
+        or index.get("interning_phase") != extension["interning_phase"]
+    ):
+        raise ValueError("recurrence schedule-sharing index is incompatible")
+    schedules = _sequence(index.get("schedules"))
+    bindings = _sequence(index.get("bindings"))
+    counts = {
+        "schedule_count": len(schedules),
+        "binding_count": len(bindings),
+        "schedule_alias_count": len(bindings) - len(schedules),
+    }
+    if any(index.get(name) != value for name, value in counts.items()) or any(
+        extension.get(name) != value for name, value in counts.items()
+    ):
+        raise ValueError("recurrence schedule-sharing counts are inconsistent")
+
+    schedule_paths: dict[str, str] = {}
+    declared_processes_by_schedule: dict[str, tuple[str, ...]] = {}
+    for position, raw_schedule in enumerate(schedules):
+        schedule = _mapping(raw_schedule)
+        digest = _canonical_sha256(
+            schedule.get("digest"),
+            f"recurrence shared schedule {position} digest",
+        )
+        if digest in schedule_paths:
+            raise ValueError(f"recurrence shared schedule {digest} is duplicated")
+        expected_path = f"recurrence/schedules/{digest}/recurrence-runtime.pacbin"
+        if schedule.get("path") != expected_path:
+            raise ValueError(
+                f"recurrence shared schedule {digest} has an invalid root path"
+            )
+        raw_process_ids = _sequence(schedule.get("process_ids"))
+        declared_process_ids = tuple(str(value) for value in raw_process_ids)
+        if not declared_process_ids or declared_process_ids != tuple(
+            sorted(set(declared_process_ids))
+        ):
+            raise ValueError(
+                f"recurrence shared schedule {digest} has invalid process ownership"
+            )
+        record = records.get(expected_path)
+        if (
+            record is None
+            or record.role != "evaluator-state"
+            or record.process_id is not None
+            or record.sha256 != schedule.get("sha256")
+            or record.size_bytes != schedule.get("size_bytes")
+        ):
+            raise ValueError(
+                f"recurrence shared schedule {digest} has an invalid payload record"
+            )
+        schedule_paths[digest] = expected_path
+        declared_processes_by_schedule[digest] = declared_process_ids
+
+    process_ids = {str(process["id"]) for process in manifest.processes}
+    binding_process_ids: set[str] = set()
+    support_masks: set[tuple[int, ...]] = set()
+    bound_processes_by_schedule: dict[str, list[str]] = {}
+    for position, raw_binding in enumerate(bindings):
+        binding = _mapping(raw_binding)
+        process_id = str(binding.get("process_id"))
+        if process_id not in process_ids or process_id in binding_process_ids:
+            raise ValueError(
+                f"recurrence process binding {position} has an invalid process ID"
+            )
+        binding_process_ids.add(process_id)
+        if binding.get("abi") != RECURRENCE_PROCESS_BINDING_ABI:
+            raise ValueError(
+                f"recurrence process binding {process_id!r} has an invalid ABI"
+            )
+        _canonical_sha256(
+            binding.get("process_semantic_digest"),
+            f"recurrence process binding {process_id!r} semantic digest",
+        )
+        _validate_recurrence_process_remap(
+            binding.get("remap"),
+            context=f"recurrence process binding {process_id!r}",
+        )
+        schedule_digest = _canonical_sha256(
+            binding.get("schedule_digest"),
+            f"recurrence process binding {process_id!r} schedule digest",
+        )
+        root_path = schedule_paths.get(schedule_digest)
+        if root_path is None:
+            raise ValueError(
+                f"recurrence process binding {process_id!r} references an unknown "
+                "schedule"
+            )
+        bound_processes_by_schedule.setdefault(schedule_digest, []).append(process_id)
+        raw_support_words = _sequence(binding.get("process_support_words"))
+        support_mask = tuple(raw_support_words)
+        if (
+            not support_mask
+            or any(
+                isinstance(word, bool)
+                or not isinstance(word, int)
+                or word < 0
+                or word > (1 << 64) - 1
+                for word in support_mask
+            )
+            or sum(int(word).bit_count() for word in support_mask) != 1
+            or support_mask[-1] == 0
+            or support_mask in support_masks
+        ):
+            raise ValueError(
+                f"recurrence process binding {process_id!r} has an invalid support mask"
+            )
+        support_masks.add(support_mask)
+        relative_binding_path = binding.get("path")
+        if relative_binding_path != "recurrence-binding.bin":
+            raise ValueError(
+                f"recurrence process binding {process_id!r} has an invalid binding path"
+            )
+        binding_path = f"processes/{process_id}/{relative_binding_path}"
+        binding_record = records.get(binding_path)
+        if (
+            binding_record is None
+            or binding_record.role != "evaluator-state"
+            or binding_record.process_id != process_id
+            or binding_record.sha256 != binding.get("sha256")
+            or binding_record.size_bytes != binding.get("size_bytes")
+        ):
+            raise ValueError(
+                f"recurrence process binding {process_id!r} has an invalid payload"
+            )
+    for digest, declared_process_ids in declared_processes_by_schedule.items():
+        bound_process_ids = tuple(sorted(bound_processes_by_schedule.get(digest, ())))
+        if bound_process_ids != declared_process_ids:
+            raise ValueError(
+                f"recurrence shared schedule {digest} binding ownership is inconsistent"
+            )
+
+
+def _validate_recurrence_process_remap(
+    value: object,
+    *,
+    context: str,
+) -> None:
+    remap = _mapping(value)
+    expected = {
+        "bijection_digest",
+        "source_slots",
+        "source_momentum_signs",
+        "source_helicity_signs",
+        "source_state_offsets",
+        "source_state_indices",
+        "public_flow_ids",
+        "physical_sector_ids",
+        "state_templates",
+        "source_templates",
+        "direct_executors",
+        "parameter_slots",
+    }
+    if set(remap) != expected:
+        raise ValueError(f"{context} remap fields are invalid")
+    _canonical_sha256(
+        remap.get("bijection_digest"),
+        f"{context} process-bijection digest",
+    )
+
+    def permutation(name: str) -> tuple[int, ...]:
+        values = tuple(_sequence(remap.get(name)))
+        if any(
+            isinstance(item, bool) or not isinstance(item, int) or item < 0
+            for item in values
+        ) or tuple(sorted(values)) != tuple(range(len(values))):
+            raise ValueError(f"{context} {name} is not a permutation")
+        return cast(tuple[int, ...], values)
+
+    sources = permutation("source_slots")
+    permutation("public_flow_ids")
+    permutation("physical_sector_ids")
+    for name in ("source_momentum_signs", "source_helicity_signs"):
+        signs = tuple(_sequence(remap.get(name)))
+        if len(signs) != len(sources) or any(sign not in {-1, 1} for sign in signs):
+            raise ValueError(f"{context} {name} is invalid")
+    source_state_offsets = tuple(_sequence(remap.get("source_state_offsets")))
+    source_state_indices = tuple(_sequence(remap.get("source_state_indices")))
+    if (
+        len(source_state_offsets) != len(sources) + 1
+        or not source_state_offsets
+        or source_state_offsets[0] != 0
+        or source_state_offsets[-1] != len(source_state_indices)
+        or any(
+            isinstance(item, bool) or not isinstance(item, int) or item < 0
+            for item in (*source_state_offsets, *source_state_indices)
+        )
+        or any(left > right for left, right in pairwise(source_state_offsets))
+    ):
+        raise ValueError(f"{context} source-state remap is invalid")
+    for start, stop in pairwise(source_state_offsets):
+        if tuple(sorted(source_state_indices[start:stop])) != tuple(
+            range(stop - start)
+        ):
+            raise ValueError(f"{context} source-state remap is not bijective")
+    for name in (
+        "state_templates",
+        "source_templates",
+        "direct_executors",
+        "parameter_slots",
+    ):
+        sparse = _mapping(remap.get(name))
+        if set(sparse) != {"count", "changes"}:
+            raise ValueError(f"{context} {name} fields are invalid")
+        count = sparse.get("count")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(f"{context} {name} count is invalid")
+        changes = tuple(_sequence(sparse.get("changes")))
+        mapping = list(range(count))
+        previous = -1
+        for raw_change in changes:
+            change = tuple(_sequence(raw_change))
+            if (
+                len(change) != 2
+                or any(
+                    isinstance(item, bool)
+                    or not isinstance(item, int)
+                    or item < 0
+                    or item >= count
+                    for item in change
+                )
+                or change[0] <= previous
+                or change[0] == change[1]
+            ):
+                raise ValueError(f"{context} {name} change is invalid")
+            source, target = cast(tuple[int, int], change)
+            mapping[source] = target
+            previous = source
+        if tuple(sorted(mapping)) != tuple(range(count)):
+            raise ValueError(f"{context} {name} is not bijective")
 
 
 def _validate_evaluator_payload_container(manifest: ArtifactManifest) -> None:

@@ -223,8 +223,8 @@ def _logical_input(
             is_initial=False,
             is_fermionic=False,
             source_states=(
-                RecurrenceSourceStateV1(0, -1, 0, -1, 13, 26),
-                RecurrenceSourceStateV1(1, 1, 0, 1, 13, 27),
+                RecurrenceSourceStateV1(0, -1, 0, -1, 13, 24),
+                RecurrenceSourceStateV1(1, 1, 0, 1, 13, 25),
             ),
             momentum_mask=1 << 3,
             support_mask=1 << 3,
@@ -342,6 +342,8 @@ def _logical_input(
         selected_source_coverage=(
             RecurrenceSelectedSourceCoverageV1(1, (1,)),
             RecurrenceSelectedSourceCoverageV1(0, (0,)),
+            RecurrenceSelectedSourceCoverageV1(3, (0, 1)),
+            RecurrenceSelectedSourceCoverageV1(2, (0, 1)),
         ),
         coupling_limits=coupling_limits,
         parameter_projection=parameters,
@@ -757,6 +759,68 @@ def test_logical_cross_references_fail_closed(
         )
 
 
+def test_replay_rejects_cross_role_source_mapping(
+    logical_input: RecurrenceBuilderLogicalInputV1,
+) -> None:
+    permutation = (2, 1, 0, 3)
+    bad_target = replace(
+        logical_input.replay_partitions[0].targets[1],
+        external_permutation=permutation,
+        source_slot_permutation=permutation,
+    )
+    partition = replace(
+        logical_input.replay_partitions[0],
+        targets=(logical_input.replay_partitions[0].targets[0], bad_target),
+    )
+    with pytest.raises(RecurrenceColumnarInputError, match="initial/final"):
+        build_recurrence_builder_input_v1(
+            replace(logical_input, replay_partitions=(partition,))
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("source_template_id", 26),
+        ("momentum_sign", -1),
+        ("crossing_phase", ExactComplexRationalV1(-1)),
+    ),
+)
+def test_replay_rejects_mismatched_source_crossing_contract(
+    logical_input: RecurrenceBuilderLogicalInputV1,
+    field: str,
+    value: object,
+) -> None:
+    target_leg = logical_input.external_legs[3]
+    changed_state = replace(target_leg.source_states[0], **{field: value})
+    changed_leg = replace(
+        target_leg,
+        source_states=(changed_state, *target_leg.source_states[1:]),
+    )
+    external_legs = (
+        *logical_input.external_legs[:3],
+        changed_leg,
+    )
+    with pytest.raises(RecurrenceColumnarInputError, match="crossing contract"):
+        build_recurrence_builder_input_v1(
+            replace(logical_input, external_legs=external_legs)
+        )
+
+
+def test_external_leg_rejects_duplicate_source_template() -> None:
+    logical = _logical_input()
+    target_leg = logical.external_legs[3]
+    duplicate = replace(
+        target_leg.source_states[1],
+        source_template_id=target_leg.source_states[0].source_template_id,
+    )
+    with pytest.raises(RecurrenceColumnarInputError, match="source template"):
+        replace(
+            target_leg,
+            source_states=(target_leg.source_states[0], duplicate),
+        )
+
+
 def test_missing_required_header_digest_is_rejected(
     logical_input: RecurrenceBuilderLogicalInputV1,
 ) -> None:
@@ -776,6 +840,15 @@ def test_missing_required_header_digest_is_rejected(
 def test_replay_permutations_use_documented_gather_orientation(
     logical_input: RecurrenceBuilderLogicalInputV1,
 ) -> None:
+    uniform_source_states = logical_input.external_legs[0].source_states
+    compatible_legs = tuple(
+        replace(
+            leg,
+            is_initial=False,
+            source_states=uniform_source_states,
+        )
+        for leg in logical_input.external_legs
+    )
     cycle = (0, 2, 3, 1)
     representative_word = logical_input.physical_sectors[0].word_source_slots
     target_word = tuple(cycle[source_slot] for source_slot in representative_word)
@@ -800,6 +873,7 @@ def test_replay_permutations_use_documented_gather_orientation(
     )
     logical = replace(
         logical_input,
+        external_legs=compatible_legs,
         physical_sectors=(logical_input.physical_sectors[0], target_sector),
         public_flows=(logical_input.public_flows[0], target_flow),
         replay_partitions=(
@@ -857,6 +931,14 @@ def test_replay_permutation_must_transport_all_singlet_closure_anchor(
         else target
         for target in logical_input.replay_partitions[0].targets
     )
+    compatible_legs = (
+        logical_input.external_legs[0],
+        replace(
+            logical_input.external_legs[1],
+            source_states=logical_input.external_legs[0].source_states,
+        ),
+        *logical_input.external_legs[2:],
+    )
 
     with pytest.raises(
         RecurrenceColumnarInputError,
@@ -865,6 +947,7 @@ def test_replay_permutation_must_transport_all_singlet_closure_anchor(
         build_recurrence_builder_input_v1(
             replace(
                 logical_input,
+                external_legs=compatible_legs,
                 physical_sectors=singlet_sectors,
                 public_flows=singlet_flows,
                 replay_partitions=(
@@ -882,11 +965,43 @@ def test_union_layout_does_not_require_replay_partitions(
             logical_input,
             layout="all-flow-union",
             replay_partitions=(),
+            selected_public_flow_ids=(1,),
         )
     )
 
     assert result.table("replay_partitions").row_count == 0
     assert int(result.table("header").column("layout")[0]) == 1
+    assert int(result.table("header").column("selected_flow_mode")[0]) == 1
+    assert int(result.table("header").column("selected_source_mode")[0]) == 1
+    assert tuple(
+        int(value)
+        for value in result.table("selected_public_flow_coverage").column("flow_id")
+    ) == (1,)
+    assert tuple(
+        int(value)
+        for value in result.table("selected_source_coverage").column("source_slot")
+    ) == (0, 1, 2, 2, 3, 3)
+
+
+def test_selected_source_coverage_must_cover_every_external_leg(
+    logical_input: RecurrenceBuilderLogicalInputV1,
+) -> None:
+    with pytest.raises(
+        RecurrenceColumnarInputError,
+        match="every external source slot",
+    ):
+        build_recurrence_builder_input_v1(
+            replace(
+                logical_input,
+                layout="all-flow-union",
+                replay_partitions=(),
+                selected_source_coverage=(
+                    RecurrenceSelectedSourceCoverageV1(0, (0,)),
+                    RecurrenceSelectedSourceCoverageV1(1, (1,)),
+                    RecurrenceSelectedSourceCoverageV1(2, (0, 1)),
+                ),
+            )
+        )
 
 
 def test_topology_replay_layout_allows_exact_residual_only_sectors(

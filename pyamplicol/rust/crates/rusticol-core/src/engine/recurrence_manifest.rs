@@ -5,9 +5,9 @@
 use crate::recurrence::direct_backend::RECURRENCE_DIRECT_BACKEND_ABI;
 use crate::recurrence::template::RECURRENCE_TEMPLATE_INPUT_ABI;
 use crate::recurrence::{
-    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_DIRECT_PLAN_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
-    RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI, RECURRENCE_RUNTIME_CAPABILITY,
-    RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
+    RECURRENCE_DIRECT_TEMPLATE_ABI, RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI,
+    RECURRENCE_RUNTIME_CAPABILITY, RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI,
 };
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
@@ -18,7 +18,8 @@ pub(super) const RECURRENCE_RUNTIME_STORAGE_ABI: &str = "pacbin-v1";
 pub(super) const RECURRENCE_RUNTIME_CONTAINER_KIND: &str =
     "pyamplicol-recurrence-runtime-container";
 pub(super) const RECURRENCE_RUNTIME_CONTAINER_SCHEMA: u16 = 1;
-pub(super) const RECURRENCE_RUNTIME_CONTAINER_PATH: &str = "recurrence-runtime.pacbin";
+pub(super) const RECURRENCE_PROCESS_BINDING_ABI: &str = "pyamplicol-recurrence-process-binding-v2";
+pub(super) const RECURRENCE_PROCESS_BINDING_PATH: &str = "recurrence-binding.bin";
 pub(super) const RECURRENCE_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const RECURRENCE_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 
@@ -82,8 +83,47 @@ pub(super) struct RecurrencePlanSummary {
     pub(super) prepared_kernel_pack_digest: String,
     pub(super) direct_template_catalog_digest: String,
     pub(super) required_runtime_capabilities: Vec<String>,
-    pub(super) runtime_container: RecurrenceRuntimeContainer,
+    pub(super) runtime_schedule: RecurrenceRuntimeContainer,
+    pub(super) process_binding: RecurrenceProcessBinding,
     pub(super) inspection_summary: RecurrenceInspectionSummary,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceProcessBinding {
+    pub(super) abi: String,
+    pub(super) process_id: String,
+    pub(super) schedule_digest: String,
+    pub(super) process_semantic_digest: String,
+    pub(super) process_support_words: Vec<u64>,
+    pub(super) remap: RecurrenceProcessRemap,
+    pub(super) path: String,
+    pub(super) size_bytes: u64,
+    pub(super) sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceProcessRemap {
+    pub(super) bijection_digest: String,
+    pub(super) source_slots: Vec<u32>,
+    pub(super) source_momentum_signs: Vec<i32>,
+    pub(super) source_helicity_signs: Vec<i32>,
+    pub(super) source_state_offsets: Vec<u32>,
+    pub(super) source_state_indices: Vec<u32>,
+    pub(super) public_flow_ids: Vec<u32>,
+    pub(super) physical_sector_ids: Vec<u32>,
+    pub(super) state_templates: RecurrenceSparseBijection,
+    pub(super) source_templates: RecurrenceSparseBijection,
+    pub(super) direct_executors: RecurrenceSparseBijection,
+    pub(super) parameter_slots: RecurrenceSparseBijection,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceSparseBijection {
+    pub(super) count: u32,
+    pub(super) changes: Vec<[u32; 2]>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -122,8 +162,10 @@ pub(super) struct RecurrenceInspectionSummary {
     pub(super) prepared_kernel_count: u64,
     pub(super) direct_executor_count: u64,
     pub(super) semantic_digest: String,
+    pub(super) schedule_digest: String,
     pub(super) runtime_layout_digest: String,
     pub(super) schedule: RecurrenceScheduleSummary,
+    pub(super) construction: RecurrenceConstructionSummary,
     pub(super) direct_arena: RecurrenceDirectArenaSummary,
     pub(super) runtime_container_member: RecurrenceRuntimeContainerMember,
     pub(super) generation_timings_seconds: RecurrenceGenerationTimings,
@@ -142,6 +184,18 @@ pub(super) struct RecurrenceScheduleSummary {
     pub(super) retained_helicity_count: u64,
     pub(super) resolved_helicity_count: u64,
     pub(super) exact_factor_count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceConstructionSummary {
+    pub(super) peak_current_count: u64,
+    pub(super) peak_contribution_count: u64,
+    pub(super) peak_dynamic_color_state_count: u64,
+    pub(super) color_target_prune_count: u64,
+    pub(super) candidate_parent_pair_count: u64,
+    pub(super) peak_to_final_current_ratio: f64,
+    pub(super) peak_to_final_contribution_ratio: f64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -443,6 +497,14 @@ impl RecurrenceExecutionManifest {
         )?;
 
         let inspection = &self.plan.inspection_summary;
+        let remap = &self.plan.process_binding.remap;
+        if remap.public_flow_ids.len() != self.runtime_metadata.public_color_flows.len()
+            || remap.physical_sector_ids.len() as u64 != inspection.sector_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence process binding domains disagree with runtime metadata",
+            ));
+        }
         let schedule = inspection.schedule;
         if inspection.lc_flow_layout != self.recurrence_summary.lc_flow_layout
             || schedule.current_count != self.recurrence_summary.current_count
@@ -517,12 +579,31 @@ impl RecurrencePlanSummary {
             &self.required_runtime_capabilities,
             "nested recurrence plan",
         )?;
-        self.runtime_container.validate()?;
+        self.runtime_schedule.validate()?;
+        self.process_binding.validate(process_key)?;
         self.inspection_summary.validate(process_key)?;
+        if self.process_binding.schedule_digest != self.inspection_summary.schedule_digest
+            || self.process_binding.process_semantic_digest
+                != self.inspection_summary.semantic_digest
+            || self.process_binding.process_semantic_digest != self.builder_input_sha256
+        {
+            return Err(RusticolError::integrity(
+                "recurrence schedule/process binding disagrees with inspection metadata",
+            ));
+        }
+        let expected_schedule_path = format!(
+            "recurrence/schedules/{}/recurrence-runtime.pacbin",
+            self.process_binding.schedule_digest
+        );
+        if self.runtime_schedule.path != expected_schedule_path {
+            return Err(RusticolError::integrity(
+                "recurrence root schedule path disagrees with its binding digest",
+            ));
+        }
         let member = &self.inspection_summary.runtime_container_member;
-        if member.path != self.runtime_container.plan_member_path
-            || member.container_size_bytes != self.runtime_container.size_bytes
-            || member.size_bytes != self.runtime_container.unpacked_size_bytes
+        if member.path != self.runtime_schedule.plan_member_path
+            || member.container_size_bytes != self.runtime_schedule.size_bytes
+            || member.size_bytes != self.runtime_schedule.unpacked_size_bytes
         {
             return Err(RusticolError::integrity(
                 "Direct-Arena v2 plan member metadata disagrees with its recurrence runtime container",
@@ -552,14 +633,20 @@ impl RecurrenceRuntimeContainer {
                 &self.storage_abi,
             ));
         }
-        if self.path != RECURRENCE_RUNTIME_CONTAINER_PATH {
+        let expected_prefix = "recurrence/schedules/";
+        let expected_suffix = "/recurrence-runtime.pacbin";
+        if !self.path.starts_with(expected_prefix)
+            || !self.path.ends_with(expected_suffix)
+            || self.path[expected_prefix.len()..self.path.len() - expected_suffix.len()].len() != 64
+            || self.path.contains("..")
+        {
             return Err(RusticolError::security(
-                "recurrence runtime container path must be exactly recurrence-runtime.pacbin",
+                "recurrence root schedule path is not canonical",
             ));
         }
-        if self.plan_member_path != RECURRENCE_DIRECT_PLAN_MEMBER {
+        if self.plan_member_path != RECURRENCE_DIRECT_SCHEDULE_MEMBER {
             return Err(RusticolError::security(format!(
-                "Direct-Arena v2 plan member path must be exactly {RECURRENCE_DIRECT_PLAN_MEMBER:?}"
+                "Direct-Arena v2 schedule member path must be exactly {RECURRENCE_DIRECT_SCHEDULE_MEMBER:?}"
             )));
         }
         if self.member_count != 1 {
@@ -584,6 +671,147 @@ impl RecurrenceRuntimeContainer {
         parse_sha256(&self.index_sha256, "recurrence runtime index")?;
         Ok(())
     }
+}
+
+impl RecurrenceProcessBinding {
+    fn validate(&self, process_key: &str) -> RusticolResult<()> {
+        if self.abi != RECURRENCE_PROCESS_BINDING_ABI
+            || self.path != RECURRENCE_PROCESS_BINDING_PATH
+        {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence process-binding contract",
+            ));
+        }
+        if self.process_id != process_key {
+            return Err(RusticolError::integrity(
+                "recurrence process binding has the wrong process ID",
+            ));
+        }
+        parse_sha256(&self.schedule_digest, "recurrence root schedule")?;
+        parse_sha256(
+            &self.process_semantic_digest,
+            "recurrence process semantic binding",
+        )?;
+        parse_sha256(&self.sha256, "recurrence process-binding payload")?;
+        self.remap.validate()?;
+        if self.process_support_words.is_empty()
+            || self.process_support_words.last() == Some(&0)
+            || self
+                .process_support_words
+                .iter()
+                .map(|word| word.count_ones())
+                .sum::<u32>()
+                != 1
+            || self.size_bytes == 0
+            || self.size_bytes > MAX_EXECUTION_MANIFEST_BYTES as u64
+        {
+            return Err(RusticolError::integrity(
+                "recurrence process binding has invalid support words or size metadata",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceProcessRemap {
+    fn validate(&self) -> RusticolResult<()> {
+        parse_sha256(&self.bijection_digest, "recurrence process bijection")?;
+        validate_permutation(&self.source_slots, "recurrence source-slot remap")?;
+        if self.source_momentum_signs.len() != self.source_slots.len()
+            || self.source_helicity_signs.len() != self.source_slots.len()
+            || self
+                .source_momentum_signs
+                .iter()
+                .chain(&self.source_helicity_signs)
+                .any(|sign| !matches!(sign, -1 | 1))
+        {
+            return Err(RusticolError::integrity(
+                "recurrence process binding has invalid source signs",
+            ));
+        }
+        validate_ragged_permutations(
+            &self.source_state_offsets,
+            &self.source_state_indices,
+            self.source_slots.len(),
+            "recurrence source-state remap",
+        )?;
+        validate_permutation(&self.public_flow_ids, "recurrence public-flow remap")?;
+        validate_permutation(
+            &self.physical_sector_ids,
+            "recurrence physical-sector remap",
+        )?;
+        self.state_templates
+            .validate("recurrence state-template remap")?;
+        self.source_templates
+            .validate("recurrence source-template remap")?;
+        self.direct_executors
+            .validate("recurrence direct-executor remap")?;
+        self.parameter_slots
+            .validate("recurrence parameter-slot remap")?;
+        Ok(())
+    }
+}
+
+impl RecurrenceSparseBijection {
+    fn validate(&self, context: &str) -> RusticolResult<()> {
+        let count = usize::try_from(self.count)
+            .map_err(|_| RusticolError::artifact(format!("{context} count exceeds usize")))?;
+        bounded_len(context, count)?;
+        let mut mapping = (0..self.count).collect::<Vec<_>>();
+        let mut previous = None;
+        for [source, target] in &self.changes {
+            if *source >= self.count
+                || *target >= self.count
+                || source == target
+                || previous.is_some_and(|value| value >= *source)
+            {
+                return Err(RusticolError::integrity(format!(
+                    "{context} contains a noncanonical change"
+                )));
+            }
+            previous = Some(*source);
+            mapping[*source as usize] = *target;
+        }
+        validate_permutation(&mapping, context)
+    }
+}
+
+fn validate_permutation(values: &[u32], context: &str) -> RusticolResult<()> {
+    bounded_len(context, values.len())?;
+    if values
+        .iter()
+        .copied()
+        .any(|value| value as usize >= values.len())
+        || values.iter().copied().collect::<BTreeSet<_>>().len() != values.len()
+    {
+        return Err(RusticolError::integrity(format!(
+            "{context} is not a dense zero-based permutation"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_ragged_permutations(
+    offsets: &[u32],
+    values: &[u32],
+    row_count: usize,
+    context: &str,
+) -> RusticolResult<()> {
+    if offsets.len() != row_count.saturating_add(1)
+        || offsets.first().copied() != Some(0)
+        || offsets.last().copied().map(|value| value as usize) != Some(values.len())
+        || offsets.windows(2).any(|window| window[0] > window[1])
+    {
+        return Err(RusticolError::integrity(format!(
+            "{context} offsets are invalid"
+        )));
+    }
+    for window in offsets.windows(2) {
+        let start = window[0] as usize;
+        let stop = window[1] as usize;
+        validate_permutation(&values[start..stop], context)?;
+    }
+    Ok(())
 }
 
 impl RecurrenceInspectionSummary {
@@ -612,11 +840,13 @@ impl RecurrenceInspectionSummary {
             ],
         )?;
         parse_sha256(&self.semantic_digest, "recurrence semantic plan")?;
+        parse_sha256(&self.schedule_digest, "recurrence root schedule")?;
         parse_sha256(
             &self.runtime_layout_digest,
             "recurrence Direct-Arena runtime layout",
         )?;
         self.schedule.validate()?;
+        self.construction.validate(self.schedule)?;
         self.direct_arena.validate()?;
         self.runtime_container_member.validate()?;
         self.generation_timings_seconds.validate()?;
@@ -625,6 +855,35 @@ impl RecurrenceInspectionSummary {
         {
             return Err(RusticolError::integrity(
                 "recurrence inspection schedule disagrees with its top-level counts",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceConstructionSummary {
+    fn validate(self, schedule: RecurrenceScheduleSummary) -> RusticolResult<()> {
+        validate_counts(
+            "recurrence construction summary",
+            &[
+                self.peak_current_count,
+                self.peak_contribution_count,
+                self.peak_dynamic_color_state_count,
+                self.color_target_prune_count,
+                self.candidate_parent_pair_count,
+            ],
+        )?;
+        if self.peak_current_count < schedule.current_count
+            || self.peak_contribution_count < schedule.contribution_count
+            || !self.peak_to_final_current_ratio.is_finite()
+            || !self.peak_to_final_contribution_ratio.is_finite()
+            || self.peak_to_final_current_ratio < 0.0
+            || self.peak_to_final_contribution_ratio < 0.0
+            || (schedule.current_count != 0 && self.peak_to_final_current_ratio < 1.0)
+            || (schedule.contribution_count != 0 && self.peak_to_final_contribution_ratio < 1.0)
+        {
+            return Err(RusticolError::integrity(
+                "recurrence construction summary is inconsistent with the final schedule",
             ));
         }
         Ok(())
@@ -696,9 +955,9 @@ impl RecurrenceDirectArenaSummary {
 
 impl RecurrenceRuntimeContainerMember {
     fn validate(&self) -> RusticolResult<()> {
-        if self.path != RECURRENCE_DIRECT_PLAN_MEMBER {
+        if self.path != RECURRENCE_DIRECT_SCHEDULE_MEMBER {
             return Err(RusticolError::security(format!(
-                "Direct-Arena v2 inspection member path must be exactly {RECURRENCE_DIRECT_PLAN_MEMBER:?}"
+                "Direct-Arena v2 inspection member path must be exactly {RECURRENCE_DIRECT_SCHEDULE_MEMBER:?}"
             )));
         }
         if self.size_bytes == 0 || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES {
@@ -793,15 +1052,20 @@ impl RecurrenceRuntimeMetadata {
             ));
         }
         let expected_public_flow_count = match inspection.lc_flow_layout {
-            RecurrenceLcFlowLayout::TopologyReplay => inspection.schedule.replay_target_count,
-            RecurrenceLcFlowLayout::AllFlowUnion => inspection.sector_count,
+            RecurrenceLcFlowLayout::TopologyReplay => Some(inspection.schedule.replay_target_count),
+            // Folded trace reflections remain distinct public flows while
+            // sharing one authenticated construction sector.
+            RecurrenceLcFlowLayout::AllFlowUnion => None,
         };
-        if self.public_color_flows.len() as u64 != expected_public_flow_count {
+        if expected_public_flow_count
+            .is_some_and(|count| self.public_color_flows.len() as u64 != count)
+        {
             return Err(RusticolError::integrity(
-                "recurrence public color-flow count does not match the Direct-Arena sector count",
+                "recurrence public color-flow count does not match the Direct-Arena replay count",
             ));
         }
         let mut public_ids = BTreeSet::new();
+        let mut construction_sector_ids = BTreeSet::new();
         for (target_sector_id, flow) in self.public_color_flows.iter().enumerate() {
             validate_text(&flow.public_id, "recurrence public color-flow ID")?;
             if !public_ids.insert(flow.public_id.as_str()) {
@@ -814,13 +1078,27 @@ impl RecurrenceRuntimeMetadata {
                     "recurrence public color flow references an absent construction sector",
                 ));
             }
+            construction_sector_ids.insert(flow.construction_sector_id);
             if flow.target_sector_id as usize != target_sector_id
-                || u64::from(flow.target_sector_id) >= expected_public_flow_count
+                || flow.target_sector_id as usize >= self.public_color_flows.len()
             {
                 return Err(RusticolError::integrity(
                     "recurrence public color-flow target sectors are not dense or in range",
                 ));
             }
+        }
+        if inspection.lc_flow_layout == RecurrenceLcFlowLayout::AllFlowUnion
+            && (construction_sector_ids.len() as u64 != inspection.sector_count
+                || construction_sector_ids.iter().copied().ne(0..u32::try_from(
+                    inspection.sector_count,
+                )
+                .map_err(|_| {
+                    RusticolError::artifact("recurrence Direct-Arena sector count exceeds u32")
+                })?))
+        {
+            return Err(RusticolError::integrity(
+                "recurrence public color flows do not cover every Direct-Arena construction sector",
+            ));
         }
         if self.prepared_parameter_defaults.len() as u64 != inspection.parameter_count {
             return Err(RusticolError::integrity(
@@ -1574,7 +1852,8 @@ pub(super) mod tests {
             "sector_count": 1,
             "prepared_kernel_count": 1,
             "direct_executor_count": 4,
-            "semantic_digest": "66".repeat(32),
+            "semantic_digest": "11".repeat(32),
+            "schedule_digest": "aa".repeat(32),
             "runtime_layout_digest": "77".repeat(32),
             "schedule": {
                 "current_count": 1,
@@ -1588,6 +1867,15 @@ pub(super) mod tests {
                 "resolved_helicity_count": 1,
                 "exact_factor_count": 1
             },
+            "construction": {
+                "peak_current_count": 1,
+                "peak_contribution_count": 0,
+                "peak_dynamic_color_state_count": 1,
+                "color_target_prune_count": 0,
+                "candidate_parent_pair_count": 0,
+                "peak_to_final_current_ratio": 1.0,
+                "peak_to_final_contribution_ratio": 0.0
+            },
             "direct_arena": {
                 "semantic_component_count": 1,
                 "current_arena_components": 1,
@@ -1600,7 +1888,7 @@ pub(super) mod tests {
                 "scatter_bytes": 0
             },
             "runtime_container_member": {
-                "path": RECURRENCE_DIRECT_PLAN_MEMBER,
+                "path": RECURRENCE_DIRECT_SCHEDULE_MEMBER,
                 "size_bytes": 512,
                 "sha256": "88".repeat(32),
                 "container_size_bytes": 4096
@@ -1628,17 +1916,44 @@ pub(super) mod tests {
             "prepared_kernel_pack_digest": "44".repeat(32),
             "direct_template_catalog_digest": "55".repeat(32),
             "required_runtime_capabilities": capabilities(),
-            "runtime_container": {
+            "runtime_schedule": {
                 "kind": RECURRENCE_RUNTIME_CONTAINER_KIND,
                 "schema_version": RECURRENCE_RUNTIME_CONTAINER_SCHEMA,
                 "storage_abi": RECURRENCE_RUNTIME_STORAGE_ABI,
-                "path": RECURRENCE_RUNTIME_CONTAINER_PATH,
-                "plan_member_path": RECURRENCE_DIRECT_PLAN_MEMBER,
+                "path": format!(
+                    "recurrence/schedules/{}/recurrence-runtime.pacbin",
+                    "aa".repeat(32)
+                ),
+                "plan_member_path": RECURRENCE_DIRECT_SCHEDULE_MEMBER,
                 "size_bytes": 4096,
                 "sha256": "22".repeat(32),
                 "member_count": 1,
                 "unpacked_size_bytes": 512,
                 "index_sha256": "33".repeat(32)
+            },
+            "process_binding": {
+                "abi": RECURRENCE_PROCESS_BINDING_ABI,
+                "process_id": "x_to_x",
+                "schedule_digest": "aa".repeat(32),
+                "process_semantic_digest": "11".repeat(32),
+                "process_support_words": [1],
+                "remap": {
+                    "bijection_digest": "66".repeat(32),
+                    "source_slots": [0],
+                    "source_momentum_signs": [1],
+                    "source_helicity_signs": [1],
+                    "source_state_offsets": [0, 1],
+                    "source_state_indices": [0],
+                    "public_flow_ids": [0],
+                    "physical_sector_ids": [0],
+                    "state_templates": {"count": 1, "changes": []},
+                    "source_templates": {"count": 1, "changes": []},
+                    "direct_executors": {"count": 4, "changes": []},
+                    "parameter_slots": {"count": 1, "changes": []}
+                },
+                "path": RECURRENCE_PROCESS_BINDING_PATH,
+                "size_bytes": 256,
+                "sha256": "99".repeat(32)
             },
             "inspection_summary": inspection_summary()
         });
@@ -1703,7 +2018,7 @@ pub(super) mod tests {
         let parsed = parse(&manifest()).unwrap();
         assert_eq!(parsed.runtime_metadata.public_color_flows.len(), 1);
         assert_eq!(parsed.runtime_metadata.source_templates.len(), 1);
-        assert_eq!(parsed.plan.runtime_container.member_count, 1);
+        assert_eq!(parsed.plan.runtime_schedule.member_count, 1);
         assert_eq!(
             parsed.plan.inspection_summary.direct_arena.row_group_count,
             4
@@ -1749,12 +2064,12 @@ pub(super) mod tests {
     #[test]
     fn rejects_noncanonical_container_and_capability_metadata() {
         let mut bad_path = manifest();
-        bad_path["plan"]["runtime_container"]["path"] = json!("../recurrence-runtime.pacbin");
+        bad_path["plan"]["runtime_schedule"]["path"] = json!("../recurrence-runtime.pacbin");
         assert!(
             parse(&bad_path)
                 .unwrap_err()
                 .to_string()
-                .contains("exactly")
+                .contains("canonical")
         );
 
         let mut bad_capabilities = manifest();
@@ -1770,13 +2085,13 @@ pub(super) mod tests {
         );
 
         let mut bad_member_path = manifest();
-        bad_member_path["plan"]["runtime_container"]["plan_member_path"] =
+        bad_member_path["plan"]["runtime_schedule"]["plan_member_path"] =
             json!("plan/recurrence-plan-v1.bin");
         assert!(
             parse(&bad_member_path)
                 .unwrap_err()
                 .to_string()
-                .contains("Direct-Arena v2 plan member path")
+                .contains("Direct-Arena v2 schedule member path")
         );
     }
 
@@ -1849,6 +2164,29 @@ pub(super) mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("physical PDGs")
+        );
+    }
+
+    #[test]
+    fn rejects_nonbijective_source_state_remaps() {
+        let mut duplicate = manifest();
+        duplicate["plan"]["process_binding"]["remap"]["source_state_offsets"] = json!([0, 2]);
+        duplicate["plan"]["process_binding"]["remap"]["source_state_indices"] = json!([0, 0]);
+        assert!(
+            parse(&duplicate)
+                .unwrap_err()
+                .to_string()
+                .contains("dense zero-based permutation")
+        );
+
+        let mut invalid_offsets = manifest();
+        invalid_offsets["plan"]["process_binding"]["remap"]["source_state_offsets"] = json!([1, 2]);
+        invalid_offsets["plan"]["process_binding"]["remap"]["source_state_indices"] = json!([0, 1]);
+        assert!(
+            parse(&invalid_offsets)
+                .unwrap_err()
+                .to_string()
+                .contains("offsets are invalid")
         );
     }
 }

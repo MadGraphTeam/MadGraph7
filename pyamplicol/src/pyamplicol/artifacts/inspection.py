@@ -27,7 +27,9 @@ from .security import confined_path, normalize_relative_path
 _EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
 _RECURRENCE_RUNTIME_KIND = "pyamplicol-runtime-recurrence-execution"
 _RETIRED_RECURRENCE_RUNTIME_CAPABILITY = "rusticol.recurrence-runtime.complex-f64.v1"
-_RECURRENCE_DIRECT_PLAN_MEMBER_PATH = "plan/recurrence-direct-plan-v2.bin"
+_RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = (
+    "schedule/recurrence-direct-schedule-v2.bin"
+)
 _EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 _EAGER_RUNTIME_CAPABILITIES = frozenset(
     {
@@ -989,15 +991,25 @@ def _recurrence_execution_inspection(
         RECURRENCE_DIRECT_BACKEND_ABI,
         "recurrence execution.plan",
     )
-    runtime_container = _mapping(
-        plan.get("runtime_container"),
-        "recurrence execution.plan.runtime_container",
+    runtime_schedule = _mapping(
+        plan.get("runtime_schedule"),
+        "recurrence execution.plan.runtime_schedule",
     )
     _require_contract(
-        runtime_container,
+        runtime_schedule,
         "plan_member_path",
-        _RECURRENCE_DIRECT_PLAN_MEMBER_PATH,
-        "recurrence execution.plan.runtime_container",
+        _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH,
+        "recurrence execution.plan.runtime_schedule",
+    )
+    binding = _mapping(
+        plan.get("process_binding"),
+        "recurrence execution.plan.process_binding",
+    )
+    _require_contract(
+        binding,
+        "abi",
+        "pyamplicol-recurrence-process-binding-v2",
+        "recurrence execution.plan.process_binding",
     )
     summary = _mapping(
         plan.get("inspection_summary"),

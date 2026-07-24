@@ -241,7 +241,7 @@ def build_recurrence_physics(
                 "kind": "pyamplicol-recurrence-native-reduction-v2",
                 "runtime_layout_abi": RECURRENCE_RUNTIME_LAYOUT_ABI,
                 "container_path": "recurrence-runtime.pacbin",
-                "plan_member_path": "plan/recurrence-direct-plan-v2.bin",
+                "plan_member_path": "schedule/recurrence-direct-schedule-v2.bin",
             },
             "recurrence": {
                 "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,

@@ -169,7 +169,7 @@ impl CanonicalInputSection<'_> {
     }
 }
 
-/// Deterministic header for `pyamplicol-recurrence-builder-input-v1`.
+/// Deterministic header for `pyamplicol-recurrence-builder-input-v2`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecurrenceBuilderInputHeader {
     pub template_abi: String,

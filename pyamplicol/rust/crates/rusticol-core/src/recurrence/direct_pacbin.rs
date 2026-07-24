@@ -11,7 +11,7 @@ use crate::pacbin::{
 };
 use crate::{RusticolError, RusticolResult};
 
-pub const RECURRENCE_DIRECT_PLAN_MEMBER: &str = "plan/recurrence-direct-plan-v2.bin";
+pub const RECURRENCE_DIRECT_SCHEDULE_MEMBER: &str = "schedule/recurrence-direct-schedule-v2.bin";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecurrenceDirectPacbinMetadata {
@@ -29,7 +29,7 @@ pub fn write_recurrence_direct_plan_pacbin(
 ) -> RusticolResult<RecurrenceDirectPacbinMetadata> {
     let payload = encode_recurrence_direct_plan_v2(plan)?;
     let member = PacbinWriteMember::from_bytes(
-        RECURRENCE_DIRECT_PLAN_MEMBER,
+        RECURRENCE_DIRECT_SCHEDULE_MEMBER,
         PacbinMemberKind::RecurrenceDirectPlan,
         &payload,
     )?;
@@ -58,17 +58,19 @@ pub fn load_recurrence_direct_plan_pacbin(
             reader.members().len()
         )));
     }
-    let member = reader.member(RECURRENCE_DIRECT_PLAN_MEMBER).map_err(|_| {
-        RusticolError::compatibility(
-            "unsupported recurrence payload; regenerate with direct-plan v2",
-        )
-    })?;
+    let member = reader
+        .member(RECURRENCE_DIRECT_SCHEDULE_MEMBER)
+        .map_err(|_| {
+            RusticolError::compatibility(
+                "unsupported recurrence payload; regenerate with direct-plan v2",
+            )
+        })?;
     if member.kind() != PacbinMemberKind::RecurrenceDirectPlan {
         return Err(RusticolError::compatibility(
             "direct recurrence plan has the wrong PACBIN member kind",
         ));
     }
-    decode_recurrence_direct_plan_v2(reader.member_bytes(RECURRENCE_DIRECT_PLAN_MEMBER)?)
+    decode_recurrence_direct_plan_v2(reader.member_bytes(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?)
 }
 
 #[cfg(test)]

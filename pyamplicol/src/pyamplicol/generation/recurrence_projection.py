@@ -24,6 +24,9 @@ from ..models.recurrence_template import (
     RecurrenceTemplateCatalog,
     SourceTemplateV1,
 )
+from ..models.recurrence_template import (
+    ExactComplexRationalV1 as ModelExactComplexRationalV1,
+)
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .recurrence_columnar import (
     ExactComplexRationalV1,
@@ -44,6 +47,7 @@ from .recurrence_columnar import (
     RecurrenceSourceStateV1,
 )
 from .recurrence_fermion_pairing import (
+    FermionPairingCatalogV1,
     build_recurrence_fermion_pairing_catalog_v1,
 )
 
@@ -129,6 +133,10 @@ def project_recurrence_process_v1(
         raise RecurrenceProjectionError(
             "recurrence process support mask must be a positive integer bitmap"
         )
+    reflection_contract = _closure_reflection_contract(
+        template_catalog,
+        required=color_plan.trace_reflections_folded,
+    )
 
     selection = generation_slice or RecurrenceGenerationSliceV1()
     template_ids, template_references = _project_template_references(template_catalog)
@@ -153,10 +161,6 @@ def project_recurrence_process_v1(
             raise RecurrenceProjectionError(
                 f"generation slice references unknown public LC flows {unknown!r}"
             )
-        if layout == "all-flow-union":
-            raise RecurrenceProjectionError(
-                "all-flow-union recurrence must retain every public LC flow"
-            )
     replay_partitions = _project_replay_partitions(
         process,
         color_plan,
@@ -167,6 +171,14 @@ def project_recurrence_process_v1(
     fermion_pairing = build_recurrence_fermion_pairing_catalog_v1(
         process,
         template_catalog.current_states,
+    )
+    closure_reconstruction_digest = _project_closure_obligation_roots_digest(
+        process,
+        color_plan,
+        template_catalog,
+        physical_sectors,
+        fermion_pairing,
+        reflection_contract=reflection_contract,
     )
     helicity_support = _project_helicity_support_proof(
         process,
@@ -195,6 +207,10 @@ def project_recurrence_process_v1(
             RecurrenceSemanticDigestV1(
                 "fermion-pairing-topology", fermion_pairing.topology_digest
             ),
+            RecurrenceSemanticDigestV1(
+                "closure-reconstruction",
+                closure_reconstruction_digest,
+            ),
             *(() if helicity_support is None else (helicity_support,)),
         ),
         external_legs=external_legs,
@@ -209,6 +225,92 @@ def project_recurrence_process_v1(
         coupling_limits=_project_coupling_limits(coupling_order_limits),
         parameter_projection=_project_parameters(template_catalog, template_ids),
         process_support_mask=process_support_mask,
+    )
+
+
+def _project_closure_obligation_roots_digest(
+    process: CanonicalProcessIR,
+    color_plan: GenericColorPlan,
+    template_catalog: RecurrenceTemplateCatalog,
+    sectors: tuple[RecurrencePhysicalLCSectorV1, ...],
+    pairing: FermionPairingCatalogV1,
+    *,
+    reflection_contract: tuple[
+        ModelExactComplexRationalV1 | None,
+        str | None,
+    ],
+) -> str:
+    """Bind the exact catalogs from which Rust derives closure obligations.
+
+    This digest is deliberately not an expected-row list. Rust independently
+    derives complete three-line traversal, fermion-pairing, and folded-trace
+    obligation multisets from these authenticated roots and compares them with
+    the closure rows it emits.
+    """
+
+    reflection_phase, reflection_proof_digest = reflection_contract
+    return _digest(
+        {
+            "algorithm": "model-generic-closure-obligation-roots-v2",
+            "color_plan_digest": _digest(color_plan.to_json_dict()),
+            "fermion_pairing_semantic_digest": pairing.semantic_digest,
+            "fermion_pairing_topology_digest": pairing.topology_digest,
+            "model_catalog_digest": template_catalog.catalog_digest,
+            "process_digest": _digest(process.to_json_dict()),
+            "reflection_phase": (
+                None if reflection_phase is None else reflection_phase.to_dict()
+            ),
+            "reflection_proof_digest": reflection_proof_digest,
+            "sectors": tuple(
+                {
+                    "closure_proof_algorithm": sector.closure_proof_algorithm,
+                    "closure_proof_digest": sector.closure_proof_digest,
+                    "kind": sector.kind,
+                    "open_strings": tuple(
+                        (
+                            line.fundamental_source_slot,
+                            *line.adjoint_source_slots,
+                            line.antifundamental_source_slot,
+                        )
+                        for line in sector.open_strings
+                    ),
+                    "sector_id": sector.sector_id,
+                    "trace_word": sector.trace_source_slots,
+                    "word": sector.word_source_slots,
+                }
+                for sector in sectors
+            ),
+        }
+    )
+
+
+def _closure_reflection_contract(
+    template_catalog: RecurrenceTemplateCatalog,
+    *,
+    required: bool,
+) -> tuple[ModelExactComplexRationalV1 | None, str | None]:
+    proofs = tuple(
+        proof
+        for proof in template_catalog.symmetry_proofs
+        if proof.proof_algorithm == "canonical-current-word-reversal-v1"
+    )
+    if not proofs:
+        if required:
+            raise RecurrenceProjectionError(
+                "folded LC trace reflections require an exact model "
+                "current-reflection proof"
+            )
+        return None, None
+    phases = {proof.exact_phase for proof in proofs}
+    if len(phases) != 1:
+        raise RecurrenceProjectionError(
+            "model current-reflection proofs carry inconsistent exact phases"
+        )
+    return next(iter(phases)), _digest(
+        {
+            "algorithm": "model-current-reflection-proof-set-v1",
+            "proofs": tuple(proof.to_dict() for proof in proofs),
+        }
     )
 
 
@@ -267,9 +369,7 @@ def _reachable_vertex_inventory(
     """Conservatively close the process species under allowed local vertices."""
 
     reachable = {
-        int(leg.outgoing_pdg)
-        for leg in process.legs
-        if leg.outgoing_pdg is not None
+        int(leg.outgoing_pdg) for leg in process.legs if leg.outgoing_pdg is not None
     }
     used: set[Vertex] = set()
     vertices = tuple(model.iter_vertices(color_accuracy=process.color_accuracy))
@@ -535,8 +635,8 @@ def _project_external_legs(
                 support_mask=support_mask,
             )
         )
-        if leg.label in selected:
-            requested = selected[int(leg.label)]
+        if selected_helicities is not None:
+            requested = selected.get(int(leg.label))
             retained = tuple(
                 index
                 for index, (
@@ -548,7 +648,7 @@ def _project_external_legs(
                     _momentum_sign,
                     _phase,
                 ) in enumerate(projected)
-                if helicity == requested
+                if requested is None or helicity == requested
             )
             if not retained:
                 available = tuple(sorted({item[2] for item in projected}))
@@ -760,23 +860,16 @@ def _project_physical_sectors(
         reflected = (word[0], *reversed(word[1:]))
         if reflected == tuple(word):
             continue
-        label_mapping = {
-            int(left): int(right) for left, right in zip(word, reflected, strict=True)
-        }
-        complete_mapping = {
-            int(leg.label): label_mapping.get(int(leg.label), int(leg.label))
-            for leg in process.legs
-        }
-        permutation = tuple(
-            slot_by_label[complete_mapping[int(leg.label)]] for leg in process.legs
-        )
         public_flows.append(
             RecurrencePublicLCFlowV1(
                 flow_id=len(public_flows),
                 public_id="flow:" + ",".join(str(int(label)) for label in reflected),
                 construction_sector_id=int(sector.id),
                 word_source_slots=slots(reflected, "reflected LC public color word"),
-                source_slot_permutation=permutation,
+                # Exact trace reflection changes only the ordered colour word.
+                # External states and momenta remain attached to their public
+                # labels; the reflection proof supplies the amplitude relation.
+                source_slot_permutation=identity_permutation,
             )
         )
     return tuple(result), tuple(public_flows)
@@ -893,6 +986,15 @@ def _project_replay_partitions(
             permutation = tuple(
                 source_slot_by_label[complete[int(leg.label)]] for leg in process.legs
             )
+            for representative_slot, target_slot in enumerate(permutation):
+                if (
+                    process.legs[representative_slot].side
+                    != process.legs[target_slot].side
+                ):
+                    raise RecurrenceProjectionError(
+                        "topology replay maps an external source across the "
+                        "initial/final crossing boundary"
+                    )
             sector = color_plan.sector(int(sector_id))
             if sector is None:
                 raise RecurrenceProjectionError(

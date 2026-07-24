@@ -133,6 +133,8 @@ class _ReplayTarget:
     representative_id: int
     source_permutation_start: int
     source_permutation_count: int
+    helicity_map_start: int
+    helicity_map_count: int
     phase_factor_id: int
     multiplicity: int
     selector_domain_id: int
@@ -235,6 +237,8 @@ class _RecurrenceExactSectionsV1:
     momentum_terms: tuple[_MomentumTerm, ...]
     replay_targets: tuple[_ReplayTarget, ...]
     source_permutations: tuple[int, ...]
+    replay_momentum_signs: tuple[int, ...]
+    replay_helicity_map: tuple[int, ...]
     amplitude_destinations: tuple[_AmplitudeDestination, ...]
     resolved_helicities: tuple[_ResolvedHelicity, ...]
     source_state_assignments: tuple[_SourceStateAssignment, ...]
@@ -302,9 +306,7 @@ def _parse_exact_sections(
         raise ArtifactError("recurrence exact sections select the wrong process")
     strategy = root.get("strategy")
     if strategy not in {"topology-replay", "all-flow-union"}:
-        raise CompatibilityError(
-            f"unsupported exact recurrence strategy {strategy!r}"
-        )
+        raise CompatibilityError(f"unsupported exact recurrence strategy {strategy!r}")
     counts = _row(root.get("counts"), 4, "recurrence exact counts")
     sections = _RecurrenceExactSectionsV1(
         process_id=process_id,
@@ -329,11 +331,26 @@ def _parse_exact_sections(
         momentum_terms=_rows(
             root, "momentum_terms", 2, _MomentumTerm, signed_fields={1}
         ),
-        replay_targets=_rows(root, "replay_targets", 7, _ReplayTarget),
+        replay_targets=_rows(root, "replay_targets", 9, _ReplayTarget),
         source_permutations=tuple(
             _integer(value, f"source permutation {index}")
             for index, value in enumerate(
                 _sequence(root.get("source_permutations"), "source permutations")
+            )
+        ),
+        replay_momentum_signs=tuple(
+            _integer(value, f"replay momentum sign {index}", minimum=-1)
+            for index, value in enumerate(
+                _sequence(
+                    root.get("replay_momentum_signs"),
+                    "replay momentum signs",
+                )
+            )
+        ),
+        replay_helicity_map=tuple(
+            _integer(value, f"replay helicity map {index}")
+            for index, value in enumerate(
+                _sequence(root.get("replay_helicity_map"), "replay helicity map")
             )
         ),
         amplitude_destinations=_rows(
@@ -546,6 +563,24 @@ def _validate_replay_sections(sections: _RecurrenceExactSectionsV1) -> None:
         raise ArtifactError(
             "recurrence replay permutation has incomplete source coverage"
         )
+    if len(sections.replay_momentum_signs) != len(sections.source_permutations) or any(
+        sign not in (-1, 1) for sign in sections.replay_momentum_signs
+    ):
+        raise ArtifactError(
+            "recurrence replay momentum signs do not match source permutations"
+        )
+    helicity_count = len(sections.resolved_helicities)
+    for target in sections.replay_targets:
+        mapped = sections.replay_helicity_map[
+            target.helicity_map_start : target.helicity_map_start
+            + target.helicity_map_count
+        ]
+        if len(mapped) != helicity_count or sorted(mapped) != list(
+            range(helicity_count)
+        ):
+            raise ArtifactError(
+                "recurrence replay helicity mapping is not a complete bijection"
+            )
     if (
         sections.source_dispatch_variants
         or sections.source_embeddings
@@ -560,7 +595,12 @@ def _validate_replay_sections(sections: _RecurrenceExactSectionsV1) -> None:
 
 
 def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
-    if sections.replay_targets or sections.source_permutations:
+    if (
+        sections.replay_targets
+        or sections.source_permutations
+        or sections.replay_momentum_signs
+        or sections.replay_helicity_map
+    ):
         raise ArtifactError("all-flow-union plan carries topology replay tables")
     if not sections.source_dispatch_variants:
         raise ArtifactError("all-flow-union plan has no source-dispatch variants")
@@ -574,10 +614,7 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
                 f"source-dispatch variant {index} references an absent source row"
             )
         source = sections.sources[variant.source_row_id]
-        if (
-            source.source_template_or_dispatch_domain
-            != variant.dispatch_domain_id
-        ):
+        if source.source_template_or_dispatch_domain != variant.dispatch_domain_id:
             raise ArtifactError(
                 f"source-dispatch variant {index} has the wrong dispatch domain"
             )
@@ -612,9 +649,7 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
                     f"source-dispatch variant {index} has an invalid embedding factor"
                 )
             factor = sections.exact_factors[embedding.exact_factor_id]
-            is_zero = (
-                factor.real_numerator == 0 and factor.imaginary_numerator == 0
-            )
+            is_zero = factor.real_numerator == 0 and factor.imaginary_numerator == 0
             if (embedding.source_component == DIRECT_NONE_U32) != is_zero:
                 raise ArtifactError(
                     f"source-dispatch variant {index} has an inconsistent "
@@ -635,9 +670,8 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
             if (
                 projection.source_component != source_component
                 or projection.full_component >= variant.embedding_count
-                or embeddings[
-                    projection.full_component
-                ].source_component != source_component
+                or embeddings[projection.full_component].source_component
+                != source_component
             ):
                 raise ArtifactError(
                     f"source-dispatch variant {index} projection is not inverse"
@@ -684,15 +718,11 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
                 raise ArtifactError(
                     f"resolved helicity {index} source rows are not ordered"
                 )
-            if selection.dispatch_variant_id >= len(
-                sections.source_dispatch_variants
-            ):
+            if selection.dispatch_variant_id >= len(sections.source_dispatch_variants):
                 raise ArtifactError(
                     f"resolved helicity {index} selects an absent source variant"
                 )
-            variant = sections.source_dispatch_variants[
-                selection.dispatch_variant_id
-            ]
+            variant = sections.source_dispatch_variants[selection.dispatch_variant_id]
             source = sections.sources[variant.source_row_id]
             if (
                 source.source_slot != source_slot
@@ -714,7 +744,7 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
         sections.public_flow_ids
     ):
         raise ArtifactError(
-            "all-flow-union destinations do not map one-to-one to public flows"
+            "all-flow-union destinations are not completely covered by public flows"
         )
 
 

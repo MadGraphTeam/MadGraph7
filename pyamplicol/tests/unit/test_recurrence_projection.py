@@ -34,6 +34,7 @@ from pyamplicol.models.recurrence_template import (
     ParameterTemplateV1,
     RecurrenceTemplateCatalog,
     SourceTemplateV1,
+    SymmetryProofV1,
 )
 from pyamplicol.processes.ir import (
     CanonicalProcessIR,
@@ -199,6 +200,39 @@ def _catalog(*, omit_particle: int | None = None) -> RecurrenceTemplateCatalog:
         current_states=states,
         sources=tuple(pair[0] for pair in source_pairs),
         evaluator_bindings=tuple(pair[1] for pair in source_pairs),
+    )
+
+
+def _catalog_with_reflection_phases(
+    *phases: int,
+) -> RecurrenceTemplateCatalog:
+    base = _catalog()
+    proofs = tuple(
+        SymmetryProofV1(
+            template_id=f"proof:current-reflection:{index}",
+            proof_algorithm="canonical-current-word-reversal-v1",
+            subject_template_ids=("state:g",),
+            input_permutation=(1, 0),
+            exact_phase=ExactComplexRationalV1.from_fractions(phase),
+            expression_digests=(_sha(f"reflection-expression:{index}"),),
+            witness_digest=_sha(f"reflection-witness:{index}"),
+        )
+        for index, phase in enumerate(phases)
+    )
+    return RecurrenceTemplateCatalog.create(
+        compiled_model_digest=base.header.compiled_model_digest,
+        prepared_kernel_pack_digest=base.header.prepared_kernel_pack_digest,
+        parameters=base.parameters,
+        current_states=base.current_states,
+        sources=base.sources,
+        quantum_flows=base.quantum_flows,
+        transitions=base.transitions,
+        propagators=base.propagators,
+        closures=base.closures,
+        color_contractions=base.color_contractions,
+        symmetry_proofs=proofs,
+        runtime_helicity_contracts=base.runtime_helicity_contracts,
+        evaluator_bindings=base.evaluator_bindings,
     )
 
 
@@ -495,9 +529,13 @@ def test_all_flow_union_retains_all_sectors_without_replay_partitions() -> None:
     )
 
     assert logical.selected_public_flow_ids is None
+    assert logical.selected_source_coverage is None
     assert tuple(sector.sector_id for sector in logical.physical_sectors) == (0, 1)
     assert logical.replay_partitions == ()
-    assert len(build_recurrence_builder_input_v1(logical).canonical_digest) == 64
+    encoded = build_recurrence_builder_input_v1(logical)
+    assert encoded.table("selected_public_flow_coverage").row_count == 0
+    assert encoded.table("selected_source_coverage").row_count == 0
+    assert len(encoded.canonical_digest) == 64
 
 
 def test_all_singlet_sector_uses_smallest_fermionic_source_as_closure_anchor() -> None:
@@ -655,7 +693,7 @@ def test_folded_trace_reflection_remains_a_public_runtime_flow() -> None:
     logical = project_recurrence_process_v1(
         process,
         plan,
-        _catalog(),
+        _catalog_with_reflection_phases(-1),
         layout="all-flow-union",
         normalization=_normalization(),
     )
@@ -668,7 +706,66 @@ def test_folded_trace_reflection_remains_a_public_runtime_flow() -> None:
         0,
         0,
     )
-    assert logical.public_flows[1].source_slot_permutation == (0, 3, 2, 1)
+    assert logical.public_flows[1].source_slot_permutation == (0, 1, 2, 3)
+    assert len(build_recurrence_builder_input_v1(logical).canonical_digest) == 64
+
+
+def test_folded_trace_reflection_rejects_missing_current_proof() -> None:
+    process = _pure_gluon_process()
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="lc",
+        sectors=(
+            LCColorSector(
+                id=0,
+                kind="single-trace",
+                trace_labels=(1, 2, 3, 4),
+                word_labels=(1, 2, 3, 4),
+            ),
+        ),
+        trace_reflections_folded=True,
+    )
+
+    with pytest.raises(
+        RecurrenceProjectionError,
+        match="folded LC trace reflections require an exact model",
+    ):
+        project_recurrence_process_v1(
+            process,
+            plan,
+            _catalog(),
+            layout="all-flow-union",
+            normalization=_normalization(),
+        )
+
+
+def test_folded_trace_reflection_rejects_inconsistent_exact_phases() -> None:
+    process = _pure_gluon_process()
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="lc",
+        sectors=(
+            LCColorSector(
+                id=0,
+                kind="single-trace",
+                trace_labels=(1, 2, 3, 4),
+                word_labels=(1, 2, 3, 4),
+            ),
+        ),
+        trace_reflections_folded=True,
+    )
+
+    with pytest.raises(
+        RecurrenceProjectionError,
+        match="inconsistent exact phases",
+    ):
+        project_recurrence_process_v1(
+            process,
+            plan,
+            _catalog_with_reflection_phases(-1, 1),
+            layout="topology-replay",
+            normalization=_normalization(),
+        )
 
 
 @pytest.mark.parametrize("flow_id", [0, 1])
@@ -690,7 +787,7 @@ def test_folded_trace_flows_can_be_specialized_independently(flow_id: int) -> No
     logical = project_recurrence_process_v1(
         process,
         plan,
-        _catalog(),
+        _catalog_with_reflection_phases(-1),
         layout="topology-replay",
         normalization=_normalization(),
         generation_slice=RecurrenceGenerationSliceV1(
@@ -825,16 +922,92 @@ def test_projection_rejects_missing_source_semantics_and_malformed_references() 
         )
 
 
-def test_union_rejects_generation_selected_flow() -> None:
+def test_union_projects_generation_selected_flow_and_partial_helicity() -> None:
     process = _process()
-    with pytest.raises(RecurrenceProjectionError, match="retain every public"):
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+        generation_slice=RecurrenceGenerationSliceV1(
+            selected_public_flow_ids=(1,),
+            # Initial-state crossing maps the catalog's -1 source to +1.
+            selected_source_helicities=((1, 1),),
+        ),
+    )
+    encoded = build_recurrence_builder_input_v1(logical)
+
+    assert logical.selected_public_flow_ids == (1,)
+    assert logical.selected_source_coverage is not None
+    assert tuple(row.source_slot for row in logical.selected_source_coverage) == (
+        0,
+        1,
+        2,
+        3,
+    )
+    assert logical.selected_source_coverage[0].source_state_indices == (1,)
+    assert all(
+        row.source_state_indices == (0, 1)
+        for row in logical.selected_source_coverage[1:]
+    )
+    assert tuple(
+        int(value)
+        for value in encoded.table("selected_public_flow_coverage").column("flow_id")
+    ) == (1,)
+    assert tuple(
+        (
+            int(source_slot),
+            int(state_index),
+        )
+        for source_slot, state_index in zip(
+            encoded.table("selected_source_coverage").column("source_slot"),
+            encoded.table("selected_source_coverage").column("source_state_index"),
+            strict=True,
+        )
+    ) == (
+        (0, 1),
+        (1, 0),
+        (1, 1),
+        (2, 0),
+        (2, 1),
+        (3, 0),
+        (3, 1),
+    )
+    assert int(encoded.table("header").column("selected_flow_mode")[0]) == 1
+    assert int(encoded.table("header").column("selected_source_mode")[0]) == 1
+
+
+@pytest.mark.parametrize(
+    ("generation_slice", "message"),
+    [
+        (
+            RecurrenceGenerationSliceV1(selected_public_flow_ids=(99,)),
+            "unknown public LC flows",
+        ),
+        (
+            RecurrenceGenerationSliceV1(selected_source_helicities=((99, 1),)),
+            "unknown source labels",
+        ),
+        (
+            RecurrenceGenerationSliceV1(selected_source_helicities=((1, 0),)),
+            "selected helicity 0 is unavailable",
+        ),
+    ],
+)
+def test_union_generation_specialization_fails_closed(
+    generation_slice: RecurrenceGenerationSliceV1,
+    message: str,
+) -> None:
+    process = _process()
+    with pytest.raises(RecurrenceProjectionError, match=message):
         project_recurrence_process_v1(
             process,
             _color_plan(process),
             _catalog(),
             layout="all-flow-union",
             normalization=_normalization(),
-            generation_slice=RecurrenceGenerationSliceV1(selected_public_flow_ids=(0,)),
+            generation_slice=generation_slice,
         )
 
 

@@ -25,16 +25,19 @@ def _recurrence_process() -> SimpleNamespace:
         process_id="d_dbar_to_z_g",
         color_accuracy="lc",
         external_pdgs=(1, -1, 23, 21),
-        recurrence_runtime_size_bytes=256,
-        recurrence_runtime_sha256=_digest("a"),
-        recurrence_runtime_member_count=1,
-        recurrence_runtime_unpacked_size_bytes=192,
-        recurrence_runtime_index_sha256=_digest("b"),
+        recurrence_schedule_size_bytes=256,
+        recurrence_schedule_sha256=_digest("a"),
+        recurrence_schedule_member_count=1,
+        recurrence_schedule_unpacked_size_bytes=192,
+        recurrence_schedule_index_sha256=_digest("b"),
         builder_input_sha256=_digest("c"),
         prepared_kernel_pack_digest=_digest("d"),
         direct_template_catalog_digest=_digest("e"),
         inspection_summary={
             "execution_mode": "recurrence",
+            "process_id": "d_dbar_to_z_g",
+            "semantic_digest": _digest("c"),
+            "schedule_digest": _digest("f"),
             "prepared_kernel_count": 2,
             "schedule": {
                 "source_row_count": 4,
@@ -57,6 +60,24 @@ def _recurrence_process() -> SimpleNamespace:
         point_tile_size=1024,
         workspace_mib=256,
         recurrence_summary={"lc_flow_layout": "topology-replay"},
+    )
+
+
+def _execution_manifest(process: SimpleNamespace | None = None) -> dict[str, object]:
+    process = process or _recurrence_process()
+    return artifact_writer._recurrence_execution_manifest(
+        process,
+        schedule_path=f"recurrence/schedules/{_digest('f')}/recurrence-runtime.pacbin",
+        binding={
+            "abi": "pyamplicol-recurrence-process-binding-v2",
+            "process_id": process.process_id,
+            "schedule_digest": _digest("f"),
+            "process_semantic_digest": _digest("c"),
+            "process_support_words": [1],
+            "path": "recurrence-binding.bin",
+            "size_bytes": 128,
+            "sha256": _digest("9"),
+        },
     )
 
 
@@ -102,7 +123,7 @@ def test_direct_recurrence_versions_replace_packet_abi() -> None:
 
 
 def test_recurrence_execution_manifest_publishes_only_direct_arena_contract() -> None:
-    manifest = artifact_writer._recurrence_execution_manifest(_recurrence_process())
+    manifest = _execution_manifest()
 
     assert manifest["builder_input_abi"] == versions.RECURRENCE_BUILDER_INPUT_ABI
     assert manifest["recurrence_plan_abi"] == versions.RECURRENCE_PLAN_ABI
@@ -121,9 +142,11 @@ def test_recurrence_execution_manifest_publishes_only_direct_arena_contract() ->
     assert plan["runtime_layout_abi"] == versions.RECURRENCE_RUNTIME_LAYOUT_ABI
     assert plan["prepared_kernel_pack_digest"] == _digest("d")
     assert plan["direct_template_catalog_digest"] == _digest("e")
-    container = plan["runtime_container"]
+    container = plan["runtime_schedule"]
     assert isinstance(container, dict)
-    assert container["plan_member_path"] == "plan/recurrence-direct-plan-v2.bin"
+    assert container["plan_member_path"] == (
+        "schedule/recurrence-direct-schedule-v2.bin"
+    )
     encoded = json.dumps(manifest)
     assert "pyamplicol-recurrence-plan-v1" not in encoded
     assert "pyamplicol-recurrence-runtime-layout-v1" not in encoded
@@ -196,7 +219,9 @@ def test_recurrence_physics_identifies_direct_plan_and_runtime_layout() -> None:
     reduction = extensions["recurrence_runtime_reduction"]
     assert isinstance(reduction, dict)
     assert reduction["kind"] == "pyamplicol-recurrence-native-reduction-v2"
-    assert reduction["plan_member_path"] == "plan/recurrence-direct-plan-v2.bin"
+    assert reduction["plan_member_path"] == (
+        "schedule/recurrence-direct-schedule-v2.bin"
+    )
 
 
 def test_inspection_rejects_retired_recurrence_before_strict_manifest_load(
@@ -222,7 +247,7 @@ def test_inspection_rejects_retired_recurrence_before_strict_manifest_load(
 
 def test_direct_recurrence_inspection_exposes_arena_counters(tmp_path: Path) -> None:
     _write_prepared_pack(tmp_path)
-    execution = artifact_writer._recurrence_execution_manifest(_recurrence_process())
+    execution = _execution_manifest()
     result = inspection._recurrence_execution_inspection(
         SimpleNamespace(root=tmp_path),
         execution,
@@ -248,7 +273,7 @@ def test_inspection_requires_v2_metadata_without_packet_fallback(
     tmp_path: Path,
 ) -> None:
     _write_prepared_pack(tmp_path)
-    execution = artifact_writer._recurrence_execution_manifest(_recurrence_process())
+    execution = _execution_manifest()
     execution["recurrence_plan_abi"] = "pyamplicol-recurrence-plan-v1"
 
     with pytest.raises(ArtifactError, match="regenerate the recurrence artifact"):
@@ -264,7 +289,7 @@ def test_v2_inspection_tolerates_pending_direct_counter_wiring(
     _write_prepared_pack(tmp_path)
     process = _recurrence_process()
     process.inspection_summary.pop("direct_arena")
-    execution = artifact_writer._recurrence_execution_manifest(process)
+    execution = _execution_manifest(process)
 
     result = inspection._recurrence_execution_inspection(
         SimpleNamespace(root=tmp_path),

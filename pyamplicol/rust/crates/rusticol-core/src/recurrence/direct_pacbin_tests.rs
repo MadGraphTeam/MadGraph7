@@ -30,14 +30,14 @@ fn direct_pacbin_round_trips_with_one_aligned_indexed_member() {
     assert_eq!(load_recurrence_direct_plan_pacbin(&path).unwrap(), plan);
 
     let reader = PacbinReader::open(&path).unwrap();
-    let member = reader.member(RECURRENCE_DIRECT_PLAN_MEMBER).unwrap();
+    let member = reader.member(RECURRENCE_DIRECT_SCHEDULE_MEMBER).unwrap();
     assert_eq!(member.kind(), PacbinMemberKind::RecurrenceDirectPlan);
     assert_eq!(member.offset() % 64, 0);
     assert_eq!(member.length(), metadata.plan_payload_size);
     assert_eq!(member.sha256(), &metadata.plan_sha256);
     assert_eq!(
         reader
-            .member_range(RECURRENCE_DIRECT_PLAN_MEMBER, 0, 8)
+            .member_range(RECURRENCE_DIRECT_SCHEDULE_MEMBER, 0, 8)
             .unwrap(),
         b"PACRDAP2"
     );
@@ -69,7 +69,7 @@ fn direct_pacbin_rejects_truncation_and_payload_corruption() {
     let reader = PacbinReader::open(&path).unwrap();
     let payload_offset = usize::try_from(
         reader
-            .member(RECURRENCE_DIRECT_PLAN_MEMBER)
+            .member(RECURRENCE_DIRECT_SCHEDULE_MEMBER)
             .unwrap()
             .offset(),
     )
@@ -111,7 +111,7 @@ fn direct_pacbin_rejects_wrong_member_kind_and_extra_members() {
     write_pacbin_atomic(
         &path,
         [PacbinWriteMember::from_bytes(
-            RECURRENCE_DIRECT_PLAN_MEMBER,
+            RECURRENCE_DIRECT_SCHEDULE_MEMBER,
             PacbinMemberKind::EagerRuntimeTable,
             &payload,
         )
@@ -130,7 +130,7 @@ fn direct_pacbin_rejects_wrong_member_kind_and_extra_members() {
         &path,
         [
             PacbinWriteMember::from_bytes(
-                RECURRENCE_DIRECT_PLAN_MEMBER,
+                RECURRENCE_DIRECT_SCHEDULE_MEMBER,
                 PacbinMemberKind::RecurrenceDirectPlan,
                 &payload,
             )

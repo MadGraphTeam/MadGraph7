@@ -125,6 +125,10 @@ from .recurrence_projection import (
     RecurrenceGenerationSliceV1,
     project_recurrence_process_v1,
 )
+from .recurrence_schedule_sharing import (
+    RecurrenceScheduleLoweringCache,
+    recurrence_schedule_semantic_digest,
+)
 from .recurrence_template_columnar import (
     RECURRENCE_TEMPLATE_INPUT_ABI,
     RecurrenceTemplateInputV1,
@@ -179,17 +183,9 @@ def _post_build_validation_slices(
         return (("complete", (), ()),)
 
     helicity = next(
-        (
-            item
-            for item in helicities
-            if item.computed and not item.structural_zero
-        ),
+        (item for item in helicities if item.computed and not item.structural_zero),
         next(
-            (
-                item
-                for item in helicities
-                if not item.structural_zero
-            ),
+            (item for item in helicities if not item.structural_zero),
             helicities[0],
         ),
     )
@@ -200,20 +196,14 @@ def _post_build_validation_slices(
 
     if color_flows:
         color_flow = next(
-            (
-                item
-                for item in color_flows
-                if item.computed
-            ),
+            (item for item in color_flows if item.computed),
             color_flows[0],
         )
         color_flow_ids = (str(color_flow.id),)
         if sample_count * len(helicities) <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
             slices.append(("selected-flow", (), color_flow_ids))
         if not slices:
-            slices.append(
-                ("selected-helicity-and-flow", helicity_ids, color_flow_ids)
-            )
+            slices.append(("selected-helicity-and-flow", helicity_ids, color_flow_ids))
     elif not slices:
         slices.append(("selected-helicity", helicity_ids, ()))
     return tuple(slices)
@@ -254,14 +244,10 @@ def _recurrence_validation_selector_cases(
     color_flows = tuple(physics.color_flows)
     helicities = tuple(physics.helicities)
     live_helicities = tuple(
-        helicity
-        for helicity in helicities
-        if not helicity.structural_zero
+        helicity for helicity in helicities if not helicity.structural_zero
     )
     structural_zeros = tuple(
-        helicity
-        for helicity in helicities
-        if helicity.structural_zero
+        helicity for helicity in helicities if helicity.structural_zero
     )
     color_ids = _spread_selector_ids(color_flows)
     helicity_ids = _spread_selector_ids(live_helicities)
@@ -289,7 +275,7 @@ def _recurrence_validation_selector_cases(
                     "helicities": (helicity_ids[0],),
                 },
             )
-    )
+        )
     if color_ids and structural_zeros:
         zero_id = str(structural_zeros[0].id)
         cases.append(
@@ -320,6 +306,7 @@ class _RustRecurrenceLoweringBinding(Protocol):
         template_input: RecurrenceTemplateInputV1,
         direct_template_catalog_json: bytes,
         prepared_kernel_pack_digest: str,
+        schedule_semantic_digest: str,
         destination: str,
         /,
         *,
@@ -421,6 +408,7 @@ def _invoke_rust_recurrence_lowering_v2(
     template_input: RecurrenceTemplateInputV1,
     direct_template_catalog: RecurrenceDirectTemplateCatalogV1,
     prepared_kernel_pack_digest: str,
+    schedule_semantic_digest: str,
     destination: Path,
     *,
     point_tile_size: int,
@@ -459,6 +447,7 @@ def _invoke_rust_recurrence_lowering_v2(
                 sort_keys=True,
             ).encode("ascii"),
             prepared_kernel_pack_digest,
+            schedule_semantic_digest,
             os.fspath(destination),
             point_tile_size=point_tile_size,
             workspace_mib=workspace_mib,
@@ -1752,6 +1741,9 @@ class GenerationBackend:
             )
             try:
                 indexed = tuple(enumerate(expanded))
+                lowering_cache = RecurrenceScheduleLoweringCache[
+                    _RustRecurrenceLoweringOutput
+                ]()
                 with reporter.phase(
                     "recurrence-construction",
                     "Constructing compact process recurrences",
@@ -1766,6 +1758,7 @@ class GenerationBackend:
                             temporary_root,
                             index=item[0],
                             phase=phase,
+                            lowering_cache=lowering_cache,
                         ),
                         executor=executor,
                         max_in_flight=worker_count,
@@ -2258,6 +2251,7 @@ class GenerationBackend:
         *,
         index: int,
         phase: PhaseHandle,
+        lowering_cache: RecurrenceScheduleLoweringCache[_RustRecurrenceLoweringOutput],
     ) -> _GeneratedRecurrenceProcess:
         process_name = expanded.request.name
         with phase.child(
@@ -2325,6 +2319,20 @@ class GenerationBackend:
                 },
             )
             builder_input = build_recurrence_builder_input_v1(logical)
+            run = self._run_config
+            if run is None:  # pragma: no cover - recurrence requires RunConfig
+                raise GenerationError(
+                    "recurrence generation has no evaluator configuration"
+                )
+            candidate_schedule_digest = recurrence_schedule_semantic_digest(
+                logical,
+                prepared_kernel_pack_digest=(model_inputs.prepared_kernel_pack_digest),
+                direct_template_catalog_digest=(
+                    model_inputs.direct_template_catalog.catalog_digest
+                ),
+                point_tile_size=run.evaluator.recurrence.point_tile_size,
+                workspace_mib=run.evaluator.recurrence.workspace_mib,
+            )
             task.update(
                 2,
                 message="Rust recurrence builder",
@@ -2349,9 +2357,7 @@ class GenerationBackend:
                     progress_index = int(
                         details.get("phase_index", native_task.completed)
                     )
-                    progress_total = int(
-                        details.get("phase_total", native_phase_total)
-                    )
+                    progress_total = int(details.get("phase_total", native_phase_total))
                     contribution_count = int(details.get("contribution_count", 0))
                     display_details = {
                         "process": process_name,
@@ -2384,26 +2390,33 @@ class GenerationBackend:
                         details=display_details,
                     )
 
-                run = self._run_config
-                if run is None:  # pragma: no cover - recurrence requires RunConfig
-                    raise GenerationError(
-                        "recurrence generation has no evaluator configuration"
-                    )
-                output = _invoke_rust_recurrence_lowering_v2(
-                    builder_input,
-                    model_inputs.template_input,
-                    model_inputs.direct_template_catalog,
-                    model_inputs.prepared_kernel_pack_digest,
-                    temporary_root
-                    / "recurrence-plan-v2"
-                    / process_name
-                    / "recurrence-runtime.pacbin",
-                    point_tile_size=run.evaluator.recurrence.point_tile_size,
-                    workspace_mib=run.evaluator.recurrence.workspace_mib,
-                    progress_callback=(
-                        report_native if native_task.sink is not None else None
+                shared = lowering_cache.lower_process(
+                    logical,
+                    schedule_digest=candidate_schedule_digest,
+                    direct_executor_count=len(
+                        model_inputs.direct_template_catalog.templates
+                    ),
+                    parameter_slot_count=len(model_inputs.catalog.parameters),
+                    lower=lambda: _invoke_rust_recurrence_lowering_v2(
+                        builder_input,
+                        model_inputs.template_input,
+                        model_inputs.direct_template_catalog,
+                        model_inputs.prepared_kernel_pack_digest,
+                        candidate_schedule_digest,
+                        temporary_root
+                        / "recurrence-schedules"
+                        / candidate_schedule_digest
+                        / "recurrence-runtime.pacbin",
+                        point_tile_size=(run.evaluator.recurrence.point_tile_size),
+                        workspace_mib=run.evaluator.recurrence.workspace_mib,
+                        progress_callback=(
+                            report_native if native_task.sink is not None else None
+                        ),
                     ),
                 )
+                output = shared.output
+                schedule_digest = shared.schedule_digest
+                process_remap = shared.remap
             task.update(
                 3,
                 message="compact recurrence runtime ready",
@@ -2432,12 +2445,15 @@ class GenerationBackend:
             )
             for sample_index in range(sample_count)
         )
+        resolved_helicities = process_remap.remap_resolved_helicities(
+            output.resolved_helicities
+        )
         physics = build_recurrence_physics(
             expanded.process_ir,
             logical,
             model_inputs.catalog,
             process_id=process_name,
-            resolved_helicities=output.resolved_helicities,
+            resolved_helicities=resolved_helicities,
             normalization=normalization_payload,
         )
         run = self._run_config
@@ -2463,6 +2479,10 @@ class GenerationBackend:
                 else 0
             ),
         }
+        inspection_summary = dict(output.inspection_summary)
+        inspection_summary["process_id"] = process_name
+        inspection_summary["semantic_digest"] = builder_input.digest
+        inspection_summary["schedule_digest"] = schedule_digest
         artifact = RecurrenceProcessArtifact(
             process_id=process_name,
             expression=expanded.process_ir.process,
@@ -2473,19 +2493,20 @@ class GenerationBackend:
             ),
             aliases=expanded.aliases,
             physics=physics,
-            recurrence_runtime_path=output.payload_path,
-            recurrence_runtime_size_bytes=output.payload_size_bytes,
-            recurrence_runtime_sha256=output.payload_sha256,
-            recurrence_runtime_member_count=output.member_count,
-            recurrence_runtime_unpacked_size_bytes=output.unpacked_size_bytes,
-            recurrence_runtime_index_sha256=output.index_sha256,
+            recurrence_schedule_path=output.payload_path,
+            recurrence_schedule_digest=schedule_digest,
+            recurrence_schedule_size_bytes=output.payload_size_bytes,
+            recurrence_schedule_sha256=output.payload_sha256,
+            recurrence_schedule_member_count=output.member_count,
+            recurrence_schedule_unpacked_size_bytes=output.unpacked_size_bytes,
+            recurrence_schedule_index_sha256=output.index_sha256,
             builder_input_sha256=builder_input.digest,
             prepared_kernel_pack_digest=model_inputs.prepared_kernel_pack_digest,
             direct_template_catalog_digest=(
                 model_inputs.direct_template_catalog.catalog_digest
             ),
             referenced_kernel_ids=recurrence_referenced_kernel_ids(logical),
-            inspection_summary=output.inspection_summary,
+            inspection_summary=inspection_summary,
             runtime_metadata=build_recurrence_runtime_metadata(
                 logical,
                 model_inputs.catalog,
@@ -2500,6 +2521,8 @@ class GenerationBackend:
                 "lc_flow_layout": layout,
                 "recurrence": recurrence_summary,
             },
+            process_support_mask=1 << index,
+            recurrence_process_remap=process_remap,
         )
         return _GeneratedRecurrenceProcess(
             expanded=expanded,
@@ -3310,16 +3333,8 @@ class GenerationBackend:
                         (
                             validation_slice,
                             {
-                                **(
-                                    {"helicities": helicities}
-                                    if helicities
-                                    else {}
-                                ),
-                                **(
-                                    {"color_flows": color_flows}
-                                    if color_flows
-                                    else {}
-                                ),
+                                **({"helicities": helicities} if helicities else {}),
+                                **({"color_flows": color_flows} if color_flows else {}),
                             },
                         )
                         for validation_slice, helicities, color_flows in (
@@ -4135,10 +4150,11 @@ class GenerationBackend:
         incompatible: list[str] = []
         if selection.max_color_sectors is not None:
             incompatible.append("process.max_color_sectors")
-        if selection.selected_color_sector_ids is not None:
-            incompatible.append("process.selected_color_sector_ids")
-        if selection.selected_source_helicities is not None:
-            incompatible.append("process.selected_source_helicities")
+        if not self._recurrence_execution_enabled:
+            if selection.selected_color_sector_ids is not None:
+                incompatible.append("process.selected_color_sector_ids")
+            if selection.selected_source_helicities is not None:
+                incompatible.append("process.selected_source_helicities")
         if incompatible:
             raise GenerationError(
                 "color.lc_flow_layout='all-flow-union' requires complete runtime "

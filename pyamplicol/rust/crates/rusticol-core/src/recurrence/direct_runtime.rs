@@ -110,6 +110,8 @@ pub struct DirectReplaySelectorPlan {
     public_flow_id: u32,
     representative_flow_id: u32,
     source_permutation: Box<[u32]>,
+    source_momentum_signs: Box<[i32]>,
+    helicity_map: Box<[u32]>,
     phase_re: f64,
     phase_im: f64,
     multiplicity: u32,
@@ -153,8 +155,8 @@ impl DirectReplaySelectorPlan {
             .copied()
     }
 
-    pub(crate) fn source_permutation(&self) -> &[u32] {
-        &self.source_permutation
+    pub(crate) fn helicity_map(&self) -> &[u32] {
+        &self.helicity_map
     }
 
     fn identity(&self) -> DirectReplaySelectorIdentity {
@@ -464,6 +466,49 @@ impl DirectRecurrenceExecutionRuntime {
                 ))
             })?;
         source_permutation.extend_from_slice(permutation);
+        let momentum_signs = self
+            .plan
+            .replay_momentum_signs()
+            .get(start..end)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "direct recurrence replay momentum-sign map is out of bounds",
+                )
+            })?;
+        let mut source_momentum_signs = Vec::new();
+        source_momentum_signs
+            .try_reserve_exact(momentum_signs.len())
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not allocate direct recurrence replay momentum signs: {error}"
+                ))
+            })?;
+        source_momentum_signs.extend_from_slice(momentum_signs);
+        let helicity_start = usize::try_from(target.helicity_map_start).map_err(|_| {
+            RusticolError::integrity("direct recurrence replay helicity-map start exceeds usize")
+        })?;
+        let helicity_count = usize::try_from(target.helicity_map_count).map_err(|_| {
+            RusticolError::integrity("direct recurrence replay helicity-map count exceeds usize")
+        })?;
+        let helicity_end = helicity_start.checked_add(helicity_count).ok_or_else(|| {
+            RusticolError::integrity("direct recurrence replay helicity-map range overflows usize")
+        })?;
+        let mapped_helicities = self
+            .plan
+            .replay_helicity_map()
+            .get(helicity_start..helicity_end)
+            .ok_or_else(|| {
+                RusticolError::integrity("direct recurrence replay helicity map is out of bounds")
+            })?;
+        let mut helicity_map = Vec::new();
+        helicity_map
+            .try_reserve_exact(mapped_helicities.len())
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not allocate direct recurrence replay helicity map: {error}"
+                ))
+            })?;
+        helicity_map.extend_from_slice(mapped_helicities);
 
         let phase = *self
             .plan
@@ -477,6 +522,8 @@ impl DirectRecurrenceExecutionRuntime {
             public_flow_id,
             representative_flow_id: target.representative_id,
             source_permutation: source_permutation.into_boxed_slice(),
+            source_momentum_signs: source_momentum_signs.into_boxed_slice(),
+            helicity_map: helicity_map.into_boxed_slice(),
             phase_re: phase.real().numerator() as f64 / phase.real().denominator() as f64,
             phase_im: phase.imag().numerator() as f64 / phase.imag().denominator() as f64,
             multiplicity: target.multiplicity,
@@ -632,7 +679,18 @@ impl DirectRecurrenceExecutionRuntime {
                                 )
                             })? as usize;
                         let source = (point * source_count + external_slot) * 4 + component;
-                        value += f64::from(term.coefficient) * external_four_momenta[source];
+                        let replay_sign = selector
+                            .source_momentum_signs
+                            .get(term.source_slot as usize)
+                            .copied()
+                            .ok_or_else(|| {
+                                RusticolError::integrity(
+                                    "direct recurrence momentum term sign is outside the replay mapping",
+                                )
+                            })?;
+                        value += f64::from(term.coefficient)
+                            * f64::from(replay_sign)
+                            * external_four_momenta[source];
                     }
                     momenta[destination_start + point] = value;
                 }
@@ -1251,6 +1309,11 @@ impl DirectRecurrenceExecutionRuntime {
         if selector.source_permutation.len() != self.plan.external_source_count() as usize {
             return Err(RusticolError::integrity(
                 "direct recurrence replay selector source permutation has an inconsistent length",
+            ));
+        }
+        if selector.source_momentum_signs.len() != selector.source_permutation.len() {
+            return Err(RusticolError::integrity(
+                "direct recurrence replay selector has inconsistent momentum-sign coverage",
             ));
         }
         Ok(())

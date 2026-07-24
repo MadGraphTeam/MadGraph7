@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -24,6 +25,9 @@ from pyamplicol.generation.dag_algorithms import (
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_types import GenericDAG, InteractionNode
 from pyamplicol.generation.progress import PhaseHandle
+from pyamplicol.generation.recurrence_schedule_sharing import (
+    RecurrenceScheduleLoweringCache,
+)
 from pyamplicol.generation.runtime_schema import build_runtime_expression_schema
 from pyamplicol.generation.service import (
     GenerationBackend,
@@ -174,6 +178,7 @@ def test_compiled_all_flow_union_is_the_only_materialized_execution_lane() -> No
     assert evaluator.color_selector_lanes == ()
 
 
+@pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
 @pytest.mark.parametrize(
     "process",
     (
@@ -184,12 +189,14 @@ def test_compiled_all_flow_union_is_the_only_materialized_execution_lane() -> No
 )
 def test_all_flow_union_rejects_generation_selected_coverage(
     process: ProcessConfig,
+    execution_mode: str,
 ) -> None:
     backend = GenerationBackend(
         RunConfig(
             action="generate",
             process=process,
             color=ColorConfig(lc_flow_layout="all-flow-union"),
+            evaluator=EvaluatorConfig(execution_mode=execution_mode),
         ),
         None,
     )
@@ -199,6 +206,131 @@ def test_all_flow_union_rejects_generation_selected_coverage(
         match="requires complete runtime flow and helicity coverage",
     ):
         backend._compile_concrete_process(
+            build_process_ir("d d~ > z g g"),
+            BuiltinSMModel(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("process_config", "expected_flows", "expected_helicities"),
+    (
+        (ProcessConfig(), None, None),
+        (ProcessConfig(selected_color_sector_ids=(1,)), (1,), None),
+        (
+            ProcessConfig(
+                selected_source_helicities={
+                    "1": -1,
+                    "2": 1,
+                    "3": -1,
+                    "4": 1,
+                    "5": -1,
+                }
+            ),
+            None,
+            ((1, -1), (2, 1), (3, -1), (4, 1), (5, -1)),
+        ),
+        (
+            ProcessConfig(
+                selected_color_sector_ids=(1,),
+                selected_source_helicities={
+                    "1": -1,
+                    "2": 1,
+                    "3": -1,
+                    "4": 1,
+                    "5": -1,
+                },
+            ),
+            (1,),
+            ((1, -1), (2, 1), (3, -1), (4, 1), (5, -1)),
+        ),
+    ),
+)
+def test_recurrence_all_flow_union_forwards_generation_selected_coverage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    process_config: ProcessConfig,
+    expected_flows: tuple[int, ...] | None,
+    expected_helicities: tuple[tuple[int, int], ...] | None,
+) -> None:
+    class _StopBeforeNativeLowering(Exception):
+        pass
+
+    expression = "d d~ > z g g"
+    process = build_process_ir(expression)
+    slices: list[object] = []
+    logical = SimpleNamespace(
+        external_legs=(1, 2, 3, 4, 5),
+        physical_sectors=(0, 1),
+        public_flows=(
+            SimpleNamespace(flow_id=0, construction_sector_id=0),
+            SimpleNamespace(flow_id=1, construction_sector_id=1),
+        ),
+        replay_partitions=(),
+    )
+
+    def fake_project(*_args: object, generation_slice: object, **_kwargs: object):
+        slices.append(generation_slice)
+        return logical
+
+    def stop_before_native_lowering(_logical: object) -> None:
+        raise _StopBeforeNativeLowering
+
+    monkeypatch.setattr(
+        service_module,
+        "project_recurrence_process_v1",
+        fake_project,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "build_recurrence_builder_input_v1",
+        stop_before_native_lowering,
+    )
+
+    backend = GenerationBackend(
+        RunConfig(
+            action="generate",
+            process=process_config,
+            color=ColorConfig(lc_flow_layout="all-flow-union"),
+            evaluator=EvaluatorConfig(execution_mode="recurrence"),
+        ),
+        None,
+    )
+
+    with pytest.raises(_StopBeforeNativeLowering):
+        backend._construct_recurrence_artifact(
+            service_module._ExpandedProcess(
+                request=ProcessRequest.parse(expression, name="recurrence_union"),
+                process_ir=process,
+            ),
+            BuiltinSMModel(),
+            SimpleNamespace(catalog=object()),
+            tmp_path,
+            index=0,
+            phase=PhaseHandle("test", None, 1),
+            lowering_cache=RecurrenceScheduleLoweringCache(),
+        )
+
+    generation_slice = slices[-1]
+    assert generation_slice.selected_public_flow_ids == expected_flows
+    assert generation_slice.selected_source_helicities == expected_helicities
+
+
+def test_recurrence_all_flow_union_rejects_truncated_color_coverage() -> None:
+    backend = GenerationBackend(
+        RunConfig(
+            action="generate",
+            process=ProcessConfig(max_color_sectors=1),
+            color=ColorConfig(lc_flow_layout="all-flow-union"),
+            evaluator=EvaluatorConfig(execution_mode="recurrence"),
+        ),
+        None,
+    )
+
+    with pytest.raises(
+        GenerationError,
+        match="requires complete runtime flow and helicity coverage",
+    ):
+        backend._prepare_process_construction(
             build_process_ir("d d~ > z g g"),
             BuiltinSMModel(),
         )
