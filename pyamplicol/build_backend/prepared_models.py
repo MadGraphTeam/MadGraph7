@@ -472,11 +472,7 @@ def _validate_dependency_contract(
         release = tomllib.load(stream)
     symbolica_version = release["symbolica"]["python_version"]
     if mode == "candidate":
-        with (overlay / "dependencies" / "contributor-lock.toml").open(
-            "rb"
-        ) as stream:
-            contributor = tomllib.load(stream)
-        symbolica_version = contributor["symbolica"]["candidate_version"]
+        symbolica_version = _cargo_package_version(overlay, "symbolica")
     expected = {
         "symbolica_version": symbolica_version,
         "ufo_model_loader_version": release["ufo_model_loader"]["required_version"],
@@ -509,6 +505,10 @@ def _validate_dependency_contract(
 
 
 def _symjit_version(overlay: Path) -> str:
+    return _cargo_package_version(overlay, "symjit")
+
+
+def _cargo_package_version(overlay: Path, package_name: str) -> str:
     with (overlay / "Cargo.lock").open("rb") as stream:
         cargo_lock = tomllib.load(stream)
     packages = cargo_lock.get("package")
@@ -517,11 +517,13 @@ def _symjit_version(overlay: Path) -> str:
     matches = [
         package.get("version")
         for package in packages
-        if isinstance(package, dict) and package.get("name") == "symjit"
+        if isinstance(package, dict) and package.get("name") == package_name
     ]
     if len(matches) != 1:
-        raise RuntimeError("Cargo.lock must contain exactly one SymJIT package")
-    return _required_string(matches[0], "Cargo.lock SymJIT version")
+        raise RuntimeError(
+            f"Cargo.lock must contain exactly one {package_name} package"
+        )
+    return _required_string(matches[0], f"Cargo.lock {package_name} version")
 
 
 def _expected_package_version(overlay: Path, mode: str) -> str:
