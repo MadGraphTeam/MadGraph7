@@ -33,6 +33,7 @@ from pyamplicol.models.prepared_catalog import (
     build_prepared_kernel_catalog,
 )
 from pyamplicol.models.recurrence_catalog_builder import (
+    _canonical_transition_alias_key,
     build_recurrence_template_catalog,
 )
 from pyamplicol.models.recurrence_template import (
@@ -191,6 +192,113 @@ def test_direct_closure_mirror_aliases_are_not_double_counted() -> None:
 
     assert aliases
     assert set(aliases.values()) == {1}
+
+
+def test_verified_auxiliary_transition_mirrors_are_not_double_counted() -> None:
+    model = BuiltinSMModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+
+    transitions = tuple(
+        transition
+        for transition in catalog.transitions
+        if transition.equivalence_class == "builtin-sm:tensor-vector-to-vector"
+    )
+
+    # Three exact quantum-flow variants remain.  Their mirrored (g, aux) and
+    # (aux, g) model bindings are one certified contribution each, not six
+    # independently accumulated recurrence rows.
+    assert len(transitions) == 3
+    assert {
+        transition.canonical_input_order for transition in transitions
+    } == {(0, 1)}
+
+
+def test_concatenate_keep_alias_retains_canonical_parent_order() -> None:
+    one = ExactComplexRationalV1.one()
+
+    def concrete_pair(
+        canonical: tuple[object, object],
+        order: tuple[int, int],
+    ) -> tuple[object, object]:
+        concrete: list[object] = [None, None]
+        for canonical_index, concrete_index in enumerate(order):
+            concrete[concrete_index] = canonical[canonical_index]
+        return concrete[0], concrete[1]
+
+    def alias_key(order: tuple[int, int]) -> str:
+        input_states = concrete_pair(("left", "right"), order)
+        input_spins = concrete_pair((-1, 1), order)
+        input_flavours = concrete_pair(((1,), (2,)), order)
+        input_quantum = concrete_pair(
+            ((("charge", "left"),), (("charge", "right"),)),
+            order,
+        )
+        representations = concrete_pair((3, -3), order)
+        shape_kinds = concrete_pair(("open-left", "open-right"), order)
+        momentum = concrete_pair(("incoming-left", "incoming-right"), order)
+        return _canonical_transition_alias_key(
+            binding=SimpleNamespace(canonical_input_order=order),
+            kernel=SimpleNamespace(
+                canonical_signature="callable",
+                contract_kind="vertex",
+            ),
+            flow=SimpleNamespace(
+                input_state_template_ids=input_states,
+                input_spin_states=input_spins,
+                input_flavour_flows=input_flavours,
+                input_quantum_number_flows=input_quantum,
+                flavour_flow_operation="constant-result",
+                result_flavour_flow=(3,),
+                quantum_number_flow_operation="constant-result",
+                coupling_orders=(("QCD", 1),),
+                result_state_template_id="result",
+                result_spin_state=0,
+                result_quantum_number_flow=(("charge", "result"),),
+                exact_coupling=one,
+            ),
+            color=SimpleNamespace(
+                rule_kind="ordered-open-strings",
+                input_representations=representations,
+                output_representation=8,
+                ordered_open_string_arity=2,
+                nc_polynomial=((0, one),),
+                exact_coefficient=one,
+                transition_witnesses=(
+                    SimpleNamespace(
+                        input_shape_kinds=shape_kinds,
+                        input_permutation=(0, 1),
+                        reverse_parent_mask=0,
+                        component_operation="concatenate-keep",
+                        result_component_kind="open-string",
+                        result_component_role="none",
+                        result_shape_kind="open-string",
+                        exact_factor=one,
+                        input_port_pairings=(),
+                        result_port_bindings=(),
+                    ),
+                ),
+            ),
+            transition=SimpleNamespace(
+                input_state_template_ids=input_states,
+                result_state_template_id="result",
+                momentum_convention=momentum,
+                coupling_parameter_ids=(),
+                coupling_orders=(("QCD", 1),),
+                binding_coupling=one,
+                exact_factor=one,
+                output_factor_source="transition",
+                equivalence_class="test",
+                input_exchange_factor=None,
+                output_projection=None,
+            ),
+        )
+
+    assert alias_key((0, 1)) != alias_key((1, 0))
 
 
 class _ComplexParameterModel(_ParameterModel):

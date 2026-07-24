@@ -41,6 +41,13 @@ from .._internal.versions import (
     EVALUATOR_RUNTIME_CAPABILITIES,
     PROCESS_ARTIFACT_SCHEMA_VERSION,
     PYTHON_API_VERSION,
+    RECURRENCE_BUILDER_INPUT_ABI,
+    RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+    RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    RECURRENCE_DIRECT_BACKEND_ABI,
+    RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RECURRENCE_PLAN_ABI,
+    RECURRENCE_RUNTIME_LAYOUT_ABI,
     RUNTIME_PHYSICS_SCHEMA_VERSION,
     SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
@@ -101,6 +108,13 @@ EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
 EAGER_RUNTIME_STORAGE_ABI = "pacbin-v1"
 _EAGER_RUNTIME_CONTAINER_PATH = "eager-runtime.pacbin"
 _MAX_EAGER_EXECUTION_SUMMARY_BYTES = 1 << 20
+RECURRENCE_RUNTIME_KIND = "pyamplicol-runtime-recurrence-execution"
+RECURRENCE_RUNTIME_CONTAINER_KIND = "pyamplicol-recurrence-runtime-container"
+RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
+RECURRENCE_RUNTIME_STORAGE_ABI = "pacbin-v1"
+_RECURRENCE_RUNTIME_CONTAINER_PATH = "recurrence-runtime.pacbin"
+_RECURRENCE_DIRECT_PLAN_MEMBER_PATH = "plan/recurrence-direct-plan-v2.bin"
+_MAX_RECURRENCE_EXECUTION_SUMMARY_BYTES = 1 << 20
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
     {
@@ -200,8 +214,40 @@ class EagerPlanV3ProcessArtifact:
     generation_filters: Mapping[str, object]
 
 
+@dataclass(frozen=True, slots=True)
+class RecurrenceProcessArtifact:
+    """One compact recurrence runtime plus bounded public metadata."""
+
+    process_id: str
+    expression: str
+    color_accuracy: str
+    external_pdgs: tuple[int, ...]
+    aliases: tuple[Mapping[str, object], ...]
+    physics: Mapping[str, object]
+    recurrence_runtime_path: Path
+    recurrence_runtime_size_bytes: int
+    recurrence_runtime_sha256: str
+    recurrence_runtime_member_count: int
+    recurrence_runtime_unpacked_size_bytes: int
+    recurrence_runtime_index_sha256: str
+    builder_input_sha256: str
+    prepared_kernel_pack_digest: str
+    direct_template_catalog_digest: str
+    referenced_kernel_ids: frozenset[int]
+    inspection_summary: Mapping[str, object]
+    runtime_metadata: Mapping[str, object]
+    point_tile_size: int
+    workspace_mib: int
+    recurrence_summary: Mapping[str, object]
+    validation_point: ValidationPointRecord
+    generation_filters: Mapping[str, object]
+
+
 ProcessArtifact = (
-    CompiledProcessArtifact | EagerProcessArtifact | EagerPlanV3ProcessArtifact
+    CompiledProcessArtifact
+    | EagerProcessArtifact
+    | EagerPlanV3ProcessArtifact
+    | RecurrenceProcessArtifact
 )
 
 
@@ -561,7 +607,7 @@ def write_schema_v3_artifact(
                 requested_bytes=requested_bytes,
                 effective_bytes=effective_bytes,
             )
-        eager_kernel_ids = _eager_kernel_ids(
+        eager_kernel_ids = _prepared_kernel_ids(
             output,
             existing,
             compiled_model=compiled_model,
@@ -723,7 +769,9 @@ def _write_eager_kernel_pack(
 ) -> None:
     bundle = compiled_model.prepared_bundle
     if bundle is None:
-        raise ValueError("eager artifact writing requires a prepared model bundle")
+        raise ValueError(
+            "prepared-kernel artifact writing requires a prepared model bundle"
+        )
     selected = tuple(
         kernel
         for kernel in bundle.kernel_pack.kernels
@@ -772,19 +820,21 @@ def _write_eager_kernel_pack(
                 )
 
 
-def _eager_kernel_ids(
+def _prepared_kernel_ids(
     output: Path,
     existing: ArtifactManifest | None,
     *,
     compiled_model: CompiledModel,
     processes: Sequence[ProcessArtifact],
 ) -> frozenset[int]:
-    has_eager_process = any(_is_eager_process(process) for process in processes)
+    has_prepared_process = any(
+        _is_prepared_kernel_process(process) for process in processes
+    )
     kernel_ids = {
         kernel_id
         for process in processes
-        if _is_eager_process(process)
-        for kernel_id in _eager_referenced_kernel_ids(process)
+        if _is_prepared_kernel_process(process)
+        for kernel_id in _prepared_referenced_kernel_ids(process)
     }
     has_existing_pack = (
         existing is not None and (output / _EAGER_KERNEL_PACK_PATH).is_file()
@@ -802,10 +852,12 @@ def _eager_kernel_ids(
             raise ValueError(
                 "existing eager kernel pack is malformed; replace the artifact"
             ) from exc
-    if has_eager_process or has_existing_pack:
+    if has_prepared_process or has_existing_pack:
         bundle = compiled_model.prepared_bundle
         if bundle is None:
-            raise ValueError("eager artifact writing requires a prepared model bundle")
+            raise ValueError(
+                "prepared-kernel artifact writing requires a prepared model bundle"
+            )
         parameter_kernel_id = bundle.kernel_pack.resolver_manifest.get(
             "model_parameter_kernel_id"
         )
@@ -825,16 +877,22 @@ def _eager_prepared_pack_identity(
             {
                 EAGER_RUNTIME_CAPABILITY,
                 EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+                RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                RECURRENCE_COLOR_RUNTIME_CAPABILITY,
             }.intersection(_required_runtime_capabilities(existing.runtime))
         )
         or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
     )
-    incoming_uses_eager = any(_is_eager_process(process) for process in processes)
+    incoming_uses_eager = any(
+        _is_prepared_kernel_process(process) for process in processes
+    )
     if not existing_uses_eager and not incoming_uses_eager:
         return None
     bundle = compiled_model.prepared_bundle
     if bundle is None:
-        raise ValueError("eager artifact writing requires a prepared model bundle")
+        raise ValueError(
+            "prepared-kernel artifact writing requires a prepared model bundle"
+        )
     canonical_manifest = json.dumps(
         _deep_plain(bundle.manifest),
         ensure_ascii=True,
@@ -855,18 +913,23 @@ def _eager_prepared_pack_identity(
     }
 
 
-def _is_eager_process(process: ProcessArtifact) -> bool:
-    return isinstance(process, EagerProcessArtifact | EagerPlanV3ProcessArtifact)
+def _is_prepared_kernel_process(process: ProcessArtifact) -> bool:
+    return isinstance(
+        process,
+        EagerProcessArtifact | EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact,
+    )
 
 
-def _eager_referenced_kernel_ids(
+def _prepared_referenced_kernel_ids(
     process: ProcessArtifact,
 ) -> frozenset[int]:
+    if isinstance(process, RecurrenceProcessArtifact):
+        return process.referenced_kernel_ids
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return process.referenced_kernel_ids
     if isinstance(process, EagerProcessArtifact):
         return process.eager_tables.referenced_kernel_ids
-    raise TypeError("compiled process has no eager kernel references")
+    raise TypeError("compiled process has no prepared-kernel references")
 
 
 def _filtered_eager_resolver_manifest(
@@ -904,7 +967,7 @@ def _write_process_payloads(
     execution_path = f"{prefix}/execution.json"
     validation_path = f"{prefix}/validation-momenta.json"
     schema: Mapping[str, object]
-    if isinstance(process, EagerPlanV3ProcessArtifact):
+    if isinstance(process, EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact):
         schema = {}
         physics = _mapping(process.physics)
     else:
@@ -914,11 +977,13 @@ def _write_process_payloads(
         raise ValueError(
             f"runtime physics process ID does not match {process.process_id!r}"
         )
-    if isinstance(process, EagerPlanV3ProcessArtifact) and (
+    if isinstance(process, EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact) and (
         physics.get("schema_version") != RUNTIME_PHYSICS_SCHEMA_VERSION
         or physics.get("kind") != "pyamplicol-resolved-physics"
     ):
-        raise ValueError("Rust eager lowering returned incompatible physics metadata")
+        raise ValueError(
+            "Rust prepared lowering returned incompatible physics metadata"
+        )
     builder.add_json(
         physics_path,
         physics,
@@ -937,6 +1002,21 @@ def _write_process_payloads(
         execution_record = builder.add_bytes(
             execution_path,
             _bounded_eager_execution_summary(process),
+            role="evaluator-manifest",
+            media_type="application/json",
+            process_id=process.process_id,
+        )
+    elif isinstance(process, RecurrenceProcessArtifact):
+        runtime_path = f"{prefix}/{_RECURRENCE_RUNTIME_CONTAINER_PATH}"
+        runtime_record = evaluator_payloads.add_file(
+            runtime_path,
+            process.recurrence_runtime_path,
+            process_id=process.process_id,
+        )
+        _validate_staged_recurrence_runtime(process, runtime_record)
+        execution_record = builder.add_bytes(
+            execution_path,
+            _bounded_recurrence_execution_summary(process),
             role="evaluator-manifest",
             media_type="application/json",
             process_id=process.process_id,
@@ -1045,6 +1125,26 @@ def _validate_staged_eager_runtime(
         )
 
 
+def _validate_staged_recurrence_runtime(
+    process: RecurrenceProcessArtifact,
+    record: PayloadRecord,
+) -> None:
+    if process.recurrence_runtime_size_bytes <= 0:
+        raise ValueError("Rust recurrence runtime payload must not be empty")
+    payload_sha256 = _canonical_sha256(
+        process.recurrence_runtime_sha256,
+        "Rust recurrence runtime payload SHA-256",
+    )
+    if (
+        record.size_bytes != process.recurrence_runtime_size_bytes
+        or record.sha256 != payload_sha256
+    ):
+        raise ValueError(
+            "Rust recurrence runtime payload changed after lowering and before "
+            "publication"
+        )
+
+
 def _bounded_eager_execution_summary(
     process: EagerPlanV3ProcessArtifact,
 ) -> bytes:
@@ -1143,6 +1243,128 @@ def _eager_plan_v3_execution_manifest(
     }
 
 
+def _bounded_recurrence_execution_summary(
+    process: RecurrenceProcessArtifact,
+) -> bytes:
+    try:
+        content = (
+            json.dumps(
+                _recurrence_execution_manifest(process),
+                ensure_ascii=True,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Rust recurrence execution summary is not canonical JSON: {exc}"
+        ) from exc
+    if len(content) >= _MAX_RECURRENCE_EXECUTION_SUMMARY_BYTES:
+        raise ValueError(
+            "Rust recurrence execution summary must be smaller than 1 MiB; "
+            f"received {len(content)} bytes"
+        )
+    return content
+
+
+def _recurrence_execution_manifest(
+    process: RecurrenceProcessArtifact,
+) -> dict[str, object]:
+    capabilities = sorted(
+        {
+            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+        }
+    )
+    runtime_container = {
+        "kind": RECURRENCE_RUNTIME_CONTAINER_KIND,
+        "schema_version": RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION,
+        "storage_abi": RECURRENCE_RUNTIME_STORAGE_ABI,
+        "path": _RECURRENCE_RUNTIME_CONTAINER_PATH,
+        "plan_member_path": _RECURRENCE_DIRECT_PLAN_MEMBER_PATH,
+        "size_bytes": _nonnegative_integer(
+            process.recurrence_runtime_size_bytes,
+            "Rust recurrence runtime payload size",
+            minimum=1,
+        ),
+        "sha256": _canonical_sha256(
+            process.recurrence_runtime_sha256,
+            "Rust recurrence runtime payload SHA-256",
+        ),
+        "member_count": _nonnegative_integer(
+            process.recurrence_runtime_member_count,
+            "Rust recurrence runtime member count",
+            minimum=1,
+        ),
+        "unpacked_size_bytes": _nonnegative_integer(
+            process.recurrence_runtime_unpacked_size_bytes,
+            "Rust recurrence runtime unpacked size",
+        ),
+        "index_sha256": _canonical_sha256(
+            process.recurrence_runtime_index_sha256,
+            "Rust recurrence runtime index SHA-256",
+        ),
+    }
+    plan = {
+        "kind": RECURRENCE_RUNTIME_KIND,
+        "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,
+        "recurrence_plan_abi": RECURRENCE_PLAN_ABI,
+        "runtime_layout_abi": RECURRENCE_RUNTIME_LAYOUT_ABI,
+        "direct_template_abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
+        "direct_backend_abi": RECURRENCE_DIRECT_BACKEND_ABI,
+        "builder_input_sha256": _canonical_sha256(
+            process.builder_input_sha256,
+            "recurrence builder input SHA-256",
+        ),
+        "prepared_kernel_pack_digest": _canonical_sha256(
+            process.prepared_kernel_pack_digest,
+            "recurrence prepared-kernel pack SHA-256",
+        ),
+        "direct_template_catalog_digest": _canonical_sha256(
+            process.direct_template_catalog_digest,
+            "recurrence direct-template catalog SHA-256",
+        ),
+        "required_runtime_capabilities": capabilities,
+        "runtime_container": runtime_container,
+        "inspection_summary": _deep_plain(process.inspection_summary),
+    }
+    return {
+        "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
+        "kind": RECURRENCE_RUNTIME_KIND,
+        "required_runtime_capabilities": capabilities,
+        "process": process.expression,
+        "key": process.process_id,
+        "color_accuracy": process.color_accuracy,
+        "external_pdg_order": list(process.external_pdgs),
+        "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,
+        "recurrence_plan_abi": RECURRENCE_PLAN_ABI,
+        "runtime_layout_abi": RECURRENCE_RUNTIME_LAYOUT_ABI,
+        "direct_template_abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
+        "direct_backend_abi": RECURRENCE_DIRECT_BACKEND_ABI,
+        "prepared_kernel_pack_digest": _canonical_sha256(
+            process.prepared_kernel_pack_digest,
+            "recurrence prepared-kernel pack SHA-256",
+        ),
+        "direct_template_catalog_digest": _canonical_sha256(
+            process.direct_template_catalog_digest,
+            "recurrence direct-template catalog SHA-256",
+        ),
+        "kernel_pack": {
+            "manifest_path": _EAGER_KERNEL_PACK_PATH,
+            "payload_root": _EAGER_KERNEL_PAYLOAD_ROOT,
+        },
+        "runtime_options": {
+            "point_tile_size": process.point_tile_size,
+            "workspace_mib": process.workspace_mib,
+        },
+        "runtime_metadata": _deep_plain(process.runtime_metadata),
+        "plan": plan,
+        "recurrence_summary": _deep_plain(process.recurrence_summary),
+    }
+
+
 def _canonical_sha256(value: object, context: str) -> str:
     if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
         raise ValueError(f"{context} must be a lowercase hexadecimal digest")
@@ -1166,6 +1388,8 @@ def _execution_manifest(
     process: ProcessArtifact,
     compiler_schema: Mapping[str, object],
 ) -> dict[str, object]:
+    if isinstance(process, RecurrenceProcessArtifact):
+        return _recurrence_execution_manifest(process)
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return _eager_plan_v3_execution_manifest(process)
     if isinstance(process, EagerProcessArtifact):
@@ -2662,6 +2886,15 @@ def _compiled_execution_runtime_capabilities(
 def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
+    if isinstance(process, RecurrenceProcessArtifact):
+        return tuple(
+            sorted(
+                {
+                    RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                    RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+                }
+            )
+        )
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return (EAGER_PLAN_V3_RUNTIME_CAPABILITY,)
     if isinstance(process, EagerProcessArtifact):
@@ -2689,7 +2922,12 @@ def _required_runtime_capabilities(
     if values != tuple(sorted(set(values))):
         raise ValueError("runtime capabilities must be sorted and unique")
     unknown = set(values) - (
-        EVALUATOR_RUNTIME_CAPABILITIES | {EAGER_PLAN_V3_RUNTIME_CAPABILITY}
+        EVALUATOR_RUNTIME_CAPABILITIES
+        | {
+            EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+        }
     )
     if unknown:
         raise ValueError(
@@ -2723,7 +2961,7 @@ def _extensions(
             ),
             "filters": dict(process.generation_filters),
         }
-        if _is_eager_process(process):
+        if _is_prepared_kernel_process(process):
             record["execution_manifest_sha256"] = execution_manifest_sha256_by_process[
                 process.process_id
             ]
@@ -3024,6 +3262,16 @@ __all__ = [
     "EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION",
     "EAGER_RUNTIME_LAYOUT_ABI",
     "EAGER_RUNTIME_STORAGE_ABI",
+    "RECURRENCE_COLOR_RUNTIME_CAPABILITY",
+    "RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY",
+    "RECURRENCE_DIRECT_BACKEND_ABI",
+    "RECURRENCE_DIRECT_TEMPLATE_ABI",
+    "RECURRENCE_PLAN_ABI",
+    "RECURRENCE_RUNTIME_CONTAINER_KIND",
+    "RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION",
+    "RECURRENCE_RUNTIME_KIND",
+    "RECURRENCE_RUNTIME_LAYOUT_ABI",
+    "RECURRENCE_RUNTIME_STORAGE_ABI",
     "ApiBundleHook",
     "ArtifactWriteResult",
     "CompiledExecutionArtifact",
@@ -3031,6 +3279,7 @@ __all__ = [
     "EagerPlanV3ProcessArtifact",
     "EagerProcessArtifact",
     "ProcessArtifact",
+    "RecurrenceProcessArtifact",
     "build_api_validation_points",
     "write_schema_v3_artifact",
 ]

@@ -21,16 +21,16 @@ fn abi_constants_are_frozen() {
     assert_eq!(RECURRENCE_TEMPLATE_ABI, "pyamplicol-recurrence-template-v1");
     assert_eq!(
         RECURRENCE_BUILDER_INPUT_ABI,
-        "pyamplicol-recurrence-builder-input-v1"
+        "pyamplicol-recurrence-builder-input-v2"
     );
     assert_eq!(
         RECURRENCE_BUILDER_RESULT_ABI,
-        "pyamplicol-recurrence-builder-result-v1"
+        "pyamplicol-recurrence-builder-result-v2"
     );
-    assert_eq!(RECURRENCE_PLAN_ABI, "pyamplicol-recurrence-plan-v1");
+    assert_eq!(RECURRENCE_PLAN_ABI, "pyamplicol-recurrence-plan-v2");
     assert_eq!(
         RECURRENCE_RUNTIME_LAYOUT_ABI,
-        "pyamplicol-recurrence-runtime-layout-v1"
+        "pyamplicol-recurrence-runtime-layout-v2"
     );
     assert_eq!(
         RECURRENCE_RUNTIME_KIND,
@@ -38,7 +38,7 @@ fn abi_constants_are_frozen() {
     );
     assert_eq!(
         RECURRENCE_RUNTIME_CAPABILITY,
-        "rusticol.recurrence-runtime.complex-f64.v1"
+        "rusticol.recurrence-direct-arena.complex-f64.v1"
     );
     assert_eq!(
         RECURRENCE_LC_COLOR_CAPABILITY,
@@ -377,13 +377,13 @@ fn current_core_key_enforces_layout_specific_helicity_identity() {
         vec![1],
         3,
         vec![],
-        CurrentSourceBinding::RuntimeDispatchDomain(5),
+        CurrentSourceBinding::runtime_dispatch(5, vec![11]).unwrap(),
         None,
     )
     .unwrap();
     assert_eq!(
         union_source.source_binding(),
-        CurrentSourceBinding::RuntimeDispatchDomain(5)
+        &CurrentSourceBinding::runtime_dispatch(5, vec![11]).unwrap()
     );
     assert!(
         union_source

@@ -100,6 +100,7 @@ def test_sm_process_constructs_model_generic_topology_replay_schedule() -> None:
             ),
             topology_replay=replay,
             coupling_order_limits=coupling_order_limits,
+            model=model,
         )
 
         sources_by_numeric_id = tuple(
@@ -259,6 +260,7 @@ def test_sm_recurrence_closure_topologies_match_without_forest_aliases() -> None
                     process,
                     model=model,
                 ),
+                model=model,
             )
             result = _rusticol._validate_recurrence_builder_input_v1(
                 build_recurrence_builder_input_v1(logical),
@@ -275,7 +277,11 @@ def test_sm_recurrence_closure_topologies_match_without_forest_aliases() -> None
             schedule = result["inspection_summary"]["schedule"]
             assert schedule["closure_term_count"] >= schedule["target_sector_count"]
             assert schedule["amplitude_destination_count"] > 0
-            if expression == "d d~ > u u~":
+            if expression == "g g > g g":
+                assert schedule["retained_helicity_count"] == 16
+                assert schedule["resolved_helicity_count"] == 6
+                assert schedule["structural_zero_helicity_count"] == 10
+            elif expression == "d d~ > u u~":
                 assert schedule["current_count_by_support_size"][3] > 0
                 assert pairing["endpoint_count"] == 4
                 assert pairing["pairing_class_count"] == 2

@@ -119,6 +119,8 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
         }),
         kernels,
         kernel_variants: Vec::new(),
+        recurrence_template: None,
+        recurrence_direct_template: None,
     }
 }
 
@@ -188,6 +190,8 @@ fn compiled_pack(backend: &str, runtime_capability: &str) -> PreparedKernelPackM
         }),
         kernels: vec![kernel],
         kernel_variants: Vec::new(),
+        recurrence_template: None,
+        recurrence_direct_template: None,
     }
 }
 

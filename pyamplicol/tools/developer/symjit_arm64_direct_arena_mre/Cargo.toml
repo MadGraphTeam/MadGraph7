@@ -1,0 +1,10 @@
+[package]
+name = "symjit-arm64-direct-arena-scalar-status-mre"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+symjit = { path = "../../../dependencies/checkouts/symjit", default-features = false }
+
+[workspace]

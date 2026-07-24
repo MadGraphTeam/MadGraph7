@@ -19,6 +19,12 @@ const PREPARED_INDEPENDENT_BLOCK_PROOF: &str = "prepared-kernel-independent-curr
 const SYMJIT_APPLICATION_STORAGE_V3_ABI: &str = "symjit-application-storage-v3";
 const PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL: u64 = 2;
 const PREPARED_JIT_PORTABLE_TARGET: &str = "symjit-storage-v3-portable";
+const RECURRENCE_DIRECT_TEMPLATE_ABI_V1: &str = "pyamplicol-recurrence-direct-template-v1";
+const RECURRENCE_DIRECT_BACKEND_ABI_V1: &str = "rusticol.recurrence-direct-backend.v1";
+const RECURRENCE_DIRECT_CANONICALIZATION_ABI_V1: &str = "pyamplicol-canonical-json-v1";
+const RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI_V1: &str =
+    "pyamplicol-recurrence-direct-payload-binding-v1";
+const SYMJIT_DIRECT_APPLICATION_STORAGE_V1_ABI: &str = "symjit-direct-application-storage-v1";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -138,6 +144,10 @@ pub(super) struct PreparedKernelPackManifest {
     pub(super) kernels: Vec<PreparedKernelManifest>,
     #[serde(default)]
     pub(super) kernel_variants: Vec<PreparedKernelVariantManifest>,
+    #[serde(default)]
+    pub(super) recurrence_template: Option<Value>,
+    #[serde(default)]
+    pub(super) recurrence_direct_template: Option<Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -201,6 +211,118 @@ pub(super) struct PreparedKernelInputManifest {
     pub(super) symbol: String,
     pub(super) model_parameter_name: Option<String>,
     pub(super) model_parameter_index: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceDirectTemplateCatalogManifest {
+    pub(super) abi: String,
+    pub(super) backend_abi: String,
+    pub(super) canonicalization_abi: String,
+    pub(super) backend: String,
+    pub(super) target_triple: String,
+    pub(super) portable: bool,
+    pub(super) optimization_level: u32,
+    pub(super) compiled_model_digest: String,
+    pub(super) recurrence_template_catalog_digest: String,
+    pub(super) prepared_kernel_pack_digest: String,
+    pub(super) prepared_kernel_contract_digest: String,
+    pub(super) prepared_kernel_payload_digest: String,
+    pub(super) optimization_settings_digest: String,
+    pub(super) templates: Vec<RecurrenceDirectTemplateManifest>,
+    pub(super) catalog_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceDirectTemplateManifest {
+    pub(super) abi: String,
+    pub(super) template_id: String,
+    pub(super) direct_executor_id: u32,
+    pub(super) evaluator_binding_id: u32,
+    pub(super) evaluator_resolver_key: String,
+    pub(super) role: String,
+    pub(super) parent_arity: u32,
+    pub(super) parent_component_counts: Vec<u32>,
+    pub(super) destination_component_count: u32,
+    pub(super) momentum_operand_count: u32,
+    pub(super) destination_operation: String,
+    pub(super) coupling_slot_count: u32,
+    pub(super) parameter_slot_count: u32,
+    pub(super) semantic_template_ids: Vec<String>,
+    pub(super) exact_expression_digest: String,
+    pub(super) payload_binding: RecurrenceDirectPayloadBindingManifest,
+    pub(super) backend: String,
+    pub(super) target_triple: String,
+    pub(super) portable: bool,
+    pub(super) optimization_level: u32,
+    pub(super) alignment_bytes: u32,
+    pub(super) simd_axis: String,
+    pub(super) destination_aliasing: bool,
+    pub(super) semantic_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceDirectPayloadBindingManifest {
+    pub(super) abi: String,
+    pub(super) kind: String,
+    pub(super) payload_digest: String,
+    pub(super) prepared_kernel_id: Option<u32>,
+    pub(super) runtime_template: Option<String>,
+    pub(super) payload_paths: Vec<String>,
+    pub(super) source_application_path: Option<String>,
+    pub(super) source_application_sha256: Option<String>,
+    pub(super) source_application_abi: Option<String>,
+    pub(super) direct_application_abi: Option<String>,
+    pub(super) role: Option<String>,
+    pub(super) destination_operation: Option<String>,
+    pub(super) exact_factor_scalar_slots: Vec<u32>,
+    pub(super) state_plane_indices: Vec<u32>,
+    pub(super) parameter_bindings: Vec<RecurrenceDirectParameterBindingManifest>,
+    pub(super) input_plane_count: u32,
+    pub(super) scalar_input_count: u32,
+    pub(super) output_alias_inputs: Vec<u32>,
+    pub(super) input_plane_projections: Vec<RecurrenceDirectPlaneProjectionManifest>,
+    pub(super) scalar_projections: Vec<RecurrenceDirectScalarProjectionManifest>,
+    pub(super) prepared_template_semantic_digest: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub(super) enum RecurrenceDirectParameterBindingManifest {
+    Plane { index: u32 },
+    Scalar { index: u32 },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub(super) enum RecurrenceDirectPlaneProjectionManifest {
+    ParentCurrent {
+        parent: u8,
+        component: u16,
+        imaginary: bool,
+    },
+    Momentum {
+        operand: u8,
+        lorentz_component: u16,
+    },
+    DestinationCurrent {
+        component: u16,
+        imaginary: bool,
+    },
+    DestinationAmplitude {
+        component: u16,
+        imaginary: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub(super) enum RecurrenceDirectScalarProjectionManifest {
+    ExactFactor { imaginary: bool },
+    Parameter { index: u32, imaginary: bool },
+    Literal { value: f64 },
 }
 
 impl EagerExecutionManifest {
@@ -666,6 +788,36 @@ impl PreparedKernelPackManifest {
         Ok(())
     }
 
+    /// Parse and authenticate the optional Direct-Arena recurrence companion.
+    ///
+    /// Eager execution deliberately does not require this companion. Recurrence
+    /// loading calls this method with the digests authenticated by its process
+    /// manifest and plan before resolving any executable payload.
+    pub(super) fn recurrence_direct_template_catalog(
+        &self,
+        expected_prepared_pack_digest: &str,
+        expected_catalog_digest: &str,
+    ) -> RusticolResult<RecurrenceDirectTemplateCatalogManifest> {
+        let raw = self.recurrence_direct_template.as_ref().ok_or_else(|| {
+            RusticolError::compatibility(
+                "prepared model has no Direct-Arena recurrence template catalog; recompile the model",
+            )
+        })?;
+        let catalog: RecurrenceDirectTemplateCatalogManifest = serde_json::from_value(raw.clone())
+            .map_err(|error| {
+                RusticolError::serialization(format!(
+                    "could not parse prepared Direct-Arena recurrence template catalog: {error}"
+                ))
+            })?;
+        catalog.validate(
+            raw,
+            self,
+            expected_prepared_pack_digest,
+            expected_catalog_digest,
+        )?;
+        Ok(catalog)
+    }
+
     pub(super) fn kernel_specs(&self) -> RusticolResult<Vec<EagerKernelSpec>> {
         let block_sizes = self
             .kernel_variants
@@ -708,6 +860,427 @@ impl PreparedKernelPackManifest {
             })
             .collect()
     }
+}
+
+impl RecurrenceDirectTemplateCatalogManifest {
+    fn validate(
+        &self,
+        raw: &Value,
+        pack: &PreparedKernelPackManifest,
+        expected_prepared_pack_digest: &str,
+        expected_catalog_digest: &str,
+    ) -> RusticolResult<()> {
+        if self.abi != RECURRENCE_DIRECT_TEMPLATE_ABI_V1
+            || self.backend_abi != RECURRENCE_DIRECT_BACKEND_ABI_V1
+            || self.canonicalization_abi != RECURRENCE_DIRECT_CANONICALIZATION_ABI_V1
+        {
+            return Err(RusticolError::compatibility(
+                "prepared Direct-Arena recurrence catalog has an unsupported ABI",
+            ));
+        }
+        validate_sha256_text(&self.catalog_digest, "Direct-Arena catalog digest")?;
+        validate_sha256_text(
+            &self.prepared_kernel_pack_digest,
+            "Direct-Arena prepared-pack digest",
+        )?;
+        for (name, digest) in [
+            ("compiled-model", self.compiled_model_digest.as_str()),
+            (
+                "recurrence-template catalog",
+                self.recurrence_template_catalog_digest.as_str(),
+            ),
+            (
+                "prepared-kernel contract",
+                self.prepared_kernel_contract_digest.as_str(),
+            ),
+            (
+                "prepared-kernel payload",
+                self.prepared_kernel_payload_digest.as_str(),
+            ),
+            (
+                "optimization-settings",
+                self.optimization_settings_digest.as_str(),
+            ),
+        ] {
+            validate_sha256_text(digest, &format!("Direct-Arena {name} digest"))?;
+        }
+        if self.catalog_digest != expected_catalog_digest
+            || self.prepared_kernel_pack_digest != expected_prepared_pack_digest
+        {
+            return Err(RusticolError::integrity(
+                "prepared Direct-Arena catalog identity does not match the recurrence artifact",
+            ));
+        }
+        if pack
+            .provenance
+            .get("prepared_kernel_pack_digest")
+            .and_then(Value::as_str)
+            != Some(expected_prepared_pack_digest)
+            || pack
+                .provenance
+                .get("direct_template_catalog_digest")
+                .and_then(Value::as_str)
+                != Some(expected_catalog_digest)
+        {
+            return Err(RusticolError::integrity(
+                "prepared kernel-pack provenance does not authenticate the Direct-Arena catalog",
+            ));
+        }
+        if self.backend != pack.backend
+            || self.target_triple != pack.target.target_triple
+            || self.portable != pack.target.portable
+        {
+            return Err(RusticolError::integrity(
+                "Direct-Arena catalog backend or target does not match its prepared kernel pack",
+            ));
+        }
+        if self.backend == "jit" {
+            if !self.portable
+                || self.optimization_level != PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL as u32
+                || self.target_triple != PREPARED_JIT_PORTABLE_TARGET
+            {
+                return Err(RusticolError::compatibility(
+                    "Direct-Arena JIT templates require portable SymJIT O2 applications",
+                ));
+            }
+        } else if self.portable {
+            return Err(RusticolError::compatibility(
+                "Direct-Arena C++/ASM templates must be target-native",
+            ));
+        }
+        let mut semantic = raw.clone();
+        semantic
+            .as_object_mut()
+            .ok_or_else(|| RusticolError::artifact("Direct-Arena catalog must be an object"))?
+            .remove("catalog_digest");
+        if canonical_json_digest_exact(&semantic)? != self.catalog_digest {
+            return Err(RusticolError::integrity(
+                "Direct-Arena catalog digest does not match its canonical metadata",
+            ));
+        }
+        if self.templates.is_empty() {
+            return Err(RusticolError::artifact(
+                "Direct-Arena template catalog is empty",
+            ));
+        }
+        let raw_templates = raw
+            .get("templates")
+            .and_then(Value::as_array)
+            .ok_or_else(|| RusticolError::artifact("Direct-Arena templates must be an array"))?;
+        if raw_templates.len() != self.templates.len() {
+            return Err(RusticolError::integrity(
+                "Direct-Arena template count changed while parsing",
+            ));
+        }
+        let kernels = pack
+            .kernels
+            .iter()
+            .map(|kernel| (kernel.kernel_id, kernel))
+            .collect::<BTreeMap<_, _>>();
+        let mut template_ids = BTreeSet::new();
+        let mut binding_keys = BTreeSet::new();
+        for (expected_id, (template, raw_template)) in
+            self.templates.iter().zip(raw_templates).enumerate()
+        {
+            if template.direct_executor_id as usize != expected_id {
+                return Err(RusticolError::integrity(
+                    "Direct-Arena executor IDs must be dense and zero-based",
+                ));
+            }
+            if !template_ids.insert(template.template_id.as_str())
+                || !binding_keys.insert((template.role.as_str(), template.evaluator_binding_id))
+            {
+                return Err(RusticolError::integrity(
+                    "Direct-Arena template IDs and semantic binding keys must be unique",
+                ));
+            }
+            template.validate(raw_template, self, &kernels)?;
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceDirectTemplateManifest {
+    fn validate(
+        &self,
+        raw: &Value,
+        catalog: &RecurrenceDirectTemplateCatalogManifest,
+        kernels: &BTreeMap<u32, &PreparedKernelManifest>,
+    ) -> RusticolResult<()> {
+        if self.abi != RECURRENCE_DIRECT_TEMPLATE_ABI_V1
+            || self.backend != catalog.backend
+            || self.target_triple != catalog.target_triple
+            || self.portable != catalog.portable
+            || self.optimization_level != catalog.optimization_level
+        {
+            return Err(RusticolError::integrity(
+                "Direct-Arena template policy does not match its catalog",
+            ));
+        }
+        if self.template_id.is_empty()
+            || self.evaluator_resolver_key.is_empty()
+            || self.semantic_template_ids.is_empty()
+            || self.parent_arity as usize != self.parent_component_counts.len()
+            || self.parent_component_counts.iter().any(|count| *count == 0)
+            || self.destination_component_count == 0
+            || self.alignment_bytes == 0
+            || !self.alignment_bytes.is_power_of_two()
+            || self.simd_axis != "points-contiguous"
+        {
+            return Err(RusticolError::artifact(
+                "Direct-Arena template has an invalid shape or SIMD contract",
+            ));
+        }
+        if self
+            .semantic_template_ids
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+        {
+            return Err(RusticolError::integrity(
+                "Direct-Arena semantic template IDs must be sorted and unique",
+            ));
+        }
+        validate_sha256_text(
+            &self.exact_expression_digest,
+            "Direct-Arena exact-expression digest",
+        )?;
+        validate_sha256_text(&self.semantic_digest, "Direct-Arena template digest")?;
+        let expected_operation = expected_direct_operation(&self.role)?;
+        if self.destination_operation != expected_operation
+            || self.destination_aliasing != (self.role == "finalization")
+        {
+            return Err(RusticolError::integrity(
+                "Direct-Arena destination operation or aliasing does not match its role",
+            ));
+        }
+        self.payload_binding
+            .validate(self, raw.get("payload_binding"), kernels)
+    }
+}
+
+impl RecurrenceDirectPayloadBindingManifest {
+    fn validate(
+        &self,
+        template: &RecurrenceDirectTemplateManifest,
+        raw: Option<&Value>,
+        kernels: &BTreeMap<u32, &PreparedKernelManifest>,
+    ) -> RusticolResult<()> {
+        if self.abi != RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI_V1 {
+            return Err(RusticolError::compatibility(
+                "Direct-Arena payload binding has an unsupported ABI",
+            ));
+        }
+        validate_sha256_text(&self.payload_digest, "Direct-Arena payload digest")?;
+        match self.kind.as_str() {
+            "rusticol-intrinsic" => {
+                if self.prepared_kernel_id.is_some()
+                    || !self.payload_paths.is_empty()
+                    || self.source_application_path.is_some()
+                    || self.source_application_sha256.is_some()
+                    || self.source_application_abi.is_some()
+                    || self.direct_application_abi.is_some()
+                    || self.role.is_some()
+                    || self.destination_operation.is_some()
+                    || !self.exact_factor_scalar_slots.is_empty()
+                    || !self.state_plane_indices.is_empty()
+                    || !self.parameter_bindings.is_empty()
+                    || self.input_plane_count != 0
+                    || self.scalar_input_count != 0
+                    || !self.output_alias_inputs.is_empty()
+                    || !self.input_plane_projections.is_empty()
+                    || !self.scalar_projections.is_empty()
+                    || self.prepared_template_semantic_digest.is_some()
+                {
+                    return Err(RusticolError::integrity(
+                        "Rusticol Direct-Arena intrinsics carry prepared-call metadata",
+                    ));
+                }
+                let runtime_template = self.runtime_template.as_deref().ok_or_else(|| {
+                    RusticolError::artifact("Direct-Arena intrinsic has no runtime template")
+                })?;
+                let valid = match template.role.as_str() {
+                    "source" => runtime_template.starts_with("rusticol.source-fill."),
+                    "finalization" => runtime_template == "rusticol.identity-finalize-in-place.v1",
+                    "closure" => runtime_template.starts_with("rusticol.closure-reduce.v1:"),
+                    _ => false,
+                };
+                if !valid {
+                    return Err(RusticolError::compatibility(format!(
+                        "unsupported Direct-Arena intrinsic {runtime_template:?} for role {:?}",
+                        template.role
+                    )));
+                }
+            }
+            "prepared-direct-call" => {
+                if self.runtime_template.is_some()
+                    || self.role.as_deref() != Some(template.role.as_str())
+                    || self.destination_operation.as_deref()
+                        != Some(template.destination_operation.as_str())
+                    || self.direct_application_abi.as_deref()
+                        != Some(SYMJIT_DIRECT_APPLICATION_STORAGE_V1_ABI)
+                    || self.source_application_abi.as_deref()
+                        != Some(SYMJIT_APPLICATION_STORAGE_V3_ABI)
+                    || self.exact_factor_scalar_slots != [0, 1]
+                    || self.input_plane_count as usize != self.input_plane_projections.len()
+                    || self.scalar_input_count as usize != self.scalar_projections.len()
+                {
+                    return Err(RusticolError::integrity(
+                        "prepared Direct-Arena callable metadata is inconsistent",
+                    ));
+                }
+                let kernel_id = self.prepared_kernel_id.ok_or_else(|| {
+                    RusticolError::artifact("prepared Direct-Arena callable has no kernel ID")
+                })?;
+                let kernel = kernels.get(&kernel_id).ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "Direct-Arena callable references absent prepared kernel {kernel_id}"
+                    ))
+                })?;
+                let source_path = self.source_application_path.as_deref().ok_or_else(|| {
+                    RusticolError::artifact("Direct-Arena callable has no source application")
+                })?;
+                if self.payload_paths.len() != 1 || self.payload_paths[0] != source_path {
+                    return Err(RusticolError::integrity(
+                        "Direct-Arena callable must reference exactly its source application",
+                    ));
+                }
+                validate_sha256_text(
+                    self.source_application_sha256
+                        .as_deref()
+                        .unwrap_or_default(),
+                    "Direct-Arena source application digest",
+                )?;
+                validate_sha256_text(
+                    self.prepared_template_semantic_digest
+                        .as_deref()
+                        .unwrap_or_default(),
+                    "Direct-Arena prepared-template digest",
+                )?;
+                let evaluator = kernel.f64_evaluator_manifest.as_object().ok_or_else(|| {
+                    RusticolError::artifact("prepared kernel evaluator metadata is not an object")
+                })?;
+                if evaluator.get("application_path").and_then(Value::as_str) != Some(source_path)
+                    || evaluator.get("application_abi").and_then(Value::as_str)
+                        != self.source_application_abi.as_deref()
+                    || evaluator.get("optimization_level").and_then(Value::as_u64)
+                        != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
+                {
+                    return Err(RusticolError::integrity(
+                        "Direct-Arena callable source does not match its portable O2 prepared kernel",
+                    ));
+                }
+                if self
+                    .state_plane_indices
+                    .iter()
+                    .chain(&self.output_alias_inputs)
+                    .any(|index| *index >= self.input_plane_count)
+                {
+                    return Err(RusticolError::integrity(
+                        "Direct-Arena callable plane metadata is out of bounds",
+                    ));
+                }
+                for binding in &self.parameter_bindings {
+                    let (index, limit) = match *binding {
+                        RecurrenceDirectParameterBindingManifest::Plane { index } => {
+                            (index, self.input_plane_count)
+                        }
+                        RecurrenceDirectParameterBindingManifest::Scalar { index } => {
+                            (index, self.scalar_input_count)
+                        }
+                    };
+                    if index >= limit {
+                        return Err(RusticolError::integrity(
+                            "Direct-Arena parameter binding is out of bounds",
+                        ));
+                    }
+                }
+                for projection in &self.input_plane_projections {
+                    let valid = match *projection {
+                        RecurrenceDirectPlaneProjectionManifest::ParentCurrent {
+                            parent,
+                            component,
+                            ..
+                        } => template
+                            .parent_component_counts
+                            .get(parent as usize)
+                            .is_some_and(|count| u32::from(component) < *count),
+                        RecurrenceDirectPlaneProjectionManifest::Momentum {
+                            operand,
+                            lorentz_component,
+                        } => {
+                            u32::from(operand) < template.momentum_operand_count
+                                && lorentz_component < 4
+                        }
+                        RecurrenceDirectPlaneProjectionManifest::DestinationCurrent {
+                            component,
+                            ..
+                        }
+                        | RecurrenceDirectPlaneProjectionManifest::DestinationAmplitude {
+                            component,
+                            ..
+                        } => u32::from(component) < template.destination_component_count,
+                    };
+                    if !valid {
+                        return Err(RusticolError::integrity(
+                            "Direct-Arena input-plane projection is outside its template shape",
+                        ));
+                    }
+                }
+                if !matches!(
+                    self.scalar_projections.first(),
+                    Some(RecurrenceDirectScalarProjectionManifest::ExactFactor {
+                        imaginary: false
+                    })
+                ) || !matches!(
+                    self.scalar_projections.get(1),
+                    Some(RecurrenceDirectScalarProjectionManifest::ExactFactor { imaginary: true })
+                ) {
+                    return Err(RusticolError::integrity(
+                        "Direct-Arena scalar slots 0 and 1 must project the exact complex factor",
+                    ));
+                }
+                let _raw = raw.ok_or_else(|| {
+                    RusticolError::artifact("Direct-Arena payload binding is absent")
+                })?;
+            }
+            "pending-direct-call-abi" => {
+                return Err(RusticolError::compatibility(
+                    "prepared Direct-Arena callable is not executable; recompile with a supported backend",
+                ));
+            }
+            other => {
+                return Err(RusticolError::compatibility(format!(
+                    "unsupported Direct-Arena payload binding kind {other:?}"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn expected_direct_operation(role: &str) -> RusticolResult<&'static str> {
+    match role {
+        "source" => Ok("initialize"),
+        "contribution" => Ok("add"),
+        "finalization" => Ok("finalize-in-place"),
+        "closure" => Ok("closure-add"),
+        other => Err(RusticolError::compatibility(format!(
+            "unsupported Direct-Arena executor role {other:?}"
+        ))),
+    }
+}
+
+fn validate_sha256_text(value: &str, label: &str) -> RusticolResult<()> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(RusticolError::artifact(format!(
+            "{label} must be a lowercase SHA-256 digest"
+        )));
+    }
+    Ok(())
 }
 
 impl PreparedKernelManifest {
@@ -1127,44 +1700,50 @@ impl PreparedKernelVariantManifest {
 }
 
 fn canonical_json_digest(value: &Value) -> RusticolResult<String> {
-    fn write(value: &Value, output: &mut String) -> RusticolResult<()> {
-        match value {
-            Value::Null => output.push_str("null"),
-            Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
-            Value::Number(value) => output.push_str(&python_json_number(value)),
-            Value::String(value) => write_ascii_json_string(value, output),
-            Value::Array(values) => {
-                output.push('[');
-                for (index, value) in values.iter().enumerate() {
-                    if index != 0 {
-                        output.push(',');
-                    }
-                    write(value, output)?;
-                }
-                output.push(']');
-            }
-            Value::Object(values) => {
-                output.push('{');
-                let mut keys = values.keys().collect::<Vec<_>>();
-                keys.sort_unstable();
-                for (index, key) in keys.iter().enumerate() {
-                    if index != 0 {
-                        output.push(',');
-                    }
-                    write_ascii_json_string(key, output);
-                    output.push(':');
-                    write(&values[*key], output)?;
-                }
-                output.push('}');
-            }
-        }
-        Ok(())
-    }
-
     let mut canonical = String::new();
-    write(value, &mut canonical)?;
+    write_canonical_json(value, &mut canonical)?;
     canonical.push('\n');
     Ok(format!("{:x}", Sha256::digest(canonical.as_bytes())))
+}
+
+fn canonical_json_digest_exact(value: &Value) -> RusticolResult<String> {
+    let mut canonical = String::new();
+    write_canonical_json(value, &mut canonical)?;
+    Ok(format!("{:x}", Sha256::digest(canonical.as_bytes())))
+}
+
+fn write_canonical_json(value: &Value, output: &mut String) -> RusticolResult<()> {
+    match value {
+        Value::Null => output.push_str("null"),
+        Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
+        Value::Number(value) => output.push_str(&python_json_number(value)),
+        Value::String(value) => write_ascii_json_string(value, output),
+        Value::Array(values) => {
+            output.push('[');
+            for (index, value) in values.iter().enumerate() {
+                if index != 0 {
+                    output.push(',');
+                }
+                write_canonical_json(value, output)?;
+            }
+            output.push(']');
+        }
+        Value::Object(values) => {
+            output.push('{');
+            let mut keys = values.keys().collect::<Vec<_>>();
+            keys.sort_unstable();
+            for (index, key) in keys.iter().enumerate() {
+                if index != 0 {
+                    output.push(',');
+                }
+                write_ascii_json_string(key, output);
+                output.push(':');
+                write_canonical_json(&values[*key], output)?;
+            }
+            output.push('}');
+        }
+    }
+    Ok(())
 }
 
 fn python_json_number(number: &serde_json::Number) -> String {

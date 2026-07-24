@@ -465,11 +465,35 @@ def _state_chiralities(model: Model, particle_id: int) -> tuple[int, ...]:
         return (0,)
     if model.particle(particle_id).spin < 0:
         return (0,)
-    return tuple(
-        sorted(
-            {int(state.chirality) for state in model.source_spin_states(particle_id)}
-        )
+    chiralities = {
+        int(state.chirality) for state in model.source_spin_states(particle_id)
+    }
+    source_chiralities = tuple(
+        sorted(chirality for chirality in chiralities if chirality)
     )
+    if len(source_chiralities) < 2:
+        return tuple(sorted(chiralities))
+    try:
+        contracts = tuple(
+            model.recurrence_current_embedding_contract(particle_id, chirality)
+            for chirality in source_chiralities
+        )
+    except NotImplementedError:
+        return tuple(sorted(chiralities))
+    full_contracts = {
+        (contract.full_dimension, contract.full_basis) for contract in contracts
+    }
+    expected_full = (
+        int(model.current_dimension(particle_id, 0)),
+        model._current_basis(particle_id, 0),
+    )
+    if full_contracts != {expected_full}:
+        raise PreparedKernelCatalogError(
+            "recurrence current-embedding contracts disagree on the full state "
+            f"for particle={particle_id}: {sorted(full_contracts)!r}"
+        )
+    chiralities.add(0)
+    return tuple(sorted(chiralities))
 
 
 def _particle_state(

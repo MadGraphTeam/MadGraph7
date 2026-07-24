@@ -51,6 +51,11 @@ from ..models.base import Model
 from ..models.loading import CompiledModel as _CompiledModelPayload
 from ..models.prepared import PreparedKernelPack
 from ..models.prepared_target import PreparedTargetError, validate_prepared_target
+from ..models.recurrence_direct_template import (
+    RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RecurrenceDirectTemplateCatalogV1,
+)
+from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .artifact_writer import (
     EAGER_PLAN_V3_ABI,
@@ -59,12 +64,20 @@ from .artifact_writer import (
     EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION,
     EAGER_RUNTIME_LAYOUT_ABI,
     EAGER_RUNTIME_STORAGE_ABI,
+    RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+    RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    RECURRENCE_PLAN_ABI,
+    RECURRENCE_RUNTIME_CONTAINER_KIND,
+    RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION,
+    RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_RUNTIME_STORAGE_ABI,
     CompiledColorSelectorExecutionArtifact,
     CompiledExecutionArtifact,
     CompiledHelicitySelectorExecutionArtifact,
     CompiledProcessArtifact,
     EagerPlanV3ProcessArtifact,
     EagerProcessArtifact,
+    RecurrenceProcessArtifact,
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
 )
@@ -97,12 +110,36 @@ from .helicity_replay import (
 )
 from .physics_metadata import build_resolved_physics_from_dag
 from .progress import GenerationPhaseReporter, PhaseHandle
+from .recurrence_columnar import (
+    RECURRENCE_BUILDER_INPUT_ABI,
+    RecurrenceBuilderInputV1,
+    build_recurrence_builder_input_v1,
+)
+from .recurrence_physics import (
+    build_recurrence_normalization,
+    build_recurrence_physics,
+    build_recurrence_runtime_metadata,
+    recurrence_referenced_kernel_ids,
+)
+from .recurrence_projection import (
+    RecurrenceGenerationSliceV1,
+    project_recurrence_process_v1,
+)
+from .recurrence_template_columnar import (
+    RECURRENCE_TEMPLATE_INPUT_ABI,
+    RecurrenceTemplateInputV1,
+    build_recurrence_template_input_v1,
+)
 from .runtime_schema import build_runtime_expression_schema
 from .stage_compiler import (
     build_and_write_generic_stage_evaluator_artifacts,
     write_model_parameter_evaluator_artifact,
 )
-from .validation import ValidationPointRecord, build_validation_point
+from .validation import (
+    ValidationPointRecord,
+    build_process_validation_point,
+    build_validation_point,
+)
 
 if TYPE_CHECKING:
     from ..licensing import SymbolicaLicenseState
@@ -120,6 +157,8 @@ _EAGER_PLAN_V2 = "v2"
 _EAGER_PLAN_V3 = "v3"
 _EAGER_LOWERING_RESULT_KIND = "pyamplicol-eager-runtime-lowering-result"
 _EAGER_LOWERING_RESULT_SCHEMA_VERSION = 1
+_RECURRENCE_LOWERING_RESULT_KIND = "pyamplicol-recurrence-direct-lowering-result"
+_RECURRENCE_LOWERING_RESULT_SCHEMA_VERSION = 2
 # Symbolica releases the GIL while retaining process-wide mutable symbol state.
 # Keep each complete lowering/compilation transaction atomic across generators.
 _SYMBOLICA_MATERIALIZATION_LOCK = Lock()
@@ -180,6 +219,91 @@ def _post_build_validation_slices(
     return tuple(slices)
 
 
+class _ValidationSelector(Protocol):
+    id: str
+
+
+class _ValidationHelicity(_ValidationSelector, Protocol):
+    structural_zero: bool
+
+
+class _ValidationPhysics(Protocol):
+    color_flows: Sequence[_ValidationSelector]
+    helicities: Sequence[_ValidationHelicity]
+
+
+def _spread_selector_ids(values: Sequence[_ValidationSelector]) -> tuple[str, ...]:
+    """Pick deterministic endpoints and a midpoint without copying an axis."""
+
+    if not values:
+        return ()
+    positions = (0, len(values) // 2, len(values) - 1)
+    selected: list[str] = []
+    for position in positions:
+        identifier = str(values[position].id)
+        if identifier not in selected:
+            selected.append(identifier)
+    return tuple(selected)
+
+
+def _recurrence_validation_selector_cases(
+    physics: _ValidationPhysics,
+) -> tuple[tuple[str, dict[str, tuple[str, ...]]], ...]:
+    """Bound recurrence validation by axis size instead of their product."""
+
+    color_flows = tuple(physics.color_flows)
+    helicities = tuple(physics.helicities)
+    live_helicities = tuple(
+        helicity
+        for helicity in helicities
+        if not helicity.structural_zero
+    )
+    structural_zeros = tuple(
+        helicity
+        for helicity in helicities
+        if helicity.structural_zero
+    )
+    color_ids = _spread_selector_ids(color_flows)
+    helicity_ids = _spread_selector_ids(live_helicities)
+    cases: list[tuple[str, dict[str, tuple[str, ...]]]] = []
+    cases.extend(
+        (
+            f"flow {identifier}",
+            {"color_flows": (identifier,)},
+        )
+        for identifier in color_ids
+    )
+    cases.extend(
+        (
+            f"helicity {identifier}",
+            {"helicities": (identifier,)},
+        )
+        for identifier in helicity_ids
+    )
+    if color_ids and helicity_ids:
+        cases.append(
+            (
+                "combined flow and helicity",
+                {
+                    "color_flows": (color_ids[0],),
+                    "helicities": (helicity_ids[0],),
+                },
+            )
+    )
+    if color_ids and structural_zeros:
+        zero_id = str(structural_zeros[0].id)
+        cases.append(
+            (
+                "structural-zero helicity",
+                {
+                    "color_flows": (color_ids[0],),
+                    "helicities": (zero_id,),
+                },
+            )
+        )
+    return tuple(cases)
+
+
 class _RustEagerLoweringBinding(Protocol):
     def __call__(
         self,
@@ -189,9 +313,37 @@ class _RustEagerLoweringBinding(Protocol):
     ) -> object: ...
 
 
+class _RustRecurrenceLoweringBinding(Protocol):
+    def __call__(
+        self,
+        builder_input: RecurrenceBuilderInputV1,
+        template_input: RecurrenceTemplateInputV1,
+        direct_template_catalog_json: bytes,
+        prepared_kernel_pack_digest: str,
+        destination: str,
+        /,
+        *,
+        point_tile_size: int,
+        workspace_mib: int,
+        progress_callback: Callable[[Mapping[str, object]], None] | None,
+    ) -> object: ...
+
+
 @dataclass(frozen=True, slots=True)
 class _RustEagerLoweringOutput:
     inspection_summary: Mapping[str, object]
+    payload_path: Path
+    payload_size_bytes: int
+    payload_sha256: str
+    member_count: int
+    unpacked_size_bytes: int
+    index_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class _RustRecurrenceLoweringOutput:
+    inspection_summary: Mapping[str, object]
+    resolved_helicities: tuple[tuple[int, ...], ...]
     payload_path: Path
     payload_size_bytes: int
     payload_sha256: str
@@ -262,6 +414,227 @@ def _invoke_rust_eager_lowering_v1(
         unpacked_size_bytes=cast(int, result["unpacked_size_bytes"]),
         index_sha256=cast(str, result["index_sha256"]),
     )
+
+
+def _invoke_rust_recurrence_lowering_v2(
+    builder_input: RecurrenceBuilderInputV1,
+    template_input: RecurrenceTemplateInputV1,
+    direct_template_catalog: RecurrenceDirectTemplateCatalogV1,
+    prepared_kernel_pack_digest: str,
+    destination: Path,
+    *,
+    point_tile_size: int,
+    workspace_mib: int,
+    progress_callback: Callable[[Mapping[str, object]], None] | None = None,
+) -> _RustRecurrenceLoweringOutput:
+    try:
+        module = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(module)
+    except ImportError as exc:
+        raise GenerationError(
+            "recurrence generation requires the native "
+            "_lower_recurrence_direct_v2 binding"
+        ) from exc
+    candidate = getattr(module, "_lower_recurrence_direct_v2", None)
+    if not callable(candidate):
+        raise GenerationError(
+            "pyamplicol._rusticol does not provide the private "
+            "_lower_recurrence_direct_v2 binding"
+        )
+    binding = cast(_RustRecurrenceLoweringBinding, candidate)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists() or destination.is_symlink():
+        raise GenerationError(
+            f"Rust recurrence lowering destination already exists: {destination}"
+        )
+    try:
+        raw_result = binding(
+            builder_input,
+            template_input,
+            json.dumps(
+                direct_template_catalog.to_dict(),
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("ascii"),
+            prepared_kernel_pack_digest,
+            os.fspath(destination),
+            point_tile_size=point_tile_size,
+            workspace_mib=workspace_mib,
+            progress_callback=progress_callback,
+        )
+        result = _validate_rust_recurrence_lowering_result(
+            raw_result,
+            builder_input=builder_input,
+            template_input=template_input,
+            prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+            direct_template_catalog_digest=direct_template_catalog.catalog_digest,
+        )
+        if destination.is_symlink() or not destination.is_file():
+            raise GenerationError(
+                "Rust recurrence lowering did not produce a regular "
+                "recurrence-runtime.pacbin"
+            )
+        payload_size = destination.stat().st_size
+        if payload_size <= 0:
+            raise GenerationError(
+                "Rust recurrence lowering produced an empty runtime payload"
+            )
+        payload_sha256 = _file_sha256(destination)
+    except Exception as exc:
+        _discard_rust_eager_output(destination)
+        if isinstance(exc, GenerationError):
+            raise
+        raise GenerationError(f"Rust recurrence lowering failed: {exc}") from exc
+    return _RustRecurrenceLoweringOutput(
+        inspection_summary=cast(Mapping[str, object], result["inspection_summary"]),
+        resolved_helicities=cast(
+            tuple[tuple[int, ...], ...], result["resolved_helicities"]
+        ),
+        payload_path=destination,
+        payload_size_bytes=payload_size,
+        payload_sha256=payload_sha256,
+        member_count=cast(int, result["member_count"]),
+        unpacked_size_bytes=cast(int, result["unpacked_size_bytes"]),
+        index_sha256=cast(str, result["index_sha256"]),
+    )
+
+
+def _validate_rust_recurrence_lowering_result(
+    value: object,
+    *,
+    builder_input: RecurrenceBuilderInputV1,
+    template_input: RecurrenceTemplateInputV1,
+    prepared_kernel_pack_digest: str,
+    direct_template_catalog_digest: str,
+) -> dict[str, object]:
+    result = _strict_mapping(
+        value,
+        "Rust recurrence lowering result",
+        {
+            "kind",
+            "schema_version",
+            "builder_input_abi",
+            "builder_input_sha256",
+            "template_input_abi",
+            "template_input_sha256",
+            "prepared_kernel_pack_digest",
+            "direct_template_abi",
+            "direct_template_catalog_digest",
+            "recurrence_plan_abi",
+            "runtime_layout_abi",
+            "required_runtime_capabilities",
+            "runtime_container",
+            "inspection_summary",
+            "resolved_helicities",
+        },
+    )
+    expected = {
+        "kind": _RECURRENCE_LOWERING_RESULT_KIND,
+        "schema_version": _RECURRENCE_LOWERING_RESULT_SCHEMA_VERSION,
+        "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,
+        "builder_input_sha256": builder_input.digest,
+        "template_input_abi": RECURRENCE_TEMPLATE_INPUT_ABI,
+        "template_input_sha256": template_input.digest,
+        "prepared_kernel_pack_digest": prepared_kernel_pack_digest,
+        "direct_template_abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
+        "direct_template_catalog_digest": direct_template_catalog_digest,
+        "recurrence_plan_abi": RECURRENCE_PLAN_ABI,
+        "runtime_layout_abi": RECURRENCE_RUNTIME_LAYOUT_ABI,
+    }
+    mismatched = [
+        name
+        for name, expected_value in expected.items()
+        if result[name] != expected_value
+    ]
+    if mismatched:
+        raise GenerationError(
+            "Rust recurrence lowering result has incompatible contract fields: "
+            + ", ".join(mismatched)
+        )
+    capabilities = result["required_runtime_capabilities"]
+    expected_capabilities = tuple(
+        sorted(
+            {
+                RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+            }
+        )
+    )
+    if (
+        isinstance(capabilities, str | bytes)
+        or not isinstance(capabilities, Sequence)
+        or tuple(capabilities) != expected_capabilities
+    ):
+        raise GenerationError(
+            "Rust recurrence lowering result has incompatible runtime capabilities"
+        )
+    container = _strict_mapping(
+        result["runtime_container"],
+        "Rust recurrence runtime container metadata",
+        {
+            "kind",
+            "schema_version",
+            "storage_abi",
+            "member_count",
+            "unpacked_size_bytes",
+            "index_sha256",
+        },
+    )
+    if container["kind"] != RECURRENCE_RUNTIME_CONTAINER_KIND:
+        raise GenerationError("Rust recurrence runtime container kind is incompatible")
+    if container["schema_version"] != RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION:
+        raise GenerationError(
+            "Rust recurrence runtime container schema is incompatible"
+        )
+    if container["storage_abi"] != RECURRENCE_RUNTIME_STORAGE_ABI:
+        raise GenerationError(
+            "Rust recurrence runtime container storage ABI is incompatible"
+        )
+    member_count = _result_integer(
+        container["member_count"],
+        "Rust recurrence runtime member count",
+        minimum=1,
+    )
+    unpacked_size = _result_integer(
+        container["unpacked_size_bytes"],
+        "Rust recurrence runtime unpacked size",
+        minimum=0,
+    )
+    index_sha256 = _result_sha256(
+        container["index_sha256"],
+        "Rust recurrence runtime index SHA-256",
+    )
+    inspection = _canonical_json_mapping(
+        result["inspection_summary"],
+        "Rust recurrence inspection summary",
+    )
+    raw_helicities = result["resolved_helicities"]
+    if isinstance(raw_helicities, str | bytes) or not isinstance(
+        raw_helicities, Sequence
+    ):
+        raise GenerationError("Rust recurrence resolved helicities must be a list")
+    resolved_helicities = []
+    for raw_row in raw_helicities:
+        if isinstance(raw_row, str | bytes) or not isinstance(raw_row, Sequence):
+            raise GenerationError(
+                "Rust recurrence resolved helicity rows must be lists"
+            )
+        row = tuple(
+            _result_signed_integer(value, "Rust recurrence helicity")
+            for value in raw_row
+        )
+        resolved_helicities.append(row)
+    if len(set(resolved_helicities)) != len(resolved_helicities):
+        raise GenerationError("Rust recurrence resolved helicities are not unique")
+    return {
+        "inspection_summary": inspection,
+        "resolved_helicities": tuple(resolved_helicities),
+        "member_count": member_count,
+        "unpacked_size_bytes": unpacked_size,
+        "index_sha256": index_sha256,
+    }
 
 
 def _validate_rust_eager_lowering_result(
@@ -391,6 +764,12 @@ def _canonical_json_mapping(value: object, context: str) -> dict[str, object]:
 def _result_integer(value: object, context: str, *, minimum: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise GenerationError(f"{context} must be at least {minimum}")
+    return value
+
+
+def _result_signed_integer(value: object, context: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise GenerationError(f"{context} must be an integer")
     return value
 
 
@@ -588,6 +967,21 @@ class _CompiledProcess:
     coverage: Mapping[str, object]
     filters: Mapping[str, object]
     validation_points: tuple[ValidationPointRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _GeneratedRecurrenceProcess:
+    expanded: _ExpandedProcess
+    artifact: RecurrenceProcessArtifact
+    validation_points: tuple[ValidationPointRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _RecurrenceModelInputs:
+    catalog: RecurrenceTemplateCatalog
+    template_input: RecurrenceTemplateInputV1
+    direct_template_catalog: RecurrenceDirectTemplateCatalogV1
+    prepared_kernel_pack_digest: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -947,7 +1341,7 @@ class GenerationBackend:
                     "Planning processes",
                     total=len(processes.requests),
                 )
-        )
+            )
         try:
             self._validate_recurrence_request()
             license_state = self._detect_symbolica_license()
@@ -1024,7 +1418,13 @@ class GenerationBackend:
         else:
             optimization = str(run_config.evaluator.cpp.optimization)
         reporter.start_generation(
-            total=7 if execution_mode == "eager" else 8,
+            total=(
+                5
+                if execution_mode == "recurrence"
+                else 7
+                if execution_mode == "eager"
+                else 8
+            ),
             details={
                 "execution_mode": execution_mode,
                 "backend": backend.upper(),
@@ -1062,6 +1462,19 @@ class GenerationBackend:
                 license_state,
                 process_count=len(expanded),
             )
+
+            if self._recurrence_execution_enabled:
+                return self._generate_recurrence_processes(
+                    expanded,
+                    output=Path(output),
+                    write_mode=write_mode,
+                    requested_processes=processes,
+                    resolved_model=resolved_model,
+                    artifact_model=artifact_model,
+                    generation_model=generation_model,
+                    reporter=reporter,
+                    generation_started=generation_started,
+                )
 
             with TemporaryDirectory(prefix="pyamplicol-generation-") as temporary:
                 temporary_root = Path(temporary)
@@ -1303,6 +1716,151 @@ class GenerationBackend:
             processes=ProcessSet(
                 requests=concrete_requests,
                 aliases=processes.aliases,
+            ),
+            mode=write_mode,
+            files=write_result.files,
+        )
+
+    def _generate_recurrence_processes(
+        self,
+        expanded: tuple[_ExpandedProcess, ...],
+        *,
+        output: Path,
+        write_mode: Literal["error", "append", "replace"],
+        requested_processes: ProcessSet,
+        resolved_model: _ResolvedModel,
+        artifact_model: _CompiledModelPayload,
+        generation_model: Model,
+        reporter: GenerationPhaseReporter,
+        generation_started: float,
+    ) -> GenerationResult:
+        """Build and publish compact recurrence schedules before GenericDAG."""
+
+        model_inputs = self._recurrence_model_inputs(resolved_model)
+        with TemporaryDirectory(
+            prefix="pyamplicol-recurrence-generation-"
+        ) as temporary:
+            temporary_root = Path(temporary)
+            worker_count = self._process_worker_count(len(expanded))
+            executor = (
+                ThreadPoolExecutor(
+                    max_workers=worker_count,
+                    thread_name_prefix="pyamplicol-recurrence-generation",
+                )
+                if worker_count > 1
+                else None
+            )
+            try:
+                indexed = tuple(enumerate(expanded))
+                with reporter.phase(
+                    "recurrence-construction",
+                    "Constructing compact process recurrences",
+                    total=len(expanded),
+                ) as phase:
+                    generated = _map_process_phase(
+                        indexed,
+                        lambda item: self._construct_recurrence_artifact(
+                            item[1],
+                            generation_model,
+                            model_inputs,
+                            temporary_root,
+                            index=item[0],
+                            phase=phase,
+                        ),
+                        executor=executor,
+                        max_in_flight=worker_count,
+                        phase_name="compact recurrence construction",
+                        item_name=lambda item: item[1].request.name,
+                    )
+            finally:
+                if executor is not None:
+                    executor.shutdown(wait=True, cancel_futures=True)
+
+            artifact_processes = tuple(item.artifact for item in generated)
+            with reporter.phase(
+                "artifact-writing",
+                "Writing schema-v3 artifact",
+                total=1,
+            ) as phase:
+
+                def artifact_progress(event: dict[str, object]) -> None:
+                    details = {
+                        str(key): value
+                        for key, value in event.items()
+                        if isinstance(value, (str, int, float, bool, type(None)))
+                    }
+                    phase.update(
+                        int(event.get("completed", phase.completed)),
+                        total=(
+                            None if event.get("total") is None else int(event["total"])
+                        ),
+                        message=str(event.get("step", "writing artifact")),
+                        details=details,
+                    )
+
+                write_result = write_schema_v3_artifact(
+                    output,
+                    mode=write_mode,
+                    source=resolved_model.source,
+                    compiled_model=artifact_model,
+                    configuration=self._configuration,
+                    processes=artifact_processes,
+                    timings=reporter.timings,
+                    api_bundle_hook=self._api_bundle_hook,
+                    progress_callback=(
+                        artifact_progress if phase.sink is not None else None
+                    ),
+                )
+                phase.update(
+                    phase.total or phase.completed,
+                    message=str(write_result.output),
+                    details={
+                        "step": "artifact ready",
+                        "file_count": len(write_result.files),
+                    },
+                )
+
+            validation_points_by_process = {
+                item.expanded.request.name: item.validation_points for item in generated
+            }
+            expected_process_ids = tuple(
+                process.process_id for process in artifact_processes
+            )
+            concrete_requests = tuple(item.expanded.request for item in generated)
+            del artifact_processes
+            del generated
+            gc.collect()
+
+        with reporter.phase(
+            "validation",
+            "Validating generated artifact",
+            total=1,
+        ) as phase:
+            validation = self._generation_config.validation
+            if validation.post_build_validation:
+                self._validate_generated_artifact(
+                    write_result.output,
+                    expected_process_ids,
+                    validation_points=validation_points_by_process,
+                    expected_api_bundle_path=write_result.api_bundle_path,
+                    progress=phase,
+                )
+                message = (
+                    f"schema and {validation.samples} numerical samples"
+                    if validation.enabled
+                    else "schema, references, hashes, and target"
+                )
+            else:
+                message = "post-build validation disabled"
+            phase.update(1, message=message)
+
+        reporter.timings["total"] = time.perf_counter() - generation_started
+        reporter.finish_generation()
+        return GenerationResult(
+            output=write_result.output,
+            processes=ProcessSet(
+                requests=concrete_requests,
+                aliases=requested_processes.aliases,
             ),
             mode=write_mode,
             files=write_result.files,
@@ -1663,6 +2221,289 @@ class GenerationBackend:
             helicity_selector_union_dag=helicity_selector_union_dag,
             coverage=coverage,
             filters=filters,
+            validation_points=points,
+        )
+
+    def _recurrence_model_inputs(
+        self,
+        resolved_model: _ResolvedModel,
+    ) -> _RecurrenceModelInputs:
+        compiled = resolved_model.compiled
+        bundle = None if compiled is None else compiled.prepared_bundle
+        if bundle is None:  # pragma: no cover - preflighted during model loading
+            raise GenerationError("recurrence generation has no prepared model bundle")
+        catalog = bundle.kernel_pack.recurrence_template_catalog
+        if catalog is None:  # pragma: no cover - preflighted during model loading
+            raise GenerationError(
+                "recurrence generation has no recurrence-template-v1 catalog"
+            )
+        direct_catalog = bundle.kernel_pack.recurrence_direct_template_catalog
+        if direct_catalog is None:  # pragma: no cover - preflighted during loading
+            raise GenerationError(
+                "recurrence generation has no recurrence-direct-template-v1 catalog"
+            )
+        return _RecurrenceModelInputs(
+            catalog=catalog,
+            template_input=build_recurrence_template_input_v1(catalog),
+            direct_template_catalog=direct_catalog,
+            prepared_kernel_pack_digest=(catalog.header.prepared_kernel_pack_digest),
+        )
+
+    def _construct_recurrence_artifact(
+        self,
+        expanded: _ExpandedProcess,
+        model: Model,
+        model_inputs: _RecurrenceModelInputs,
+        temporary_root: Path,
+        *,
+        index: int,
+        phase: PhaseHandle,
+    ) -> _GeneratedRecurrenceProcess:
+        process_name = expanded.request.name
+        with phase.child(
+            process_name,
+            f"{process_name}: compact recurrence construction",
+            total=3,
+            details={"process": process_name, "step": "colour planning"},
+        ) as task:
+            prepared = self._prepare_process_construction(expanded.process_ir, model)
+            normalization_contract, normalization_payload = (
+                build_recurrence_normalization(expanded.process_ir, model)
+            )
+            layout = (
+                "all-flow-union" if self._all_flow_union_enabled else "topology-replay"
+            )
+            typed_layout = cast(Literal["topology-replay", "all-flow-union"], layout)
+            selection = self._process_selection
+            source_selection = (
+                None
+                if selection.selected_source_helicities is None
+                else tuple(sorted(selection.selected_source_helicities.items()))
+            )
+            logical = project_recurrence_process_v1(
+                expanded.process_ir,
+                prepared.complete_color_plan,
+                model_inputs.catalog,
+                layout=typed_layout,
+                normalization=normalization_contract,
+                topology_replay=prepared.topology_replay,
+                generation_slice=RecurrenceGenerationSliceV1(
+                    selected_source_helicities=source_selection,
+                ),
+                coupling_order_limits=prepared.coupling_order_limits,
+                model=model,
+            )
+            if selection.selected_color_sector_ids is not None:
+                selected_public_flow_ids = tuple(
+                    flow.flow_id
+                    for flow in logical.public_flows
+                    if flow.construction_sector_id
+                    in selection.selected_color_sector_ids
+                )
+                logical = project_recurrence_process_v1(
+                    expanded.process_ir,
+                    prepared.complete_color_plan,
+                    model_inputs.catalog,
+                    layout=typed_layout,
+                    normalization=normalization_contract,
+                    topology_replay=prepared.topology_replay,
+                    generation_slice=RecurrenceGenerationSliceV1(
+                        selected_public_flow_ids=selected_public_flow_ids,
+                        selected_source_helicities=source_selection,
+                    ),
+                    coupling_order_limits=prepared.coupling_order_limits,
+                    model=model,
+                )
+            task.update(
+                1,
+                message="columnar recurrence input",
+                details={
+                    "process": process_name,
+                    "step": "columnar recurrence input",
+                    "color_sector_count": len(logical.physical_sectors),
+                    "public_flow_count": len(logical.public_flows),
+                },
+            )
+            builder_input = build_recurrence_builder_input_v1(logical)
+            task.update(
+                2,
+                message="Rust recurrence builder",
+                details={
+                    "process": process_name,
+                    "step": "Rust recurrence builder",
+                },
+            )
+            native_phase_total = len(logical.external_legs) + 1
+            with task.child(
+                "rust-builder",
+                f"{process_name}: Rust recurrence construction",
+                total=native_phase_total,
+                unit="phases",
+                details={
+                    "process": process_name,
+                    "step": "source construction",
+                },
+            ) as native_task:
+
+                def report_native(details: Mapping[str, object]) -> None:
+                    progress_index = int(
+                        details.get("phase_index", native_task.completed)
+                    )
+                    progress_total = int(
+                        details.get("phase_total", native_phase_total)
+                    )
+                    contribution_count = int(details.get("contribution_count", 0))
+                    display_details = {
+                        "process": process_name,
+                        "step": str(details.get("step", "recurrence construction")),
+                        "stage_total": int(details.get("stage_total", 0)),
+                        "candidate_parent_pair_count": int(
+                            details.get("candidate_parent_pair_count", 0)
+                        ),
+                        "current_count": int(details.get("current_count", 0)),
+                        "contribution_count": contribution_count,
+                        "dynamic_color_state_count": int(
+                            details.get("dynamic_color_state_count", 0)
+                        ),
+                        "color_target_prune_count": int(
+                            details.get("color_target_prune_count", 0)
+                        ),
+                    }
+                    for name in (
+                        "stage_index",
+                        "subset_size",
+                        "candidate_parent_pair_total",
+                    ):
+                        value = details.get(name)
+                        if value is not None:
+                            display_details[name] = int(value)
+                    native_task.update(
+                        progress_index,
+                        total=progress_total,
+                        message=str(details.get("step", "recurrence construction")),
+                        details=display_details,
+                    )
+
+                run = self._run_config
+                if run is None:  # pragma: no cover - recurrence requires RunConfig
+                    raise GenerationError(
+                        "recurrence generation has no evaluator configuration"
+                    )
+                output = _invoke_rust_recurrence_lowering_v2(
+                    builder_input,
+                    model_inputs.template_input,
+                    model_inputs.direct_template_catalog,
+                    model_inputs.prepared_kernel_pack_digest,
+                    temporary_root
+                    / "recurrence-plan-v2"
+                    / process_name
+                    / "recurrence-runtime.pacbin",
+                    point_tile_size=run.evaluator.recurrence.point_tile_size,
+                    workspace_mib=run.evaluator.recurrence.workspace_mib,
+                    progress_callback=(
+                        report_native if native_task.sink is not None else None
+                    ),
+                )
+            task.update(
+                3,
+                message="compact recurrence runtime ready",
+                details={
+                    "process": process_name,
+                    "step": "compact recurrence runtime ready",
+                },
+            )
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "recurrence runtime ready"},
+        )
+
+        validation = self._generation_config.validation
+        sample_count = (
+            validation.samples
+            if validation.enabled and validation.post_build_validation
+            else 1
+        )
+        points = tuple(
+            build_process_validation_point(
+                expanded.process_ir,
+                model,
+                process_id=process_name,
+                seed=validation.seed + index * sample_count + sample_index,
+            )
+            for sample_index in range(sample_count)
+        )
+        physics = build_recurrence_physics(
+            expanded.process_ir,
+            logical,
+            model_inputs.catalog,
+            process_id=process_name,
+            resolved_helicities=output.resolved_helicities,
+            normalization=normalization_payload,
+        )
+        run = self._run_config
+        assert run is not None
+        schedule_summary = output.inspection_summary.get("schedule", {})
+        recurrence_summary = {
+            "lc_flow_layout": layout,
+            "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,
+            "template_input_abi": RECURRENCE_TEMPLATE_INPUT_ABI,
+            "current_count": (
+                schedule_summary.get("current_count", 0)
+                if isinstance(schedule_summary, Mapping)
+                else 0
+            ),
+            "contribution_count": (
+                schedule_summary.get("contribution_count", 0)
+                if isinstance(schedule_summary, Mapping)
+                else 0
+            ),
+            "closure_term_count": (
+                schedule_summary.get("closure_term_count", 0)
+                if isinstance(schedule_summary, Mapping)
+                else 0
+            ),
+        }
+        artifact = RecurrenceProcessArtifact(
+            process_id=process_name,
+            expression=expanded.process_ir.process,
+            color_accuracy=expanded.process_ir.color_accuracy,
+            external_pdgs=(
+                *expanded.process_ir.initial_pdgs,
+                *expanded.process_ir.final_pdgs,
+            ),
+            aliases=expanded.aliases,
+            physics=physics,
+            recurrence_runtime_path=output.payload_path,
+            recurrence_runtime_size_bytes=output.payload_size_bytes,
+            recurrence_runtime_sha256=output.payload_sha256,
+            recurrence_runtime_member_count=output.member_count,
+            recurrence_runtime_unpacked_size_bytes=output.unpacked_size_bytes,
+            recurrence_runtime_index_sha256=output.index_sha256,
+            builder_input_sha256=builder_input.digest,
+            prepared_kernel_pack_digest=model_inputs.prepared_kernel_pack_digest,
+            direct_template_catalog_digest=(
+                model_inputs.direct_template_catalog.catalog_digest
+            ),
+            referenced_kernel_ids=recurrence_referenced_kernel_ids(logical),
+            inspection_summary=output.inspection_summary,
+            runtime_metadata=build_recurrence_runtime_metadata(
+                logical,
+                model_inputs.catalog,
+                model,
+                normalization_payload,
+            ),
+            point_tile_size=run.evaluator.recurrence.point_tile_size,
+            workspace_mib=run.evaluator.recurrence.workspace_mib,
+            recurrence_summary=recurrence_summary,
+            validation_point=points[0],
+            generation_filters={
+                "lc_flow_layout": layout,
+                "recurrence": recurrence_summary,
+            },
+        )
+        return _GeneratedRecurrenceProcess(
+            expanded=expanded,
+            artifact=artifact,
             validation_points=points,
         )
 
@@ -2462,25 +3303,49 @@ class GenerationBackend:
                 if point.available
             )
             if validation.enabled and samples:
-                for validation_slice, helicities, color_flows in (
-                    _post_build_validation_slices(runtime.physics, len(samples))
-                ):
-                    total = runtime.evaluate(
-                        samples,
-                        helicities=helicities or None,
-                        color_flows=color_flows or None,
+                selector_cases = (
+                    _recurrence_validation_selector_cases(runtime.physics)
+                    if self._recurrence_execution_enabled
+                    else tuple(
+                        (
+                            validation_slice,
+                            {
+                                **(
+                                    {"helicities": helicities}
+                                    if helicities
+                                    else {}
+                                ),
+                                **(
+                                    {"color_flows": color_flows}
+                                    if color_flows
+                                    else {}
+                                ),
+                            },
+                        )
+                        for validation_slice, helicities, color_flows in (
+                            _post_build_validation_slices(
+                                runtime.physics,
+                                len(samples),
+                            )
+                        )
                     )
+                )
+                if not selector_cases:
+                    raise GenerationError(
+                        f"generated recurrence exposes no selectable components "
+                        f"for {process_id!r}"
+                    )
+                for selector_label, selectors in selector_cases:
+                    total = runtime.evaluate(samples, **selectors)
                     resolved_total = runtime.evaluate_resolved(
-                        samples,
-                        helicities=helicities or None,
-                        color_flows=color_flows or None,
+                        samples, **selectors
                     ).total()
                     if len(total) != len(samples) or len(resolved_total) != len(
                         samples
                     ):
                         raise GenerationError(
                             f"Rusticol returned an invalid validation shape for "
-                            f"{process_id!r}"
+                            f"{process_id!r} ({selector_label})"
                         )
                     for sample_index, (summed, resolved) in enumerate(
                         zip(total, resolved_total, strict=True),
@@ -2490,11 +3355,15 @@ class GenerationBackend:
                             progress.update(
                                 process_index - 1,
                                 total=process_total,
-                                message=f"{process_id}: sample {sample_index}",
+                                message=(
+                                    f"{process_id}: {selector_label}, "
+                                    f"sample {sample_index}"
+                                ),
                                 details={
                                     "process": process_id,
                                     "step": "numerical validation",
-                                    "validation_slice": validation_slice,
+                                    "selector_case": selector_label,
+                                    "validation_slice": selector_label,
                                     "sample_index": sample_index,
                                     "sample_total": len(samples),
                                 },
@@ -2507,9 +3376,9 @@ class GenerationBackend:
                             abs_tol=validation.absolute_tolerance,
                         ):
                             raise GenerationError(
-                                "resolved Rusticol validation does not reduce to the "
-                                f"total for {process_id!r} sample {sample_index} "
-                                f"in {validation_slice!r} "
+                                "resolved Rusticol validation does not reduce to "
+                                f"the total for {process_id!r} ({selector_label}) "
+                                f"sample {sample_index} "
                                 f"(absolute difference {difference:.3e})"
                             )
             if progress is not None:
@@ -2822,6 +3691,29 @@ class GenerationBackend:
                 f"pyamplicol model compile {source} MODEL.pyamplicol-model "
                 f"--backend {backend}"
             )
+        if execution_mode == "recurrence":
+            direct_catalog = pack.recurrence_direct_template_catalog
+            if direct_catalog is None:
+                source = resolved.source.path or resolved.source.kind
+                backend = str(run.evaluator.backend)
+                raise GenerationError(
+                    "prepared model kernel pack does not contain "
+                    "pyamplicol-recurrence-direct-template-v1; rebuild it with: "
+                    f"pyamplicol model compile {source} MODEL.pyamplicol-model "
+                    f"--backend {backend}"
+                )
+            pending = tuple(
+                template.direct_executor_id
+                for template in direct_catalog.templates
+                if not template.payload_binding.executable
+            )
+            if pending:
+                raise GenerationError(
+                    "prepared model recurrence direct-template catalog contains "
+                    "non-executable bindings "
+                    f"{pending}; rebuild the prepared model with a Direct-Arena "
+                    "capable backend"
+                )
         try:
             validate_prepared_target(
                 pack.target,

@@ -96,7 +96,7 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
         "endianness": "little",
         "kind": "symjit-application-mir-v3",
         "load_behavior": "recompile-mir-for-loading-host",
-        "source_optimization_level": 1,
+        "source_optimization_level": 2,
         "word_size_bits": 64,
     }
     assert manifest["producer"]["target"] == {
@@ -113,8 +113,8 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
     assert claimed == hashlib.sha256(module._canonical_json(content)).hexdigest()
 
 
-@pytest.mark.parametrize("optimization_level", (2, 3))
-def test_portable_fixture_rejects_architecture_allocated_mir(
+@pytest.mark.parametrize("optimization_level", (0, 1, 3))
+def test_portable_fixture_rejects_nonportable_optimization_level(
     tmp_path: Path,
     optimization_level: int,
 ) -> None:
@@ -145,11 +145,11 @@ def test_portable_fixture_rejects_architecture_allocated_mir(
         ]
     }
 
-    with pytest.raises(RuntimeError, match="O2/O3 MIR"):
+    with pytest.raises(RuntimeError, match="optimization level 2"):
         module._validate_portable_evaluator_configuration(tmp_path, manifest)
 
 
-def test_portable_fixture_accepts_unallocated_o1_mir(tmp_path: Path) -> None:
+def test_portable_fixture_accepts_portable_o2_mir(tmp_path: Path) -> None:
     module = _module()
     execution_path = tmp_path / "processes" / "example" / "execution.json"
     execution_path.parent.mkdir(parents=True)
@@ -161,7 +161,7 @@ def test_portable_fixture_accepts_unallocated_o1_mir(tmp_path: Path) -> None:
                         "kind": "symjit-application-evaluator",
                         "compiler_type": "native",
                         "translation_mode": "indirect",
-                        "optimization_level": 1,
+                        "optimization_level": 2,
                     }
                 }
             }
@@ -177,7 +177,7 @@ def test_portable_fixture_accepts_unallocated_o1_mir(tmp_path: Path) -> None:
         ]
     }
 
-    assert module._validate_portable_evaluator_configuration(tmp_path, manifest) == 1
+    assert module._validate_portable_evaluator_configuration(tmp_path, manifest) == 2
 
 
 def test_compiled_model_version_normalization_refreshes_payload(

@@ -656,13 +656,20 @@ def _detail_line(
     subset_size = _detail_int(details, "subset_size")
     if stage_index is not None:
         stage = str(stage_index) + (f"/{stage_total}" if stage_total else "")
+        fragments.append(("  stage ", "MAGENTA"))
+        fragments.append((stage, "GREEN"))
         if subset_size is not None:
-            stage += f" subset {subset_size}"
-        fragments.append((f"  stage {stage}", "MAGENTA"))
+            fragments.append(("  subset ", "MAGENTA"))
+            fragments.append((str(subset_size), "GREEN"))
     for label, current_key, total_key in (
         ("masks", "mask_index", "mask_total"),
         ("chunks", "chunk_index", "chunk_total"),
         ("kernels", "kernel_index", "kernel_total"),
+        (
+            "parent pairs",
+            "candidate_parent_pair_count",
+            "candidate_parent_pair_total",
+        ),
     ):
         current = _detail_int(details, current_key)
         total = _detail_int(details, total_key)
@@ -672,9 +679,12 @@ def _detail_line(
             )
     for label, key in (
         ("currents", "current_count"),
+        ("colour states", "dynamic_color_state_count"),
+        ("colour-pruned", "color_target_prune_count"),
         ("sources", "source_count"),
         ("colour sectors", "color_sector_count"),
         ("interactions", "interaction_count"),
+        ("contributions", "contribution_count"),
         ("amplitudes", "amplitude_count"),
         ("invocations", "invocation_count"),
         ("attachments", "attachment_count"),
@@ -822,7 +832,8 @@ def _format_event(
             else str(event.completed)
         )
         suffix = f": {event.message}" if event.message else ""
-        return f"{label} {count}{suffix}"
+        context = _log_detail_text(event.details)
+        return f"{label} {count}{suffix}{context}"
     state = "done" if event.success else "failed"
     suffix = f": {event.message}" if event.message else ""
     elapsed = (
@@ -831,6 +842,31 @@ def _format_event(
         else ""
     )
     return f"{label} {state}{elapsed}{suffix}"
+
+
+def _log_detail_text(details: ProgressDetails) -> str:
+    fragments: list[str] = []
+    process = details.get("process") or details.get("process_id")
+    if process:
+        fragments.append(f"process={process}")
+    stage_index = _detail_int(details, "stage_index")
+    stage_total = _detail_int(details, "stage_total")
+    if stage_index is not None:
+        stage = str(stage_index) + (f"/{stage_total}" if stage_total else "")
+        fragments.append(f"stage={stage}")
+    for name in (
+        "subset_size",
+        "candidate_parent_pair_count",
+        "candidate_parent_pair_total",
+        "current_count",
+        "dynamic_color_state_count",
+        "color_target_prune_count",
+        "contribution_count",
+    ):
+        value = _detail_int(details, name)
+        if value is not None:
+            fragments.append(f"{name}={value}")
+    return "" if not fragments else " [" + " ".join(fragments) + "]"
 
 
 def close_progress_sink(sink: ProgressSink | None) -> None:

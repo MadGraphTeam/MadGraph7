@@ -574,11 +574,13 @@ def _benchmark_summary(
         ("component", "mean +/- standard error", "relative standard error")
     )
     eager_profile = breakdown.execution_mode == "eager"
-    breakdown_title = (
-        "Rusticol Eager Timing Breakdown"
-        if eager_profile
-        else "Rusticol Timing Breakdown"
-    )
+    recurrence_profile = breakdown.execution_mode == "recurrence"
+    if eager_profile:
+        breakdown_title = "Rusticol Eager Timing Breakdown"
+    elif recurrence_profile:
+        breakdown_title = "Rusticol Recurrence Timing Breakdown"
+    else:
+        breakdown_title = "Rusticol Timing Breakdown"
     if separate_timing_samples:
         breakdown_title += (
             " (paired profiled attribution)"
@@ -720,6 +722,19 @@ def _benchmark_summary(
             ("Selector scatter (exclusive)", breakdown.selector_scatter_time),
             ("Other Rusticol core (exclusive)", breakdown.other_core_time),
         )
+    elif recurrence_profile:
+        component_rows = (
+            (
+                "Profile wall (headline)"
+                if shared_timing_samples
+                else "Profile wall (diagnostic pass)",
+                breakdown.wall_time,
+            ),
+            ("Source fill", breakdown.source_fill_time),
+            ("Momentum setup", breakdown.momentum_setup_time),
+            ("Recurrence execution", breakdown.stage_evaluator_call_time),
+            ("Other Rusticol core", breakdown.other_core_time),
+        )
     else:
         component_rows = (
             (
@@ -801,6 +816,7 @@ def _benchmark_summary(
             "Stage evaluator envelope (top-level)",
             "Amplitude evaluator envelope (top-level)",
             "Eager execution (inclusive)",
+            "Recurrence execution",
             "Kernel calls (exclusive)",
         }:
             value = _paint(value, "CYAN", enabled=color)

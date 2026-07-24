@@ -25,20 +25,22 @@ and are not eligible for PyPI publication.
 
 The contributor build uses the checksummed upstream source archive for SymJIT
 2.21.1 at revision `48197f32536c894b51ef25b2cf05ddd05c22675f`.
-The installer verifies and applies the tracked AArch64 compressed-funclet patch
+The installer verifies and applies both the tracked AArch64
+compressed-funclet patch and the recurrence Direct-Arena application extension
 before changing the crate target from `cdylib` to `rlib` so Symbolica can
 consume it as a Rust dependency. It then verifies the complete configured tree
-against the lock. The patch enables relative funclet calls for scalar, SIMD,
-and fast-complex AArch64 code and makes funclet emission deterministic; its
-tests cover evaluation parity and storage-v3 round trips. The build uses
-Symbolica and symbolica-community at the immutable planned-release revisions
-recorded in the lock. GammaLoop is pinned to the merged main revision that
-provides Spenso's cached symbolic-parallelism policy. Spynso3 initializes that
-policy in `Auto` mode, checking the license once and keeping symbolic tensor
-reductions serial for restricted users or parallel for licensed users. The
-matching Symbolica, symbolica-community, and SymJIT versions must be published
-with the required fixes before a strict PyPI build can replace the currently
-verified release pins.
+against the lock. The compression patch enables deterministic relative
+funclet calls for scalar, SIMD, and fast-complex AArch64 code. The Direct-Arena
+extension adds recurrence-only arena callables; ordinary SymJIT applications
+and compiled/eager execution remain unchanged. The build uses Symbolica and
+symbolica-community at the immutable planned-release revisions recorded in the
+lock. GammaLoop is pinned to the merged main revision that provides Spenso's
+cached symbolic-parallelism policy. Spynso3 initializes that policy in `Auto`
+mode, checking the license once and keeping symbolic tensor reductions serial
+for restricted users or parallel for licensed users. The matching Symbolica,
+symbolica-community, and SymJIT versions must be published with the required
+extensions before a strict PyPI build can replace the currently verified
+release pins.
 
 The contributor-only SymJIT patch and planned Symbolica revision remain
 upstream release blockers. The Symbolica revision also has a blocker for

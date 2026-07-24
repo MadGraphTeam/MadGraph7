@@ -9,6 +9,7 @@ from .base import (
     Particle,
     QuantumFlow,
     QuantumNumberFlow,
+    RecurrenceCurrentEmbeddingContract,
     RecurrenceLCColorComponentKind,
     RecurrenceLCColorOperation,
     RecurrenceLCColorShapeKind,
@@ -196,7 +197,17 @@ class ExternalModelCatalogMixin:
         left_chirality = int(getattr(left_index, "chirality", 0))
         right_chirality = int(getattr(right_index, "chirality", 0))
         result_chiralities = (
-            (-1, 1) if self.is_chiral_eligible(result_particle) else (0,)
+            (0,)
+            if (
+                self.is_chiral_eligible(result_particle)
+                and left_chirality == 0
+                and right_chirality == 0
+            )
+            else (
+                (-1, 1)
+                if self.is_chiral_eligible(result_particle)
+                else (0,)
+            )
         )
         return tuple(
             QuantumFlow(
@@ -231,6 +242,48 @@ class ExternalModelCatalogMixin:
             vertex,
             left_particle_id,
             right_particle_id,
+        )
+
+    def recurrence_current_embedding_contract(
+        self,
+        particle_id: int,
+        source_chirality: int,
+    ) -> RecurrenceCurrentEmbeddingContract:
+        particle = self._particle_records_by_pdg[int(particle_id)]
+        chirality = int(source_chirality)
+        ordering = next(
+            (
+                record
+                for record in self.compiled.ir.current_orderings
+                if record.particle == particle.name
+                and int(record.chirality) == chirality
+            ),
+            None,
+        )
+        if ordering is None:
+            raise NotImplementedError(
+                "compiled model has no current-ordering contract for "
+                f"particle={particle.name!r}, chirality={chirality:+d}; "
+                "re-run the original `pyamplicol model compile ...` command "
+                "with the current pyAmpliCol compiler"
+            )
+        return RecurrenceCurrentEmbeddingContract(
+            input_embedding=tuple(ordering.input_embedding),
+            source_dimension=int(self.current_dimension(particle_id, chirality)),
+            full_dimension=int(self.current_dimension(particle_id, 0)),
+            source_basis=self._current_basis(particle_id, chirality),
+            full_basis=self._current_basis(particle_id, 0),
+            proof_kind="compiled-current-ordering-embedding-v1",
+            provenance=tuple(
+                sorted(
+                    (
+                        ("chirality", f"{chirality:+d}"),
+                        ("kernel-ordering-id", ordering.kernel_ordering_id),
+                        ("ordering-id", ordering.ordering_id),
+                        ("particle", particle.name),
+                    )
+                )
+            ),
         )
 
     def recurrence_lc_color_shape_contract(

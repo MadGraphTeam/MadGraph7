@@ -14,6 +14,7 @@ from ..base import (
     Model,
     PropagatorLoweringRule,
     QuantumNumberFlow,
+    RecurrenceCurrentEmbeddingContract,
     RecurrenceLCColorComponentKind,
     RecurrenceLCColorOperation,
     RecurrenceLCColorShapeKind,
@@ -109,6 +110,16 @@ class BuiltinModel(Model):
             vertex,
             left_particle_id,
             right_particle_id,
+        )
+
+    def recurrence_current_embedding_contract(
+        self,
+        particle_id: int,
+        source_chirality: int,
+    ) -> RecurrenceCurrentEmbeddingContract:
+        return self._standard_recurrence_current_embedding_contract(
+            particle_id,
+            source_chirality,
         )
 
     def recurrence_lc_color_shape_contract(

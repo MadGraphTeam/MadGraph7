@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from ..color.plan import GenericColorPlan, LCColorTopologyReplayPlan
+from ..models.base import Model, Vertex
 from ..models.recurrence_template import (
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
@@ -58,6 +59,9 @@ _TEMPLATE_SECTIONS: Final = (
     ("symmetry-proof", "symmetry_proofs"),
 )
 _CLOSURE_ANCHOR_PROOF_ALGORITHM: Final = "canonical-lc-closure-anchor-v2"
+_PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: Final = (
+    "helicity-support:pure-massless-adjoint-tree-v1"
+)
 
 
 class RecurrenceProjectionError(ValueError):
@@ -105,6 +109,7 @@ def project_recurrence_process_v1(
     generation_slice: RecurrenceGenerationSliceV1 | None = None,
     coupling_order_limits: Mapping[str, int] | None = None,
     process_support_mask: int = 1,
+    model: Model | None = None,
 ) -> RecurrenceBuilderLogicalInputV1:
     """Return deterministic recurrence-builder records for one LC process.
 
@@ -163,6 +168,12 @@ def project_recurrence_process_v1(
         process,
         template_catalog.current_states,
     )
+    helicity_support = _project_helicity_support_proof(
+        process,
+        model,
+        model_catalog_digest=template_catalog.header.compiled_model_digest,
+        coupling_order_limits=coupling_order_limits,
+    )
 
     return RecurrenceBuilderLogicalInputV1(
         process_id=process.key,
@@ -184,6 +195,7 @@ def project_recurrence_process_v1(
             RecurrenceSemanticDigestV1(
                 "fermion-pairing-topology", fermion_pairing.topology_digest
             ),
+            *(() if helicity_support is None else (helicity_support,)),
         ),
         external_legs=external_legs,
         physical_sectors=physical_sectors,
@@ -197,6 +209,98 @@ def project_recurrence_process_v1(
         coupling_limits=_project_coupling_limits(coupling_order_limits),
         parameter_projection=_project_parameters(template_catalog, template_ids),
         process_support_mask=process_support_mask,
+    )
+
+
+def _project_helicity_support_proof(
+    process: CanonicalProcessIR,
+    model: Model | None,
+    *,
+    model_catalog_digest: str,
+    coupling_order_limits: Mapping[str, int] | None,
+) -> RecurrenceSemanticDigestV1 | None:
+    """Project a fail-closed exact theorem without constructing a process DAG."""
+
+    if model is None:
+        return None
+    limits = {
+        str(name).upper(): int(value)
+        for name, value in (coupling_order_limits or {}).items()
+        if int(value) >= 0
+    }
+    vertices = _reachable_vertex_inventory(
+        process,
+        model,
+        coupling_order_limits=limits,
+    )
+    if not model.pure_massless_adjoint_helicity_zero_rule_is_proven(
+        process,
+        vertices,
+    ):
+        return None
+    return RecurrenceSemanticDigestV1(
+        _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE,
+        _digest(
+            {
+                "algorithm": _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE,
+                "coupling_order_limits": sorted(limits.items()),
+                "model_catalog_digest": model_catalog_digest,
+                "process": process.to_json_dict(),
+                "reachable_vertices": [
+                    {
+                        "kind": int(vertex.kind),
+                        "particles": [int(value) for value in vertex.particles],
+                    }
+                    for vertex in vertices
+                ],
+            }
+        ),
+    )
+
+
+def _reachable_vertex_inventory(
+    process: CanonicalProcessIR,
+    model: Model,
+    *,
+    coupling_order_limits: Mapping[str, int],
+) -> tuple[Vertex, ...]:
+    """Conservatively close the process species under allowed local vertices."""
+
+    reachable = {
+        int(leg.outgoing_pdg)
+        for leg in process.legs
+        if leg.outgoing_pdg is not None
+    }
+    used: set[Vertex] = set()
+    vertices = tuple(model.iter_vertices(color_accuracy=process.color_accuracy))
+    changed = True
+    while changed:
+        changed = False
+        for vertex in vertices:
+            left, right, result = (int(value) for value in vertex.particles)
+            if left not in reachable or right not in reachable:
+                continue
+            orders = {
+                str(name).upper(): int(value)
+                for name, value in model.vertex_coupling_orders(vertex)
+            }
+            if any(
+                orders.get(name, 0) > limit
+                for name, limit in coupling_order_limits.items()
+            ):
+                continue
+            used.add(vertex)
+            if result not in reachable:
+                reachable.add(result)
+                changed = True
+    return tuple(
+        sorted(
+            used,
+            key=lambda vertex: (
+                int(vertex.kind),
+                tuple(int(value) for value in vertex.particles),
+            ),
+        )
     )
 
 

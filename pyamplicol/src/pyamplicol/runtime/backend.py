@@ -14,6 +14,7 @@ from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_DAG_F64_RUNTIME_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+    RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     verify_native_module,
 )
 from pyamplicol.api.errors import (
@@ -38,12 +39,16 @@ from pyamplicol.artifacts import MANIFEST_NAME, ArtifactManifest, load_manifest
 
 if TYPE_CHECKING:
     from .eager_exact import EagerExactExecutor
+    from .recurrence_exact import RecurrenceExactExecutor
     from .symbolica_exact import SymbolicaExactExecutor
 
-    _ExactExecutor = EagerExactExecutor | SymbolicaExactExecutor
+    _ExactExecutor = (
+        EagerExactExecutor | RecurrenceExactExecutor | SymbolicaExactExecutor
+    )
 
 _Accuracy = Literal["lc", "nlc", "full"]
 _ParticleState = Literal["incoming", "outgoing"]
+_ExecutionMode = Literal["compiled", "eager", "recurrence"]
 
 
 def _manifest_integer(value: object, description: str) -> int:
@@ -281,12 +286,12 @@ def _native_runtime_metadata(runtime: Any) -> Mapping[str, object]:
 
 def _native_execution_mode(
     metadata: Mapping[str, object],
-) -> Literal["compiled", "eager"]:
+) -> _ExecutionMode:
     payload = metadata
     mode = payload.get("execution_mode", "compiled")
-    if mode not in {"compiled", "eager"}:
+    if mode not in {"compiled", "eager", "recurrence"}:
         raise CompatibilityError(f"unsupported runtime execution mode {mode!r}")
-    return cast(Literal["compiled", "eager"], mode)
+    return cast(_ExecutionMode, mode)
 
 
 class RusticolRuntimeBackend:
@@ -322,7 +327,7 @@ class RusticolRuntimeBackend:
         return self._physics
 
     @property
-    def execution_mode(self) -> Literal["compiled", "eager"]:
+    def execution_mode(self) -> _ExecutionMode:
         """Return the native execution lane selected by the artifact."""
 
         return self._execution_mode
@@ -375,7 +380,7 @@ class RusticolRuntimeBackend:
                     "regenerate the artifact with the current pyAmpliCol"
                 )
             self._supports_per_point_selectors = declares_selector_capability
-        else:
+        elif self._execution_mode == "eager":
             self._supports_per_point_selectors = any(
                 capability in capabilities
                 for capability in (
@@ -383,15 +388,19 @@ class RusticolRuntimeBackend:
                     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
                 )
             )
+        else:
+            self._supports_per_point_selectors = (
+                RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in capabilities
+            )
         if self._supports_per_point_selectors and not _accepts_keyword_arguments(
             self._runtime.evaluate,
             "helicity_by_point",
             "color_flow_by_point",
         ):
-            required = (
-                COMPILED_RUNTIME_SELECTORS_CAPABILITY
-                if self._execution_mode == "compiled"
-                else next(
+            if self._execution_mode == "compiled":
+                required = COMPILED_RUNTIME_SELECTORS_CAPABILITY
+            elif self._execution_mode == "eager":
+                required = next(
                     capability
                     for capability in (
                         EAGER_DAG_F64_RUNTIME_CAPABILITY,
@@ -399,7 +408,8 @@ class RusticolRuntimeBackend:
                     )
                     if capability in capabilities
                 )
-            )
+            else:
+                required = RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY
             raise CompatibilityError(
                 f"artifact requires runtime capability {required!r}, but the "
                 "installed native runtime does not accept per-point selectors"
@@ -851,6 +861,12 @@ class RusticolRuntimeBackend:
                 from .eager_exact import EagerExactExecutor
 
                 self._exact_executor = EagerExactExecutor(
+                    self._artifact_path, self.physics.process_id, self._runtime
+                )
+            elif self._execution_mode == "recurrence":
+                from .recurrence_exact import RecurrenceExactExecutor
+
+                self._exact_executor = RecurrenceExactExecutor(
                     self._artifact_path, self.physics.process_id, self._runtime
                 )
             else:

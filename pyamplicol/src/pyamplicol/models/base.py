@@ -127,6 +127,67 @@ class RecurrenceQuantumFlowContract:
 
 
 @dataclass(frozen=True)
+class RecurrenceCurrentEmbeddingContract:
+    """Exact embedding of one source current into a full runtime current."""
+
+    input_embedding: tuple[int | None, ...]
+    source_dimension: int
+    full_dimension: int
+    source_basis: str
+    full_basis: str
+    proof_kind: str
+    provenance: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.source_dimension <= 0 or self.full_dimension <= 0:
+            raise ValueError("recurrence current dimensions must be positive")
+        if len(self.input_embedding) != self.full_dimension:
+            raise ValueError(
+                "recurrence current embedding length must equal the full dimension"
+            )
+        populated = tuple(
+            int(component)
+            for component in self.input_embedding
+            if component is not None
+        )
+        if tuple(sorted(populated)) != tuple(range(self.source_dimension)):
+            raise ValueError(
+                "recurrence current embedding must use every source component "
+                "exactly once"
+            )
+        if not self.source_basis or not self.full_basis or not self.proof_kind:
+            raise ValueError(
+                "recurrence current embedding basis and proof labels must be nonempty"
+            )
+        if self.provenance != tuple(sorted(set(self.provenance))):
+            raise ValueError(
+                "recurrence current embedding provenance must be sorted and unique"
+            )
+
+    @property
+    def source_projection(self) -> tuple[int, ...]:
+        """Return full-component indices ordered by source component."""
+
+        inverse = [-1] * self.source_dimension
+        for full_component, source_component in enumerate(self.input_embedding):
+            if source_component is not None:
+                inverse[int(source_component)] = full_component
+        return tuple(inverse)
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "full_basis": self.full_basis,
+            "full_dimension": self.full_dimension,
+            "input_embedding": list(self.input_embedding),
+            "proof_kind": self.proof_kind,
+            "provenance": [list(item) for item in self.provenance],
+            "source_basis": self.source_basis,
+            "source_dimension": self.source_dimension,
+            "source_projection": list(self.source_projection),
+        }
+
+
+@dataclass(frozen=True)
 class RecurrenceLCColorSourceSeedContract:
     """Compiler-owned LC forest seed for one external source current."""
 
@@ -881,6 +942,68 @@ class Model:
             "model does not declare a recurrence quantum-flow contract"
         )
 
+    def recurrence_current_embedding_contract(
+        self,
+        particle_id: int,
+        source_chirality: int,
+    ) -> RecurrenceCurrentEmbeddingContract:
+        """Declare how a source state embeds into a runtime full current."""
+
+        del particle_id, source_chirality
+        raise NotImplementedError(
+            "model does not declare recurrence current-embedding contracts"
+        )
+
+    def _standard_recurrence_current_embedding_contract(
+        self,
+        particle_id: int,
+        source_chirality: int,
+    ) -> RecurrenceCurrentEmbeddingContract:
+        """Return the standard Weyl-to-Dirac current embedding."""
+
+        particle = int(particle_id)
+        chirality = int(source_chirality)
+        if chirality not in {-1, 1} or not self.is_chiral_eligible(particle):
+            raise NotImplementedError(
+                "standard recurrence current embedding requires a massless "
+                "chiral fermion source"
+            )
+        source_dimension = int(self.current_dimension(particle, chirality))
+        full_dimension = int(self.current_dimension(particle, 0))
+        source_basis = self._current_basis(particle, chirality)
+        full_basis = self._current_basis(particle, 0)
+        if (
+            source_dimension != 2
+            or full_dimension != 4
+            or source_basis != "weyl-chiral"
+            or full_basis != "dirac"
+        ):
+            raise NotImplementedError(
+                "standard recurrence current embedding supports a two-component "
+                "Weyl source in a four-component Dirac current"
+            )
+        embedding = (
+            (0, 1, None, None)
+            if chirality == 1
+            else (None, None, 0, 1)
+        )
+        return RecurrenceCurrentEmbeddingContract(
+            input_embedding=embedding,
+            source_dimension=source_dimension,
+            full_dimension=full_dimension,
+            source_basis=source_basis,
+            full_basis=full_basis,
+            proof_kind="standard-weyl-dirac-current-ordering-v1",
+            provenance=(
+                ("chirality", f"{chirality:+d}"),
+                ("contract", "standard-weyl-dirac-current-ordering-v1"),
+                (
+                    "particle-identity",
+                    self._particle_identity_ir(particle).canonical_id,
+                ),
+            ),
+        )
+
     def _standard_recurrence_quantum_flow_contract(
         self,
         vertex: Vertex,
@@ -1402,6 +1525,7 @@ __all__ = [
     "PropagatorLoweringRule",
     "QuantumFlow",
     "QuantumNumberFlow",
+    "RecurrenceCurrentEmbeddingContract",
     "RecurrenceFlavourFlowOperation",
     "RecurrenceLCColorComponentKind",
     "RecurrenceLCColorComponentRole",

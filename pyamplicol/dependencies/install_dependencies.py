@@ -391,8 +391,6 @@ def _contributor_patches(payload: dict[str, Any]) -> tuple[ContributorPatch, ...
         )
         seen_names.add(name)
         seen_paths.add(relative)
-    if len(patches) != 1:
-        raise SetupError("contributor lock must list the one exact SymJIT patch")
     return tuple(patches)
 
 

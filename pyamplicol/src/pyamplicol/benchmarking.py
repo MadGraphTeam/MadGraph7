@@ -1030,9 +1030,10 @@ def _profile_execution_mode(
 ) -> str | None:
     value = profile.get("execution_mode")
     if value is not None:
-        if value not in {"compiled", "eager"}:
+        if value not in {"compiled", "eager", "recurrence"}:
             raise EvaluationError(
-                "native runtime profile execution_mode must be compiled or eager"
+                "native runtime profile execution_mode must be compiled, eager, "
+                "or recurrence"
             )
         return str(value)
     stage_aggregate = profile.get("stage_evaluator_call_time_s")
@@ -1563,7 +1564,7 @@ def _timing_breakdown(
     if len(execution_modes) > 1:
         raise EvaluationError("native runtime profile changed execution mode")
     execution_mode = cast(
-        Literal["compiled", "eager"],
+        Literal["compiled", "eager", "recurrence"],
         next(iter(execution_modes), "compiled"),
     )
     evaluator_call_time = _component_timing(

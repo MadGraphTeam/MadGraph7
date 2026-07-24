@@ -33,9 +33,15 @@ from pyamplicol.models.prepared import (
     prepared_payload_identity_records,
     write_prepared_model_bundle,
 )
+from pyamplicol.models.recurrence_direct_template import (
+    build_recurrence_direct_template_catalog,
+    prepared_kernel_payload_digest,
+)
 from pyamplicol.models.recurrence_template import (
+    CurrentStateTemplateV1,
     EvaluatorBindingV1,
     ParameterTemplateV1,
+    PropagatorTemplateV1,
     RecurrenceTemplateCatalog,
 )
 
@@ -199,6 +205,89 @@ def _recurrence_catalog(
         ),
         prepared_kernel_pack_digest=identity.pack_digest,
     )
+
+
+def _pack_with_direct_recurrence() -> tuple[
+    PreparedKernelPack,
+    dict[str, bytes],
+    str,
+]:
+    kernel = _kernel()
+    base_pack = _pack(kernel)
+    payloads = _payloads(kernel)
+    payload_records = prepared_payload_identity_records(payloads)
+    identity = prepared_kernel_pack_identity(base_pack, payload_records)
+    state = CurrentStateTemplateV1(
+        template_id="state:test-scalar",
+        particle_id=9000001,
+        anti_particle_id=9000001,
+        species_id="test-scalar",
+        orientation="self-conjugate",
+        statistics="boson",
+        color_representation=1,
+        basis="scalar",
+        tensor_ordering=("scalar",),
+        dimension=1,
+        chirality=0,
+        lc_color_shape_kind="singlet-forest",
+        auxiliary_kind=None,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+    )
+    identity_propagator = PropagatorTemplateV1(
+        template_id="propagator:test-identity",
+        state_template_id=state.template_id,
+        applies_propagator=False,
+        evaluator_resolver_key=None,
+        numerator_expression_digest=None,
+        denominator_expression_digest=None,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+        gauge=None,
+        linearity_proof_template_id=None,
+    )
+    semantic_catalog = RecurrenceTemplateCatalog.create(
+        compiled_model_digest=prepared_compiled_model_digest(_compiled_model()),
+        prepared_kernel_pack_digest=identity.pack_digest,
+        current_states=(state,),
+        propagators=(identity_propagator,),
+    )
+    optimization_digest = prepared_optimization_settings_digest(
+        base_pack.optimization_settings
+    )
+    direct_catalog = build_recurrence_direct_template_catalog(
+        semantic_catalog,
+        backend="jit",
+        target_triple=str(base_pack.target["target_triple"]),
+        portable=True,
+        optimization_level=2,
+        prepared_kernel_pack_digest=identity.pack_digest,
+        prepared_kernel_contract_digest=identity.contract_digest,
+        prepared_kernel_payload_digest=identity.payload_digest,
+        optimization_settings_digest=optimization_digest,
+        prepared_kernel_payload_digests={
+            kernel.kernel_id: prepared_kernel_payload_digest(
+                kernel_id=kernel.kernel_id,
+                payload_records=payload_records,
+                referenced_paths=kernel.referenced_payload_paths,
+            )
+        },
+    )
+    pack = replace(
+        base_pack,
+        provenance={
+            **dict(base_pack.provenance),
+            "direct_template_catalog_digest": direct_catalog.catalog_digest,
+            "prepared_kernel_contract_digest": identity.contract_digest,
+            "prepared_kernel_payload_digest": identity.payload_digest,
+            "prepared_kernel_pack_digest": identity.pack_digest,
+            "recurrence_direct_template_abi": direct_catalog.abi,
+            "recurrence_direct_template_digest": direct_catalog.catalog_digest,
+        },
+        recurrence_template=semantic_catalog.to_dict(),
+        recurrence_direct_template=direct_catalog.to_dict(),
+    )
+    return pack, payloads, direct_catalog.catalog_digest
 
 
 def _pack_with_bound_recurrence_kernel(
@@ -396,6 +485,95 @@ def test_prepared_model_bundle_round_trips_optional_recurrence_template(
         manifest["kernel_pack"]["recurrence_template"]["header"]["catalog_digest"]
         == catalog.catalog_digest
     )
+
+
+def test_direct_template_catalog_round_trip_is_independently_authenticated(
+    tmp_path: Path,
+) -> None:
+    pack, payloads, expected_digest = _pack_with_direct_recurrence()
+    path = write_prepared_model_bundle(
+        tmp_path / "direct",
+        compiled_model=_compiled_model(),
+        kernel_pack=pack,
+        payloads=payloads,
+    )
+
+    bundle = load_prepared_model_bundle(path)
+    catalog = bundle.kernel_pack.recurrence_direct_template_catalog
+
+    assert catalog is not None
+    assert catalog is bundle.kernel_pack.recurrence_direct_template_catalog
+    assert catalog.catalog_digest == expected_digest
+    assert bundle.direct_template_catalog_digest == expected_digest
+    assert bundle.manifest["direct_template_catalog_digest"] == expected_digest
+    assert len(expected_digest) == 64
+    assert expected_digest == expected_digest.lower()
+    assert set(expected_digest) <= set("0123456789abcdef")
+    assert catalog.direct_executor_id_for("finalization", 0) == 0
+    assert (
+        catalog.templates[0].payload_binding.runtime_template
+        == "rusticol.identity-finalize-in-place.v1"
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    (
+        (
+            lambda manifest: manifest.__setitem__(
+                "direct_template_catalog_digest",
+                str(manifest["direct_template_catalog_digest"]).upper(),
+            ),
+            "lowercase SHA-256",
+        ),
+        (
+            lambda manifest: manifest.__setitem__(
+                "direct_template_catalog_digest",
+                "0" * 64,
+            ),
+            "does not match",
+        ),
+        (
+            lambda manifest: manifest.pop("direct_template_catalog_digest"),
+            "does not match",
+        ),
+    ),
+)
+def test_direct_template_catalog_manifest_rejects_malformed_identity(
+    tmp_path: Path,
+    mutate: Callable[[dict[str, object]], object],
+    message: str,
+) -> None:
+    pack, payloads, _digest = _pack_with_direct_recurrence()
+    path = write_prepared_model_bundle(
+        tmp_path / "direct-malformed",
+        compiled_model=_compiled_model(),
+        kernel_pack=pack,
+        payloads=payloads,
+    )
+    _mutate_manifest(path, mutate)
+
+    with pytest.raises(PreparedModelBundleError, match=message):
+        load_prepared_model_bundle(path)
+
+
+def test_bundle_without_direct_companion_rejects_spurious_digest(
+    tmp_path: Path,
+) -> None:
+    path = _valid_bundle(tmp_path)
+    _mutate_manifest(
+        path,
+        lambda manifest: manifest.__setitem__(
+            "direct_template_catalog_digest",
+            None,
+        ),
+    )
+
+    with pytest.raises(
+        PreparedModelBundleError,
+        match="advertises a direct template catalog that is absent",
+    ):
+        load_prepared_model_bundle(path)
 
 
 def test_prepared_kernel_pack_rejects_stale_recurrence_template() -> None:

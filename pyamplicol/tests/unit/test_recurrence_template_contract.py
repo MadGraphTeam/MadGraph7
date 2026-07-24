@@ -10,20 +10,7 @@ import pytest
 
 from pyamplicol import _rusticol
 from pyamplicol.generation.recurrence_columnar import (
-    ExactComplexRationalV1 as BuilderExactComplexRationalV1,
-)
-from pyamplicol.generation.recurrence_columnar import (
-    RecurrenceBuilderLogicalInputV1,
     RecurrenceColumn,
-    RecurrenceExternalLegV1,
-    RecurrenceLCOpenStringV1,
-    RecurrenceNormalizationV1,
-    RecurrencePhysicalLCSectorV1,
-    RecurrencePublicLCFlowV1,
-    RecurrenceSemanticDigestV1,
-    RecurrenceSemanticTemplateReferenceV1,
-    RecurrenceSourceStateV1,
-    build_recurrence_builder_input_v1,
 )
 from pyamplicol.generation.recurrence_template_columnar import (
     RecurrenceColumnarInputError,
@@ -666,6 +653,18 @@ def test_runtime_helicity_contract_round_trips_and_flattens() -> None:
     assert tables["runtime_helicity_projections"].row_count == 6
 
 
+def test_prepared_pack_digest_rebind_preserves_runtime_helicity_contracts() -> None:
+    from pyamplicol.models.prepared_compile import (
+        _rebind_recurrence_template_pack_digest,
+    )
+
+    catalog = _runtime_helicity_catalog()
+    rebound = _rebind_recurrence_template_pack_digest(catalog, "f" * 64)
+
+    assert rebound.header.prepared_kernel_pack_digest == "f" * 64
+    assert rebound.runtime_helicity_contracts == catalog.runtime_helicity_contracts
+
+
 def test_runtime_helicity_preflight_reports_uncertified_source() -> None:
     with pytest.raises(
         RecurrenceTemplateError,
@@ -688,105 +687,9 @@ def test_runtime_helicity_embedding_must_be_exactly_invertible() -> None:
         )
 
 
-def test_native_builder_composite_authentication_is_warmup_only() -> None:
-    catalog = _catalog()
-    prepared = build_recurrence_template_input_v1(catalog)
-    matter_state = catalog.current_states[1]
-    matter_source = catalog.sources[1]
-    logical = RecurrenceBuilderLogicalInputV1(
-        process_id="synthetic_matter_pair",
-        layout="topology-replay",
-        semantic_digests=(
-            RecurrenceSemanticDigestV1("process", "d" * 64),
-            RecurrenceSemanticDigestV1(
-                "model-catalog", catalog.header.compiled_model_digest
-            ),
-            RecurrenceSemanticDigestV1(
-                "prepared-catalog", catalog.header.catalog_digest
-            ),
-            RecurrenceSemanticDigestV1("color-plan", "e" * 64),
-        ),
-        external_legs=tuple(
-            RecurrenceExternalLegV1(
-                source_slot=slot,
-                public_label=slot + 1,
-                physical_pdg=1 if slot == 0 else -1,
-                outgoing_pdg=1 if slot == 0 else -1,
-                is_initial=True,
-                is_fermionic=True,
-                source_states=(
-                    RecurrenceSourceStateV1(
-                        0,
-                        1,
-                        1,
-                        -1 if slot == 0 else 1,
-                        1,
-                        1,
-                    ),
-                ),
-                momentum_mask=1 << slot,
-                support_mask=1,
-            )
-            for slot in range(2)
-        ),
-        physical_sectors=(
-            RecurrencePhysicalLCSectorV1(
-                sector_id=0,
-                public_id="flow:1,2",
-                kind="open-lines",
-                closure_source_slot=1,
-                closure_proof_algorithm="canonical-lc-closure-anchor-v2",
-                closure_proof_digest="9" * 64,
-                open_strings=(RecurrenceLCOpenStringV1(0, 1),),
-                word_source_slots=(0, 1),
-                support_mask=1,
-            ),
-        ),
-        public_flows=(RecurrencePublicLCFlowV1(0, "flow:1,2", 0, (0, 1), (0, 1)),),
-        semantic_template_references=(
-            RecurrenceSemanticTemplateReferenceV1(
-                "current-state", 1, matter_state.semantic_digest
-            ),
-            RecurrenceSemanticTemplateReferenceV1(
-                "source", 1, matter_source.semantic_digest, prepared_kernel_id=0
-            ),
-        ),
-        normalization=RecurrenceNormalizationV1(
-            BuilderExactComplexRationalV1(1),
-            "synthetic-normalization-v1",
-            "f" * 64,
-        ),
-        process_support_mask=1,
-    )
-    process = build_recurrence_builder_input_v1(logical)
-
-    result = _rusticol._validate_recurrence_builder_input_v1(process, prepared)
-
-    assert result["validation_status"] == "validated-composite-input"
-    assert result["composite_authenticated"] is True
-    assert result["template_catalog_digest"] == catalog.header.catalog_digest
-    assert result["compiled_model_digest"] == catalog.header.compiled_model_digest
-    assert result["prepared_kernel_pack_digest"] == _PREPARED_PACK_DIGEST
-    assert result["schedule_constructed"] is False
-
-    stale_logical = replace(
-        logical,
-        semantic_digests=tuple(
-                RecurrenceSemanticDigestV1(
-                    role, "1" * 64 if role == "model-catalog" else digest
-                )
-            for role, digest in (
-                ("process", "d" * 64),
-                ("model-catalog", catalog.header.compiled_model_digest),
-                ("prepared-catalog", catalog.header.catalog_digest),
-                ("color-plan", "e" * 64),
-            )
-        ),
-    )
-    with pytest.raises(ValueError, match="model-catalog digest"):
-        _rusticol._validate_recurrence_builder_input_v1(
-            build_recurrence_builder_input_v1(stale_logical), prepared
-        )
+def test_native_builder_exposes_only_the_direct_arena_v2_entry_point() -> None:
+    assert callable(_rusticol._lower_recurrence_direct_v2)
+    assert not hasattr(_rusticol, "_validate_recurrence_builder_input_v1")
 
 
 @pytest.mark.parametrize("numerator", (1 << 127, -(1 << 127)))

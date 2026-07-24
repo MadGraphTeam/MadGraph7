@@ -3,31 +3,89 @@
 //! Compact model-generic recurrence construction.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::time::{Duration, Instant};
 
+use super::layout::RuntimeSourceVariantBinding;
 use super::process::{
     OwnedRecurrenceProcessInput, ProcessLCSectorKind, ProcessPhysicalLCSectorRow,
+    ProcessSourceStateRow,
 };
 use super::template::{
-    ClosureRow, LCColorTransitionWitnessRow, OwnedRecurrenceTemplateInput, QuantumFlowRow,
-    SourceRow, TransitionRow,
+    ClosureRow, LCColorTransitionWitnessRow, OutputFactorSource, OwnedRecurrenceTemplateInput,
+    QuantumFlowRow, RuntimeHelicityContractRow, RuntimeHelicityVariantRow, SourceRow,
+    TransitionRow,
 };
 use super::{
     AuthenticatedRecurrenceBuilderInput, CanonicalMomentumLinearForm, CheckedTableRange,
     ContributionKey, CurrentCoreKey, CurrentHelicityIdentity, CurrentSourceBinding,
-    DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational, LCColorComponent,
-    LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole, LCColorParentPort,
-    LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation, LCColorTransitionWitness,
-    LCColorWitnessTermId, MomentumTerm, RecurrenceAmplitudeDestination, RecurrenceClosureTerm,
-    RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization, RecurrenceNodeKind,
-    RecurrenceProgram, RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy,
-    SemanticDigest, SourceStateAssignment,
+    DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational, ExactRational,
+    LCColorComponent, LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole,
+    LCColorParentPort, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
+    LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm, RecurrenceAmplitudeDestination,
+    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
+    RecurrenceNodeKind, RecurrenceProgram, RecurrenceReplayTarget, RecurrenceResolvedHelicity,
+    RecurrenceStrategy, SemanticDigest, SourceStateAssignment,
 };
 use crate::{RusticolError, RusticolResult};
 
 const MISSING_U32: u32 = u32::MAX;
+const PROGRESS_PAIR_INTERVAL: usize = 16_384;
+const PROGRESS_TIME_INTERVAL: Duration = Duration::from_millis(250);
+const PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: &str =
+    "helicity-support:pure-massless-adjoint-tree-v1";
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
+}
+
+/// One rate-limited snapshot of compact recurrence construction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurrenceBuildProgress {
+    pub phase: &'static str,
+    pub phase_index: usize,
+    pub phase_total: usize,
+    pub stage_index: Option<usize>,
+    pub stage_total: usize,
+    pub subset_size: Option<usize>,
+    pub candidate_parent_pair_count: usize,
+    pub candidate_parent_pair_total: Option<usize>,
+    pub current_count: usize,
+    pub contribution_count: usize,
+    pub dynamic_color_state_count: usize,
+    pub color_target_prune_count: usize,
+}
+
+impl RecurrenceBuildProgress {
+    #[allow(clippy::too_many_arguments)]
+    fn snapshot(
+        phase: &'static str,
+        phase_index: usize,
+        phase_total: usize,
+        stage_index: Option<usize>,
+        stage_total: usize,
+        subset_size: Option<usize>,
+        candidate_parent_pair_count: usize,
+        candidate_parent_pair_total: Option<usize>,
+        current_count: usize,
+        contribution_count: usize,
+        dynamic_color_state_count: usize,
+        color_target_prune_count: usize,
+    ) -> Self {
+        Self {
+            phase,
+            phase_index,
+            phase_total,
+            stage_index,
+            stage_total,
+            subset_size,
+            candidate_parent_pair_count,
+            candidate_parent_pair_total,
+            current_count,
+            contribution_count,
+            dynamic_color_state_count,
+            color_target_prune_count,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -43,6 +101,12 @@ struct PendingCurrent {
     contributions: BTreeMap<PendingContributionKey, ExactComplexRational>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HelicitySupportRule {
+    None,
+    PureMasslessAdjointTree,
+}
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct PendingClosureKey {
     target_sector_id: u32,
@@ -55,13 +119,177 @@ struct PendingClosureKey {
 #[derive(Clone, Debug, Default)]
 struct StageConstructionDiagnostics {
     target_size: usize,
+    candidate_parent_pair_count: usize,
     parent_pair_count: usize,
+    transition_index_hit_count: usize,
+    transition_candidate_count: usize,
     state_order_count: usize,
     quantum_match_count: usize,
     coupling_match_count: usize,
     color_shape_match_count: usize,
     color_result_count: usize,
+    color_target_prune_count: usize,
     contribution_count: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct IndexedTransition {
+    row: TransitionRow,
+    input_states: [u32; 2],
+}
+
+impl IndexedTransition {
+    fn parent_ids(
+        self,
+        left_state: u32,
+        right_state: u32,
+        left_id: u32,
+        right_id: u32,
+    ) -> RusticolResult<[u32; 2]> {
+        if self.input_states == [left_state, right_state] {
+            return Ok([left_id, right_id]);
+        }
+        if left_state != right_state && self.input_states == [right_state, left_state] {
+            return Ok([right_id, left_id]);
+        }
+        Err(invalid("recurrence transition state index is inconsistent"))
+    }
+}
+
+#[derive(Debug, Default)]
+struct TransitionStateIndex {
+    rows_by_state_pair: BTreeMap<(u32, u32), Vec<IndexedTransition>>,
+}
+
+impl TransitionStateIndex {
+    fn new(
+        template: &OwnedRecurrenceTemplateInput,
+        catalog: &TemplateCatalog<'_>,
+    ) -> RusticolResult<Self> {
+        let mut result = Self::default();
+        for transition in &template.transitions {
+            let input_states = catalog.u32_sequence(
+                transition.input_state_sequence_id,
+                "transition input states",
+            )?;
+            let input_states: [u32; 2] = input_states
+                .try_into()
+                .map_err(|_| invalid("recurrence v1 requires binary prepared transitions"))?;
+            result.insert(*transition, input_states);
+        }
+        Ok(result)
+    }
+
+    fn insert(&mut self, row: TransitionRow, input_states: [u32; 2]) {
+        self.rows_by_state_pair
+            .entry(canonical_state_pair(input_states))
+            .or_default()
+            .push(IndexedTransition { row, input_states });
+    }
+
+    fn rows(&self, left_state: u32, right_state: u32) -> &[IndexedTransition] {
+        self.rows_by_state_pair
+            .get(&canonical_state_pair([left_state, right_state]))
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+}
+
+fn canonical_state_pair([left, right]: [u32; 2]) -> (u32, u32) {
+    if left <= right {
+        (left, right)
+    } else {
+        (right, left)
+    }
+}
+
+/// Necessary physical-sector compatibility for a partial LC color forest.
+///
+/// Recurrence witnesses can join or explicitly reverse ordered components, but
+/// they never split or internally permute an existing component. A partial
+/// component must therefore occur as an oriented contiguous word in at least
+/// one materialized representative sector. Reversed public flows are handled
+/// by certified replay mappings; accepting their partial words here would
+/// materialize an unphased second current instead of an exact replay alias.
+/// This cheap forward filter prevents the builder from interning color words
+/// that exact closure reachability would discard later; final backward
+/// liveness remains authoritative.
+#[derive(Debug)]
+struct MaterializedColorTargets {
+    sectors: Vec<Vec<LCColorComponent>>,
+}
+
+impl MaterializedColorTargets {
+    fn new(
+        materialized_sector_ids: &BTreeSet<u32>,
+        process: &OwnedRecurrenceProcessInput,
+        catalog: &ProcessCatalog<'_>,
+    ) -> RusticolResult<Self> {
+        let sectors = materialized_sector_ids
+            .iter()
+            .copied()
+            .map(|sector_id| {
+                let sector = process
+                    .physical_lc_sectors
+                    .get(sector_id as usize)
+                    .copied()
+                    .ok_or_else(|| invalid("materialized LC sector is absent"))?;
+                expected_sector_components(sector, process, catalog)
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        if sectors.is_empty() {
+            return Err(invalid(
+                "recurrence construction has no materialized LC sector",
+            ));
+        }
+        Ok(Self { sectors })
+    }
+
+    fn accepts(&self, state: &DynamicLCColorState) -> bool {
+        if state.components().is_empty() {
+            return true;
+        }
+        self.sectors.iter().any(|sector| {
+            state.components().iter().all(|partial| {
+                sector
+                    .iter()
+                    .any(|target| component_can_embed(partial, target))
+            })
+        })
+    }
+}
+
+fn component_can_embed(partial: &LCColorComponent, target: &LCColorComponent) -> bool {
+    if partial.kind() == LCColorComponentKind::Trace {
+        return target.kind() == LCColorComponentKind::Trace
+            && partial.source_slots().len() == target.source_slots().len()
+            && cyclic_word_contains(target.source_slots(), partial.source_slots());
+    }
+    match target.kind() {
+        LCColorComponentKind::Trace => {
+            cyclic_word_contains(target.source_slots(), partial.source_slots())
+        }
+        LCColorComponentKind::OpenString | LCColorComponentKind::AdjointSegment => {
+            linear_word_contains(target.source_slots(), partial.source_slots())
+        }
+    }
+}
+
+fn linear_word_contains(target: &[u32], partial: &[u32]) -> bool {
+    !partial.is_empty()
+        && partial.len() <= target.len()
+        && target
+            .windows(partial.len())
+            .any(|window| window == partial)
+}
+
+fn cyclic_word_contains(target: &[u32], partial: &[u32]) -> bool {
+    !partial.is_empty()
+        && partial.len() <= target.len()
+        && (0..target.len()).any(|start| {
+            (0..partial.len())
+                .all(|offset| target[(start + offset) % target.len()] == partial[offset])
+        })
 }
 
 pub(super) struct TemplateCatalog<'a> {
@@ -374,17 +602,27 @@ impl<'a> ProcessCatalog<'a> {
 pub(super) fn build_recurrence_program(
     authenticated: &AuthenticatedRecurrenceBuilderInput,
 ) -> RusticolResult<RecurrenceProgram> {
+    build_recurrence_program_with_progress(authenticated, &mut |_| Ok(()))
+}
+
+pub(super) fn build_recurrence_program_with_progress(
+    authenticated: &AuthenticatedRecurrenceBuilderInput,
+    progress: &mut dyn FnMut(RecurrenceBuildProgress) -> RusticolResult<()>,
+) -> RusticolResult<RecurrenceProgram> {
     let strategy = authenticated.process().summary().strategy();
     let catalog_digest = authenticated.template().summary().catalog_digest;
     let process_input = authenticated.process().input();
     let template_input = authenticated.template().input();
     let process_catalog = ProcessCatalog::new(process_input)?;
+    let helicity_support_rule = helicity_support_rule(authenticated)?;
     let retained_helicity_count = retained_helicity_count(process_input)?;
     let template_catalog = TemplateCatalog::new(template_input)?;
     let coupling_limits = coupling_limits(&process_catalog, &template_catalog)?;
     let propagators = propagator_by_state(template_input)?;
     let replay_targets = build_replay_targets(strategy, process_input, &process_catalog)?;
     let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
+    let color_targets =
+        MaterializedColorTargets::new(&materialized_sectors, process_input, &process_catalog)?;
     let mut color_states = DynamicLCColorStateInterner::default();
     let mut currents = Vec::<PendingCurrent>::new();
     let mut current_ids = BTreeMap::<CurrentCoreKey, u32>::new();
@@ -402,6 +640,22 @@ pub(super) fn build_recurrence_program(
         &mut current_ids,
         &mut currents_by_size,
     )?;
+    let stage_total = process_input.external_legs.len().saturating_sub(2);
+    let phase_total = stage_total.saturating_add(3);
+    progress(RecurrenceBuildProgress::snapshot(
+        "source construction",
+        1,
+        phase_total,
+        None,
+        stage_total,
+        Some(1),
+        0,
+        None,
+        currents.len(),
+        0,
+        color_states.len(),
+        0,
+    ))?;
     let stage_diagnostics = build_internal_currents(
         catalog_digest,
         process_input,
@@ -409,11 +663,44 @@ pub(super) fn build_recurrence_program(
         &template_catalog,
         &coupling_limits,
         &propagators,
+        &color_targets,
         &mut color_states,
         &mut currents,
         &mut current_ids,
         &mut currents_by_size,
+        phase_total,
+        progress,
     )?;
+    let contribution_count = stage_diagnostics
+        .iter()
+        .map(|stage| stage.contribution_count)
+        .try_fold(0usize, |total, count| {
+            total
+                .checked_add(count)
+                .ok_or_else(|| invalid("recurrence contribution count exceeds usize"))
+        })?;
+    let color_target_prune_count = stage_diagnostics
+        .iter()
+        .map(|stage| stage.color_target_prune_count)
+        .try_fold(0usize, |total, count| {
+            total
+                .checked_add(count)
+                .ok_or_else(|| invalid("recurrence color-target prune count exceeds usize"))
+        })?;
+    progress(RecurrenceBuildProgress::snapshot(
+        "amplitude closure",
+        stage_total.saturating_add(2),
+        phase_total,
+        None,
+        stage_total,
+        None,
+        0,
+        None,
+        currents.len(),
+        contribution_count,
+        color_states.len(),
+        color_target_prune_count,
+    ))?;
     let closures = build_closures(
         process_input,
         &process_catalog,
@@ -424,6 +711,20 @@ pub(super) fn build_recurrence_program(
         &materialized_sectors,
         &stage_diagnostics,
     )?;
+    progress(RecurrenceBuildProgress::snapshot(
+        "schedule finalization",
+        phase_total,
+        phase_total,
+        None,
+        stage_total,
+        None,
+        0,
+        None,
+        currents.len(),
+        contribution_count,
+        color_states.len(),
+        color_target_prune_count,
+    ))?;
     finish_program(
         strategy,
         &process_catalog,
@@ -432,6 +733,7 @@ pub(super) fn build_recurrence_program(
         closures,
         replay_targets,
         retained_helicity_count,
+        helicity_support_rule,
     )
 }
 
@@ -454,90 +756,416 @@ fn build_sources(
             .source_state_range
             .as_usize_range(process.source_states.len(), "recurrence source-state range")?;
         let retained_state_indices = retained_source_state_indices(process, leg.source_slot)?;
-        for state_index in retained_state_indices {
-            let process_state = process
-                .source_states
-                .get(range.start + state_index as usize)
-                .ok_or_else(|| invalid("retained recurrence source state is absent"))?;
+        let retained_states = retained_state_indices
+            .into_iter()
+            .map(|state_index| {
+                process
+                    .source_states
+                    .get(range.start + state_index as usize)
+                    .ok_or_else(|| invalid("retained recurrence source state is absent"))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        for process_state in &retained_states {
             let source = *template
                 .sources
                 .get(process_state.source_template_id as usize)
                 .ok_or_else(|| invalid("source template is absent"))?;
             validate_crossed_source_state(leg.is_initial != 0, process_state, source, template)?;
-            let dynamic_state = template_catalog.source_seed(source)?.instantiate(
-                leg.source_slot,
-                template
-                    .current_states
-                    .get(source.state_template_id as usize)
-                    .ok_or_else(|| invalid("source current-state template is absent"))?
-                    .color_representation,
-            )?;
-            let color_id = color_states.intern(dynamic_state)?;
-            let helicity_identity = match strategy {
-                RecurrenceStrategy::TopologyReplay => CurrentHelicityIdentity::topology_replay(
-                    process_state.spin_state,
-                    vec![SourceStateAssignment::new(
+        }
+
+        match strategy {
+            RecurrenceStrategy::TopologyReplay => {
+                for process_state in retained_states {
+                    let source = *template
+                        .sources
+                        .get(process_state.source_template_id as usize)
+                        .ok_or_else(|| invalid("source template is absent"))?;
+                    let color_id = source_color_state_id(
                         leg.source_slot,
-                        process_state.state_index,
-                    )],
-                )?,
-                RecurrenceStrategy::AllFlowUnion => {
-                    CurrentHelicityIdentity::all_flow_union(process_state.spin_state)
+                        source,
+                        template,
+                        template_catalog,
+                        color_states,
+                    )?;
+                    insert_source_current(
+                        catalog_digest,
+                        process_state.current_state_template_id,
+                        color_id,
+                        leg.source_slot,
+                        process_state.momentum_sign,
+                        CurrentHelicityIdentity::topology_replay(
+                            process_state.spin_state,
+                            vec![SourceStateAssignment::new(
+                                leg.source_slot,
+                                process_state.state_index,
+                            )],
+                        )?,
+                        source,
+                        CurrentSourceBinding::FixedTemplate(process_state.source_template_id),
+                        Some(process_catalog.factor(
+                            process_state.crossing_phase_factor_id,
+                            "source crossing phase",
+                        )?),
+                        &zero_orders,
+                        template_catalog,
+                        currents,
+                        current_ids,
+                        currents_by_size,
+                    )?;
                 }
-            };
-            let source_binding = match strategy {
-                RecurrenceStrategy::TopologyReplay => {
-                    CurrentSourceBinding::FixedTemplate(process_state.source_template_id)
-                }
-                RecurrenceStrategy::AllFlowUnion => {
-                    CurrentSourceBinding::RuntimeDispatchDomain(leg.source_slot)
-                }
-            };
-            let key = CurrentCoreKey::new(
-                catalog_digest,
-                RecurrenceNodeKind::Source,
-                process_state.current_state_template_id,
-                color_id,
-                vec![leg.source_slot],
-                CanonicalMomentumLinearForm::new(vec![MomentumTerm {
-                    source_slot: leg.source_slot,
-                    coefficient: process_state.momentum_sign,
-                }])?,
-                helicity_identity,
-                template_catalog
-                    .flavour_flow(source.flavour_flow_id, "source flavour flow")?
-                    .to_vec(),
-                source.quantum_number_flow_id,
-                zero_orders.clone(),
-                source_binding,
-                None,
-            )?;
-            let source_factor = match strategy {
-                RecurrenceStrategy::TopologyReplay => Some(process_catalog.factor(
-                    process_state.crossing_phase_factor_id,
-                    "source crossing phase",
-                )?),
-                RecurrenceStrategy::AllFlowUnion => None,
-            };
-            if let Some(existing) = current_ids.get(&key).copied() {
-                if currents[existing as usize].source_exact_factor != source_factor {
-                    return Err(invalid(
-                        "equivalent source currents have different exact factors",
-                    ));
-                }
-                continue;
             }
-            let id = u32::try_from(currents.len())
-                .map_err(|_| invalid("recurrence current count exceeds u32"))?;
-            current_ids.insert(key.clone(), id);
-            currents.push(PendingCurrent {
-                key,
-                source_exact_factor: source_factor,
-                contributions: BTreeMap::new(),
-            });
-            currents_by_size[0].push(id);
+            RecurrenceStrategy::AllFlowUnion => {
+                let groups = union_source_dispatch_groups(
+                    &retained_states,
+                    process_catalog,
+                    template,
+                    template_catalog,
+                )?;
+                for group in groups {
+                    let source = group.representative_source;
+                    let color_id = source_color_state_id(
+                        leg.source_slot,
+                        source,
+                        template,
+                        template_catalog,
+                        color_states,
+                    )?;
+                    insert_source_current(
+                        catalog_digest,
+                        group.full_state_template_id,
+                        color_id,
+                        leg.source_slot,
+                        group.momentum_sign,
+                        CurrentHelicityIdentity::all_flow_union(group.full_spin_state_class),
+                        source,
+                        CurrentSourceBinding::runtime_dispatch_with_variants(
+                            group.contract_id,
+                            group.variants,
+                        )?,
+                        None,
+                        &zero_orders,
+                        template_catalog,
+                        currents,
+                        current_ids,
+                        currents_by_size,
+                    )?;
+                }
+            }
         }
     }
+    Ok(())
+}
+
+fn source_color_state_id(
+    source_slot: u32,
+    source: SourceRow,
+    template: &OwnedRecurrenceTemplateInput,
+    template_catalog: &TemplateCatalog<'_>,
+    color_states: &mut DynamicLCColorStateInterner,
+) -> RusticolResult<super::DynamicLCColorStateId> {
+    let dynamic_state = template_catalog.source_seed(source)?.instantiate(
+        source_slot,
+        template
+            .current_states
+            .get(source.state_template_id as usize)
+            .ok_or_else(|| invalid("source current-state template is absent"))?
+            .color_representation,
+    )?;
+    color_states.intern(dynamic_state)
+}
+
+#[derive(Debug)]
+struct UnionSourceDispatchGroup {
+    contract_id: u32,
+    full_state_template_id: u32,
+    full_spin_state_class: i32,
+    momentum_sign: i32,
+    representative_source: SourceRow,
+    variants: Vec<RuntimeSourceVariantBinding>,
+}
+
+fn union_source_dispatch_groups(
+    retained_states: &[&ProcessSourceStateRow],
+    process_catalog: &ProcessCatalog<'_>,
+    template: &OwnedRecurrenceTemplateInput,
+    template_catalog: &TemplateCatalog<'_>,
+) -> RusticolResult<Vec<UnionSourceDispatchGroup>> {
+    let mut grouped = BTreeMap::<
+        u32,
+        (
+            RuntimeHelicityContractRow,
+            Vec<(ProcessSourceStateRow, RuntimeHelicityVariantRow)>,
+        ),
+    >::new();
+    for process_state in retained_states {
+        let (contract, variant) =
+            runtime_helicity_variant_for_source(template, process_state.source_template_id)?;
+        if variant.source_state_template_id
+            != template.sources[process_state.source_template_id as usize].state_template_id
+        {
+            return Err(invalid(format!(
+                "runtime-helicity variant {} source-state contract is stale",
+                variant.id
+            )));
+        }
+        grouped
+            .entry(contract.id)
+            .or_insert_with(|| (contract, Vec::new()))
+            .1
+            .push((**process_state, variant));
+    }
+    if grouped.is_empty() {
+        return Err(invalid(
+            "all-flow-union source has no certified runtime-helicity dispatch domain",
+        ));
+    }
+
+    grouped
+        .into_values()
+        .map(|(contract, mut entries)| {
+            entries.sort_by_key(|(state, _)| state.state_index);
+            if entries
+                .windows(2)
+                .any(|pair| pair[0].0.state_index == pair[1].0.state_index)
+            {
+                return Err(invalid(format!(
+                    "runtime-helicity contract {} has an ambiguous process source-state mapping",
+                    contract.id
+                )));
+            }
+            let full_state = template
+                .current_states
+                .get(contract.full_state_template_id as usize)
+                .ok_or_else(|| invalid("runtime-helicity full state is absent"))?;
+            let representative_state = entries[0].0;
+            let representative_source =
+                template.sources[representative_state.source_template_id as usize];
+            let momentum_sign = representative_state.momentum_sign;
+            for (process_state, variant) in &entries {
+                let source = template.sources[process_state.source_template_id as usize];
+                validate_union_source_family(
+                    representative_source,
+                    source,
+                    contract,
+                    *variant,
+                    *process_state,
+                    full_state,
+                    template,
+                    template_catalog,
+                )?;
+                if process_state.momentum_sign != momentum_sign {
+                    return Err(invalid(format!(
+                        "runtime-helicity contract {} mixes source momentum signs",
+                        contract.id
+                    )));
+                }
+            }
+            let full_spin_state_class =
+                union_full_spin_state_class(contract, &entries, template, template_catalog)?;
+            let variants = entries
+                .into_iter()
+                .map(|(process_state, variant)| {
+                    RuntimeSourceVariantBinding::new(
+                        process_state.state_index,
+                        process_state.public_helicity,
+                        variant.id,
+                        variant.source_template_id,
+                        variant.source_state_template_id,
+                        process_state.current_state_template_id,
+                        process_state.spin_state,
+                        process_catalog.factor(
+                            process_state.crossing_phase_factor_id,
+                            "runtime source crossing phase",
+                        )?,
+                    )
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            Ok(UnionSourceDispatchGroup {
+                contract_id: contract.id,
+                full_state_template_id: contract.full_state_template_id,
+                full_spin_state_class,
+                momentum_sign,
+                representative_source,
+                variants,
+            })
+        })
+        .collect()
+}
+
+fn runtime_helicity_variant_for_source(
+    template: &OwnedRecurrenceTemplateInput,
+    source_template_id: u32,
+) -> RusticolResult<(RuntimeHelicityContractRow, RuntimeHelicityVariantRow)> {
+    let mut found = None;
+    for contract in template.runtime_helicity_contracts.iter().copied() {
+        let range = contract.variant_range.as_usize_range(
+            template.runtime_helicity_variants.len(),
+            "runtime-helicity variants",
+        )?;
+        for variant in template.runtime_helicity_variants[range].iter().copied() {
+            if variant.source_template_id != source_template_id {
+                continue;
+            }
+            if found.replace((contract, variant)).is_some() {
+                return Err(invalid(format!(
+                    "source template {source_template_id} belongs to ambiguous runtime-helicity variants"
+                )));
+            }
+        }
+    }
+    found.ok_or_else(|| {
+        invalid(format!(
+            "source template {source_template_id} has no certified runtime-helicity variant"
+        ))
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_union_source_family(
+    representative: SourceRow,
+    source: SourceRow,
+    contract: RuntimeHelicityContractRow,
+    variant: RuntimeHelicityVariantRow,
+    process_state: ProcessSourceStateRow,
+    full_state: &super::template::CurrentStateRow,
+    template: &OwnedRecurrenceTemplateInput,
+    template_catalog: &TemplateCatalog<'_>,
+) -> RusticolResult<()> {
+    if variant.contract_id != contract.id
+        || variant.source_template_id != source.id
+        || variant.source_state_template_id != source.state_template_id
+    {
+        return Err(invalid(format!(
+            "runtime-helicity variant {} is inconsistent with source template {}",
+            variant.id, source.id
+        )));
+    }
+    let effective = template
+        .current_states
+        .get(process_state.current_state_template_id as usize)
+        .ok_or_else(|| invalid("runtime source effective state is absent"))?;
+    let full_state_is_compatible = full_state.particle_id == effective.particle_id
+        && full_state.anti_particle_id == effective.anti_particle_id
+        && full_state.species_string_id == effective.species_string_id
+        && full_state.orientation == effective.orientation
+        && full_state.statistics == effective.statistics
+        && full_state.color_representation == effective.color_representation
+        && full_state.lc_color_shape_string_id == effective.lc_color_shape_string_id
+        && full_state.auxiliary_kind_string_id == effective.auxiliary_kind_string_id
+        && full_state.mass_parameter_id == effective.mass_parameter_id
+        && full_state.width_parameter_id == effective.width_parameter_id;
+    if !full_state_is_compatible {
+        return Err(invalid(format!(
+            "runtime-helicity full state {} is not crossing-compatible with process state {}",
+            contract.full_state_template_id, process_state.current_state_template_id
+        )));
+    }
+    if !same_union_source_dispatch_semantics(representative, source)
+        || template_catalog.flavour_flow(
+            representative.flavour_flow_id,
+            "runtime source flavour flow",
+        )? != template_catalog
+            .flavour_flow(source.flavour_flow_id, "runtime source flavour flow")?
+    {
+        return Err(invalid(format!(
+            "runtime-helicity contract {} mixes incompatible source semantics",
+            contract.id
+        )));
+    }
+    Ok(())
+}
+
+fn same_union_source_dispatch_semantics(left: SourceRow, right: SourceRow) -> bool {
+    left.crossing_string_id == right.crossing_string_id
+        && left.wavefunction_family_string_id == right.wavefunction_family_string_id
+        && left.flavour_flow_id == right.flavour_flow_id
+        && left.quantum_number_flow_id == right.quantum_number_flow_id
+        && left.lc_color_seed_operation == right.lc_color_seed_operation
+        && left.lc_color_seed_shape_string_id == right.lc_color_seed_shape_string_id
+        && left.lc_color_seed_component_kind == right.lc_color_seed_component_kind
+        && left.lc_color_seed_component_role == right.lc_color_seed_component_role
+        && left.lc_color_seed_provenance_sequence_id == right.lc_color_seed_provenance_sequence_id
+        && left.mass_parameter_id == right.mass_parameter_id
+        && left.width_parameter_id == right.width_parameter_id
+}
+
+fn union_full_spin_state_class(
+    contract: RuntimeHelicityContractRow,
+    entries: &[(ProcessSourceStateRow, RuntimeHelicityVariantRow)],
+    template: &OwnedRecurrenceTemplateInput,
+    _catalog: &TemplateCatalog<'_>,
+) -> RusticolResult<i32> {
+    let mut result_spins = BTreeSet::new();
+    for flow in &template.quantum_flows {
+        if flow.result_state_template_id == contract.full_state_template_id {
+            result_spins.insert(flow.result_spin_state);
+        }
+    }
+    if result_spins.is_empty() {
+        result_spins.extend(entries.iter().map(|(state, _)| state.spin_state));
+    }
+    if result_spins.len() != 1 {
+        return Err(invalid(format!(
+            "runtime-helicity contract {} has ambiguous full-state spin classes {:?}",
+            contract.id, result_spins
+        )));
+    }
+    Ok(*result_spins.iter().next().expect("checked nonempty"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_source_current(
+    catalog_digest: SemanticDigest,
+    current_state_template_id: u32,
+    color_id: super::DynamicLCColorStateId,
+    source_slot: u32,
+    momentum_sign: i32,
+    helicity_identity: CurrentHelicityIdentity,
+    source: SourceRow,
+    source_binding: CurrentSourceBinding,
+    source_factor: Option<ExactComplexRational>,
+    zero_orders: &[u32],
+    template_catalog: &TemplateCatalog<'_>,
+    currents: &mut Vec<PendingCurrent>,
+    current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
+    currents_by_size: &mut [Vec<u32>],
+) -> RusticolResult<()> {
+    let key = CurrentCoreKey::new(
+        catalog_digest,
+        RecurrenceNodeKind::Source,
+        current_state_template_id,
+        color_id,
+        vec![source_slot],
+        CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+            source_slot,
+            coefficient: momentum_sign,
+        }])?,
+        helicity_identity,
+        template_catalog
+            .flavour_flow(source.flavour_flow_id, "source flavour flow")?
+            .to_vec(),
+        source.quantum_number_flow_id,
+        zero_orders.to_vec(),
+        source_binding,
+        None,
+    )?;
+    if let Some(existing) = current_ids.get(&key).copied() {
+        if currents[existing as usize].source_exact_factor != source_factor {
+            return Err(invalid(
+                "equivalent source currents have different exact factors",
+            ));
+        }
+        return Ok(());
+    }
+    let id = u32::try_from(currents.len())
+        .map_err(|_| invalid("recurrence current count exceeds u32"))?;
+    current_ids.insert(key.clone(), id);
+    currents.push(PendingCurrent {
+        key,
+        source_exact_factor: source_factor,
+        contributions: BTreeMap::new(),
+    });
+    currents_by_size[0].push(id);
     Ok(())
 }
 
@@ -583,6 +1211,59 @@ fn validate_crossed_source_state(
     Ok(())
 }
 
+fn parent_pairs_for_target(
+    target_size: usize,
+    prior_currents_by_size: &[Vec<u32>],
+) -> impl Iterator<Item = [u32; 2]> + '_ {
+    (1..=target_size / 2).flat_map(move |left_size| {
+        let right_size = target_size - left_size;
+        let same_size = left_size == right_size;
+        prior_currents_by_size[left_size - 1]
+            .iter()
+            .copied()
+            .flat_map(move |left_id| {
+                prior_currents_by_size[right_size - 1]
+                    .iter()
+                    .copied()
+                    .filter_map(move |right_id| match left_id.cmp(&right_id) {
+                        std::cmp::Ordering::Less => Some([left_id, right_id]),
+                        std::cmp::Ordering::Equal => None,
+                        std::cmp::Ordering::Greater if same_size => None,
+                        std::cmp::Ordering::Greater => Some([right_id, left_id]),
+                    })
+            })
+    })
+}
+
+fn parent_pair_total_for_target(
+    target_size: usize,
+    prior_currents_by_size: &[Vec<u32>],
+) -> RusticolResult<usize> {
+    (1..=target_size / 2).try_fold(0usize, |total, left_size| {
+        let right_size = target_size - left_size;
+        let left_count = prior_currents_by_size[left_size - 1].len();
+        let right_count = prior_currents_by_size[right_size - 1].len();
+        let pair_count = if left_size == right_size {
+            left_count
+                .checked_mul(left_count.saturating_sub(1))
+                .and_then(|value| value.checked_div(2))
+        } else {
+            left_count.checked_mul(right_count)
+        }
+        .ok_or_else(|| invalid("recurrence parent-pair total exceeds usize"))?;
+        total
+            .checked_add(pair_count)
+            .ok_or_else(|| invalid("recurrence parent-pair total exceeds usize"))
+    })
+}
+
+fn checked_diagnostic_add(counter: &mut usize, amount: usize, label: &str) -> RusticolResult<()> {
+    *counter = counter
+        .checked_add(amount)
+        .ok_or_else(|| invalid(format!("{label} exceeds usize")))?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_internal_currents(
     catalog_digest: SemanticDigest,
@@ -591,79 +1272,142 @@ fn build_internal_currents(
     catalog: &TemplateCatalog<'_>,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
+    color_targets: &MaterializedColorTargets,
     color_states: &mut DynamicLCColorStateInterner,
     currents: &mut Vec<PendingCurrent>,
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
     currents_by_size: &mut [Vec<u32>],
+    phase_total: usize,
+    progress: &mut dyn FnMut(RecurrenceBuildProgress) -> RusticolResult<()>,
 ) -> RusticolResult<Vec<StageConstructionDiagnostics>> {
+    let transition_index = TransitionStateIndex::new(template, catalog)?;
     let mut diagnostics = Vec::new();
+    let stage_total = process.external_legs.len().saturating_sub(2);
+    let mut completed_contribution_count = 0usize;
+    let mut completed_color_target_prune_count = 0usize;
     for target_size in 2..process.external_legs.len() {
-        let mut parent_pairs = Vec::new();
-        for left_size in 1..target_size {
-            let right_size = target_size - left_size;
-            for &left_id in &currents_by_size[left_size - 1] {
-                for &right_id in &currents_by_size[right_size - 1] {
-                    if left_id >= right_id {
-                        continue;
-                    }
-                    if disjoint_support(
-                        currents[left_id as usize].key.support_source_slots(),
-                        currents[right_id as usize].key.support_source_slots(),
-                    ) {
-                        parent_pairs.push((left_id, right_id));
-                    }
-                }
-            }
-        }
-        parent_pairs.sort_unstable();
-        parent_pairs.dedup();
-
         let mut stage = StageConstructionDiagnostics {
             target_size,
-            parent_pair_count: parent_pairs.len(),
             ..StageConstructionDiagnostics::default()
         };
-
-        for (left_id, right_id) in parent_pairs {
-            for transition in &template.transitions {
-                let input_states = catalog.u32_sequence(
-                    transition.input_state_sequence_id,
-                    "transition input states",
+        let (prior_buckets, target_and_later) = currents_by_size.split_at_mut(target_size - 1);
+        debug_assert!(prior_buckets.iter().flatten().copied().is_sorted());
+        let target_bucket = &mut target_and_later[0];
+        let candidate_parent_pair_total = parent_pair_total_for_target(target_size, prior_buckets)?;
+        let stage_index = target_size - 1;
+        progress(RecurrenceBuildProgress::snapshot(
+            "recurrence stage",
+            stage_index.saturating_add(1),
+            phase_total,
+            Some(stage_index),
+            stage_total,
+            Some(target_size),
+            0,
+            Some(candidate_parent_pair_total),
+            currents.len(),
+            completed_contribution_count,
+            color_states.len(),
+            completed_color_target_prune_count,
+        ))?;
+        let mut last_progress = Instant::now();
+        for [left_id, right_id] in parent_pairs_for_target(target_size, prior_buckets) {
+            checked_diagnostic_add(
+                &mut stage.candidate_parent_pair_count,
+                1,
+                "recurrence candidate parent-pair count",
+            )?;
+            if stage.candidate_parent_pair_count % PROGRESS_PAIR_INTERVAL == 0
+                && last_progress.elapsed() >= PROGRESS_TIME_INTERVAL
+            {
+                progress(RecurrenceBuildProgress::snapshot(
+                    "recurrence stage",
+                    stage_index.saturating_add(1),
+                    phase_total,
+                    Some(stage_index),
+                    stage_total,
+                    Some(target_size),
+                    stage.candidate_parent_pair_count,
+                    Some(candidate_parent_pair_total),
+                    currents.len(),
+                    completed_contribution_count.saturating_add(stage.contribution_count),
+                    color_states.len(),
+                    completed_color_target_prune_count
+                        .saturating_add(stage.color_target_prune_count),
+                ))?;
+                last_progress = Instant::now();
+            }
+            if !disjoint_support(
+                currents[left_id as usize].key.support_source_slots(),
+                currents[right_id as usize].key.support_source_slots(),
+            ) {
+                continue;
+            }
+            checked_diagnostic_add(
+                &mut stage.parent_pair_count,
+                1,
+                "recurrence parent-pair count",
+            )?;
+            let left_state = currents[left_id as usize].key.current_state_template_id();
+            let right_state = currents[right_id as usize].key.current_state_template_id();
+            let indexed_transitions = transition_index.rows(left_state, right_state);
+            if !indexed_transitions.is_empty() {
+                checked_diagnostic_add(
+                    &mut stage.transition_index_hit_count,
+                    1,
+                    "recurrence transition-index hit count",
                 )?;
-                if input_states.len() != 2 {
-                    return Err(invalid(
-                        "recurrence v1 requires binary prepared transitions",
-                    ));
-                }
-                let left_state = currents[left_id as usize].key.current_state_template_id();
-                let right_state = currents[right_id as usize].key.current_state_template_id();
-                let mut orders = Vec::new();
-                if input_states == [left_state, right_state] {
-                    orders.push([left_id, right_id]);
-                }
-                if input_states == [right_state, left_state] && left_state != right_state {
-                    orders.push([right_id, left_id]);
-                }
-                stage.state_order_count += orders.len();
-                for parent_ids in orders {
-                    add_transition_contributions(
-                        catalog_digest,
-                        *transition,
-                        parent_ids,
-                        target_size + 1 < process.external_legs.len(),
-                        template,
-                        catalog,
-                        coupling_limits,
-                        propagators,
-                        color_states,
-                        currents,
-                        current_ids,
-                        &mut currents_by_size[target_size - 1],
-                        &mut stage,
-                    )?;
-                }
+            }
+            checked_diagnostic_add(
+                &mut stage.transition_candidate_count,
+                indexed_transitions.len(),
+                "recurrence transition-candidate count",
+            )?;
+            for indexed in indexed_transitions {
+                checked_diagnostic_add(
+                    &mut stage.state_order_count,
+                    1,
+                    "recurrence state-order count",
+                )?;
+                add_transition_contributions(
+                    catalog_digest,
+                    indexed.row,
+                    indexed.parent_ids(left_state, right_state, left_id, right_id)?,
+                    target_size + 1 < process.external_legs.len(),
+                    template,
+                    catalog,
+                    coupling_limits,
+                    propagators,
+                    color_targets,
+                    color_states,
+                    currents,
+                    current_ids,
+                    target_bucket,
+                    &mut stage,
+                )?;
             }
         }
+        debug_assert_eq!(stage.target_size, target_size);
+        debug_assert_eq!(stage.transition_candidate_count, stage.state_order_count);
+        completed_contribution_count = completed_contribution_count
+            .checked_add(stage.contribution_count)
+            .ok_or_else(|| invalid("recurrence contribution count exceeds usize"))?;
+        completed_color_target_prune_count = completed_color_target_prune_count
+            .checked_add(stage.color_target_prune_count)
+            .ok_or_else(|| invalid("recurrence color-target prune count exceeds usize"))?;
+        progress(RecurrenceBuildProgress::snapshot(
+            "recurrence stage",
+            stage_index.saturating_add(1),
+            phase_total,
+            Some(stage_index),
+            stage_total,
+            Some(target_size),
+            stage.candidate_parent_pair_count,
+            Some(candidate_parent_pair_total),
+            currents.len(),
+            completed_contribution_count,
+            color_states.len(),
+            completed_color_target_prune_count,
+        ))?;
         diagnostics.push(stage);
     }
     Ok(diagnostics)
@@ -679,6 +1423,7 @@ fn add_transition_contributions(
     catalog: &TemplateCatalog<'_>,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
+    color_targets: &MaterializedColorTargets,
     color_states: &mut DynamicLCColorStateInterner,
     currents: &mut Vec<PendingCurrent>,
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
@@ -697,7 +1442,11 @@ fn add_transition_contributions(
     if !quantum_flow_matches(quantum, &parents, catalog)? {
         return Ok(());
     }
-    diagnostics.quantum_match_count += 1;
+    checked_diagnostic_add(
+        &mut diagnostics.quantum_match_count,
+        1,
+        "recurrence quantum-match count",
+    )?;
     let Some(coupling_orders) = combined_coupling_orders(
         parents[0].coupling_orders(),
         parents[1].coupling_orders(),
@@ -707,12 +1456,16 @@ fn add_transition_contributions(
     else {
         return Ok(());
     };
-    diagnostics.coupling_match_count += 1;
+    checked_diagnostic_add(
+        &mut diagnostics.coupling_match_count,
+        1,
+        "recurrence coupling-match count",
+    )?;
     let contraction = *template
         .color_contractions
         .get(transition.color_contraction_template_id as usize)
         .ok_or_else(|| invalid("transition color contraction is absent"))?;
-    authenticate_runtime_coupling(
+    let binding_coupling = authenticate_runtime_coupling(
         catalog,
         quantum,
         transition.binding_coupling_factor_id,
@@ -732,6 +1485,11 @@ fn add_transition_contributions(
         catalog.factor(transition.exact_factor_id, "transition exact")?,
         exchange_factor,
         catalog.factor(contraction.exact_coefficient_factor_id, "color contraction")?,
+        output_factor_from_binding(
+            binding_coupling,
+            transition.output_factor_source,
+            "transition",
+        )?,
     ])?;
 
     for witness_row in catalog.witness_rows(transition.color_contraction_template_id)? {
@@ -746,12 +1504,28 @@ fn add_transition_contributions(
         {
             continue;
         }
-        diagnostics.color_shape_match_count += 1;
+        checked_diagnostic_add(
+            &mut diagnostics.color_shape_match_count,
+            1,
+            "recurrence color-shape-match count",
+        )?;
         let witness = catalog.witness(*witness_row)?;
         let Some(result_color) = witness.apply(left_color, right_color)? else {
             continue;
         };
-        diagnostics.color_result_count += 1;
+        checked_diagnostic_add(
+            &mut diagnostics.color_result_count,
+            1,
+            "recurrence color-result count",
+        )?;
+        if !color_targets.accepts(&result_color) {
+            checked_diagnostic_add(
+                &mut diagnostics.color_target_prune_count,
+                1,
+                "recurrence color-target prune count",
+            )?;
+            continue;
+        }
         let result_color_id = color_states.intern(result_color)?;
         let support = merged_support(
             parents[0].support_source_slots(),
@@ -830,7 +1604,11 @@ fn add_transition_contributions(
                 .or_insert(ExactComplexRational::ZERO),
             factor,
         )?;
-        diagnostics.contribution_count += 1;
+        checked_diagnostic_add(
+            &mut diagnostics.contribution_count,
+            1,
+            "recurrence contribution-attempt count",
+        )?;
     }
     Ok(())
 }
@@ -990,14 +1768,19 @@ fn add_closure_terms(
         flows
     };
     for quantum in quantum_flows {
-        if let Some(quantum) = quantum {
+        let binding_coupling = if let Some(quantum) = quantum {
             authenticate_runtime_coupling(
                 catalog,
                 quantum,
                 closure.binding_coupling_factor_id,
                 "closure",
-            )?;
-        }
+            )?
+        } else {
+            catalog.factor(
+                closure.binding_coupling_factor_id,
+                "closure binding coupling",
+            )?
+        };
         let (evaluator_parent_ids, exchange_factor) = canonical_evaluator_parents(
             parent_ids,
             catalog.u32_sequence(
@@ -1012,6 +1795,7 @@ fn add_closure_terms(
             catalog.factor(closure.exact_factor_id, "closure exact")?,
             exchange_factor,
             catalog.factor(contraction.exact_coefficient_factor_id, "closure color")?,
+            output_factor_from_binding(binding_coupling, closure.output_factor_source, "closure")?,
         ])?;
         for witness_row in catalog.witness_rows(closure.color_contraction_template_id)? {
             let left = color_states
@@ -1062,11 +1846,32 @@ fn finish_program(
     process_catalog: &ProcessCatalog<'_>,
     dynamic_color_states: Vec<DynamicLCColorState>,
     pending: Vec<PendingCurrent>,
-    pending_closures: BTreeMap<PendingClosureKey, ExactComplexRational>,
+    mut pending_closures: BTreeMap<PendingClosureKey, ExactComplexRational>,
     replay_targets: Vec<RecurrenceReplayTarget>,
     retained_helicity_count: u64,
+    helicity_support_rule: HelicitySupportRule,
 ) -> RusticolResult<RecurrenceProgram> {
-    let sector_count = process_catalog.input.physical_lc_sectors.len();
+    if helicity_support_rule != HelicitySupportRule::None {
+        let mut retained = BTreeMap::new();
+        for (key, factor) in pending_closures {
+            if closure_helicity_is_supported(
+                helicity_support_rule,
+                process_catalog,
+                &key.complete_source_states,
+            )? {
+                retained.insert(key, factor);
+            }
+        }
+        pending_closures = retained;
+    }
+    let sector_count = match strategy {
+        RecurrenceStrategy::TopologyReplay => process_catalog
+            .input
+            .physical_lc_sectors
+            .len()
+            .max(replay_targets.len()),
+        RecurrenceStrategy::AllFlowUnion => process_catalog.input.physical_lc_sectors.len(),
+    };
     let helicity_keys = pending_closures
         .iter()
         .filter(|(key, factor)| !key.complete_source_states.is_empty() && !factor.is_zero())
@@ -1241,6 +2046,73 @@ fn finish_program(
         amplitude_destinations,
         closure_terms,
     )
+}
+
+fn helicity_support_rule(
+    authenticated: &AuthenticatedRecurrenceBuilderInput,
+) -> RusticolResult<HelicitySupportRule> {
+    let extensions = authenticated
+        .process()
+        .semantic_identity()
+        .extension_digests();
+    let mut rule = HelicitySupportRule::None;
+    for role in extensions
+        .keys()
+        .filter(|role| role.starts_with("helicity-support:"))
+    {
+        let candidate = match role.as_str() {
+            PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE => {
+                HelicitySupportRule::PureMasslessAdjointTree
+            }
+            _ => {
+                return Err(invalid(format!(
+                    "unsupported recurrence helicity-support proof {role:?}"
+                )));
+            }
+        };
+        if rule != HelicitySupportRule::None {
+            return Err(invalid(
+                "recurrence process carries more than one helicity-support proof",
+            ));
+        }
+        rule = candidate;
+    }
+    Ok(rule)
+}
+
+fn closure_helicity_is_supported(
+    rule: HelicitySupportRule,
+    process_catalog: &ProcessCatalog<'_>,
+    source_states: &[SourceStateAssignment],
+) -> RusticolResult<bool> {
+    if rule == HelicitySupportRule::None || source_states.is_empty() {
+        return Ok(true);
+    }
+    let public_helicities = process_catalog.public_helicities(source_states)?;
+    let mut positive = 0usize;
+    let mut negative = 0usize;
+    for (leg, helicity) in process_catalog
+        .input
+        .external_legs
+        .iter()
+        .zip(public_helicities)
+    {
+        let physical = if leg.is_initial == 1 {
+            -helicity
+        } else {
+            helicity
+        };
+        match physical {
+            1 => positive += 1,
+            -1 => negative += 1,
+            value => {
+                return Err(invalid(format!(
+                    "pure-massless-adjoint helicity proof received unsupported helicity {value}"
+                )));
+            }
+        }
+    }
+    Ok(positive >= 2 && negative >= 2)
 }
 
 fn retained_helicity_count(process: &OwnedRecurrenceProcessInput) -> RusticolResult<u64> {
@@ -1506,9 +2378,12 @@ fn build_replay_targets(
     if strategy == RecurrenceStrategy::AllFlowUnion {
         return Ok(Vec::new());
     }
-    let retained_sectors = retained_physical_sector_ids(process)?;
-    let mut rows = Vec::<(u32, u32, Vec<u32>, ExactComplexRational)>::new();
-    let mut covered = BTreeSet::new();
+    let retained_flows = retained_public_flows(process)?;
+    let retained_sectors = retained_flows
+        .iter()
+        .map(|flow| flow.construction_sector_id)
+        .collect::<BTreeSet<_>>();
+    let mut base_by_sector = BTreeMap::<u32, (u32, Vec<u32>, ExactComplexRational)>::new();
     for partition in &process.replay_partitions {
         let range = partition
             .target_range
@@ -1524,67 +2399,102 @@ fn build_replay_targets(
             if target.fermion_sign == -1 {
                 factor = factor.checked_neg()?;
             }
-            rows.push((
-                partition.materialized_sector_id,
+            let previous = base_by_sector.insert(
                 target.sector_id,
-                catalog
-                    .u32_sequence(
-                        target.source_slot_permutation_sequence_id,
-                        "recurrence replay source permutation",
-                    )?
-                    .to_vec(),
-                factor,
-            ));
-            covered.insert(target.sector_id);
+                (
+                    partition.materialized_sector_id,
+                    catalog
+                        .u32_sequence(
+                            target.source_slot_permutation_sequence_id,
+                            "recurrence replay source permutation",
+                        )?
+                        .to_vec(),
+                    factor,
+                ),
+            );
+            if previous.is_some() {
+                return Err(invalid(format!(
+                    "construction sector {} has multiple recurrence replay targets",
+                    target.sector_id
+                )));
+            }
         }
     }
     let identity = (0..process.external_legs.len())
         .map(|slot| u32::try_from(slot).map_err(|_| invalid("source-slot count exceeds u32")))
         .collect::<RusticolResult<Vec<_>>>()?;
-    for sector_id in retained_sectors.difference(&covered).copied() {
-        rows.push((
-            sector_id,
-            sector_id,
-            identity.clone(),
-            ExactComplexRational::ONE,
-        ));
+    for sector_id in retained_sectors {
+        base_by_sector
+            .entry(sector_id)
+            .or_insert_with(|| (sector_id, identity.clone(), ExactComplexRational::ONE));
     }
-    rows.sort_by_key(|(_, target_sector_id, _, _)| *target_sector_id);
-    rows.into_iter()
+    retained_flows
+        .into_iter()
         .enumerate()
-        .map(|(id, (materialized, target, permutation, factor))| {
+        .map(|(target_sector_id, flow)| {
+            let (materialized, construction_permutation, factor) = base_by_sector
+                .get(&flow.construction_sector_id)
+                .ok_or_else(|| invalid("public flow construction replay target is absent"))?;
+            let public_permutation = catalog.u32_sequence(
+                flow.source_slot_permutation_sequence_id,
+                "public LC flow source permutation",
+            )?;
+            if construction_permutation.len() != public_permutation.len() {
+                return Err(invalid(
+                    "public LC flow and construction replay permutations have different sizes",
+                ));
+            }
+            let permutation =
+                compose_gather_permutations(construction_permutation, public_permutation)?;
             RecurrenceReplayTarget::new(
-                u32::try_from(id).map_err(|_| invalid("replay-target count exceeds u32"))?,
-                materialized,
-                target,
+                u32::try_from(target_sector_id)
+                    .map_err(|_| invalid("replay-target count exceeds u32"))?,
+                *materialized,
+                u32::try_from(target_sector_id)
+                    .map_err(|_| invalid("public-flow target ID exceeds u32"))?,
                 permutation,
-                factor,
+                *factor,
             )
         })
         .collect()
 }
 
-fn retained_physical_sector_ids(
-    process: &OwnedRecurrenceProcessInput,
-) -> RusticolResult<BTreeSet<u32>> {
-    if !process.header[0].selected_flow_mode()? {
-        return Ok(process
-            .physical_lc_sectors
-            .iter()
-            .map(|sector| sector.sector_id)
-            .collect());
+fn compose_gather_permutations(
+    representative_to_construction: &[u32],
+    construction_to_public: &[u32],
+) -> RusticolResult<Vec<u32>> {
+    if representative_to_construction.len() != construction_to_public.len() {
+        return Err(invalid(
+            "public LC flow and construction replay permutations have different sizes",
+        ));
     }
-    process
-        .selected_public_flow_coverage
+    representative_to_construction
         .iter()
-        .map(|selected| {
-            process
-                .public_lc_flows
-                .get(selected.flow_id as usize)
-                .map(|flow| flow.construction_sector_id)
-                .ok_or_else(|| invalid("selected public LC flow is absent"))
+        .map(|construction_slot| {
+            construction_to_public
+                .get(*construction_slot as usize)
+                .copied()
+                .ok_or_else(|| invalid("construction replay permutation is out of range"))
         })
         .collect()
+}
+
+fn retained_public_flows(
+    process: &OwnedRecurrenceProcessInput,
+) -> RusticolResult<Vec<&super::process::ProcessPublicLCFlowRow>> {
+    if !process.header[0].selected_flow_mode()? {
+        return Ok(process.public_lc_flows.iter().collect());
+    }
+    let selected = process
+        .selected_public_flow_coverage
+        .iter()
+        .map(|row| row.flow_id)
+        .collect::<BTreeSet<_>>();
+    Ok(process
+        .public_lc_flows
+        .iter()
+        .filter(|flow| selected.contains(&flow.flow_id))
+        .collect())
 }
 
 fn propagator_by_state(
@@ -1592,7 +2502,7 @@ fn propagator_by_state(
 ) -> RusticolResult<BTreeMap<u32, Option<u32>>> {
     let mut result = BTreeMap::new();
     for row in &template.propagators {
-        let value = Some(row.id);
+        let value = (row.applies_propagator != 0).then_some(row.id);
         if result.insert(row.state_template_id, value).is_some() {
             return Err(invalid(format!(
                 "current-state template {} has multiple propagators",
@@ -1706,7 +2616,7 @@ fn authenticate_runtime_coupling(
     quantum: QuantumFlowRow,
     binding_coupling_factor_id: u32,
     label: &str,
-) -> RusticolResult<()> {
+) -> RusticolResult<ExactComplexRational> {
     let quantum_coupling = catalog.factor(
         quantum.exact_coupling_factor_id,
         &format!("{label} quantum-flow coupling"),
@@ -1720,7 +2630,25 @@ fn authenticate_runtime_coupling(
             "{label} binding coupling does not match its quantum-flow coupling witness"
         )));
     }
-    Ok(())
+    Ok(binding_coupling)
+}
+
+fn output_factor_from_binding(
+    binding_coupling: ExactComplexRational,
+    output_factor_source: u8,
+    label: &str,
+) -> RusticolResult<ExactComplexRational> {
+    let component = match OutputFactorSource::try_from(output_factor_source)? {
+        OutputFactorSource::None => return Ok(ExactComplexRational::ONE),
+        OutputFactorSource::CouplingReal => binding_coupling.real(),
+        OutputFactorSource::CouplingImag => binding_coupling.imag(),
+    };
+    if component.is_zero() {
+        return Err(invalid(format!(
+            "{label} selects a zero binding-coupling component"
+        )));
+    }
+    Ok(ExactComplexRational::new(component, ExactRational::ZERO))
 }
 
 fn canonical_evaluator_parents(
@@ -1850,4 +2778,711 @@ fn decode_process_factors(
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use super::super::process::{ProcessExternalLegRow, ProcessPhysicalLCSectorRow};
+    use super::super::template::{
+        ColorContractionRow, DigestCatalogRow, ExactFactorRow, IndexedRangeRow,
+        LCColorTransitionWitnessRow, PropagatorRow, QuantumFlowRow,
+    };
+    use super::*;
+
+    fn digest(byte: u8) -> SemanticDigest {
+        SemanticDigest::new([byte; 32]).expect("test digest must be nonzero")
+    }
+
+    fn transition(id: u32) -> TransitionRow {
+        TransitionRow {
+            id,
+            template_string_id: 0,
+            input_state_sequence_id: 0,
+            result_state_template_id: 0,
+            quantum_flow_template_id: 0,
+            evaluator_binding_id: 0,
+            canonical_input_order_sequence_id: 0,
+            momentum_convention_sequence_id: 0,
+            coupling_parameter_sequence_id: 0,
+            coupling_order_set_id: 0,
+            color_contraction_template_id: 0,
+            binding_coupling_factor_id: 0,
+            exact_factor_id: 0,
+            output_factor_source: 0,
+            equivalence_class_string_id: 0,
+            input_exchange_factor_id: MISSING_U32,
+            output_projection_string_id: 0,
+            semantic_digest_id: 0,
+        }
+    }
+
+    fn source(id: u32) -> SourceRow {
+        SourceRow {
+            id,
+            template_string_id: 1,
+            state_template_id: id,
+            crossing_string_id: 2,
+            wavefunction_family_string_id: 3,
+            helicity: if id == 0 { -1 } else { 1 },
+            spin_state: if id == 0 { -1 } else { 1 },
+            flavour_flow_id: 4,
+            quantum_number_flow_id: 5,
+            lc_color_seed_operation: 6,
+            lc_color_seed_shape_string_id: 7,
+            lc_color_seed_component_kind: 8,
+            lc_color_seed_component_role: 9,
+            lc_color_seed_proof_digest_id: 10 + id,
+            lc_color_seed_provenance_sequence_id: 11,
+            wavefunction_expression_digest_id: 12 + id,
+            evaluator_binding_id: 13 + id,
+            mass_parameter_id: 14,
+            width_parameter_id: 15,
+            semantic_digest_id: 16 + id,
+        }
+    }
+
+    #[test]
+    fn union_source_dispatch_ignores_proof_instance_identity_only() {
+        let left = source(0);
+        let right = source(1);
+        assert_ne!(
+            left.lc_color_seed_proof_digest_id,
+            right.lc_color_seed_proof_digest_id
+        );
+        assert!(same_union_source_dispatch_semantics(left, right));
+
+        let mut incompatible = right;
+        incompatible.crossing_string_id += 1;
+        assert!(!same_union_source_dispatch_semantics(left, incompatible));
+
+        let mut incompatible = right;
+        incompatible.lc_color_seed_provenance_sequence_id += 1;
+        assert!(!same_union_source_dispatch_semantics(left, incompatible));
+    }
+
+    fn buffered_parent_pairs(target_size: usize, currents_by_size: &[Vec<u32>]) -> Vec<[u32; 2]> {
+        let mut pairs = Vec::new();
+        for left_size in 1..target_size {
+            let right_size = target_size - left_size;
+            for &left_id in &currents_by_size[left_size - 1] {
+                for &right_id in &currents_by_size[right_size - 1] {
+                    if left_id < right_id {
+                        pairs.push([left_id, right_id]);
+                    }
+                }
+            }
+        }
+        pairs.sort_unstable();
+        pairs.dedup();
+        pairs
+    }
+
+    #[test]
+    fn streamed_parent_pairs_match_buffered_reference_order() {
+        let fixtures = [
+            (2, vec![vec![0, 1, 2, 3]]),
+            (3, vec![vec![0, 1, 2, 3], vec![4, 5, 6, 7, 8, 9]]),
+            (
+                4,
+                vec![
+                    vec![0, 1, 2, 3],
+                    vec![4, 5, 6, 7, 8, 9],
+                    vec![10, 11, 12, 13],
+                ],
+            ),
+        ];
+        for (target_size, currents_by_size) in fixtures {
+            assert_eq!(
+                parent_pairs_for_target(target_size, &currents_by_size).collect::<Vec<_>>(),
+                buffered_parent_pairs(target_size, &currents_by_size),
+                "support size {target_size}",
+            );
+        }
+    }
+
+    #[test]
+    fn streamed_parent_pair_totals_match_iteration() {
+        for (target_size, currents_by_size) in [
+            (2, vec![vec![0, 1, 2, 3]]),
+            (3, vec![vec![0, 1, 2, 3], vec![4, 5, 6, 7, 8, 9]]),
+            (
+                4,
+                vec![
+                    vec![0, 1, 2, 3],
+                    vec![4, 5, 6, 7, 8, 9],
+                    vec![10, 11, 12, 13],
+                ],
+            ),
+        ] {
+            assert_eq!(
+                parent_pair_total_for_target(target_size, &currents_by_size).unwrap(),
+                parent_pairs_for_target(target_size, &currents_by_size).count(),
+                "support size {target_size}",
+            );
+        }
+    }
+
+    #[test]
+    fn state_index_preserves_interleaved_reference_transition_order() {
+        let rows = [
+            (transition(0), [1, 2]),
+            (transition(1), [2, 1]),
+            (transition(2), [1, 2]),
+            (transition(3), [3, 4]),
+            (transition(4), [2, 1]),
+        ];
+        let mut index = TransitionStateIndex::default();
+        for (row, input_states) in rows {
+            index.insert(row, input_states);
+        }
+
+        let actual = index
+            .rows(1, 2)
+            .iter()
+            .map(|indexed| Ok((indexed.row.id, indexed.parent_ids(1, 2, 10, 20)?)))
+            .collect::<RusticolResult<Vec<_>>>()
+            .unwrap();
+        let reference = rows
+            .iter()
+            .flat_map(|(row, input_states)| {
+                let mut applications = Vec::new();
+                if *input_states == [1, 2] {
+                    applications.push((row.id, [10, 20]));
+                }
+                if *input_states == [2, 1] {
+                    applications.push((row.id, [20, 10]));
+                }
+                applications
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual, reference);
+        assert_eq!(
+            actual,
+            [(0, [10, 20]), (1, [20, 10]), (2, [10, 20]), (4, [20, 10])]
+        );
+    }
+
+    fn encoded_strings(values: &[&str]) -> (Vec<CheckedTableRange>, Vec<u8>) {
+        let mut ranges = Vec::new();
+        let mut bytes = Vec::new();
+        for value in values {
+            ranges.push(CheckedTableRange::new(
+                bytes.len() as u64,
+                value.len() as u64,
+            ));
+            bytes.extend_from_slice(value.as_bytes());
+        }
+        (ranges, bytes)
+    }
+
+    fn indexed_u32_sequences(sequences: &[&[u32]]) -> (Vec<IndexedRangeRow>, Vec<u32>) {
+        let mut ranges = Vec::new();
+        let mut values = Vec::new();
+        for (id, sequence) in sequences.iter().enumerate() {
+            ranges.push(IndexedRangeRow {
+                id: id as u32,
+                range: CheckedTableRange::new(values.len() as u64, sequence.len() as u64),
+            });
+            values.extend_from_slice(sequence);
+        }
+        (ranges, values)
+    }
+
+    fn scalar_reference_template() -> OwnedRecurrenceTemplateInput {
+        const EMPTY: u32 = 0;
+        const STATE_PAIR: u32 = 1;
+        const CANONICAL_ORDER: u32 = 2;
+        const PARENT_FLAVOURS: u32 = 3;
+        const PARENT_QUANTUM_NUMBERS: u32 = 4;
+
+        let (string_ranges, string_bytes) = encoded_strings(&["0", "1", "constant-result"]);
+        let (u32_sequence_ranges, u32_sequence_values) =
+            indexed_u32_sequences(&[&[], &[0, 0], &[0, 1], &[0, 0], &[0, 0]]);
+        OwnedRecurrenceTemplateInput {
+            input_abi: "scalar-reference-template-v1".to_owned(),
+            catalog_digest: digest(1),
+            compiled_model_digest: digest(2),
+            prepared_kernel_pack_digest: digest(3),
+            catalog_header: vec![],
+            coupling_order_ranges: vec![IndexedRangeRow {
+                id: 0,
+                range: CheckedTableRange::new(0, 0),
+            }],
+            coupling_order_terms: vec![],
+            current_states: vec![],
+            digest_catalog: vec![DigestCatalogRow {
+                id: 0,
+                value: [4; 32],
+            }],
+            evaluator_bindings: vec![],
+            exact_factors: vec![ExactFactorRow {
+                id: 0,
+                real_numerator_string_id: 1,
+                real_denominator_string_id: 1,
+                imag_numerator_string_id: 0,
+                imag_denominator_string_id: 1,
+            }],
+            flavour_flow_ranges: vec![IndexedRangeRow {
+                id: 0,
+                range: CheckedTableRange::new(0, 1),
+            }],
+            flavour_flow_values: vec![0],
+            i32_sequence_ranges: vec![IndexedRangeRow {
+                id: 0,
+                range: CheckedTableRange::new(0, 2),
+            }],
+            i32_sequence_values: vec![0, 0],
+            parameters: vec![],
+            propagators: vec![],
+            quantum_flows: vec![QuantumFlowRow {
+                id: 0,
+                template_string_id: 0,
+                input_state_sequence_id: STATE_PAIR,
+                input_spin_sequence_id: 0,
+                input_flavour_sequence_id: PARENT_FLAVOURS,
+                input_quantum_sequence_id: PARENT_QUANTUM_NUMBERS,
+                flavour_flow_operation_string_id: 2,
+                quantum_number_flow_operation_string_id: 2,
+                coupling_order_set_id: 0,
+                result_state_template_id: 0,
+                result_spin_state: 0,
+                result_flavour_flow_id: 0,
+                result_quantum_number_flow_id: 0,
+                exact_coupling_factor_id: 0,
+                predicate_digest_id: 0,
+                semantic_digest_id: 0,
+            }],
+            quantum_number_flow_ranges: vec![],
+            quantum_number_flow_terms: vec![],
+            runtime_helicity_contracts: vec![],
+            runtime_helicity_variants: vec![],
+            runtime_helicity_embeddings: vec![],
+            runtime_helicity_projections: vec![],
+            sources: vec![],
+            string_ranges,
+            string_bytes,
+            symmetry_proofs: vec![],
+            transitions: vec![TransitionRow {
+                input_state_sequence_id: STATE_PAIR,
+                canonical_input_order_sequence_id: CANONICAL_ORDER,
+                input_exchange_factor_id: MISSING_U32,
+                ..transition(0)
+            }],
+            closures: vec![ClosureRow {
+                id: 0,
+                template_string_id: 0,
+                input_state_sequence_id: STATE_PAIR,
+                result_state_template_id: MISSING_U32,
+                evaluator_binding_id: 0,
+                canonical_input_order_sequence_id: CANONICAL_ORDER,
+                coupling_parameter_sequence_id: EMPTY,
+                coupling_order_set_id: 0,
+                eligible_quantum_flow_sequence_id: EMPTY,
+                color_contraction_template_id: 1,
+                binding_coupling_factor_id: 0,
+                exact_factor_id: 0,
+                output_factor_source: 0,
+                equivalence_class_string_id: 0,
+                input_exchange_factor_id: MISSING_U32,
+                projection_string_id: 0,
+                component_coefficient_sequence_id: EMPTY,
+                chirality_relation_string_id: 0,
+                metric_signature_string_id: 0,
+                semantic_digest_id: 0,
+            }],
+            color_contractions: vec![
+                ColorContractionRow {
+                    id: 0,
+                    template_string_id: 0,
+                    rule_kind_string_id: 0,
+                    input_representation_sequence_id: EMPTY,
+                    has_output_representation: 1,
+                    output_representation: 1,
+                    ordered_open_string_arity: 0,
+                    exact_coefficient_factor_id: 0,
+                    witness_start: 0,
+                    witness_count: 1,
+                    nc_term_start: 0,
+                    nc_term_count: 0,
+                    expression_digest_id: 0,
+                    semantic_digest_id: 0,
+                },
+                ColorContractionRow {
+                    id: 1,
+                    template_string_id: 0,
+                    rule_kind_string_id: 0,
+                    input_representation_sequence_id: EMPTY,
+                    has_output_representation: 0,
+                    output_representation: 0,
+                    ordered_open_string_arity: 0,
+                    exact_coefficient_factor_id: 0,
+                    witness_start: 1,
+                    witness_count: 1,
+                    nc_term_start: 0,
+                    nc_term_count: 0,
+                    expression_digest_id: 0,
+                    semantic_digest_id: 0,
+                },
+            ],
+            lc_color_transition_witnesses: vec![
+                LCColorTransitionWitnessRow {
+                    color_contraction_id: 0,
+                    ordinal: 0,
+                    left_shape_string_id: 0,
+                    right_shape_string_id: 0,
+                    input_permutation: 0,
+                    reverse_parent_mask: 0,
+                    component_operation: LCColorComponentOperation::Empty as u8,
+                    result_component_kind: u8::MAX,
+                    result_component_role: LCColorComponentRole::None as u8,
+                    result_shape_string_id: 0,
+                    exact_factor_id: 0,
+                    proof_digest_id: 0,
+                    input_port_pairing_sequence_id: EMPTY,
+                    result_port_binding_sequence_id: EMPTY,
+                    provenance_sequence_id: EMPTY,
+                },
+                LCColorTransitionWitnessRow {
+                    color_contraction_id: 1,
+                    ordinal: 0,
+                    left_shape_string_id: 0,
+                    right_shape_string_id: 0,
+                    input_permutation: 0,
+                    reverse_parent_mask: 0,
+                    component_operation: LCColorComponentOperation::Close as u8,
+                    result_component_kind: u8::MAX,
+                    result_component_role: LCColorComponentRole::None as u8,
+                    result_shape_string_id: MISSING_U32,
+                    exact_factor_id: 0,
+                    proof_digest_id: 0,
+                    input_port_pairing_sequence_id: EMPTY,
+                    result_port_binding_sequence_id: EMPTY,
+                    provenance_sequence_id: EMPTY,
+                },
+            ],
+            color_nc_terms: vec![],
+            u32_sequence_ranges,
+            u32_sequence_values,
+        }
+    }
+
+    fn scalar_reference_process(external_count: usize) -> OwnedRecurrenceProcessInput {
+        OwnedRecurrenceProcessInput {
+            input_abi: "scalar-reference-process-v1".to_owned(),
+            declared_input_digest: digest(5),
+            fermion_pairing: None,
+            bitset_ranges: vec![],
+            bitset_words: vec![],
+            coupling_limits: vec![],
+            digest_catalog: vec![],
+            exact_factors: vec![],
+            external_legs: (0..external_count)
+                .map(|slot| ProcessExternalLegRow {
+                    source_slot: slot as u32,
+                    public_label: slot as u32 + 1,
+                    physical_pdg: 0,
+                    outgoing_pdg: 0,
+                    is_initial: 0,
+                    is_fermionic: 0,
+                    source_state_range: CheckedTableRange::new(0, 0),
+                    momentum_mask_id: 0,
+                    support_mask_id: 0,
+                })
+                .collect(),
+            header: vec![],
+            header_digests: vec![],
+            lc_open_strings: vec![],
+            normalization: vec![],
+            parameter_projection: vec![],
+            physical_lc_sectors: vec![ProcessPhysicalLCSectorRow {
+                sector_id: 0,
+                public_id_string_id: 0,
+                kind: ProcessLCSectorKind::Singlet as u8,
+                closure_source_slot: 0,
+                closure_proof_algorithm_string_id: 0,
+                closure_proof_digest_id: 0,
+                open_string_range: CheckedTableRange::new(0, 0),
+                trace_sequence_id: 0,
+                singlet_sequence_id: 0,
+                word_sequence_id: 0,
+                support_mask_id: 0,
+            }],
+            public_lc_flows: vec![],
+            replay_partitions: vec![],
+            replay_targets: vec![],
+            selected_public_flow_coverage: vec![],
+            selected_source_coverage: vec![],
+            semantic_template_references: vec![],
+            source_states: vec![],
+            string_ranges: vec![],
+            string_bytes: vec![],
+            u32_sequence_ranges: vec![CheckedTableRange::new(0, 0)],
+            u32_sequence_values: vec![],
+        }
+    }
+
+    fn scalar_reference_program(
+        external_count: usize,
+    ) -> (
+        RecurrenceProgram,
+        Vec<StageConstructionDiagnostics>,
+        (usize, usize, usize),
+    ) {
+        let template = scalar_reference_template();
+        let template_catalog = TemplateCatalog::new(&template).unwrap();
+        let process = scalar_reference_process(external_count);
+        let process_catalog = ProcessCatalog::new(&process).unwrap();
+        let color_targets =
+            MaterializedColorTargets::new(&BTreeSet::from([0]), &process, &process_catalog)
+                .unwrap();
+        let mut color_states = DynamicLCColorStateInterner::default();
+        let color_id = color_states
+            .intern(DynamicLCColorState::new(0, None, vec![]).unwrap())
+            .unwrap();
+        let mut currents = Vec::new();
+        let mut current_ids = BTreeMap::new();
+        let mut currents_by_size = vec![Vec::new(); external_count];
+        for slot in 0..external_count as u32 {
+            let key = CurrentCoreKey::new(
+                template.catalog_digest,
+                RecurrenceNodeKind::Source,
+                0,
+                color_id,
+                vec![slot],
+                CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                    source_slot: slot,
+                    coefficient: 1,
+                }])
+                .unwrap(),
+                CurrentHelicityIdentity::all_flow_union(0),
+                vec![0],
+                0,
+                vec![],
+                CurrentSourceBinding::runtime_dispatch(slot, vec![slot]).unwrap(),
+                None,
+            )
+            .unwrap();
+            let id = currents.len() as u32;
+            assert!(current_ids.insert(key.clone(), id).is_none());
+            currents.push(PendingCurrent {
+                key,
+                source_exact_factor: None,
+                contributions: BTreeMap::new(),
+            });
+            currents_by_size[0].push(id);
+        }
+
+        let stage_diagnostics = build_internal_currents(
+            template.catalog_digest,
+            &process,
+            &template,
+            &template_catalog,
+            &[],
+            &BTreeMap::new(),
+            &color_targets,
+            &mut color_states,
+            &mut currents,
+            &mut current_ids,
+            &mut currents_by_size,
+            external_count.saturating_add(1),
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+        let closures = build_closures(
+            &process,
+            &process_catalog,
+            &template,
+            &template_catalog,
+            &color_states,
+            &currents,
+            &BTreeSet::from([0]),
+            &stage_diagnostics,
+        )
+        .unwrap();
+        let constructed_counts = (
+            currents.len(),
+            currents
+                .iter()
+                .map(|current| current.contributions.len())
+                .sum(),
+            closures.len(),
+        );
+        let program = finish_program(
+            RecurrenceStrategy::AllFlowUnion,
+            &process_catalog,
+            color_states.into_states(),
+            currents,
+            closures,
+            vec![],
+            1,
+            HelicitySupportRule::None,
+        )
+        .unwrap();
+        (program, stage_diagnostics, constructed_counts)
+    }
+
+    #[test]
+    fn materialized_color_targets_keep_only_embeddable_ordered_words() {
+        let target_open =
+            LCColorComponent::new(LCColorComponentKind::OpenString, vec![0, 2, 3, 4, 1]).unwrap();
+        let targets = MaterializedColorTargets {
+            sectors: vec![vec![target_open]],
+        };
+        let state = |slots: Vec<u32>| {
+            DynamicLCColorState::new(
+                0,
+                Some(0),
+                vec![LCColorComponent::new(LCColorComponentKind::AdjointSegment, slots).unwrap()],
+            )
+            .unwrap()
+        };
+
+        assert!(targets.accepts(&state(vec![2, 3, 4])));
+        assert!(!targets.accepts(&state(vec![4, 3, 2])));
+        assert!(!targets.accepts(&state(vec![2, 4])));
+        assert!(!targets.accepts(&state(vec![0, 3])));
+        assert!(targets.accepts(&DynamicLCColorState::new(0, None, vec![]).unwrap()));
+    }
+
+    #[test]
+    fn materialized_color_targets_accept_cyclic_trace_segments() {
+        let target_trace =
+            LCColorComponent::new(LCColorComponentKind::Trace, vec![1, 2, 3, 4]).unwrap();
+        let targets = MaterializedColorTargets {
+            sectors: vec![vec![target_trace]],
+        };
+        let state = |kind, slots: Vec<u32>| {
+            DynamicLCColorState::new(
+                0,
+                (kind != LCColorComponentKind::Trace).then_some(0),
+                vec![LCColorComponent::new(kind, slots).unwrap()],
+            )
+            .unwrap()
+        };
+
+        assert!(targets.accepts(&state(LCColorComponentKind::AdjointSegment, vec![4, 1, 2],)));
+        assert!(!targets.accepts(&state(LCColorComponentKind::AdjointSegment, vec![2, 1, 4],)));
+        assert!(!targets.accepts(&state(LCColorComponentKind::AdjointSegment, vec![1, 3],)));
+        assert!(!targets.accepts(&state(LCColorComponentKind::Trace, vec![4, 3, 2, 1],)));
+        assert!(!targets.accepts(&state(LCColorComponentKind::Trace, vec![1, 2, 3],)));
+    }
+
+    #[test]
+    fn scalar_reference_fixtures_keep_structural_schedule_counts() {
+        // Frozen from the buffered parent-pair and full transition-scan constructor.
+        for (name, external_count, expected_constructed, expected_schedule) in [
+            ("three-point", 3, (6, 3, 1), (4, 1, 1)),
+            ("four-point", 4, (14, 18, 1), (8, 6, 1)),
+        ] {
+            let (program, _, constructed_counts) = scalar_reference_program(external_count);
+            assert_eq!(
+                constructed_counts, expected_constructed,
+                "{name} scalar construction fixture",
+            );
+            assert_eq!(
+                (
+                    program.currents().len(),
+                    program.contributions().len(),
+                    program.closure_terms().len(),
+                ),
+                expected_schedule,
+                "{name} scalar reference fixture",
+            );
+        }
+    }
+
+    #[test]
+    fn scalar_reference_fixture_reports_streaming_selectivity() {
+        let (_, diagnostics, _) = scalar_reference_program(4);
+        assert_eq!(diagnostics.len(), 2);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|stage| (
+                    stage.target_size,
+                    stage.candidate_parent_pair_count,
+                    stage.parent_pair_count,
+                    stage.transition_index_hit_count,
+                    stage.transition_candidate_count,
+                    stage.contribution_count,
+                ))
+                .collect::<Vec<_>>(),
+            [(2, 6, 6, 6, 6, 6), (3, 24, 12, 12, 12, 12)],
+        );
+    }
+
+    #[test]
+    fn non_propagating_states_use_identity_finalization() {
+        fn propagator(id: u32, state: u32, applies: bool) -> PropagatorRow {
+            PropagatorRow {
+                id,
+                template_string_id: 0,
+                state_template_id: state,
+                applies_propagator: u8::from(applies),
+                evaluator_binding_id: if applies { 0 } else { MISSING_U32 },
+                numerator_expression_digest_id: 0,
+                denominator_expression_digest_id: 0,
+                mass_parameter_id: MISSING_U32,
+                width_parameter_id: MISSING_U32,
+                gauge_string_id: 0,
+                linearity_proof_template_id: MISSING_U32,
+                semantic_digest_id: 0,
+            }
+        }
+
+        let mut template = scalar_reference_template();
+        template.propagators = vec![propagator(0, 4, false), propagator(1, 7, true)];
+        assert_eq!(
+            propagator_by_state(&template).unwrap(),
+            BTreeMap::from([(4, None), (7, Some(1))]),
+        );
+    }
+
+    #[test]
+    fn output_factor_uses_the_declared_binding_coupling_component() {
+        let coupling = ExactComplexRational::new(
+            ExactRational::new(2, 3).unwrap(),
+            ExactRational::new(-5, 7).unwrap(),
+        );
+        assert_eq!(
+            output_factor_from_binding(
+                coupling,
+                OutputFactorSource::None as u8,
+                "test transition",
+            )
+            .unwrap(),
+            ExactComplexRational::ONE,
+        );
+        assert_eq!(
+            output_factor_from_binding(
+                coupling,
+                OutputFactorSource::CouplingReal as u8,
+                "test transition",
+            )
+            .unwrap(),
+            ExactComplexRational::new(ExactRational::new(2, 3).unwrap(), ExactRational::ZERO,),
+        );
+        assert_eq!(
+            output_factor_from_binding(
+                coupling,
+                OutputFactorSource::CouplingImag as u8,
+                "test transition",
+            )
+            .unwrap(),
+            ExactComplexRational::new(ExactRational::new(-5, 7).unwrap(), ExactRational::ZERO,),
+        );
+    }
+
+    #[test]
+    fn composes_construction_and_public_gather_permutations() {
+        let representative_to_construction = [0, 2, 3, 1];
+        let construction_to_public = [0, 3, 1, 2];
+        assert_eq!(
+            compose_gather_permutations(&representative_to_construction, &construction_to_public,)
+                .unwrap(),
+            [0, 1, 2, 3]
+        );
+    }
 }

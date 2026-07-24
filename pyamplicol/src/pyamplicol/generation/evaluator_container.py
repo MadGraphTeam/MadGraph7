@@ -63,6 +63,9 @@ class PacbinMemberKind(IntEnum):
     SYMJIT_APPLICATION = 1
     SYMBOLICA_EXACT_STATE = 2
     NATIVE_LIBRARY = 3
+    EAGER_RUNTIME_METADATA = 4
+    EAGER_RUNTIME_TABLE = 5
+    RECURRENCE_DIRECT_PLAN = 7
 
 
 @dataclass(frozen=True, slots=True)

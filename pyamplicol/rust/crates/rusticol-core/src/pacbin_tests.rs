@@ -675,7 +675,7 @@ fn rust_writer_matches_python_golden_byte_for_byte() {
 }
 
 #[test]
-fn writer_is_deterministic_and_supports_eager_runtime_member_kinds() {
+fn writer_is_deterministic_and_supports_runtime_member_kinds() {
     let directory = temporary_directory("determinism");
     let first = directory.join("first.pacbin");
     let second = directory.join("second.pacbin");
@@ -695,6 +695,12 @@ fn writer_is_deterministic_and_supports_eager_runtime_member_kinds() {
                     b"metadata-payload",
                 )
                 .unwrap(),
+                PacbinWriteMember::from_bytes(
+                    "plan/recurrence-direct-plan-v2.bin",
+                    PacbinMemberKind::RecurrenceDirectPlan,
+                    b"recurrence-direct-plan-payload",
+                )
+                .unwrap(),
             ],
             PacbinWriteOptions::new(3, 0o644).unwrap(),
         )
@@ -710,7 +716,23 @@ fn writer_is_deterministic_and_supports_eager_runtime_member_kinds() {
         reader.member("tables/invocations.bin").unwrap().kind(),
         PacbinMemberKind::EagerRuntimeTable
     );
+    assert_eq!(
+        reader
+            .member("plan/recurrence-direct-plan-v2.bin")
+            .unwrap()
+            .kind(),
+        PacbinMemberKind::RecurrenceDirectPlan
+    );
     fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn deleted_recurrence_v1_member_kind_is_not_a_compatibility_alias() {
+    assert!(PacbinMemberKind::parse(6).is_err());
+    assert_eq!(
+        PacbinMemberKind::parse(7).unwrap(),
+        PacbinMemberKind::RecurrenceDirectPlan
+    );
 }
 
 struct TrackingReader {

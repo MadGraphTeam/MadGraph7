@@ -20,6 +20,16 @@ mod symjit;
 #[cfg(feature = "f64-symjit")]
 pub(crate) use symjit::*;
 
+#[cfg(feature = "f64-symjit")]
+#[path = "evaluator/symjit_direct.rs"]
+pub(crate) mod symjit_direct;
+
+#[path = "evaluator/recurrence_source_direct.rs"]
+pub(crate) mod recurrence_source_direct;
+
+#[path = "evaluator/recurrence_closure_direct.rs"]
+pub(crate) mod recurrence_closure_direct;
+
 #[path = "evaluator/stage.rs"]
 mod stage;
 pub(crate) use stage::*;

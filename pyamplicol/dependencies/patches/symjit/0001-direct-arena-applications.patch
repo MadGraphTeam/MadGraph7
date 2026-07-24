@@ -1,0 +1,2313 @@
+diff --git a/DIRECT_ARENA.md b/DIRECT_ARENA.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..e64aab5f8196d278c0f0d0d2895c7fbef91c2ab8
+--- /dev/null
++++ b/DIRECT_ARENA.md
+@@ -0,0 +1,115 @@
++# SymJIT Direct-Arena Applications
++
++`DirectApplication` is an additive execution ABI for model-prepared recurrence
++primitives. It does not change ordinary `Application` or `Applet` behavior.
++
++The portable payload stores:
++
++- the original O2-derived MIR re-lowered to split real/imaginary planes;
++- fixed input-plane and scalar-slot bindings;
++- output-to-input alias requirements;
++- no host machine code.
++
++Loading recompiles the MIR for the receiving x86-64 or arm64 CPU. The generated
++callable reads point-contiguous planes directly and may write its output through
++an authenticated alias to a persistent destination plane. Scalar slots are
++immutable pointer descriptors so a caller can project model parameters,
++couplings, and row-local factors without copying their numeric values.
++
++The public hot-call object is a typed function pointer plus an immutable
++context pointer owned by `DirectCallable`. No global registry is used. The
++caller must keep the owner and every plane/scalar descriptor alive through the
++call.
++
++The existing MIR already supports indexed plane access, so no new MIR
++instruction is required. `Config::direct_arena()` changes memory accesses to
++dereference persistent plane descriptors directly and changes `Loc::Param` to
++dereference an immutable scalar pointer descriptor, broadcasting it for SIMD
++code. It does not copy state planes into the legacy indirect stack frame and
++does not scatter outputs afterward. Ordinary SymJIT memory and parameter
++loading are unchanged.
++
++Scalar slots 0 and 1 are reserved for the row's exact factor real and
++imaginary parts. They are not source-application parameters. At every complex
++output boundary the direct transform applies the authenticated destination
++operation:
++
++- `initialize`: `destination = factor * kernel_output`;
++- `add`: `destination += factor * kernel_output`;
++- `finalize-in-place`: `destination = factor * kernel_output`;
++- `closure-add`: `destination += factor * kernel_output`.
++
++For `finalize-in-place`, generated code snapshots every input plane in its
++fixed stack frame before the first aliased output write. Multi-component
++outputs may therefore depend on the complete unpropagated current without
++making output order observable. This is internal to the callable and does not
++introduce a caller-side packed buffer or scatter pass.
++
++The source `application.symjit` therefore contains only the model kernel. It
++does not read the prior destination and need not expose an input slot for the
++process-specific exact factor.
++
++Row-table interpretation remains the responsibility of the prepared
++model/runtime adapter. That adapter resolves fixed component and parameter
++projections once and creates only pointer descriptors on the call stack. It
++must not materialize packed numeric input/output buffers or scatter results.
++
++## Prepared-model binding
++
++The preferred bundle representation does not add another evaluator payload.
++`prepared-direct-call` references the existing portable O2
++`application.symjit`, and Rusticol calls
++`DirectApplication::from_source_storage` with authenticated transform
++metadata before sealing the context.
++
++The canonical binding metadata needs these fields:
++
++```text
++binding_abi = pyamplicol-recurrence-direct-payload-binding-v1
++kind = prepared-direct-call
++prepared_kernel_id
++source_application_path
++source_application_sha256
++source_application_abi = symjit-application-storage-v3
++direct_application_abi = symjit-direct-application-storage-v1
++role
++destination_operation = initialize|add|finalize-in-place|closure-add
++exact_factor_scalar_slots = [0, 1]
++state_plane_indices[]
++parameter_bindings[] = {kind: plane|scalar, index}[]
++input_plane_count
++scalar_input_count
++output_alias_inputs[]
++input_plane_projections[]
++scalar_projections[]
++```
++
++`input_plane_projections` identify fixed parent/destination components or
++momentum operands. Destination aliases may refer to planes that are not
++source-application inputs. `scalar_projections[0:2]` are exactly the row-local
++factor real/imaginary parts; remaining scalar projections identify fixed
++runtime parameters, couplings, or immutable literals. The prepared executor
++context owns these projections.
++
++`payload_digest` is the SHA-256 of canonical JSON over every field above plus
++the prepared template semantic digest. In particular it covers the source
++application content digest, direct transform, fixed projections, role, and
++alias/factor/destination-operation contract. The outer prepared-model catalog
++authenticates that digest before exposing the resulting context pointer.
++
++The intended loader sequence is:
++
++1. authenticate `source_application_sha256` and `payload_digest`;
++2. load the referenced portable O2 `application.symjit`;
++3. call `DirectApplication::from_source_storage(stream, config, metadata)`;
++4. verify the returned metadata against the binding;
++5. call `seal().into_callable()` and retain the owning `DirectCallable` in the
++   prepared catalog;
++6. publish only its typed function/context pair to the hot runtime.
++
++An already materialized `symjit-direct-application-storage-v1` payload remains
++loadable for focused tests, but it is not the preferred prepared-model layout.
++The current source-storage transform first loads the ordinary application and
++then lowers its MIR. A future cold-load optimization may decode the stored MIR
++without transiently compiling the ordinary callable; it does not change this
++binding or hot-call ABI.
+diff --git a/rust/amd/scalar.rs b/rust/amd/scalar.rs
+index 5247365fcfb4b906adb6dad269d2d199105a9a84..a1de1c413ddc4d61272adca87a014819ebcf00ec 100644
+--- a/rust/amd/scalar.rs
++++ b/rust/amd/scalar.rs
+@@ -187,13 +187,25 @@ impl Generator for AmdScalarGenerator {
+ 
+     fn load_mem(&mut self, dst: Reg, idx: u32) {
+         self.last_load = self.amd.a.ip();
+-        self.amd
+-            .vmovsd_xmm_mem(ϕ(dst), MEM, (idx * REG_SIZE) as i32);
++        if self.config.direct_arena() {
++            self.amd
++                .mov_reg_mem(Amd::RAX, STATES, (idx * 2 * REG_SIZE) as i32);
++            self.amd.vmovsd_xmm_indexed(ϕ(dst), Amd::RAX, IDX, 8);
++        } else {
++            self.amd
++                .vmovsd_xmm_mem(ϕ(dst), MEM, (idx * REG_SIZE) as i32);
++        }
+     }
+ 
+     fn save_mem(&mut self, dst: Reg, idx: u32) {
+-        self.amd
+-            .vmovsd_mem_xmm(MEM, (idx * REG_SIZE) as i32, ϕ(dst));
++        if self.config.direct_arena() {
++            self.amd
++                .mov_reg_mem(Amd::RAX, STATES, (idx * 2 * REG_SIZE) as i32);
++            self.amd.vmovsd_indexed_xmm(Amd::RAX, IDX, 8, ϕ(dst));
++        } else {
++            self.amd
++                .vmovsd_mem_xmm(MEM, (idx * REG_SIZE) as i32, ϕ(dst));
++        }
+     }
+ 
+     fn save_mem_result(&mut self, idx: u32) {
+@@ -202,8 +214,13 @@ impl Generator for AmdScalarGenerator {
+ 
+     fn load_param(&mut self, dst: Reg, idx: u32) {
+         self.last_load = self.amd.a.ip();
+-        self.amd
+-            .vmovsd_xmm_mem(ϕ(dst), PARAMS, (idx * REG_SIZE) as i32);
++        if self.config.direct_arena() {
++            self.amd.mov_reg_mem(Amd::RAX, PARAMS, (idx * 8) as i32);
++            self.amd.vmovsd_xmm_mem(ϕ(dst), Amd::RAX, 0);
++        } else {
++            self.amd
++                .vmovsd_xmm_mem(ϕ(dst), PARAMS, (idx * REG_SIZE) as i32);
++        }
+     }
+ 
+     fn load_stack(&mut self, dst: Reg, idx: u32) {
+@@ -218,13 +235,23 @@ impl Generator for AmdScalarGenerator {
+     }
+ 
+     fn load_mem_complex(&mut self, xd: Reg, yd: Reg, idx: u32) {
+-        self.amd.vmovdd_xmm_mem(ϕ(xd), MEM, (idx * REG_SIZE) as i32);
+-        self.amd.vshufdd(ϕ(yd), ϕ(xd), ϕ(xd), 1);
++        if self.config.direct_arena() {
++            self.load_mem(xd, idx);
++            self.load_mem(yd, idx + 1);
++        } else {
++            self.amd.vmovdd_xmm_mem(ϕ(xd), MEM, (idx * REG_SIZE) as i32);
++            self.amd.vshufdd(ϕ(yd), ϕ(xd), ϕ(xd), 1);
++        }
+     }
+ 
+     fn save_mem_complex(&mut self, xs: Reg, ys: Reg, idx: u32) {
+-        self.amd.vunpckldd(ϕ(xs), ϕ(xs), ϕ(ys));
+-        self.amd.vmovdd_mem_xmm(MEM, (idx * REG_SIZE) as i32, ϕ(xs));
++        if self.config.direct_arena() {
++            self.save_mem(xs, idx);
++            self.save_mem(ys, idx + 1);
++        } else {
++            self.amd.vunpckldd(ϕ(xs), ϕ(xs), ϕ(ys));
++            self.amd.vmovdd_mem_xmm(MEM, (idx * REG_SIZE) as i32, ϕ(xs));
++        }
+     }
+ 
+     fn load_param_complex(&mut self, xd: Reg, yd: Reg, idx: u32) {
+@@ -634,6 +661,11 @@ impl Generator for AmdScalarGenerator {
+         self.amd.mov(IDX, ARGS[2]); // third arg = index if indirect mode
+         self.amd.mov(PARAMS, ARGS[3]); // fourth arg = params
+ 
++        if self.config.direct_arena() {
++            sub_rsp(&mut self.amd, align_stack(cap as u32 * REG_SIZE));
++            return;
++        }
++
+         self.amd.or(STATES, STATES);
+         self.amd.jz("@main");
+ 
+@@ -670,20 +702,22 @@ impl Generator for AmdScalarGenerator {
+ 
+         add_rsp(&mut self.amd, align_stack(cap as u32 * REG_SIZE));
+ 
+-        self.amd.or(STATES, STATES);
+-        self.amd.jz("@done");
++        if !self.config.direct_arena() {
++            self.amd.or(STATES, STATES);
++            self.amd.jz("@done");
+ 
+-        for i in 0..count_obs {
+-            self.amd
+-                .mov_reg_mem(Amd::RCX, STATES, 2 * 8 * (count_states + i) as i32);
+-            let k = (count_states + i) as u32 * REG_SIZE;
+-            self.amd.vmovsd_xmm_mem(RET, MEM, k as i32);
+-            self.amd.vmovsd_indexed_xmm(Amd::RCX, IDX, 8, RET);
+-        }
++            for i in 0..count_obs {
++                self.amd
++                    .mov_reg_mem(Amd::RCX, STATES, 2 * 8 * (count_states + i) as i32);
++                let k = (count_states + i) as u32 * REG_SIZE;
++                self.amd.vmovsd_xmm_mem(RET, MEM, k as i32);
++                self.amd.vmovsd_indexed_xmm(Amd::RCX, IDX, 8, RET);
++            }
+ 
+-        let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
+-        add_rsp(&mut self.amd, frame_size);
+-        self.set_label("@done");
++            let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
++            add_rsp(&mut self.amd, frame_size);
++            self.set_label("@done");
++        }
+ 
+         self.vzeroupper();
+ 
+diff --git a/rust/amd/sse.rs b/rust/amd/sse.rs
+index 4e5dbdc9ee3d1547c4ce7e3bf5d0592d677a872b..ab9b538af0d76eef2878e1972c971fb27fba380b 100644
+--- a/rust/amd/sse.rs
++++ b/rust/amd/sse.rs
+@@ -193,11 +193,23 @@ impl Generator for AmdSSEGenerator {
+ 
+     fn load_mem(&mut self, dst: Reg, idx: u32) {
+         self.last_load = self.amd.a.ip();
+-        self.amd.movsd_xmm_mem(ϕ(dst), MEM, (idx * REG_SIZE) as i32);
++        if self.config.direct_arena() {
++            self.amd
++                .mov_reg_mem(Amd::RAX, STATES, (idx * 2 * REG_SIZE) as i32);
++            self.amd.movsd_xmm_indexed(ϕ(dst), Amd::RAX, IDX, 8);
++        } else {
++            self.amd.movsd_xmm_mem(ϕ(dst), MEM, (idx * REG_SIZE) as i32);
++        }
+     }
+ 
+     fn save_mem(&mut self, dst: Reg, idx: u32) {
+-        self.amd.movsd_mem_xmm(MEM, (idx * REG_SIZE) as i32, ϕ(dst));
++        if self.config.direct_arena() {
++            self.amd
++                .mov_reg_mem(Amd::RAX, STATES, (idx * 2 * REG_SIZE) as i32);
++            self.amd.movsd_indexed_xmm(Amd::RAX, IDX, 8, ϕ(dst));
++        } else {
++            self.amd.movsd_mem_xmm(MEM, (idx * REG_SIZE) as i32, ϕ(dst));
++        }
+     }
+ 
+     fn save_mem_result(&mut self, idx: u32) {
+@@ -207,7 +219,10 @@ impl Generator for AmdSSEGenerator {
+     fn load_param(&mut self, dst: Reg, idx: u32) {
+         self.last_load = self.amd.a.ip();
+ 
+-        if self.config.symbolica() {
++        if self.config.direct_arena() {
++            self.amd.mov_reg_mem(Amd::RAX, PARAMS, (idx * 8) as i32);
++            self.amd.movsd_xmm_mem(ϕ(dst), Amd::RAX, 0);
++        } else if self.config.symbolica() {
+             self.amd
+                 .movsd_xmm_mem(ϕ(dst), PARAMS, (idx * REG_SIZE) as i32);
+         } else {
+@@ -606,6 +621,11 @@ impl Generator for AmdSSEGenerator {
+         self.amd.mov(IDX, ARGS[2]); // third arg = index if indirect mode
+         self.amd.mov(PARAMS, ARGS[3]); // fourth arg = params
+ 
++        if self.config.direct_arena() {
++            sub_rsp(&mut self.amd, align_stack(cap as u32 * REG_SIZE));
++            return;
++        }
++
+         self.amd.or(STATES, STATES);
+         self.amd.jz("@main");
+ 
+@@ -642,20 +662,22 @@ impl Generator for AmdSSEGenerator {
+ 
+         add_rsp(&mut self.amd, align_stack(cap as u32 * REG_SIZE));
+ 
+-        self.amd.or(STATES, STATES);
+-        self.amd.jz("@done");
++        if !self.config.direct_arena() {
++            self.amd.or(STATES, STATES);
++            self.amd.jz("@done");
+ 
+-        for i in 0..count_obs {
+-            self.amd
+-                .mov_reg_mem(Amd::RCX, STATES, 2 * 8 * (count_states + i) as i32);
+-            let k = (count_states + i) as u32 * REG_SIZE;
+-            self.amd.movsd_xmm_mem(RET, MEM, k as i32);
+-            self.amd.movsd_indexed_xmm(Amd::RCX, IDX, 8, RET);
+-        }
++            for i in 0..count_obs {
++                self.amd
++                    .mov_reg_mem(Amd::RCX, STATES, 2 * 8 * (count_states + i) as i32);
++                let k = (count_states + i) as u32 * REG_SIZE;
++                self.amd.movsd_xmm_mem(RET, MEM, k as i32);
++                self.amd.movsd_indexed_xmm(Amd::RCX, IDX, 8, RET);
++            }
+ 
+-        let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
+-        add_rsp(&mut self.amd, frame_size);
+-        self.set_label("@done");
++            let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
++            add_rsp(&mut self.amd, frame_size);
++            self.set_label("@done");
++        }
+ 
+         load_nonvolatile_regs(&mut self.amd);
+         self.amd.pop(Amd::RBP);
+diff --git a/rust/amd/vector.rs b/rust/amd/vector.rs
+index 82a6ca7a79ab5ac3da9b07d9219a834e21a1926c..dedd9b2c67bf67fb918f5c39f8e298dcd470f622 100644
+--- a/rust/amd/vector.rs
++++ b/rust/amd/vector.rs
+@@ -315,11 +315,21 @@ impl Generator for AmdVectorF64x4Generator {
+ 
+     fn load_mem(&mut self, dst: Reg, idx: u32) {
+         self.last_load = self.amd.a.ip();
+-        self.amd.vmovpd_ymm_mem(ϕ(dst), MEM, idx as i32 * REG_SIZE);
++        if self.config.direct_arena() {
++            self.amd.mov_reg_mem(Amd::RAX, STATES, (idx * 16) as i32);
++            self.amd.vmovpd_ymm_indexed(ϕ(dst), Amd::RAX, IDX, 8);
++        } else {
++            self.amd.vmovpd_ymm_mem(ϕ(dst), MEM, idx as i32 * REG_SIZE);
++        }
+     }
+ 
+     fn save_mem(&mut self, dst: Reg, idx: u32) {
+-        self.amd.vmovpd_mem_ymm(MEM, idx as i32 * REG_SIZE, ϕ(dst));
++        if self.config.direct_arena() {
++            self.amd.mov_reg_mem(Amd::RAX, STATES, (idx * 16) as i32);
++            self.amd.vmovpd_indexed_ymm(Amd::RAX, IDX, 8, ϕ(dst));
++        } else {
++            self.amd.vmovpd_mem_ymm(MEM, idx as i32 * REG_SIZE, ϕ(dst));
++        }
+     }
+ 
+     fn save_mem_result(&mut self, idx: u32) {
+@@ -329,7 +339,10 @@ impl Generator for AmdVectorF64x4Generator {
+     fn load_param(&mut self, dst: Reg, idx: u32) {
+         self.last_load = self.amd.a.ip();
+ 
+-        if self.config.symbolica() {
++        if self.config.direct_arena() {
++            self.amd.mov_reg_mem(Amd::RAX, PARAMS, (idx * 8) as i32);
++            self.amd.vbroadcastsd(ϕ(dst), Amd::RAX, 0);
++        } else if self.config.symbolica() {
+             self.amd
+                 .vmovpd_ymm_mem(ϕ(dst), PARAMS, idx as i32 * REG_SIZE);
+         } else {
+@@ -763,6 +776,13 @@ impl Generator for AmdVectorF64x4Generator {
+         self.amd.mov(IDX, ARGS[2]); // third arg = index if indirect mode
+         self.amd.mov(PARAMS, ARGS[3]); // fourth arg = params
+ 
++        if self.config.direct_arena() {
++            self.amd.add(IDX, IDX);
++            self.amd.add(IDX, IDX);
++            sub_rsp(&mut self.amd, align_stack(cap as u32 * REG_USIZE));
++            return;
++        }
++
+         self.amd.or(STATES, STATES);
+         self.amd.jz("@main");
+ 
+@@ -802,20 +822,22 @@ impl Generator for AmdVectorF64x4Generator {
+ 
+         add_rsp(&mut self.amd, align_stack(cap as u32 * REG_USIZE));
+ 
+-        self.amd.or(STATES, STATES);
+-        self.amd.jz("@done");
++        if !self.config.direct_arena() {
++            self.amd.or(STATES, STATES);
++            self.amd.jz("@done");
+ 
+-        for i in 0..count_obs {
+-            self.amd
+-                .mov_reg_mem(Amd::RCX, STATES, 2 * 8 * (count_states + i) as i32);
+-            self.amd
+-                .vmovpd_ymm_mem(RET, MEM, (count_states + i) as i32 * REG_SIZE);
+-            self.amd.vmovpd_indexed_ymm(Amd::RCX, IDX, 8, RET);
+-        }
++            for i in 0..count_obs {
++                self.amd
++                    .mov_reg_mem(Amd::RCX, STATES, 2 * 8 * (count_states + i) as i32);
++                self.amd
++                    .vmovpd_ymm_mem(RET, MEM, (count_states + i) as i32 * REG_SIZE);
++                self.amd.vmovpd_indexed_ymm(Amd::RCX, IDX, 8, RET);
++            }
+ 
+-        let frame_size = align_stack((count_states + count_obs) as u32 * REG_USIZE);
+-        add_rsp(&mut self.amd, frame_size);
+-        self.set_label("@done");
++            let frame_size = align_stack((count_states + count_obs) as u32 * REG_USIZE);
++            add_rsp(&mut self.amd, frame_size);
++            self.set_label("@done");
++        }
+ 
+         self.vzeroupper();
+ 
+diff --git a/rust/amd/vector_f64x8.rs b/rust/amd/vector_f64x8.rs
+index f7bde87851fa8fd62a2aac3c489e2eb0e94e1e86..4ebf1a7f1d258c61a73a8d42e14a2ee01f4e6667 100644
+--- a/rust/amd/vector_f64x8.rs
++++ b/rust/amd/vector_f64x8.rs
+@@ -323,11 +323,21 @@ impl Generator for AmdVectorF64x8Generator {
+ 
+     fn load_mem(&mut self, dst: Reg, idx: u32) {
+         self.last_load = self.amd.a.ip();
+-        self.amd.vmovqd_zmm_mem(ϕ(dst), MEM, idx as i32 * REG_SIZE);
++        if self.config.direct_arena() {
++            self.amd.mov_reg_mem(Amd::RAX, STATES, (idx * 16) as i32);
++            self.amd.vmovqd_zmm_indexed(ϕ(dst), Amd::RAX, IDX, 8);
++        } else {
++            self.amd.vmovqd_zmm_mem(ϕ(dst), MEM, idx as i32 * REG_SIZE);
++        }
+     }
+ 
+     fn save_mem(&mut self, dst: Reg, idx: u32) {
+-        self.amd.vmovqd_mem_zmm(MEM, idx as i32 * REG_SIZE, ϕ(dst));
++        if self.config.direct_arena() {
++            self.amd.mov_reg_mem(Amd::RAX, STATES, (idx * 16) as i32);
++            self.amd.vmovqd_indexed_zmm(Amd::RAX, IDX, 8, ϕ(dst));
++        } else {
++            self.amd.vmovqd_mem_zmm(MEM, idx as i32 * REG_SIZE, ϕ(dst));
++        }
+     }
+ 
+     fn save_mem_result(&mut self, idx: u32) {
+@@ -337,7 +347,10 @@ impl Generator for AmdVectorF64x8Generator {
+     fn load_param(&mut self, dst: Reg, idx: u32) {
+         self.last_load = self.amd.a.ip();
+ 
+-        if self.config.symbolica() {
++        if self.config.direct_arena() {
++            self.amd.mov_reg_mem(Amd::RAX, PARAMS, (idx * 8) as i32);
++            self.amd.vbroadcastsd_zmm(ϕ(dst), Amd::RAX, 0);
++        } else if self.config.symbolica() {
+             self.amd
+                 .vmovqd_zmm_mem(ϕ(dst), PARAMS, idx as i32 * REG_SIZE);
+         } else {
+@@ -773,6 +786,14 @@ impl Generator for AmdVectorF64x8Generator {
+         self.amd.mov(IDX, ARGS[2]); // third arg = index if indirect mode
+         self.amd.mov(PARAMS, ARGS[3]); // fourth arg = params
+ 
++        if self.config.direct_arena() {
++            self.amd.add(IDX, IDX);
++            self.amd.add(IDX, IDX);
++            self.amd.add(IDX, IDX);
++            sub_rsp(&mut self.amd, align_stack(cap as u32 * REG_USIZE));
++            return;
++        }
++
+         self.amd.or(STATES, STATES);
+         self.amd.jz("@main");
+ 
+@@ -813,20 +834,22 @@ impl Generator for AmdVectorF64x8Generator {
+ 
+         add_rsp(&mut self.amd, align_stack(cap as u32 * REG_USIZE));
+ 
+-        self.amd.or(STATES, STATES);
+-        self.amd.jz("@done");
++        if !self.config.direct_arena() {
++            self.amd.or(STATES, STATES);
++            self.amd.jz("@done");
+ 
+-        for i in 0..count_obs {
+-            self.amd
+-                .mov_reg_mem(Amd::RCX, STATES, 2 * 8 * (count_states + i) as i32);
+-            self.amd
+-                .vmovqd_zmm_mem(RET, MEM, (count_states + i) as i32 * REG_SIZE);
+-            self.amd.vmovqd_indexed_zmm(Amd::RCX, IDX, 8, RET);
+-        }
++            for i in 0..count_obs {
++                self.amd
++                    .mov_reg_mem(Amd::RCX, STATES, 2 * 8 * (count_states + i) as i32);
++                self.amd
++                    .vmovqd_zmm_mem(RET, MEM, (count_states + i) as i32 * REG_SIZE);
++                self.amd.vmovqd_indexed_zmm(Amd::RCX, IDX, 8, RET);
++            }
+ 
+-        let frame_size = align_stack((count_states + count_obs) as u32 * REG_USIZE);
+-        add_rsp(&mut self.amd, frame_size);
+-        self.set_label("@done");
++            let frame_size = align_stack((count_states + count_obs) as u32 * REG_USIZE);
++            add_rsp(&mut self.amd, frame_size);
++            self.set_label("@done");
++        }
+ 
+         self.vzeroupper();
+ 
+diff --git a/rust/arm/scalar.rs b/rust/arm/scalar.rs
+index e184accd34a3de15ef1879f53ff2d7fcd368cd6a..997e1d6afb6dd1630565ccdac11962f694795588 100644
+--- a/rust/arm/scalar.rs
++++ b/rust/arm/scalar.rs
+@@ -154,11 +154,21 @@ impl Generator for ArmGenerator {
+     }
+ 
+     fn load_mem(&mut self, dst: Reg, idx: u32) {
+-        load_d_from_mem(&mut self.a, ϕ(dst), MEM, idx);
++        if self.config.direct_arena() {
++            load_x_from_mem(&mut self.a, SCRATCH2, STATES, 2 * idx);
++            self.emit(arm! {ldr d(ϕ(dst)), [x(SCRATCH2), x(IDX), lsl #3]});
++        } else {
++            load_d_from_mem(&mut self.a, ϕ(dst), MEM, idx);
++        }
+     }
+ 
+     fn save_mem(&mut self, dst: Reg, idx: u32) {
+-        save_d_to_mem(&mut self.a, ϕ(dst), MEM, idx);
++        if self.config.direct_arena() {
++            load_x_from_mem(&mut self.a, SCRATCH2, STATES, 2 * idx);
++            self.emit(arm! {str d(ϕ(dst)), [x(SCRATCH2), x(IDX), lsl #3]});
++        } else {
++            save_d_to_mem(&mut self.a, ϕ(dst), MEM, idx);
++        }
+     }
+ 
+     fn save_mem_result(&mut self, idx: u32) {
+@@ -166,7 +176,12 @@ impl Generator for ArmGenerator {
+     }
+ 
+     fn load_param(&mut self, dst: Reg, idx: u32) {
+-        load_d_from_mem(&mut self.a, ϕ(dst), PARAMS, idx);
++        if self.config.direct_arena() {
++            load_x_from_mem(&mut self.a, SCRATCH2, PARAMS, idx);
++            load_d_from_mem(&mut self.a, ϕ(dst), SCRATCH2, 0);
++        } else {
++            load_d_from_mem(&mut self.a, ϕ(dst), PARAMS, idx);
++        }
+     }
+ 
+     fn load_stack(&mut self, dst: Reg, idx: u32) {
+@@ -178,11 +193,21 @@ impl Generator for ArmGenerator {
+     }
+ 
+     fn load_mem_complex(&mut self, xd: Reg, yd: Reg, idx: u32) {
+-        load_paired_d_from_mem(&mut self.a, ϕ(xd), ϕ(yd), MEM, idx);
++        if self.config.direct_arena() {
++            self.load_mem(xd, idx);
++            self.load_mem(yd, idx + 1);
++        } else {
++            load_paired_d_from_mem(&mut self.a, ϕ(xd), ϕ(yd), MEM, idx);
++        }
+     }
+ 
+     fn save_mem_complex(&mut self, xs: Reg, ys: Reg, idx: u32) {
+-        save_paired_d_to_mem(&mut self.a, ϕ(xs), ϕ(ys), MEM, idx);
++        if self.config.direct_arena() {
++            self.save_mem(xs, idx);
++            self.save_mem(ys, idx + 1);
++        } else {
++            save_paired_d_to_mem(&mut self.a, ϕ(xs), ϕ(ys), MEM, idx);
++        }
+     }
+ 
+     fn load_param_complex(&mut self, xd: Reg, yd: Reg, idx: u32) {
+@@ -512,6 +537,13 @@ impl Generator for ArmGenerator {
+         self.emit(arm! {mov x(IDX), x(2)});
+         self.emit(arm! {mov x(PARAMS), x(3)});
+ 
++        if self.config.direct_arena() {
++            let stack_size = align_stack(cap as u32 * REG_SIZE);
++            self.sub_stack(stack_size);
++            self.emit(arm! {mov x(STACK), sp});
++            return;
++        }
++
+         self.emit(arm! {tst x(STATES), x(STATES)});
+         self.jump("@main", 0, |offset, _| arm! {b.eq label(offset)});
+ 
+@@ -541,23 +573,27 @@ impl Generator for ArmGenerator {
+         count_obs: usize,
+         _count_params: usize,
+     ) {
++        self.set_label("@epilogue");
++
+         let stack_size = align_stack(cap as u32 * REG_SIZE);
+         self.add_stack(stack_size);
+ 
+-        self.emit(arm! {tst x(STATES), x(STATES)});
+-        self.jump("@done", 0, |offset, _| arm! {b.eq label(offset)});
++        if !self.config.direct_arena() {
++            self.emit(arm! {tst x(STATES), x(STATES)});
++            self.jump("@done", 0, |offset, _| arm! {b.eq label(offset)});
+ 
+-        for i in 0..count_obs {
+-            load_x_from_mem(&mut self.a, SCRATCH2, STATES, 2 * (count_states + i) as u32);
+-            let k = (count_states + i) as u32;
+-            load_d_from_mem(&mut self.a, 0, MEM, k);
+-            self.emit(arm! {str d(0), [x(SCRATCH2), x(IDX), lsl #3]});
+-        }
++            for i in 0..count_obs {
++                load_x_from_mem(&mut self.a, SCRATCH2, STATES, 2 * (count_states + i) as u32);
++                let k = (count_states + i) as u32;
++                load_d_from_mem(&mut self.a, 0, MEM, k);
++                self.emit(arm! {str d(0), [x(SCRATCH2), x(IDX), lsl #3]});
++            }
+ 
+-        let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
+-        self.add_stack(frame_size);
++            let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
++            self.add_stack(frame_size);
+ 
+-        self.set_label("@done");
++            self.set_label("@done");
++        }
+ 
+         self.emit(arm! {ldr lr, [sp, #0]});
+         self.emit(arm! {ldr x(MEM), [sp, #8]});
+@@ -590,3 +626,19 @@ impl Generator for ArmGenerator {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn direct_prologue_initializes_the_spill_stack_register() {
++        let mut config = Config::default();
++        config.set_direct_arena(true);
++        let mut generator = ArmGenerator::new(config);
++        generator.prologue_indirect(32, 0, 0, 0);
++
++        let expected = arm! {mov x(STACK), sp}.to_le_bytes();
++        assert_eq!(&generator.a.buf[generator.a.buf.len() - 4..], &expected);
++    }
++}
+diff --git a/rust/arm/vector.rs b/rust/arm/vector.rs
+index fde35c602ca5af289499c8f9c62b7c1f974f1a93..3a6df4a3c6ded9ac6a90e10a6887f2a52fb4bfcd 100644
+--- a/rust/arm/vector.rs
++++ b/rust/arm/vector.rs
+@@ -208,11 +208,21 @@ impl Generator for ArmSimdGenerator {
+     }
+ 
+     fn load_mem(&mut self, dst: Reg, idx: u32) {
+-        load_q_from_mem(&mut self.a, ϕ(dst), MEM, idx);
++        if self.config.direct_arena() {
++            load_x_from_mem(&mut self.a, SCRATCH2, STATES, 2 * idx);
++            self.emit(arm! {ldr q(ϕ(dst)), [x(SCRATCH2), x(IDX), lsl #4]});
++        } else {
++            load_q_from_mem(&mut self.a, ϕ(dst), MEM, idx);
++        }
+     }
+ 
+     fn save_mem(&mut self, dst: Reg, idx: u32) {
+-        save_q_to_mem(&mut self.a, ϕ(dst), MEM, idx);
++        if self.config.direct_arena() {
++            load_x_from_mem(&mut self.a, SCRATCH2, STATES, 2 * idx);
++            self.emit(arm! {str q(ϕ(dst)), [x(SCRATCH2), x(IDX), lsl #4]});
++        } else {
++            save_q_to_mem(&mut self.a, ϕ(dst), MEM, idx);
++        }
+     }
+ 
+     fn save_mem_result(&mut self, idx: u32) {
+@@ -220,7 +230,11 @@ impl Generator for ArmSimdGenerator {
+     }
+ 
+     fn load_param(&mut self, dst: Reg, idx: u32) {
+-        if self.config.symbolica() {
++        if self.config.direct_arena() {
++            load_x_from_mem(&mut self.a, SCRATCH2, PARAMS, idx);
++            load_d_from_mem(&mut self.a, ϕ(dst), SCRATCH2, 0);
++            self.emit(arm! {dup q(ϕ(dst)), q(ϕ(dst))[0]});
++        } else if self.config.symbolica() {
+             load_q_from_mem(&mut self.a, ϕ(dst), PARAMS, idx);
+         } else {
+             load_d_from_mem(&mut self.a, ϕ(dst), PARAMS, idx);
+@@ -237,11 +251,21 @@ impl Generator for ArmSimdGenerator {
+     }
+ 
+     fn load_mem_complex(&mut self, xd: Reg, yd: Reg, idx: u32) {
+-        load_paired_q_from_mem(&mut self.a, ϕ(xd), ϕ(yd), MEM, idx);
++        if self.config.direct_arena() {
++            self.load_mem(xd, idx);
++            self.load_mem(yd, idx + 1);
++        } else {
++            load_paired_q_from_mem(&mut self.a, ϕ(xd), ϕ(yd), MEM, idx);
++        }
+     }
+ 
+     fn save_mem_complex(&mut self, xs: Reg, ys: Reg, idx: u32) {
+-        save_paired_q_to_mem(&mut self.a, ϕ(xs), ϕ(ys), MEM, idx);
++        if self.config.direct_arena() {
++            self.save_mem(xs, idx);
++            self.save_mem(ys, idx + 1);
++        } else {
++            save_paired_q_to_mem(&mut self.a, ϕ(xs), ϕ(ys), MEM, idx);
++        }
+     }
+ 
+     fn load_param_complex(&mut self, xd: Reg, yd: Reg, idx: u32) {
+@@ -735,6 +759,13 @@ impl Generator for ArmSimdGenerator {
+         self.emit(arm! {mov x(IDX), x(2)});
+         self.emit(arm! {mov x(PARAMS), x(3)});
+ 
++        if self.config.direct_arena() {
++            let stack_size = align_stack(cap as u32 * REG_SIZE);
++            self.sub_stack(stack_size);
++            self.emit(arm! {mov x(STACK), sp});
++            return;
++        }
++
+         self.emit(arm! {tst x(STATES), x(STATES)});
+         self.jump("@main", 0, |offset, _| arm! {b.eq label(offset)});
+ 
+@@ -777,20 +808,22 @@ impl Generator for ArmSimdGenerator {
+         let stack_size = align_stack(cap as u32 * REG_SIZE);
+         self.add_stack(stack_size);
+ 
+-        self.emit(arm! {tst x(STATES), x(STATES)});
+-        self.jump("@done", 0, |offset, _| arm! {b.eq label(offset)});
++        if !self.config.direct_arena() {
++            self.emit(arm! {tst x(STATES), x(STATES)});
++            self.jump("@done", 0, |offset, _| arm! {b.eq label(offset)});
+ 
+-        for i in 0..count_obs {
+-            load_x_from_mem(&mut self.a, SCRATCH2, STATES, 2 * (count_states + i) as u32);
+-            let k = (count_states + i) as u32;
+-            load_q_from_mem(&mut self.a, 0, MEM, k);
+-            self.emit(arm! {str q(0), [x(SCRATCH2), x(IDX), lsl #4]});
+-        }
++            for i in 0..count_obs {
++                load_x_from_mem(&mut self.a, SCRATCH2, STATES, 2 * (count_states + i) as u32);
++                let k = (count_states + i) as u32;
++                load_q_from_mem(&mut self.a, 0, MEM, k);
++                self.emit(arm! {str q(0), [x(SCRATCH2), x(IDX), lsl #4]});
++            }
+ 
+-        let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
+-        self.add_stack(frame_size);
++            let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
++            self.add_stack(frame_size);
+ 
+-        self.set_label("@done");
++            self.set_label("@done");
++        }
+ 
+         self.emit(arm! {ldr lr, [sp, #0]});
+         self.emit(arm! {ldr x(MEM), [sp, #8]});
+diff --git a/rust/config.rs b/rust/config.rs
+index eff3214c86acacd06af621afc1d2f39f5d32772c..688d7d89a8c9cf58f6a358491541ed4522e50b92 100644
+--- a/rust/config.rs
++++ b/rust/config.rs
+@@ -31,6 +31,9 @@ pub const DEBUG_LOCK: u32 = 0x0100_0000;
+ 
+ pub const HUGE: u32 = 0x0010_0000;
+ pub const PARALLEL_MUL: u32 = 0x0020_0000;
++pub const DIRECT_ARENA: u32 = 0x0040_0000;
++pub const DIRECT_ARENA_OPERATION_MASK: u32 = 0x0600_0000;
++pub const DIRECT_ARENA_OPERATION_SHIFT: usize = 25;
+ 
+ pub const OPT_LEVEL_MASK: u32 = 0x0000_0f00;
+ pub const OPT_LEVEL_SHIFT: usize = 8;
+@@ -72,6 +75,7 @@ struct Options {
+     fast_complex: bool,
+     huge: bool,
+     parallel_mul: bool,
++    direct_arena: bool,
+     opt_level: u8,
+     stack_limit: usize,
+ }
+@@ -211,6 +215,7 @@ impl Config {
+         config.set_fast_complex(c.options.fast_complex);
+         config.set_huge(c.options.huge);
+         config.set_parallel_mul(c.options.parallel_mul);
++        config.set_direct_arena(c.options.direct_arena);
+ 
+         config.set_opt_level(c.options.opt_level);
+         config.set_stack_limit(c.options.stack_limit);
+@@ -254,6 +259,7 @@ impl Config {
+             stack_limit: self.stack_limit(),
+             huge: self.huge(),
+             parallel_mul: self.parallel_mul(),
++            direct_arena: self.direct_arena(),
+         };
+ 
+         let debug: DebugOptions = DebugOptions {
+@@ -391,6 +397,16 @@ impl Config {
+         self.test(PARALLEL_MUL)
+     }
+ 
++    /// Uses pointer descriptors for scalar inputs to a direct arena application.
++    pub fn direct_arena(&self) -> bool {
++        self.test(DIRECT_ARENA)
++    }
++
++    /// Authenticated destination operation used by a direct arena application.
++    pub fn direct_arena_operation(&self) -> u8 {
++        ((self.opt & DIRECT_ARENA_OPERATION_MASK) >> DIRECT_ARENA_OPERATION_SHIFT) as u8
++    }
++
+     pub fn debug_bytecode(&self) -> bool {
+         self.test(DEBUG_BYTECODE)
+     }
+@@ -591,6 +607,18 @@ impl Config {
+         }
+     }
+ 
++    /// Enables the direct arena scalar-input ABI.
++    pub fn set_direct_arena(&mut self, enabled: bool) {
++        self.opt = (self.opt & !DIRECT_ARENA) | if enabled { DIRECT_ARENA } else { 0 };
++    }
++
++    /// Sets the direct arena destination operation encoded in portable MIR.
++    pub fn set_direct_arena_operation(&mut self, operation: u8) {
++        assert!(operation <= 3, "invalid direct arena destination operation");
++        self.opt = (self.opt & !DIRECT_ARENA_OPERATION_MASK)
++            | ((operation as u32) << DIRECT_ARENA_OPERATION_SHIFT);
++    }
++
+     /// Dump bytecode for debugging
+     pub fn set_debug_bytecode(&mut self, enabled: bool) {
+         self.opt = (self.opt & !DEBUG_BYTECODE) | if enabled { DEBUG_BYTECODE } else { 0 };
+diff --git a/rust/direct.rs b/rust/direct.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fe2b943b068e90e7f7be10cd28ad4465405049a0
+--- /dev/null
++++ b/rust/direct.rs
+@@ -0,0 +1,1413 @@
++//! Portable direct-arena applications.
++//!
++//! A direct application is compiled once from a normal Symbolica application,
++//! but reads point-contiguous state planes and immutable scalar pointer
++//! descriptors. Outputs may alias input planes, so accumulated destinations are
++//! updated by the generated code without an output buffer or scatter pass.
++
++use std::collections::{BTreeSet, HashSet};
++use std::ffi::c_void;
++use std::io::{Read, Write};
++use std::ptr;
++
++use anyhow::{anyhow, bail, Context, Result};
++
++use crate::applet::Applet;
++use crate::config::Config;
++use crate::generator::Generator;
++use crate::mir::{Instruction, Mir};
++use crate::runnable::{Application, CompilerType};
++use crate::serializer::MirWriter;
++use crate::symbol::Loc;
++use crate::utils::{Compiled, Reg, Storage};
++
++pub const DIRECT_APPLICATION_STORAGE_ABI: &str = "symjit-direct-application-storage-v1";
++pub const DIRECT_NO_ALIAS: u32 = u32::MAX;
++pub const DIRECT_EXACT_FACTOR_REAL_SCALAR: u32 = 0;
++pub const DIRECT_EXACT_FACTOR_IMAG_SCALAR: u32 = 1;
++pub const DIRECT_EXACT_FACTOR_SCALAR_COUNT: u32 = 2;
++
++const DIRECT_MAGIC: [u8; 8] = *b"SJDA0001";
++const DIRECT_VERSION: u32 = 1;
++
++pub const DIRECT_STATUS_OK: i32 = 0;
++pub const DIRECT_STATUS_INVALID_CONTEXT: i32 = 1;
++pub const DIRECT_STATUS_INVALID_ARGUMENT: i32 = 2;
++pub const DIRECT_STATUS_EXECUTION_FAILED: i32 = 3;
++
++/// Authenticated semantics applied when a direct kernel produces one output.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++#[repr(u8)]
++pub enum DirectDestinationOperation {
++    Initialize = 0,
++    Add = 1,
++    FinalizeInPlace = 2,
++    ClosureAdd = 3,
++}
++
++impl DirectDestinationOperation {
++    fn accumulates(self) -> bool {
++        matches!(self, Self::Add | Self::ClosureAdd)
++    }
++}
++
++impl TryFrom<u8> for DirectDestinationOperation {
++    type Error = anyhow::Error;
++
++    fn try_from(value: u8) -> Result<Self> {
++        match value {
++            0 => Ok(Self::Initialize),
++            1 => Ok(Self::Add),
++            2 => Ok(Self::FinalizeInPlace),
++            3 => Ok(Self::ClosureAdd),
++            _ => bail!("unknown direct destination operation {value}"),
++        }
++    }
++}
++
++/// Maps one scalar input of the original Symbolica application.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub enum DirectInputBinding {
++    /// Read a point-dependent value from this input plane.
++    Plane(u32),
++    /// Read a point-independent value through this scalar pointer descriptor.
++    Scalar(u32),
++}
++
++/// Authenticated shape and alias metadata stored beside portable MIR.
++#[derive(Clone, Debug, Eq, PartialEq)]
++pub struct DirectApplicationMetadata {
++    pub destination_operation: DirectDestinationOperation,
++    pub state_plane_indices: Vec<u32>,
++    pub parameter_bindings: Vec<DirectInputBinding>,
++    pub input_plane_count: u32,
++    pub scalar_input_count: u32,
++    pub output_alias_inputs: Vec<u32>,
++}
++
++impl DirectApplicationMetadata {
++    pub fn new(
++        destination_operation: DirectDestinationOperation,
++        state_plane_indices: Vec<u32>,
++        parameter_bindings: Vec<DirectInputBinding>,
++        input_plane_count: u32,
++        scalar_input_count: u32,
++        output_alias_inputs: Vec<u32>,
++    ) -> Result<Self> {
++        let metadata = Self {
++            destination_operation,
++            state_plane_indices,
++            parameter_bindings,
++            input_plane_count,
++            scalar_input_count,
++            output_alias_inputs,
++        };
++        metadata.validate()?;
++        Ok(metadata)
++    }
++
++    fn validate(&self) -> Result<()> {
++        if self.output_alias_inputs.is_empty() {
++            bail!("direct application must expose at least one output plane");
++        }
++        if self.scalar_input_count < DIRECT_EXACT_FACTOR_SCALAR_COUNT {
++            bail!(
++                "direct application must reserve scalar slots 0 and 1 for its exact complex factor"
++            );
++        }
++
++        let mut planes = BTreeSet::new();
++        for &plane in &self.state_plane_indices {
++            if plane >= self.input_plane_count {
++                bail!("direct state-plane binding {plane} is out of bounds");
++            }
++            planes.insert(plane);
++        }
++        let mut scalars = BTreeSet::from([
++            DIRECT_EXACT_FACTOR_REAL_SCALAR,
++            DIRECT_EXACT_FACTOR_IMAG_SCALAR,
++        ]);
++        for binding in &self.parameter_bindings {
++            match *binding {
++                DirectInputBinding::Plane(plane) => {
++                    if plane >= self.input_plane_count {
++                        bail!("direct parameter-plane binding {plane} is out of bounds");
++                    }
++                    planes.insert(plane);
++                }
++                DirectInputBinding::Scalar(scalar) => {
++                    if scalar < DIRECT_EXACT_FACTOR_SCALAR_COUNT {
++                        bail!(
++                            "direct source parameter scalar {scalar} overlaps reserved exact-factor slots 0 and 1"
++                        );
++                    }
++                    if scalar >= self.scalar_input_count {
++                        bail!("direct scalar binding {scalar} is out of bounds");
++                    }
++                    scalars.insert(scalar);
++                }
++            }
++        }
++
++        for &alias in &self.output_alias_inputs {
++            if alias == DIRECT_NO_ALIAS {
++                bail!("direct application outputs must alias persistent destination planes");
++            }
++            if alias >= self.input_plane_count {
++                bail!("direct output alias {alias} is out of bounds");
++            }
++            planes.insert(alias);
++        }
++        require_dense("input plane", self.input_plane_count, &planes)?;
++        require_dense("scalar input", self.scalar_input_count, &scalars)?;
++        Ok(())
++    }
++
++    fn validate_source(&self, source: &Application) -> Result<()> {
++        self.validate()?;
++        if source.count_states != self.state_plane_indices.len() {
++            bail!(
++                "direct state binding count {} does not match source state count {}",
++                self.state_plane_indices.len(),
++                source.count_states
++            );
++        }
++        if source.count_params != self.parameter_bindings.len() {
++            bail!(
++                "direct parameter binding count {} does not match source parameter count {}",
++                self.parameter_bindings.len(),
++                source.count_params
++            );
++        }
++        if source.count_obs != self.output_alias_inputs.len() {
++            bail!(
++                "direct output alias count {} does not match source output count {}",
++                self.output_alias_inputs.len(),
++                source.count_obs
++            );
++        }
++        if source.count_diffs != 0 {
++            bail!("direct applications do not support differential outputs");
++        }
++        if source.config.ty != CompilerType::Native
++            || source.config.opt_level() != 2
++            || !source.config.symbolica()
++            || !source.config.is_complex()
++        {
++            bail!("direct applications require a portable native Symbolica complex O2 source");
++        }
++        if !source.prog.builder.ft.is_empty() {
++            bail!("direct applications cannot retain external function calls");
++        }
++        Ok(())
++    }
++
++    fn validate_compiled(&self, application: &Application) -> Result<()> {
++        self.validate()?;
++        if application.count_states != self.input_plane_count as usize
++            || application.count_params != self.scalar_input_count as usize
++            || application.count_obs != self.output_alias_inputs.len()
++            || application.count_diffs != 0
++        {
++            bail!("stored direct application shape does not match its metadata");
++        }
++        if application.config.ty != CompilerType::Native
++            || application.config.opt_level() != 2
++            || application.config.symbolica()
++            || application.config.is_complex()
++            || !application.config.direct_arena()
++            || application.config.direct_arena_operation() != self.destination_operation as u8
++        {
++            bail!("stored application does not use the portable direct-arena O2 ABI");
++        }
++        if application.compiled.is_none() {
++            bail!("stored direct application has no native scalar callable");
++        }
++        Ok(())
++    }
++
++    fn save(&self, stream: &mut impl Write) -> Result<()> {
++        stream.write_all(&[self.destination_operation as u8])?;
++        write_u32(stream, self.input_plane_count)?;
++        write_u32(stream, self.scalar_input_count)?;
++        write_u32_len(stream, self.state_plane_indices.len())?;
++        for &value in &self.state_plane_indices {
++            write_u32(stream, value)?;
++        }
++        write_u32_len(stream, self.parameter_bindings.len())?;
++        for binding in &self.parameter_bindings {
++            match *binding {
++                DirectInputBinding::Plane(value) => {
++                    stream.write_all(&[0])?;
++                    write_u32(stream, value)?;
++                }
++                DirectInputBinding::Scalar(value) => {
++                    stream.write_all(&[1])?;
++                    write_u32(stream, value)?;
++                }
++            }
++        }
++        write_u32_len(stream, self.output_alias_inputs.len())?;
++        for &value in &self.output_alias_inputs {
++            write_u32(stream, value)?;
++        }
++        Ok(())
++    }
++
++    fn load(stream: &mut impl Read) -> Result<Self> {
++        let mut operation = [0_u8; 1];
++        stream.read_exact(&mut operation)?;
++        let destination_operation = DirectDestinationOperation::try_from(operation[0])?;
++        let input_plane_count = read_u32(stream)?;
++        let scalar_input_count = read_u32(stream)?;
++        let state_plane_indices = read_u32_vec(stream)?;
++        let parameter_count = read_u32(stream)? as usize;
++        let mut parameter_bindings = Vec::with_capacity(parameter_count);
++        for _ in 0..parameter_count {
++            let mut kind = [0_u8; 1];
++            stream.read_exact(&mut kind)?;
++            let value = read_u32(stream)?;
++            parameter_bindings.push(match kind[0] {
++                0 => DirectInputBinding::Plane(value),
++                1 => DirectInputBinding::Scalar(value),
++                other => bail!("unknown direct input binding kind {other}"),
++            });
++        }
++        let output_alias_inputs = read_u32_vec(stream)?;
++        Self::new(
++            destination_operation,
++            state_plane_indices,
++            parameter_bindings,
++            input_plane_count,
++            scalar_input_count,
++            output_alias_inputs,
++        )
++    }
++}
++
++fn require_dense(name: &str, count: u32, values: &BTreeSet<u32>) -> Result<()> {
++    if values.len() != count as usize
++        || values
++            .iter()
++            .copied()
++            .enumerate()
++            .any(|(expected, actual)| u32::try_from(expected).ok() != Some(actual))
++    {
++        bail!("direct {name} bindings must be dense zero-based");
++    }
++    Ok(())
++}
++
++/// ABI-stable plane descriptor consumed by generated indirect code.
++#[derive(Clone, Copy, Debug)]
++#[repr(C)]
++pub struct DirectPlane {
++    pub values: *mut f64,
++    pub len: usize,
++}
++
++impl DirectPlane {
++    /// The caller must keep `values[0..len]` alive for every call using this descriptor.
++    pub const unsafe fn from_raw_parts(values: *mut f64, len: usize) -> Self {
++        Self { values, len }
++    }
++}
++
++/// One immutable scalar binding. Generated SIMD code broadcasts `*value`.
++#[derive(Clone, Copy, Debug)]
++#[repr(C)]
++pub struct DirectScalar {
++    pub value: *const f64,
++}
++
++impl DirectScalar {
++    /// The caller must keep `value` alive for every call using this descriptor.
++    pub const unsafe fn from_raw(value: *const f64) -> Self {
++        Self { value }
++    }
++}
++
++/// Portable direct application. Saving stores MIR and direct binding metadata,
++/// never host machine code.
++pub struct DirectApplication {
++    metadata: DirectApplicationMetadata,
++    application: Application,
++}
++
++impl DirectApplication {
++    pub fn new(source: Application, metadata: DirectApplicationMetadata) -> Result<Self> {
++        metadata.validate_source(&source)?;
++        ensure_supported_host()?;
++        let application = lower_direct_application(&source, &metadata)?;
++        metadata.validate_compiled(&application)?;
++        Ok(Self {
++            metadata,
++            application,
++        })
++    }
++
++    /// Build a direct application from an existing portable O2 application
++    /// payload. This lets a prepared-model bundle share `application.symjit`
++    /// with its ordinary evaluator instead of storing a duplicate payload.
++    pub fn from_source_storage(
++        stream: &mut impl Read,
++        config: &Config,
++        metadata: DirectApplicationMetadata,
++    ) -> Result<Self> {
++        let source = Application::load(stream, config)?;
++        Self::new(source, metadata)
++    }
++
++    pub fn metadata(&self) -> &DirectApplicationMetadata {
++        &self.metadata
++    }
++
++    pub fn prepare_simd(&mut self) {
++        self.application.prepare_simd();
++    }
++
++    pub fn seal(self) -> Result<DirectApplet> {
++        self.metadata.validate_compiled(&self.application)?;
++        let applet = self.application.seal()?;
++        Ok(DirectApplet {
++            metadata: self.metadata,
++            applet,
++        })
++    }
++}
++
++impl Storage for DirectApplication {
++    fn save(&self, stream: &mut impl Write) -> Result<()> {
++        stream.write_all(&DIRECT_MAGIC)?;
++        write_u32(stream, DIRECT_VERSION)?;
++        self.metadata.save(stream)?;
++        self.application.save(stream)
++    }
++
++    fn load(stream: &mut impl Read, config: &Config) -> Result<Self> {
++        let mut magic = [0_u8; 8];
++        stream.read_exact(&mut magic)?;
++        if magic != DIRECT_MAGIC {
++            bail!("invalid direct application magic");
++        }
++        let version = read_u32(stream)?;
++        if version != DIRECT_VERSION {
++            bail!("unsupported direct application storage version {version}");
++        }
++        ensure_supported_host()?;
++        let metadata = DirectApplicationMetadata::load(stream)?;
++        let application = Application::load(stream, config)?;
++        metadata.validate_compiled(&application)?;
++        Ok(Self {
++            metadata,
++            application,
++        })
++    }
++}
++
++/// Loaded direct application context.
++pub struct DirectApplet {
++    metadata: DirectApplicationMetadata,
++    applet: Applet,
++}
++
++impl DirectApplet {
++    pub fn metadata(&self) -> &DirectApplicationMetadata {
++        &self.metadata
++    }
++
++    pub fn simd_lane_width(&self) -> usize {
++        self.applet
++            .compiled_simd
++            .as_ref()
++            .map_or(1, Compiled::count_lanes)
++    }
++
++    /// Evaluate directly against persistent plane and scalar descriptors.
++    ///
++    /// # Safety
++    ///
++    /// Every descriptor must remain valid and obey the alias contract for the
++    /// duration of the call. Output aliases are the only writable overlaps
++    /// accepted by this ABI.
++    pub unsafe fn evaluate_planes(
++        &self,
++        planes: &[DirectPlane],
++        scalars: &[DirectScalar],
++        point_start: usize,
++        point_count: usize,
++    ) -> Result<()> {
++        validate_call(&self.metadata, planes, scalars, point_start, point_count)?;
++        unsafe { self.evaluate_planes_unchecked(planes, scalars, point_start, point_count) }
++    }
++
++    /// Evaluate descriptors whose complete contract was authenticated by an
++    /// owning runtime when the application was loaded.
++    ///
++    /// # Safety
++    ///
++    /// The plane/scalar counts, pointer ranges, output aliases, and requested
++    /// point range must satisfy [`DirectApplicationMetadata`]. This entry
++    /// point is intended for persistent table-driven runtimes that construct
++    /// descriptors from already validated fixed projections.
++    pub unsafe fn evaluate_planes_unchecked(
++        &self,
++        planes: &[DirectPlane],
++        scalars: &[DirectScalar],
++        point_start: usize,
++        point_count: usize,
++    ) -> Result<()> {
++        let scalar = self
++            .applet
++            .compiled
++            .as_ref()
++            .ok_or_else(|| anyhow!("direct scalar callable is absent"))?
++            .func();
++        let lane_width = self.simd_lane_width();
++        let point_end = point_start
++            .checked_add(point_count)
++            .ok_or_else(|| anyhow!("direct point range overflows"))?;
++        let mut point = point_start;
++
++        while point < point_end && point % lane_width != 0 {
++            call_machine(scalar, planes, scalars, point)?;
++            point += 1;
++        }
++        if lane_width > 1 {
++            if let Some(simd) = &self.applet.compiled_simd {
++                let function = simd.func();
++                while point_end - point >= lane_width {
++                    let block = point / lane_width;
++                    if call_machine_status(function, planes, scalars, block) != 0 {
++                        for offset in 0..lane_width {
++                            call_machine(scalar, planes, scalars, point + offset)?;
++                        }
++                    }
++                    point += lane_width;
++                }
++            }
++        }
++        while point < point_end {
++            call_machine(scalar, planes, scalars, point)?;
++            point += 1;
++        }
++        Ok(())
++    }
++
++    /// Pin this application behind a context-aware direct callable.
++    pub fn into_callable(self) -> DirectCallable {
++        DirectCallable {
++            context: Box::new(self),
++        }
++    }
++}
++
++pub type DirectCallFunction = unsafe extern "C" fn(
++    *const c_void,
++    *const DirectPlane,
++    u32,
++    *const DirectScalar,
++    u32,
++    u32,
++    u32,
++) -> i32;
++
++/// Borrowed function/context pair suitable for an authenticated executor catalog.
++#[derive(Clone, Copy)]
++#[repr(C)]
++pub struct DirectCallableHandle {
++    pub call: DirectCallFunction,
++    pub context: *const c_void,
++}
++
++impl DirectCallableHandle {
++    /// # Safety
++    ///
++    /// The owning [`DirectCallable`] and all descriptors must outlive the call.
++    pub unsafe fn invoke(
++        self,
++        planes: &[DirectPlane],
++        scalars: &[DirectScalar],
++        point_start: u32,
++        point_count: u32,
++    ) -> i32 {
++        let Ok(plane_count) = u32::try_from(planes.len()) else {
++            return DIRECT_STATUS_INVALID_ARGUMENT;
++        };
++        let Ok(scalar_count) = u32::try_from(scalars.len()) else {
++            return DIRECT_STATUS_INVALID_ARGUMENT;
++        };
++        unsafe {
++            (self.call)(
++                self.context,
++                planes.as_ptr(),
++                plane_count,
++                scalars.as_ptr(),
++                scalar_count,
++                point_start,
++                point_count,
++            )
++        }
++    }
++}
++
++/// Owns the immutable context referenced by [`DirectCallableHandle`].
++pub struct DirectCallable {
++    context: Box<DirectApplet>,
++}
++
++impl DirectCallable {
++    pub fn handle(&self) -> DirectCallableHandle {
++        DirectCallableHandle {
++            call: direct_call_trampoline,
++            context: ptr::from_ref(self.context.as_ref()).cast(),
++        }
++    }
++
++    pub fn metadata(&self) -> &DirectApplicationMetadata {
++        self.context.metadata()
++    }
++
++    /// Invoke a callable using descriptors authenticated by the owning
++    /// table-driven runtime.
++    ///
++    /// # Safety
++    ///
++    /// The arguments must satisfy
++    /// [`DirectApplet::evaluate_planes_unchecked`].
++    pub unsafe fn invoke_unchecked(
++        &self,
++        planes: &[DirectPlane],
++        scalars: &[DirectScalar],
++        point_start: usize,
++        point_count: usize,
++    ) -> i32 {
++        match unsafe {
++            self.context
++                .evaluate_planes_unchecked(planes, scalars, point_start, point_count)
++        } {
++            Ok(()) => DIRECT_STATUS_OK,
++            Err(error) => {
++                if std::env::var_os("SYMJIT_DIRECT_DEBUG").is_some() {
++                    eprintln!("SymJIT Direct-Arena unchecked call failed: {error:#}");
++                }
++                DIRECT_STATUS_EXECUTION_FAILED
++            }
++        }
++    }
++}
++
++unsafe extern "C" fn direct_call_trampoline(
++    context: *const c_void,
++    planes: *const DirectPlane,
++    plane_count: u32,
++    scalars: *const DirectScalar,
++    scalar_count: u32,
++    point_start: u32,
++    point_count: u32,
++) -> i32 {
++    if context.is_null() {
++        return DIRECT_STATUS_INVALID_CONTEXT;
++    }
++    if (plane_count != 0 && planes.is_null()) || (scalar_count != 0 && scalars.is_null()) {
++        return DIRECT_STATUS_INVALID_ARGUMENT;
++    }
++    let applet = unsafe { &*context.cast::<DirectApplet>() };
++    let planes = unsafe { std::slice::from_raw_parts(planes, plane_count as usize) };
++    let scalars = unsafe { std::slice::from_raw_parts(scalars, scalar_count as usize) };
++    match unsafe {
++        applet.evaluate_planes(planes, scalars, point_start as usize, point_count as usize)
++    } {
++        Ok(()) => DIRECT_STATUS_OK,
++        Err(error) => {
++            if std::env::var_os("SYMJIT_DIRECT_DEBUG").is_some() {
++                eprintln!("SymJIT Direct-Arena call failed: {error:#}");
++            }
++            DIRECT_STATUS_EXECUTION_FAILED
++        }
++    }
++}
++
++fn lower_direct_application(
++    source: &Application,
++    metadata: &DirectApplicationMetadata,
++) -> Result<Application> {
++    let mut config = source.config.clone();
++    config.set_symbolica(false);
++    config.set_complex(false);
++    config.set_fast_complex(false);
++    config.set_dicect(false);
++    config.set_direct_arena(true);
++    config.set_direct_arena_operation(metadata.destination_operation as u8);
++    config.set_threads(false);
++    config.set_opt_level(2);
++
++    let mut program = source.prog.clone();
++    program.builder.config = config.clone();
++    program.builder.primary_block.config = config.clone();
++    program.count_states = metadata.input_plane_count as usize;
++    program.count_params = metadata.scalar_input_count as usize;
++    program.count_obs = metadata.output_alias_inputs.len();
++    program.count_diffs = 0;
++    program.count_loops = 0;
++
++    let source_mir = source.bytecode.mir.as_ref();
++    let mut mir = remap_mir(
++        source_mir,
++        &config,
++        source.count_states,
++        source.count_obs,
++        metadata,
++    )?;
++    if metadata.destination_operation == DirectDestinationOperation::FinalizeInPlace {
++        let snapshot_start = u32::try_from(program.builder.stack_size())
++            .context("direct finalization stack size exceeds u32")?;
++        let snapshot_stop = snapshot_start
++            .checked_add(metadata.input_plane_count)
++            .ok_or_else(|| anyhow!("direct finalization snapshot range exceeds u32"))?;
++        mir = snapshot_finalization_inputs(mir, snapshot_start, metadata.input_plane_count)?;
++        program.builder.count_stack = Some(snapshot_stop as usize);
++    }
++    let mut application = Application::with_mir(program, HashSet::new(), mir)?;
++    application.prepare_simd();
++    Ok(application)
++}
++
++/// Snapshot all finalizer inputs before the first aliased destination write.
++///
++/// A propagator may produce several output components from the complete
++/// unpropagated current. The output planes alias that current in the direct
++/// arena, so emitting one component before later expressions have read every
++/// input would make evaluation order observable. Keeping the snapshot in the
++/// generated function's fixed stack frame preserves true in-place execution
++/// without a caller-side packed input or scatter buffer.
++fn snapshot_finalization_inputs(
++    mut mir: Mir,
++    snapshot_start: u32,
++    input_plane_count: u32,
++) -> Result<Mir> {
++    let mut code = MirWriter::new();
++    for plane in 0..input_plane_count {
++        let stack = snapshot_start
++            .checked_add(plane)
++            .ok_or_else(|| anyhow!("direct finalization snapshot index exceeds u32"))?;
++        code.push(&Instruction::Load {
++            dst: Reg::Ret,
++            loc: Loc::Mem(plane),
++        });
++        code.push(&Instruction::Save {
++            src: Reg::Ret,
++            loc: Loc::Stack(stack),
++        });
++    }
++    for instruction in mir.code.iter() {
++        code.push(&snapshot_finalization_instruction(
++            instruction,
++            snapshot_start,
++            input_plane_count,
++        )?);
++    }
++    mir.code = code;
++    mir.populate_labels();
++    Ok(mir)
++}
++
++fn snapshot_finalization_instruction(
++    instruction: Instruction,
++    snapshot_start: u32,
++    input_plane_count: u32,
++) -> Result<Instruction> {
++    let snapshot =
++        |location| snapshot_finalization_location(location, snapshot_start, input_plane_count);
++    Ok(match instruction {
++        Instruction::Load { dst, loc } => Instruction::Load {
++            dst,
++            loc: snapshot(loc)?,
++        },
++        Instruction::LoadComplex { xd, yd, loc } => Instruction::LoadComplex {
++            xd,
++            yd,
++            loc: snapshot(loc)?,
++        },
++        Instruction::LoadMath { op, dst, s1, loc } => Instruction::LoadMath {
++            op,
++            dst,
++            s1,
++            loc: snapshot(loc)?,
++        },
++        Instruction::IfElse {
++            dst,
++            true_val,
++            false_val,
++            cond,
++        } => Instruction::IfElse {
++            dst,
++            true_val,
++            false_val,
++            cond: snapshot(cond)?,
++        },
++        other => other,
++    })
++}
++
++fn snapshot_finalization_location(
++    location: Loc,
++    snapshot_start: u32,
++    input_plane_count: u32,
++) -> Result<Loc> {
++    match location {
++        Loc::Mem(index) if index < input_plane_count => {
++            Ok(Loc::Stack(snapshot_start.checked_add(index).ok_or_else(
++                || anyhow!("direct finalization snapshot index exceeds u32"),
++            )?))
++        }
++        other => Ok(other),
++    }
++}
++
++fn remap_mir(
++    source: &Mir,
++    config: &Config,
++    source_state_count: usize,
++    source_output_count: usize,
++    metadata: &DirectApplicationMetadata,
++) -> Result<Mir> {
++    let mut code = MirWriter::new();
++    for instruction in source.code.iter() {
++        append_remapped(
++            &mut code,
++            instruction,
++            source_state_count,
++            source_output_count,
++            metadata,
++        )?;
++    }
++    let mut mir = Mir {
++        code,
++        consts: source.consts.clone(),
++        labels: source.labels.clone(),
++        config: config.clone(),
++    };
++    mir.populate_labels();
++    Ok(mir)
++}
++
++fn append_remapped(
++    code: &mut MirWriter,
++    instruction: Instruction,
++    source_state_count: usize,
++    source_output_count: usize,
++    metadata: &DirectApplicationMetadata,
++) -> Result<()> {
++    match instruction {
++        Instruction::LoadComplex { xd, yd, loc } => {
++            code.push(&Instruction::Load {
++                dst: xd,
++                loc: remap_loc(loc, source_state_count, source_output_count, metadata)?,
++            });
++            code.push(&Instruction::Load {
++                dst: yd,
++                loc: remap_loc(
++                    loc.imag(),
++                    source_state_count,
++                    source_output_count,
++                    metadata,
++                )?,
++            });
++        }
++        Instruction::SaveComplex { xs, ys, loc } => {
++            if !matches!(xs, Reg::Gen(_)) || !matches!(ys, Reg::Gen(_)) {
++                bail!("direct complex output must be held in allocated general registers");
++            }
++            let mapped = remap_loc(loc, source_state_count, source_output_count, metadata)?;
++            let mapped_imag = remap_loc(
++                loc.imag(),
++                source_state_count,
++                source_output_count,
++                metadata,
++            )?;
++            if mapped.imag() != mapped_imag {
++                bail!("direct complex output planes must remain adjacent");
++            }
++            code.push(&Instruction::SaveComplex {
++                xs,
++                ys,
++                loc: mapped,
++            });
++        }
++        Instruction::Load { dst, loc } => code.push(&Instruction::Load {
++            dst,
++            loc: remap_loc(loc, source_state_count, source_output_count, metadata)?,
++        }),
++        Instruction::Save { src, loc } => {
++            if matches!(loc, Loc::Mem(index) if index as usize >= source_state_count) {
++                bail!("direct complex applications require paired complex output stores");
++            }
++            code.push(&Instruction::Save {
++                src,
++                loc: remap_loc(loc, source_state_count, source_output_count, metadata)?,
++            });
++        }
++        Instruction::LoadMath { op, dst, s1, loc } => {
++            code.push(&Instruction::LoadMath {
++                op,
++                dst,
++                s1,
++                loc: remap_loc(loc, source_state_count, source_output_count, metadata)?,
++            });
++        }
++        Instruction::IfElse {
++            dst,
++            true_val,
++            false_val,
++            cond,
++        } => code.push(&Instruction::IfElse {
++            dst,
++            true_val,
++            false_val,
++            cond: remap_loc(cond, source_state_count, source_output_count, metadata)?,
++        }),
++        other => code.push(&other),
++    }
++    Ok(())
++}
++
++/// Emit factor scaling and authenticated destination semantics at the direct
++/// complex-output boundary. The original prepared application neither reads
++/// the destination nor consumes the process-specific exact factor.
++pub(crate) fn emit_direct_complex_destination(
++    generator: &mut (impl Generator + ?Sized),
++    xs: Reg,
++    ys: Reg,
++    destination: u32,
++    operation: u8,
++) -> Result<()> {
++    let operation = DirectDestinationOperation::try_from(operation)?;
++    if !matches!(xs, Reg::Gen(_)) || !matches!(ys, Reg::Gen(_)) {
++        bail!("direct complex destination operands must use general registers");
++    }
++
++    // Keep the original x/y values live while forming
++    // (x + i y) * (factor_re + i factor_im).
++    generator.load_param(Reg::Ret, DIRECT_EXACT_FACTOR_REAL_SCALAR);
++    generator.times(Reg::Ret, xs, Reg::Ret);
++    generator.load_param(Reg::Temp, DIRECT_EXACT_FACTOR_IMAG_SCALAR);
++    generator.times(Reg::Temp, ys, Reg::Temp);
++    generator.minus(Reg::Temp, Reg::Ret, Reg::Temp);
++
++    generator.load_param(Reg::Ret, DIRECT_EXACT_FACTOR_IMAG_SCALAR);
++    generator.times(Reg::Ret, xs, Reg::Ret);
++    generator.load_param(xs, DIRECT_EXACT_FACTOR_REAL_SCALAR);
++    generator.times(xs, ys, xs);
++    generator.plus(ys, Reg::Ret, xs);
++    generator.fmov(xs, Reg::Temp);
++
++    if operation.accumulates() {
++        generator.load_mem(Reg::Ret, destination);
++        generator.plus(xs, xs, Reg::Ret);
++        generator.load_mem(Reg::Ret, destination + 1);
++        generator.plus(ys, ys, Reg::Ret);
++    }
++    generator.save_mem_complex(xs, ys, destination);
++    Ok(())
++}
++
++fn remap_loc(
++    location: Loc,
++    source_state_count: usize,
++    source_output_count: usize,
++    metadata: &DirectApplicationMetadata,
++) -> Result<Loc> {
++    match location {
++        Loc::Stack(index) => Ok(Loc::Stack(index)),
++        Loc::Param(index) => {
++            let binding = metadata
++                .parameter_bindings
++                .get(index as usize)
++                .with_context(|| format!("source parameter location {index} is out of bounds"))?;
++            Ok(match *binding {
++                DirectInputBinding::Plane(plane) => Loc::Mem(plane),
++                DirectInputBinding::Scalar(scalar) => Loc::Param(scalar),
++            })
++        }
++        Loc::Mem(index) => {
++            let index = index as usize;
++            if index < source_state_count {
++                return Ok(Loc::Mem(metadata.state_plane_indices[index]));
++            }
++            let output = index
++                .checked_sub(source_state_count)
++                .ok_or_else(|| anyhow!("source memory location underflows the output range"))?;
++            if output >= source_output_count {
++                bail!("source memory location {index} is outside states and outputs");
++            }
++            let output = u32::try_from(output).context("direct output index exceeds u32")?;
++            Ok(Loc::Mem(metadata.input_plane_count + output))
++        }
++    }
++}
++
++fn validate_call(
++    metadata: &DirectApplicationMetadata,
++    planes: &[DirectPlane],
++    scalars: &[DirectScalar],
++    point_start: usize,
++    point_count: usize,
++) -> Result<()> {
++    let expected_planes = metadata.input_plane_count as usize + metadata.output_alias_inputs.len();
++    if planes.len() != expected_planes {
++        bail!(
++            "direct call has {} planes, expected {expected_planes}",
++            planes.len()
++        );
++    }
++    if scalars.len() != metadata.scalar_input_count as usize {
++        bail!(
++            "direct call has {} scalar descriptors, expected {}",
++            scalars.len(),
++            metadata.scalar_input_count
++        );
++    }
++    if point_count == 0 {
++        bail!("direct call point count must be positive");
++    }
++    let point_end = point_start
++        .checked_add(point_count)
++        .ok_or_else(|| anyhow!("direct call point range overflows"))?;
++    for (index, plane) in planes.iter().enumerate() {
++        if plane.values.is_null() || plane.len < point_end {
++            bail!("direct plane {index} does not cover the point tile");
++        }
++    }
++    for (index, scalar) in scalars.iter().enumerate() {
++        if scalar.value.is_null() {
++            bail!("direct scalar descriptor {index} is null");
++        }
++    }
++    for (output, &alias) in metadata.output_alias_inputs.iter().enumerate() {
++        if alias == DIRECT_NO_ALIAS {
++            continue;
++        }
++        let output_plane = &planes[metadata.input_plane_count as usize + output];
++        let input_plane = &planes[alias as usize];
++        if output_plane.values != input_plane.values || output_plane.len != input_plane.len {
++            bail!("direct output {output} does not satisfy alias input {alias}");
++        }
++    }
++    Ok(())
++}
++
++fn call_machine(
++    function: crate::utils::CompiledFunc<f64>,
++    planes: &[DirectPlane],
++    scalars: &[DirectScalar],
++    index: usize,
++) -> Result<()> {
++    let status = call_machine_status(function, planes, scalars, index);
++    if status != 0 {
++        bail!("direct machine call returned status {status}");
++    }
++    Ok(())
++}
++
++fn call_machine_status(
++    function: crate::utils::CompiledFunc<f64>,
++    planes: &[DirectPlane],
++    scalars: &[DirectScalar],
++    index: usize,
++) -> i32 {
++    function(
++        ptr::null(),
++        planes.as_ptr().cast(),
++        index,
++        scalars.as_ptr().cast(),
++    )
++}
++
++fn ensure_supported_host() -> Result<()> {
++    if cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
++        Ok(())
++    } else {
++        bail!("direct arena applications currently require x86-64 or arm64")
++    }
++}
++
++fn write_u32(stream: &mut impl Write, value: u32) -> Result<()> {
++    stream.write_all(&value.to_le_bytes())?;
++    Ok(())
++}
++
++fn write_u32_len(stream: &mut impl Write, value: usize) -> Result<()> {
++    write_u32(
++        stream,
++        u32::try_from(value).context("direct metadata length exceeds u32")?,
++    )
++}
++
++fn read_u32(stream: &mut impl Read) -> Result<u32> {
++    let mut bytes = [0_u8; 4];
++    stream.read_exact(&mut bytes)?;
++    Ok(u32::from_le_bytes(bytes))
++}
++
++fn read_u32_vec(stream: &mut impl Read) -> Result<Vec<u32>> {
++    let count = read_u32(stream)? as usize;
++    let mut result = Vec::with_capacity(count);
++    for _ in 0..count {
++        result.push(read_u32(stream)?);
++    }
++    Ok(result)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::expr::Expr;
++    use crate::{Compiler, Config};
++
++    fn source_application(opt_level: u8) -> Application {
++        let mut config = Config::default();
++        config.set_opt_level(opt_level);
++        config.set_complex(true);
++        config.set_symbolica(true);
++        config.set_simd(true);
++        config.set_fast_complex(false);
++        let x = Expr::var("x");
++        let y = Expr::var("y");
++        Compiler::with_config(config)
++            .compile_params(&[], &[&x * &y], &[x, y])
++            .unwrap()
++    }
++
++    fn metadata(operation: DirectDestinationOperation) -> DirectApplicationMetadata {
++        DirectApplicationMetadata::new(
++            operation,
++            vec![],
++            vec![
++                DirectInputBinding::Plane(0),
++                DirectInputBinding::Plane(1),
++                DirectInputBinding::Plane(2),
++                DirectInputBinding::Plane(3),
++            ],
++            6,
++            2,
++            vec![4, 5],
++        )
++        .unwrap()
++    }
++
++    #[test]
++    fn contribution_and_closure_calls_accumulate_nonunit_complex_factors() {
++        for operation in [
++            DirectDestinationOperation::Add,
++            DirectDestinationOperation::ClosureAdd,
++        ] {
++            let metadata = metadata(operation);
++            let mut application =
++                DirectApplication::new(source_application(2), metadata.clone()).unwrap();
++            application.prepare_simd();
++            let mut bytes = Vec::new();
++            application.save(&mut bytes).unwrap();
++            let loaded =
++                DirectApplication::load(&mut bytes.as_slice(), &Config::default()).unwrap();
++            assert_eq!(loaded.metadata(), &metadata);
++            let callable = loaded.seal().unwrap().into_callable();
++
++            let mut x_re = vec![1.0, 2.0, 3.0, 4.0, 5.0];
++            let mut x_im = vec![0.5, -0.5, 1.0, -1.0, 0.25];
++            let mut y_re = vec![2.0, 1.0, -1.0, 0.5, 4.0];
++            let mut y_im = vec![0.0, 1.0, 0.5, -0.5, -1.0];
++            let mut destination_re = vec![10.0; 5];
++            let mut destination_im = vec![-3.0; 5];
++            let original_re = destination_re.clone();
++            let original_im = destination_im.clone();
++            let factors = [(0.25, -0.5), (-1.25, 0.75)];
++
++            let mut planes = vec![
++                unsafe { DirectPlane::from_raw_parts(x_re.as_mut_ptr(), x_re.len()) },
++                unsafe { DirectPlane::from_raw_parts(x_im.as_mut_ptr(), x_im.len()) },
++                unsafe { DirectPlane::from_raw_parts(y_re.as_mut_ptr(), y_re.len()) },
++                unsafe { DirectPlane::from_raw_parts(y_im.as_mut_ptr(), y_im.len()) },
++                unsafe {
++                    DirectPlane::from_raw_parts(destination_re.as_mut_ptr(), destination_re.len())
++                },
++                unsafe {
++                    DirectPlane::from_raw_parts(destination_im.as_mut_ptr(), destination_im.len())
++                },
++                unsafe {
++                    DirectPlane::from_raw_parts(destination_re.as_mut_ptr(), destination_re.len())
++                },
++                unsafe {
++                    DirectPlane::from_raw_parts(destination_im.as_mut_ptr(), destination_im.len())
++                },
++            ];
++            for (index, (factor_re, factor_im)) in factors.iter().enumerate() {
++                let scalars = [
++                    unsafe { DirectScalar::from_raw(ptr::from_ref(factor_re)) },
++                    unsafe { DirectScalar::from_raw(ptr::from_ref(factor_im)) },
++                ];
++                let status = if index == 0 {
++                    unsafe { callable.handle().invoke(&planes, &scalars, 0, 5) }
++                } else {
++                    unsafe { callable.invoke_unchecked(&planes, &scalars, 0, 5) }
++                };
++                assert_eq!(status, DIRECT_STATUS_OK);
++            }
++
++            let factor_re: f64 = factors.iter().map(|factor| factor.0).sum();
++            let factor_im: f64 = factors.iter().map(|factor| factor.1).sum();
++            for point in 0..5 {
++                let product_re = x_re[point] * y_re[point] - x_im[point] * y_im[point];
++                let product_im = x_re[point] * y_im[point] + x_im[point] * y_re[point];
++                let expected_re =
++                    original_re[point] + factor_re * product_re - factor_im * product_im;
++                let expected_im =
++                    original_im[point] + factor_re * product_im + factor_im * product_re;
++                assert!((destination_re[point] - expected_re).abs() < 1.0e-12);
++                assert!((destination_im[point] - expected_im).abs() < 1.0e-12);
++            }
++
++            planes.clear();
++        }
++    }
++
++    #[test]
++    fn initialize_overwrites_destination_after_factor_scaling() {
++        let metadata = metadata(DirectDestinationOperation::Initialize);
++        let callable = DirectApplication::new(source_application(2), metadata)
++            .unwrap()
++            .seal()
++            .unwrap()
++            .into_callable();
++        let mut storage = [
++            vec![2.0, 3.0],
++            vec![1.0, -1.0],
++            vec![4.0, 0.5],
++            vec![-2.0, 1.0],
++            vec![999.0; 2],
++            vec![-999.0; 2],
++        ];
++        let mut planes = storage
++            .iter_mut()
++            .map(|values| unsafe { DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len()) })
++            .collect::<Vec<_>>();
++        planes.push(planes[4]);
++        planes.push(planes[5]);
++        let factor_re = -0.5;
++        let factor_im = 0.25;
++        let scalars = [
++            unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_re)) },
++            unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_im)) },
++        ];
++        let status = unsafe { callable.handle().invoke(&planes, &scalars, 0, 2) };
++        assert_eq!(status, DIRECT_STATUS_OK);
++        for point in 0..2 {
++            let product_re =
++                storage[0][point] * storage[2][point] - storage[1][point] * storage[3][point];
++            let product_im =
++                storage[0][point] * storage[3][point] + storage[1][point] * storage[2][point];
++            assert!(
++                (storage[4][point] - (factor_re * product_re - factor_im * product_im)).abs()
++                    < 1.0e-12
++            );
++            assert!(
++                (storage[5][point] - (factor_re * product_im + factor_im * product_re)).abs()
++                    < 1.0e-12
++            );
++        }
++    }
++
++    #[test]
++    fn finalization_transforms_aliased_current_in_place_with_complex_factor() {
++        let mut config = Config::default();
++        config.set_opt_level(2);
++        config.set_complex(true);
++        config.set_symbolica(true);
++        config.set_fast_complex(false);
++        let current = Expr::var("current");
++        let source = Compiler::with_config(config)
++            .compile_params(&[], &[current.clone()], &[current])
++            .unwrap();
++        let metadata = DirectApplicationMetadata::new(
++            DirectDestinationOperation::FinalizeInPlace,
++            vec![],
++            vec![DirectInputBinding::Plane(0), DirectInputBinding::Plane(1)],
++            2,
++            2,
++            vec![0, 1],
++        )
++        .unwrap();
++        let callable = DirectApplication::new(source, metadata)
++            .unwrap()
++            .seal()
++            .unwrap()
++            .into_callable();
++        let mut current_re = vec![1.0, -2.0];
++        let mut current_im = vec![3.0, 0.5];
++        let mut planes = vec![
++            unsafe { DirectPlane::from_raw_parts(current_re.as_mut_ptr(), current_re.len()) },
++            unsafe { DirectPlane::from_raw_parts(current_im.as_mut_ptr(), current_im.len()) },
++        ];
++        planes.push(planes[0]);
++        planes.push(planes[1]);
++        let factor_re = -0.25;
++        let factor_im = 2.0;
++        let scalars = [
++            unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_re)) },
++            unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_im)) },
++        ];
++        let status = unsafe { callable.handle().invoke(&planes, &scalars, 0, 2) };
++        assert_eq!(status, DIRECT_STATUS_OK);
++        assert!((current_re[0] - -6.25).abs() < 1.0e-12);
++        assert!((current_im[0] - 1.25).abs() < 1.0e-12);
++        assert!((current_re[1] - -0.5).abs() < 1.0e-12);
++        assert!((current_im[1] - -4.125).abs() < 1.0e-12);
++    }
++
++    #[test]
++    fn finalization_snapshots_all_inputs_before_aliased_component_writes() {
++        let mut config = Config::default();
++        config.set_opt_level(2);
++        config.set_complex(true);
++        config.set_symbolica(true);
++        config.set_simd(true);
++        config.set_fast_complex(false);
++        let names = ["current_0", "current_1", "current_2", "current_3"];
++        let current = names.map(Expr::var);
++        let source = Compiler::with_config(config)
++            .compile_params(
++                &[],
++                &[
++                    current[2].clone(),
++                    current[3].clone(),
++                    current[0].clone(),
++                    current[1].clone(),
++                ],
++                &current,
++            )
++            .unwrap();
++        let metadata = DirectApplicationMetadata::new(
++            DirectDestinationOperation::FinalizeInPlace,
++            vec![],
++            (0..8).map(DirectInputBinding::Plane).collect(),
++            16,
++            2,
++            (8..16).collect(),
++        )
++        .unwrap();
++        let callable = DirectApplication::new(source, metadata)
++            .unwrap()
++            .seal()
++            .unwrap()
++            .into_callable();
++
++        let mut storage = [
++            vec![1.0, 2.0],
++            vec![-1.0, -2.0],
++            vec![3.0, 4.0],
++            vec![-3.0, -4.0],
++            vec![5.0, 6.0],
++            vec![-5.0, -6.0],
++            vec![7.0, 8.0],
++            vec![-7.0, -8.0],
++        ];
++        let original = storage.clone();
++        let mut planes = storage
++            .iter_mut()
++            .map(|values| unsafe { DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len()) })
++            .collect::<Vec<_>>();
++        for input in 0..8 {
++            planes.push(planes[input]);
++        }
++        for destination in 8..16 {
++            planes.push(planes[destination]);
++        }
++        let factor_re = 1.0;
++        let factor_im = 0.0;
++        let scalars = [
++            unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_re)) },
++            unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_im)) },
++        ];
++
++        let status = unsafe { callable.handle().invoke(&planes, &scalars, 0, 2) };
++        assert_eq!(status, DIRECT_STATUS_OK);
++        assert_eq!(storage[0], original[4]);
++        assert_eq!(storage[1], original[5]);
++        assert_eq!(storage[2], original[6]);
++        assert_eq!(storage[3], original[7]);
++        assert_eq!(storage[4], original[0]);
++        assert_eq!(storage[5], original[1]);
++        assert_eq!(storage[6], original[2]);
++        assert_eq!(storage[7], original[3]);
++    }
++
++    #[test]
++    fn portable_source_payload_can_be_transformed_without_duplicate_storage() {
++        let source = source_application(2);
++        let mut source_bytes = Vec::new();
++        source.save(&mut source_bytes).unwrap();
++        let direct = DirectApplication::from_source_storage(
++            &mut source_bytes.as_slice(),
++            &Config::default(),
++            metadata(DirectDestinationOperation::Add),
++        )
++        .unwrap();
++        assert_eq!(
++            direct.metadata(),
++            &metadata(DirectDestinationOperation::Add)
++        );
++    }
++
++    #[test]
++    fn direct_application_rejects_nonportable_optimization_level() {
++        let error = DirectApplication::new(
++            source_application(3),
++            metadata(DirectDestinationOperation::Add),
++        )
++        .err()
++        .expect("O3 must be rejected");
++        assert!(error.to_string().contains("O2 source"));
++    }
++
++    #[test]
++    fn direct_callable_rejects_wrong_destination_alias() {
++        let callable = DirectApplication::new(
++            source_application(2),
++            metadata(DirectDestinationOperation::Add),
++        )
++        .unwrap()
++        .seal()
++        .unwrap()
++        .into_callable();
++        let mut storage = vec![0.0; 8 * 2];
++        let mut planes = (0..8)
++            .map(|index| unsafe {
++                DirectPlane::from_raw_parts(storage.as_mut_ptr().add(index * 2), 2)
++            })
++            .collect::<Vec<_>>();
++        let scalar = 1.0;
++        let scalars = [
++            unsafe { DirectScalar::from_raw(ptr::from_ref(&scalar)) },
++            unsafe { DirectScalar::from_raw(ptr::from_ref(&scalar)) },
++        ];
++        let status = unsafe { callable.handle().invoke(&planes, &scalars, 0, 2) };
++        assert_eq!(status, DIRECT_STATUS_EXECUTION_FAILED);
++        planes.clear();
++    }
++
++    #[test]
++    fn direct_descriptor_layout_matches_symjit_indirect_planes() {
++        assert_eq!(
++            std::mem::size_of::<DirectPlane>(),
++            std::mem::size_of::<&mut [f64]>()
++        );
++        assert_eq!(
++            std::mem::align_of::<DirectPlane>(),
++            std::mem::align_of::<&mut [f64]>()
++        );
++        assert_eq!(
++            std::mem::size_of::<DirectScalar>(),
++            std::mem::size_of::<*const f64>()
++        );
++    }
++}
+diff --git a/rust/lib.rs b/rust/lib.rs
+index 4bbea9e23970dab67680a1dcbc0fffd200ce4a2c..b367e58bdbfeeba4f5759d0928296e0543617eac 100644
+--- a/rust/lib.rs
++++ b/rust/lib.rs
+@@ -310,6 +310,7 @@ mod complexify;
+ mod composer;
+ mod config;
+ mod defuns;
++mod direct;
+ pub mod expr;
+ mod generator;
+ pub mod instruction;
+@@ -338,6 +339,14 @@ pub use compiler::{Compiler, FastFunc, Translator};
+ pub use composer::Composer;
+ pub use config::Config;
+ pub use defuns::Defuns;
++pub use direct::{
++    DirectApplet, DirectApplication, DirectApplicationMetadata, DirectCallFunction, DirectCallable,
++    DirectCallableHandle, DirectDestinationOperation, DirectInputBinding, DirectPlane,
++    DirectScalar, DIRECT_APPLICATION_STORAGE_ABI, DIRECT_EXACT_FACTOR_IMAG_SCALAR,
++    DIRECT_EXACT_FACTOR_REAL_SCALAR, DIRECT_EXACT_FACTOR_SCALAR_COUNT, DIRECT_NO_ALIAS,
++    DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT, DIRECT_STATUS_INVALID_CONTEXT,
++    DIRECT_STATUS_OK,
++};
+ pub use expr::{double, int, var, Expr};
+ pub use instruction::{BuiltinSymbol, Instruction, Slot, SymbolicaModel};
+ pub use num_complex::{Complex, ComplexFloat};
+diff --git a/rust/mir.rs b/rust/mir.rs
+index 8a75e552897aa0d5dbf7a596a53c3407b06239fa..275b8ba40ce6536ae1815bd70816f33ca54d0213 100644
+--- a/rust/mir.rs
++++ b/rust/mir.rs
+@@ -1812,9 +1812,19 @@ impl Mir {
+                 Instruction::SaveComplex { xs, ys, loc } => {
+                     match loc {
+                         Loc::Mem(idx) => {
+-                            // ir.save_mem(*xs, *idx);
+-                            // ir.save_mem(*ys, 1 + *idx);
+-                            ir.save_mem_complex(*xs, *ys, *idx);
++                            if self.config.direct_arena() {
++                                crate::direct::emit_direct_complex_destination(
++                                    ir,
++                                    *xs,
++                                    *ys,
++                                    *idx,
++                                    self.config.direct_arena_operation(),
++                                )?;
++                            } else {
++                                // ir.save_mem(*xs, *idx);
++                                // ir.save_mem(*ys, 1 + *idx);
++                                ir.save_mem_complex(*xs, *ys, *idx);
++                            }
+                         }
+                         Loc::Stack(idx) => {
+                             // ir.save_stack(*xs, *idx);

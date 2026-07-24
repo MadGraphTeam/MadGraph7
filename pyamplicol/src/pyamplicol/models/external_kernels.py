@@ -191,11 +191,13 @@ class ExternalModelKernelMixin:
             )
         if not self.is_chiral_eligible(result_pdg):
             return components
+        if result_chirality == 0:
+            return components
         if result_chirality == 1:
             return components[2:4]
         if result_chirality == -1:
             return components[0:2]
-        raise ValueError("a projected Weyl result requires nonzero chirality")
+        raise ValueError("a projected Weyl result requires chirality -1, 0, or +1")
 
     def _kernel_function_component_calls(
         self,
@@ -385,13 +387,17 @@ class ExternalModelKernelMixin:
         components = tuple(values)
         if not self.is_chiral_eligible(particle_id):
             return components
+        if chirality == 0:
+            if len(components) != 4:
+                raise ValueError("a full Dirac input must have four components")
+            return components
         if len(components) != 2:
             raise ValueError("a projected Weyl input must have two components")
         if chirality == 1:
             return (components[0], components[1], 0.0, 0.0)
         if chirality == -1:
             return (0.0, 0.0, components[0], components[1])
-        raise ValueError("a projected Weyl input requires nonzero chirality")
+        raise ValueError("a projected Weyl input requires chirality -1, 0, or +1")
 
     def _propagator_record(self, particle_id: int):
         name = self._particle_records_by_pdg[int(particle_id)].name

@@ -2,7 +2,7 @@
 """Columnar Python-to-Rust contract for recurrence construction.
 
 This module owns only the compact, model-generic input boundary described by
-``pyamplicol-recurrence-builder-input-v1``.  Callers provide immutable logical
+``pyamplicol-recurrence-builder-input-v2``.  Callers provide immutable logical
 records produced after process expansion and LC colour planning.  The builder
 normalises those records into deterministic, owned NumPy columns; it neither
 imports nor constructs the process ``GenericDAG`` representation.
@@ -20,7 +20,7 @@ import numpy as np
 
 from .recurrence_fermion_pairing import FermionPairingCatalogV1
 
-RECURRENCE_BUILDER_INPUT_ABI: Final = "pyamplicol-recurrence-builder-input-v1"
+RECURRENCE_BUILDER_INPUT_ABI: Final = "pyamplicol-recurrence-builder-input-v2"
 RECURRENCE_BUILDER_INPUT_SCHEMA_VERSION: Final = 1
 MISSING_U32: Final = (1 << 32) - 1
 

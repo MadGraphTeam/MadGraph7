@@ -22,6 +22,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 if TYPE_CHECKING:
+    from .recurrence_direct_template import RecurrenceDirectTemplateCatalogV1
     from .recurrence_template import RecurrenceTemplateCatalog
 
 PREPARED_MODEL_BUNDLE_KIND = "pyamplicol-prepared-model"
@@ -339,6 +340,125 @@ def _validate_recurrence_kernel_bindings(
                 raise PreparedModelBundleError(
                     f"{context} {name} does not match prepared kernel {kernel_id}"
                 )
+
+
+def _validate_recurrence_direct_bindings(
+    direct_catalog: RecurrenceDirectTemplateCatalogV1,
+    semantic_catalog: RecurrenceTemplateCatalog,
+    kernels: Sequence[PreparedKernelRecord],
+    *,
+    backend: PreparedBackend,
+    target: Mapping[str, object],
+    optimization_settings: Mapping[str, object],
+) -> None:
+    """Authenticate stable semantic-binding to direct-executor mappings."""
+
+    if (
+        direct_catalog.compiled_model_digest
+        != semantic_catalog.header.compiled_model_digest
+        or direct_catalog.recurrence_template_catalog_digest
+        != semantic_catalog.catalog_digest
+        or direct_catalog.prepared_kernel_pack_digest
+        != semantic_catalog.header.prepared_kernel_pack_digest
+    ):
+        raise PreparedModelBundleError(
+            "direct recurrence companion does not match its semantic catalog"
+        )
+    if (
+        direct_catalog.backend != backend
+        or direct_catalog.target_triple != target.get("target_triple")
+        or direct_catalog.portable != target.get("portable")
+        or direct_catalog.optimization_settings_digest
+        != prepared_optimization_settings_digest(optimization_settings)
+    ):
+        raise PreparedModelBundleError(
+            "direct recurrence companion backend/target provenance does not "
+            "match its prepared pack"
+        )
+
+    role_for_contract = {
+        "source": "source",
+        "vertex": "contribution",
+        "propagator": "finalization",
+        "closure": "closure",
+    }
+    by_kernel_id = {kernel.kernel_id: kernel for kernel in kernels}
+    required: set[tuple[str, int]] = set()
+    for evaluator_binding_id, binding in enumerate(
+        semantic_catalog.evaluator_bindings
+    ):
+        role = role_for_contract.get(binding.contract_kind)
+        if role is None:
+            continue
+        required.add((role, evaluator_binding_id))
+        try:
+            executor_id = direct_catalog.direct_executor_id_for(  # type: ignore[arg-type]
+                role,
+                evaluator_binding_id,
+            )
+        except ValueError as exc:
+            raise PreparedModelBundleError(str(exc)) from exc
+        template = direct_catalog.templates[executor_id]
+        if (
+            template.evaluator_resolver_key != binding.resolver_key
+            or template.semantic_template_ids != binding.semantic_template_ids
+        ):
+            raise PreparedModelBundleError(
+                "direct recurrence executor mapping does not match semantic "
+                f"evaluator binding {evaluator_binding_id}"
+            )
+        payload_kernel_id = template.payload_binding.prepared_kernel_id
+        if binding.callable_kind == "prepared-kernel":
+            if (
+                payload_kernel_id != binding.prepared_kernel_id
+                or payload_kernel_id not in by_kernel_id
+            ):
+                raise PreparedModelBundleError(
+                    "direct recurrence prepared payload does not match semantic "
+                    f"evaluator binding {evaluator_binding_id}"
+                )
+        elif (
+            template.payload_binding.kind != "rusticol-intrinsic"
+            or template.payload_binding.runtime_template != binding.runtime_template
+        ):
+            raise PreparedModelBundleError(
+                "direct recurrence intrinsic does not match semantic evaluator "
+                f"binding {evaluator_binding_id}"
+            )
+
+    identity_propagators = {
+        propagator.template_id
+        for propagator in semantic_catalog.propagators
+        if not propagator.applies_propagator
+    }
+    mapped_identity: set[str] = set()
+    semantic_binding_count = len(semantic_catalog.evaluator_bindings)
+    for template in direct_catalog.templates:
+        key = (template.role, template.evaluator_binding_id)
+        if template.evaluator_binding_id < semantic_binding_count:
+            if key not in required:
+                raise PreparedModelBundleError(
+                    "direct recurrence companion exposes an unexpected semantic "
+                    f"evaluator mapping {key!r}"
+                )
+            continue
+        if (
+            template.role != "finalization"
+            or template.payload_binding.kind != "rusticol-intrinsic"
+            or not template.payload_binding.runtime_template
+            or template.payload_binding.runtime_template
+            != "rusticol.identity-finalize-in-place.v1"
+            or not set(template.semantic_template_ids) <= identity_propagators
+        ):
+            raise PreparedModelBundleError(
+                "direct recurrence synthetic evaluator is not an authenticated "
+                "identity finalizer"
+            )
+        mapped_identity.update(template.semantic_template_ids)
+    if mapped_identity != identity_propagators:
+        raise PreparedModelBundleError(
+            "direct recurrence companion does not cover every identity finalizer"
+        )
 
 
 def prepared_compiled_model_digest(compiled_model: Mapping[str, object]) -> str:
@@ -975,10 +1095,19 @@ class PreparedKernelPack:
     kernels: tuple[PreparedKernelRecord, ...]
     kernel_variants: tuple[PreparedKernelVariantRecord, ...] = ()
     recurrence_template: Mapping[str, object] | None = None
+    recurrence_direct_template: Mapping[str, object] | None = None
     _referenced_payload_paths: tuple[str, ...] = field(
         init=False,
         repr=False,
         compare=False,
+    )
+    _recurrence_direct_template_catalog: (
+        RecurrenceDirectTemplateCatalogV1 | None
+    ) = field(
+        init=False,
+        repr=False,
+        compare=False,
+        default=None,
     )
 
     def __post_init__(self) -> None:
@@ -1142,6 +1271,72 @@ class PreparedKernelPack:
                     "kernel_pack.recurrence_template",
                 ),
             )
+        recurrence_direct_template = self.recurrence_direct_template
+        if recurrence_direct_template is not None:
+            if self.recurrence_template is None:
+                raise PreparedModelBundleError(
+                    "kernel_pack.recurrence_direct_template requires the "
+                    "authenticated semantic recurrence companion"
+                )
+            from .recurrence_direct_template import (
+                RecurrenceDirectTemplateCatalogV1,
+                RecurrenceDirectTemplateError,
+            )
+
+            try:
+                direct_catalog = RecurrenceDirectTemplateCatalogV1.from_dict(
+                    _mapping(
+                        _thaw_json(recurrence_direct_template),
+                        "kernel_pack.recurrence_direct_template",
+                    )
+                )
+            except RecurrenceDirectTemplateError as exc:
+                raise PreparedModelBundleError(
+                    f"invalid kernel_pack.recurrence_direct_template: {exc}"
+                ) from exc
+            semantic_catalog = self.recurrence_template_catalog
+            assert semantic_catalog is not None
+            _validate_recurrence_direct_bindings(
+                direct_catalog,
+                semantic_catalog,
+                kernels,
+                backend=self.backend,
+                target=self.target,
+                optimization_settings=self.optimization_settings,
+            )
+            expected_provenance = {
+                "direct_template_catalog_digest": direct_catalog.catalog_digest,
+                "prepared_kernel_contract_digest": (
+                    direct_catalog.prepared_kernel_contract_digest
+                ),
+                "prepared_kernel_payload_digest": (
+                    direct_catalog.prepared_kernel_payload_digest
+                ),
+                "prepared_kernel_pack_digest": (
+                    direct_catalog.prepared_kernel_pack_digest
+                ),
+                "recurrence_direct_template_abi": direct_catalog.abi,
+                "recurrence_direct_template_digest": direct_catalog.catalog_digest,
+            }
+            for name, expected in expected_provenance.items():
+                if self.provenance.get(name) != expected:
+                    raise PreparedModelBundleError(
+                        "direct recurrence companion provenance field "
+                        f"{name!r} does not match its authenticated catalog"
+                    )
+            object.__setattr__(
+                self,
+                "recurrence_direct_template",
+                _freeze_mapping(
+                    direct_catalog.to_dict(),
+                    "kernel_pack.recurrence_direct_template",
+                ),
+            )
+            object.__setattr__(
+                self,
+                "_recurrence_direct_template_catalog",
+                direct_catalog,
+            )
         object.__setattr__(
             self,
             "_referenced_payload_paths",
@@ -1174,6 +1369,21 @@ class PreparedKernelPack:
             _mapping(thawed, "kernel_pack.recurrence_template")
         )
 
+    @property
+    def recurrence_direct_template_catalog(
+        self,
+    ) -> RecurrenceDirectTemplateCatalogV1 | None:
+        """Return the authenticated Direct-Arena executor companion."""
+
+        return self._recurrence_direct_template_catalog
+
+    @property
+    def direct_template_catalog_digest(self) -> str | None:
+        """Stable digest consumed by process plans and native handle binding."""
+
+        catalog = self.recurrence_direct_template_catalog
+        return None if catalog is None else catalog.catalog_digest
+
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
             "backend": self.backend,
@@ -1190,6 +1400,10 @@ class PreparedKernelPack:
         # shape of prepared bundles produced before recurrence execution.
         if self.recurrence_template is not None:
             payload["recurrence_template"] = _thaw_json(self.recurrence_template)
+        if self.recurrence_direct_template is not None:
+            payload["recurrence_direct_template"] = _thaw_json(
+                self.recurrence_direct_template
+            )
         return payload
 
     @classmethod
@@ -1197,6 +1411,7 @@ class PreparedKernelPack:
         normalized = dict(value)
         normalized.setdefault("kernel_variants", ())
         normalized.setdefault("recurrence_template", None)
+        normalized.setdefault("recurrence_direct_template", None)
         expected = frozenset(
             (
                 "backend",
@@ -1209,6 +1424,7 @@ class PreparedKernelPack:
                 "kernels",
                 "kernel_variants",
                 "recurrence_template",
+                "recurrence_direct_template",
             )
         )
         _require_exact_keys(normalized, "kernel_pack", expected)
@@ -1257,6 +1473,14 @@ class PreparedKernelPack:
                 else _mapping(
                     normalized.get("recurrence_template"),
                     "kernel_pack.recurrence_template",
+                )
+            ),
+            recurrence_direct_template=(
+                None
+                if normalized.get("recurrence_direct_template") is None
+                else _mapping(
+                    normalized.get("recurrence_direct_template"),
+                    "kernel_pack.recurrence_direct_template",
                 )
             ),
         )
@@ -1360,6 +1584,35 @@ def prepared_kernel_pack_identity(
     )
 
 
+def _validate_recurrence_direct_pack_identity(
+    kernel_pack: PreparedKernelPack,
+    identity: PreparedKernelPackIdentity,
+) -> None:
+    direct_catalog = kernel_pack.recurrence_direct_template_catalog
+    if direct_catalog is None:
+        return
+    expected = {
+        "prepared kernel contract": (
+            direct_catalog.prepared_kernel_contract_digest,
+            identity.contract_digest,
+        ),
+        "prepared kernel payload": (
+            direct_catalog.prepared_kernel_payload_digest,
+            identity.payload_digest,
+        ),
+        "prepared kernel pack": (
+            direct_catalog.prepared_kernel_pack_digest,
+            identity.pack_digest,
+        ),
+    }
+    for name, (catalog_digest, actual_digest) in expected.items():
+        if catalog_digest != actual_digest:
+            raise PreparedModelBundleError(
+                f"direct recurrence {name} digest does not match the "
+                "published evaluator payloads"
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedModelBundle:
     """A validated prepared-model archive and its immutable metadata."""
@@ -1407,6 +1660,16 @@ class PreparedModelBundle:
                 "recurrence template compiled-model digest does not match the "
                 "prepared bundle member"
             )
+        direct_catalog = self.kernel_pack.recurrence_direct_template_catalog
+        if (
+            direct_catalog is not None
+            and direct_catalog.compiled_model_digest
+            != self._member_digests[PREPARED_MODEL_COMPILED_MODEL_PATH]
+        ):
+            raise PreparedModelBundleError(
+                "direct recurrence template compiled-model digest does not "
+                "match the prepared bundle member"
+            )
         referenced_payload_paths = self.kernel_pack.referenced_payload_paths
         object.__setattr__(
             self,
@@ -1422,6 +1685,12 @@ class PreparedModelBundle:
     @property
     def backend(self) -> PreparedBackend:
         return self.kernel_pack.backend
+
+    @property
+    def direct_template_catalog_digest(self) -> str | None:
+        """Expose the authenticated direct catalog identity without lowering."""
+
+        return self.kernel_pack.direct_template_catalog_digest
 
     def compiled_model_payload(self) -> dict[str, object]:
         """Return a detached plain-JSON payload for the model deserializer."""
@@ -1574,6 +1843,16 @@ def write_prepared_model_bundle(
             "recurrence template compiled-model digest does not match the "
             "prepared bundle member"
         )
+    direct_catalog = kernel_pack.recurrence_direct_template_catalog
+    if (
+        direct_catalog is not None
+        and direct_catalog.compiled_model_digest
+        != _sha256(_canonical_json(frozen_model))
+    ):
+        raise PreparedModelBundleError(
+            "direct recurrence template compiled-model digest does not match "
+            "the prepared bundle member"
+        )
     payload_data: dict[str, bytes] = {}
     for raw_path, source in payloads.items():
         member_path = _normalized_member_path(raw_path, "payload path")
@@ -1621,6 +1900,7 @@ def write_prepared_model_bundle(
                 "recurrence template prepared-pack digest does not match the "
                 "published evaluator payloads"
             )
+        _validate_recurrence_direct_pack_identity(kernel_pack, identity)
     hashed_members = {
         PREPARED_MODEL_COMPILED_MODEL_PATH: _canonical_json(frozen_model),
         **payload_data,
@@ -1640,6 +1920,8 @@ def write_prepared_model_bundle(
         "kernel_pack": kernel_pack.to_dict(),
         "members": member_records,
     }
+    if direct_catalog is not None:
+        manifest["direct_template_catalog_digest"] = direct_catalog.catalog_digest
     members = {
         PREPARED_MODEL_MANIFEST_PATH: _canonical_json(manifest),
         **hashed_members,
@@ -1733,18 +2015,25 @@ def load_prepared_model_bundle(path: Path) -> PreparedModelBundle:
                 PREPARED_MODEL_MANIFEST_PATH,
                 "manifest",
             )
+            base_manifest_fields = frozenset(
+                (
+                    "kind",
+                    "schema_version",
+                    "eager_kernel_abi",
+                    "kernel_pack",
+                    "members",
+                )
+            )
+            manifest_fields = frozenset(manifest)
+            expected_manifest_fields = (
+                base_manifest_fields | {"direct_template_catalog_digest"}
+                if "direct_template_catalog_digest" in manifest_fields
+                else base_manifest_fields
+            )
             _require_exact_keys(
                 manifest,
                 "manifest",
-                frozenset(
-                    (
-                        "kind",
-                        "schema_version",
-                        "eager_kernel_abi",
-                        "kernel_pack",
-                        "members",
-                    )
-                ),
+                expected_manifest_fields,
             )
             if manifest.get("kind") != PREPARED_MODEL_BUNDLE_KIND:
                 raise PreparedModelBundleError("invalid prepared-model bundle kind")
@@ -1757,6 +2046,29 @@ def load_prepared_model_bundle(path: Path) -> PreparedModelBundle:
             kernel_pack = PreparedKernelPack.from_dict(
                 _mapping(manifest.get("kernel_pack"), "manifest.kernel_pack")
             )
+            direct_catalog = kernel_pack.recurrence_direct_template_catalog
+            has_manifest_direct_digest = (
+                "direct_template_catalog_digest" in manifest
+            )
+            if direct_catalog is None:
+                if has_manifest_direct_digest:
+                    raise PreparedModelBundleError(
+                        "manifest advertises a direct template catalog that is absent"
+                    )
+            else:
+                manifest_direct_digest = (
+                    _valid_sha256(
+                        manifest.get("direct_template_catalog_digest"),
+                        "manifest.direct_template_catalog_digest",
+                    )
+                    if has_manifest_direct_digest
+                    else None
+                )
+                if manifest_direct_digest != direct_catalog.catalog_digest:
+                    raise PreparedModelBundleError(
+                        "manifest direct template catalog digest does not match the "
+                        "prepared companion"
+                    )
             records = _load_member_records(manifest.get("members"))
             expected_paths = {PREPARED_MODEL_MANIFEST_PATH, *records}
             actual_paths = set(archive_members)
@@ -1819,6 +2131,7 @@ def load_prepared_model_bundle(path: Path) -> PreparedModelBundle:
                         "recurrence template prepared-pack digest does not match "
                         "the loaded evaluator payloads"
                     )
+                _validate_recurrence_direct_pack_identity(kernel_pack, identity)
             compiled_model = _load_json_member(
                 archive,
                 PREPARED_MODEL_COMPILED_MODEL_PATH,

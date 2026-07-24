@@ -51,3 +51,11 @@ release_status = "developer-only"
 license = "NOASSERTION"
 redistributed = false
 license_evidence = "No LICENSE or COPYING file exists at the pinned branch revision"
+
+[[patches]]
+name = "symjit-direct-arena-applications"
+target = "symjit"
+path = "patches/symjit/0001-direct-arena-applications.patch"
+sha256 = "a6f55a1d8c8827c8aa03d5c42395de6a69ed3a9ec11bce9ab5e20e3106214263"
+applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
+sha256 = "a6f55a1d8c8827c8aa03d5c42395de6a69ed3a9ec11bce9ab5e20e3106214263"

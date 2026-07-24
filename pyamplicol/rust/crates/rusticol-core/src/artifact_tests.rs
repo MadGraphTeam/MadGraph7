@@ -1597,6 +1597,21 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
     validate_manifest(&parsed).expect("mixed process capability union validates");
 }
 
+#[test]
+fn recurrence_capabilities_are_part_of_the_outer_artifact_catalog() {
+    let capabilities = json!([
+        "rusticol.recurrence-color.lc.v1",
+        "rusticol.recurrence-direct-arena.complex-f64.v1"
+    ]);
+    let mut artifact = TestArtifact::new();
+    artifact.manifest["processes"][0]["required_runtime_capabilities"] = capabilities.clone();
+    artifact.manifest["runtime"]["required_runtime_capabilities"] = capabilities;
+    artifact.write_manifest();
+
+    VerifiedArtifact::open(&artifact.root)
+        .expect("recurrence capabilities pass outer artifact validation");
+}
+
 #[cfg(all(
     feature = "f64-symjit",
     not(feature = "f64-compiled"),

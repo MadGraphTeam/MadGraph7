@@ -114,6 +114,65 @@ impl NativeRuntime {
                     &mut physics,
                 )
             }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::Recurrence(_) => Err(RusticolError::compatibility(
+                "recurrence exact-section loading is not available in the initial f64 runtime slice",
+            )),
+        }
+    }
+
+    /// Load the immutable exact-execution sections of an authenticated
+    /// topology-replay recurrence artifact without instantiating its f64
+    /// Direct-Arena backend.
+    pub fn load_recurrence_exact_sections(
+        artifact_path: impl AsRef<Path>,
+        process_id: &str,
+    ) -> Result<NativeRecurrenceExactSections, RusticolError> {
+        let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
+            let selection = manifest.select_process(Some(process_id))?;
+            ensure_runtime_capabilities_supported(
+                selection
+                    .process
+                    .required_runtime_capabilities
+                    .iter()
+                    .map(String::as_str),
+            )
+        })?;
+        let selection = artifact.select_process(Some(process_id))?;
+        if selection.alias.is_some() {
+            return Err(RusticolError::invalid_argument(
+                "compact recurrence exact sections must be requested by representative process ID",
+            ));
+        }
+        let (manifest, evaluator_root) = load_verified_evaluator(&artifact, &selection)?;
+        let physics_bytes = artifact.read_payload(&selection.process.physics_path)?;
+        let physics = ProcessPhysicsV1::from_json(&physics_bytes, &selection.process.physics_path)?;
+        if physics.process_id != selection.process.id
+            || physics.process != selection.process.expression
+            || physics.color_accuracy.as_str() != selection.process.color_accuracy
+            || physics
+                .external_particles
+                .iter()
+                .map(|particle| particle.pdg)
+                .ne(selection.process.external_pdgs.iter().copied())
+        {
+            return Err(RusticolError::integrity(format!(
+                "runtime physics payload {:?} does not match process {:?}",
+                selection.process.physics_path, selection.process.id
+            )));
+        }
+        match manifest {
+            LoadedExecutionManifest::Compiled(_) => Err(RusticolError::compatibility(
+                "compact recurrence exact-section loading requires a recurrence artifact",
+            )),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::EagerV3(_) => Err(RusticolError::compatibility(
+                "compact recurrence exact-section loading requires a recurrence artifact",
+            )),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::Recurrence(manifest) => {
+                load_recurrence_exact_sections(&artifact, &evaluator_root, &manifest, &physics)
+            }
         }
     }
 
@@ -182,6 +241,23 @@ impl NativeRuntime {
                         representative_key,
                         loaded.common,
                         NativeExecutionLane::Eager(Box::new(loaded.lane)),
+                    )
+                }
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                LoadedExecutionManifest::Recurrence(manifest) => {
+                    let representative_process = manifest.process.clone();
+                    let representative_key = manifest.key.clone();
+                    let loaded = load_recurrence_native_runtime(
+                        &artifact,
+                        &evaluator_root,
+                        &manifest,
+                        &physics_v1,
+                    )?;
+                    (
+                        representative_process,
+                        representative_key,
+                        loaded.common,
+                        NativeExecutionLane::Recurrence(Box::new(loaded.lane)),
                     )
                 }
             };
@@ -257,6 +333,8 @@ impl NativeRuntime {
                 NativeExecutionLane::Compiled => execution_uses_simd_jit(&runtime),
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::Eager(runtime) => runtime.backend_name() == "jit",
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Recurrence(runtime) => runtime.backend_name() == "jit",
             };
             if uses_simd_jit {
                 super::evaluator::native_f64_simd_lane_width()
@@ -299,6 +377,13 @@ impl NativeRuntime {
                 Some(runtime.backend_name().to_string()),
                 Some(runtime.effective_point_tile_size()),
                 Some(runtime.workspace_bytes()),
+            ),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => (
+                "recurrence",
+                Some(runtime.backend_name().to_string()),
+                Some(runtime.effective_point_tile_size()),
+                None,
             ),
         };
         NativeRuntimeMetadata {
@@ -710,6 +795,18 @@ impl NativeRuntime {
                 output.copy_from_slice(&values);
                 Ok(())
             }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => {
+                let nested = batch.materialize_nested();
+                let (values, _profile) = runtime.run_f64(&mut self.runtime, &nested)?;
+                if values.len() != output.len() {
+                    return Err(RusticolError::integrity(
+                        "recurrence evaluation returned an inconsistent output length",
+                    ));
+                }
+                output.copy_from_slice(&values);
+                Ok(())
+            }
         }
     }
 
@@ -738,6 +835,23 @@ impl NativeRuntime {
                 )?;
                 write_resolved_f64_totals(&resolved, output)
             }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => {
+                let nested = batch.materialize_nested();
+                let (values, _profile) = runtime.run_f64_with_global_selectors(
+                    &mut self.runtime,
+                    &nested,
+                    selected_helicities,
+                    selected_colors,
+                )?;
+                if values.len() != output.len() {
+                    return Err(RusticolError::integrity(
+                        "recurrence selected evaluation returned an inconsistent output length",
+                    ));
+                }
+                output.copy_from_slice(&values);
+                Ok(())
+            }
         }
     }
 
@@ -765,6 +879,18 @@ impl NativeRuntime {
                     )
                     .map(|(resolved, _profile)| resolved)
             }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => {
+                let nested = batch.materialize_nested();
+                runtime
+                    .run_resolved_f64(
+                        &mut self.runtime,
+                        &nested,
+                        selected_helicities,
+                        selected_colors,
+                    )
+                    .map(|(resolved, _profile)| resolved)
+            }
         }
     }
 
@@ -782,6 +908,20 @@ impl NativeRuntime {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Eager(runtime) => {
                 let (resolved, mut profile) = runtime.run_resolved_f64_profile(
+                    &mut self.runtime,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                )?;
+                let materialization_start = Instant::now();
+                let values = resolved_f64_totals(&resolved)?;
+                profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+                profile.total_materialized_value_count += values.len() as u64;
+                Ok((values, profile))
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => {
+                let (resolved, mut profile) = runtime.run_resolved_f64(
                     &mut self.runtime,
                     batch,
                     selected_helicities,
@@ -885,6 +1025,21 @@ impl NativeRuntime {
                     profile.total_materialized_value_count += point_count as u64;
                     (values, profile)
                 }
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Recurrence(runtime) => {
+                    let (resolved, mut profile) = runtime.run_resolved_f64(
+                        &mut self.runtime,
+                        &batch,
+                        selected_helicities.as_ref(),
+                        selected_colors.as_ref(),
+                    )?;
+                    let materialization_start = Instant::now();
+                    let values = resolved_f64_totals(&resolved)?;
+                    profile.total_materialization_s +=
+                        materialization_start.elapsed().as_secs_f64();
+                    profile.total_materialized_value_count += point_count as u64;
+                    (values, profile)
+                }
             };
             (values, profile)
         } else {
@@ -893,6 +1048,10 @@ impl NativeRuntime {
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::Eager(runtime) => {
                     runtime.run_f64_profile(&mut self.runtime, &batch)?
+                }
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Recurrence(runtime) => {
+                    runtime.run_f64(&mut self.runtime, &batch)?
                 }
             }
         };
@@ -1278,6 +1437,9 @@ impl NativeRuntime {
         if self.execution_lane.is_eager() {
             return Err(eager_parity_pending("higher-precision evaluation"));
         }
+        if self.execution_lane.is_recurrence() {
+            return Err(recurrence_parity_pending("higher-precision evaluation"));
+        }
         if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (values, _profile) = self.runtime.run_double(&batch)?;
@@ -1312,6 +1474,11 @@ impl NativeRuntime {
         self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         if self.execution_lane.is_eager() {
             return Err(eager_parity_pending("resolved higher-precision evaluation"));
+        }
+        if self.execution_lane.is_recurrence() {
+            return Err(recurrence_parity_pending(
+                "resolved higher-precision evaluation",
+            ));
         }
         self.record_resolved_warnings(helicity_ids, color_ids)?;
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
@@ -1733,6 +1900,16 @@ fn eager_parity_pending(feature: &str) -> RusticolError {
         EAGER_DAG_RUNTIME_CAPABILITY,
         format!(
             "eager {feature} is not available in the initial f64-total runtime slice; use compiled execution for this operation"
+        ),
+    )
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn recurrence_parity_pending(feature: &str) -> RusticolError {
+    RusticolError::unsupported_runtime_capability(
+        RECURRENCE_RUNTIME_CAPABILITY,
+        format!(
+            "recurrence {feature} is not available in the initial f64 runtime slice; use compiled execution for this operation"
         ),
     )
 }

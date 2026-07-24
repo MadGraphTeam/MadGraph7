@@ -6,10 +6,14 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ..models.base import Model
 from .dag_types import GenericDAG
 from .phase_space import massive_rambo_final_state
+
+if TYPE_CHECKING:
+    from .contracts import CanonicalProcessIR
 
 FourMomentum = tuple[float, float, float, float]
 
@@ -63,18 +67,35 @@ def build_validation_point(
     process_id: str,
     seed: int,
 ) -> ValidationPointRecord:
+    return build_process_validation_point(
+        dag.process,
+        model,
+        process_id=process_id,
+        seed=seed,
+    )
+
+
+def build_process_validation_point(
+    process: CanonicalProcessIR,
+    model: Model,
+    *,
+    process_id: str,
+    seed: int,
+) -> ValidationPointRecord:
+    """Build validation momenta without requiring a materialized DAG."""
+
     try:
-        particles = _build_particles(dag, model, seed=seed)
+        particles = _build_particles(process, model, seed=seed)
     except (ArithmeticError, KeyError, RuntimeError, ValueError) as exc:
         return ValidationPointRecord(
             process_id=process_id,
-            process=dag.process.process,
+            process=process.process,
             seed=seed,
             error=str(exc),
         )
     return ValidationPointRecord(
         process_id=process_id,
-        process=dag.process.process,
+        process=process.process,
         seed=seed,
         particles=particles,
     )
@@ -87,13 +108,13 @@ def validation_point_map(
 
 
 def _build_particles(
-    dag: GenericDAG,
+    process: CanonicalProcessIR,
     model: Model,
     *,
     seed: int,
 ) -> tuple[tuple[int, FourMomentum], ...]:
-    initial_pdgs = tuple(int(pdg) for pdg in dag.process.initial_pdgs)
-    final_pdgs = tuple(int(pdg) for pdg in dag.process.final_pdgs)
+    initial_pdgs = tuple(int(pdg) for pdg in process.initial_pdgs)
+    final_pdgs = tuple(int(pdg) for pdg in process.final_pdgs)
     if len(initial_pdgs) != 2:
         raise ValueError("validation momenta require a two-particle initial state")
     if not final_pdgs:
@@ -139,6 +160,7 @@ def _decimal_string(value: float) -> str:
 
 __all__ = [
     "ValidationPointRecord",
+    "build_process_validation_point",
     "build_validation_point",
     "validation_point_map",
 ]

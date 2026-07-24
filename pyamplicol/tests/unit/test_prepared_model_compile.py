@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
 from pyamplicol.config import EvaluatorConfig, JITConfig
 from pyamplicol.models.loading import compile_model_source
-from pyamplicol.models.prepared import PreparedModelBundleError
+from pyamplicol.models.prepared import PreparedKernelRecord, PreparedModelBundleError
 from pyamplicol.models.prepared_catalog import (
     PREPARED_INDEPENDENT_BLOCK_PROOF,
     PreparedKernelCatalog,
@@ -18,7 +20,12 @@ from pyamplicol.models.prepared_compile import (
     prepare_model_bundle,
     prepared_symbolica_settings,
 )
-from pyamplicol.models.recurrence_template import RecurrenceTemplateCatalog
+from pyamplicol.models.recurrence_template import (
+    CurrentStateTemplateV1,
+    EvaluatorBindingV1,
+    PropagatorTemplateV1,
+    RecurrenceTemplateCatalog,
+)
 
 
 class _FakeJitAdapter:
@@ -84,6 +91,55 @@ def _catalog() -> PreparedKernelCatalog:
     )
 
 
+def test_prepared_jit_direct_source_reuses_authenticated_application() -> None:
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    application_path = "kernels/000000/application.symjit"
+    application_digest = hashlib.sha256(b"portable-o2").hexdigest()
+    record = PreparedKernelRecord(
+        kernel_id=0,
+        contract_kind="propagator",
+        canonical_signature="1" * 64,
+        input_arity=1,
+        output_arity=1,
+        input_layout=("current:0",),
+        input_contracts=(
+            {
+                "role": "current",
+                "component": 0,
+                "symbol": "pyamplicol::prepared_test_input",
+                "model_parameter_name": None,
+                "model_parameter_index": None,
+            },
+        ),
+        output_layout=("scalar:c0",),
+        exact_expressions=("pyamplicol::prepared_test_input",),
+        exact_evaluator_state_path="kernels/000000/exact.evaluator.bin",
+        f64_evaluator_manifest={
+            "application_path": application_path,
+            "application_abi": "symjit-application-storage-v3",
+        },
+    )
+
+    source = prepared_compile._prepared_jit_direct_source(
+        record,
+        payload_identity_records={
+            application_path: (11, application_digest),
+            record.exact_evaluator_state_path: (
+                7,
+                hashlib.sha256(b"exact").hexdigest(),
+            ),
+        },
+    )
+
+    assert source.prepared_kernel_id == 0
+    assert source.source_application_path == application_path
+    assert source.source_application_sha256 == application_digest
+    assert source.source_application_abi == "symjit-application-storage-v3"
+    assert source.output_arity == 1
+    assert json.loads(source.input_contracts[0])["role"] == "current"
+
+
 def _block_catalog() -> PreparedKernelCatalog:
     return PreparedKernelCatalog(
         model_name="built-in-sm",
@@ -137,6 +193,120 @@ def _native_recurrence_validation(*_args, **_kwargs) -> dict[str, object]:
     }
 
 
+def _recurrence_catalog(
+    *,
+    compiled_model_digest: str,
+    prepared_kernel_pack_digest: str,
+) -> RecurrenceTemplateCatalog:
+    state = CurrentStateTemplateV1(
+        template_id="state:test-scalar",
+        particle_id=9000001,
+        anti_particle_id=9000001,
+        species_id="test-scalar",
+        orientation="self-conjugate",
+        statistics="boson",
+        color_representation=1,
+        basis="scalar",
+        tensor_ordering=("scalar",),
+        dimension=1,
+        chirality=0,
+        lc_color_shape_kind="singlet-forest",
+        auxiliary_kind=None,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+    )
+    expression_digest = hashlib.sha256(
+        b"pyamplicol::prepared_test_input"
+    ).hexdigest()
+    propagator = PropagatorTemplateV1(
+        template_id="propagator:test-active",
+        state_template_id=state.template_id,
+        applies_propagator=True,
+        evaluator_resolver_key="evaluator:propagator:test",
+        numerator_expression_digest=expression_digest,
+        denominator_expression_digest=expression_digest,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+        gauge=None,
+        linearity_proof_template_id=None,
+    )
+    binding = EvaluatorBindingV1(
+        resolver_key="evaluator:propagator:test",
+        prepared_kernel_id=0,
+        contract_kind="propagator",
+        callable_signature="1" * 64,
+        input_state_template_ids=(state.template_id,),
+        output_state_template_id=state.template_id,
+        input_layout=(
+            json.dumps(
+                {
+                    "component": 0,
+                    "model_parameter_index": None,
+                    "model_parameter_name": None,
+                    "role": "current",
+                    "symbol": "pyamplicol::prepared_test_input",
+                },
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        ),
+        output_layout=("scalar:c0",),
+        exact_expression_digests=(expression_digest,),
+        semantic_template_ids=(propagator.template_id,),
+    )
+    return RecurrenceTemplateCatalog.create(
+        compiled_model_digest=compiled_model_digest,
+        prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+        current_states=(state,),
+        propagators=(propagator,),
+        evaluator_bindings=(binding,),
+    )
+
+
+def _identity_recurrence_catalog(
+    *,
+    compiled_model_digest: str,
+    prepared_kernel_pack_digest: str,
+) -> RecurrenceTemplateCatalog:
+    state = CurrentStateTemplateV1(
+        template_id="state:test-scalar",
+        particle_id=9000001,
+        anti_particle_id=9000001,
+        species_id="test-scalar",
+        orientation="self-conjugate",
+        statistics="boson",
+        color_representation=1,
+        basis="scalar",
+        tensor_ordering=("scalar",),
+        dimension=1,
+        chirality=0,
+        lc_color_shape_kind="singlet-forest",
+        auxiliary_kind=None,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+    )
+    identity = PropagatorTemplateV1(
+        template_id="propagator:test-identity",
+        state_template_id=state.template_id,
+        applies_propagator=False,
+        evaluator_resolver_key=None,
+        numerator_expression_digest=None,
+        denominator_expression_digest=None,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+        gauge=None,
+        linearity_proof_template_id=None,
+    )
+    return RecurrenceTemplateCatalog.create(
+        compiled_model_digest=compiled_model_digest,
+        prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+        current_states=(state,),
+        propagators=(identity,),
+    )
+
+
 def _native_result(template_input, authenticated_ids) -> dict[str, object]:
     assert authenticated_ids == [0]
     return {
@@ -161,6 +331,7 @@ def _native_result(template_input, authenticated_ids) -> dict[str, object]:
             "closures": 0,
             "color_contractions": 0,
             "symmetry_proofs": 0,
+            "runtime_helicity_contracts": 0,
             "evaluator_bindings": 0,
             "prepared_kernels": 0,
             "referenced_prepared_kernels": 0,
@@ -281,7 +452,7 @@ def test_native_recurrence_preflight_fails_before_backend_compilation(
         prepared_compile,
         "build_recurrence_template_catalog",
         lambda *_args, compiled_model_digest, prepared_kernel_pack_digest, **_kwargs: (
-            RecurrenceTemplateCatalog.create(
+            _identity_recurrence_catalog(
                 compiled_model_digest=compiled_model_digest,
                 prepared_kernel_pack_digest=prepared_kernel_pack_digest,
             )
@@ -320,7 +491,7 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
         prepared_compile,
         "build_recurrence_template_catalog",
         lambda *_args, compiled_model_digest, prepared_kernel_pack_digest, **_kwargs: (
-            RecurrenceTemplateCatalog.create(
+            _recurrence_catalog(
                 compiled_model_digest=compiled_model_digest,
                 prepared_kernel_pack_digest=prepared_kernel_pack_digest,
             )
@@ -365,6 +536,29 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     assert all(
         path.startswith("kernels/000000/") for path in kernel.referenced_payload_paths
     )
+    direct_catalog = result.bundle.kernel_pack.recurrence_direct_template_catalog
+    assert direct_catalog is not None
+    assert direct_catalog.backend == "jit"
+    assert direct_catalog.portable is True
+    assert direct_catalog.optimization_level == 2
+    assert direct_catalog.direct_executor_id_for("finalization", 0) == 0
+    payload_binding = direct_catalog.templates[0].payload_binding
+    assert payload_binding.kind == "prepared-direct-call"
+    assert payload_binding.source_application_path in kernel.referenced_payload_paths
+    assert payload_binding.source_application_abi == "symjit-application-storage-v3"
+    assert payload_binding.direct_application_abi == (
+        "symjit-direct-application-storage-v1"
+    )
+    assert payload_binding.role == "finalization"
+    assert payload_binding.destination_operation == "finalize-in-place"
+    assert payload_binding.exact_factor_scalar_slots == (0, 1)
+    assert payload_binding.prepared_template_semantic_digest is not None
+    assert direct_catalog.executable
+    assert result.bundle.direct_template_catalog_digest == direct_catalog.catalog_digest
+    assert (
+        result.bundle.manifest["direct_template_catalog_digest"]
+        == direct_catalog.catalog_digest
+    )
     assert progress[-1] == ("prepared model complete", 1, 1)
     assert "recurrence_template_validation" in result.phase_timings_seconds
 
@@ -390,7 +584,7 @@ def test_prepared_jit_compiler_forces_portable_o2_without_changing_public_config
         prepared_compile,
         "build_recurrence_template_catalog",
         lambda *_args, compiled_model_digest, prepared_kernel_pack_digest, **_kwargs: (
-            RecurrenceTemplateCatalog.create(
+            _recurrence_catalog(
                 compiled_model_digest=compiled_model_digest,
                 prepared_kernel_pack_digest=prepared_kernel_pack_digest,
             )
@@ -420,6 +614,10 @@ def test_prepared_jit_compiler_forces_portable_o2_without_changing_public_config
     assert result.bundle.kernel_pack.kernels[0].f64_evaluator_manifest[
         "optimization_level"
     ] == 2
+    direct_catalog = result.bundle.kernel_pack.recurrence_direct_template_catalog
+    assert direct_catalog is not None
+    assert direct_catalog.optimization_level == 2
+    assert direct_catalog.portable is True
 
 
 def test_prepared_compiler_emits_independent_block4_jit_variant(
@@ -443,7 +641,7 @@ def test_prepared_compiler_emits_independent_block4_jit_variant(
         prepared_compile,
         "build_recurrence_template_catalog",
         lambda *_args, compiled_model_digest, prepared_kernel_pack_digest, **_kwargs: (
-            RecurrenceTemplateCatalog.create(
+            _identity_recurrence_catalog(
                 compiled_model_digest=compiled_model_digest,
                 prepared_kernel_pack_digest=prepared_kernel_pack_digest,
             )

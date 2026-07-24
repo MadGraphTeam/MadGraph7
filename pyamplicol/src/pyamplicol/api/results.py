@@ -663,7 +663,7 @@ class BenchmarkTimingBreakdown:
     """
 
     sample_count: int
-    execution_mode: Literal["compiled", "eager"] = "compiled"
+    execution_mode: Literal["compiled", "eager", "recurrence"] = "compiled"
     wall_time: BenchmarkComponentTiming | None = None
     source_fill_time: BenchmarkComponentTiming | None = None
     momentum_setup_time: BenchmarkComponentTiming | None = None
@@ -712,9 +712,10 @@ class BenchmarkTimingBreakdown:
             or self.sample_count < 1
         ):
             raise ValueError("benchmark timing breakdown sample_count must be positive")
-        if self.execution_mode not in {"compiled", "eager"}:
+        if self.execution_mode not in {"compiled", "eager", "recurrence"}:
             raise ValueError(
-                "benchmark timing breakdown execution_mode must be compiled or eager"
+                "benchmark timing breakdown execution_mode must be compiled, eager, "
+                "or recurrence"
             )
         for name in (
             "wall_time",

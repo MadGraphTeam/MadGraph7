@@ -169,6 +169,9 @@ pub const EAGER_DAG_RUNTIME_CAPABILITY: &str = crate::EAGER_RUNTIME_CAPABILITY;
 pub const EAGER_RUNTIME_LAYOUT_CAPABILITY: &str = crate::eager_layout::EAGER_RUNTIME_CAPABILITY;
 pub const EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY: &str =
     crate::EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY;
+pub const RECURRENCE_RUNTIME_CAPABILITY: &str = crate::recurrence::RECURRENCE_RUNTIME_CAPABILITY;
+pub const RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY: &str =
+    crate::recurrence::RECURRENCE_LC_COLOR_CAPABILITY;
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
 pub const COMPILED_HELICITY_DUAL_LANE_CAPABILITY: &str = "rusticol.compiled.helicity-dual-lane.v1";
 pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =
@@ -218,6 +221,8 @@ pub enum RuntimeCapability {
     EagerDagComplexF64V1,
     EagerRuntimeLayoutComplexF64V1,
     EagerLcTopologyReplayComplexF64V1,
+    RecurrenceRuntimeComplexF64V1,
+    RecurrenceLcColorV1,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -241,6 +246,8 @@ impl RuntimeCapability {
             Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
             Self::EagerRuntimeLayoutComplexF64V1 => EAGER_RUNTIME_LAYOUT_CAPABILITY,
             Self::EagerLcTopologyReplayComplexF64V1 => EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
+            Self::RecurrenceRuntimeComplexF64V1 => RECURRENCE_RUNTIME_CAPABILITY,
+            Self::RecurrenceLcColorV1 => RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
@@ -273,6 +280,10 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         EAGER_RUNTIME_LAYOUT_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        RECURRENCE_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
         #[cfg(feature = "f64-symjit")]
         SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
         #[cfg(feature = "symbolica-runtime")]
@@ -2595,6 +2606,62 @@ pub struct NativeEagerExactClosure {
     pub selector_domain_id: u32,
 }
 
+/// Exact-required sections decoded from one authenticated recurrence plan-v2
+/// artifact. Python consumes these immutable rows with the retained exact
+/// evaluator payloads; the Direct-Arena f64 runtime never constructs them.
+#[derive(Debug)]
+pub struct NativeRecurrenceExactSections {
+    pub process_id: String,
+    pub strategy: String,
+    pub semantic_digest: String,
+    pub runtime_layout_digest: String,
+    pub current_arena_components: u32,
+    pub amplitude_destination_count: u32,
+    pub parameter_value_count: u32,
+    pub external_source_count: u32,
+    pub currents: Vec<crate::recurrence::DirectCurrentDescriptor>,
+    pub sources: Vec<crate::recurrence::DirectSourceRow>,
+    pub contributions: Vec<crate::recurrence::DirectContributionRow>,
+    pub finalizations: Vec<crate::recurrence::DirectFinalizationRow>,
+    pub closures: Vec<crate::recurrence::DirectClosureRow>,
+    pub row_groups: Vec<crate::recurrence::DirectRowGroupDescriptor>,
+    pub momentum_forms: Vec<crate::recurrence::DirectMomentumFormDescriptor>,
+    pub momentum_terms: Vec<crate::recurrence::DirectMomentumTerm>,
+    pub replay_targets: Vec<crate::recurrence::DirectReplayTargetDescriptor>,
+    pub source_permutations: Vec<u32>,
+    pub amplitude_destinations: Vec<crate::recurrence::DirectAmplitudeDestinationDescriptor>,
+    pub resolved_helicities: Vec<crate::recurrence::DirectResolvedHelicityDescriptor>,
+    pub public_helicities: Vec<i32>,
+    pub source_state_assignments: Vec<crate::recurrence::DirectSourceStateAssignment>,
+    pub source_dispatch_variants: Vec<crate::recurrence::DirectSourceDispatchVariantDescriptor>,
+    pub source_embeddings: Vec<crate::recurrence::DirectSourceEmbeddingRow>,
+    pub source_projections: Vec<crate::recurrence::DirectSourceProjectionRow>,
+    pub resolved_source_selections: Vec<crate::recurrence::DirectResolvedSourceSelection>,
+    pub exact_factors: Vec<NativeRecurrenceExactFactor>,
+    pub public_flow_ids: Vec<u32>,
+    pub executors: Vec<NativeRecurrenceExactExecutor>,
+}
+
+#[derive(Debug)]
+pub struct NativeRecurrenceExactFactor {
+    pub real_numerator: String,
+    pub real_denominator: String,
+    pub imaginary_numerator: String,
+    pub imaginary_denominator: String,
+}
+
+#[derive(Debug)]
+pub struct NativeRecurrenceExactExecutor {
+    pub direct_executor_id: u32,
+    pub role: String,
+    pub destination_operation: String,
+    pub parent_component_counts: Vec<u32>,
+    pub destination_component_count: u32,
+    pub momentum_operand_count: u32,
+    pub prepared_kernel_id: Option<u32>,
+    pub runtime_template: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct NativeRuntimeProfile {
     pub native_input_pack_s: f64,
@@ -3102,6 +3169,8 @@ enum NativeExecutionLane {
     Compiled,
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     Eager(Box<EagerNativeRuntime>),
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    Recurrence(Box<RecurrenceNativeRuntime>),
 }
 
 impl NativeExecutionLane {
@@ -3110,6 +3179,18 @@ impl NativeExecutionLane {
             Self::Compiled => false,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::Eager(_) => true,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Recurrence(_) => false,
+        }
+    }
+
+    fn is_recurrence(&self) -> bool {
+        match self {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Recurrence(_) => true,
+            Self::Compiled => false,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Eager(_) => false,
         }
     }
 }
@@ -3187,7 +3268,19 @@ use eager_backend::*;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod recurrence_backend;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-pub use recurrence_backend::{NativeRecurrenceKernelBackend, NativeRecurrenceKernelBackendSummary};
+mod recurrence_lane;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use recurrence_lane::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod recurrence_load;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use recurrence_load::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod recurrence_manifest;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use recurrence_manifest::*;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[allow(dead_code)]
@@ -3247,6 +3340,10 @@ mod contraction_metadata_tests;
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 #[path = "engine/eager_integration_tests.rs"]
 mod eager_integration_tests;
+
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
+#[path = "engine/recurrence_integration_tests.rs"]
+mod recurrence_integration_tests;
 
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 #[path = "engine/eager_v3_manifest_tests.rs"]

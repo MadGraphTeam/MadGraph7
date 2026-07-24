@@ -993,7 +993,6 @@ def _build_runtime_helicity_contracts(
         state = states_by_id[source.state_template_id]
         source_families.setdefault(state.particle_id, []).append(source)
 
-    compiled_orderings = _compiled_current_orderings(model)
     contracts: list[RecurrenceRuntimeHelicityContractV1] = []
     for particle_id in sorted(source_families):
         family = tuple(
@@ -1019,17 +1018,23 @@ def _build_runtime_helicity_contracts(
                     "state_digest": full_state.semantic_digest,
                 }
             else:
-                ordering = compiled_orderings.get(
-                    (source_state.particle_id, source_state.chirality)
-                )
-                if ordering is None:
+                try:
+                    ordering = model.recurrence_current_embedding_contract(
+                        source_state.particle_id,
+                        source_state.chirality,
+                    )
+                except NotImplementedError:
                     complete = False
                     break
                 embedding = tuple(ordering.input_embedding)
-                projection = tuple(ordering.result_projection)
+                projection = tuple(ordering.source_projection)
                 if (
                     len(embedding) != full_state.dimension
                     or len(projection) != source_state.dimension
+                    or ordering.source_dimension != source_state.dimension
+                    or ordering.full_dimension != full_state.dimension
+                    or ordering.source_basis != source_state.basis
+                    or ordering.full_basis != full_state.basis
                 ):
                     complete = False
                     break
@@ -1087,19 +1092,6 @@ def _build_runtime_helicity_contracts(
             )
         )
     return tuple(contracts)
-
-
-def _compiled_current_orderings(model: Model) -> dict[tuple[int, int], Any]:
-    compiled = getattr(model, "compiled", None)
-    ir = getattr(compiled, "ir", None)
-    if ir is None:
-        return {}
-    particle_ids = {particle.name: particle.pdg_code for particle in ir.particles}
-    return {
-        (int(particle_ids[record.particle]), int(record.chirality)): record
-        for record in ir.current_orderings
-        if record.particle in particle_ids
-    }
 
 
 def _prepared_full_state_family_is_complete(
@@ -1522,6 +1514,10 @@ def _canonical_transition_alias_key(
 
     order = tuple(int(value) for value in binding.canonical_input_order)
     inverse_order = tuple(order.index(index) for index in (0, 1))
+    contribution_factor = _multiply_exact(
+        transition.exact_factor,
+        color.exact_coefficient,
+    )
 
     def reordered(values: Sequence[Any]) -> list[Any]:
         return [values[index] for index in order]
@@ -1541,9 +1537,12 @@ def _canonical_transition_alias_key(
         elif witness.component_operation == "inherit-right":
             operation = f"inherit-input-{canonical_witness_order[1]}"
             operation_order = []
-        elif witness.component_operation in {"concatenate-keep", "empty"}:
+        elif witness.component_operation == "empty":
             operation = witness.component_operation
             operation_order = []
+        elif witness.component_operation == "concatenate-keep":
+            operation = witness.component_operation
+            operation_order = list(canonical_witness_order)
         else:
             operation = witness.component_operation
             operation_order = list(canonical_witness_order)
@@ -1556,7 +1555,15 @@ def _canonical_transition_alias_key(
                 "result_component_kind": witness.result_component_kind,
                 "result_component_role": witness.result_component_role,
                 "result_shape_kind": witness.result_shape_kind,
-                "exact_factor": witness.exact_factor.to_dict(),
+                # Transition orientation and LC witness signs are one exact
+                # contribution coefficient.  Keeping them as independent key
+                # fields prevents certified mirrored aliases such as
+                # (tensor, vector) and (vector, tensor) from comparing equal,
+                # even when their products are identical.
+                "exact_contribution_factor": _multiply_exact(
+                    contribution_factor,
+                    witness.exact_factor,
+                ).to_dict(),
                 "input_port_pairings": [
                     [
                         [inverse_order[left[0]], left[1]],
@@ -1574,8 +1581,14 @@ def _canonical_transition_alias_key(
 
     payload = {
         "prepared_kernel": {
-            "kernel_id": int(kernel.kernel_id),
-            "callable_signature": str(kernel.canonical_signature),
+            # `_validate_vertex_binding_against_model` has already required a
+            # stable, verified model-owned permutation/sign certificate.
+            # Mirrored oriented kernels may have different callable digests
+            # even though that certificate proves the same canonical
+            # evaluation class.  Keying on the digest would retain both rows
+            # and double the recurrence contribution.
+            "verified_equivalence_class": transition.equivalence_class,
+            "contract_kind": str(kernel.contract_kind),
         },
         "input_state_template_ids": reordered(transition.input_state_template_ids),
         "result_state_template_id": transition.result_state_template_id,
@@ -1604,7 +1617,6 @@ def _canonical_transition_alias_key(
             "input_representations": reordered(color.input_representations),
             "output_representation": color.output_representation,
             "ordered_open_string_arity": color.ordered_open_string_arity,
-            "exact_coefficient": color.exact_coefficient.to_dict(),
             "nc_polynomial": [
                 [power, coefficient.to_dict()]
                 for power, coefficient in color.nc_polynomial
@@ -1618,7 +1630,6 @@ def _canonical_transition_alias_key(
         "coupling_parameter_ids": list(transition.coupling_parameter_ids),
         "coupling_orders": [list(item) for item in transition.coupling_orders],
         "binding_coupling": transition.binding_coupling.to_dict(),
-        "exact_factor": transition.exact_factor.to_dict(),
         "output_factor_source": transition.output_factor_source,
         "equivalence_class": transition.equivalence_class,
         "input_exchange_factor": (

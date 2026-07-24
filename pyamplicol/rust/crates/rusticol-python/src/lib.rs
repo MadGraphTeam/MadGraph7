@@ -561,6 +561,7 @@ impl Runtime {
             )
             .map_err(python_error)?;
         let result = runtime_profile_to_python(py, &profiled.profile, point_count)?;
+        result.set_item("execution_mode", self.runtime.metadata().execution_mode)?;
         if include_values {
             result.set_item("values", PyList::new(py, profiled.values)?)?;
         }
@@ -600,6 +601,7 @@ impl Runtime {
             .checked_mul(repetitions)
             .ok_or_else(|| PyValueError::new_err("profile point count overflowed"))?;
         let result = runtime_profile_to_python(py, &profiled.profile, measured_points)?;
+        result.set_item("execution_mode", self.runtime.metadata().execution_mode)?;
         if include_values {
             result.set_item("values", PyList::new(py, profiled.values)?)?;
         }
@@ -1175,7 +1177,7 @@ fn abi_version() -> u32 {
 
 #[pyfunction]
 fn package_version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+    option_env!("PYAMPLICOL_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
 }
 
 #[pyfunction]
@@ -1207,6 +1209,18 @@ fn _load_eager_exact_sections_v1(
         .detach(move || NativeRuntime::load_eager_exact_sections(artifact_root, &process_id))
         .map_err(python_error)?;
     eager_exact_sections_to_python(py, sections)
+}
+
+#[pyfunction]
+fn _load_recurrence_exact_sections_v1(
+    py: Python<'_>,
+    artifact_root: PathBuf,
+    process_id: String,
+) -> PyResult<Py<PyAny>> {
+    let sections = py
+        .detach(move || NativeRuntime::load_recurrence_exact_sections(artifact_root, &process_id))
+        .map_err(python_error)?;
+    recurrence_exact_sections_to_python(py, sections)
 }
 
 fn eager_exact_sections_to_python(
@@ -1352,6 +1366,319 @@ fn eager_exact_sections_to_python(
     Ok(result.into_any().unbind())
 }
 
+fn recurrence_exact_sections_to_python(
+    py: Python<'_>,
+    sections: rusticol_core::NativeRecurrenceExactSections,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item("abi", "pyamplicol-recurrence-exact-sections-v1")?;
+    result.set_item(
+        "runtime_layout_abi",
+        "pyamplicol-recurrence-runtime-layout-v2",
+    )?;
+    result.set_item("process_id", sections.process_id)?;
+    result.set_item("strategy", sections.strategy)?;
+    result.set_item("semantic_digest", sections.semantic_digest)?;
+    result.set_item("runtime_layout_digest", sections.runtime_layout_digest)?;
+    result.set_item(
+        "counts",
+        (
+            sections.current_arena_components,
+            sections.amplitude_destination_count,
+            sections.parameter_value_count,
+            sections.external_source_count,
+        ),
+    )?;
+    result.set_item(
+        "currents",
+        sections
+            .currents
+            .into_iter()
+            .map(|row| {
+                (
+                    row.semantic_current_id,
+                    row.node_kind as u16,
+                    row.state_template_id,
+                    row.component_base,
+                    row.component_count,
+                    row.momentum_form_id,
+                    row.stage,
+                    row.selector_domain_id,
+                    row.first_use,
+                    row.last_use,
+                    row.source_row_or_sentinel,
+                    row.finalization_row_or_sentinel,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "sources",
+        sections
+            .sources
+            .into_iter()
+            .map(|row| {
+                (
+                    row.source_slot,
+                    row.destination_component_base,
+                    row.momentum_form_id,
+                    row.source_template_or_dispatch_domain,
+                    row.spin_state_class,
+                    row.exact_factor_id,
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "contributions",
+        sections
+            .contributions
+            .into_iter()
+            .map(|row| {
+                (
+                    row.parent0_component_base,
+                    row.parent1_component_base_or_sentinel,
+                    row.parent0_momentum_form_id,
+                    row.parent1_momentum_form_id_or_sentinel,
+                    row.destination_component_base,
+                    row.exact_factor_id,
+                    row.selector_domain_id,
+                    row.flags,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "finalizations",
+        sections
+            .finalizations
+            .into_iter()
+            .map(|row| {
+                (
+                    row.component_base,
+                    row.component_count,
+                    row.momentum_form_id,
+                    row.exact_factor_id,
+                    row.selector_domain_id,
+                    row.flags,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "closures",
+        sections
+            .closures
+            .into_iter()
+            .map(|row| {
+                (
+                    row.parent0_component_base,
+                    row.parent1_component_base_or_sentinel,
+                    row.parent0_momentum_form_id,
+                    row.parent1_momentum_form_id_or_sentinel,
+                    row.amplitude_destination_id,
+                    row.exact_factor_id,
+                    row.component_factor_start,
+                    row.component_count,
+                    row.selector_domain_id,
+                    row.flags,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "row_groups",
+        sections
+            .row_groups
+            .into_iter()
+            .map(|row| {
+                (
+                    row.stage,
+                    row.role as u16,
+                    row.destination_operation as u16,
+                    row.direct_executor_id,
+                    row.row_start,
+                    row.row_count,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "momentum_forms",
+        sections
+            .momentum_forms
+            .into_iter()
+            .map(|row| (row.term_start, row.term_count))
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "momentum_terms",
+        sections
+            .momentum_terms
+            .into_iter()
+            .map(|row| (row.source_slot, row.coefficient))
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "replay_targets",
+        sections
+            .replay_targets
+            .into_iter()
+            .map(|row| {
+                (
+                    row.public_flow_id,
+                    row.representative_id,
+                    row.source_permutation_start,
+                    row.source_permutation_count,
+                    row.phase_exact_factor_id,
+                    row.multiplicity,
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item("source_permutations", sections.source_permutations)?;
+    result.set_item(
+        "source_state_assignments",
+        sections
+            .source_state_assignments
+            .into_iter()
+            .map(|row| (row.source_slot, row.state_index))
+            .collect::<Vec<_>>(),
+    )?;
+    let source_dispatch_variants = sections
+        .source_dispatch_variants
+        .into_iter()
+        .map(|row| {
+            Ok(vec![
+                i64::try_from(row.embedding_start).map_err(|_| {
+                    PyValueError::new_err("recurrence source embedding offset exceeds i64")
+                })?,
+                i64::try_from(row.projection_start).map_err(|_| {
+                    PyValueError::new_err("recurrence source projection offset exceeds i64")
+                })?,
+                i64::from(row.source_row_id),
+                i64::from(row.dispatch_domain_id),
+                i64::from(row.runtime_variant_id),
+                i64::from(row.source_state_index),
+                i64::from(row.source_template_id),
+                i64::from(row.source_state_template_id),
+                i64::from(row.crossed_state_template_id),
+                i64::from(row.crossed_spin_state_class),
+                i64::from(row.direct_executor_id),
+                i64::from(row.crossing_exact_factor_id),
+                i64::from(row.embedding_count),
+                i64::from(row.projection_count),
+            ])
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    result.set_item("source_dispatch_variants", source_dispatch_variants)?;
+    result.set_item(
+        "source_embeddings",
+        sections
+            .source_embeddings
+            .into_iter()
+            .map(|row| {
+                (
+                    row.full_component,
+                    row.source_component_or_sentinel,
+                    row.exact_factor_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "source_projections",
+        sections
+            .source_projections
+            .into_iter()
+            .map(|row| (row.source_component, row.full_component))
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "resolved_source_selections",
+        sections
+            .resolved_source_selections
+            .into_iter()
+            .map(|row| (row.source_slot, row.dispatch_variant_id))
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "amplitude_destinations",
+        sections
+            .amplitude_destinations
+            .into_iter()
+            .map(|row| {
+                (
+                    row.closure_row_start,
+                    row.id,
+                    row.target_sector_id,
+                    row.target_helicity_id_or_sentinel,
+                    row.closure_row_count,
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "resolved_helicities",
+        sections
+            .resolved_helicities
+            .into_iter()
+            .map(|row| {
+                (
+                    row.source_state_start,
+                    row.source_selection_start,
+                    row.public_helicity_start,
+                    row.id,
+                    row.source_state_count,
+                    row.source_selection_count,
+                    row.public_helicity_count,
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item("public_helicities", sections.public_helicities)?;
+    result.set_item(
+        "exact_factors",
+        sections
+            .exact_factors
+            .into_iter()
+            .map(|factor| {
+                (
+                    factor.real_numerator,
+                    factor.real_denominator,
+                    factor.imaginary_numerator,
+                    factor.imaginary_denominator,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item("public_flow_ids", sections.public_flow_ids)?;
+    result.set_item(
+        "executors",
+        sections
+            .executors
+            .into_iter()
+            .map(|executor| {
+                (
+                    executor.direct_executor_id,
+                    executor.role,
+                    executor.destination_operation,
+                    executor.parent_component_counts,
+                    executor.destination_component_count,
+                    executor.momentum_operand_count,
+                    executor.prepared_kernel_id,
+                    executor.runtime_template,
+                )
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(result.into_any().unbind())
+}
+
 fn json_value_to_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
     match value {
         Value::Null => Ok(py.None()),
@@ -1418,6 +1745,10 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(target_info, module)?)?;
     module.add_function(wrap_pyfunction!(_preflight_eager_kernel_pack, module)?)?;
     module.add_function(wrap_pyfunction!(_load_eager_exact_sections_v1, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        _load_recurrence_exact_sections_v1,
+        module
+    )?)?;
     #[cfg(feature = "numpy")]
     module.add_function(wrap_pyfunction!(
         eager_lowering::_lower_eager_runtime_v1,
@@ -1425,22 +1756,7 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     #[cfg(feature = "numpy")]
     module.add_function(wrap_pyfunction!(
-        recurrence::_validate_recurrence_builder_input_v1,
-        module
-    )?)?;
-    #[cfg(feature = "numpy")]
-    module.add_function(wrap_pyfunction!(
-        recurrence::_evaluate_recurrence_one_helicity_v1,
-        module
-    )?)?;
-    #[cfg(feature = "numpy")]
-    module.add_function(wrap_pyfunction!(
-        recurrence::_evaluate_recurrence_all_helicities_v1,
-        module
-    )?)?;
-    #[cfg(feature = "numpy")]
-    module.add_function(wrap_pyfunction!(
-        recurrence::_evaluate_recurrence_helicity_sum_norm_sqr_v1,
+        recurrence::_lower_recurrence_direct_v2,
         module
     )?)?;
     #[cfg(feature = "numpy")]

@@ -68,6 +68,13 @@ impl AuthenticatedRecurrenceBuilderInput {
     pub fn build(&self) -> RusticolResult<super::RecurrenceProgram> {
         super::construct::build_recurrence_program(self)
     }
+
+    pub fn build_with_progress(
+        &self,
+        progress: &mut dyn FnMut(super::RecurrenceBuildProgress) -> RusticolResult<()>,
+    ) -> RusticolResult<super::RecurrenceProgram> {
+        super::construct::build_recurrence_program_with_progress(self, progress)
+    }
 }
 
 fn authenticate_singlet_closure_anchors(

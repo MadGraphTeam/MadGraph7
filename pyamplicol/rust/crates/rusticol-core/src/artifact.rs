@@ -29,6 +29,10 @@ const SUPPORTED_ARTIFACT_TARGETS: [&str; 3] = [
     "x86_64-unknown-linux-gnu",
 ];
 
+fn rusticol_package_version() -> &'static str {
+    option_env!("PYAMPLICOL_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ArtifactKind {
@@ -907,7 +911,7 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
             "artifact producer/runtime version {}/{} is incompatible with Rusticol {}",
             manifest.producer.version,
             manifest.runtime.engine_version,
-            env!("CARGO_PKG_VERSION")
+            rusticol_package_version()
         )));
     }
     let versions = &manifest.producer.versions;
@@ -1136,8 +1140,12 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
 }
 
 fn compatible_distribution_version(version: &str) -> bool {
+    #[cfg(test)]
+    if std::env::var_os("RUSTICOL_TEST_ALLOW_VERSION_MISMATCH").is_some() {
+        return true;
+    }
     canonical_distribution_version(version)
-        == canonical_distribution_version(env!("CARGO_PKG_VERSION"))
+        == canonical_distribution_version(rusticol_package_version())
 }
 
 fn canonical_distribution_version(version: &str) -> String {
@@ -1579,6 +1587,8 @@ fn validate_runtime_capabilities(
         RuntimeCapability::EagerDagComplexF64V1,
         RuntimeCapability::EagerRuntimeLayoutComplexF64V1,
         RuntimeCapability::EagerLcTopologyReplayComplexF64V1,
+        RuntimeCapability::RecurrenceRuntimeComplexF64V1,
+        RuntimeCapability::RecurrenceLcColorV1,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,
         RuntimeCapability::SymbolicaCompiledCppComplexF64V1,

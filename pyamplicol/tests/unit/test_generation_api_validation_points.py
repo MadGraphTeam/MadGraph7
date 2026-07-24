@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pyamplicol.generation.service as service_module
 from pyamplicol.generation.artifact_writer import (
@@ -136,3 +137,43 @@ def test_alias_identity_uses_public_external_order() -> None:
 
     assert expression == "d d~ > a z g"
     assert pdgs == (1, -1, 22, 23, 21)
+
+
+def test_recurrence_validation_selector_cases_are_axis_bounded() -> None:
+    physics = SimpleNamespace(
+        color_flows=tuple(
+            SimpleNamespace(id=f"flow:{index}") for index in range(720)
+        ),
+        helicities=tuple(
+            SimpleNamespace(
+                id=f"h:{index}",
+                structural_zero=index >= 384,
+            )
+            for index in range(768)
+        ),
+    )
+
+    cases = service_module._recurrence_validation_selector_cases(physics)
+
+    assert cases == (
+        ("flow flow:0", {"color_flows": ("flow:0",)}),
+        ("flow flow:360", {"color_flows": ("flow:360",)}),
+        ("flow flow:719", {"color_flows": ("flow:719",)}),
+        ("helicity h:0", {"helicities": ("h:0",)}),
+        ("helicity h:192", {"helicities": ("h:192",)}),
+        ("helicity h:383", {"helicities": ("h:383",)}),
+        (
+            "combined flow and helicity",
+            {
+                "color_flows": ("flow:0",),
+                "helicities": ("h:0",),
+            },
+        ),
+        (
+            "structural-zero helicity",
+            {
+                "color_flows": ("flow:0",),
+                "helicities": ("h:384",),
+            },
+        ),
+    )

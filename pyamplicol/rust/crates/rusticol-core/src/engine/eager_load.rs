@@ -457,6 +457,15 @@ fn load_prepared_model_parameter_evaluator(
     }))
 }
 
+pub(super) fn load_prepared_model_parameter_evaluator_for_runtime(
+    pack: &PreparedKernelPackManifest,
+    runtime_parameters: &[GenericRuntimeModelParameterManifest],
+    payloads: &EvaluatorPayloadStore,
+) -> RusticolResult<Option<ModelParameterEvaluatorRuntime>> {
+    let logical_slots = eager_runtime_logical_parameter_slots(runtime_parameters)?;
+    load_prepared_model_parameter_evaluator(pack, runtime_parameters, &logical_slots, payloads)
+}
+
 fn validate_eager_stage_contract(manifest: &EagerExecutionManifest) -> RusticolResult<()> {
     if manifest.plan.stages.len() != manifest.runtime_schema.stages.len() {
         return Err(RusticolError::integrity(

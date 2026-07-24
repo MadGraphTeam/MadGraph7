@@ -182,6 +182,26 @@ def test_pacbin_round_trip_is_deterministic_and_aligned(tmp_path: Path) -> None:
     assert not first.closed
 
 
+def test_runtime_plan_member_kinds_round_trip() -> None:
+    destination = io.BytesIO()
+    sources = tuple(
+        PacbinMemberSource(path, kind, io.BytesIO(kind.name.encode()))
+        for path, kind in (
+            ("eager/metadata.bin", PacbinMemberKind.EAGER_RUNTIME_METADATA),
+            ("eager/table.bin", PacbinMemberKind.EAGER_RUNTIME_TABLE),
+            ("recurrence/plan.bin", PacbinMemberKind.RECURRENCE_DIRECT_PLAN),
+        )
+    )
+    write_pacbin(destination, sources)
+    destination.seek(0)
+    with PacbinReader.open(destination) as reader:
+        assert {member.kind for member in reader.members} == {
+            PacbinMemberKind.EAGER_RUNTIME_METADATA,
+            PacbinMemberKind.EAGER_RUNTIME_TABLE,
+            PacbinMemberKind.RECURRENCE_DIRECT_PLAN,
+        }
+
+
 def test_empty_and_zero_length_members_round_trip() -> None:
     empty = io.BytesIO()
     index = write_pacbin(empty, ())

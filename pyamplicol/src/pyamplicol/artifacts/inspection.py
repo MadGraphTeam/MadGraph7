@@ -10,12 +10,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from pyamplicol._internal.versions import (
+    RECURRENCE_BUILDER_INPUT_ABI,
+    RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+    RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    RECURRENCE_DIRECT_BACKEND_ABI,
+    RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RECURRENCE_PLAN_ABI,
+    RECURRENCE_RUNTIME_LAYOUT_ABI,
+)
 from pyamplicol.api.errors import ArtifactError
 
-from .manifest import ArtifactManifest, load_manifest
+from .manifest import MANIFEST_NAME, ArtifactManifest, load_manifest
 from .security import confined_path, normalize_relative_path
 
 _EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
+_RECURRENCE_RUNTIME_KIND = "pyamplicol-runtime-recurrence-execution"
+_RETIRED_RECURRENCE_RUNTIME_CAPABILITY = "rusticol.recurrence-runtime.complex-f64.v1"
+_RECURRENCE_DIRECT_PLAN_MEMBER_PATH = "plan/recurrence-direct-plan-v2.bin"
 _EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 _EAGER_RUNTIME_CAPABILITIES = frozenset(
     {
@@ -45,6 +57,15 @@ _EAGER_PROFILE_PHASES = (
     "source-fill",
     "momentum-setup",
     "eager-execution-aggregate",
+)
+_RECURRENCE_PROFILE_PHASES = (
+    "selector-plan",
+    "source-fill",
+    "momentum-form-fill",
+    "recurrence-direct-contribution",
+    "recurrence-direct-finalization",
+    "recurrence-direct-closure",
+    "reduction",
 )
 
 
@@ -107,6 +128,18 @@ class ArtifactProcessInspection:
     effective_point_tile_size: int | None = None
     workspace_limit_bytes: int | None = None
     workspace_bytes: int | None = None
+    arena_semantic_component_count: int | None = None
+    arena_component_count: int | None = None
+    arena_component_reuse_count: int | None = None
+    momentum_form_count: int | None = None
+    direct_source_row_count: int | None = None
+    direct_contribution_row_count: int | None = None
+    direct_finalization_row_count: int | None = None
+    direct_closure_row_count: int | None = None
+    direct_row_group_count: int | None = None
+    packed_input_bytes: int | None = None
+    packed_output_bytes: int | None = None
+    scatter_bytes: int | None = None
     native_profile_phases: tuple[str, ...] = ()
 
 
@@ -268,6 +301,18 @@ class _ExecutionInspection:
     effective_point_tile_size: int | None = None
     workspace_limit_bytes: int | None = None
     workspace_bytes: int | None = None
+    arena_semantic_component_count: int | None = None
+    arena_component_count: int | None = None
+    arena_component_reuse_count: int | None = None
+    momentum_form_count: int | None = None
+    direct_source_row_count: int | None = None
+    direct_contribution_row_count: int | None = None
+    direct_finalization_row_count: int | None = None
+    direct_closure_row_count: int | None = None
+    direct_row_group_count: int | None = None
+    packed_input_bytes: int | None = None
+    packed_output_bytes: int | None = None
+    scatter_bytes: int | None = None
     native_profile_phases: tuple[str, ...] = ()
 
 
@@ -320,9 +365,7 @@ def _table_rows(
 ) -> tuple[tuple[int | float, ...], ...]:
     relative, count, row_size = _table_record(table, context)
     if row_size != layout.size:
-        raise ArtifactError(
-            f"{context}.row_size is {row_size}, expected {layout.size}"
-        )
+        raise ArtifactError(f"{context}.row_size is {row_size}, expected {layout.size}")
     path = _artifact_path(
         manifest,
         execution_root.relative_to(manifest.root) / relative,
@@ -358,9 +401,7 @@ def _profile_phases(execution: Mapping[str, object]) -> tuple[str, ...]:
         return _EAGER_PROFILE_PHASES
     phases = tuple(
         _string(value, f"execution.native_profile_phases[{index}]")
-        for index, value in enumerate(
-            _sequence(raw, "execution.native_profile_phases")
-        )
+        for index, value in enumerate(_sequence(raw, "execution.native_profile_phases"))
     )
     if len(phases) != len(set(phases)):
         raise ArtifactError("execution.native_profile_phases contains duplicates")
@@ -576,9 +617,7 @@ def _selector_domain_inspection(
             ),
         )
 
-        for invocation, domain_id in zip(
-            invocations, invocation_domains, strict=True
-        ):
+        for invocation, domain_id in zip(invocations, invocation_domains, strict=True):
             start, count = int(invocation[7]), int(invocation[8])
             stop = start + count
             if stop > len(attachment_domains):
@@ -699,9 +738,7 @@ def _eager_execution_inspection(
             _EAGER_FINALIZATION,
             f"eager execution.plan.stages[{index}].finalizations",
         )
-        inspected_stages.append(
-            (stage, invocations, stage_attachments, finalizations)
-        )
+        inspected_stages.append((stage, invocations, stage_attachments, finalizations))
         invocation_count += len(invocations)
         attachment_count += stage_attachments
         finalization_count += len(finalizations)
@@ -727,9 +764,7 @@ def _eager_execution_inspection(
             "eager execution has fewer attachments than canonical invocations"
         )
 
-    kernel_pack = _mapping(
-        execution.get("kernel_pack"), "eager execution.kernel_pack"
-    )
+    kernel_pack = _mapping(execution.get("kernel_pack"), "eager execution.kernel_pack")
     pack_path = _artifact_path(
         manifest,
         _string(
@@ -875,6 +910,259 @@ def _eager_v3_execution_inspection(
     )
 
 
+def _recurrence_execution_inspection(
+    manifest: ArtifactManifest,
+    execution: Mapping[str, object],
+) -> _ExecutionInspection:
+    _require_contract(
+        execution,
+        "builder_input_abi",
+        RECURRENCE_BUILDER_INPUT_ABI,
+        "recurrence execution",
+    )
+    _require_contract(
+        execution,
+        "recurrence_plan_abi",
+        RECURRENCE_PLAN_ABI,
+        "recurrence execution",
+    )
+    _require_contract(
+        execution,
+        "runtime_layout_abi",
+        RECURRENCE_RUNTIME_LAYOUT_ABI,
+        "recurrence execution",
+    )
+    _require_contract(
+        execution,
+        "direct_template_abi",
+        RECURRENCE_DIRECT_TEMPLATE_ABI,
+        "recurrence execution",
+    )
+    _require_contract(
+        execution,
+        "direct_backend_abi",
+        RECURRENCE_DIRECT_BACKEND_ABI,
+        "recurrence execution",
+    )
+    runtime_options = _mapping(
+        execution.get("runtime_options"),
+        "recurrence execution.runtime_options",
+    )
+    requested_tile = _integer(
+        runtime_options.get("point_tile_size"),
+        "recurrence execution.runtime_options.point_tile_size",
+        minimum=1,
+    )
+    workspace_mib = _integer(
+        runtime_options.get("workspace_mib"),
+        "recurrence execution.runtime_options.workspace_mib",
+        minimum=1,
+    )
+    plan = _mapping(execution.get("plan"), "recurrence execution.plan")
+    _require_contract(
+        plan,
+        "builder_input_abi",
+        RECURRENCE_BUILDER_INPUT_ABI,
+        "recurrence execution.plan",
+    )
+    _require_contract(
+        plan,
+        "recurrence_plan_abi",
+        RECURRENCE_PLAN_ABI,
+        "recurrence execution.plan",
+    )
+    _require_contract(
+        plan,
+        "runtime_layout_abi",
+        RECURRENCE_RUNTIME_LAYOUT_ABI,
+        "recurrence execution.plan",
+    )
+    _require_contract(
+        plan,
+        "direct_template_abi",
+        RECURRENCE_DIRECT_TEMPLATE_ABI,
+        "recurrence execution.plan",
+    )
+    _require_contract(
+        plan,
+        "direct_backend_abi",
+        RECURRENCE_DIRECT_BACKEND_ABI,
+        "recurrence execution.plan",
+    )
+    runtime_container = _mapping(
+        plan.get("runtime_container"),
+        "recurrence execution.plan.runtime_container",
+    )
+    _require_contract(
+        runtime_container,
+        "plan_member_path",
+        _RECURRENCE_DIRECT_PLAN_MEMBER_PATH,
+        "recurrence execution.plan.runtime_container",
+    )
+    summary = _mapping(
+        plan.get("inspection_summary"),
+        "recurrence execution.plan.inspection_summary",
+    )
+    if (
+        _string(
+            summary.get("execution_mode"),
+            "recurrence inspection execution_mode",
+        )
+        != "recurrence"
+    ):
+        raise ArtifactError(
+            "recurrence inspection summary has the wrong execution mode"
+        )
+    schedule = _mapping(
+        summary.get("schedule"),
+        "recurrence inspection schedule",
+    )
+    direct_arena_raw = summary.get("direct_arena")
+    direct_arena = (
+        {}
+        if direct_arena_raw is None
+        else _mapping(direct_arena_raw, "recurrence inspection direct_arena")
+    )
+    pack_reference = _mapping(
+        execution.get("kernel_pack"),
+        "recurrence execution.kernel_pack",
+    )
+    pack_path = _artifact_path(
+        manifest,
+        _string(
+            pack_reference.get("manifest_path"),
+            "recurrence execution.kernel_pack.manifest_path",
+        ),
+        "recurrence execution.kernel_pack.manifest_path",
+    )
+    pack = _json_mapping(pack_path, "prepared recurrence kernel pack")
+    kernels = _sequence(
+        pack.get("kernels"),
+        "prepared recurrence kernel pack.kernels",
+    )
+    prepared_kernel_count = _integer(
+        summary.get("prepared_kernel_count"),
+        "recurrence inspection prepared_kernel_count",
+    )
+    recurrence_kernels = tuple(
+        kernel
+        for index, value in enumerate(kernels)
+        if (
+            kernel := _mapping(
+                value,
+                f"prepared recurrence kernel pack.kernels[{index}]",
+            )
+        ).get("contract_kind")
+        != "model-parameter"
+    )
+    if prepared_kernel_count != len(recurrence_kernels):
+        raise ArtifactError(
+            "recurrence inspection prepared-kernel count does not match its pack"
+        )
+    semantic_components = _optional_counter(
+        direct_arena,
+        "semantic_component_count",
+        "recurrence inspection direct_arena.semantic_component_count",
+    )
+    arena_components = _optional_counter(
+        direct_arena,
+        "current_arena_components",
+        "recurrence inspection direct_arena.current_arena_components",
+    )
+    arena_reuse = _optional_counter(
+        direct_arena,
+        "arena_component_reuse_count",
+        "recurrence inspection direct_arena.arena_component_reuse_count",
+    )
+    if (
+        semantic_components is not None
+        and arena_components is not None
+        and arena_reuse is not None
+        and semantic_components - arena_components != arena_reuse
+    ):
+        raise ArtifactError(
+            "recurrence direct-arena component reuse count is inconsistent"
+        )
+    packed_input_bytes = _optional_counter(
+        direct_arena,
+        "packed_input_bytes",
+        "recurrence inspection direct_arena.packed_input_bytes",
+    )
+    packed_output_bytes = _optional_counter(
+        direct_arena,
+        "packed_output_bytes",
+        "recurrence inspection direct_arena.packed_output_bytes",
+    )
+    scatter_bytes = _optional_counter(
+        direct_arena,
+        "scatter_bytes",
+        "recurrence inspection direct_arena.scatter_bytes",
+    )
+    for label, value in (
+        ("packed-input bytes", packed_input_bytes),
+        ("packed-output bytes", packed_output_bytes),
+        ("scatter bytes", scatter_bytes),
+    ):
+        if value not in {None, 0}:
+            raise ArtifactError(f"recurrence direct-arena {label} must be zero")
+    source_rows = _optional_counter(
+        schedule,
+        "source_row_count",
+        "recurrence inspection source row count",
+    )
+    contribution_rows = _optional_counter(
+        schedule,
+        "contribution_count",
+        "recurrence inspection contribution count",
+    )
+    finalization_rows = _optional_counter(
+        schedule,
+        "finalization_count",
+        "recurrence inspection finalization count",
+    )
+    closure_rows = _optional_counter(
+        schedule,
+        "closure_term_count",
+        "recurrence inspection closure row count",
+    )
+    return _ExecutionInspection(
+        execution_mode="recurrence",
+        prepared_backend=_string(
+            pack.get("backend"),
+            "prepared recurrence kernel pack.backend",
+        ),
+        prepared_kernel_count=prepared_kernel_count,
+        invocation_count=contribution_rows,
+        attachment_count=0,
+        finalization_count=finalization_rows,
+        closure_count=closure_rows,
+        requested_point_tile_size=requested_tile,
+        effective_point_tile_size=requested_tile,
+        workspace_limit_bytes=workspace_mib * 1024 * 1024,
+        arena_semantic_component_count=semantic_components,
+        arena_component_count=arena_components,
+        arena_component_reuse_count=arena_reuse,
+        momentum_form_count=_optional_counter(
+            direct_arena,
+            "momentum_form_count",
+            "recurrence inspection direct_arena.momentum_form_count",
+        ),
+        direct_source_row_count=source_rows,
+        direct_contribution_row_count=contribution_rows,
+        direct_finalization_row_count=finalization_rows,
+        direct_closure_row_count=closure_rows,
+        direct_row_group_count=_optional_counter(
+            direct_arena,
+            "row_group_count",
+            "recurrence inspection direct_arena.row_group_count",
+        ),
+        packed_input_bytes=0,
+        packed_output_bytes=0,
+        scatter_bytes=0,
+        native_profile_phases=_RECURRENCE_PROFILE_PHASES,
+    )
+
+
 def _execution_inspection(
     manifest: ArtifactManifest,
     execution_path: Path,
@@ -888,9 +1176,27 @@ def _execution_inspection(
             "runtime.required_runtime_capabilities",
         )
     )
-    if _EAGER_RUNTIME_CAPABILITIES.isdisjoint(
-        str(value) for value in capabilities
-    ):
+    capability_values = frozenset(str(value) for value in capabilities)
+    if RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in capability_values:
+        required = {
+            RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        }
+        if not required.issubset(capability_values):
+            missing = ", ".join(sorted(required - capability_values))
+            raise ArtifactError(
+                "recurrence direct-arena execution is missing required "
+                f"capabilities: {missing}"
+            )
+        execution = _json_mapping(execution_path, "process execution manifest")
+        kind = _string(execution.get("kind"), "process execution manifest.kind")
+        if kind != _RECURRENCE_RUNTIME_KIND:
+            raise ArtifactError(
+                "recurrence capability is paired with an unsupported process "
+                f"execution kind {kind!r}"
+            )
+        return _recurrence_execution_inspection(manifest, execution)
+    if _EAGER_RUNTIME_CAPABILITIES.isdisjoint(capability_values):
         # Compiled execution manifests can be several GiB at high multiplicity.
         # Their capability contract already identifies the execution lane, and
         # the manifest hash validation above has verified the payload bytes.
@@ -912,6 +1218,30 @@ def _optional_nonnegative_integer(
     if value is None:
         return None
     return _integer(value, context, minimum=0)
+
+
+def _optional_counter(
+    record: Mapping[str, object],
+    name: str,
+    context: str,
+) -> int | None:
+    if name not in record:
+        return None
+    return _integer(record[name], context, minimum=0)
+
+
+def _require_contract(
+    record: Mapping[str, object],
+    name: str,
+    expected: str,
+    context: str,
+) -> None:
+    actual = record.get(name)
+    if actual != expected:
+        raise ArtifactError(
+            f"{context}.{name} must be {expected!r}; regenerate the recurrence "
+            "artifact with the current pyAmpliCol"
+        )
 
 
 def _source_helicity_selection(
@@ -995,8 +1325,7 @@ def _physics_inspection(
             )
         if selectors.get("contract_version") != 1:
             raise ArtifactError(
-                f"{relative}.extensions.runtime_selectors.contract_version "
-                "must be 1"
+                f"{relative}.extensions.runtime_selectors.contract_version must be 1"
             )
         selector_fields["selector_provenance"] = _string(
             selectors.get("provenance"),
@@ -1131,8 +1460,7 @@ def _physics_inspection(
             )
             selector_fields["helicity_recurrence_status"] = _string(
                 recurrence.get("status"),
-                f"{relative}.extensions.runtime_selectors."
-                "helicity_recurrence.status",
+                f"{relative}.extensions.runtime_selectors.helicity_recurrence.status",
             )
             proof_counts = _mapping(
                 recurrence.get("proof_counts"),
@@ -1140,9 +1468,7 @@ def _physics_inspection(
                 "helicity_recurrence.proof_counts",
             )
             count_fields = {
-                "helicity_optimized_class_count": (
-                    "optimized_recurrence_class_count"
-                ),
+                "helicity_optimized_class_count": ("optimized_recurrence_class_count"),
                 "helicity_optimized_current_count": "optimized_current_count",
                 "helicity_residual_current_count": "residual_current_count",
                 "helicity_optimized_amplitude_class_count": (
@@ -1179,8 +1505,7 @@ def _physics_inspection(
                 "lc_physical_sector_count": len(
                     _sequence(
                         replay.get("physical_sector_ids"),
-                        f"{relative}.extensions.lc_topology_replay."
-                        "physical_sector_ids",
+                        f"{relative}.extensions.lc_topology_replay.physical_sector_ids",
                     )
                 ),
                 "lc_materialized_sector_count": len(
@@ -1192,15 +1517,13 @@ def _physics_inspection(
                 ),
                 "lc_replayed_sector_count": _integer(
                     replay.get("replayed_sector_count"),
-                    f"{relative}.extensions.lc_topology_replay."
-                    "replayed_sector_count",
+                    f"{relative}.extensions.lc_topology_replay.replayed_sector_count",
                     minimum=0,
                 ),
                 "lc_residual_sector_count": len(
                     _sequence(
                         replay.get("residual_sector_ids"),
-                        f"{relative}.extensions.lc_topology_replay."
-                        "residual_sector_ids",
+                        f"{relative}.extensions.lc_topology_replay.residual_sector_ids",
                     )
                 ),
             }
@@ -1304,9 +1627,7 @@ def _process_inspection(
         helicity_optimized_amplitude_class_count=(
             physics.helicity_optimized_amplitude_class_count
         ),
-        helicity_residual_amplitude_count=(
-            physics.helicity_residual_amplitude_count
-        ),
+        helicity_residual_amplitude_count=(physics.helicity_residual_amplitude_count),
         helicity_materialized_current_count=(
             physics.helicity_materialized_current_count
         ),
@@ -1336,13 +1657,61 @@ def _process_inspection(
         effective_point_tile_size=execution.effective_point_tile_size,
         workspace_limit_bytes=execution.workspace_limit_bytes,
         workspace_bytes=execution.workspace_bytes,
+        arena_semantic_component_count=execution.arena_semantic_component_count,
+        arena_component_count=execution.arena_component_count,
+        arena_component_reuse_count=execution.arena_component_reuse_count,
+        momentum_form_count=execution.momentum_form_count,
+        direct_source_row_count=execution.direct_source_row_count,
+        direct_contribution_row_count=execution.direct_contribution_row_count,
+        direct_finalization_row_count=execution.direct_finalization_row_count,
+        direct_closure_row_count=execution.direct_closure_row_count,
+        direct_row_group_count=execution.direct_row_group_count,
+        packed_input_bytes=execution.packed_input_bytes,
+        packed_output_bytes=execution.packed_output_bytes,
+        scatter_bytes=execution.scatter_bytes,
         native_profile_phases=execution.native_profile_phases,
     )
+
+
+def _reject_retired_recurrence_metadata(artifact: str | Path) -> None:
+    """Reject pre-release recurrence artifacts before payload verification."""
+
+    root = Path(artifact).expanduser().resolve(strict=True)
+    manifest_path = root / MANIFEST_NAME
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        # The strict manifest loader below owns ordinary format diagnostics.
+        return
+    if not isinstance(raw, Mapping):
+        return
+    capabilities: set[str] = set()
+    runtime = raw.get("runtime")
+    if isinstance(runtime, Mapping):
+        declared = runtime.get("required_runtime_capabilities")
+        if isinstance(declared, Sequence) and not isinstance(declared, (str, bytes)):
+            capabilities.update(str(value) for value in declared)
+    processes = raw.get("processes")
+    if isinstance(processes, Sequence) and not isinstance(processes, (str, bytes)):
+        for process in processes:
+            if not isinstance(process, Mapping):
+                continue
+            declared = process.get("required_runtime_capabilities")
+            if isinstance(declared, Sequence) and not isinstance(
+                declared, (str, bytes)
+            ):
+                capabilities.update(str(value) for value in declared)
+    if _RETIRED_RECURRENCE_RUNTIME_CAPABILITY in capabilities:
+        raise ArtifactError(
+            "this pre-release recurrence artifact uses the retired packet ABI; "
+            "regenerate it with the current pyAmpliCol direct-arena recurrence mode"
+        )
 
 
 def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
     """Validate and summarize one generated artifact without loading evaluators."""
 
+    _reject_retired_recurrence_metadata(artifact)
     manifest = load_manifest(artifact)
     target = _mapping(manifest.producer["target"], "producer.target")
     model = manifest.model
@@ -1384,8 +1753,7 @@ def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
             "extensions.evaluator_payload_container",
         )
         if (
-            container.get("kind")
-            != "pyamplicol-evaluator-payload-container"
+            container.get("kind") != "pyamplicol-evaluator-payload-container"
             or container.get("schema_version") != 1
             or container.get("storage_abi") != "pacbin-v1"
         ):

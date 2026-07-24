@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
+import json
 import os
 import tempfile
 import time
@@ -58,6 +59,12 @@ from .prepared_target import (
     symjit_storage_v3_target,
 )
 from .recurrence_catalog_builder import build_recurrence_template_catalog
+from .recurrence_direct_template import (
+    RECURRENCE_DIRECT_BACKEND_ABI,
+    PreparedJitDirectSourceV1,
+    build_recurrence_direct_template_catalog,
+    prepared_kernel_payload_digest,
+)
 from .recurrence_template import RecurrenceTemplateCatalog
 
 PreparedModelProgress = Callable[[str, int, int], None]
@@ -177,6 +184,7 @@ def _validate_native_recurrence_template_input_v1(
         "closures": len(catalog.closures),
         "color_contractions": len(catalog.color_contractions),
         "symmetry_proofs": len(catalog.symmetry_proofs),
+        "runtime_helicity_contracts": len(catalog.runtime_helicity_contracts),
         "evaluator_bindings": len(catalog.evaluator_bindings),
         "prepared_kernels": len(
             {
@@ -221,6 +229,7 @@ def _rebind_recurrence_template_pack_digest(
         closures=catalog.closures,
         color_contractions=catalog.color_contractions,
         symmetry_proofs=catalog.symmetry_proofs,
+        runtime_helicity_contracts=catalog.runtime_helicity_contracts,
         evaluator_bindings=catalog.evaluator_bindings,
     )
 
@@ -323,10 +332,46 @@ def prepare_model_bundle(
             base_pack,
             prepared_payload_identity_records(payloads),
         )
+        payload_identity_records = prepared_payload_identity_records(payloads)
         recurrence_binding_started = time.perf_counter()
         recurrence_catalog = _rebind_recurrence_template_pack_digest(
             provisional_recurrence_catalog,
             prepared_kernel_pack_digest=pack_identity.pack_digest,
+        )
+        prepared_jit_sources = (
+            {
+                record.kernel_id: _prepared_jit_direct_source(
+                    record,
+                    payload_identity_records=payload_identity_records,
+                )
+                for record in records
+            }
+            if backend == "jit"
+            else None
+        )
+        direct_catalog = build_recurrence_direct_template_catalog(
+            recurrence_catalog,
+            backend=backend,
+            target_triple=str(base_pack.target["target_triple"]),
+            portable=bool(base_pack.target["portable"]),
+            optimization_level=(
+                PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+                if backend == "jit"
+                else int(settings.compiled_optimization_level)
+            ),
+            prepared_kernel_pack_digest=pack_identity.pack_digest,
+            prepared_kernel_contract_digest=pack_identity.contract_digest,
+            prepared_kernel_payload_digest=pack_identity.payload_digest,
+            optimization_settings_digest=optimization_digest,
+            prepared_kernel_payload_digests={
+                record.kernel_id: prepared_kernel_payload_digest(
+                    kernel_id=record.kernel_id,
+                    payload_records=payload_identity_records,
+                    referenced_paths=record.referenced_payload_paths,
+                )
+                for record in records
+            },
+            prepared_jit_sources=prepared_jit_sources,
         )
         recurrence_binding_seconds = time.perf_counter() - recurrence_binding_started
         authenticated_pack = replace(
@@ -338,8 +383,18 @@ def prepare_model_bundle(
                 "prepared_kernel_pack_digest": pack_identity.pack_digest,
                 "recurrence_template_abi": recurrence_catalog.header.abi,
                 "recurrence_template_digest": recurrence_catalog.catalog_digest,
+                "recurrence_direct_backend_abi": RECURRENCE_DIRECT_BACKEND_ABI,
+                "recurrence_direct_template_abi": direct_catalog.abi,
+                "recurrence_direct_template_digest": direct_catalog.catalog_digest,
+                "direct_template_catalog_digest": direct_catalog.catalog_digest,
+                "recurrence_direct_payload_status": (
+                    "executable"
+                    if direct_catalog.executable
+                    else "pending-direct-call-abi"
+                ),
             },
             recurrence_template=recurrence_catalog.to_dict(),
+            recurrence_direct_template=direct_catalog.to_dict(),
         )
         recurrence_validation_started = time.perf_counter()
         recurrence_validation = _validate_native_recurrence_template_input_v1(
@@ -362,6 +417,7 @@ def prepare_model_bundle(
                 ),
             },
             recurrence_template=recurrence_catalog.to_dict(),
+            recurrence_direct_template=direct_catalog.to_dict(),
         )
         bundle_path = write_prepared_model_bundle(
             output,
@@ -459,6 +515,49 @@ def _runtime_model(compiled: CompiledModel) -> Model:
     if compiled.source.get("kind") == "built-in-sm":
         return BuiltinSMModel()
     return CompiledUFOModel(compiled)
+
+
+def _prepared_jit_direct_source(
+    record: PreparedKernelRecord,
+    *,
+    payload_identity_records: Mapping[str, tuple[int, str]],
+) -> PreparedJitDirectSourceV1:
+    manifest = record.f64_evaluator_manifest
+    application_path = manifest.get("application_path")
+    if not isinstance(application_path, str) or not application_path:
+        raise PreparedModelBundleError(
+            f"prepared JIT kernel {record.kernel_id} has no application payload"
+        )
+    try:
+        _size, application_sha256 = payload_identity_records[application_path]
+    except KeyError as exc:
+        raise PreparedModelBundleError(
+            f"prepared JIT kernel {record.kernel_id} application payload "
+            f"{application_path!r} has no identity record"
+        ) from exc
+    application_abi = manifest.get("application_abi")
+    if application_abi != SYMJIT_APPLICATION_ABI:
+        raise PreparedModelBundleError(
+            f"prepared JIT kernel {record.kernel_id} has incompatible "
+            f"application ABI {application_abi!r}"
+        )
+    return PreparedJitDirectSourceV1(
+        prepared_kernel_id=record.kernel_id,
+        source_application_path=application_path,
+        source_application_sha256=application_sha256,
+        source_application_abi=application_abi,
+        input_contracts=tuple(
+            json.dumps(
+                dict(contract),
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            for contract in record.input_contracts
+        ),
+        output_arity=record.output_arity,
+    )
 
 
 def _compile_kernel(

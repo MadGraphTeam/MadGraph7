@@ -26,9 +26,6 @@ pub const RECURRENCE_FERMION_PAIRING_SCHEMA_VERSION: u32 = 1;
 pub const RECURRENCE_NO_FERMION_LINE: u32 = u32::MAX;
 
 const RECURRENCE_FERMION_PAIRING_PROOF_ALGORITHM: &str = "canonical-external-fermion-pairing-v1";
-const MAX_FERMION_PAIRING_ENDPOINTS: usize = 16;
-const MAX_FERMION_PAIRINGS_PER_CLASS: u64 = 720;
-const MAX_FERMION_PAIRING_RULES: usize = 4096;
 
 const MISSING_ID: u32 = u32::MAX;
 const REQUIRED_DIGEST_ROLE_COUNT: usize = 4;
@@ -58,17 +55,8 @@ impl<'a> FermionPairingInputView<'a> {
                 self.header.len()
             )));
         }
-        if self.endpoints.len() > MAX_FERMION_PAIRING_ENDPOINTS {
-            return Err(invalid(format!(
-                "fermion-pairing endpoint count {} exceeds {MAX_FERMION_PAIRING_ENDPOINTS}",
-                self.endpoints.len()
-            )));
-        }
-        if self.rules.is_empty() || self.rules.len() > MAX_FERMION_PAIRING_RULES {
-            return Err(invalid(format!(
-                "fermion-pairing rule count {} is outside 1..={MAX_FERMION_PAIRING_RULES}",
-                self.rules.len()
-            )));
+        if self.rules.is_empty() {
+            return Err(invalid("fermion-pairing catalog has no rules"));
         }
 
         let catalogs = self.validate_catalogs()?;
@@ -486,9 +474,14 @@ impl<'a> FermionPairingInputView<'a> {
                     )));
                 }
             }
-            if class.pairing_count == 0 || class.pairing_count > MAX_FERMION_PAIRINGS_PER_CLASS {
+            let expected_pairing_count = checked_factorial_u64(
+                fundamental.len(),
+                &format!("fermion class {index} pairing count"),
+            )?;
+            if class.pairing_count != expected_pairing_count {
                 return Err(invalid(format!(
-                    "fermion class {index} pairing count is out of bounds"
+                    "fermion class {index} declares {} pairings, expected {expected_pairing_count}",
+                    class.pairing_count
                 )));
             }
             SemanticDigest::new(class.proof_digest).map_err(|error| {
@@ -558,6 +551,24 @@ impl<'a> FermionPairingInputView<'a> {
         catalogs: &FermionPairingCatalogs<'_>,
         header: FermionPairingHeaderRow,
     ) -> RusticolResult<()> {
+        let expected_rule_count =
+            self.pairing_classes
+                .iter()
+                .enumerate()
+                .try_fold(1_u64, |count, (index, class)| {
+                    count.checked_mul(class.pairing_count).ok_or_else(|| {
+                        invalid(format!(
+                            "combined fermion-pairing rule count overflows u64 at class {index}"
+                        ))
+                    })
+                })?;
+        let actual_rule_count = u64::try_from(self.rules.len())
+            .map_err(|_| invalid("fermion-pairing rule count exceeds u64"))?;
+        if actual_rule_count != expected_rule_count {
+            return Err(invalid(format!(
+                "fermion-pairing catalog contains {actual_rule_count} rules, expected {expected_rule_count}"
+            )));
+        }
         validate_canonical_ids(
             "fermion-pairing rule IDs",
             self.rules.iter().map(|row| row.rule_id),
@@ -2849,6 +2860,16 @@ fn pairing_range_slice<'a, T>(
     Ok(&values[range.as_usize_range(values.len(), label)?])
 }
 
+fn checked_factorial_u64(value: usize, label: &str) -> RusticolResult<u64> {
+    (2..=value).try_fold(1_u64, |product, factor| {
+        let factor =
+            u64::try_from(factor).map_err(|_| invalid(format!("{label} factor exceeds u64")))?;
+        product
+            .checked_mul(factor)
+            .ok_or_else(|| invalid(format!("{label} exceeds u64")))
+    })
+}
+
 fn validate_pairing_ranges(
     label: &str,
     ranges: impl Iterator<Item = CheckedTableRange>,
@@ -3098,7 +3119,325 @@ fn require_process_template(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
     use super::*;
+
+    const TEST_PROCESS_ID: &str = "max-quark-pairs-scaling";
+
+    fn test_digest(seed: u8) -> [u8; 32] {
+        [seed; 32]
+    }
+
+    fn test_range(start: usize, count: usize) -> CheckedTableRange {
+        CheckedTableRange::new(
+            u64::try_from(start).expect("test table start fits u64"),
+            u64::try_from(count).expect("test table count fits u64"),
+        )
+    }
+
+    fn encode_test_strings(
+        values: impl IntoIterator<Item = String>,
+    ) -> (Vec<u8>, Vec<CheckedTableRange>, BTreeMap<String, u32>) {
+        let values = values.into_iter().collect::<BTreeSet<_>>();
+        let mut bytes = Vec::new();
+        let mut ranges = Vec::with_capacity(values.len());
+        let mut ids = BTreeMap::new();
+        for (index, value) in values.into_iter().enumerate() {
+            let start = bytes.len();
+            bytes.extend_from_slice(value.as_bytes());
+            ranges.push(test_range(start, value.len()));
+            ids.insert(
+                value,
+                u32::try_from(index).expect("test string count fits u32"),
+            );
+        }
+        (bytes, ranges, ids)
+    }
+
+    fn unrank_test_permutation(values: &[u32], mut rank: u64) -> Vec<u32> {
+        let mut available = values.to_vec();
+        let mut permutation = Vec::with_capacity(values.len());
+        for remaining in (1..=values.len()).rev() {
+            let block = checked_factorial_u64(remaining - 1, "test permutation block")
+                .expect("test permutation factorial fits u64");
+            let index = usize::try_from(rank / block).expect("test permutation index fits usize");
+            rank %= block;
+            permutation.push(available.remove(index));
+        }
+        assert_eq!(rank, 0);
+        permutation
+    }
+
+    fn test_permutation_parity(values: &[u32]) -> i32 {
+        let inversions = values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                values[index + 1..]
+                    .iter()
+                    .filter(|other| value > *other)
+                    .count()
+            })
+            .sum::<usize>();
+        if inversions % 2 == 0 { 1 } else { -1 }
+    }
+
+    fn pairing_fixture(pair_counts_by_species: &[usize]) -> OwnedFermionPairingInput {
+        assert!(pair_counts_by_species.iter().all(|count| *count > 0));
+        let species = (0..pair_counts_by_species.len())
+            .map(|index| format!("species-{index:03}"))
+            .collect::<Vec<_>>();
+        let strings = [
+            RECURRENCE_FERMION_PAIRING_COLUMNAR_ABI.to_owned(),
+            RECURRENCE_FERMION_PAIRING_PROOF_ALGORITHM.to_owned(),
+            TEST_PROCESS_ID.to_owned(),
+            "anti-state".to_owned(),
+            "basis".to_owned(),
+            "state".to_owned(),
+        ]
+        .into_iter()
+        .chain(species.iter().cloned());
+        let (string_bytes, string_ranges, string_ids) = encode_test_strings(strings);
+        let string_id = |value: &str| {
+            *string_ids
+                .get(value)
+                .unwrap_or_else(|| panic!("missing test string {value:?}"))
+        };
+
+        let mut endpoints = Vec::new();
+        let mut endpoint_state_template_ids = Vec::new();
+        let mut endpoint_anti_state_template_ids = Vec::new();
+        let mut endpoint_basis_ids = Vec::new();
+        let mut endpoint_color_representations = Vec::new();
+        let mut pairing_classes = Vec::new();
+        let mut class_fundamental_slots = Vec::new();
+        let mut class_antifundamental_slots = Vec::new();
+        let mut class_reference_pairings = Vec::new();
+        let mut class_fundamentals = Vec::new();
+        let mut class_antifundamentals = Vec::new();
+        let mut next_source_slot = 0_u32;
+
+        for (class_id, (&pair_count, species)) in pair_counts_by_species
+            .iter()
+            .zip(species.iter())
+            .enumerate()
+        {
+            let mut fundamental = Vec::with_capacity(pair_count);
+            let mut antifundamental = Vec::with_capacity(pair_count);
+            for _ in 0..pair_count {
+                fundamental.push(next_source_slot);
+                antifundamental.push(next_source_slot + 1);
+                next_source_slot += 2;
+            }
+
+            for (fundamental_slot, antifundamental_slot) in fundamental
+                .iter()
+                .copied()
+                .zip(antifundamental.iter().copied())
+            {
+                for (source_slot, particle_orientation, color_orientation, representation) in [
+                    (fundamental_slot, 0, 0, 3),
+                    (antifundamental_slot, 1, 1, -3),
+                ] {
+                    let state_start = endpoint_state_template_ids.len();
+                    endpoint_state_template_ids.push(string_id("state"));
+                    let anti_state_start = endpoint_anti_state_template_ids.len();
+                    endpoint_anti_state_template_ids.push(string_id("anti-state"));
+                    let basis_start = endpoint_basis_ids.len();
+                    endpoint_basis_ids.push(string_id("basis"));
+                    let representation_start = endpoint_color_representations.len();
+                    endpoint_color_representations.push(representation);
+                    endpoints.push(FermionPairingEndpointRow {
+                        endpoint_id: u32::try_from(endpoints.len())
+                            .expect("test endpoint count fits u32"),
+                        source_slot,
+                        public_label: source_slot + 1,
+                        species_class_id: u32::try_from(class_id)
+                            .expect("test class count fits u32"),
+                        species_string_id: string_id(species),
+                        particle_orientation,
+                        color_orientation,
+                        state_template_range: test_range(state_start, 1),
+                        anti_state_template_range: test_range(anti_state_start, 1),
+                        basis_range: test_range(basis_start, 1),
+                        color_representation_range: test_range(representation_start, 1),
+                        contract_digest: test_digest(4),
+                    });
+                }
+            }
+
+            let fundamental_start = class_fundamental_slots.len();
+            class_fundamental_slots.extend_from_slice(&fundamental);
+            let antifundamental_start = class_antifundamental_slots.len();
+            class_antifundamental_slots.extend_from_slice(&antifundamental);
+            let reference_start = class_reference_pairings.len();
+            class_reference_pairings.extend(
+                fundamental
+                    .iter()
+                    .copied()
+                    .zip(antifundamental.iter().copied())
+                    .map(|(fundamental_source_slot, antifundamental_source_slot)| {
+                        FermionPairingEndpointPairRow {
+                            fundamental_source_slot,
+                            antifundamental_source_slot,
+                        }
+                    }),
+            );
+            pairing_classes.push(FermionPairingClassRow {
+                class_id: u32::try_from(class_id).expect("test class count fits u32"),
+                species_class_id: u32::try_from(class_id).expect("test class count fits u32"),
+                species_string_id: string_id(species),
+                fundamental_slot_range: test_range(fundamental_start, pair_count),
+                antifundamental_slot_range: test_range(antifundamental_start, pair_count),
+                reference_pairing_range: test_range(reference_start, pair_count),
+                pairing_count: checked_factorial_u64(pair_count, "test pairing count")
+                    .expect("test pairing count fits u64"),
+                proof_digest: test_digest(5),
+            });
+            class_fundamentals.push(fundamental);
+            class_antifundamentals.push(antifundamental);
+        }
+
+        let source_count = usize::try_from(next_source_slot).expect("test source count fits usize");
+        let total_rule_count = pairing_classes
+            .iter()
+            .try_fold(1_u64, |count, class| count.checked_mul(class.pairing_count))
+            .expect("test rule count fits u64");
+        let total_rule_count =
+            usize::try_from(total_rule_count).expect("test rule count fits usize");
+        let mut rules = Vec::with_capacity(total_rule_count);
+        let mut rule_class_pairing_indices = Vec::new();
+        let mut rule_endpoint_pairings = Vec::new();
+        let mut rule_source_slot_permutations = Vec::new();
+        let mut rule_lineages = Vec::new();
+
+        for rule_id in 0..total_rule_count {
+            let class_index_start = rule_class_pairing_indices.len();
+            let endpoint_pairing_start = rule_endpoint_pairings.len();
+            let mut mixed_index = u64::try_from(rule_id).expect("test rule ID fits u64");
+            let mut parity = 1;
+            for (class_id, class) in pairing_classes.iter().enumerate() {
+                let local_index = mixed_index % class.pairing_count;
+                mixed_index /= class.pairing_count;
+                rule_class_pairing_indices.push(FermionPairingClassPairingIndexRow {
+                    class_id: u32::try_from(class_id).expect("test class count fits u32"),
+                    pairing_index: local_index,
+                });
+                let permutation =
+                    unrank_test_permutation(&class_antifundamentals[class_id], local_index);
+                parity *= test_permutation_parity(&permutation);
+                rule_endpoint_pairings.extend(
+                    class_fundamentals[class_id]
+                        .iter()
+                        .copied()
+                        .zip(permutation)
+                        .map(|(fundamental_source_slot, antifundamental_source_slot)| {
+                            FermionPairingEndpointPairRow {
+                                fundamental_source_slot,
+                                antifundamental_source_slot,
+                            }
+                        }),
+                );
+            }
+            assert_eq!(mixed_index, 0);
+            let source_permutation_start = rule_source_slot_permutations.len();
+            rule_source_slot_permutations.extend(0..next_source_slot);
+            let lineage_start = rule_lineages.len();
+            rule_lineages.extend(std::iter::repeat(RECURRENCE_NO_FERMION_LINE).take(source_count));
+            rules.push(FermionPairingRuleRow {
+                rule_id: u32::try_from(rule_id).expect("test rule count fits u32"),
+                class_pairing_index_range: test_range(class_index_start, pairing_classes.len()),
+                endpoint_pairing_range: test_range(
+                    endpoint_pairing_start,
+                    pair_counts_by_species.iter().sum(),
+                ),
+                source_permutation_range: test_range(source_permutation_start, source_count),
+                lineage_range: test_range(lineage_start, source_count),
+                fermion_parity: parity,
+                real_numerator_integer_id: if parity < 0 { 0 } else { 2 },
+                real_denominator_integer_id: 2,
+                imag_numerator_integer_id: 1,
+                imag_denominator_integer_id: 2,
+                multiplicity: 1,
+                proof_algorithm_string_id: string_id(RECURRENCE_FERMION_PAIRING_PROOF_ALGORITHM),
+                proof_digest: test_digest(6),
+            });
+        }
+
+        let exact_integers = vec![
+            FermionPairingExactIntegerRow {
+                integer_id: 0,
+                sign: -1,
+                limb_range: test_range(0, 1),
+            },
+            FermionPairingExactIntegerRow {
+                integer_id: 1,
+                sign: 0,
+                limb_range: test_range(1, 0),
+            },
+            FermionPairingExactIntegerRow {
+                integer_id: 2,
+                sign: 1,
+                limb_range: test_range(1, 1),
+            },
+        ];
+        let exact_integer_limbs = vec![1, 1];
+        let u32_len = |value: usize| u32::try_from(value).expect("test count fits u32");
+        let u64_len = |value: usize| u64::try_from(value).expect("test count fits u64");
+        let header = FermionPairingHeaderRow {
+            schema_version: RECURRENCE_FERMION_PAIRING_SCHEMA_VERSION,
+            abi_string_id: string_id(RECURRENCE_FERMION_PAIRING_COLUMNAR_ABI),
+            process_key_string_id: string_id(TEST_PROCESS_ID),
+            proof_algorithm_string_id: string_id(RECURRENCE_FERMION_PAIRING_PROOF_ALGORITHM),
+            source_count: u32_len(source_count),
+            endpoint_count: u32_len(endpoints.len()),
+            pairing_class_count: u32_len(pairing_classes.len()),
+            rule_count: u32_len(rules.len()),
+            endpoint_state_template_count: u64_len(endpoint_state_template_ids.len()),
+            endpoint_anti_state_template_count: u64_len(endpoint_anti_state_template_ids.len()),
+            endpoint_basis_count: u64_len(endpoint_basis_ids.len()),
+            endpoint_color_representation_count: u64_len(endpoint_color_representations.len()),
+            class_fundamental_slot_count: u64_len(class_fundamental_slots.len()),
+            class_antifundamental_slot_count: u64_len(class_antifundamental_slots.len()),
+            class_reference_pairing_count: u64_len(class_reference_pairings.len()),
+            rule_class_pairing_index_count: u64_len(rule_class_pairing_indices.len()),
+            rule_endpoint_pairing_count: u64_len(rule_endpoint_pairings.len()),
+            rule_source_permutation_count: u64_len(rule_source_slot_permutations.len()),
+            rule_lineage_count: u64_len(rule_lineages.len()),
+            exact_integer_count: u32_len(exact_integers.len()),
+            exact_integer_limb_count: u64_len(exact_integer_limbs.len()),
+            string_count: u32_len(string_ranges.len()),
+            string_byte_count: u64_len(string_bytes.len()),
+            no_fermion_line: RECURRENCE_NO_FERMION_LINE,
+            topology_digest: test_digest(7),
+            semantic_digest: test_digest(8),
+        };
+        OwnedFermionPairingInput {
+            input_abi: RECURRENCE_FERMION_PAIRING_COLUMNAR_ABI.to_owned(),
+            declared_columnar_digest: SemanticDigest::new(test_digest(9))
+                .expect("test digest is nonzero"),
+            header: vec![header],
+            endpoints,
+            endpoint_state_template_ids,
+            endpoint_anti_state_template_ids,
+            endpoint_basis_ids,
+            endpoint_color_representations,
+            pairing_classes,
+            class_fundamental_slots,
+            class_antifundamental_slots,
+            class_reference_pairings,
+            rules,
+            rule_class_pairing_indices,
+            rule_endpoint_pairings,
+            rule_source_slot_permutations,
+            rule_lineages,
+            exact_integers,
+            exact_integer_limbs,
+            string_ranges,
+            string_bytes,
+        }
+    }
 
     #[test]
     fn semantic_template_kinds_are_closed_and_round_trip() {
@@ -3139,5 +3478,40 @@ mod tests {
         assert!(validate_permutation(&[2, 0, 1], 3, "test permutation").is_ok());
         assert!(validate_permutation(&[0, 0, 2], 3, "test permutation").is_err());
         assert!(validate_permutation(&[0, 1], 3, "test permutation").is_err());
+    }
+
+    #[test]
+    fn user_max_quark_pairs_above_eight_has_no_hidden_endpoint_cap() {
+        let input = pairing_fixture(&[1; 9]);
+        let summary = input
+            .as_view()
+            .validate_internal(TEST_PROCESS_ID)
+            .expect("nine independently flavored quark pairs must validate");
+        assert_eq!(summary.endpoint_count, 18);
+        assert_eq!(summary.pairing_class_count, 9);
+        assert_eq!(summary.rule_count, 1);
+    }
+
+    #[test]
+    fn user_max_quark_pairs_allows_more_than_legacy_pairing_and_rule_caps() {
+        let input = pairing_fixture(&[7]);
+        assert_eq!(input.pairing_classes[0].pairing_count, 5_040);
+        let summary = input
+            .as_view()
+            .validate_internal(TEST_PROCESS_ID)
+            .expect("seven same-species quark pairs and all 5,040 rules must validate");
+        assert_eq!(summary.endpoint_count, 14);
+        assert_eq!(summary.pairing_class_count, 1);
+        assert_eq!(summary.rule_count, 5_040);
+    }
+
+    #[test]
+    fn pairing_growth_stops_only_at_checked_integer_representation() {
+        assert_eq!(
+            checked_factorial_u64(20, "test pairing count").unwrap(),
+            2_432_902_008_176_640_000
+        );
+        let error = checked_factorial_u64(21, "test pairing count").unwrap_err();
+        assert!(error.to_string().contains("exceeds u64"));
     }
 }

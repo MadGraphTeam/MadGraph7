@@ -24,6 +24,9 @@ from pyamplicol.models.prepared_catalog_helpers import (
     proves_homogeneous_complex_linearity,
 )
 from pyamplicol.models.prepared_compile import _independent_block_contract
+from pyamplicol.models.recurrence_catalog_builder import (
+    build_recurrence_template_catalog,
+)
 
 MODEL_ROOT = (
     Path(__file__).resolve().parents[2]
@@ -329,6 +332,51 @@ def test_external_sm_active_oriented_kernels_and_parameters_are_catalogued(
         for kernel in catalog.kernels
         if kernel.contract_kind == "propagator"
     )
+
+
+def test_builtin_and_external_runtime_helicity_contracts_cover_antifermions(
+    builtin_catalog,
+    external_sm_catalog,
+) -> None:
+    builtin_model, builtin_prepared = builtin_catalog
+    _compiled, external_model, external_prepared = external_sm_catalog
+
+    for model, prepared in (
+        (builtin_model, builtin_prepared),
+        (external_model, external_prepared),
+    ):
+        semantic = build_recurrence_template_catalog(
+            model,
+            prepared,
+            compiled_model_digest="a" * 64,
+            prepared_kernel_pack_digest="b" * 64,
+        )
+        states = {state.template_id: state for state in semantic.current_states}
+        contracts = {
+            states[contract.full_state_template_id].particle_id: contract
+            for contract in semantic.runtime_helicity_contracts
+        }
+        for particle_id in (1, -1):
+            contract = contracts[particle_id]
+            assert states[contract.full_state_template_id].chirality == 0
+            variants = {
+                states[variant.source_state_template_id].chirality: variant
+                for variant in contract.variants
+            }
+            assert variants[-1].embedding_source_components == (
+                None,
+                None,
+                0,
+                1,
+            )
+            assert variants[-1].projection_full_components == (2, 3)
+            assert variants[1].embedding_source_components == (
+                0,
+                1,
+                None,
+                None,
+            )
+            assert variants[1].projection_full_components == (0, 1)
 
 
 def test_external_sm_catalog_signatures_ignore_compiled_inventory_order(

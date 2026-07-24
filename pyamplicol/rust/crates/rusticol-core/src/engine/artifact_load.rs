@@ -3,11 +3,15 @@
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use super::eager_v3_manifest::{EagerV3ExecutionManifest, parse_eager_v3_execution_manifest};
 use super::*;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use crate::recurrence::RECURRENCE_RUNTIME_KIND;
 
 pub(super) enum LoadedExecutionManifest {
     Compiled(Box<ExecutionManifest>),
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     EagerV3(Box<EagerV3ExecutionManifest>),
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    Recurrence(Box<RecurrenceExecutionManifest>),
 }
 
 impl LoadedExecutionManifest {
@@ -16,6 +20,8 @@ impl LoadedExecutionManifest {
             Self::Compiled(value) => &value.key,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::EagerV3(value) => &value.key,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Recurrence(value) => &value.key,
         }
     }
 
@@ -24,6 +30,8 @@ impl LoadedExecutionManifest {
             Self::Compiled(value) => &value.process,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::EagerV3(value) => &value.process,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Recurrence(value) => &value.process,
         }
     }
 
@@ -32,6 +40,8 @@ impl LoadedExecutionManifest {
             Self::Compiled(value) => &value.color_accuracy,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::EagerV3(value) => &value.color_accuracy,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Recurrence(value) => &value.color_accuracy,
         }
     }
 
@@ -40,6 +50,8 @@ impl LoadedExecutionManifest {
             Self::Compiled(value) => &value.external_pdg_order,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::EagerV3(value) => &value.external_pdg_order,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Recurrence(value) => &value.external_pdg_order,
         }
     }
 
@@ -48,6 +60,8 @@ impl LoadedExecutionManifest {
             Self::Compiled(value) => &value.required_runtime_capabilities,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::EagerV3(value) => &value.required_runtime_capabilities,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::Recurrence(value) => &value.required_runtime_capabilities,
         }
     }
 }
@@ -82,6 +96,7 @@ pub(super) fn load_verified_evaluator(
     }
     if header.kind == "pyamplicol-runtime-execution"
         || header.kind == "pyamplicol-runtime-eager-execution"
+        || header.kind == RECURRENCE_RUNTIME_KIND
     {
         if artifact.manifest().processes.len() != 1 {
             return Err(RusticolError::integrity(
@@ -316,6 +331,10 @@ fn parse_execution_payload_variant(
         EAGER_EXECUTION_KIND => parse_eager_v3_execution_manifest(bytes, outer)
             .map(Box::new)
             .map(LoadedExecutionManifest::EagerV3),
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        RECURRENCE_RUNTIME_KIND => parse_recurrence_execution_manifest(bytes, path, outer)
+            .map(Box::new)
+            .map(LoadedExecutionManifest::Recurrence),
         _ => Err(RusticolError::compatibility(format!(
             "unsupported internal evaluator manifest kind {:?}",
             header.kind
@@ -344,6 +363,22 @@ fn validate_loaded_execution_references(
             if artifact.payload(relative)?.role != PayloadRole::EvaluatorState {
                 return Err(RusticolError::security(
                     "eager plan-v3 runtime container is not an evaluator-state payload",
+                ));
+            }
+            Ok(())
+        }
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        LoadedExecutionManifest::Recurrence(manifest) => {
+            let relative_root = evaluator_root.strip_prefix(artifact.root()).map_err(|_| {
+                RusticolError::security("recurrence runtime root escapes the verified artifact")
+            })?;
+            let relative = relative_root.join(&manifest.plan.runtime_container.path);
+            let relative = relative.to_str().ok_or_else(|| {
+                RusticolError::security("recurrence runtime container path is not valid UTF-8")
+            })?;
+            if artifact.payload(relative)?.role != PayloadRole::EvaluatorState {
+                return Err(RusticolError::security(
+                    "recurrence runtime container is not an evaluator-state payload",
                 ));
             }
             Ok(())
@@ -722,4 +757,37 @@ pub(super) fn selector_set(
         )));
     }
     Ok(Some(selected))
+}
+
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
+mod recurrence_dispatch_tests {
+    use super::*;
+
+    #[test]
+    fn generic_execution_dispatch_accepts_the_strict_recurrence_manifest() {
+        let value = super::super::recurrence_manifest::tests::manifest();
+        let outer = super::super::recurrence_manifest::tests::outer();
+        let bytes = serde_json::to_vec(&value).unwrap();
+
+        let parsed =
+            parse_execution_payload_variant(&bytes, "processes/x_to_x/execution.json", &outer)
+                .unwrap();
+
+        let LoadedExecutionManifest::Recurrence(manifest) = parsed else {
+            panic!("recurrence execution kind was dispatched to another manifest parser");
+        };
+        assert_eq!(manifest.key, outer.id);
+        assert_eq!(manifest.process, outer.expression);
+        assert_eq!(
+            manifest.required_runtime_capabilities,
+            outer.required_runtime_capabilities
+        );
+        ensure_runtime_capabilities_supported(
+            manifest
+                .required_runtime_capabilities
+                .iter()
+                .map(String::as_str),
+        )
+        .unwrap();
+    }
 }

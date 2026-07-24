@@ -1,39 +1,46 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Private Python boundary for recurrence builder-input v1.
+//! Private Python boundary for Direct-Arena recurrence lowering.
 //!
-//! This milestone authenticates and validates the compact columnar input.  It
-//! deliberately stops before recurrence-state construction or schedule
-//! lowering; those operations will consume the same owned input in a later
-//! milestone.
+//! Python supplies authenticated fixed-width builder and prepared-template
+//! columns. Rust constructs the compact recurrence, lowers its direct arena
+//! plan, and publishes the plan-v2 PACBIN without exposing an intermediate
+//! packet schedule.
 
 use numpy::{PyReadonlyArrayDyn, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict, PyList};
+use pyo3::types::{PyAny, PyBytes, PyDict, PyList};
 use rusticol_core::recurrence::process;
 use rusticol_core::recurrence::template;
 use rusticol_core::recurrence::{
-    AuthenticatedRecurrenceBuilderInput, CheckedTableRange, CurrentSourceBinding,
-    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_BUILDER_RESULT_ABI, RECURRENCE_LC_COLOR_CAPABILITY,
-    RECURRENCE_PLAN_ABI, RECURRENCE_RUNTIME_CAPABILITY, RECURRENCE_RUNTIME_KIND,
-    RECURRENCE_RUNTIME_LAYOUT_ABI, RECURRENCE_TEMPLATE_ABI, RecurrenceStrategy, SemanticDigest,
-    checked_usize,
+    AuthenticatedRecurrenceBuilderInput, CheckedTableRange, DirectExecutorRole,
+    DirectRecurrencePlan, DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding,
+    PreparedDirectExecutorCatalog, RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_DIRECT_PLAN_ABI,
+    RECURRENCE_DIRECT_PLAN_MEMBER, RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
+    RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI, RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceStrategy, SemanticDigest,
+    checked_usize, lower_recurrence_direct_plan_v2, write_recurrence_direct_plan_pacbin,
 };
-use rusticol_core::recurrence::{RecurrenceExecutionPlan, RecurrenceExecutionRuntime};
-use rusticol_core::{
-    EagerComplex64, NativeRecurrenceKernelBackend, NativeRecurrenceKernelBackendSummary,
-    RusticolError, RusticolResult,
-};
+use rusticol_core::{RusticolError, RusticolResult};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::python_error;
 
-const INPUT_SCHEMA_VERSION: u32 = 1;
-const RESULT_KIND: &str = "pyamplicol-recurrence-builder-validation-result";
-const RESULT_SCHEMA_VERSION: u32 = 1;
+const RUNTIME_CONTAINER_KIND: &str = "pyamplicol-recurrence-runtime-container";
+const RUNTIME_CONTAINER_SCHEMA_VERSION: u32 = 1;
+const STORAGE_ABI: &str = "pacbin-v1";
+const DIRECT_BUILDER_INPUT_ABI: &str = "pyamplicol-recurrence-builder-input-v2";
+const DIRECT_LOWERING_RESULT_KIND: &str = "pyamplicol-recurrence-direct-lowering-result";
+const DIRECT_LOWERING_RESULT_SCHEMA_VERSION: u32 = 2;
+const DIRECT_CANONICALIZATION_ABI: &str = "pyamplicol-canonical-json-v1";
+const DIRECT_BACKEND_ABI: &str = "rusticol.recurrence-direct-backend.v1";
+const DIRECT_PAYLOAD_BINDING_ABI: &str = "pyamplicol-recurrence-direct-payload-binding-v1";
+const DIRECT_IDENTITY_FINALIZER: &str = "rusticol.identity-finalize-in-place.v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PrimitiveKind {
@@ -494,15 +501,6 @@ enum OwnedValues {
 }
 
 impl OwnedValues {
-    fn len(&self) -> usize {
-        match self {
-            Self::U8(values) => values.len(),
-            Self::U32(values) => values.len(),
-            Self::U64(values) => values.len(),
-            Self::I32(values) => values.len(),
-        }
-    }
-
     fn raw_bytes(&self) -> &[u8] {
         fn bytes<T>(values: &[T]) -> &[u8] {
             // Accepted multi-byte arrays are explicitly little-endian and this
@@ -752,556 +750,1070 @@ impl PreparedTemplateInput {
     }
 }
 
-struct NativeValidationResult {
-    digest: String,
+#[derive(Clone, Copy, Debug, Default)]
+struct DirectLoweringTimings {
+    python_extraction_seconds: f64,
+    catalog_authentication_seconds: f64,
+    semantic_construction_seconds: f64,
+    direct_lowering_seconds: f64,
+    serialization_seconds: f64,
+    native_total_seconds: f64,
+}
+
+#[derive(Clone, Debug)]
+struct NativeDirectLoweringResult {
+    builder_input_digest: String,
+    template_input_digest: String,
+    prepared_kernel_pack_digest: String,
+    direct_template_catalog_digest: String,
     process_id: String,
     strategy: RecurrenceStrategy,
-    table_count: usize,
-    column_count: usize,
-    total_row_count: u64,
-    primitive_element_count: u64,
-    primitive_byte_count: u64,
-    string_count: usize,
-    semantic_digest_count: usize,
-    exact_factor_count: usize,
-    external_leg_count: usize,
-    source_state_count: usize,
-    physical_sector_count: usize,
-    public_flow_count: usize,
-    open_string_count: usize,
-    replay_partition_count: usize,
-    replay_target_count: usize,
-    selector_mask_count: usize,
-    selector_mask_word_count: usize,
-    maximum_mask_bit: Option<u64>,
-    template_reference_count: usize,
-    parameter_projection_count: usize,
-    fermion_pairing_summary: Option<NativeFermionPairingSummary>,
-    composite_authenticated: bool,
-    template_catalog_digest: Option<SemanticDigest>,
-    compiled_model_digest: Option<SemanticDigest>,
-    prepared_kernel_pack_digest: Option<SemanticDigest>,
-    prepared_template_count: Option<usize>,
-    schedule_summary: Option<NativeScheduleSummary>,
-}
-
-#[derive(Clone, Debug)]
-struct NativeFermionPairingSummary {
-    columnar_digest: SemanticDigest,
-    topology_digest: SemanticDigest,
-    semantic_digest: SemanticDigest,
-    source_count: u32,
-    endpoint_count: u32,
-    pairing_class_count: u32,
-    rule_count: u32,
-}
-
-#[derive(Clone, Debug)]
-struct NativeScheduleSummary {
-    dynamic_color_state_count: usize,
-    dynamic_color_states: Vec<NativeDynamicColorStateSummary>,
+    semantic_digest: String,
+    runtime_layout_digest: String,
+    member_count: u64,
+    unpacked_size_bytes: u64,
+    index_sha256: String,
+    container_size: u64,
+    plan_payload_size: u64,
+    plan_sha256: String,
     current_count: usize,
-    source_current_count: usize,
-    current_count_by_support_size: Vec<usize>,
-    current_count_by_state_and_support_size: Vec<(u32, usize, usize)>,
-    current_count_by_state_color_and_support_size: Vec<(u32, u32, usize, usize)>,
+    source_row_count: usize,
     contribution_count: usize,
-    contribution_count_by_transition_template_id: Vec<(u32, usize)>,
-    contribution_count_by_quantum_flow_template_id: Vec<(u32, usize)>,
-    contribution_count_by_result_state_template_id: Vec<(u32, usize)>,
-    referenced_quantum_flow_template_ids: Vec<u32>,
     finalization_count: usize,
-    identity_finalization_count_by_support_size: Vec<usize>,
-    propagated_finalization_count_by_support_size: Vec<usize>,
-    retained_helicity_count: u64,
-    resolved_helicity_count: usize,
-    structural_zero_helicity_count: u64,
+    closure_count: usize,
+    row_group_count: usize,
+    momentum_form_count: usize,
+    selector_domain_count: usize,
+    replay_target_count: usize,
     amplitude_destination_count: usize,
-    target_sector_count: usize,
-    closure_term_count: usize,
-    closure_terms: Vec<NativeClosureTermSummary>,
-    source_layout: Vec<NativeSourceLayout>,
-}
-
-#[derive(Clone, Debug)]
-struct NativeDynamicColorStateSummary {
-    id: u32,
-    output_color_shape_id: u32,
-    result_port_bindings: Vec<(u32, u8)>,
-    components: Vec<(u8, Vec<u32>)>,
-}
-
-#[derive(Clone, Debug)]
-struct NativeClosureTermSummary {
-    id: u32,
-    target_destination_id: u32,
-    target_sector_id: u32,
-    target_helicity_id: Option<u32>,
-    closure_template_id: u32,
-    quantum_flow_template_id: Option<u32>,
-    parent_current_ids: Vec<u32>,
-    parent_state_template_ids: Vec<u32>,
-    parent_dynamic_color_state_ids: Vec<u32>,
-    parent_support_source_slots: Vec<Vec<u32>>,
-    exact_factor: (String, String, String, String),
-}
-
-#[derive(Clone, Copy, Debug)]
-struct NativeSourceLayout {
-    current_id: u32,
-    source_slot: u32,
-    source_template_id: u32,
-    component_start: usize,
-    component_count: usize,
-}
-
-#[pyfunction(signature = (builder_input, prepared_template_input=None, *, construct_schedule=false))]
-pub(crate) fn _validate_recurrence_builder_input_v1(
-    py: Python<'_>,
-    builder_input: &Bound<'_, PyAny>,
-    prepared_template_input: Option<&Bound<'_, PyAny>>,
-    construct_schedule: bool,
-) -> PyResult<Py<PyAny>> {
-    let owned = parse_input(builder_input)?;
-    let prepared_template = prepared_template_input
-        .map(parse_prepared_template_input)
-        .transpose()?;
-    let native = py
-        .detach(move || validate_input(owned, prepared_template, construct_schedule))
-        .map_err(python_error)?;
-    result_mapping(py, native)
-}
-
-#[pyfunction(
-    signature = (
-        builder_input,
-        prepared_template_input,
-        prepared_kernel_manifest,
-        prepared_kernel_pack_digest,
-        payload_root,
-        source_values,
-        external_momenta,
-        model_parameters,
-        *,
-        point_count,
-        point_tile_size=1024
-    )
-)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn _evaluate_recurrence_one_helicity_v1(
-    py: Python<'_>,
-    builder_input: &Bound<'_, PyAny>,
-    prepared_template_input: &Bound<'_, PyAny>,
-    prepared_kernel_manifest: Vec<u8>,
-    prepared_kernel_pack_digest: String,
-    payload_root: PathBuf,
-    source_values: Vec<(f64, f64)>,
-    external_momenta: Vec<f64>,
-    model_parameters: Vec<(f64, f64)>,
-    point_count: usize,
-    point_tile_size: usize,
-) -> PyResult<Py<PyAny>> {
-    let owned = parse_input(builder_input)?;
-    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
-    let native = py
-        .detach(move || {
-            evaluate_one_helicity(
-                owned,
-                prepared_template,
-                &prepared_kernel_manifest,
-                &prepared_kernel_pack_digest,
-                &payload_root,
-                &source_values,
-                &external_momenta,
-                &model_parameters,
-                point_count,
-                point_tile_size,
-                false,
-            )
-        })
-        .map_err(python_error)?;
-    recurrence_evaluation_mapping(py, native)
-}
-
-#[pyfunction(
-    signature = (
-        builder_input,
-        prepared_template_input,
-        prepared_kernel_manifest,
-        prepared_kernel_pack_digest,
-        payload_root,
-        source_values,
-        external_momenta,
-        model_parameters,
-        *,
-        point_count,
-        point_tile_size=1024
-    )
-)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn _evaluate_recurrence_all_helicities_v1(
-    py: Python<'_>,
-    builder_input: &Bound<'_, PyAny>,
-    prepared_template_input: &Bound<'_, PyAny>,
-    prepared_kernel_manifest: Vec<u8>,
-    prepared_kernel_pack_digest: String,
-    payload_root: PathBuf,
-    source_values: Vec<(f64, f64)>,
-    external_momenta: Vec<f64>,
-    model_parameters: Vec<(f64, f64)>,
-    point_count: usize,
-    point_tile_size: usize,
-) -> PyResult<Py<PyAny>> {
-    let owned = parse_input(builder_input)?;
-    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
-    let native = py
-        .detach(move || {
-            evaluate_one_helicity(
-                owned,
-                prepared_template,
-                &prepared_kernel_manifest,
-                &prepared_kernel_pack_digest,
-                &payload_root,
-                &source_values,
-                &external_momenta,
-                &model_parameters,
-                point_count,
-                point_tile_size,
-                true,
-            )
-        })
-        .map_err(python_error)?;
-    recurrence_evaluation_mapping(py, native)
-}
-
-#[pyfunction(
-    signature = (
-        builder_input,
-        prepared_template_input,
-        prepared_kernel_manifest,
-        prepared_kernel_pack_digest,
-        payload_root,
-        source_values,
-        external_momenta,
-        model_parameters,
-        *,
-        point_count,
-        point_tile_size=1024
-    )
-)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn _evaluate_recurrence_helicity_sum_norm_sqr_v1(
-    py: Python<'_>,
-    builder_input: &Bound<'_, PyAny>,
-    prepared_template_input: &Bound<'_, PyAny>,
-    prepared_kernel_manifest: Vec<u8>,
-    prepared_kernel_pack_digest: String,
-    payload_root: PathBuf,
-    source_values: Vec<(f64, f64)>,
-    external_momenta: Vec<f64>,
-    model_parameters: Vec<(f64, f64)>,
-    point_count: usize,
-    point_tile_size: usize,
-) -> PyResult<Py<PyAny>> {
-    let owned = parse_input(builder_input)?;
-    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
-    let native = py
-        .detach(move || {
-            evaluate_helicity_sum_norm_sqr(
-                owned,
-                prepared_template,
-                &prepared_kernel_manifest,
-                &prepared_kernel_pack_digest,
-                &payload_root,
-                &source_values,
-                &external_momenta,
-                &model_parameters,
-                point_count,
-                point_tile_size,
-            )
-        })
-        .map_err(python_error)?;
-    recurrence_norm_sqr_mapping(py, native)
-}
-
-#[derive(Clone, Debug)]
-struct NativeRecurrenceEvaluation {
-    amplitudes: Vec<(f64, f64)>,
-    source_layout: Vec<rusticol_core::recurrence::RecurrenceSourceLayout>,
-    sector_count: usize,
+    resolved_helicity_count: usize,
+    retained_helicity_count: u64,
+    exact_factor_count: usize,
+    semantic_component_count: u64,
+    current_arena_components: u32,
+    parameter_value_count: u32,
+    physical_sector_count: u32,
+    direct_executor_count: u32,
+    prepared_kernel_count: usize,
     resolved_helicities: Vec<Vec<i32>>,
-    amplitude_destinations: Vec<NativeAmplitudeDestination>,
-    resolved: bool,
-    backend: NativeRecurrenceKernelBackendSummary,
+    timings: DirectLoweringTimings,
 }
 
-#[derive(Clone, Debug)]
-struct NativeRecurrenceNormSqrEvaluation {
-    norm_sqr: Vec<f64>,
-    source_layout: Vec<rusticol_core::recurrence::RecurrenceSourceLayout>,
-    sector_count: usize,
-    backend: NativeRecurrenceKernelBackendSummary,
+struct AuthenticatedDirectTemplateCatalog {
+    catalog: PreparedDirectExecutorCatalog,
+    catalog_digest: SemanticDigest,
+    prepared_kernel_pack_digest: SemanticDigest,
+    prepared_kernel_count: usize,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct NativeAmplitudeDestination {
-    id: u32,
-    target_sector_id: u32,
-    target_helicity_id: Option<u32>,
-}
-
+#[pyfunction(signature = (
+    builder_input,
+    prepared_template_input,
+    direct_template_catalog_json,
+    prepared_kernel_pack_digest,
+    destination,
+    *,
+    point_tile_size,
+    workspace_mib,
+    progress_callback=None
+))]
 #[allow(clippy::too_many_arguments)]
-fn evaluate_one_helicity(
-    input: OwnedInput,
-    prepared_template: PreparedTemplateInput,
-    prepared_kernel_manifest: &[u8],
-    prepared_kernel_pack_digest: &str,
-    payload_root: &std::path::Path,
-    source_values: &[(f64, f64)],
-    external_momenta: &[f64],
-    model_parameters: &[(f64, f64)],
-    point_count: usize,
-    point_tile_size: usize,
-    resolved: bool,
-) -> RusticolResult<NativeRecurrenceEvaluation> {
-    validate_inventory(&input)?;
-    let actual_digest = canonical_digest(&input)?;
-    if actual_digest != input.declared_digest {
-        return Err(invalid("recurrence builder input digest mismatch"));
-    }
-    let process = decode_process_input(&input)?.validate()?;
-    let template = prepared_template.into_core()?.validate()?;
-    let authenticated = AuthenticatedRecurrenceBuilderInput::new(process, template)?;
-    if authenticated
-        .template()
-        .summary()
-        .prepared_kernel_pack_digest
-        .to_string()
-        != prepared_kernel_pack_digest
-    {
-        return Err(RusticolError::integrity(
-            "recurrence prepared-kernel pack digest does not match the authenticated template",
-        ));
-    }
-    let program = authenticated.build()?;
-    let mut backend = NativeRecurrenceKernelBackend::load(prepared_kernel_manifest, payload_root)?;
-    let plan =
-        RecurrenceExecutionPlan::new(program, authenticated.template(), backend.kernel_specs())?;
-    let source_layout = plan.source_layout();
-    let sector_count = plan.sector_count();
-    let resolved_helicities = plan
-        .program()
-        .resolved_helicities()
-        .iter()
-        .map(|row| row.public_helicities().to_vec())
-        .collect::<Vec<_>>();
-    let amplitude_destinations = plan
-        .program()
-        .amplitude_destinations()
-        .iter()
-        .copied()
-        .map(|destination| NativeAmplitudeDestination {
-            id: destination.id(),
-            target_sector_id: destination.target_sector_id(),
-            target_helicity_id: destination.target_helicity_id(),
+pub(crate) fn _lower_recurrence_direct_v2(
+    py: Python<'_>,
+    builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: &Bound<'_, PyAny>,
+    direct_template_catalog_json: &Bound<'_, PyBytes>,
+    prepared_kernel_pack_digest: String,
+    destination: PathBuf,
+    point_tile_size: u32,
+    workspace_mib: u32,
+    progress_callback: Option<Py<PyAny>>,
+) -> PyResult<Py<PyAny>> {
+    let extraction_started = Instant::now();
+    let owned = parse_input(builder_input)?;
+    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
+    let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
+    validate_sha256_text(&prepared_kernel_pack_digest, "prepared kernel pack digest")?;
+    let python_extraction_seconds = extraction_started.elapsed().as_secs_f64();
+
+    let native = py
+        .detach(move || {
+            let mut report =
+                |progress| report_recurrence_build_progress(progress_callback.as_ref(), progress);
+            lower_recurrence_direct(
+                owned,
+                prepared_template,
+                &direct_template_catalog_json,
+                &prepared_kernel_pack_digest,
+                &destination,
+                point_tile_size,
+                workspace_mib,
+                python_extraction_seconds,
+                &mut report,
+            )
         })
-        .collect::<Vec<_>>();
-    let output_component_count = if resolved {
-        plan.resolved_component_count()?
-    } else {
-        sector_count
-    };
-    let mut runtime = RecurrenceExecutionRuntime::new(plan, point_tile_size)?;
-    let source_values = source_values
-        .iter()
-        .map(|(real, imag)| EagerComplex64::new(*real, *imag))
-        .collect::<Vec<_>>();
-    let model_parameters = model_parameters
-        .iter()
-        .map(|(real, imag)| EagerComplex64::new(*real, *imag))
-        .collect::<Vec<_>>();
-    let output_len = output_component_count
-        .checked_mul(point_count)
-        .ok_or_else(|| invalid("recurrence output length overflows"))?;
-    let mut amplitudes = vec![EagerComplex64::new(0.0, 0.0); output_len];
-    if resolved {
-        runtime.evaluate_resolved_amplitudes_into(
-            &mut backend,
-            point_count,
-            &source_values,
-            external_momenta,
-            &model_parameters,
-            &mut amplitudes,
-        )?;
-    } else {
-        runtime.evaluate_one_helicity_amplitudes_into(
-            &mut backend,
-            point_count,
-            &source_values,
-            external_momenta,
-            &model_parameters,
-            &mut amplitudes,
-        )?;
-    }
-    Ok(NativeRecurrenceEvaluation {
-        amplitudes: amplitudes
-            .into_iter()
-            .map(|value| (value.re, value.im))
-            .collect(),
-        source_layout,
-        sector_count,
-        resolved_helicities,
-        amplitude_destinations,
-        resolved,
-        backend: backend.summary().clone(),
-    })
+        .map_err(python_error)?;
+    direct_lowering_mapping(py, native)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn evaluate_helicity_sum_norm_sqr(
+fn lower_recurrence_direct(
     input: OwnedInput,
     prepared_template: PreparedTemplateInput,
-    prepared_kernel_manifest: &[u8],
+    direct_template_catalog_json: &[u8],
     prepared_kernel_pack_digest: &str,
-    payload_root: &std::path::Path,
-    source_values: &[(f64, f64)],
-    external_momenta: &[f64],
-    model_parameters: &[(f64, f64)],
-    point_count: usize,
-    point_tile_size: usize,
-) -> RusticolResult<NativeRecurrenceNormSqrEvaluation> {
-    validate_inventory(&input)?;
-    let actual_digest = canonical_digest(&input)?;
-    if actual_digest != input.declared_digest {
-        return Err(invalid("recurrence builder input digest mismatch"));
+    destination: &std::path::Path,
+    point_tile_size: u32,
+    workspace_mib: u32,
+    python_extraction_seconds: f64,
+    progress: &mut dyn FnMut(RecurrenceBuildProgress) -> RusticolResult<()>,
+) -> RusticolResult<NativeDirectLoweringResult> {
+    let native_started = Instant::now();
+    if std::fs::symlink_metadata(destination).is_ok() {
+        return Err(invalid(format!(
+            "recurrence direct-plan destination already exists: {}",
+            destination.display()
+        )));
     }
-    let process = decode_process_input(&input)?.validate()?;
-    let template = prepared_template.into_core()?.validate()?;
-    let authenticated = AuthenticatedRecurrenceBuilderInput::new(process, template)?;
-    if authenticated
-        .template()
-        .summary()
-        .prepared_kernel_pack_digest
-        .to_string()
-        != prepared_kernel_pack_digest
-    {
+
+    validate_inventory(&input)?;
+    let builder_input_digest = canonical_digest(&input)?;
+    if builder_input_digest != input.declared_digest {
+        return Err(invalid(format!(
+            "recurrence builder input digest mismatch: declared {}, found {builder_input_digest}",
+            input.declared_digest
+        )));
+    }
+    let template_input_digest = prepared_template.canonical_digest()?;
+    let expected_pack_digest =
+        semantic_digest_from_hex(prepared_kernel_pack_digest, "prepared kernel pack digest")?;
+    if prepared_template.prepared_kernel_pack_digest != expected_pack_digest {
         return Err(RusticolError::integrity(
             "recurrence prepared-kernel pack digest does not match the authenticated template",
         ));
     }
-    let program = authenticated.build()?;
-    let mut backend = NativeRecurrenceKernelBackend::load(prepared_kernel_manifest, payload_root)?;
-    let plan =
-        RecurrenceExecutionPlan::new(program, authenticated.template(), backend.kernel_specs())?;
-    let source_layout = plan.source_layout();
-    let sector_count = plan.sector_count();
-    let mut runtime = RecurrenceExecutionRuntime::new(plan, point_tile_size)?;
-    let source_values = source_values
-        .iter()
-        .map(|(real, imag)| EagerComplex64::new(*real, *imag))
-        .collect::<Vec<_>>();
-    let model_parameters = model_parameters
-        .iter()
-        .map(|(real, imag)| EagerComplex64::new(*real, *imag))
-        .collect::<Vec<_>>();
-    let output_len = sector_count
-        .checked_mul(point_count)
-        .ok_or_else(|| invalid("recurrence norm-squared output length overflows"))?;
-    let mut norm_sqr = vec![0.0; output_len];
-    runtime.evaluate_helicity_sum_norm_sqr_into(
-        &mut backend,
-        point_count,
-        &source_values,
-        external_momenta,
-        &model_parameters,
-        &mut norm_sqr,
+
+    let catalog_started = Instant::now();
+    let direct_catalog = parse_direct_template_catalog(
+        direct_template_catalog_json,
+        expected_pack_digest,
+        prepared_template.catalog_digest,
+        prepared_template.compiled_model_digest,
     )?;
-    Ok(NativeRecurrenceNormSqrEvaluation {
-        norm_sqr,
-        source_layout,
-        sector_count,
-        backend: backend.summary().clone(),
+    let catalog_authentication_seconds = catalog_started.elapsed().as_secs_f64();
+
+    let process = decode_process_input(&input)?.validate()?;
+    let process_id = process.summary().process_id().to_owned();
+    let strategy = process.summary().strategy();
+    let semantic_digest = process.semantic_identity().process_digest();
+    let template = prepared_template.into_core()?.validate()?;
+    let authenticated = AuthenticatedRecurrenceBuilderInput::new(process, template)?;
+
+    let semantic_started = Instant::now();
+    let program = authenticated.build_with_progress(progress)?;
+    let semantic_construction_seconds = semantic_started.elapsed().as_secs_f64();
+
+    let direct_lowering_started = Instant::now();
+    let runtime_options = DirectRecurrenceRuntimeOptions::new(point_tile_size, workspace_mib)?;
+    let plan = lower_recurrence_direct_plan_v2(
+        &program,
+        authenticated.template(),
+        &direct_catalog.catalog,
+        semantic_digest,
+        expected_pack_digest,
+        direct_catalog.catalog_digest,
+        runtime_options,
+    )?;
+    let direct_lowering_seconds = direct_lowering_started.elapsed().as_secs_f64();
+
+    let resolved_helicities = resolved_helicities_from_direct_plan(&plan)?;
+    let semantic_component_count = plan.currents().iter().try_fold(0_u64, |total, current| {
+        total
+            .checked_add(u64::from(current.component_count))
+            .ok_or_else(|| invalid("recurrence semantic component count exceeds u64"))
+    })?;
+
+    let serialization_started = Instant::now();
+    let metadata = write_recurrence_direct_plan_pacbin(destination, &plan)?;
+    let serialization_seconds = serialization_started.elapsed().as_secs_f64();
+    let native_total_seconds = native_started.elapsed().as_secs_f64();
+
+    Ok(NativeDirectLoweringResult {
+        builder_input_digest,
+        template_input_digest,
+        prepared_kernel_pack_digest: direct_catalog.prepared_kernel_pack_digest.to_string(),
+        direct_template_catalog_digest: direct_catalog.catalog_digest.to_string(),
+        process_id,
+        strategy,
+        semantic_digest: plan.semantic_digest().to_string(),
+        runtime_layout_digest: plan.runtime_layout_digest().to_string(),
+        member_count: metadata.member_count,
+        unpacked_size_bytes: metadata.unpacked_size_bytes,
+        index_sha256: hex_digest(metadata.index_sha256),
+        container_size: metadata.container_size,
+        plan_payload_size: metadata.plan_payload_size,
+        plan_sha256: hex_digest(metadata.plan_sha256),
+        current_count: plan.currents().len(),
+        source_row_count: plan.sources().len(),
+        contribution_count: plan.contributions().len(),
+        finalization_count: plan.finalizations().len(),
+        closure_count: plan.closures().len(),
+        row_group_count: plan.row_groups().len(),
+        momentum_form_count: plan.momentum_forms().len(),
+        selector_domain_count: plan.selector_domains().len(),
+        replay_target_count: plan.replay_targets().len(),
+        amplitude_destination_count: plan.amplitude_destinations().len(),
+        resolved_helicity_count: plan.resolved_helicities().len(),
+        retained_helicity_count: plan.retained_helicity_count(),
+        exact_factor_count: plan.exact_factors().len(),
+        semantic_component_count,
+        current_arena_components: plan.current_arena_components(),
+        parameter_value_count: plan.parameter_value_count(),
+        physical_sector_count: plan.physical_sector_count(),
+        direct_executor_count: plan.direct_executor_count(),
+        prepared_kernel_count: direct_catalog.prepared_kernel_count,
+        resolved_helicities,
+        timings: DirectLoweringTimings {
+            python_extraction_seconds,
+            catalog_authentication_seconds,
+            semantic_construction_seconds,
+            direct_lowering_seconds,
+            serialization_seconds,
+            native_total_seconds,
+        },
     })
 }
 
-fn recurrence_evaluation_mapping(
-    py: Python<'_>,
-    native: NativeRecurrenceEvaluation,
-) -> PyResult<Py<PyAny>> {
-    let result = PyDict::new(py);
-    result.set_item("kind", "pyamplicol-recurrence-private-evaluation-v1")?;
-    result.set_item("sector_count", native.sector_count)?;
-    result.set_item("resolved", native.resolved)?;
-    result.set_item("resolved_helicities", native.resolved_helicities)?;
-    let destinations = PyList::empty(py);
-    for destination in native.amplitude_destinations {
-        let row = PyDict::new(py);
-        row.set_item("id", destination.id)?;
-        row.set_item("target_sector_id", destination.target_sector_id)?;
-        row.set_item("target_helicity_id", destination.target_helicity_id)?;
-        destinations.append(row)?;
-    }
-    result.set_item("amplitude_destinations", destinations)?;
-    result.set_item("amplitudes", native.amplitudes)?;
-    let source_layout = PyList::empty(py);
-    for source in native.source_layout {
-        let row = PyDict::new(py);
-        row.set_item("current_id", source.current_id)?;
-        row.set_item("source_slot", source.source_slot)?;
-        row.set_item("source_template_id", source.source_template_id)?;
-        row.set_item("component_start", source.component_start)?;
-        row.set_item("component_count", source.component_count)?;
-        source_layout.append(row)?;
-    }
-    result.set_item("source_layout", source_layout)?;
-    let backend = PyDict::new(py);
-    backend.set_item("manifest_sha256", native.backend.manifest_sha256)?;
-    backend.set_item("backend", native.backend.backend)?;
-    backend.set_item("target_triple", native.backend.target_triple)?;
-    backend.set_item("target_cpu_features", native.backend.target_cpu_features)?;
-    backend.set_item("target_portable", native.backend.target_portable)?;
-    backend.set_item("kernel_count", native.backend.kernel_count)?;
-    result.set_item("prepared_backend", backend)?;
-    Ok(result.into_any().unbind())
+fn resolved_helicities_from_direct_plan(
+    plan: &DirectRecurrencePlan,
+) -> RusticolResult<Vec<Vec<i32>>> {
+    let public = plan.public_helicities();
+    plan.resolved_helicities()
+        .iter()
+        .enumerate()
+        .map(|(index, row)| {
+            if row.id != index as u32 {
+                return Err(invalid(format!(
+                    "direct resolved helicity {index} has non-canonical ID {}",
+                    row.id
+                )));
+            }
+            let start = usize::try_from(row.public_helicity_start)
+                .map_err(|_| invalid("direct resolved-helicity offset exceeds usize"))?;
+            let count = usize::try_from(row.public_helicity_count)
+                .map_err(|_| invalid("direct resolved-helicity count exceeds usize"))?;
+            let end = start
+                .checked_add(count)
+                .ok_or_else(|| invalid("direct resolved-helicity range exceeds usize"))?;
+            public
+                .get(start..end)
+                .map(<[i32]>::to_vec)
+                .ok_or_else(|| invalid("direct resolved-helicity range is out of bounds"))
+        })
+        .collect()
 }
 
-fn recurrence_norm_sqr_mapping(
+fn parse_direct_template_catalog(
+    bytes: &[u8],
+    expected_pack_digest: SemanticDigest,
+    expected_template_catalog_digest: SemanticDigest,
+    expected_compiled_model_digest: SemanticDigest,
+) -> RusticolResult<AuthenticatedDirectTemplateCatalog> {
+    if bytes.is_empty() {
+        return Err(invalid("direct-template catalog JSON must not be empty"));
+    }
+    let value: JsonValue = serde_json::from_slice(bytes).map_err(|error| {
+        invalid(format!(
+            "direct-template catalog is not valid JSON: {error}"
+        ))
+    })?;
+    let canonical = canonical_json_bytes(&value, "direct-template catalog")?;
+    if canonical != bytes {
+        return Err(invalid(
+            "direct-template catalog JSON is not canonical ASCII JSON",
+        ));
+    }
+    let object = json_object(&value, "direct-template catalog")?;
+    require_json_fields(
+        object,
+        &[
+            "abi",
+            "backend",
+            "backend_abi",
+            "canonicalization_abi",
+            "catalog_digest",
+            "compiled_model_digest",
+            "optimization_level",
+            "optimization_settings_digest",
+            "portable",
+            "prepared_kernel_contract_digest",
+            "prepared_kernel_pack_digest",
+            "prepared_kernel_payload_digest",
+            "recurrence_template_catalog_digest",
+            "target_triple",
+            "templates",
+        ],
+        "direct-template catalog",
+    )?;
+    require_json_string_value(
+        object,
+        "abi",
+        RECURRENCE_DIRECT_TEMPLATE_ABI,
+        "direct-template catalog",
+    )?;
+    require_json_string_value(
+        object,
+        "backend_abi",
+        DIRECT_BACKEND_ABI,
+        "direct-template catalog",
+    )?;
+    require_json_string_value(
+        object,
+        "canonicalization_abi",
+        DIRECT_CANONICALIZATION_ABI,
+        "direct-template catalog",
+    )?;
+
+    let catalog_digest = json_sha256(object, "catalog_digest", "direct-template catalog digest")?;
+    let actual_catalog_digest = digest_json_without_field(
+        &value,
+        "catalog_digest",
+        "direct-template catalog semantic payload",
+    )?;
+    if catalog_digest != actual_catalog_digest {
+        return Err(RusticolError::integrity(
+            "direct-template catalog digest does not match its canonical payload",
+        ));
+    }
+    let prepared_kernel_pack_digest = json_sha256(
+        object,
+        "prepared_kernel_pack_digest",
+        "direct-template prepared-kernel pack digest",
+    )?;
+    if prepared_kernel_pack_digest != expected_pack_digest {
+        return Err(RusticolError::integrity(
+            "direct-template catalog prepared-kernel pack digest does not match the requested pack",
+        ));
+    }
+    let recurrence_template_catalog_digest = json_sha256(
+        object,
+        "recurrence_template_catalog_digest",
+        "direct-template semantic catalog digest",
+    )?;
+    if recurrence_template_catalog_digest != expected_template_catalog_digest {
+        return Err(RusticolError::integrity(
+            "direct-template catalog does not match the authenticated recurrence template",
+        ));
+    }
+    let compiled_model_digest = json_sha256(
+        object,
+        "compiled_model_digest",
+        "direct-template compiled-model digest",
+    )?;
+    if compiled_model_digest != expected_compiled_model_digest {
+        return Err(RusticolError::integrity(
+            "direct-template catalog does not match the authenticated compiled model",
+        ));
+    }
+    for (field, context) in [
+        (
+            "prepared_kernel_contract_digest",
+            "direct-template prepared-kernel contract digest",
+        ),
+        (
+            "prepared_kernel_payload_digest",
+            "direct-template prepared-kernel payload digest",
+        ),
+        (
+            "optimization_settings_digest",
+            "direct-template optimization-settings digest",
+        ),
+    ] {
+        json_sha256(object, field, context)?;
+    }
+
+    let backend = json_string(object, "backend", "direct-template backend")?;
+    if !matches!(backend, "jit" | "cpp" | "asm") {
+        return Err(invalid(format!(
+            "direct-template catalog has unsupported backend {backend:?}"
+        )));
+    }
+    let target_triple =
+        json_nonempty_string(object, "target_triple", "direct-template target triple")?;
+    let portable = json_bool(object, "portable", "direct-template portable flag")?;
+    let optimization_level = json_u32(
+        object,
+        "optimization_level",
+        "direct-template optimization level",
+    )?;
+    match backend {
+        "jit" if !portable || optimization_level != 2 => {
+            return Err(invalid(
+                "prepared direct JIT catalogs must use portable SymJIT O2",
+            ));
+        }
+        "cpp" | "asm" if portable => {
+            return Err(invalid(
+                "prepared direct C++/ASM catalogs must be target-native",
+            ));
+        }
+        _ => {}
+    }
+
+    let templates = json_array(object, "templates", "direct-template templates")?;
+    if templates.is_empty() {
+        return Err(invalid(
+            "direct-template executor catalog must not be empty",
+        ));
+    }
+    let mut bindings = Vec::with_capacity(templates.len());
+    let mut prepared_kernel_ids = BTreeSet::new();
+    let mut identity_finalizer_seen = false;
+    for (expected_executor_id, template_value) in templates.iter().enumerate() {
+        let context = format!("direct template {expected_executor_id}");
+        let template = json_object(template_value, &context)?;
+        require_json_fields(
+            template,
+            &[
+                "abi",
+                "alignment_bytes",
+                "backend",
+                "coupling_slot_count",
+                "destination_aliasing",
+                "destination_component_count",
+                "destination_operation",
+                "direct_executor_id",
+                "evaluator_binding_id",
+                "evaluator_resolver_key",
+                "exact_expression_digest",
+                "momentum_operand_count",
+                "optimization_level",
+                "parameter_slot_count",
+                "parent_arity",
+                "parent_component_counts",
+                "payload_binding",
+                "portable",
+                "role",
+                "semantic_digest",
+                "semantic_template_ids",
+                "simd_axis",
+                "target_triple",
+                "template_id",
+            ],
+            &context,
+        )?;
+        require_json_string_value(template, "abi", RECURRENCE_DIRECT_TEMPLATE_ABI, &context)?;
+        let actual_template_digest =
+            digest_json_without_field(template_value, "semantic_digest", &context)?;
+        let template_digest = json_sha256(
+            template,
+            "semantic_digest",
+            &format!("{context} semantic digest"),
+        )?;
+        if template_digest != actual_template_digest {
+            return Err(RusticolError::integrity(format!(
+                "{context} semantic digest does not match its canonical payload"
+            )));
+        }
+
+        let direct_executor_id = json_u32(
+            template,
+            "direct_executor_id",
+            &format!("{context} executor ID"),
+        )?;
+        let expected_executor_id = u32::try_from(expected_executor_id)
+            .map_err(|_| invalid("direct-template executor count exceeds u32"))?;
+        if direct_executor_id != expected_executor_id {
+            return Err(invalid(format!(
+                "{context} has executor ID {direct_executor_id}, expected dense ID {expected_executor_id}"
+            )));
+        }
+        let evaluator_binding_id = json_u32(
+            template,
+            "evaluator_binding_id",
+            &format!("{context} evaluator-binding ID"),
+        )?;
+        let role_text = json_string(template, "role", &format!("{context} role"))?;
+        let role = direct_executor_role(role_text, &context)?;
+        let expected_operation = match role {
+            DirectExecutorRole::Source => "initialize",
+            DirectExecutorRole::Contribution => "add",
+            DirectExecutorRole::Finalization => "finalize-in-place",
+            DirectExecutorRole::Closure => "closure-add",
+        };
+        require_json_string_value(
+            template,
+            "destination_operation",
+            expected_operation,
+            &context,
+        )?;
+        require_json_string_value(template, "backend", backend, &context)?;
+        require_json_string_value(template, "target_triple", target_triple, &context)?;
+        if json_bool(template, "portable", &format!("{context} portable flag"))? != portable
+            || json_u32(
+                template,
+                "optimization_level",
+                &format!("{context} optimization level"),
+            )? != optimization_level
+        {
+            return Err(invalid(format!(
+                "{context} backend policy does not match its catalog"
+            )));
+        }
+        require_json_string_value(template, "simd_axis", "points-contiguous", &context)?;
+        let destination_aliasing = json_bool(
+            template,
+            "destination_aliasing",
+            &format!("{context} destination aliasing"),
+        )?;
+        if destination_aliasing != (role == DirectExecutorRole::Finalization) {
+            return Err(invalid(format!(
+                "{context} has an invalid destination-aliasing contract"
+            )));
+        }
+        json_nonempty_string(template, "template_id", &format!("{context} template ID"))?;
+        json_nonempty_string(
+            template,
+            "evaluator_resolver_key",
+            &format!("{context} evaluator resolver key"),
+        )?;
+        json_sha256(
+            template,
+            "exact_expression_digest",
+            &format!("{context} exact-expression digest"),
+        )?;
+        validate_direct_template_shapes(template, &context)?;
+
+        let payload = json_object(
+            json_field(template, "payload_binding", &context)?,
+            &format!("{context} payload binding"),
+        )?;
+        require_json_fields(
+            payload,
+            &[
+                "abi",
+                "destination_operation",
+                "direct_application_abi",
+                "exact_factor_scalar_slots",
+                "input_plane_count",
+                "input_plane_projections",
+                "kind",
+                "output_alias_inputs",
+                "parameter_bindings",
+                "payload_digest",
+                "payload_paths",
+                "prepared_kernel_id",
+                "prepared_template_semantic_digest",
+                "role",
+                "runtime_template",
+                "scalar_input_count",
+                "scalar_projections",
+                "source_application_abi",
+                "source_application_path",
+                "source_application_sha256",
+                "state_plane_indices",
+            ],
+            &format!("{context} payload binding"),
+        )?;
+        require_json_string_value(
+            payload,
+            "abi",
+            DIRECT_PAYLOAD_BINDING_ABI,
+            &format!("{context} payload binding"),
+        )?;
+        json_sha256(
+            payload,
+            "payload_digest",
+            &format!("{context} payload digest"),
+        )?;
+        let payload_kind = json_string(payload, "kind", &format!("{context} payload kind"))?;
+        if !matches!(
+            payload_kind,
+            "rusticol-intrinsic" | "prepared-direct-call" | "pending-direct-call-abi"
+        ) {
+            return Err(invalid(format!(
+                "{context} has unsupported payload kind {payload_kind:?}"
+            )));
+        }
+        if payload_kind == "pending-direct-call-abi" {
+            return Err(RusticolError::compatibility(format!(
+                "{context} has no executable Direct-Arena payload; rebuild the prepared model"
+            )));
+        }
+        let runtime_template = json_optional_string(
+            payload,
+            "runtime_template",
+            &format!("{context} runtime template"),
+        )?;
+        let prepared_kernel_id = json_optional_u32(
+            payload,
+            "prepared_kernel_id",
+            &format!("{context} prepared-kernel ID"),
+        )?;
+        validate_string_array(
+            json_array(
+                payload,
+                "payload_paths",
+                &format!("{context} payload paths"),
+            )?,
+            &format!("{context} payload paths"),
+        )?;
+
+        let identity_finalizer =
+            runtime_template.is_some_and(|name| name == DIRECT_IDENTITY_FINALIZER);
+        if identity_finalizer {
+            if identity_finalizer_seen {
+                return Err(invalid(
+                    "direct-template catalog contains more than one generic identity finalizer",
+                ));
+            }
+            if role != DirectExecutorRole::Finalization
+                || payload_kind != "rusticol-intrinsic"
+                || prepared_kernel_id.is_some()
+            {
+                return Err(invalid(format!(
+                    "{context} has an invalid identity-finalizer contract"
+                )));
+            }
+            identity_finalizer_seen = true;
+            bindings.push(PreparedDirectExecutorBinding::identity_finalizer(
+                direct_executor_id,
+            ));
+        } else {
+            if let Some(kernel_id) = prepared_kernel_id {
+                prepared_kernel_ids.insert(kernel_id);
+            }
+            bindings.push(PreparedDirectExecutorBinding::evaluator(
+                role,
+                evaluator_binding_id,
+                direct_executor_id,
+            ));
+        }
+    }
+
+    let catalog = PreparedDirectExecutorCatalog::new(catalog_digest, bindings)?;
+    Ok(AuthenticatedDirectTemplateCatalog {
+        catalog,
+        catalog_digest,
+        prepared_kernel_pack_digest,
+        prepared_kernel_count: prepared_kernel_ids.len(),
+    })
+}
+
+fn validate_direct_template_shapes(
+    template: &JsonMap<String, JsonValue>,
+    context: &str,
+) -> RusticolResult<()> {
+    let parent_arity = json_u32(template, "parent_arity", &format!("{context} parent arity"))?;
+    let parent_counts = json_array(
+        template,
+        "parent_component_counts",
+        &format!("{context} parent component counts"),
+    )?;
+    if parent_counts.len() != parent_arity as usize {
+        return Err(invalid(format!(
+            "{context} parent component counts do not match parent arity"
+        )));
+    }
+    for (index, value) in parent_counts.iter().enumerate() {
+        let count = json_value_u32(value, &format!("{context} parent component {index}"))?;
+        if count == 0 {
+            return Err(invalid(format!(
+                "{context} parent component {index} is empty"
+            )));
+        }
+    }
+    for field in [
+        "coupling_slot_count",
+        "momentum_operand_count",
+        "parameter_slot_count",
+    ] {
+        json_u32(template, field, &format!("{context} {field}"))?;
+    }
+    if json_u32(
+        template,
+        "destination_component_count",
+        &format!("{context} destination component count"),
+    )? == 0
+    {
+        return Err(invalid(format!(
+            "{context} destination component count must be positive"
+        )));
+    }
+    let alignment = json_u32(template, "alignment_bytes", &format!("{context} alignment"))?;
+    if alignment == 0 || !alignment.is_power_of_two() {
+        return Err(invalid(format!(
+            "{context} alignment must be a positive power of two"
+        )));
+    }
+    validate_string_array(
+        json_array(
+            template,
+            "semantic_template_ids",
+            &format!("{context} semantic template IDs"),
+        )?,
+        &format!("{context} semantic template IDs"),
+    )
+}
+
+fn direct_executor_role(value: &str, context: &str) -> RusticolResult<DirectExecutorRole> {
+    match value {
+        "source" => Ok(DirectExecutorRole::Source),
+        "contribution" => Ok(DirectExecutorRole::Contribution),
+        "finalization" => Ok(DirectExecutorRole::Finalization),
+        "closure" => Ok(DirectExecutorRole::Closure),
+        _ => Err(invalid(format!(
+            "{context} has unsupported direct role {value:?}"
+        ))),
+    }
+}
+
+fn canonical_json_bytes(value: &JsonValue, context: &str) -> RusticolResult<Vec<u8>> {
+    serde_json::to_vec(value)
+        .map_err(|error| invalid(format!("could not canonicalize {context}: {error}")))
+}
+
+fn digest_json_without_field(
+    value: &JsonValue,
+    field: &str,
+    context: &str,
+) -> RusticolResult<SemanticDigest> {
+    let mut semantic = value.clone();
+    let object = semantic
+        .as_object_mut()
+        .ok_or_else(|| invalid(format!("{context} must be a JSON object")))?;
+    if object.remove(field).is_none() {
+        return Err(invalid(format!("{context} has no {field:?} field")));
+    }
+    let digest: [u8; 32] = Sha256::digest(canonical_json_bytes(&semantic, context)?).into();
+    SemanticDigest::new(digest)
+}
+
+fn json_object<'a>(
+    value: &'a JsonValue,
+    context: &str,
+) -> RusticolResult<&'a JsonMap<String, JsonValue>> {
+    value
+        .as_object()
+        .ok_or_else(|| invalid(format!("{context} must be a JSON object")))
+}
+
+fn require_json_fields(
+    object: &JsonMap<String, JsonValue>,
+    expected: &[&str],
+    context: &str,
+) -> RusticolResult<()> {
+    let expected = expected.iter().copied().collect::<BTreeSet<_>>();
+    let actual = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
+    if actual == expected {
+        return Ok(());
+    }
+    let missing = expected.difference(&actual).copied().collect::<Vec<_>>();
+    let unexpected = actual.difference(&expected).copied().collect::<Vec<_>>();
+    Err(invalid(format!(
+        "{context} fields do not match direct-template-v1; missing={missing:?}, unexpected={unexpected:?}"
+    )))
+}
+
+fn json_field<'a>(
+    object: &'a JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<&'a JsonValue> {
+    object
+        .get(field)
+        .ok_or_else(|| invalid(format!("{context} has no {field:?} field")))
+}
+
+fn json_string<'a>(
+    object: &'a JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<&'a str> {
+    json_field(object, field, context)?
+        .as_str()
+        .ok_or_else(|| invalid(format!("{context} must be a string")))
+}
+
+fn json_nonempty_string<'a>(
+    object: &'a JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<&'a str> {
+    let value = json_string(object, field, context)?;
+    if value.is_empty() {
+        return Err(invalid(format!("{context} must not be empty")));
+    }
+    Ok(value)
+}
+
+fn require_json_string_value(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    expected: &str,
+    context: &str,
+) -> RusticolResult<()> {
+    let actual = json_string(object, field, context)?;
+    if actual != expected {
+        return Err(invalid(format!(
+            "{context} {field:?} is {actual:?}, expected {expected:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn json_bool(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<bool> {
+    json_field(object, field, context)?
+        .as_bool()
+        .ok_or_else(|| invalid(format!("{context} must be a boolean")))
+}
+
+fn json_u32(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<u32> {
+    json_value_u32(json_field(object, field, context)?, context)
+}
+
+fn json_value_u32(value: &JsonValue, context: &str) -> RusticolResult<u32> {
+    value
+        .as_u64()
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| invalid(format!("{context} must be a nonnegative u32")))
+}
+
+fn json_optional_u32(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<Option<u32>> {
+    let value = json_field(object, field, context)?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    json_value_u32(value, context).map(Some)
+}
+
+fn json_optional_string<'a>(
+    object: &'a JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<Option<&'a str>> {
+    let value = json_field(object, field, context)?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    value
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .map(Some)
+        .ok_or_else(|| invalid(format!("{context} must be null or a nonempty string")))
+}
+
+fn json_array<'a>(
+    object: &'a JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<&'a [JsonValue]> {
+    json_field(object, field, context)?
+        .as_array()
+        .map(Vec::as_slice)
+        .ok_or_else(|| invalid(format!("{context} must be a JSON array")))
+}
+
+fn validate_string_array(values: &[JsonValue], context: &str) -> RusticolResult<()> {
+    if values
+        .iter()
+        .all(|value| value.as_str().is_some_and(|value| !value.is_empty()))
+    {
+        return Ok(());
+    }
+    Err(invalid(format!(
+        "{context} must contain only nonempty strings"
+    )))
+}
+
+fn json_sha256(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<SemanticDigest> {
+    semantic_digest_from_hex(json_string(object, field, context)?, context)
+}
+
+fn report_recurrence_build_progress(
+    callback: Option<&Py<PyAny>>,
+    progress: RecurrenceBuildProgress,
+) -> RusticolResult<()> {
+    let Some(callback) = callback else {
+        return Ok(());
+    };
+    Python::attach(|py| -> PyResult<()> {
+        let payload = PyDict::new(py);
+        payload.set_item("step", progress.phase)?;
+        payload.set_item("phase_index", progress.phase_index)?;
+        payload.set_item("phase_total", progress.phase_total)?;
+        payload.set_item("stage_total", progress.stage_total)?;
+        payload.set_item(
+            "candidate_parent_pair_count",
+            progress.candidate_parent_pair_count,
+        )?;
+        payload.set_item("current_count", progress.current_count)?;
+        payload.set_item("contribution_count", progress.contribution_count)?;
+        payload.set_item(
+            "dynamic_color_state_count",
+            progress.dynamic_color_state_count,
+        )?;
+        payload.set_item(
+            "color_target_prune_count",
+            progress.color_target_prune_count,
+        )?;
+        if let Some(stage_index) = progress.stage_index {
+            payload.set_item("stage_index", stage_index)?;
+        }
+        if let Some(subset_size) = progress.subset_size {
+            payload.set_item("subset_size", subset_size)?;
+        }
+        if let Some(total) = progress.candidate_parent_pair_total {
+            payload.set_item("candidate_parent_pair_total", total)?;
+        }
+        callback.bind(py).call1((payload,))?;
+        Ok(())
+    })
+    .map_err(|error| invalid(format!("recurrence progress callback failed: {error}")))
+}
+
+fn direct_lowering_mapping(
     py: Python<'_>,
-    native: NativeRecurrenceNormSqrEvaluation,
+    native: NativeDirectLoweringResult,
 ) -> PyResult<Py<PyAny>> {
     let result = PyDict::new(py);
+    result.set_item("kind", DIRECT_LOWERING_RESULT_KIND)?;
+    result.set_item("schema_version", DIRECT_LOWERING_RESULT_SCHEMA_VERSION)?;
+    result.set_item("builder_input_abi", DIRECT_BUILDER_INPUT_ABI)?;
+    result.set_item("builder_input_sha256", native.builder_input_digest)?;
     result.set_item(
-        "kind",
-        "pyamplicol-recurrence-private-helicity-sum-norm-sqr-v1",
+        "template_input_abi",
+        template::RECURRENCE_TEMPLATE_INPUT_ABI,
     )?;
-    result.set_item("sector_count", native.sector_count)?;
-    result.set_item("norm_sqr", native.norm_sqr)?;
-    let source_layout = PyList::empty(py);
-    for source in native.source_layout {
-        let row = PyDict::new(py);
-        row.set_item("current_id", source.current_id)?;
-        row.set_item("source_slot", source.source_slot)?;
-        row.set_item("source_template_id", source.source_template_id)?;
-        row.set_item("component_start", source.component_start)?;
-        row.set_item("component_count", source.component_count)?;
-        source_layout.append(row)?;
-    }
-    result.set_item("source_layout", source_layout)?;
-    let backend = PyDict::new(py);
-    backend.set_item("manifest_sha256", native.backend.manifest_sha256)?;
-    backend.set_item("backend", native.backend.backend)?;
-    backend.set_item("target_triple", native.backend.target_triple)?;
-    backend.set_item("target_cpu_features", native.backend.target_cpu_features)?;
-    backend.set_item("target_portable", native.backend.target_portable)?;
-    backend.set_item("kernel_count", native.backend.kernel_count)?;
-    result.set_item("prepared_backend", backend)?;
+    result.set_item("template_input_sha256", native.template_input_digest)?;
+    result.set_item(
+        "prepared_kernel_pack_digest",
+        native.prepared_kernel_pack_digest,
+    )?;
+    result.set_item("direct_template_abi", RECURRENCE_DIRECT_TEMPLATE_ABI)?;
+    result.set_item(
+        "direct_template_catalog_digest",
+        native.direct_template_catalog_digest,
+    )?;
+    result.set_item("recurrence_plan_abi", RECURRENCE_DIRECT_PLAN_ABI)?;
+    result.set_item("runtime_layout_abi", RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI)?;
+    result.set_item(
+        "required_runtime_capabilities",
+        PyList::new(
+            py,
+            [
+                RECURRENCE_LC_COLOR_CAPABILITY,
+                RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
+            ],
+        )?,
+    )?;
+
+    let container = PyDict::new(py);
+    container.set_item("kind", RUNTIME_CONTAINER_KIND)?;
+    container.set_item("schema_version", RUNTIME_CONTAINER_SCHEMA_VERSION)?;
+    container.set_item("storage_abi", STORAGE_ABI)?;
+    container.set_item("member_count", native.member_count)?;
+    container.set_item("unpacked_size_bytes", native.unpacked_size_bytes)?;
+    container.set_item("index_sha256", native.index_sha256)?;
+    result.set_item("runtime_container", container)?;
+
+    let inspection = PyDict::new(py);
+    inspection.set_item("execution_mode", "recurrence")?;
+    inspection.set_item("recurrence_plan_abi", RECURRENCE_DIRECT_PLAN_ABI)?;
+    inspection.set_item("runtime_layout_abi", RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI)?;
+    inspection.set_item("direct_template_abi", RECURRENCE_DIRECT_TEMPLATE_ABI)?;
+    inspection.set_item("process_id", native.process_id)?;
+    inspection.set_item("lc_flow_layout", native.strategy.as_str())?;
+    inspection.set_item("prepared_kernel_count", native.prepared_kernel_count)?;
+    inspection.set_item("parameter_count", native.parameter_value_count)?;
+    inspection.set_item("sector_count", native.physical_sector_count)?;
+    inspection.set_item("direct_executor_count", native.direct_executor_count)?;
+    inspection.set_item("semantic_digest", native.semantic_digest)?;
+    inspection.set_item("runtime_layout_digest", native.runtime_layout_digest)?;
+
+    let schedule = PyDict::new(py);
+    schedule.set_item("current_count", native.current_count)?;
+    schedule.set_item("source_row_count", native.source_row_count)?;
+    schedule.set_item("contribution_count", native.contribution_count)?;
+    schedule.set_item("finalization_count", native.finalization_count)?;
+    schedule.set_item("closure_term_count", native.closure_count)?;
+    schedule.set_item(
+        "amplitude_destination_count",
+        native.amplitude_destination_count,
+    )?;
+    schedule.set_item("replay_target_count", native.replay_target_count)?;
+    schedule.set_item("resolved_helicity_count", native.resolved_helicity_count)?;
+    schedule.set_item("retained_helicity_count", native.retained_helicity_count)?;
+    schedule.set_item("exact_factor_count", native.exact_factor_count)?;
+    inspection.set_item("schedule", schedule)?;
+
+    let direct_arena = PyDict::new(py);
+    direct_arena.set_item("semantic_component_count", native.semantic_component_count)?;
+    direct_arena.set_item("current_arena_components", native.current_arena_components)?;
+    direct_arena.set_item(
+        "arena_component_reuse_count",
+        native
+            .semantic_component_count
+            .saturating_sub(u64::from(native.current_arena_components)),
+    )?;
+    direct_arena.set_item("momentum_form_count", native.momentum_form_count)?;
+    direct_arena.set_item("selector_domain_count", native.selector_domain_count)?;
+    direct_arena.set_item("row_group_count", native.row_group_count)?;
+    direct_arena.set_item("packed_input_bytes", 0)?;
+    direct_arena.set_item("packed_output_bytes", 0)?;
+    direct_arena.set_item("scatter_bytes", 0)?;
+    inspection.set_item("direct_arena", direct_arena)?;
+
+    let member = PyDict::new(py);
+    member.set_item("path", RECURRENCE_DIRECT_PLAN_MEMBER)?;
+    member.set_item("size_bytes", native.plan_payload_size)?;
+    member.set_item("sha256", native.plan_sha256)?;
+    member.set_item("container_size_bytes", native.container_size)?;
+    inspection.set_item("runtime_container_member", member)?;
+
+    let timings = PyDict::new(py);
+    timings.set_item(
+        "python_extraction",
+        native.timings.python_extraction_seconds,
+    )?;
+    timings.set_item(
+        "catalog_authentication",
+        native.timings.catalog_authentication_seconds,
+    )?;
+    timings.set_item(
+        "semantic_construction",
+        native.timings.semantic_construction_seconds,
+    )?;
+    timings.set_item("direct_lowering", native.timings.direct_lowering_seconds)?;
+    timings.set_item("serialization", native.timings.serialization_seconds)?;
+    timings.set_item("native_total", native.timings.native_total_seconds)?;
+    inspection.set_item("generation_timings_seconds", timings)?;
+
+    result.set_item("inspection_summary", inspection)?;
+    result.set_item("resolved_helicities", native.resolved_helicities)?;
     Ok(result.into_any().unbind())
 }
 
 fn parse_input(input: &Bound<'_, PyAny>) -> PyResult<OwnedInput> {
     if cfg!(not(target_endian = "little")) {
         return Err(PyValueError::new_err(
-            "recurrence builder input v1 requires a little-endian target",
+            "recurrence builder input v2 requires a little-endian target",
         ));
     }
     let abi = required_string(input, "abi")?;
@@ -1749,354 +2261,6 @@ fn extract_owned_values(
         PrimitiveKind::U32 => extract!(u32, U32),
         PrimitiveKind::U64 => extract!(u64, U64),
         PrimitiveKind::I32 => extract!(i32, I32),
-    })
-}
-
-fn validate_input(
-    input: OwnedInput,
-    prepared_template: Option<PreparedTemplateInput>,
-    construct_schedule: bool,
-) -> RusticolResult<NativeValidationResult> {
-    validate_inventory(&input)?;
-    let actual_digest = canonical_digest(&input)?;
-    if actual_digest != input.declared_digest {
-        return Err(invalid(format!(
-            "recurrence builder input digest mismatch: declared {}, found {actual_digest}",
-            input.declared_digest
-        )));
-    }
-
-    let mut total_row_count = 0_u64;
-    let mut primitive_element_count = 0_u64;
-    let mut primitive_byte_count = 0_u64;
-    let mut column_count = 0_usize;
-    for table in &input.tables {
-        total_row_count = total_row_count
-            .checked_add(table.row_count)
-            .ok_or_else(|| invalid("recurrence total row count exceeds u64"))?;
-        column_count = column_count
-            .checked_add(table.columns.len())
-            .ok_or_else(|| invalid("recurrence column count exceeds usize"))?;
-        for column in &table.columns {
-            primitive_element_count = primitive_element_count
-                .checked_add(u64::try_from(column.values.len()).map_err(|_| {
-                    invalid(format!(
-                        "{}.{} element count exceeds u64",
-                        table.name, column.name
-                    ))
-                })?)
-                .ok_or_else(|| invalid("recurrence primitive element count exceeds u64"))?;
-            primitive_byte_count = primitive_byte_count
-                .checked_add(u64::try_from(column.values.raw_bytes().len()).map_err(|_| {
-                    invalid(format!(
-                        "{}.{} byte count exceeds u64",
-                        table.name, column.name
-                    ))
-                })?)
-                .ok_or_else(|| invalid("recurrence primitive byte count exceeds u64"))?;
-        }
-    }
-
-    let validated_process = decode_process_input(&input)?.validate()?;
-    let process_summary = validated_process.summary().clone();
-    let fermion_pairing_summary =
-        validated_process
-            .fermion_pairing_summary()
-            .map(|summary| NativeFermionPairingSummary {
-                columnar_digest: summary.columnar_digest(),
-                topology_digest: summary.topology_digest(),
-                semantic_digest: summary.semantic_digest(),
-                source_count: summary.source_count(),
-                endpoint_count: summary.endpoint_count(),
-                pairing_class_count: summary.pairing_class_count(),
-                rule_count: summary.rule_count(),
-            });
-    let process_input = validated_process.input();
-    let bitset_ranges = process_input
-        .bitset_ranges
-        .iter()
-        .map(|row| row.range)
-        .collect::<Vec<_>>();
-    let maximum_mask_bit = maximum_mask_bit(&bitset_ranges, &process_input.bitset_words)?;
-    let string_count = process_input.string_ranges.len();
-    let semantic_digest_count = process_input.digest_catalog.len();
-    let exact_factor_count = process_input.exact_factors.len();
-    let open_string_count = process_input.lc_open_strings.len();
-    let selector_mask_count = process_input.bitset_ranges.len();
-    let selector_mask_word_count = process_input.bitset_words.len();
-    let parameter_projection_count = process_input.parameter_projection.len();
-
-    let (
-        composite_authenticated,
-        template_catalog_digest,
-        compiled_model_digest,
-        prepared_kernel_pack_digest,
-        prepared_template_count,
-        schedule_summary,
-    ) = if let Some(prepared_template) = prepared_template {
-        let validated_template = prepared_template.into_core()?.validate()?;
-        let authenticated =
-            AuthenticatedRecurrenceBuilderInput::new(validated_process, validated_template)?;
-        let template_summary = authenticated.template().summary();
-        let template_catalog_digest = template_summary.catalog_digest;
-        let compiled_model_digest = template_summary.compiled_model_digest;
-        let prepared_kernel_pack_digest = template_summary.prepared_kernel_pack_digest;
-        let prepared_template_count = template_summary.parameter_count as usize
-            + template_summary.current_state_count as usize
-            + template_summary.source_count as usize
-            + template_summary.quantum_flow_count as usize
-            + template_summary.transition_count as usize
-            + template_summary.propagator_count as usize
-            + template_summary.closure_count as usize
-            + template_summary.color_contraction_count as usize
-            + template_summary.symmetry_proof_count as usize;
-        let schedule_summary = if construct_schedule {
-            let program = authenticated.build()?;
-            let mut source_component_start = 0usize;
-            let mut source_layout = Vec::new();
-            for current in program.currents().iter().filter(|row| row.is_source()) {
-                let CurrentSourceBinding::FixedTemplate(source_template_id) =
-                    current.key().source_binding()
-                else {
-                    return Err(invalid(
-                        "topology-replay source lacks a fixed source template",
-                    ));
-                };
-                let component_count = authenticated
-                    .template()
-                    .input()
-                    .current_states
-                    .get(current.key().current_state_template_id() as usize)
-                    .ok_or_else(|| invalid("source current state is absent"))?
-                    .dimension as usize;
-                source_layout.push(NativeSourceLayout {
-                    current_id: current.id(),
-                    source_slot: current.key().support_source_slots()[0],
-                    source_template_id,
-                    component_start: source_component_start,
-                    component_count,
-                });
-                source_component_start = source_component_start
-                    .checked_add(component_count)
-                    .ok_or_else(|| invalid("source component layout overflows"))?;
-            }
-            let mut current_count_by_support_size = Vec::<usize>::new();
-            let mut current_count_by_state_and_support_size =
-                BTreeMap::<(u32, usize), usize>::new();
-            let mut current_count_by_state_color_and_support_size =
-                BTreeMap::<(u32, u32, usize), usize>::new();
-            for current in program.currents() {
-                let support_size = current.key().support_source_slots().len();
-                if current_count_by_support_size.len() <= support_size {
-                    current_count_by_support_size.resize(support_size + 1, 0);
-                }
-                current_count_by_support_size[support_size] += 1;
-                *current_count_by_state_and_support_size
-                    .entry((current.key().current_state_template_id(), support_size))
-                    .or_default() += 1;
-                *current_count_by_state_color_and_support_size
-                    .entry((
-                        current.key().current_state_template_id(),
-                        current.key().dynamic_lc_color_state_id().get(),
-                        support_size,
-                    ))
-                    .or_default() += 1;
-            }
-            let mut referenced_quantum_flow_template_ids = program
-                .contributions()
-                .iter()
-                .map(|row| row.key().quantum_flow_witness_id())
-                .collect::<BTreeSet<_>>();
-            let mut contribution_count_by_transition_template_id = BTreeMap::<u32, usize>::new();
-            let mut contribution_count_by_quantum_flow_template_id = BTreeMap::<u32, usize>::new();
-            let mut contribution_count_by_result_state_template_id = BTreeMap::<u32, usize>::new();
-            for contribution in program.contributions() {
-                *contribution_count_by_transition_template_id
-                    .entry(contribution.key().transition_template_id())
-                    .or_default() += 1;
-                *contribution_count_by_quantum_flow_template_id
-                    .entry(contribution.key().quantum_flow_witness_id())
-                    .or_default() += 1;
-                *contribution_count_by_result_state_template_id
-                    .entry(contribution.key().result_state_template_id())
-                    .or_default() += 1;
-            }
-            referenced_quantum_flow_template_ids.extend(
-                program
-                    .closure_terms()
-                    .iter()
-                    .filter_map(|row| row.quantum_flow_template_id()),
-            );
-            let mut identity_finalization_count_by_support_size =
-                vec![0usize; current_count_by_support_size.len()];
-            let mut propagated_finalization_count_by_support_size =
-                vec![0usize; current_count_by_support_size.len()];
-            for finalization in program.finalizations() {
-                let support_size = program.currents()[finalization.current_id() as usize]
-                    .key()
-                    .support_source_slots()
-                    .len();
-                if finalization.propagator_template_id().is_some() {
-                    propagated_finalization_count_by_support_size[support_size] += 1;
-                } else {
-                    identity_finalization_count_by_support_size[support_size] += 1;
-                }
-            }
-            let closure_terms = program
-                .closure_terms()
-                .iter()
-                .map(|term| {
-                    let destination =
-                        &program.amplitude_destinations()[term.target_destination_id() as usize];
-                    let factor = term.exact_factor();
-                    let parent_currents = term
-                        .parent_current_ids()
-                        .iter()
-                        .map(|parent_id| &program.currents()[*parent_id as usize])
-                        .collect::<Vec<_>>();
-                    NativeClosureTermSummary {
-                        id: term.id(),
-                        target_destination_id: term.target_destination_id(),
-                        target_sector_id: destination.target_sector_id(),
-                        target_helicity_id: destination.target_helicity_id(),
-                        closure_template_id: term.closure_template_id(),
-                        quantum_flow_template_id: term.quantum_flow_template_id(),
-                        parent_current_ids: term.parent_current_ids().to_vec(),
-                        parent_state_template_ids: parent_currents
-                            .iter()
-                            .map(|current| current.key().current_state_template_id())
-                            .collect(),
-                        parent_dynamic_color_state_ids: parent_currents
-                            .iter()
-                            .map(|current| current.key().dynamic_lc_color_state_id().get())
-                            .collect(),
-                        parent_support_source_slots: parent_currents
-                            .iter()
-                            .map(|current| current.key().support_source_slots().to_vec())
-                            .collect(),
-                        exact_factor: (
-                            factor.real().numerator().to_string(),
-                            factor.real().denominator().to_string(),
-                            factor.imag().numerator().to_string(),
-                            factor.imag().denominator().to_string(),
-                        ),
-                    }
-                })
-                .collect();
-            Some(NativeScheduleSummary {
-                dynamic_color_state_count: program.dynamic_color_states().len(),
-                dynamic_color_states: program
-                    .dynamic_color_states()
-                    .iter()
-                    .enumerate()
-                    .map(|(id, state)| NativeDynamicColorStateSummary {
-                        id: id as u32,
-                        output_color_shape_id: state.output_color_shape_id(),
-                        result_port_bindings: state
-                            .result_port_bindings()
-                            .iter()
-                            .map(|binding| (binding.component_index(), binding.endpoint() as u8))
-                            .collect(),
-                        components: state
-                            .components()
-                            .iter()
-                            .map(|component| {
-                                (component.kind() as u8, component.source_slots().to_vec())
-                            })
-                            .collect(),
-                    })
-                    .collect(),
-                current_count: program.currents().len(),
-                source_current_count: program
-                    .currents()
-                    .iter()
-                    .filter(|current| current.is_source())
-                    .count(),
-                current_count_by_support_size,
-                current_count_by_state_and_support_size: current_count_by_state_and_support_size
-                    .into_iter()
-                    .map(|((state, support), count)| (state, support, count))
-                    .collect(),
-                current_count_by_state_color_and_support_size:
-                    current_count_by_state_color_and_support_size
-                        .into_iter()
-                        .map(|((state, color, support), count)| (state, color, support, count))
-                        .collect(),
-                contribution_count: program.contributions().len(),
-                contribution_count_by_transition_template_id:
-                    contribution_count_by_transition_template_id
-                        .into_iter()
-                        .collect(),
-                contribution_count_by_quantum_flow_template_id:
-                    contribution_count_by_quantum_flow_template_id
-                        .into_iter()
-                        .collect(),
-                contribution_count_by_result_state_template_id:
-                    contribution_count_by_result_state_template_id
-                        .into_iter()
-                        .collect(),
-                referenced_quantum_flow_template_ids: referenced_quantum_flow_template_ids
-                    .into_iter()
-                    .collect(),
-                finalization_count: program.finalizations().len(),
-                identity_finalization_count_by_support_size,
-                propagated_finalization_count_by_support_size,
-                retained_helicity_count: program.retained_helicity_count(),
-                resolved_helicity_count: program.resolved_helicities().len(),
-                structural_zero_helicity_count: program.retained_helicity_count()
-                    - program.resolved_helicities().len() as u64,
-                amplitude_destination_count: program.amplitude_destinations().len(),
-                target_sector_count: program.physical_sector_count() as usize,
-                closure_term_count: program.closure_terms().len(),
-                closure_terms,
-                source_layout,
-            })
-        } else {
-            None
-        };
-        (
-            true,
-            Some(template_catalog_digest),
-            Some(compiled_model_digest),
-            Some(prepared_kernel_pack_digest),
-            Some(prepared_template_count),
-            schedule_summary,
-        )
-    } else {
-        (false, None, None, None, None, None)
-    };
-
-    Ok(NativeValidationResult {
-        digest: actual_digest,
-        process_id: process_summary.process_id().to_owned(),
-        strategy: process_summary.strategy(),
-        table_count: input.tables.len(),
-        column_count,
-        total_row_count,
-        primitive_element_count,
-        primitive_byte_count,
-        string_count,
-        semantic_digest_count,
-        exact_factor_count,
-        external_leg_count: process_summary.external_leg_count() as usize,
-        source_state_count: process_summary.source_state_count() as usize,
-        physical_sector_count: process_summary.physical_sector_count() as usize,
-        public_flow_count: process_summary.public_flow_count() as usize,
-        open_string_count,
-        replay_partition_count: process_summary.replay_partition_count() as usize,
-        replay_target_count: process_summary.replay_target_count() as usize,
-        selector_mask_count,
-        selector_mask_word_count,
-        maximum_mask_bit,
-        template_reference_count: process_summary.template_reference_count() as usize,
-        parameter_projection_count,
-        fermion_pairing_summary,
-        composite_authenticated,
-        template_catalog_digest,
-        compiled_model_digest,
-        prepared_kernel_pack_digest,
-        prepared_template_count,
-        schedule_summary,
     })
 }
 
@@ -3139,222 +3303,6 @@ fn hash_tables(digest: &mut Sha256, tables: &[OwnedTable]) -> RusticolResult<()>
     Ok(())
 }
 
-fn maximum_mask_bit(ranges: &[CheckedTableRange], words: &[u64]) -> RusticolResult<Option<u64>> {
-    let mut maximum = None;
-    for (mask_id, range) in ranges.iter().copied().enumerate() {
-        let mask_words =
-            &words[range.as_usize_range(words.len(), &format!("multiword mask {mask_id}"))?];
-        if let Some(last) = mask_words.last().copied() {
-            let word_index = u64::try_from(mask_words.len() - 1)
-                .map_err(|_| invalid("multiword mask length exceeds u64"))?;
-            let bit = word_index
-                .checked_mul(64)
-                .and_then(|value| value.checked_add(u64::from(63 - last.leading_zeros())))
-                .ok_or_else(|| invalid("multiword mask maximum bit exceeds u64"))?;
-            maximum = Some(maximum.map_or(bit, |value: u64| value.max(bit)));
-        }
-    }
-    Ok(maximum)
-}
-
-fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py<PyAny>> {
-    let result = PyDict::new(py);
-    result.set_item("kind", RESULT_KIND)?;
-    result.set_item("schema_version", RESULT_SCHEMA_VERSION)?;
-    result.set_item("execution_mode", "recurrence")?;
-    result.set_item(
-        "validation_status",
-        if native.composite_authenticated {
-            "validated-composite-input"
-        } else {
-            "validated-identity-only"
-        },
-    )?;
-    result.set_item("schedule_constructed", native.schedule_summary.is_some())?;
-    result.set_item("composite_authenticated", native.composite_authenticated)?;
-    result.set_item("builder_input_abi", RECURRENCE_BUILDER_INPUT_ABI)?;
-    result.set_item("builder_input_schema_version", INPUT_SCHEMA_VERSION)?;
-    result.set_item("builder_input_sha256", native.digest)?;
-    result.set_item("builder_result_abi", RECURRENCE_BUILDER_RESULT_ABI)?;
-    result.set_item("recurrence_template_abi", RECURRENCE_TEMPLATE_ABI)?;
-    result.set_item(
-        "template_catalog_digest",
-        native
-            .template_catalog_digest
-            .map(|value| value.to_string()),
-    )?;
-    result.set_item(
-        "compiled_model_digest",
-        native.compiled_model_digest.map(|value| value.to_string()),
-    )?;
-    result.set_item(
-        "prepared_kernel_pack_digest",
-        native
-            .prepared_kernel_pack_digest
-            .map(|value| value.to_string()),
-    )?;
-    result.set_item("recurrence_plan_abi", RECURRENCE_PLAN_ABI)?;
-    result.set_item("runtime_kind", RECURRENCE_RUNTIME_KIND)?;
-    result.set_item("runtime_layout_abi", RECURRENCE_RUNTIME_LAYOUT_ABI)?;
-    result.set_item(
-        "required_runtime_capabilities",
-        PyList::new(
-            py,
-            [
-                RECURRENCE_RUNTIME_CAPABILITY,
-                RECURRENCE_LC_COLOR_CAPABILITY,
-            ],
-        )?,
-    )?;
-
-    let summary = PyDict::new(py);
-    summary.set_item("process_id", native.process_id)?;
-    summary.set_item("lc_flow_layout", native.strategy.as_str())?;
-    summary.set_item("table_count", native.table_count)?;
-    summary.set_item("column_count", native.column_count)?;
-    summary.set_item("total_row_count", native.total_row_count)?;
-    summary.set_item("primitive_element_count", native.primitive_element_count)?;
-    summary.set_item("primitive_byte_count", native.primitive_byte_count)?;
-    summary.set_item("string_count", native.string_count)?;
-    summary.set_item("semantic_digest_count", native.semantic_digest_count)?;
-    summary.set_item("exact_factor_count", native.exact_factor_count)?;
-    summary.set_item("external_leg_count", native.external_leg_count)?;
-    summary.set_item("source_state_count", native.source_state_count)?;
-    summary.set_item("physical_sector_count", native.physical_sector_count)?;
-    summary.set_item("public_flow_count", native.public_flow_count)?;
-    summary.set_item("open_string_count", native.open_string_count)?;
-    summary.set_item("replay_partition_count", native.replay_partition_count)?;
-    summary.set_item("replay_target_count", native.replay_target_count)?;
-    summary.set_item("selector_mask_count", native.selector_mask_count)?;
-    summary.set_item("selector_mask_word_count", native.selector_mask_word_count)?;
-    summary.set_item("maximum_mask_bit", native.maximum_mask_bit)?;
-    summary.set_item("template_reference_count", native.template_reference_count)?;
-    summary.set_item(
-        "parameter_projection_count",
-        native.parameter_projection_count,
-    )?;
-    if let Some(pairing) = native.fermion_pairing_summary {
-        let pairing_summary = PyDict::new(py);
-        pairing_summary.set_item("columnar_digest", pairing.columnar_digest.to_string())?;
-        pairing_summary.set_item("topology_digest", pairing.topology_digest.to_string())?;
-        pairing_summary.set_item("semantic_digest", pairing.semantic_digest.to_string())?;
-        pairing_summary.set_item("source_count", pairing.source_count)?;
-        pairing_summary.set_item("endpoint_count", pairing.endpoint_count)?;
-        pairing_summary.set_item("pairing_class_count", pairing.pairing_class_count)?;
-        pairing_summary.set_item("rule_count", pairing.rule_count)?;
-        summary.set_item("fermion_pairing", pairing_summary)?;
-    } else {
-        summary.set_item("fermion_pairing", py.None())?;
-    }
-    summary.set_item("prepared_template_count", native.prepared_template_count)?;
-    if let Some(schedule) = native.schedule_summary {
-        let schedule_summary = PyDict::new(py);
-        schedule_summary.set_item(
-            "dynamic_color_state_count",
-            schedule.dynamic_color_state_count,
-        )?;
-        let dynamic_color_states = PyList::empty(py);
-        for state in schedule.dynamic_color_states {
-            let row = PyDict::new(py);
-            row.set_item("id", state.id)?;
-            row.set_item("output_color_shape_id", state.output_color_shape_id)?;
-            row.set_item("result_port_bindings", state.result_port_bindings)?;
-            row.set_item("components", state.components)?;
-            dynamic_color_states.append(row)?;
-        }
-        schedule_summary.set_item("dynamic_color_states", dynamic_color_states)?;
-        schedule_summary.set_item("current_count", schedule.current_count)?;
-        schedule_summary.set_item("source_current_count", schedule.source_current_count)?;
-        schedule_summary.set_item(
-            "current_count_by_support_size",
-            schedule.current_count_by_support_size,
-        )?;
-        schedule_summary.set_item(
-            "current_count_by_state_and_support_size",
-            schedule.current_count_by_state_and_support_size,
-        )?;
-        schedule_summary.set_item(
-            "current_count_by_state_color_and_support_size",
-            schedule.current_count_by_state_color_and_support_size,
-        )?;
-        schedule_summary.set_item("contribution_count", schedule.contribution_count)?;
-        schedule_summary.set_item(
-            "contribution_count_by_transition_template_id",
-            schedule.contribution_count_by_transition_template_id,
-        )?;
-        schedule_summary.set_item(
-            "contribution_count_by_quantum_flow_template_id",
-            schedule.contribution_count_by_quantum_flow_template_id,
-        )?;
-        schedule_summary.set_item(
-            "contribution_count_by_result_state_template_id",
-            schedule.contribution_count_by_result_state_template_id,
-        )?;
-        schedule_summary.set_item(
-            "referenced_quantum_flow_template_ids",
-            schedule.referenced_quantum_flow_template_ids,
-        )?;
-        schedule_summary.set_item("finalization_count", schedule.finalization_count)?;
-        schedule_summary.set_item(
-            "identity_finalization_count_by_support_size",
-            schedule.identity_finalization_count_by_support_size,
-        )?;
-        schedule_summary.set_item(
-            "propagated_finalization_count_by_support_size",
-            schedule.propagated_finalization_count_by_support_size,
-        )?;
-        schedule_summary.set_item("retained_helicity_count", schedule.retained_helicity_count)?;
-        schedule_summary.set_item("resolved_helicity_count", schedule.resolved_helicity_count)?;
-        schedule_summary.set_item(
-            "structural_zero_helicity_count",
-            schedule.structural_zero_helicity_count,
-        )?;
-        schedule_summary.set_item(
-            "amplitude_destination_count",
-            schedule.amplitude_destination_count,
-        )?;
-        schedule_summary.set_item("target_sector_count", schedule.target_sector_count)?;
-        schedule_summary.set_item("closure_term_count", schedule.closure_term_count)?;
-        let closure_terms = PyList::empty(py);
-        for term in schedule.closure_terms {
-            let row = PyDict::new(py);
-            row.set_item("id", term.id)?;
-            row.set_item("target_destination_id", term.target_destination_id)?;
-            row.set_item("target_sector_id", term.target_sector_id)?;
-            row.set_item("target_helicity_id", term.target_helicity_id)?;
-            row.set_item("closure_template_id", term.closure_template_id)?;
-            row.set_item("quantum_flow_template_id", term.quantum_flow_template_id)?;
-            row.set_item("parent_current_ids", term.parent_current_ids)?;
-            row.set_item("parent_state_template_ids", term.parent_state_template_ids)?;
-            row.set_item(
-                "parent_dynamic_color_state_ids",
-                term.parent_dynamic_color_state_ids,
-            )?;
-            row.set_item(
-                "parent_support_source_slots",
-                term.parent_support_source_slots,
-            )?;
-            row.set_item("exact_factor", term.exact_factor)?;
-            closure_terms.append(row)?;
-        }
-        schedule_summary.set_item("closure_terms", closure_terms)?;
-        let source_layout = PyList::empty(py);
-        for source in schedule.source_layout {
-            let row = PyDict::new(py);
-            row.set_item("current_id", source.current_id)?;
-            row.set_item("source_slot", source.source_slot)?;
-            row.set_item("source_template_id", source.source_template_id)?;
-            row.set_item("component_start", source.component_start)?;
-            row.set_item("component_count", source.component_count)?;
-            source_layout.append(row)?;
-        }
-        schedule_summary.set_item("source_layout", source_layout)?;
-        summary.set_item("schedule", schedule_summary)?;
-    }
-    result.set_item("inspection_summary", summary)?;
-    Ok(result.into_any().unbind())
-}
-
 fn iterable_attribute<'py>(
     value: &Bound<'py, PyAny>,
     attribute: &str,
@@ -3454,4 +3402,162 @@ fn invalid(message: impl Into<String>) -> RusticolError {
 
 fn wrong_type(context: &str, expected: &str) -> RusticolError {
     invalid(format!("{context} is not a {expected} recurrence column"))
+}
+
+#[cfg(test)]
+mod direct_binding_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn digest(seed: u8) -> String {
+        format!("{seed:02x}").repeat(32)
+    }
+
+    fn refresh_digest(value: &mut JsonValue, field: &str, context: &str) {
+        value.as_object_mut().unwrap().remove(field);
+        let digest: [u8; 32] = Sha256::digest(canonical_json_bytes(value, context).unwrap()).into();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert(field.to_owned(), json!(hex_digest(digest)));
+    }
+
+    fn canonical_direct_catalog() -> (Vec<u8>, SemanticDigest, SemanticDigest, SemanticDigest) {
+        let prepared_pack = semantic_digest_from_hex(&digest(1), "test pack").unwrap();
+        let semantic_catalog =
+            semantic_digest_from_hex(&digest(2), "test semantic catalog").unwrap();
+        let compiled_model = semantic_digest_from_hex(&digest(3), "test compiled model").unwrap();
+        let mut template = json!({
+            "abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
+            "alignment_bytes": 64,
+            "backend": "jit",
+            "coupling_slot_count": 0,
+            "destination_aliasing": false,
+            "destination_component_count": 4,
+            "destination_operation": "initialize",
+            "direct_executor_id": 0,
+            "evaluator_binding_id": 7,
+            "evaluator_resolver_key": "source:7",
+            "exact_expression_digest": digest(4),
+            "momentum_operand_count": 1,
+            "optimization_level": 2,
+            "parameter_slot_count": 0,
+            "parent_arity": 0,
+            "parent_component_counts": [],
+            "payload_binding": {
+                "abi": DIRECT_PAYLOAD_BINDING_ABI,
+                "kind": "rusticol-intrinsic",
+                "payload_digest": digest(5),
+                "payload_paths": [],
+                "prepared_kernel_id": null,
+                "runtime_template": "rusticol.source-fill.v1"
+            },
+            "portable": true,
+            "role": "source",
+            "semantic_template_ids": ["source:test"],
+            "simd_axis": "points-contiguous",
+            "target_triple": "symjit-storage-v3-portable",
+            "template_id": "direct:source:test"
+        });
+        let template_digest: [u8; 32] =
+            Sha256::digest(canonical_json_bytes(&template, "test template").unwrap()).into();
+        template.as_object_mut().unwrap().insert(
+            "semantic_digest".to_owned(),
+            json!(hex_digest(template_digest)),
+        );
+
+        let mut catalog = json!({
+            "abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
+            "backend": "jit",
+            "backend_abi": DIRECT_BACKEND_ABI,
+            "canonicalization_abi": DIRECT_CANONICALIZATION_ABI,
+            "compiled_model_digest": compiled_model.to_string(),
+            "optimization_level": 2,
+            "optimization_settings_digest": digest(6),
+            "portable": true,
+            "prepared_kernel_contract_digest": digest(7),
+            "prepared_kernel_pack_digest": prepared_pack.to_string(),
+            "prepared_kernel_payload_digest": digest(8),
+            "recurrence_template_catalog_digest": semantic_catalog.to_string(),
+            "target_triple": "symjit-storage-v3-portable",
+            "templates": [template]
+        });
+        let catalog_digest: [u8; 32] =
+            Sha256::digest(canonical_json_bytes(&catalog, "test catalog").unwrap()).into();
+        catalog.as_object_mut().unwrap().insert(
+            "catalog_digest".to_owned(),
+            json!(hex_digest(catalog_digest)),
+        );
+        (
+            canonical_json_bytes(&catalog, "test catalog").unwrap(),
+            prepared_pack,
+            semantic_catalog,
+            compiled_model,
+        )
+    }
+
+    #[test]
+    fn canonical_catalog_authenticates_dense_role_binding() {
+        let (bytes, pack, semantic, model) = canonical_direct_catalog();
+        let parsed = parse_direct_template_catalog(&bytes, pack, semantic, model).unwrap();
+
+        assert_eq!(parsed.catalog.direct_executor_count(), 1);
+        assert_eq!(
+            parsed
+                .catalog
+                .resolve_evaluator(DirectExecutorRole::Source, 7)
+                .unwrap(),
+            0
+        );
+        assert_eq!(parsed.prepared_kernel_count, 0);
+    }
+
+    #[test]
+    fn noncanonical_catalog_bytes_are_rejected() {
+        let (mut bytes, pack, semantic, model) = canonical_direct_catalog();
+        bytes.push(b'\n');
+
+        let error = match parse_direct_template_catalog(&bytes, pack, semantic, model) {
+            Ok(_) => panic!("noncanonical direct catalog was accepted"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("not canonical"));
+    }
+
+    #[test]
+    fn catalog_digest_authenticates_executor_mapping() {
+        let (bytes, pack, semantic, model) = canonical_direct_catalog();
+        let mut value: JsonValue = serde_json::from_slice(&bytes).unwrap();
+        value["templates"][0]["evaluator_binding_id"] = json!(8);
+        let tampered = canonical_json_bytes(&value, "tampered catalog").unwrap();
+
+        let error = match parse_direct_template_catalog(&tampered, pack, semantic, model) {
+            Ok(_) => panic!("tampered direct catalog was accepted"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("catalog digest"));
+    }
+
+    #[test]
+    fn pending_direct_payload_is_rejected_before_lowering() {
+        let (bytes, pack, semantic, model) = canonical_direct_catalog();
+        let mut value: JsonValue = serde_json::from_slice(&bytes).unwrap();
+        let template = &mut value["templates"][0];
+        template["payload_binding"]["kind"] = json!("pending-direct-call-abi");
+        template["payload_binding"]["runtime_template"] = JsonValue::Null;
+        template["payload_binding"]["prepared_kernel_id"] = json!(7);
+        refresh_digest(template, "semantic_digest", "pending direct template");
+        refresh_digest(&mut value, "catalog_digest", "pending direct catalog");
+        let pending = canonical_json_bytes(&value, "pending direct catalog").unwrap();
+
+        let error = match parse_direct_template_catalog(&pending, pack, semantic, model) {
+            Ok(_) => panic!("pending direct payload was accepted"),
+            Err(error) => error,
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("no executable Direct-Arena payload")
+        );
+    }
 }

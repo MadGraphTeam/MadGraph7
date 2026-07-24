@@ -53,6 +53,38 @@ def test_callback_and_stream_sinks_receive_typed_events() -> None:
     assert stream.getvalue() == "build 2/3: currents\n"
 
 
+def test_log_progress_includes_recurrence_stage_counters() -> None:
+    stream = io.StringIO()
+    StreamProgressSink(stream).emit(
+        ProgressUpdate(
+            "generation:recurrence:process:rust-builder",
+            4,
+            8,
+            "recurrence stage",
+            details={
+                "process": "uubar_Z_4g",
+                "stage_index": 3,
+                "stage_total": 5,
+                "subset_size": 4,
+                "candidate_parent_pair_count": 65_536,
+                "candidate_parent_pair_total": 120_000,
+                "current_count": 18_304,
+                "dynamic_color_state_count": 812,
+                "color_target_prune_count": 12_345,
+                "contribution_count": 96_112,
+            },
+        )
+    )
+
+    line = stream.getvalue()
+    assert "process=uubar_Z_4g" in line
+    assert "stage=3/5" in line
+    assert "candidate_parent_pair_count=65536" in line
+    assert "color_target_prune_count=12345" in line
+    assert "current_count=18304" in line
+    assert "contribution_count=96112" in line
+
+
 def test_auto_progress_uses_logging_for_non_tty_streams() -> None:
     assert isinstance(progress_sink("auto", stream=io.StringIO()), LoggingProgressSink)
     assert isinstance(progress_sink("tty", stream=io.StringIO()), TtyProgressSink)
@@ -199,7 +231,10 @@ def test_dashboard_renders_elapsed_peak_rss_and_granular_status() -> None:
     assert "DAG construction" in lines[1]
     assert "ETA" in lines[1]
     assert "uubar_Z_5g" in lines[2]
-    assert "stage 5/6 subset 6" in lines[2]
+    assert "\x1b[35m  stage \x1b[0m" in lines[2]
+    assert "\x1b[32m5/6\x1b[0m" in lines[2]
+    assert "\x1b[35m  subset \x1b[0m" in lines[2]
+    assert "\x1b[32m6\x1b[0m" in lines[2]
     assert "masks 47/62" in lines[2]
     assert "currents 18,304" in lines[2]
     assert "interactions 96,112" in lines[2]

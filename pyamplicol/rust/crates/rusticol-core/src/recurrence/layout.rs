@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use super::ExactComplexRational;
 use crate::{RusticolError, RusticolResult};
 
 fn invalid(message: impl Into<String>) -> RusticolError {
@@ -208,12 +209,163 @@ impl CurrentHelicityIdentity {
     }
 }
 
-/// Source semantics referenced by a recurrence key.
+/// One process-bound runtime source variant for an all-flow-union source.
+///
+/// The complete variant catalog belongs to the source dispatch domain. No
+/// selected numerical helicity enters the current identity.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct RuntimeSourceVariantBinding {
+    source_state_index: u32,
+    public_helicity: i32,
+    runtime_variant_id: u32,
+    source_template_id: u32,
+    source_state_template_id: u32,
+    crossed_state_template_id: u32,
+    crossed_spin_state_class: i32,
+    crossing_factor: ExactComplexRational,
+}
+
+impl RuntimeSourceVariantBinding {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        source_state_index: u32,
+        public_helicity: i32,
+        runtime_variant_id: u32,
+        source_template_id: u32,
+        source_state_template_id: u32,
+        crossed_state_template_id: u32,
+        crossed_spin_state_class: i32,
+        crossing_factor: ExactComplexRational,
+    ) -> RusticolResult<Self> {
+        if runtime_variant_id == u32::MAX
+            || source_template_id == u32::MAX
+            || source_state_template_id == u32::MAX
+            || crossed_state_template_id == u32::MAX
+        {
+            return Err(invalid(
+                "runtime source variant reserves the u32 missing-value sentinel",
+            ));
+        }
+        if crossing_factor.is_zero() {
+            return Err(invalid(
+                "runtime source variant requires a nonzero crossing factor",
+            ));
+        }
+        Ok(Self {
+            source_state_index,
+            public_helicity,
+            runtime_variant_id,
+            source_template_id,
+            source_state_template_id,
+            crossed_state_template_id,
+            crossed_spin_state_class,
+            crossing_factor,
+        })
+    }
+
+    pub const fn source_state_index(self) -> u32 {
+        self.source_state_index
+    }
+
+    pub const fn public_helicity(self) -> i32 {
+        self.public_helicity
+    }
+
+    pub const fn runtime_variant_id(self) -> u32 {
+        self.runtime_variant_id
+    }
+
+    pub const fn source_template_id(self) -> u32 {
+        self.source_template_id
+    }
+
+    pub const fn source_state_template_id(self) -> u32 {
+        self.source_state_template_id
+    }
+
+    pub const fn crossed_state_template_id(self) -> u32 {
+        self.crossed_state_template_id
+    }
+
+    pub const fn crossed_spin_state_class(self) -> i32 {
+        self.crossed_spin_state_class
+    }
+
+    pub const fn crossing_factor(self) -> ExactComplexRational {
+        self.crossing_factor
+    }
+}
+
+/// Source semantics referenced by a recurrence key.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum CurrentSourceBinding {
     None,
     FixedTemplate(u32),
-    RuntimeDispatchDomain(u32),
+    RuntimeDispatch {
+        domain: u32,
+        source_template_ids: Box<[u32]>,
+        variant_bindings: Box<[RuntimeSourceVariantBinding]>,
+    },
+}
+
+impl CurrentSourceBinding {
+    pub fn runtime_dispatch(domain: u32, source_template_ids: Vec<u32>) -> RusticolResult<Self> {
+        validate_sequence_len(
+            "runtime source-template variants",
+            source_template_ids.len(),
+        )?;
+        validate_strict_u32_sequence("runtime source-template variants", &source_template_ids)?;
+        if source_template_ids.contains(&u32::MAX) {
+            return Err(invalid(
+                "runtime source-template variants reserve the u32 sentinel",
+            ));
+        }
+        Ok(Self::RuntimeDispatch {
+            domain,
+            source_template_ids: source_template_ids.into_boxed_slice(),
+            variant_bindings: Box::new([]),
+        })
+    }
+
+    pub fn runtime_dispatch_with_variants(
+        domain: u32,
+        variants: Vec<RuntimeSourceVariantBinding>,
+    ) -> RusticolResult<Self> {
+        if domain == u32::MAX {
+            return Err(invalid(
+                "runtime source-dispatch domain reserves the u32 sentinel",
+            ));
+        }
+        validate_sequence_len("runtime source variants", variants.len())?;
+        if variants.is_empty() {
+            return Err(invalid(
+                "runtime source-dispatch domain requires concrete variants",
+            ));
+        }
+        let state_indices = variants
+            .iter()
+            .map(|variant| variant.source_state_index)
+            .collect::<Vec<_>>();
+        validate_strict_u32_sequence("runtime source-state variants", &state_indices)?;
+        let mut runtime_variant_ids = variants
+            .iter()
+            .map(|variant| variant.runtime_variant_id)
+            .collect::<Vec<_>>();
+        runtime_variant_ids.sort_unstable();
+        validate_strict_u32_sequence("runtime-helicity variant IDs", &runtime_variant_ids)?;
+        let mut source_template_ids = variants
+            .iter()
+            .map(|variant| variant.source_template_id)
+            .collect::<Vec<_>>();
+        source_template_ids.sort_unstable();
+        source_template_ids.dedup();
+        validate_strict_u32_sequence("runtime source-template variants", &source_template_ids)?;
+        Ok(Self::RuntimeDispatch {
+            domain,
+            source_template_ids: source_template_ids.into_boxed_slice(),
+            variant_bindings: variants.into_boxed_slice(),
+        })
+    }
 }
 
 impl TryFrom<u32> for RecurrenceNodeKind {
@@ -317,7 +469,7 @@ impl CurrentCoreKey {
                 "topology-replay helicity ancestry must cover every local source slot",
             ));
         }
-        match (node_kind, helicity_identity.strategy(), source_binding) {
+        match (node_kind, helicity_identity.strategy(), &source_binding) {
             (
                 RecurrenceNodeKind::Source,
                 RecurrenceStrategy::TopologyReplay,
@@ -326,7 +478,7 @@ impl CurrentCoreKey {
             | (
                 RecurrenceNodeKind::Source,
                 RecurrenceStrategy::AllFlowUnion,
-                CurrentSourceBinding::RuntimeDispatchDomain(_),
+                CurrentSourceBinding::RuntimeDispatch { .. },
             )
             | (RecurrenceNodeKind::Current, _, CurrentSourceBinding::None) => {}
             (RecurrenceNodeKind::Source, RecurrenceStrategy::TopologyReplay, _) => {
@@ -410,8 +562,8 @@ impl CurrentCoreKey {
         &self.coupling_orders
     }
 
-    pub const fn source_binding(&self) -> CurrentSourceBinding {
-        self.source_binding
+    pub const fn source_binding(&self) -> &CurrentSourceBinding {
+        &self.source_binding
     }
 
     pub const fn propagator_template_id(&self) -> Option<u32> {

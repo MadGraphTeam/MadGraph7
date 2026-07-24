@@ -49,10 +49,10 @@ pub use engine::{
     NativeEagerExactAttachment, NativeEagerExactClosure, NativeEagerExactCoupling,
     NativeEagerExactFinalization, NativeEagerExactInvocation, NativeEagerExactSections,
     NativeEagerExactStage, NativeExternalParticle, NativeHelicityConfiguration,
-    NativeModelParameter, NativeProfiledEvaluation, NativeRecurrenceKernelBackend,
-    NativeRecurrenceKernelBackendSummary, NativeResolvedEvaluation, NativeRuntime,
-    NativeRuntimeMetadata, NativeRuntimeProfile, RuntimeCapability, preflight_prepared_kernel_pack,
-    supported_runtime_capabilities,
+    NativeModelParameter, NativeProfiledEvaluation, NativeRecurrenceExactExecutor,
+    NativeRecurrenceExactFactor, NativeRecurrenceExactSections, NativeResolvedEvaluation,
+    NativeRuntime, NativeRuntimeMetadata, NativeRuntimeProfile, RuntimeCapability,
+    preflight_prepared_kernel_pack, supported_runtime_capabilities,
 };
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{

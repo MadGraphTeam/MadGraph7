@@ -683,6 +683,38 @@ impl ValidatedRecurrenceTemplateInput {
         self.input
     }
 
+    pub(crate) fn closure_component_coefficients(
+        &self,
+        closure_template_id: u32,
+    ) -> RusticolResult<Vec<ExactComplexRational>> {
+        let input = self.input.as_view();
+        let catalogs = input.validate_catalogs()?;
+        let row = input
+            .closures
+            .get(closure_template_id as usize)
+            .ok_or_else(|| invalid(format!("closure template {closure_template_id} is absent")))?;
+        if row.id != closure_template_id {
+            return Err(invalid(format!(
+                "closure template {closure_template_id} has noncanonical ID {}",
+                row.id
+            )));
+        }
+        u32_sequence(
+            input,
+            row.component_coefficient_sequence_id,
+            "closure component coefficients",
+        )?
+        .iter()
+        .map(|factor_id| {
+            catalogs
+                .factors
+                .get(*factor_id as usize)
+                .copied()
+                .ok_or_else(|| invalid("closure component factor ID is out of range"))
+        })
+        .collect()
+    }
+
     pub fn semantic_index(&self) -> RusticolResult<RecurrenceTemplateSemanticIndex> {
         let input = self.input.as_view();
         let catalogs = input.validate_catalogs()?;
