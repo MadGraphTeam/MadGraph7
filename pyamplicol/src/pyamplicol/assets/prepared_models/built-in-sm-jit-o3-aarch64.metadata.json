@@ -1,22 +1,22 @@
 {
   "backend": "jit",
   "build_contract": {
-    "candidate_fingerprint": "5a971149dea0",
+    "candidate_fingerprint": "296dc001288c",
     "mode": "candidate",
     "sources": {
-      "symbolica": "e4167e767147ab8f3b4f039057c396c8fa961f6a",
-      "symbolica-community": "4daa45e793a3775f13bee33c4ddd2ba7f22ba714",
-      "symjit": "1d9e7b104c29d612981b1d59cae0cfe8fbf9a4d1"
+      "symbolica": "77c137481904b8a5531ede86e3ef36b82beed7fd",
+      "symbolica-community": "0deaa0f1484ec5c24f5f109176fa66f0d30134ca",
+      "symjit": "48197f32536c894b51ef25b2cf05ddd05c22675f"
     }
   },
   "bundle": "built-in-sm-jit-o3-aarch64.pyamplicol-model",
-  "bundle_sha256": "d483467affe00f3443144fd6c0133d88458a0a158daf5a4ee6b07b35525bc676",
-  "bundle_size": 1070697,
+  "bundle_sha256": "25ef6a16ecd69f819608293ad1127fb883de0edf7fc52ff96f9169b7c7d30b7c",
+  "bundle_size": 1069034,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
-    "symbolica_version": "2.1.0",
+    "symbolica_version": "2.2.0",
     "symjit_application_abi": "symjit-application-storage-v3",
-    "symjit_version": "2.20.2",
+    "symjit_version": "2.21.1",
     "ufo_model_loader_version": "0.1.7"
   },
   "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
@@ -27,11 +27,11 @@
   "prepared_model_bundle_schema": 1,
   "producer": {
     "compiled_model_schema": 9,
-    "model_compiler_sha256": "3eebf18b79858a14c8cff5c351bd70905223a4f91fe213e22c9a7637078fec4d",
+    "model_compiler_sha256": "7bb8bb2265123db38c5f9690af4d583a6cdde272f0c3c918a63fd127b6bf4ca4",
     "model_compiler_version": 13,
     "model_source_digest": "b5cb62daf99f6435e0487c1f7d4d8972020c8e24ece01c37f86cc82c68c69cf3",
-    "package_version": "0.1.0.dev0+candidate.5a971149dea0",
-    "prepared_pack_compiler_sha256": "69240fa675047069e5ab9fa63e4a4f8a2f7dc4970ebe0a1f6666511a22f758ee"
+    "package_version": "0.1.0.dev0+candidate.296dc001288c",
+    "prepared_pack_compiler_sha256": "bd80ba3e571162944ee4839ce86454fccdc0716c7e8cffad470e61d016df1898"
   },
   "schema_version": 1,
   "target": {

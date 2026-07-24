@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -82,7 +83,14 @@ def test_source_ready_asset_metadata_is_derived_from_bundle_and_source(
         architecture="aarch64",
     )
 
-    assert json.loads(metadata_path.read_text(encoding="utf-8")) == expected_metadata
+    actual_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    with (ROOT / "dependencies/contributor-lock.toml").open("rb") as stream:
+        contributor = tomllib.load(stream)
+    assert (
+        actual_metadata["dependencies"]["symbolica_version"]
+        == contributor["symbolica"]["candidate_version"]
+    )
+    assert actual_metadata == expected_metadata
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
 
