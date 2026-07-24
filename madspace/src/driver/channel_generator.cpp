@@ -406,31 +406,27 @@ void ChannelEventGenerator::start_job(
     std::size_t survey_pass
 ) {
     // Assign the job's deterministic base seed on the (single) scheduling thread so
-    // it depends only on the job's logical identity, not on which worker runs it.
-    // Survey and generate draw from independent counters (see _survey_rng_seq /
-    // _generate_rng_seq) so a job's seed never depends on job counts from the other
-    // kind of call; survey jobs additionally key off survey_pass so that a channel
-    // re-surveyed across multiple independent survey() calls doesn't need its job
-    // count inferred from call history.
+    // it depends only on the job's logical identity, not on which worker runs it --
+    // deliberately not on job.context_index either, so the same logical job gets the
+    // same seed no matter how many contexts/threads are available to run it or which
+    // one it lands on (context assignment is a load-balancing detail, see
+    // start_jobs()). This is safe because _survey_rng_seq/_generate_rng_seq are
+    // incremented exactly once per logical job, on the single scheduling thread,
+    // before dispatch -- so a given (channel, seq) pair is never reused regardless
+    // of context assignment. Survey and generate draw from independent counters so
+    // a job's seed never depends on job counts from the other kind of call; survey
+    // jobs additionally key off survey_pass so that a channel re-surveyed across
+    // multiple independent survey() calls doesn't need its job count inferred from
+    // call history.
     if (seed == 0) {
         job.rng_seed = 0;
     } else if (is_survey) {
         job.rng_seed = mix_seed(
-            seed,
-            {job.context_index,
-             job.channel_index,
-             kJobKindSurvey,
-             survey_pass,
-             _survey_rng_seq++}
+            seed, {job.channel_index, kJobKindSurvey, survey_pass, _survey_rng_seq++}
         );
     } else {
-        job.rng_seed = mix_seed(
-            seed,
-            {job.context_index,
-             job.channel_index,
-             kJobKindGenerate,
-             _generate_rng_seq++}
-        );
+        job.rng_seed =
+            mix_seed(seed, {job.channel_index, kJobKindGenerate, _generate_rng_seq++});
     }
     _contexts.at(job.context_index)
         ->thread_pool()
