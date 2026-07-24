@@ -15,6 +15,10 @@ use super::direct_plan::{
 pub use super::direct_plan::{
     DirectResolvedSourceSelection, DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow,
 };
+use crate::direct_arena::{DirectArenaTrafficCounters, clear_split_active_range};
+pub use crate::direct_arena::{
+    DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
+};
 use crate::{RusticolError, RusticolResult};
 use std::ffi::{c_int, c_void};
 use std::time::{Duration, Instant};
@@ -22,44 +26,6 @@ use std::time::{Duration, Instant};
 pub const RECURRENCE_DIRECT_BACKEND_ABI: &str = "rusticol.recurrence-direct-backend.v1";
 
 pub const DIRECT_STATUS_OK: c_int = 0;
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct DirectArenaView {
-    pub current_re: *mut f64,
-    pub current_im: *mut f64,
-    pub current_scalar_len: u64,
-    pub amplitude_re: *mut f64,
-    pub amplitude_im: *mut f64,
-    pub amplitude_scalar_len: u64,
-    pub point_stride: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct DirectMomentumView {
-    pub values: *const f64,
-    pub scalar_len: u64,
-    pub form_count: u32,
-    pub lorentz_component_count: u16,
-    pub point_stride: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct DirectParameterView {
-    pub values_re: *const f64,
-    pub values_im: *const f64,
-    pub value_count: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct DirectFactorView {
-    pub values_re: *const f64,
-    pub values_im: *const f64,
-    pub value_count: u32,
-}
 
 pub type DirectSourceExecutor = unsafe extern "C" fn(
     *const c_void,
@@ -279,6 +245,14 @@ impl DirectWorkspace<'_> {
                 "direct recurrence amplitude real and imaginary arenas differ in length",
             ));
         }
+        let point_stride = self.point_stride as usize;
+        if !self.current_re.len().is_multiple_of(point_stride)
+            || !self.amplitude_re.len().is_multiple_of(point_stride)
+        {
+            return Err(RusticolError::invalid_argument(
+                "direct recurrence arena does not contain whole point-stride planes",
+            ));
+        }
         if self.parameters_re.len() != self.parameters_im.len()
             || self.factors_re.len() != self.factors_im.len()
         {
@@ -360,47 +334,25 @@ impl DirectWorkspace<'_> {
         stage: u16,
         point_count: u32,
     ) -> RusticolResult<()> {
-        let point_stride = self.point_stride as usize;
-        let active_points = point_count as usize;
+        let current_plane_count = u32::try_from(self.current_re.len() / self.point_stride as usize)
+            .map_err(|_| {
+                RusticolError::integrity(
+                    "direct recurrence current plane count exceeds u32 during stage clear",
+                )
+            })?;
         for current in plan.currents().iter().filter(|current| {
             current.node_kind == DirectNodeKind::Current && current.stage == stage
         }) {
-            let component_start = current.component_base as usize;
-            let component_end = component_start
-                .checked_add(usize::from(current.component_count))
-                .ok_or_else(|| {
-                    RusticolError::integrity(
-                        "direct recurrence stage-clear component range overflows usize",
-                    )
-                })?;
-            for component in component_start..component_end {
-                let start = component.checked_mul(point_stride).ok_or_else(|| {
-                    RusticolError::integrity(
-                        "direct recurrence stage-clear scalar range overflows usize",
-                    )
-                })?;
-                let end = start.checked_add(active_points).ok_or_else(|| {
-                    RusticolError::integrity(
-                        "direct recurrence stage-clear active range overflows usize",
-                    )
-                })?;
-                self.current_re
-                    .get_mut(start..end)
-                    .ok_or_else(|| {
-                        RusticolError::integrity(
-                            "direct recurrence stage-clear real range is out of bounds",
-                        )
-                    })?
-                    .fill(0.0);
-                self.current_im
-                    .get_mut(start..end)
-                    .ok_or_else(|| {
-                        RusticolError::integrity(
-                            "direct recurrence stage-clear imaginary range is out of bounds",
-                        )
-                    })?
-                    .fill(0.0);
-            }
+            clear_split_active_range(
+                self.current_re,
+                self.current_im,
+                current_plane_count,
+                self.point_stride,
+                point_count,
+                current.component_base,
+                u32::from(current.component_count),
+                "recurrence current arena",
+            )?;
         }
         Ok(())
     }
@@ -444,6 +396,7 @@ pub fn execute_direct_plan(
         point_count,
         counters,
         &mut unused_timings,
+        None,
     )
 }
 
@@ -455,7 +408,35 @@ pub fn execute_direct_plan_profiled(
     counters: &mut DirectExecutionCounters,
     timings: &mut DirectExecutionRoleTimings,
 ) -> RusticolResult<()> {
-    execute_direct_plan_impl::<true>(plan, executors, workspace, point_count, counters, timings)
+    execute_direct_plan_impl::<true>(
+        plan,
+        executors,
+        workspace,
+        point_count,
+        counters,
+        timings,
+        None,
+    )
+}
+
+pub(crate) fn execute_direct_plan_profiled_with_traffic(
+    plan: &DirectRecurrencePlan,
+    executors: &DirectExecutorCatalog,
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+    counters: &mut DirectExecutionCounters,
+    timings: &mut DirectExecutionRoleTimings,
+    traffic: &mut DirectArenaTrafficCounters,
+) -> RusticolResult<()> {
+    execute_direct_plan_impl::<true>(
+        plan,
+        executors,
+        workspace,
+        point_count,
+        counters,
+        timings,
+        Some(traffic),
+    )
 }
 
 /// Execute the authenticated schedule without touching profiling counters.
@@ -477,6 +458,7 @@ pub fn execute_direct_plan_unprofiled(
         point_count,
         &mut unused,
         &mut unused_timings,
+        None,
     )
 }
 
@@ -487,6 +469,7 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
     point_count: u32,
     counters: &mut DirectExecutionCounters,
     timings: &mut DirectExecutionRoleTimings,
+    mut traffic: Option<&mut DirectArenaTrafficCounters>,
 ) -> RusticolResult<()> {
     workspace.validate(point_count)?;
     if executors.plan_layout_digest != plan.runtime_layout_digest() {
@@ -522,6 +505,11 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             RusticolError::integrity("direct recurrence row-group range overflows usize")
         })?;
         let handle = executors.require(descriptor.direct_executor_id, descriptor.role)?;
+        if PROFILE {
+            if let Some(traffic) = traffic.as_deref_mut() {
+                traffic.record_call(descriptor.row_count, point_count);
+            }
+        }
         let started = PROFILE.then(Instant::now);
         let status = unsafe {
             match handle {

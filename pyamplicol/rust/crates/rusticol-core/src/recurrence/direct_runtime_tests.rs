@@ -574,8 +574,47 @@ fn synthetic_runtime() -> DirectRecurrenceExecutionRuntime {
 fn low_footprint_runtime_retains_the_requested_point_tile() {
     let (plan, executors) = synthetic_plan_and_executors();
     assert_eq!(plan.point_tile_size(), 4);
-    let runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 1).unwrap();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 1).unwrap();
     assert_eq!(runtime.point_tile_size(), 4);
+    assert_eq!(runtime.point_stride(), 8);
+    assert_eq!(runtime.momenta_mut().len(), 4);
+    assert_eq!(runtime.physical_momenta_mut().len(), 8);
+}
+
+#[test]
+fn legacy_flat_momentum_access_round_trips_every_padded_plane_in_place() {
+    let (plan, executors) = synthetic_plan_and_executors();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    let tile_capacity = runtime.point_tile_size() as usize;
+    let point_stride = runtime.point_stride() as usize;
+    assert_eq!(tile_capacity, 4);
+    assert_eq!(point_stride, 8);
+
+    let compact = runtime.momenta_mut();
+    for plane in 0..4 {
+        for point in 0..tile_capacity {
+            compact[plane * tile_capacity + point] = (plane * 10 + point) as f64;
+        }
+    }
+    let physical = runtime.physical_momenta_mut();
+    for plane in 0..4 {
+        for point in 0..tile_capacity {
+            assert_eq!(
+                physical[plane * point_stride + point],
+                (plane * 10 + point) as f64
+            );
+        }
+    }
+
+    let compact = runtime.momenta_mut();
+    for plane in 0..4 {
+        for point in 0..tile_capacity {
+            assert_eq!(
+                compact[plane * tile_capacity + point],
+                (plane * 10 + point) as f64
+            );
+        }
+    }
 }
 
 #[test]
@@ -600,7 +639,7 @@ fn high_footprint_runtime_uses_a_power_of_two_cache_tile() {
 fn cache_target_never_rejects_a_point_that_fits_the_workspace_limit() {
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
     parts.point_tile_size = 1024;
-    parts.workspace_mib = 8;
+    parts.workspace_mib = 64;
     parts.current_arena_components = 262_144;
     let plan = DirectRecurrencePlan::new(parts).unwrap();
     let executors = DirectExecutorCatalog::new(
@@ -611,6 +650,30 @@ fn cache_target_never_rejects_a_point_that_fits_the_workspace_limit() {
     .unwrap();
     let runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
     assert_eq!(runtime.point_tile_size(), 1);
+    assert_eq!(runtime.point_stride(), 8);
+}
+
+#[test]
+fn hard_workspace_budget_counts_the_minimum_aligned_physical_pitch() {
+    let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.point_tile_size = 1024;
+    parts.workspace_mib = 8;
+    parts.current_arena_components = 262_144;
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap();
+    let error = DirectRecurrenceExecutionRuntime::new(plan, executors, 4)
+        .err()
+        .unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains("minimum aligned Direct-Arena pitch")
+    );
 }
 
 fn storage_identity(runtime: &mut DirectRecurrenceExecutionRuntime) -> ([usize; 9], [usize; 9]) {
@@ -714,9 +777,16 @@ fn warmed_tiles_reuse_stable_aligned_storage_and_return_correct_borrowed_outputs
 
     let (current_re, current_im) = runtime.current_arenas();
     assert_eq!(&current_re[0..4], &[1.0, 2.0, 3.0, 4.0]);
-    assert_eq!(&current_re[4..8], &[3.0, 6.0, 9.0, 12.0]);
+    let point_stride = runtime.point_stride() as usize;
+    assert_eq!(
+        &current_re[point_stride..point_stride + 4],
+        &[3.0, 6.0, 9.0, 12.0]
+    );
     assert_eq!(&current_im[0..4], &[0.0; 4]);
-    assert_eq!(&current_im[4..8], &[1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(
+        &current_im[point_stride..point_stride + 4],
+        &[1.0, 2.0, 3.0, 4.0]
+    );
     let counters = runtime.counters();
     assert_eq!(counters.source_calls, 8);
     assert_eq!(counters.source_rows, 8);
@@ -729,6 +799,14 @@ fn warmed_tiles_reuse_stable_aligned_storage_and_return_correct_borrowed_outputs
     assert_eq!(counters.packed_input_bytes, 0);
     assert_eq!(counters.packed_output_bytes, 0);
     assert_eq!(counters.scatter_bytes, 0);
+    let allocation_counters = runtime.allocation_counters();
+    assert_eq!(allocation_counters.allocation_requests, 9);
+    assert!(allocation_counters.requested_bytes != 0);
+    let traffic = runtime.traffic_counters();
+    assert_eq!(traffic.calls, 32);
+    assert_eq!(traffic.rows, 32);
+    assert_eq!(traffic.points, 128);
+    traffic.validate_direct().unwrap();
 }
 
 #[test]
@@ -892,11 +970,19 @@ fn external_momentum_fill_resolves_forms_once_and_clears_newly_inactive_tails() 
     runtime
         .fill_momenta_from_external(&flow_zero, 3, &external_three_point_momenta())
         .unwrap();
+    let point_stride = runtime.point_tile_size() as usize;
+    assert_eq!(runtime.momenta_mut().len(), 4 * point_stride);
     assert_eq!(&runtime.momenta_mut()[0..4], &[9.0, 12.0, 23.0, 0.0]);
-    assert_eq!(&runtime.momenta_mut()[4..8], &[90.0, 120.0, 230.0, 0.0]);
-    assert_eq!(&runtime.momenta_mut()[8..12], &[900.0, 1200.0, 2300.0, 0.0]);
     assert_eq!(
-        &runtime.momenta_mut()[12..16],
+        &runtime.momenta_mut()[point_stride..point_stride + 4],
+        &[90.0, 120.0, 230.0, 0.0]
+    );
+    assert_eq!(
+        &runtime.momenta_mut()[2 * point_stride..2 * point_stride + 4],
+        &[900.0, 1200.0, 2300.0, 0.0]
+    );
+    assert_eq!(
+        &runtime.momenta_mut()[3 * point_stride..3 * point_stride + 4],
         &[9000.0, 12000.0, 23000.0, 0.0]
     );
 
@@ -905,7 +991,7 @@ fn external_momentum_fill_resolves_forms_once_and_clears_newly_inactive_tails() 
         .unwrap();
     assert_eq!(&runtime.momenta_mut()[0..4], &[6.0, 9.0, 0.0, 0.0]);
     for plane in 0..4 {
-        assert_eq!(runtime.momenta_mut()[plane * 4 + 2], 0.0);
+        assert_eq!(runtime.momenta_mut()[plane * point_stride + 2], 0.0);
     }
     assert_eq!(storage_identity(&mut runtime), identity);
     assert_eq!(
@@ -999,9 +1085,13 @@ fn tile_execution_clears_only_active_additive_regions() {
         .unwrap()
         .copy_from_slice(&[2.0, 4.0, 100.0, 200.0]);
     runtime.execute_tile(4).unwrap();
+    let point_stride = runtime.point_stride() as usize;
     let (prior_current_re_tail, prior_current_im_tail) = {
         let (current_re, current_im) = runtime.current_arenas();
-        (current_re[6..8].to_vec(), current_im[6..8].to_vec())
+        (
+            current_re[point_stride + 2..point_stride + 4].to_vec(),
+            current_im[point_stride + 2..point_stride + 4].to_vec(),
+        )
     };
     let (prior_amplitude_re_tail, prior_amplitude_im_tail) = {
         let (amplitude_re, amplitude_im) = runtime.amplitude_arenas();
@@ -1014,9 +1104,15 @@ fn tile_execution_clears_only_active_additive_regions() {
     assert_eq!(&output.storage_re()[2..4], prior_amplitude_re_tail);
     assert_eq!(&output.storage_im()[2..4], prior_amplitude_im_tail);
     let (current_re, current_im) = runtime.current_arenas();
-    assert_eq!(&current_re[4..6], &[6.0, 12.0]);
-    assert_eq!(&current_re[6..8], prior_current_re_tail);
-    assert_eq!(&current_im[6..8], prior_current_im_tail);
+    assert_eq!(&current_re[point_stride..point_stride + 2], &[6.0, 12.0]);
+    assert_eq!(
+        &current_re[point_stride + 2..point_stride + 4],
+        prior_current_re_tail
+    );
+    assert_eq!(
+        &current_im[point_stride + 2..point_stride + 4],
+        prior_current_im_tail
+    );
 }
 
 #[test]
@@ -1085,8 +1181,9 @@ fn runtime_clamps_the_effective_tile_to_workspace_and_rejects_an_oversized_point
     .unwrap();
     let runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
     let per_point_bytes = (256 * 2 + 2 + 4) * std::mem::size_of::<f64>();
-    let expected_tile = (1024 * 1024 / per_point_bytes) as u32;
+    let expected_tile = ((1024 * 1024 / per_point_bytes) / 8 * 8) as u32;
     assert_eq!(runtime.point_tile_size(), expected_tile);
+    assert_eq!(runtime.point_stride(), expected_tile);
     assert!(runtime.point_tile_size() < 1024);
 
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();

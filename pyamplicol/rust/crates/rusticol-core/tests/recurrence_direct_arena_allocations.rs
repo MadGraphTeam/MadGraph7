@@ -638,6 +638,7 @@ fn warmed_topology_replay_tiles_allocate_zero_heap_bytes_and_remain_correct() {
         .unwrap();
     assert_eq!(warm_output.destination_re(0).unwrap(), EXPECTED_RE);
     assert_eq!(warm_output.destination_im(0).unwrap(), EXPECTED_IM);
+    let persistent_allocations = runtime.allocation_counters();
     runtime.reset_counters();
 
     let (result, allocation_count, allocated_bytes) = count_allocations(|| {
@@ -668,6 +669,8 @@ fn warmed_topology_replay_tiles_allocate_zero_heap_bytes_and_remain_correct() {
     assert_eq!(runtime.role_timings(), Default::default());
     assert_eq!(runtime.activity_counters(), Default::default());
     assert_eq!(runtime.phase_timings(), Default::default());
+    assert_eq!(runtime.traffic_counters(), Default::default());
+    assert_eq!(runtime.allocation_counters(), persistent_allocations);
 }
 
 #[test]
@@ -681,6 +684,7 @@ fn warmed_all_flow_union_tiles_allocate_zero_heap_bytes_and_remain_correct() {
         .unwrap();
     assert_eq!(warm_output.destination_re(0).unwrap(), EXPECTED_RE);
     assert_eq!(warm_output.destination_im(0).unwrap(), EXPECTED_IM);
+    let persistent_allocations = runtime.allocation_counters();
     runtime.reset_counters();
 
     let (result, allocation_count, allocated_bytes) = count_allocations(|| {
@@ -717,6 +721,8 @@ fn warmed_all_flow_union_tiles_allocate_zero_heap_bytes_and_remain_correct() {
     assert_eq!(runtime.role_timings(), Default::default());
     assert_eq!(runtime.activity_counters(), Default::default());
     assert_eq!(runtime.phase_timings(), Default::default());
+    assert_eq!(runtime.traffic_counters(), Default::default());
+    assert_eq!(runtime.allocation_counters(), persistent_allocations);
 }
 
 fn genuine_artifact_path(environment_name: &str) -> Option<PathBuf> {

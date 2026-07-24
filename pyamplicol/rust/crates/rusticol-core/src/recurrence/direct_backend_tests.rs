@@ -226,6 +226,9 @@ fn synthetic_program_reads_rows_and_accumulates_directly_into_arenas() {
     )
     .unwrap();
 
+    // `DirectWorkspace` is the compatibility-facing public adapter. It keeps
+    // accepting ordinary Rust slices and the pre-substrate stride contract;
+    // the owned generic workspace used by the runtime enforces 64-byte planes.
     let mut current_re = [0.0; 8];
     let mut current_im = [0.0; 8];
     let mut amplitude_re = [0.0; 4];
