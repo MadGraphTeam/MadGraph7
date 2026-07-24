@@ -275,3 +275,41 @@ list. An accepted decision retains every raw median/MAD and reports explicit
 pyAmpliCol/AmpliCol ratios for each model, lane, and batch, with both timing
 boundaries attached. A rejected decision never contains partial headline
 comparisons.
+
+## Frozen accepted-base inputs
+
+The immutable local baseline root is
+`/private/tmp/pyamplicol-eager-compiled-arena-baseline`. It was cloned
+copy-on-write from the exact accepted recurrence build after
+`443f354a467cdda187996bef1a41fbd5a00ae28d` became both the recurrence
+source-freeze and `origin/main`. The accepted production-source parent is
+`585456ed1726c43eef3ce35c7a126c17730e8a0d`; the child adds only acceptance
+and audit ledgers.
+
+- wheel:
+  `pyamplicol-0.1.0.dev0+candidate.c0fd7ce438fb-cp311-abi3-macosx_11_0_arm64.whl`;
+- wheel SHA-256:
+  `07427f13dac5ee8b9229eee93c892f482738b26b2b0bf37581d3d8820b343a0e`;
+- native build-input SHA-256:
+  `a0d05eafc7236a44bc22de1a68c0f1f3839166e99668be4c60551f75a2399ec0`;
+- package version: `0.1.0.dev0+candidate.c0fd7ce438fb`;
+- native ABI version: `1`;
+- prepared SymJIT version/revision: `2.21.1` /
+  `48197f32536c894b51ef25b2cf05ddd05c22675f`.
+
+The root also freezes the accepted recurrence source-freeze artifact directory.
+Its principal raw evidence hashes are:
+
+| model/layout | result SHA-256 | artifact manifest SHA-256 |
+|---|---|---|
+| built-in/topology replay | `8d191a87f51ae7b78911aca6c866e3697f81fa5ad3426d34112ddc33015d8c0d` | `93c8a3154d3110e161e10951bd17d41e92a8bea6afbe3f692a6a6ce07ca61497` |
+| built-in/all-flow union, explicit nonzero helicity | `38b6dba38501e6e5494d78ee0ec8f2910a49fbf9219229fcf3fd4cf84f55cd98` | `0440ad3b345f716a5a08d40be6725d9cc09468f99b6b5b4ec3d2d0b975aa30ed` |
+| UFO/topology replay | `2dd0f4902044d5d89a0f92bdad8dfd5c8a47658d8467d9dedf7ab8fc9b1ce6e1` | `be6167ab6b6287b988f80531a5271e1962469f73e3ccc93cdc379a4d2bfd5a30` |
+| UFO/all-flow union | `788810015306f01755eed59aff1812e3b15811a680c84dddea44bcd9f5077662` | `cf7547a59fceaba01622d4a226bae761c7180e0f4b3c164af4c6205c07646a87` |
+
+These accepted recurrence files remain reference evidence only: their stored
+benchmark source revision is the earlier runtime checkpoint and their
+generation used JIT O2. They cannot satisfy the stricter M0 O3 six-input gate.
+Fresh complete-artifact O3 captures from the frozen wheel, plus fresh
+content-addressed AmpliCol captures at pinned revision
+`79c96cecf2a722e50c3d2030b6894d755f96518a`, remain mandatory.
