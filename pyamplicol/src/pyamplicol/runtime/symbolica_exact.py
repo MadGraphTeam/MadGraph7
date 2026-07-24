@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import struct
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 from itertools import pairwise
@@ -96,6 +96,14 @@ class _ExactHelicitySchedule:
 @dataclass(frozen=True, slots=True)
 class _ExactHelicityPlan:
     schedules: tuple[_ExactHelicitySchedule, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ExactColorContractionEntry:
+    left_group_id: int
+    right_group_id: int
+    weight: _ComplexDecimal
+    symmetry_factor: Decimal
 
 
 def _json_integer(value: object) -> int:
@@ -2848,6 +2856,133 @@ def _spin2_sum(
     return tuple(values)
 
 
+def _validated_color_contraction_entries(
+    contraction: Mapping[str, object],
+    groups: Mapping[int, object],
+) -> Iterator[_ExactColorContractionEntry]:
+    raw_entries = _mapping_sequence(contraction, "entries", "color contraction entries")
+    repeated_raw = contraction.get("repeated_block")
+    if repeated_raw is None:
+        for raw_entry in raw_entries:
+            yield _validated_color_contraction_entry(raw_entry, groups)
+        return
+    if raw_entries:
+        raise ArtifactError("color contraction mixes expanded and repeated entries")
+    if not isinstance(repeated_raw, Mapping):
+        raise ArtifactError("repeated color contraction is not an object")
+    component_count = _strict_nonnegative_integer(
+        repeated_raw.get("component_count"),
+        "repeated color contraction component count",
+    )
+    if component_count < 2:
+        raise ArtifactError(
+            "repeated color contraction requires at least two components"
+        )
+    raw_group_ids = _mapping_sequence(
+        repeated_raw,
+        "component_group_ids",
+        "repeated color contraction group IDs",
+    )
+    component_group_ids = tuple(_json_integer(value) for value in raw_group_ids)
+    if (
+        not component_group_ids
+        or len(component_group_ids) % component_count != 0
+        or len(set(component_group_ids)) != len(component_group_ids)
+        or set(component_group_ids) != set(groups)
+    ):
+        raise ArtifactError("repeated color contraction group map is invalid")
+    declared_group_count = contraction.get("group_count")
+    if declared_group_count is not None and _strict_nonnegative_integer(
+        declared_group_count, "color contraction group count"
+    ) != len(component_group_ids):
+        raise ArtifactError(
+            "repeated color contraction group map does not match group count"
+        )
+    local_group_count = len(component_group_ids) // component_count
+    raw_templates = _mapping_sequence(
+        repeated_raw,
+        "entries",
+        "repeated color contraction entries",
+    )
+    templates: list[tuple[int, int, _ComplexDecimal, Decimal]] = []
+    for raw_template in raw_templates:
+        if not isinstance(raw_template, Mapping):
+            raise ArtifactError("repeated color contraction entry is not an object")
+        left_group_index = _strict_nonnegative_integer(
+            raw_template.get("left_group_index"),
+            "repeated color contraction left group index",
+        )
+        right_group_index = _strict_nonnegative_integer(
+            raw_template.get("right_group_index"),
+            "repeated color contraction right group index",
+        )
+        if (
+            left_group_index >= local_group_count
+            or right_group_index >= local_group_count
+        ):
+            raise ArtifactError(
+                "repeated color contraction entry references an unknown local group"
+            )
+        templates.append(
+            (
+                left_group_index,
+                right_group_index,
+                _complex_decimal_pair(
+                    raw_template.get("weight"),
+                    "color contraction weight",
+                ),
+                _decimal(
+                    raw_template.get("symmetry_factor", 1),
+                    "color symmetry factor",
+                ),
+            )
+        )
+    logical_entry_count = contraction.get("logical_entry_count")
+    if logical_entry_count is not None and _strict_nonnegative_integer(
+        logical_entry_count, "color contraction logical entry count"
+    ) != component_count * len(templates):
+        raise ArtifactError("color contraction logical entry count is inconsistent")
+    for component_index in range(component_count):
+        for (
+            left_group_index,
+            right_group_index,
+            weight,
+            symmetry_factor,
+        ) in templates:
+            yield _ExactColorContractionEntry(
+                left_group_id=component_group_ids[
+                    left_group_index * component_count + component_index
+                ],
+                right_group_id=component_group_ids[
+                    right_group_index * component_count + component_index
+                ],
+                weight=weight,
+                symmetry_factor=symmetry_factor,
+            )
+
+
+def _validated_color_contraction_entry(
+    raw_entry: object,
+    groups: Mapping[int, object],
+) -> _ExactColorContractionEntry:
+    if not isinstance(raw_entry, Mapping):
+        raise ArtifactError("color contraction entry is not an object")
+    left_group_id = _json_integer(raw_entry.get("left_group_id"))
+    right_group_id = _json_integer(raw_entry.get("right_group_id"))
+    if left_group_id not in groups or right_group_id not in groups:
+        raise ArtifactError("color contraction references an unknown coherent group")
+    return _ExactColorContractionEntry(
+        left_group_id=left_group_id,
+        right_group_id=right_group_id,
+        weight=_complex_decimal_pair(
+            raw_entry.get("weight"), "color contraction weight"
+        ),
+        symmetry_factor=_decimal(
+            raw_entry.get("symmetry_factor", 1), "color symmetry factor"
+        ),
+    )
+
+
 def _reduce_materialized_helicity(
     amplitudes: Sequence[_ComplexDecimal],
     execution: Mapping[str, object],
@@ -2957,33 +3092,20 @@ def _reduce_materialized_helicity(
             or colors[0].get("kind") == "lc-flow"
         ):
             raise ArtifactError("contracted color reduction requires one color axis")
-        entries = _mapping_sequence(contraction, "entries", "color contraction entries")
         total = _ZERO
-        for raw_entry in entries:
-            if not isinstance(raw_entry, Mapping):
-                raise ArtifactError("color contraction entry is not an object")
-            left_id = _json_integer(raw_entry.get("left_group_id"))
-            right_id = _json_integer(raw_entry.get("right_group_id"))
-            if left_id not in groups or right_id not in groups:
-                raise ArtifactError(
-                    "color contraction references an unknown coherent group"
-                )
+        for entry in _validated_color_contraction_entries(contraction, groups):
+            left_id = entry.left_group_id
+            right_id = entry.right_group_id
             if left_id not in active_groups or right_id not in active_groups:
                 continue
             left = coherent[left_id]
             right = coherent[right_id]
             product_re = left[0] * right[0] + left[1] * right[1]
             product_im = left[1] * right[0] - left[0] * right[1]
-            contraction_weight = _complex_decimal_pair(
-                raw_entry.get("weight"), "color contraction weight"
-            )
             total += (
                 normalization
-                * _decimal(raw_entry.get("symmetry_factor", 1), "color symmetry factor")
-                * (
-                    contraction_weight[0] * product_re
-                    - contraction_weight[1] * product_im
-                )
+                * entry.symmetry_factor
+                * (entry.weight[0] * product_re - entry.weight[1] * product_im)
             )
         return (total,)
     if contraction is not None:
@@ -3101,21 +3223,17 @@ def _reduce_resolved(
                 raise ArtifactError(
                     "contracted color reduction requires one color axis"
                 )
-            for entry in cast(Sequence[Mapping[str, object]], contraction["entries"]):
-                left_id = _json_integer(entry["left_group_id"])
-                right_id = _json_integer(entry["right_group_id"])
+            for entry in _validated_color_contraction_entries(contraction, groups):
+                left_id = entry.left_group_id
+                right_id = entry.right_group_id
                 left = coherent[left_id]
                 right = coherent[right_id]
                 product_re = left[0] * right[0] + left[1] * right[1]
                 product_im = left[1] * right[0] - left[0] * right[1]
-                weight = cast(Sequence[object], entry["weight"])
                 contribution = (
                     normalization
-                    * _decimal(entry.get("symmetry_factor", 1), "color symmetry factor")
-                    * (
-                        _decimal(weight[0], "color weight") * product_re
-                        - _decimal(weight[1], "color weight") * product_im
-                    )
+                    * entry.symmetry_factor
+                    * (entry.weight[0] * product_re - entry.weight[1] * product_im)
                 )
                 reduction = reductions[left_id]
                 if (

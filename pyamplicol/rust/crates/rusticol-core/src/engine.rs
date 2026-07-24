@@ -1399,6 +1399,8 @@ struct GenericColorContractionManifest {
     #[serde(default)]
     includes_color_factor: bool,
     entries: Vec<GenericColorContractionEntryManifest>,
+    #[serde(default)]
+    repeated_block: Option<GenericRepeatedColorContractionBlockManifest>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1406,6 +1408,24 @@ struct GenericColorContractionManifest {
 struct GenericColorContractionEntryManifest {
     left_group_id: i64,
     right_group_id: i64,
+    weight: Vec<f64>,
+    #[serde(default = "default_symmetry_factor")]
+    symmetry_factor: f64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericRepeatedColorContractionBlockManifest {
+    component_count: usize,
+    component_group_ids: Vec<i64>,
+    entries: Vec<GenericRepeatedColorContractionEntryManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericRepeatedColorContractionEntryManifest {
+    left_group_index: usize,
+    right_group_index: usize,
     weight: Vec<f64>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
@@ -1831,6 +1851,111 @@ impl ColorContractionRuntime {
             entries,
             repeated_block,
             group_scratch_f64: Vec::new(),
+        }
+    }
+
+    fn from_repeated_block(
+        groups: &[RawSumGroup],
+        component_count: usize,
+        component_group_indices: Vec<usize>,
+        entries: Vec<ColorContractionEntry>,
+    ) -> Self {
+        let singleton_output_indices = component_group_indices
+            .iter()
+            .map(
+                |group_index| match groups[*group_index].indices.as_slice() {
+                    [output_index] => Some(*output_index),
+                    _ => None,
+                },
+            )
+            .collect::<Option<Vec<_>>>();
+        let repeated_block = RepeatedColorContractionBlock {
+            component_count,
+            component_group_indices,
+            singleton_output_indices,
+            all_weights_real: entries.iter().all(|entry| entry.weight_im == 0.0),
+            entries,
+        };
+        Self {
+            group_count: groups.len(),
+            entries: Vec::new(),
+            repeated_block: Some(repeated_block),
+            group_scratch_f64: Vec::new(),
+        }
+    }
+
+    fn logical_entry_count(&self) -> RusticolResult<usize> {
+        if self.entries.is_empty() {
+            let Some(block) = self.repeated_block.as_ref() else {
+                return Ok(0);
+            };
+            block
+                .component_count
+                .checked_mul(block.entries.len())
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(
+                        "repeated colour contraction logical entry count overflows",
+                    )
+                })
+        } else {
+            Ok(self.entries.len())
+        }
+    }
+
+    fn logical_entries(&self) -> ColorContractionEntries<'_> {
+        if self.entries.is_empty() {
+            if let Some(block) = self.repeated_block.as_ref() {
+                return ColorContractionEntries::Repeated {
+                    block,
+                    component_index: 0,
+                    entry_index: 0,
+                };
+            }
+        }
+        ColorContractionEntries::Expanded(self.entries.iter().copied())
+    }
+}
+
+enum ColorContractionEntries<'a> {
+    Expanded(std::iter::Copied<std::slice::Iter<'a, ColorContractionEntry>>),
+    Repeated {
+        block: &'a RepeatedColorContractionBlock,
+        component_index: usize,
+        entry_index: usize,
+    },
+}
+
+impl Iterator for ColorContractionEntries<'_> {
+    type Item = ColorContractionEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Expanded(entries) => entries.next(),
+            Self::Repeated {
+                block,
+                component_index,
+                entry_index,
+            } => {
+                if *component_index >= block.component_count || block.entries.is_empty() {
+                    return None;
+                }
+                let entry = block.entries[*entry_index];
+                let component = *component_index;
+                let left_group_index = block.component_group_indices
+                    [entry.left_group_index * block.component_count + component];
+                let right_group_index = block.component_group_indices
+                    [entry.right_group_index * block.component_count + component];
+                *entry_index += 1;
+                if *entry_index == block.entries.len() {
+                    *entry_index = 0;
+                    *component_index += 1;
+                }
+                Some(ColorContractionEntry {
+                    left_group_index,
+                    right_group_index,
+                    ..entry
+                })
+            }
         }
     }
 }

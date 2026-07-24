@@ -370,13 +370,13 @@ impl EagerExecutionManifest {
         let mut entries = Vec::new();
         if let Some(contraction) = contraction {
             entries
-                .try_reserve_exact(contraction.entries.len())
+                .try_reserve_exact(contraction.logical_entry_count()?)
                 .map_err(|error| {
                     RusticolError::artifact(format!(
                         "cannot reserve eager color-contraction entries: {error}"
                     ))
                 })?;
-            for entry in contraction.entries {
+            for entry in contraction.logical_entries() {
                 let coefficient = crate::EagerComplex64::new(entry.weight_re, entry.weight_im)
                     * entry.symmetry_factor;
                 entries.push(EagerReductionEntry {

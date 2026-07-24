@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from itertools import permutations
+from math import isclose, nextafter
 
 import pytest
 
 import pyamplicol.color as color
 from pyamplicol.color import (
+    ColorContractionEntry,
     ColorGroupDescriptor,
     build_color_contraction_plan,
     build_color_plan,
@@ -17,6 +19,7 @@ from pyamplicol.color.contraction_factors import (
     _pure_adjoint_full_factor_uncached,
     _relative_adjoint_permutation,
 )
+from pyamplicol.generation.artifact_writer import _color_contraction
 from pyamplicol.generation.dag_color import ColorEngine
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_ordering import _sector_intermediate_order_words
@@ -178,6 +181,144 @@ def test_color_contraction_rejects_inconsistent_helicity_weights() -> None:
 
     with pytest.raises(ValueError, match="inconsistent helicity weights"):
         build_color_contraction_plan(plan, groups)
+
+
+def test_color_contraction_compacts_identical_helicity_components() -> None:
+    plan = build_color_plan(
+        build_process_ir("g g > g g", color_accuracy="full"),
+        color_accuracy="full",
+    )
+    first, second = plan.sectors[:2]
+    first_word = tuple(first.word_labels or first.color_words[0])
+    second_word = tuple(second.word_labels or second.color_words[0])
+    groups = (
+        ColorGroupDescriptor(
+            group_id=10,
+            helicity_key=("helicity:a",),
+            sector_id=second.id,
+            word=second_word,
+            helicity_weight=1.0,
+        ),
+        ColorGroupDescriptor(
+            group_id=20,
+            helicity_key=("helicity:b",),
+            sector_id=first.id,
+            word=first_word,
+            helicity_weight=1.0,
+        ),
+        ColorGroupDescriptor(
+            group_id=30,
+            helicity_key=("helicity:a",),
+            sector_id=first.id,
+            word=first_word,
+            helicity_weight=1.0,
+        ),
+        ColorGroupDescriptor(
+            group_id=40,
+            helicity_key=("helicity:b",),
+            sector_id=second.id,
+            word=second_word,
+            helicity_weight=1.0,
+        ),
+    )
+
+    contraction = build_color_contraction_plan(plan, groups)
+
+    assert contraction is not None
+    assert contraction.entries == ()
+    block = contraction.repeated_block
+    assert block is not None
+    assert block.component_count == 2
+    assert block.component_group_ids == (30, 20, 10, 40)
+    logical = tuple(contraction.iter_logical_entries())
+    assert len(logical) == contraction.logical_entry_count
+    assert tuple(
+        (entry.left_group_id, entry.right_group_id) for entry in logical
+    ) == tuple(
+        (
+            block.component_group_ids[
+                entry.left_group_index * block.component_count + component
+            ],
+            block.component_group_ids[
+                entry.right_group_index * block.component_count + component
+            ],
+        )
+        for component in range(block.component_count)
+        for entry in block.entries
+    )
+    payload = contraction.to_json_dict()
+    assert payload["entry_count"] == 0
+    assert payload["logical_entry_count"] == len(logical)
+    assert payload["entries"] == []
+    assert payload["repeated_block"] == block.to_json_dict()
+    assert _color_contraction(payload)["repeated_block"] == block.to_json_dict()
+
+    expanded = tuple(
+        entry
+        for helicity_key in (("helicity:a",), ("helicity:b",))
+        for entry in (
+            build_color_contraction_plan(
+                plan,
+                tuple(
+                    descriptor
+                    for descriptor in groups
+                    if descriptor.helicity_key == helicity_key
+                ),
+            )
+            or pytest.fail("single-component contraction is absent")
+        ).entries
+    )
+    amplitudes = {
+        10: complex(0.5, -1.0),
+        20: complex(1.5, 0.25),
+        30: complex(-0.75, 2.0),
+        40: complex(0.125, -0.5),
+    }
+
+    def reduce(entries: tuple[ColorContractionEntry, ...]) -> float:
+        total = 0.0
+        for entry in entries:
+            left = amplitudes[entry.left_group_id]
+            right = amplitudes[entry.right_group_id]
+            product = left * right.conjugate()
+            total += entry.symmetry_factor * (
+                entry.weight_re * product.real - entry.weight_im * product.imag
+            )
+        return total
+
+    assert isclose(reduce(logical), reduce(expanded), rel_tol=1.0e-15, abs_tol=1.0e-15)
+
+
+def test_color_contraction_compaction_falls_back_for_nonidentical_components() -> None:
+    plan = build_color_plan(
+        build_process_ir("g g > g g", color_accuracy="full"),
+        color_accuracy="full",
+    )
+    sector = plan.sectors[0]
+    common = {
+        "sector_id": sector.id,
+        "word": tuple(sector.word_labels or sector.color_words[0]),
+    }
+    groups = (
+        ColorGroupDescriptor(
+            group_id=0,
+            helicity_key=("helicity:a",),
+            helicity_weight=1.0,
+            **common,
+        ),
+        ColorGroupDescriptor(
+            group_id=1,
+            helicity_key=("helicity:b",),
+            helicity_weight=nextafter(1.0, 2.0),
+            **common,
+        ),
+    )
+
+    contraction = build_color_contraction_plan(plan, groups)
+
+    assert contraction is not None
+    assert contraction.repeated_block is None
+    assert contraction.logical_entry_count == len(contraction.entries) == 2
 
 
 def test_color_contraction_public_names_have_no_legacy_aliases() -> None:

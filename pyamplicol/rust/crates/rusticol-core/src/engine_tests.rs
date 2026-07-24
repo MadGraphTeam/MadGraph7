@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
+use serde_json::json;
 
 fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
     let contracted = color_accuracy != "lc";
@@ -1145,6 +1146,181 @@ fn repeated_color_block_requires_identical_component_coefficients() {
     ];
     let contraction = ColorContractionRuntime::new(&groups, entries);
     assert!(contraction.repeated_block.is_none());
+}
+
+#[test]
+fn compact_repeated_color_manifest_builds_without_expanded_entries() {
+    let groups = vec![
+        repeated_test_group(10, 2, 100),
+        repeated_test_group(11, 3, 100),
+        repeated_test_group(12, 0, 200),
+        repeated_test_group(13, 1, 200),
+    ];
+    let manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: groups.len(),
+        includes_color_factor: true,
+        entries: Vec::new(),
+        repeated_block: Some(GenericRepeatedColorContractionBlockManifest {
+            component_count: 2,
+            component_group_ids: vec![10, 11, 12, 13],
+            entries: vec![
+                GenericRepeatedColorContractionEntryManifest {
+                    left_group_index: 0,
+                    right_group_index: 0,
+                    weight: vec![1.25, 0.0],
+                    symmetry_factor: 1.0,
+                },
+                GenericRepeatedColorContractionEntryManifest {
+                    left_group_index: 0,
+                    right_group_index: 1,
+                    weight: vec![-0.75, 0.0],
+                    symmetry_factor: 2.0,
+                },
+                GenericRepeatedColorContractionEntryManifest {
+                    left_group_index: 1,
+                    right_group_index: 1,
+                    weight: vec![2.0, 0.0],
+                    symmetry_factor: 1.0,
+                },
+            ],
+        }),
+    };
+    let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
+        .unwrap()
+        .expect("compact repeated contraction");
+    assert!(contraction.entries.is_empty());
+    assert_eq!(contraction.logical_entry_count().unwrap(), 6);
+    let logical_entries = contraction.logical_entries().collect::<Vec<_>>();
+    assert_eq!(
+        logical_entries
+            .iter()
+            .map(|entry| (entry.left_group_index, entry.right_group_index))
+            .collect::<Vec<_>>(),
+        vec![(0, 0), (0, 2), (2, 2), (1, 1), (1, 3), (3, 3)]
+    );
+
+    let outputs = vec![
+        c64(0.5, -1.0),
+        c64(1.5, 0.25),
+        c64(-0.75, 2.0),
+        c64(0.125, -0.5),
+    ];
+    let expected = legacy_color_contraction_totals(&outputs, 4, &groups, &logical_entries)[0];
+    let mut amplitude = test_amplitude_runtime(outputs, Some(contraction));
+    amplitude.raw_sum_groups = groups;
+    let mut actual = vec![0.0];
+    amplitude
+        .reduce_scratch_f64_into_selected_slice(1, &mut actual, None)
+        .unwrap();
+    assert!((actual[0] - expected).abs() <= 1.0e-12 * expected.abs().max(1.0));
+}
+
+#[test]
+fn compact_repeated_color_manifest_rejects_duplicate_group_mapping() {
+    let groups = vec![
+        repeated_test_group(10, 0, 100),
+        repeated_test_group(11, 1, 100),
+    ];
+    let manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: groups.len(),
+        includes_color_factor: true,
+        entries: Vec::new(),
+        repeated_block: Some(GenericRepeatedColorContractionBlockManifest {
+            component_count: 2,
+            component_group_ids: vec![10, 10],
+            entries: Vec::new(),
+        }),
+    };
+    let error = match build_color_contraction_runtime(Some(&manifest), &groups) {
+        Ok(_) => panic!("duplicate repeated color group mapping must fail"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("maps a coherent group more than once")
+    );
+}
+
+#[test]
+fn compact_repeated_color_manifest_rejects_malformed_storage() {
+    let missing_entries = serde_json::from_value::<GenericColorContractionManifest>(json!({
+        "supported": true,
+        "group_count": 2,
+        "includes_color_factor": true,
+    }));
+    assert!(missing_entries.is_err());
+
+    let groups = vec![
+        repeated_test_group(10, 0, 100),
+        repeated_test_group(11, 1, 100),
+    ];
+    let repeated = |weight: Vec<f64>, left_group_index: usize| {
+        Some(GenericRepeatedColorContractionBlockManifest {
+            component_count: 2,
+            component_group_ids: vec![10, 11],
+            entries: vec![GenericRepeatedColorContractionEntryManifest {
+                left_group_index,
+                right_group_index: 0,
+                weight,
+                symmetry_factor: 1.0,
+            }],
+        })
+    };
+    let malformed = [
+        (
+            "two components",
+            GenericColorContractionManifest {
+                supported: true,
+                reason: None,
+                group_count: 2,
+                includes_color_factor: true,
+                entries: Vec::new(),
+                repeated_block: repeated(vec![1.0], 0),
+            },
+        ),
+        (
+            "out of bounds",
+            GenericColorContractionManifest {
+                supported: true,
+                reason: None,
+                group_count: 2,
+                includes_color_factor: true,
+                entries: Vec::new(),
+                repeated_block: repeated(vec![1.0, 0.0], 1),
+            },
+        ),
+        (
+            "cannot mix",
+            GenericColorContractionManifest {
+                supported: true,
+                reason: None,
+                group_count: 2,
+                includes_color_factor: true,
+                entries: vec![GenericColorContractionEntryManifest {
+                    left_group_id: 10,
+                    right_group_id: 10,
+                    weight: vec![1.0, 0.0],
+                    symmetry_factor: 1.0,
+                }],
+                repeated_block: repeated(vec![1.0, 0.0], 0),
+            },
+        ),
+    ];
+    for (expected, manifest) in malformed {
+        let error = match build_color_contraction_runtime(Some(&manifest), &groups) {
+            Ok(_) => panic!("malformed repeated color storage must fail"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains(expected),
+            "unexpected error for {expected}: {error}"
+        );
+    }
 }
 
 #[test]

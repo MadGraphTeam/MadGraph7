@@ -540,3 +540,72 @@ and substantially worse source fragmentation. A prototype therefore does not
 meet this project's low-risk threshold. Reconsider it only with a separate
 segmented/strided backend ABI project, or if future measurements put stage
 assignment materially above 10% of wall.
+
+## Milestone 7: SymJIT 2.21.1 and repeated colour-block reduction
+
+Status: validated, pushed, and fast-forwarded to `main` at
+`64f60d01f8aa2d147449219515a8f950da03e826`.
+
+The candidate dependency is pinned to exact upstream SymJIT commit
+`48197f32536c894b51ef25b2cf05ddd05c22675f` (release `2.21.1`, archive
+SHA-256 `876930348cc06761ca780570fb282d009f143f4a469e321e3b5039c5ee217424`).
+The NLC/full-colour totals runtime now recognizes disconnected,
+bit-identical colour matrices repeated over helicity components. It gathers
+coherent amplitudes once into local-colour-major/component-minor order and
+contracts the canonical matrix across the contiguous component dimension.
+Real weights use a four-accumulator Hermitian product kernel; complex and
+non-repeated plans retain generic fallbacks. The implementation is ordinary
+portable Rust and contains no Apple- or Arm-specific intrinsics.
+
+Interleaved exact-v2.21.1 batch-128 measurements against frozen parent
+`f41cb7e` were:
+
+| Process and accuracy | Baseline ms/point | `64f60d0` ms/point | Wall change | Reduction change |
+|---|---:|---:|---:|---:|
+| `d d~ > t t~ + 3g`, NLC | 0.558152 | 0.539107 | -3.41% | -56.18% |
+| `d d~ > t t~ + 3g`, full | 0.594886 | 0.561501 | -5.61% | -56.26% |
+| `g g > t t~ + 3g`, NLC | 2.242961 | 2.019784 | -9.95% | -60.66% |
+| `g g > t t~ + 3g`, full | 3.007659 | 2.215970 | -26.32% | -60.60% |
+
+Maximum relative numerical disagreement was `3.18e-14`, below the required
+`rtol=1e-12`, `atol=1e-15`. Focused and full Python/Rust checks passed except
+for the pre-existing stale assertion
+`compiled_color_topology_lane_requires_physics_reduction`, whose expected
+diagnostic is already documented by the exact-main ledger.
+
+## Milestone 8: compact repeated colour-contraction ABI
+
+Status: implementation and artifact/load validation complete on the feature
+branch; final native wall and LC no-regression gates are in progress.
+
+Generated NLC/full-colour plans now encode one canonical upper-triangular
+matrix plus a local-colour-major/component-minor coherent-group map when at
+least two helicity components have identical sector identities, binary64
+helicity weights, and coefficients. Expanded entries remain the fallback for
+non-repeated plans. Rust constructs the hot repeated block directly instead
+of parsing and retaining every helicity copy. Exact Python and every f64,
+resolved, materialized-helicity, generic-precision, eager-v2, and eager-v3
+consumer iterate the same logical entries. Malformed mixed storage, bad
+shapes/maps/indices, missing storage, and invalid compact weight widths fail
+closed.
+
+High-colour artifact results:
+
+| Artifact | Total bytes, expanded | Total bytes, compact | Execution JSON change | Warm load change |
+|---|---:|---:|---:|---:|
+| `d d~ > t t~ + 3g`, NLC | 100,226,563 | 97,701,552 | -3.07% | -0.30% |
+| `d d~ > t t~ + 3g`, full | 104,443,953 | 97,964,422 | -7.48% | -6.17% |
+| `g g > t t~ + 3g`, NLC | 166,088,606 | 146,980,892 | -17.67% | -9.57% |
+| `g g > t t~ + 3g`, full | 242,269,360 | 148,729,429 | -50.75% | -36.60% |
+
+The largest sum lane replaces `929,280` expanded full-colour entries with
+`7,260` template entries and a `15,360`-group map. The complete execution
+manifest falls from `184,313,350` to `90,771,938` bytes. Seven-load alternating
+medians are `3.258793 s` expanded versus `2.066087 s` compact. Fresh generation
+remains on par: `22.93--24.10 s` for the two `d d~` artifacts and
+`61.98--62.39 s` for the two `g g` artifacts, with watchdog peaks
+`0.738--1.126 GiB` (below the exact-baseline peaks up to `1.784 GiB`).
+All four generated artifacts load and evaluate successfully; focused evidence
+currently comprises 53 Python tests, three compact Rust malformed/parity tests,
+the 259-test Rust suite up to its known stale diagnostic assertion, Cargo
+all-target checks, Ruff, rustfmt, and artifact smokes.

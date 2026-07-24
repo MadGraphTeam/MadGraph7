@@ -20,7 +20,9 @@ from pyamplicol.runtime.symbolica_exact import (
     _fill_sources_with_states,
     _lc_replay_plan,
     _reduce_materialized_helicity,
+    _reduce_resolved,
     _upcast_decimal,
+    _validated_color_contraction_entries,
     _working_precision,
 )
 
@@ -891,6 +893,190 @@ def test_exact_materialized_helicity_applies_color_contraction(
         ((Decimal(1), Decimal(0)), (Decimal(0), Decimal(1))),
     )
     assert value == (Decimal(20),)
+
+
+def test_exact_color_contraction_compact_and_expanded_parity() -> None:
+    execution, physics = _quotient_metadata()
+    physics["color_accuracy"] = "full"
+    physics["color_components"] = [{"id": "contracted", "kind": "contracted"}]
+    physics["reduction"] = {
+        "groups": [
+            {
+                "id": "reduction:0",
+                "physical_helicity_ids": ["h:-1"],
+                "physical_color_ids": ["contracted"],
+            },
+            {
+                "id": "reduction:1",
+                "physical_helicity_ids": ["h:+1"],
+                "physical_color_ids": ["contracted"],
+            },
+        ]
+    }
+    runtime_schema = execution["runtime_schema"]
+    assert isinstance(runtime_schema, dict)
+    amplitude = runtime_schema["amplitude_stage"]
+    assert isinstance(amplitude, dict)
+    amplitude["roots"] = [
+        {
+            "root_id": 0,
+            "output_index": 0,
+            "coherent_group_id": 0,
+            "all_sector_weight": 1.0,
+            "helicity_weight": 1.0,
+        },
+        {
+            "root_id": 1,
+            "output_index": 1,
+            "coherent_group_id": 1,
+            "all_sector_weight": 1.0,
+            "helicity_weight": 1.0,
+        },
+    ]
+    expanded = {
+        "group_count": 2,
+        "entries": [
+            {
+                "left_group_id": group_id,
+                "right_group_id": group_id,
+                "weight": [2.0, 0.0],
+                "symmetry_factor": 1.0,
+            }
+            for group_id in range(2)
+        ],
+    }
+    compact = {
+        "group_count": 2,
+        "entries": [],
+        "logical_entry_count": 2,
+        "repeated_block": {
+            "component_count": 2,
+            "component_group_ids": [0, 1],
+            "entries": [
+                {
+                    "left_group_index": 0,
+                    "right_group_index": 0,
+                    "weight": [2.0, 0.0],
+                    "symmetry_factor": 1.0,
+                }
+            ],
+        },
+    }
+    raw_amplitudes = (
+        (Decimal(2), Decimal(1)),
+        (Decimal(3), Decimal(-1)),
+    )
+    root_factors = ((Decimal(1), Decimal(0)),) * 2
+
+    amplitude["color_contraction"] = expanded
+    expanded_materialized = _reduce_materialized_helicity(
+        raw_amplitudes,
+        execution,
+        physics,
+        Decimal(4),
+        0,
+        root_factors,
+    )
+    expanded_resolved = _reduce_resolved(
+        (raw_amplitudes,),
+        execution,
+        physics,
+        Decimal(4),
+        None,
+        None,
+    )
+    amplitude["color_contraction"] = compact
+    compact_materialized = _reduce_materialized_helicity(
+        raw_amplitudes,
+        execution,
+        physics,
+        Decimal(4),
+        0,
+        root_factors,
+    )
+    compact_resolved = _reduce_resolved(
+        (raw_amplitudes,),
+        execution,
+        physics,
+        Decimal(4),
+        None,
+        None,
+    )
+
+    assert compact_materialized == expanded_materialized == (Decimal(40),)
+    assert compact_resolved == expanded_resolved
+
+
+def test_exact_color_contraction_rejects_mixed_storage() -> None:
+    execution, physics = _quotient_metadata()
+    physics["color_accuracy"] = "full"
+    physics["color_components"] = [{"id": "contracted", "kind": "contracted"}]
+    runtime_schema = execution["runtime_schema"]
+    assert isinstance(runtime_schema, dict)
+    amplitude = runtime_schema["amplitude_stage"]
+    assert isinstance(amplitude, dict)
+    amplitude["color_contraction"] = {
+        "group_count": 1,
+        "entries": [
+            {
+                "left_group_id": 0,
+                "right_group_id": 0,
+                "weight": [1.0, 0.0],
+                "symmetry_factor": 1.0,
+            }
+        ],
+        "repeated_block": {
+            "component_count": 2,
+            "component_group_ids": [0, 1],
+            "entries": [],
+        },
+    }
+
+    with pytest.raises(ArtifactError, match="mixes expanded and repeated entries"):
+        _reduce_materialized_helicity(
+            ((Decimal(1), Decimal(0)),),
+            execution,
+            physics,
+            Decimal(1),
+            0,
+            ((Decimal(1), Decimal(0)),),
+        )
+
+
+def test_exact_compact_complex_off_diagonal_entries_match_expanded() -> None:
+    groups = {group_id: object() for group_id in range(4)}
+    expanded = {
+        "entries": [
+            {
+                "left_group_id": left,
+                "right_group_id": right,
+                "weight": [2.0, -0.5],
+                "symmetry_factor": 2.0,
+            }
+            for left, right in ((0, 2), (1, 3))
+        ]
+    }
+    compact = {
+        "group_count": 4,
+        "entries": [],
+        "logical_entry_count": 2,
+        "repeated_block": {
+            "component_count": 2,
+            "component_group_ids": [0, 1, 2, 3],
+            "entries": [
+                {
+                    "left_group_index": 0,
+                    "right_group_index": 1,
+                    "weight": [2.0, -0.5],
+                    "symmetry_factor": 2.0,
+                }
+            ],
+        },
+    }
+
+    assert tuple(_validated_color_contraction_entries(compact, groups)) == tuple(
+        _validated_color_contraction_entries(expanded, groups)
+    )
 
 
 def test_exact_helicity_plan_fails_closed_on_inconsistent_routes() -> None:

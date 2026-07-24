@@ -1770,15 +1770,18 @@ class _Builder:
         self.tables.append(
             _freeze_table("color_contraction_metadata", contraction_metadata)
         )
-        entries = () if contraction is None else contraction.entries
+        entry_count = 0 if contraction is None else contraction.logical_entry_count
         contraction_columns = _allocate(
-            len(entries),
+            entry_count,
             left_group_id=_U32,
             right_group_id=_U32,
             weight_factor_id=_U32,
             symmetry_factor_id=_U32,
         )
-        for row, entry in enumerate(entries):
+        logical_entries = (
+            () if contraction is None else contraction.iter_logical_entries()
+        )
+        for row, entry in enumerate(logical_entries):
             contraction_columns["left_group_id"][row] = entry.left_group_id
             contraction_columns["right_group_id"][row] = entry.right_group_id
             contraction_columns["weight_factor_id"][row] = self.factors.add(

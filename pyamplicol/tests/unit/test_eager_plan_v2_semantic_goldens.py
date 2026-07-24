@@ -315,6 +315,38 @@ def _reduction_semantics(schema: Mapping[str, object]) -> object:
     }
 
 
+def _logical_color_contraction_entries(
+    contraction: Mapping[str, object],
+) -> tuple[Mapping[str, object], ...]:
+    entries = _records(contraction["entries"], "color_contraction.entries")
+    repeated_raw = contraction.get("repeated_block")
+    if repeated_raw is None:
+        return entries
+    assert not entries
+    repeated = _mapping(repeated_raw, "color_contraction.repeated_block")
+    component_count = int(repeated["component_count"])
+    component_group_ids = tuple(
+        int(value) for value in cast(Sequence[object], repeated["component_group_ids"])
+    )
+    templates = _records(
+        repeated["entries"], "color_contraction.repeated_block.entries"
+    )
+    return tuple(
+        {
+            "left_group_id": component_group_ids[
+                int(entry["left_group_index"]) * component_count + component_index
+            ],
+            "right_group_id": component_group_ids[
+                int(entry["right_group_index"]) * component_count + component_index
+            ],
+            "weight": entry["weight"],
+            "symmetry_factor": entry["symmetry_factor"],
+        }
+        for component_index in range(component_count)
+        for entry in templates
+    )
+
+
 def _exact_semantics(case: _GoldenCase) -> object:
     referenced = case.tables.referenced_kernel_ids
     kernels = [case.catalog.by_id[kernel_id] for kernel_id in sorted(referenced)]
@@ -422,9 +454,8 @@ def _resolved_probe(
                 group["all_sector_weight"]
             ) * (value[0] * value[0] + value[1] * value[1])
     else:
-        entries = _records(
-            _mapping(contraction, "color_contraction")["entries"],
-            "color_contraction.entries",
+        entries = _logical_color_contraction_entries(
+            _mapping(contraction, "color_contraction")
         )
         for entry in entries:
             left_id = int(entry["left_group_id"])
@@ -470,9 +501,8 @@ def _diagnostic_counts(case: _GoldenCase) -> dict[str, int]:
     contraction_entries = (
         ()
         if contraction is None
-        else _records(
-            _mapping(contraction, "color_contraction")["entries"],
-            "color_contraction.entries",
+        else _logical_color_contraction_entries(
+            _mapping(contraction, "color_contraction")
         )
     )
     return {
@@ -598,12 +628,12 @@ _EXPECTED: dict[str, dict[str, object]] = {
         "digests": {
             "exact": "0596dde559b322fd5341142d288d5dbc8e33fb9610d31fe7d9f9be375fd3d6f0",
             "layout": "2500a3dc283495b7c86405a25ce5de90841d026f27a2a38ee0644b98739696df",
-            "reductions": "e935f5bf6abdba9476a9c7fd2c7acff65285d76387377ca057896a716211ef79",
+            "reductions": "513d22dc4c4cb819e3e2b15ee87fbdb5e50cefaa33c10a7b1b9457a95cc46c16",
             "resolved": "8992b3b811e142e32f5ea1b1bdf1101bb91ccf8b353db7f6be48626473532ffb",
             "selectors": "a24b39783b6fdacd1579979cd7b9978351f8cb402d983828d179d0bbda836a19",
             "tables": "fbed8d4586abbc1ec8cd6656c310611e8337992574d66221b267fb616e3aeb85",
         },
-        "semantic_sha256": "1392a7344d3ca49d94a50354a5b7816d42c30305d5140c470477d3685f02e9f4",
+        "semantic_sha256": "09e7c8ed5d5dce6c5cb16df33a1a95bf204c70718f4ec575c2478ed3b47fb049",
     },
     "full-contracted": {
         "counts": {
@@ -626,12 +656,12 @@ _EXPECTED: dict[str, dict[str, object]] = {
         "digests": {
             "exact": "0596dde559b322fd5341142d288d5dbc8e33fb9610d31fe7d9f9be375fd3d6f0",
             "layout": "b68828f7c57130df4fd916691cb30df937a4f8f6009a69b133bbe58b923aa8dd",
-            "reductions": "022a17fd00df387c12356fa4749f0afce5e92743b732d289a989b52e44df71fb",
+            "reductions": "aee94cd71574e24ee90fef2f8070e3fded7b4f61ec02789d1d6cd60602e3350a",
             "resolved": "c5608596ba42ddfdbad9e0a5c27db395519b32704386767f4b25100b4375a30c",
             "selectors": "9ca1b90505098cc6f19d87eba29baa552da47173ff2658f359e27de838bc1ca2",
             "tables": "7b7c4f181b6525e9356cdb5648bc80085e890018c778d3a55262fd00d0b4faf3",
         },
-        "semantic_sha256": "b0387410d6eb215a6f8474a60e77f8e7d9167ad169223228eb21f64ef9a0cdeb",
+        "semantic_sha256": "8d17b7de733096b91c859909c5ed08410249357915a6593b7ad13b98b3ba84e8",
     },
 }
 

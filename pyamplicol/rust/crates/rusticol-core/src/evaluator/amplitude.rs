@@ -533,7 +533,7 @@ impl AmplitudeRuntime {
                     }
                     contraction.group_scratch_f64[group_row + group_index] = sum;
                 }
-                for entry in &contraction.entries {
+                for entry in contraction.logical_entries() {
                     let left = contraction.group_scratch_f64[group_row + entry.left_group_index];
                     let right = contraction.group_scratch_f64[group_row + entry.right_group_index];
                     let product = left * right.conj();
@@ -629,8 +629,8 @@ impl AmplitudeRuntime {
             }
             let selected_contracted_color_position = selected_color_positions[0];
             let mut selected_helicity_weights_by_entry =
-                Vec::with_capacity(contraction.entries.len());
-            for entry in &contraction.entries {
+                Vec::with_capacity(contraction.logical_entry_count()?);
+            for entry in contraction.logical_entries() {
                 let left_group = &self.raw_sum_groups[entry.left_group_index];
                 let right_group = &self.raw_sum_groups[entry.right_group_index];
                 let left_reduction = physics
@@ -694,8 +694,7 @@ impl AmplitudeRuntime {
                     contraction.group_scratch_f64[group_row + group_index] = sum;
                 }
                 for (entry, left_weights) in contraction
-                    .entries
-                    .iter()
+                    .logical_entries()
                     .zip(&selected_helicity_weights_by_entry)
                 {
                     let left = contraction.group_scratch_f64[group_row + entry.left_group_index];
@@ -1004,7 +1003,7 @@ impl AmplitudeRuntime {
                     }
                     contraction.group_scratch_f64[group_row + group_index] = sum;
                 }
-                for entry in &contraction.entries {
+                for entry in contraction.logical_entries() {
                     if !group_active[entry.left_group_index]
                         || !group_active[entry.right_group_index]
                     {
@@ -1337,7 +1336,7 @@ impl AmplitudeRuntime {
                     }
                     group_values[group_row + group_index] = sum;
                 }
-                for entry in &contraction.entries {
+                for entry in contraction.logical_entries() {
                     if !group_active[entry.left_group_index]
                         || !group_active[entry.right_group_index]
                     {
@@ -1542,7 +1541,7 @@ impl AmplitudeRuntime {
                     }
                     group_values[group_row + group_index] = sum;
                 }
-                for entry in &contraction.entries {
+                for entry in contraction.logical_entries() {
                     let left = &group_values[group_row + entry.left_group_index];
                     let right = &group_values[group_row + entry.right_group_index];
                     let product_re =
@@ -1619,7 +1618,7 @@ impl AmplitudeRuntime {
                     }
                     group_values[group_row + group_index] = sum;
                 }
-                for entry in &contraction.entries {
+                for entry in contraction.logical_entries() {
                     let left_group = &self.raw_sum_groups[entry.left_group_index];
                     let right_group = &self.raw_sum_groups[entry.right_group_index];
                     let left_reduction = physics
@@ -1859,6 +1858,73 @@ pub(crate) fn build_color_contraction_runtime(
             "colour contraction declares {} groups but runtime has {} coherent groups",
             manifest.group_count,
             group_index_by_id.len()
+        )));
+    }
+    if let Some(repeated) = manifest.repeated_block.as_ref() {
+        if !manifest.entries.is_empty() {
+            return Err(RusticolError::invalid_argument(
+                "colour contraction cannot mix expanded entries with a repeated block",
+            ));
+        }
+        if repeated.component_count < 2 {
+            return Err(RusticolError::invalid_argument(
+                "repeated colour contraction must contain at least two components",
+            ));
+        }
+        if repeated.component_group_ids.len() != manifest.group_count
+            || repeated.component_group_ids.len() % repeated.component_count != 0
+        {
+            return Err(RusticolError::invalid_argument(
+                "repeated colour contraction group mapping has an inconsistent shape",
+            ));
+        }
+        let groups_per_component = repeated.component_group_ids.len() / repeated.component_count;
+        if groups_per_component == 0 {
+            return Err(RusticolError::invalid_argument(
+                "repeated colour contraction components cannot be empty",
+            ));
+        }
+        let mut mapped_group_ids = BTreeSet::new();
+        let mut component_group_indices = Vec::with_capacity(manifest.group_count);
+        for group_id in &repeated.component_group_ids {
+            if !mapped_group_ids.insert(*group_id) {
+                return Err(RusticolError::invalid_argument(
+                    "repeated colour contraction maps a coherent group more than once",
+                ));
+            }
+            component_group_indices.push(*group_index_by_id.get(group_id).ok_or_else(|| {
+                RusticolError::invalid_argument(format!(
+                    "repeated colour contraction references unknown group {group_id}"
+                ))
+            })?);
+        }
+        let mut entries = Vec::with_capacity(repeated.entries.len());
+        for entry in &repeated.entries {
+            if entry.weight.len() != 2 {
+                return Err(RusticolError::invalid_argument(
+                    "repeated colour contraction weight must have two components",
+                ));
+            }
+            if entry.left_group_index >= groups_per_component
+                || entry.right_group_index >= groups_per_component
+            {
+                return Err(RusticolError::invalid_argument(
+                    "repeated colour contraction entry index is out of bounds",
+                ));
+            }
+            entries.push(ColorContractionEntry {
+                left_group_index: entry.left_group_index,
+                right_group_index: entry.right_group_index,
+                weight_re: entry.weight.first().copied().unwrap_or(0.0),
+                weight_im: entry.weight.get(1).copied().unwrap_or(0.0),
+                symmetry_factor: entry.symmetry_factor,
+            });
+        }
+        return Ok(Some(ColorContractionRuntime::from_repeated_block(
+            groups,
+            repeated.component_count,
+            component_group_indices,
+            entries,
         )));
     }
     let mut entries = Vec::with_capacity(manifest.entries.len());

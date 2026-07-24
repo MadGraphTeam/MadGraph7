@@ -11,7 +11,10 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pytest
 
-from pyamplicol.color import build_lc_topology_replay_plan
+from pyamplicol.color import (
+    build_color_contraction_plan,
+    build_lc_topology_replay_plan,
+)
 from pyamplicol.generation.dag_algorithms import (
     prune_global_helicity_flip_equivalent_roots,
 )
@@ -32,6 +35,7 @@ from pyamplicol.generation.helicity_materialization import (
     materialize_helicity_recurrence,
 )
 from pyamplicol.generation.helicity_replay import build_helicity_recurrence_plan
+from pyamplicol.generation.runtime_amplitudes import _amplitude_groups
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.base import Model
 from pyamplicol.models.builtin.process_ir import build_process_ir
@@ -461,10 +465,21 @@ def test_contracted_color_reductions_are_columnar(color_accuracy: str) -> None:
     metadata = result.table("color_contraction_metadata")
     entries = result.table("color_contraction_entries")
     reductions = result.table("reduction_members")
+    _group_ids, descriptors = _amplitude_groups(dag, dag.amplitude_roots)
+    contraction = build_color_contraction_plan(dag.color_plan, descriptors)
 
+    assert contraction is not None
+    assert contraction.repeated_block is not None
+    logical_entries = tuple(contraction.iter_logical_entries())
     assert bool(metadata.column("present")[0])
     assert bool(metadata.column("supported")[0])
-    assert entries.row_count > 0
+    assert entries.row_count == contraction.logical_entry_count > 0
+    assert tuple(int(value) for value in entries.column("left_group_id")) == tuple(
+        entry.left_group_id for entry in logical_entries
+    )
+    assert tuple(int(value) for value in entries.column("right_group_id")) == tuple(
+        entry.right_group_id for entry in logical_entries
+    )
     assert reductions.row_count > 0
     assert set(int(value) for value in reductions.column("color_selector_id")) == {0}
     assert result.table("color_selectors").row_count == 1

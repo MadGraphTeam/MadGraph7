@@ -1124,7 +1124,7 @@ fn reduce_eager_amplitudes_resolved(
                 color_group_scratch[group_index * point_count + point] = sum;
             }
         }
-        for entry in &contraction.entries {
+        for entry in contraction.logical_entries() {
             let left_group = &groups[entry.left_group_index];
             let right_group = &groups[entry.right_group_index];
             let left_reduction = physics

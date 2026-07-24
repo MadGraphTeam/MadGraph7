@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Sequence
 
 from .contraction_factors import (
@@ -18,7 +19,9 @@ from .contraction_factors import (
 from .contraction_types import (
     ColorContractionEntry,
     ColorContractionPlan,
+    ColorContractionTemplateEntry,
     ColorGroupDescriptor,
+    RepeatedColorContractionBlock,
 )
 from .plan import GenericColorPlan, LCColorSector
 
@@ -47,14 +50,33 @@ def build_color_contraction_plan(
             entries=(),
         )
     descriptors = tuple(groups)
-    entries: list[ColorContractionEntry] = []
     sector_by_id = {sector.id: sector for sector in color_plan.sectors}
-    factor_cache: dict[tuple[int, int], float] = {}
     descriptors_by_helicity: dict[tuple[object, ...], list[ColorGroupDescriptor]] = {}
     for descriptor in descriptors:
         descriptors_by_helicity.setdefault(descriptor.helicity_key, []).append(
             descriptor
         )
+    components = tuple(
+        tuple(component) for component in descriptors_by_helicity.values()
+    )
+    repeated_block = _build_repeated_color_contraction_block(
+        color_plan,
+        components,
+        sector_by_id=sector_by_id,
+        accuracy=accuracy,
+    )
+    if repeated_block is not None:
+        return ColorContractionPlan(
+            color_accuracy=accuracy,
+            supported=True,
+            reason=None,
+            group_count=len(groups),
+            entries=(),
+            repeated_block=repeated_block,
+        )
+
+    entries: list[ColorContractionEntry] = []
+    factor_cache: dict[tuple[int, int], float] = {}
     for helicity_descriptors in descriptors_by_helicity.values():
         for left_offset, left in enumerate(helicity_descriptors):
             left_sector = sector_by_id.get(left.sector_id)
@@ -106,6 +128,85 @@ def build_color_contraction_plan(
         group_count=len(groups),
         entries=tuple(entries),
     )
+
+
+def _build_repeated_color_contraction_block(
+    color_plan: GenericColorPlan,
+    components: Sequence[Sequence[ColorGroupDescriptor]],
+    *,
+    sector_by_id: dict[int, LCColorSector],
+    accuracy: str,
+) -> RepeatedColorContractionBlock | None:
+    if len(components) < 2 or not components[0]:
+        return None
+    sorted_sector_ids = tuple(
+        sorted(descriptor.sector_id for descriptor in components[0])
+    )
+    if len(set(sorted_sector_ids)) != len(sorted_sector_ids):
+        return None
+    reference_weight_bits = _binary64_bits(components[0][0].helicity_weight)
+    descriptors_by_component_and_sector: list[dict[int, ColorGroupDescriptor]] = []
+    for component in components:
+        component_sector_ids = tuple(
+            sorted(descriptor.sector_id for descriptor in component)
+        )
+        if (
+            component_sector_ids != sorted_sector_ids
+            or len(set(component_sector_ids)) != len(component_sector_ids)
+            or any(
+                _binary64_bits(descriptor.helicity_weight) != reference_weight_bits
+                for descriptor in component
+            )
+        ):
+            return None
+        descriptors_by_component_and_sector.append(
+            {descriptor.sector_id: descriptor for descriptor in component}
+        )
+
+    component_group_ids = tuple(
+        descriptors_by_sector[sector_id].group_id
+        for sector_id in sorted_sector_ids
+        for descriptors_by_sector in descriptors_by_component_and_sector
+    )
+    base_entries: list[ColorContractionTemplateEntry] = []
+    helicity_weight = components[0][0].helicity_weight
+    for left_group_index, left_sector_id in enumerate(sorted_sector_ids):
+        left_sector = sector_by_id.get(left_sector_id)
+        if left_sector is None:
+            return None
+        for right_group_index in range(left_group_index, len(sorted_sector_ids)):
+            right_sector_id = sorted_sector_ids[right_group_index]
+            right_sector = sector_by_id.get(right_sector_id)
+            if right_sector is None:
+                return None
+            weight = color_contraction_factor(
+                color_plan,
+                left_sector,
+                right_sector,
+                accuracy=accuracy,
+                full_col_acc=20,
+            )
+            if abs(weight) <= 0.0:
+                continue
+            base_entries.append(
+                ColorContractionTemplateEntry(
+                    left_group_index=left_group_index,
+                    right_group_index=right_group_index,
+                    weight_re=helicity_weight * weight,
+                    symmetry_factor=(
+                        1.0 if left_group_index == right_group_index else 2.0
+                    ),
+                )
+            )
+    return RepeatedColorContractionBlock(
+        component_count=len(components),
+        component_group_ids=component_group_ids,
+        entries=tuple(base_entries),
+    )
+
+
+def _binary64_bits(value: float) -> bytes:
+    return struct.pack(">d", float(value))
 
 
 def color_contraction_factors(
@@ -172,7 +273,9 @@ def color_contraction_factor(
 __all__ = [
     "ColorContractionEntry",
     "ColorContractionPlan",
+    "ColorContractionTemplateEntry",
     "ColorGroupDescriptor",
+    "RepeatedColorContractionBlock",
     "build_color_contraction_plan",
     "color_contraction_factor",
     "color_contraction_factors",

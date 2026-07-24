@@ -1787,7 +1787,7 @@ def _amplitude_stage(stage: Mapping[str, object]) -> dict[str, object]:
 
 
 def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
-    return {
+    result: dict[str, object] = {
         **_select(record, "supported", "reason", "group_count"),
         "includes_color_factor": bool(record.get("includes_color_factor", False)),
         "entries": [
@@ -1801,6 +1801,26 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
             for item in _sequence(record["entries"])
         ],
     }
+    repeated_block = record.get("repeated_block")
+    if repeated_block is not None:
+        repeated = _mapping(repeated_block)
+        result["repeated_block"] = {
+            "component_count": int(repeated["component_count"]),
+            "component_group_ids": [
+                int(value) for value in _sequence(repeated["component_group_ids"])
+            ],
+            "entries": [
+                _select(
+                    _mapping(item),
+                    "left_group_index",
+                    "right_group_index",
+                    "weight",
+                    "symmetry_factor",
+                )
+                for item in _sequence(repeated["entries"])
+            ],
+        }
+    return result
 
 
 def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
