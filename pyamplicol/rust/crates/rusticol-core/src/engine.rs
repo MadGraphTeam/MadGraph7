@@ -1696,6 +1696,9 @@ struct EvaluatorGroup {
     output_len: usize,
     chunk_parameter_scratch_f64: Vec<Complex<f64>>,
     chunk_scratch_f64: Vec<Complex<f64>>,
+    chunk_parameter_scratch_aosoa_f64: Vec<f64>,
+    chunk_scratch_aosoa_f64: Vec<f64>,
+    chunk_input_mapping_scratch: Vec<usize>,
 }
 
 // Evaluator groups already own these values behind a Vec allocation. Boxing

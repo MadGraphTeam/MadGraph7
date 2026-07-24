@@ -43,6 +43,9 @@ impl EvaluatorGroup {
             output_len,
             chunk_parameter_scratch_f64: Vec::new(),
             chunk_scratch_f64: Vec::new(),
+            chunk_parameter_scratch_aosoa_f64: Vec::new(),
+            chunk_scratch_aosoa_f64: Vec::new(),
+            chunk_input_mapping_scratch: Vec::new(),
         })
     }
 
@@ -127,6 +130,42 @@ impl EvaluatorGroup {
             .zip(chunk_outputs)
             .zip(chunk_output_spans)
         {
+            if let Some(lane_width) = evaluator
+                .simd_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let mapping = input_mapping.as_deref();
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    mapping,
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                if evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )? {
+                    scatter_f64_aosoa_outputs_to_state(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        state_parameter_count,
+                        state,
+                        outputs,
+                        spans,
+                    )?;
+                    continue;
+                }
+            }
             let evaluator_params = mapped_f64_parameters(
                 params,
                 batch_size,
@@ -215,6 +254,60 @@ impl EvaluatorGroup {
             .zip(chunk_outputs)
             .zip(chunk_output_spans)
         {
+            if let Some(lane_width) = evaluator
+                .simd_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let parameter_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let leaf_start = Instant::now();
+                let mapping = input_mapping.as_deref();
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    mapping,
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                leaf_input_pack_elapsed += leaf_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count += u64::from(
+                    self.chunk_parameter_scratch_aosoa_f64.capacity() != parameter_capacity,
+                );
+
+                let output_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != output_capacity);
+                let eval_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += eval_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let assign_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_state(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        state_parameter_count,
+                        state,
+                        outputs,
+                        spans,
+                    )?;
+                    assign_elapsed += assign_start.elapsed();
+                    continue;
+                }
+            }
             let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
             let leaf_start = Instant::now();
             let evaluator_params = mapped_f64_parameters(
@@ -339,6 +432,54 @@ impl EvaluatorGroup {
             None => {}
         }
         for &chunk_index in active_chunk_indices {
+            let evaluator = &mut self.evaluators[chunk_index];
+            if let Some(lane_width) = evaluator
+                .simd_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let input_mapping = self.input_mappings[chunk_index].as_deref();
+                self.chunk_input_mapping_scratch.clear();
+                self.chunk_input_mapping_scratch
+                    .reserve(evaluator.input_len);
+                for local_component in 0..evaluator.input_len {
+                    let parent_component =
+                        input_mapping.map_or(local_component, |indices| indices[local_component]);
+                    self.chunk_input_mapping_scratch.push(
+                        parent_input_components
+                            .map_or(parent_component, |components| components[parent_component]),
+                    );
+                }
+                let block_count = pack_f64_parameters_aosoa(
+                    state,
+                    batch_size,
+                    state_parameter_count,
+                    evaluator.input_len,
+                    lane_width,
+                    Some(&self.chunk_input_mapping_scratch),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                if evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )? {
+                    scatter_f64_aosoa_outputs_to_state(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        state_parameter_count,
+                        state,
+                        &chunk_outputs[chunk_index],
+                        &chunk_output_spans[chunk_index],
+                    )?;
+                    continue;
+                }
+            }
             let evaluator_params = selected_chunk_f64_parameters(
                 state,
                 batch_size,
@@ -350,7 +491,6 @@ impl EvaluatorGroup {
                 &self.input_mapping_spans[chunk_index],
                 &mut self.chunk_parameter_scratch_f64,
             )?;
-            let evaluator = &mut self.evaluators[chunk_index];
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
             let scratch_len = batch_size
                 .checked_mul(evaluator.output_len)
@@ -450,6 +590,75 @@ impl EvaluatorGroup {
         let mut backend_call_count = 0u64;
         let mut scratch_reallocation_count = 0u64;
         for &chunk_index in active_chunk_indices {
+            let evaluator = &mut self.evaluators[chunk_index];
+            if let Some(lane_width) = evaluator
+                .simd_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let parameter_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let input_pack_start = Instant::now();
+                let input_mapping = self.input_mappings[chunk_index].as_deref();
+                let mapping_capacity = self.chunk_input_mapping_scratch.capacity();
+                self.chunk_input_mapping_scratch.clear();
+                self.chunk_input_mapping_scratch
+                    .reserve(evaluator.input_len);
+                for local_component in 0..evaluator.input_len {
+                    let parent_component =
+                        input_mapping.map_or(local_component, |indices| indices[local_component]);
+                    self.chunk_input_mapping_scratch.push(
+                        parent_input_components
+                            .map_or(parent_component, |components| components[parent_component]),
+                    );
+                }
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_input_mapping_scratch.capacity() != mapping_capacity);
+                let block_count = pack_f64_parameters_aosoa(
+                    state,
+                    batch_size,
+                    state_parameter_count,
+                    evaluator.input_len,
+                    lane_width,
+                    Some(&self.chunk_input_mapping_scratch),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                input_pack_elapsed += input_pack_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count += u64::from(
+                    self.chunk_parameter_scratch_aosoa_f64.capacity() != parameter_capacity,
+                );
+
+                let output_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != output_capacity);
+                let eval_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += eval_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let assign_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_state(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        state_parameter_count,
+                        state,
+                        &chunk_outputs[chunk_index],
+                        &chunk_output_spans[chunk_index],
+                    )?;
+                    assign_elapsed += assign_start.elapsed();
+                    continue;
+                }
+            }
             let parameter_capacity = self.chunk_parameter_scratch_f64.capacity();
             let input_pack_start = Instant::now();
             let evaluator_params = selected_chunk_f64_parameters(
@@ -468,7 +677,6 @@ impl EvaluatorGroup {
                 leaf_input_copy_component_count += evaluator_params.len() as u64;
             }
 
-            let evaluator = &mut self.evaluators[chunk_index];
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
             let scratch_len = batch_size
                 .checked_mul(evaluator.output_len)
@@ -574,40 +782,91 @@ impl EvaluatorGroup {
         for chunk_index in 0..self.evaluators.len() {
             let evaluator_output_len = self.evaluators[chunk_index].output_len;
             if active_chunk_indices.binary_search(&chunk_index).is_ok() {
-                let evaluator_params = selected_chunk_f64_parameters(
-                    params,
-                    batch_size,
-                    state_parameter_count,
-                    self.input_len,
-                    parent_input_components,
-                    parent_input_spans,
-                    self.input_mappings[chunk_index].as_deref(),
-                    &self.input_mapping_spans[chunk_index],
-                    &mut self.chunk_parameter_scratch_f64,
-                )?;
                 let evaluator = &mut self.evaluators[chunk_index];
-                validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
-                self.chunk_scratch_f64.resize(
-                    batch_size
-                        .checked_mul(evaluator_output_len)
-                        .ok_or_else(|| {
-                            RusticolError::invalid_argument(
-                                "amplitude chunk output length overflows usize",
-                            )
-                        })?,
-                    c64(0.0, 0.0),
-                );
-                evaluator.evaluate_f64_batch_unpadded(
-                    batch_size,
-                    evaluator_params,
-                    &mut self.chunk_scratch_f64,
-                )?;
-                for row in 0..batch_size {
-                    let source_start = row * evaluator_output_len;
-                    let target_start = row * self.output_len + output_start;
-                    out[target_start..target_start + evaluator_output_len].copy_from_slice(
-                        &self.chunk_scratch_f64[source_start..source_start + evaluator_output_len],
+                let mut evaluated_aosoa = false;
+                if let Some(lane_width) = evaluator
+                    .amplitude_aosoa_lane_width()
+                    .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+                {
+                    let input_mapping = self.input_mappings[chunk_index].as_deref();
+                    self.chunk_input_mapping_scratch.clear();
+                    self.chunk_input_mapping_scratch
+                        .reserve(evaluator.input_len);
+                    for local_component in 0..evaluator.input_len {
+                        let parent_component = input_mapping
+                            .map_or(local_component, |indices| indices[local_component]);
+                        self.chunk_input_mapping_scratch.push(
+                            parent_input_components.map_or(parent_component, |components| {
+                                components[parent_component]
+                            }),
+                        );
+                    }
+                    let block_count = pack_f64_parameters_aosoa(
+                        params,
+                        batch_size,
+                        state_parameter_count,
+                        evaluator.input_len,
+                        lane_width,
+                        Some(&self.chunk_input_mapping_scratch),
+                        &mut self.chunk_parameter_scratch_aosoa_f64,
+                    )?;
+                    self.chunk_scratch_aosoa_f64.resize(
+                        aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                        0.0,
                     );
+                    if evaluator.evaluate_f64_aosoa_blocks(
+                        block_count,
+                        &self.chunk_parameter_scratch_aosoa_f64,
+                        &mut self.chunk_scratch_aosoa_f64,
+                    )? {
+                        scatter_f64_aosoa_outputs_to_rows(
+                            &self.chunk_scratch_aosoa_f64,
+                            batch_size,
+                            evaluator.output_len,
+                            lane_width,
+                            self.output_len,
+                            output_start,
+                            out,
+                        )?;
+                        evaluated_aosoa = true;
+                    }
+                }
+                if !evaluated_aosoa {
+                    let evaluator_params = selected_chunk_f64_parameters(
+                        params,
+                        batch_size,
+                        state_parameter_count,
+                        self.input_len,
+                        parent_input_components,
+                        parent_input_spans,
+                        self.input_mappings[chunk_index].as_deref(),
+                        &self.input_mapping_spans[chunk_index],
+                        &mut self.chunk_parameter_scratch_f64,
+                    )?;
+                    validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+                    self.chunk_scratch_f64.resize(
+                        batch_size
+                            .checked_mul(evaluator_output_len)
+                            .ok_or_else(|| {
+                                RusticolError::invalid_argument(
+                                    "amplitude chunk output length overflows usize",
+                                )
+                            })?,
+                        c64(0.0, 0.0),
+                    );
+                    evaluator.evaluate_f64_batch_unpadded(
+                        batch_size,
+                        evaluator_params,
+                        &mut self.chunk_scratch_f64,
+                    )?;
+                    for row in 0..batch_size {
+                        let source_start = row * evaluator_output_len;
+                        let target_start = row * self.output_len + output_start;
+                        out[target_start..target_start + evaluator_output_len].copy_from_slice(
+                            &self.chunk_scratch_f64
+                                [source_start..source_start + evaluator_output_len],
+                        );
+                    }
                 }
             }
             output_start = output_start
@@ -693,6 +952,74 @@ impl EvaluatorGroup {
         let mut leaf_input_copy_component_count = 0u64;
         let mut backend_call_count = 0u64;
         for &chunk_index in active_chunk_indices {
+            let evaluator = &mut self.evaluators[chunk_index];
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let parameter_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let mapping_capacity = self.chunk_input_mapping_scratch.capacity();
+                let input_pack_start = Instant::now();
+                let input_mapping = self.input_mappings[chunk_index].as_deref();
+                self.chunk_input_mapping_scratch.clear();
+                self.chunk_input_mapping_scratch
+                    .reserve(evaluator.input_len);
+                for local_component in 0..evaluator.input_len {
+                    let parent_component =
+                        input_mapping.map_or(local_component, |indices| indices[local_component]);
+                    self.chunk_input_mapping_scratch.push(
+                        parent_input_components
+                            .map_or(parent_component, |components| components[parent_component]),
+                    );
+                }
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    state_parameter_count,
+                    evaluator.input_len,
+                    lane_width,
+                    Some(&self.chunk_input_mapping_scratch),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                input_pack_elapsed += input_pack_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count +=
+                    u64::from(
+                        self.chunk_parameter_scratch_aosoa_f64.capacity() != parameter_capacity,
+                    ) + u64::from(self.chunk_input_mapping_scratch.capacity() != mapping_capacity);
+
+                let chunk_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != chunk_capacity);
+                let eval_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += eval_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let output_gather_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        chunk_output_starts[chunk_index],
+                        out,
+                    )?;
+                    output_gather_elapsed += output_gather_start.elapsed();
+                    output_gather_component_count += (batch_size * evaluator.output_len) as u64;
+                    continue;
+                }
+            }
             let parameter_capacity = self.chunk_parameter_scratch_f64.capacity();
             let input_pack_start = Instant::now();
             let evaluator_params = selected_chunk_f64_parameters(
@@ -711,7 +1038,6 @@ impl EvaluatorGroup {
                 leaf_input_copy_component_count += evaluator_params.len() as u64;
             }
 
-            let evaluator = &mut self.evaluators[chunk_index];
             validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
             let chunk_capacity = self.chunk_scratch_f64.capacity();
             self.chunk_scratch_f64.resize(
@@ -800,6 +1126,40 @@ impl EvaluatorGroup {
         }
         if self.evaluators.len() == 1 {
             let evaluator = &mut self.evaluators[0];
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    self.input_mappings[0].as_deref(),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                if evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )? {
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        0,
+                        out,
+                    )?;
+                    return Ok(());
+                }
+            }
             let evaluator_params = mapped_f64_parameters(
                 params,
                 batch_size,
@@ -823,6 +1183,41 @@ impl EvaluatorGroup {
             .zip(&self.input_mappings)
             .zip(&self.input_mapping_spans)
         {
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    input_mapping.as_deref(),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                if evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )? {
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        output_offset,
+                        out,
+                    )?;
+                    output_offset += evaluator.output_len;
+                    continue;
+                }
+            }
             let evaluator_params = mapped_f64_parameters(
                 params,
                 batch_size,
@@ -886,9 +1281,74 @@ impl EvaluatorGroup {
             )));
         }
         if self.evaluators.len() == 1 {
+            let evaluator = &mut self.evaluators[0];
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let leaf_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let leaf_start = Instant::now();
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    self.input_mappings[0].as_deref(),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                leaf_input_pack_elapsed += leaf_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_parameter_scratch_aosoa_f64.capacity() != leaf_capacity);
+                let chunk_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != chunk_capacity);
+                let backend_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += backend_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let gather_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        0,
+                        out,
+                    )?;
+                    output_gather_elapsed += gather_start.elapsed();
+                    output_gather_component_count += (batch_size * evaluator.output_len) as u64;
+                    let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
+                    let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+                    let output_gather_s = profile_duration_seconds(output_gather_elapsed);
+                    return Ok(EvaluatorBatchProfile {
+                        leaf_input_pack_s,
+                        legacy_evaluator_call_s: leaf_input_pack_s
+                            + evaluator_call_s
+                            + output_gather_s,
+                        evaluator_call_s,
+                        output_gather_s,
+                        leaf_input_copy_component_count,
+                        output_gather_component_count,
+                        backend_call_count,
+                        scratch_reallocation_count,
+                    });
+                }
+            }
             let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
             let leaf_start = Instant::now();
-            let evaluator = &mut self.evaluators[0];
             let evaluator_params = mapped_f64_parameters(
                 params,
                 batch_size,
@@ -909,7 +1369,7 @@ impl EvaluatorGroup {
                 evaluator.evaluate_f64_batch_unpadded(batch_size, evaluator_params, out)?;
             }
             evaluator_elapsed += backend_start.elapsed();
-            backend_call_count = 1;
+            backend_call_count += 1;
             scratch_reallocation_count +=
                 u64::from(self.chunk_parameter_scratch_f64.capacity() != leaf_capacity);
             let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
@@ -931,6 +1391,58 @@ impl EvaluatorGroup {
             .zip(&self.input_mappings)
             .zip(&self.input_mapping_spans)
         {
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let leaf_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let leaf_start = Instant::now();
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    input_mapping.as_deref(),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                leaf_input_pack_elapsed += leaf_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_parameter_scratch_aosoa_f64.capacity() != leaf_capacity);
+                let chunk_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != chunk_capacity);
+                let backend_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += backend_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let gather_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        output_offset,
+                        out,
+                    )?;
+                    output_gather_elapsed += gather_start.elapsed();
+                    output_gather_component_count += (batch_size * evaluator.output_len) as u64;
+                    output_offset += evaluator.output_len;
+                    continue;
+                }
+            }
             let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
             let leaf_start = Instant::now();
             let evaluator_params = mapped_f64_parameters(
@@ -1050,6 +1562,295 @@ impl EvaluatorGroup {
         }
         Ok(out)
     }
+}
+
+fn aosoa_scalar_len(
+    block_count: usize,
+    component_count: usize,
+    lane_width: usize,
+    label: &str,
+) -> RusticolResult<usize> {
+    block_count
+        .checked_mul(component_count)
+        .and_then(|len| len.checked_mul(2))
+        .and_then(|len| len.checked_mul(lane_width))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument(format!("{label} AoSoA buffer length overflows usize"))
+        })
+}
+
+fn pack_f64_parameters_aosoa(
+    source: &[Complex<f64>],
+    batch_size: usize,
+    source_parameter_count: usize,
+    leaf_input_len: usize,
+    lane_width: usize,
+    input_components: Option<&[usize]>,
+    scratch: &mut Vec<f64>,
+) -> RusticolResult<usize> {
+    if batch_size == 0 || lane_width <= 1 {
+        return Err(RusticolError::invalid_argument(
+            "AoSoA parameter packing requires a non-empty SIMD batch",
+        ));
+    }
+    let expected_source_len = batch_size
+        .checked_mul(source_parameter_count)
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("source parameter length overflows usize")
+        })?;
+    if source.len() != expected_source_len {
+        return Err(RusticolError::invalid_argument(format!(
+            "source parameter buffer has length {}, expected {expected_source_len}",
+            source.len()
+        )));
+    }
+    match input_components {
+        Some(components)
+            if components.len() != leaf_input_len
+                || components
+                    .iter()
+                    .any(|component| *component >= source_parameter_count) =>
+        {
+            return Err(RusticolError::integrity(
+                "AoSoA leaf input mapping is inconsistent with source parameters",
+            ));
+        }
+        None if leaf_input_len != source_parameter_count => {
+            return Err(RusticolError::integrity(
+                "AoSoA identity leaf input length does not match source parameters",
+            ));
+        }
+        Some(_) | None => {}
+    }
+    let block_count = batch_size.div_ceil(lane_width);
+    scratch.resize(
+        aosoa_scalar_len(block_count, leaf_input_len, lane_width, "parameter")?,
+        0.0,
+    );
+    match lane_width {
+        // SAFETY: the checks above establish every source component and the
+        // complete destination length required by the fixed-lane packers.
+        2 => unsafe {
+            pack_f64_parameters_aosoa_lanes::<2>(
+                source,
+                batch_size,
+                source_parameter_count,
+                leaf_input_len,
+                input_components,
+                scratch,
+            )
+        },
+        // SAFETY: see the lane-2 branch.
+        4 => unsafe {
+            pack_f64_parameters_aosoa_lanes::<4>(
+                source,
+                batch_size,
+                source_parameter_count,
+                leaf_input_len,
+                input_components,
+                scratch,
+            )
+        },
+        // SAFETY: see the lane-2 branch.
+        8 => unsafe {
+            pack_f64_parameters_aosoa_lanes::<8>(
+                source,
+                batch_size,
+                source_parameter_count,
+                leaf_input_len,
+                input_components,
+                scratch,
+            )
+        },
+        _ => pack_f64_parameters_aosoa_dynamic(
+            source,
+            batch_size,
+            source_parameter_count,
+            leaf_input_len,
+            lane_width,
+            input_components,
+            scratch,
+        ),
+    }
+    Ok(block_count)
+}
+
+/// # Safety
+///
+/// `source` must contain `batch_size * source_parameter_count` elements,
+/// `input_components` must contain `leaf_input_len` in-range indices when
+/// present, and `scratch` must contain the complete padded AoSoA destination.
+unsafe fn pack_f64_parameters_aosoa_lanes<const LANES: usize>(
+    source: &[Complex<f64>],
+    batch_size: usize,
+    source_parameter_count: usize,
+    leaf_input_len: usize,
+    input_components: Option<&[usize]>,
+    scratch: &mut [f64],
+) {
+    let block_count = batch_size.div_ceil(LANES);
+    let source_ptr = source.as_ptr();
+    let target_ptr = scratch.as_mut_ptr();
+    for block in 0..block_count {
+        let first_row = block * LANES;
+        for local_component in 0..leaf_input_len {
+            let component =
+                input_components.map_or(local_component, |components| components[local_component]);
+            let target = (block * leaf_input_len + local_component) * 2 * LANES;
+            for lane in 0..LANES {
+                let row = (first_row + lane).min(batch_size - 1);
+                // SAFETY: the caller validated the complete source and target
+                // lengths plus every mapped component before entering this
+                // fixed-lane hot loop.
+                unsafe {
+                    let value = *source_ptr.add(row * source_parameter_count + component);
+                    *target_ptr.add(target + lane) = value.re;
+                    *target_ptr.add(target + LANES + lane) = value.im;
+                }
+            }
+        }
+    }
+}
+
+fn pack_f64_parameters_aosoa_dynamic(
+    source: &[Complex<f64>],
+    batch_size: usize,
+    source_parameter_count: usize,
+    leaf_input_len: usize,
+    lane_width: usize,
+    input_components: Option<&[usize]>,
+    scratch: &mut [f64],
+) {
+    let block_count = batch_size.div_ceil(lane_width);
+    let scalar_stride = lane_width * 2;
+    for block in 0..block_count {
+        let first_row = block * lane_width;
+        for local_component in 0..leaf_input_len {
+            let component =
+                input_components.map_or(local_component, |components| components[local_component]);
+            let target = (block * leaf_input_len + local_component) * scalar_stride;
+            for lane in 0..lane_width {
+                let row = (first_row + lane).min(batch_size - 1);
+                let value = source[row * source_parameter_count + component];
+                scratch[target + lane] = value.re;
+                scratch[target + lane_width + lane] = value.im;
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scatter_f64_aosoa_outputs_to_state(
+    outputs_aosoa: &[f64],
+    batch_size: usize,
+    evaluator_output_len: usize,
+    lane_width: usize,
+    state_parameter_count: usize,
+    state: &mut [Complex<f64>],
+    outputs: &[(usize, usize)],
+    spans: &[(usize, usize, usize)],
+) -> RusticolResult<()> {
+    let expected_state_len = batch_size
+        .checked_mul(state_parameter_count)
+        .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+    if state.len() != expected_state_len {
+        return Err(RusticolError::invalid_argument(format!(
+            "stage state has length {}, expected {expected_state_len}",
+            state.len()
+        )));
+    }
+    let block_count = batch_size.div_ceil(lane_width);
+    let expected_output_len =
+        aosoa_scalar_len(block_count, evaluator_output_len, lane_width, "output")?;
+    if outputs_aosoa.len() != expected_output_len {
+        return Err(RusticolError::integrity(format!(
+            "AoSoA evaluator output has length {}, expected {expected_output_len}",
+            outputs_aosoa.len()
+        )));
+    }
+    let scalar_stride = lane_width * 2;
+    for block in 0..block_count {
+        let first_row = block * lane_width;
+        let valid_lanes = (batch_size - first_row).min(lane_width);
+        for lane in 0..valid_lanes {
+            let row_state = (first_row + lane) * state_parameter_count;
+            if spans.is_empty() {
+                for (column, state_offset) in outputs {
+                    let source = (block * evaluator_output_len + *column) * scalar_stride;
+                    state[row_state + *state_offset] = Complex::new(
+                        outputs_aosoa[source + lane],
+                        outputs_aosoa[source + lane_width + lane],
+                    );
+                }
+            } else {
+                for (column_start, state_offset_start, len) in spans {
+                    for offset in 0..*len {
+                        let source =
+                            (block * evaluator_output_len + column_start + offset) * scalar_stride;
+                        state[row_state + state_offset_start + offset] = Complex::new(
+                            outputs_aosoa[source + lane],
+                            outputs_aosoa[source + lane_width + lane],
+                        );
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scatter_f64_aosoa_outputs_to_rows(
+    outputs_aosoa: &[f64],
+    batch_size: usize,
+    evaluator_output_len: usize,
+    lane_width: usize,
+    row_output_len: usize,
+    output_offset: usize,
+    out: &mut [Complex<f64>],
+) -> RusticolResult<()> {
+    let expected_output_rows = batch_size.checked_mul(row_output_len).ok_or_else(|| {
+        RusticolError::invalid_argument("amplitude output length overflows usize")
+    })?;
+    if out.len() != expected_output_rows {
+        return Err(RusticolError::invalid_argument(format!(
+            "amplitude output has length {}, expected {expected_output_rows}",
+            out.len()
+        )));
+    }
+    let output_end = output_offset
+        .checked_add(evaluator_output_len)
+        .ok_or_else(|| RusticolError::invalid_argument("amplitude output range overflows usize"))?;
+    if output_end > row_output_len {
+        return Err(RusticolError::integrity(
+            "AoSoA evaluator output range exceeds the amplitude row",
+        ));
+    }
+    let block_count = batch_size.div_ceil(lane_width);
+    let expected_aosoa_len =
+        aosoa_scalar_len(block_count, evaluator_output_len, lane_width, "output")?;
+    if outputs_aosoa.len() != expected_aosoa_len {
+        return Err(RusticolError::integrity(format!(
+            "AoSoA evaluator output has length {}, expected {expected_aosoa_len}",
+            outputs_aosoa.len()
+        )));
+    }
+    let scalar_stride = lane_width * 2;
+    for block in 0..block_count {
+        let first_row = block * lane_width;
+        let valid_lanes = (batch_size - first_row).min(lane_width);
+        for lane in 0..valid_lanes {
+            let row_output = (first_row + lane) * row_output_len + output_offset;
+            for column in 0..evaluator_output_len {
+                let source = (block * evaluator_output_len + column) * scalar_stride;
+                out[row_output + column] = Complex::new(
+                    outputs_aosoa[source + lane],
+                    outputs_aosoa[source + lane_width + lane],
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 fn mapped_f64_parameters<'a>(
@@ -1186,6 +1987,48 @@ impl LoadedEvaluator {
             .exact_eval
             .as_ref()
             .expect("exact evaluator initialized from its state path"))
+    }
+
+    fn simd_lane_width(&self) -> Option<usize> {
+        match &self.eval {
+            #[cfg(feature = "f64-symjit")]
+            F64Evaluator::SymjitApplication(eval) => eval.simd_lane_width(),
+            #[cfg(feature = "f64-compiled")]
+            F64Evaluator::Compiled(_) => None,
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::Jit(_) => None,
+        }
+    }
+
+    fn amplitude_aosoa_lane_width(&self) -> Option<usize> {
+        // Tiny amplitude leaves (notably LC's common 4 -> 1 kernels) do not
+        // amortize direct packing and scattering. This static shape gate keeps
+        // the portable path for substantive kernels without runtime tuning or
+        // architecture-specific thresholds.
+        const MINIMUM_COMPONENT_FOOTPRINT: usize = 32;
+        if self.input_len.saturating_add(self.output_len) < MINIMUM_COMPONENT_FOOTPRINT {
+            None
+        } else {
+            self.simd_lane_width()
+        }
+    }
+
+    fn evaluate_f64_aosoa_blocks(
+        &self,
+        block_count: usize,
+        params: &[f64],
+        out: &mut [f64],
+    ) -> RusticolResult<bool> {
+        match &self.eval {
+            #[cfg(feature = "f64-symjit")]
+            F64Evaluator::SymjitApplication(eval) => {
+                eval.evaluate_aosoa_blocks(block_count, params, out)
+            }
+            #[cfg(feature = "f64-compiled")]
+            F64Evaluator::Compiled(_) => Ok(false),
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::Jit(_) => Ok(false),
+        }
     }
 
     pub(crate) fn evaluate_f64_batch(
@@ -1714,4 +2557,167 @@ fn ensure_evaluator_state_consumed(
         display_name,
         encoded_len - consumed
     )))
+}
+
+#[cfg(test)]
+mod aosoa_tests {
+    use super::*;
+
+    fn source_value(row: usize, component: usize) -> Complex<f64> {
+        Complex::new(
+            (100 * row + component) as f64,
+            -((100 * row + component) as f64) - 0.5,
+        )
+    }
+
+    fn check_pack_and_scatter(lane_width: usize) {
+        let batch_size = lane_width + 1;
+        let source_parameter_count = 4;
+        let input_components = [2, 0, 3];
+        let source = (0..batch_size)
+            .flat_map(|row| {
+                (0..source_parameter_count).map(move |component| source_value(row, component))
+            })
+            .collect::<Vec<_>>();
+        let mut packed = Vec::new();
+        let block_count = pack_f64_parameters_aosoa(
+            &source,
+            batch_size,
+            source_parameter_count,
+            input_components.len(),
+            lane_width,
+            Some(&input_components),
+            &mut packed,
+        )
+        .unwrap();
+        assert_eq!(block_count, 2);
+        for block in 0..block_count {
+            for (local_component, source_component) in input_components.iter().copied().enumerate()
+            {
+                let scalar_start =
+                    (block * input_components.len() + local_component) * 2 * lane_width;
+                for lane in 0..lane_width {
+                    let row = (block * lane_width + lane).min(batch_size - 1);
+                    let expected = source_value(row, source_component);
+                    assert_eq!(packed[scalar_start + lane], expected.re);
+                    assert_eq!(packed[scalar_start + lane_width + lane], expected.im);
+                }
+            }
+        }
+
+        let evaluator_output_len = 4;
+        let mut evaluator_outputs = vec![0.0; block_count * evaluator_output_len * 2 * lane_width];
+        for block in 0..block_count {
+            for column in 0..evaluator_output_len {
+                let scalar_start = (block * evaluator_output_len + column) * 2 * lane_width;
+                for lane in 0..lane_width {
+                    let row = block * lane_width + lane;
+                    evaluator_outputs[scalar_start + lane] = (1000 * row + column) as f64;
+                    evaluator_outputs[scalar_start + lane_width + lane] =
+                        -((1000 * row + column) as f64);
+                }
+            }
+        }
+
+        let state_parameter_count = 7;
+        let sentinel = Complex::new(12345.0, -12345.0);
+        let mut mapped_state = vec![sentinel; batch_size * state_parameter_count];
+        scatter_f64_aosoa_outputs_to_state(
+            &evaluator_outputs,
+            batch_size,
+            evaluator_output_len,
+            lane_width,
+            state_parameter_count,
+            &mut mapped_state,
+            &[(0, 1), (2, 5)],
+            &[],
+        )
+        .unwrap();
+        for row in 0..batch_size {
+            assert_eq!(
+                mapped_state[row * state_parameter_count + 1],
+                Complex::new((1000 * row) as f64, -((1000 * row) as f64))
+            );
+            assert_eq!(
+                mapped_state[row * state_parameter_count + 5],
+                Complex::new((1000 * row + 2) as f64, -((1000 * row + 2) as f64))
+            );
+            assert_eq!(mapped_state[row * state_parameter_count], sentinel);
+        }
+
+        let mut spanned_state = vec![sentinel; batch_size * state_parameter_count];
+        scatter_f64_aosoa_outputs_to_state(
+            &evaluator_outputs,
+            batch_size,
+            evaluator_output_len,
+            lane_width,
+            state_parameter_count,
+            &mut spanned_state,
+            &[],
+            &[(1, 3, 2)],
+        )
+        .unwrap();
+        for row in 0..batch_size {
+            for offset in 0..2 {
+                assert_eq!(
+                    spanned_state[row * state_parameter_count + 3 + offset],
+                    Complex::new(
+                        (1000 * row + 1 + offset) as f64,
+                        -((1000 * row + 1 + offset) as f64)
+                    )
+                );
+            }
+            assert_eq!(spanned_state[row * state_parameter_count], sentinel);
+        }
+
+        let row_output_len = evaluator_output_len + 2;
+        let mut row_outputs = vec![sentinel; batch_size * row_output_len];
+        scatter_f64_aosoa_outputs_to_rows(
+            &evaluator_outputs,
+            batch_size,
+            evaluator_output_len,
+            lane_width,
+            row_output_len,
+            1,
+            &mut row_outputs,
+        )
+        .unwrap();
+        for row in 0..batch_size {
+            assert_eq!(row_outputs[row * row_output_len], sentinel);
+            assert_eq!(
+                row_outputs[row * row_output_len + row_output_len - 1],
+                sentinel
+            );
+            for column in 0..evaluator_output_len {
+                assert_eq!(
+                    row_outputs[row * row_output_len + 1 + column],
+                    Complex::new(
+                        (1000 * row + column) as f64,
+                        -((1000 * row + column) as f64)
+                    )
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn portable_aosoa_pack_and_scatter_cover_fixed_and_dynamic_widths() {
+        for lane_width in [2, 4, 8, 3] {
+            check_pack_and_scatter(lane_width);
+        }
+    }
+
+    #[test]
+    fn aosoa_pack_rejects_inconsistent_mappings_and_lengths() {
+        let mut scratch = Vec::new();
+        let source = vec![c64(0.0, 0.0); 8];
+        assert!(pack_f64_parameters_aosoa(&source, 2, 4, 2, 4, Some(&[0]), &mut scratch).is_err());
+        assert!(
+            pack_f64_parameters_aosoa(&source, 2, 4, 2, 4, Some(&[0, 4]), &mut scratch).is_err()
+        );
+        assert!(
+            pack_f64_parameters_aosoa(&source[..7], 2, 4, 2, 4, Some(&[0, 1]), &mut scratch)
+                .is_err()
+        );
+    }
 }

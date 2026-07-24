@@ -575,8 +575,8 @@ diagnostic is already documented by the exact-main ledger.
 
 ## Milestone 8: compact repeated colour-contraction ABI
 
-Status: implementation and artifact/load validation complete on the feature
-branch; final native wall and LC no-regression gates are in progress.
+Status: validated, pushed, and fast-forwarded to `main` at
+`54eb9ddff092f4181ba0d7018ccbfdcd5301234c`.
 
 Generated NLC/full-colour plans now encode one canonical upper-triangular
 matrix plus a local-colour-major/component-minor coherent-group map when at
@@ -609,3 +609,88 @@ All four generated artifacts load and evaluate successfully; focused evidence
 currently comprises 53 Python tests, three compact Rust malformed/parity tests,
 the 259-test Rust suite up to its known stale diagnostic assertion, Cargo
 all-target checks, Ruff, rustfmt, and artifact smokes.
+
+The final compact-artifact runtime gate preserved the milestone-7 kernel gain:
+`g g > t t~ + 3g` full colour improved by `21.72%` at batch 128 and
+`20.68%` at batch 1024 relative to the expanded exact-parent runtime; NLC
+improved by `7.37%` and `12.17%`. The corresponding batch-128 changes for
+`d d~ > t t~ + 3g` were `16.43%` full and `4.42%` NLC. Maximum absolute
+disagreement was `1.55e-23` and maximum relative disagreement was below
+`3e-14`.
+
+## Milestone 9: direct portable SymJIT AoSoA execution
+
+Status: validated for commit and main integration.
+
+The compiled-DAG runtime now packs fused stage leaves directly into SymJIT's
+native complex SIMD block layout and invokes the already-loaded SIMD machine
+code with transposition disabled. Results are scattered directly from block
+AoSoA into the authoritative state or amplitude output. This removes
+SymJIT's internal row-major transpose buffers without changing an artifact,
+generation, public, or native ABI. Both complete-stage and selector-pruned
+execution use the path, including their profiled variants.
+
+The implementation discovers the generated lane count dynamically and has
+portable specialized packers for widths 2, 4, and 8 plus a generic fallback.
+It contains no architecture intrinsics or Apple-specific assumptions.
+Incomplete blocks repeat the final valid input row and scatter only valid
+lanes. Applications requesting threaded SymJIT matrix execution retain the
+existing threaded path. Non-SymJIT, scalar batch, exact/generic-precision, and
+SIMD-rejection cases retain the established fallback. A static
+input-plus-output footprint gate keeps tiny amplitude leaves such as LC
+`4 -> 1` kernels on that fallback; substantial colour kernels such as
+`484 -> 120` use direct AoSoA. This is a fixed shape rule, not runtime
+autotuning.
+
+Seven-sample native unprofiled medians against the exact `54eb9dd` runtime,
+using shared artifacts and byte-identical batches, were:
+
+| Workload | Batch | `54eb9dd` ms/point | Direct AoSoA ms/point | Change |
+|---|---:|---:|---:|---:|
+| Z+6g all-flow union, fixed helicity | 128 | 0.497402 | 0.422662 | -15.03% |
+| Z+6g all-flow union, fixed helicity | 1024 | 0.514180 | 0.453264 | -11.85% |
+| Z+6g selected flow, helicity sum | 128 | 0.084113 | 0.081425 | -3.20% |
+| Z+6g selected flow, helicity sum | 1024 | 0.084985 | 0.082595 | -2.81% |
+| `g g > t t~ + 3g`, full colour | 128 | 2.338664 | 1.943635 | -16.89% |
+| `g g > t t~ + 3g`, full colour | 1024 | 2.507651 | 2.138550 | -14.72% |
+| `g g > t t~ + 3g`, NLC | 128 | 2.027607 | 1.641926 | -19.02% |
+| `g g > t t~ + 3g`, NLC | 1024 | 2.182931 | 1.825885 | -16.36% |
+
+Every pair has the same batch digest and bitwise-identical warmed f64 output.
+Odd-tail batch 129 checks passed for union, selected-flow, full-colour,
+selected-helicity full-colour, and the two-amplitude-chunk
+`d d~ > t t~ + 3g` runtime. The selected-helicity colour lane improved
+`7.07%`; the two-chunk `d d~` total improved `19.95%`. Two interleaved
+batch-1 repetitions found no scalar regression. The largest measured peak RSS
+was `3.762 GiB` at batch 1024.
+
+The direct amplitude path reduces the `g g` amplitude envelope by about
+`27 us/point`: leaf packing fell from `23.91` to `18.96 us/point` and backend
+execution from `43.00` to `19.23 us/point`. Stage packing and backend gains
+remain the dominant wall reduction. Padded movement counters report physical
+rather than logical lane copies, mapping-scratch reallocations are visible,
+and warmed retained-artifact profiles report zero reallocations.
+
+Validation evidence:
+
+- Native measurements:
+  `/private/tmp/pyamplicol-dag-aosoa-final-paired`,
+  `/private/tmp/pyamplicol-dag-aosoa-amplitude-tail-gates`, and
+  `/private/tmp/pyamplicol-dag-aosoa-b1-gates-repeat`.
+- Baseline native-input/module SHA-256:
+  `689e09ea0c89f2d4593af0bb8226dc9042ed1b9907aac3a29385993cd5584971` /
+  `912d5f6d0498a69488ede4da0f8d7732d8db344be7d91671019efca4640318bc`.
+- Candidate native-input/module SHA-256:
+  `1baa36e12a89a81c38557b40af78264e43abe4cde0996bc6297f4dc4cf071fd4` /
+  `3ebb7fcb690e975e34da1ee9a6bd296f94dd93a3c17b46853c40d589e8aeb8dd`.
+- Candidate wheel SHA-256:
+  `fc6eca384f6dc4fca3e5f85d0edf83ee0753106d4aa0f5050dafc68254ca4a54`;
+  build peak RSS `1.017 GiB`.
+- `cargo check -p rusticol-core --tests`, four direct AoSoA unit tests, and
+  the serial full Rust suite pass: 263 library plus 26 integration tests.
+  The stale compact-colour fixture assertion was repaired by stripping
+  nested auxiliary lanes from the deliberately invalid test lane.
+- The installed-wheel LC integration file passed 15 tests overall, including
+  a clean 14-test compiled-focused subset. Two built-in eager cases remain
+  blocked by the documented stale packaged prepared-model candidate
+  fingerprint; policy and metadata checks were not weakened.

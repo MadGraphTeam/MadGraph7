@@ -3,7 +3,7 @@
 use super::super::*;
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use symjit::{Applet, Application, Config, Defuns, Storage};
+use symjit::{Applet, Application, Compiled, Config, Defuns, Storage};
 
 pub(crate) struct SymjitApplicationEvaluator {
     applet: Applet,
@@ -204,6 +204,79 @@ impl SymjitApplicationEvaluator {
             batch_size,
             params,
             out,
+        )
+    }
+
+    pub(crate) fn simd_lane_width(&self) -> Option<usize> {
+        if self.applet.use_threads {
+            // The direct AoSoA entry point below executes blocks serially.
+            // Preserve SymJIT's threaded matrix dispatch for applications that
+            // explicitly requested it.
+            return None;
+        }
+        self.applet
+            .compiled_simd
+            .as_ref()
+            .map(Compiled::count_lanes)
+            .filter(|lane_width| *lane_width != 0)
+    }
+
+    /// Evaluates already-transposed SIMD blocks without a row-major staging copy.
+    ///
+    /// Each block contains `input_len` complex SIMD values in AoSoA order: all
+    /// real lanes followed by all imaginary lanes for one input, then the next
+    /// input. Outputs use the analogous `output_len` layout. `false` asks the
+    /// caller to fall back to the ordinary evaluator because no SIMD kernel is
+    /// available or the loaded kernel rejected a block.
+    pub(crate) fn evaluate_aosoa_blocks(
+        &self,
+        block_count: usize,
+        params: &[f64],
+        out: &mut [f64],
+    ) -> RusticolResult<bool> {
+        let Some(compiled) = self.applet.compiled_simd.as_ref() else {
+            return Ok(false);
+        };
+        let lane_width = compiled.count_lanes();
+        if lane_width == 0 {
+            return Ok(false);
+        }
+        validate_aosoa_lengths(
+            block_count,
+            lane_width,
+            self.input_len,
+            self.output_len,
+            params.len(),
+            out.len(),
+        )?;
+        if block_count == 0 {
+            return Ok(true);
+        }
+
+        let input_block_len = lane_width * self.input_len * 2;
+        let output_block_len = lane_width * self.output_len * 2;
+        let function = compiled.func();
+        guard_symjit_panic(
+            || {
+                for block in 0..block_count {
+                    let status = function(
+                        out[block * output_block_len..].as_mut_ptr(),
+                        std::ptr::null(),
+                        0,
+                        params[block * input_block_len..].as_ptr(),
+                    );
+                    if status != 0 {
+                        return false;
+                    }
+                }
+                true
+            },
+            |detail| {
+                RusticolError::evaluation(format!(
+                    "SymJIT panicked while evaluating AoSoA blocks for application {}: {detail}",
+                    self.application_path.display()
+                ))
+            },
         )
     }
 }
@@ -412,6 +485,42 @@ fn validate_batch_lengths(
     Ok(())
 }
 
+fn validate_aosoa_lengths(
+    block_count: usize,
+    lane_width: usize,
+    input_len: usize,
+    output_len: usize,
+    params_len: usize,
+    output_buffer_len: usize,
+) -> RusticolResult<()> {
+    let scalar_lanes = lane_width.checked_mul(2).ok_or_else(|| {
+        RusticolError::invalid_argument("SymJIT AoSoA complex lane count overflows usize")
+    })?;
+    let expected_params = block_count
+        .checked_mul(input_len)
+        .and_then(|count| count.checked_mul(scalar_lanes))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("SymJIT AoSoA parameter buffer length overflows usize")
+        })?;
+    let expected_outputs = block_count
+        .checked_mul(output_len)
+        .and_then(|count| count.checked_mul(scalar_lanes))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("SymJIT AoSoA output buffer length overflows usize")
+        })?;
+    if params_len != expected_params {
+        return Err(RusticolError::invalid_argument(format!(
+            "AoSoA parameter buffer has length {params_len}, expected {expected_params}"
+        )));
+    }
+    if output_buffer_len != expected_outputs {
+        return Err(RusticolError::invalid_argument(format!(
+            "AoSoA output buffer has length {output_buffer_len}, expected {expected_outputs}"
+        )));
+    }
+    Ok(())
+}
+
 fn complex_slice_as_scalars<T>(values: &[Complex<T>]) -> &[T] {
     assert_eq!(
         std::mem::size_of::<Complex<T>>(),
@@ -512,6 +621,50 @@ mod tests {
         }
     }
 
+    fn pack_aosoa(
+        params: &[Complex<f64>],
+        batch_size: usize,
+        input_len: usize,
+        lane_width: usize,
+    ) -> Vec<f64> {
+        assert!(batch_size != 0);
+        let block_count = batch_size.div_ceil(lane_width);
+        let mut packed = vec![0.0; block_count * input_len * 2 * lane_width];
+        for block in 0..block_count {
+            for lane in 0..lane_width {
+                let row = (block * lane_width + lane).min(batch_size - 1);
+                for input in 0..input_len {
+                    let value = params[row * input_len + input];
+                    let start = (block * input_len + input) * 2 * lane_width;
+                    packed[start + lane] = value.re;
+                    packed[start + lane_width + lane] = value.im;
+                }
+            }
+        }
+        packed
+    }
+
+    fn unpack_aosoa(
+        packed: &[f64],
+        batch_size: usize,
+        output_len: usize,
+        lane_width: usize,
+    ) -> Vec<Complex<f64>> {
+        let mut outputs = Vec::with_capacity(batch_size * output_len);
+        for row in 0..batch_size {
+            let block = row / lane_width;
+            let lane = row % lane_width;
+            for output in 0..output_len {
+                let start = (block * output_len + output) * 2 * lane_width;
+                outputs.push(Complex::new(
+                    packed[start + lane],
+                    packed[start + lane_width + lane],
+                ));
+            }
+        }
+        outputs
+    }
+
     #[test]
     fn direct_application_loads_and_evaluates_complex_batches() {
         let path = write_application(&application_bytes(), "batch");
@@ -526,6 +679,83 @@ mod tests {
         evaluator.evaluate_batch(2, &params, &mut outputs).unwrap();
         assert_eq!(outputs[0], Complex::new(4.0, 6.0));
         assert_eq!(outputs[1], Complex::new(3.0, 1.0));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn direct_aosoa_blocks_match_complete_row_major_batches() {
+        let path = write_application(&application_bytes(), "aosoa-complete");
+        let mut evaluator = SymjitApplicationEvaluator::load(&path, metadata(&[])).unwrap();
+        let Some(lane_width) = evaluator.simd_lane_width() else {
+            let _ = fs::remove_file(path);
+            return;
+        };
+        let batch_size = 2 * lane_width;
+        let mut params = Vec::with_capacity(batch_size * 2);
+        for row in 0..batch_size {
+            params.extend([
+                Complex::new(row as f64 + 0.25, -(row as f64) - 0.5),
+                Complex::new(2.0 * row as f64 + 1.0, row as f64 + 0.75),
+            ]);
+        }
+        let mut expected = vec![Complex::new(0.0, 0.0); batch_size];
+        evaluator
+            .evaluate_batch(batch_size, &params, &mut expected)
+            .unwrap();
+
+        let packed = pack_aosoa(&params, batch_size, 2, lane_width);
+        let mut packed_outputs = vec![0.0; 2 * lane_width * 2];
+        assert!(
+            evaluator
+                .evaluate_aosoa_blocks(2, &packed, &mut packed_outputs)
+                .unwrap()
+        );
+        assert_eq!(
+            unpack_aosoa(&packed_outputs, batch_size, 1, lane_width),
+            expected
+        );
+
+        assert!(
+            evaluator
+                .evaluate_aosoa_blocks(2, &packed[..packed.len() - 1], &mut packed_outputs)
+                .is_err()
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn direct_aosoa_blocks_match_padded_row_major_tails() {
+        let path = write_application(&application_bytes(), "aosoa-tail");
+        let mut evaluator = SymjitApplicationEvaluator::load(&path, metadata(&[])).unwrap();
+        let Some(lane_width) = evaluator.simd_lane_width() else {
+            let _ = fs::remove_file(path);
+            return;
+        };
+        let batch_size = lane_width + 1;
+        let mut params = Vec::with_capacity(batch_size * 2);
+        for row in 0..batch_size {
+            params.extend([
+                Complex::new(row as f64 + 1.0, row as f64 + 2.0),
+                Complex::new(-(row as f64) - 3.0, 0.5 * row as f64),
+            ]);
+        }
+        let mut expected = vec![Complex::new(0.0, 0.0); batch_size];
+        evaluator
+            .evaluate_batch(batch_size, &params, &mut expected)
+            .unwrap();
+
+        let block_count = batch_size.div_ceil(lane_width);
+        let packed = pack_aosoa(&params, batch_size, 2, lane_width);
+        let mut packed_outputs = vec![0.0; block_count * lane_width * 2];
+        assert!(
+            evaluator
+                .evaluate_aosoa_blocks(block_count, &packed, &mut packed_outputs)
+                .unwrap()
+        );
+        assert_eq!(
+            unpack_aosoa(&packed_outputs, batch_size, 1, lane_width),
+            expected
+        );
         let _ = fs::remove_file(path);
     }
 

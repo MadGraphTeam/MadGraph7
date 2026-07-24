@@ -851,6 +851,9 @@ fn empty_evaluator_group() -> EvaluatorGroup {
         output_len: 0,
         chunk_parameter_scratch_f64: Vec::new(),
         chunk_scratch_f64: Vec::new(),
+        chunk_parameter_scratch_aosoa_f64: Vec::new(),
+        chunk_scratch_aosoa_f64: Vec::new(),
+        chunk_input_mapping_scratch: Vec::new(),
     }
 }
 
@@ -1798,7 +1801,11 @@ fn compiled_color_topology_lane_requires_physics_reduction() {
         "d_dbar_to_z/execution.json"
     )))
     .expect("parse packaged execution fixture");
-    let lane = manifest.clone();
+    let mut lane = manifest.clone();
+    lane.physics_reduction = None;
+    lane.helicity_sum_execution = None;
+    lane.helicity_selector_executions.clear();
+    lane.color_selector_executions.clear();
     manifest
         .color_selector_executions
         .push(ColorSelectorExecutionManifest {
@@ -1811,7 +1818,10 @@ fn compiled_color_topology_lane_requires_physics_reduction() {
         .expect("color topology lane without reduction must fail");
 
     assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
-    assert!(error.to_string().contains("has no reduction override"));
+    assert!(
+        error.to_string().contains("has no reduction override"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]
