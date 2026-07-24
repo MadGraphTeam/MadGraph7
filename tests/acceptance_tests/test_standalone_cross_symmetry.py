@@ -2145,7 +2145,7 @@ class TestColorFlowCode(unittest.TestCase):
 
 
 class TestMadeventColorFlowRatio(unittest.TestCase):
-    """End-to-end guard on the COLOUR written to the LHE, for p p > t t~.
+    """End-to-end guard on the COLOUR written to the LHE, for u u~ > u u~.
 
     Every event's colour tags must form a clean colour<->anticolour bijection
     once the initial-state legs swap roles (the canonical form the colour-flow
@@ -2155,11 +2155,16 @@ class TestMadeventColorFlowRatio(unittest.TestCase):
     is ever rebuilt wrongly -- e.g. when the tags start being decoded from the
     canonical colour-flow code instead of read from the ICOLUP table.
 
-    On top of the structure it pins the physics: g g > t t~ dominates, and its
-    TWO colour flows are both populated and balanced (they are related by the
-    symmetry of the two ways to connect the gluons to the top line). A colour
-    selection that got stuck on one flow, or that produced a wrong topology,
-    fails here. Runs a small madevent generation, so it is a slow test.
+    u u~ > u u~ is chosen deliberately: its two colour flows are STRONGLY
+    asymmetric (~98/2), so the test can pin down WHICH flow is which. A process
+    whose flows are related by a symmetry -- g g > t t~ splits 50/50 -- would
+    pass just as happily with the two flow labels SWAPPED, which is exactly the
+    bug this is meant to catch. Here a swap inverts 98/2 into 2/98.
+
+    The dominant flow is identified topologically (do the colour connections
+    stay inside the initial/final groups, or cross between them?) rather than by
+    raw leg indices, so the check does not depend on leg ordering. Runs a small
+    madevent generation, so it is a slow test.
     """
 
     def setUp(self):
@@ -2184,25 +2189,25 @@ class TestMadeventColorFlowRatio(unittest.TestCase):
                 anti.setdefault(a, []).append(i)
         return col, anti
 
-    def test_color_flow_ratio_pp_ttx(self):
+    def test_color_flow_ratio_uux_uux(self):
         from madgraph import MG5DIR
         from madgraph.various import lhe_parser
-        outdir = pjoin(self.tmpdir, 'ttx')
+        outdir = pjoin(self.tmpdir, 'uux')
         card = pjoin(self.tmpdir, 'cmd.txt')
         with open(card, 'w') as f:
-            f.write('generate p p > t t~\n'
+            f.write('generate u u~ > u u~\n'
                     'output madevent %s -f\n'
                     'launch\n'
                     'set nevents 2000\n'
-                    'set iseed 555\n' % outdir)
+                    'set iseed 909\n' % outdir)
         subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
 
         lhe = pjoin(outdir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
         self.assertTrue(os.path.isfile(lhe),
                         'madevent produced no LHE file (%s)' % lhe)
 
-        nevt = ngg = 0
-        gg_flows = {}
+        nevt = 0
+        sigs = {}
         for event in lhe_parser.EventFile(lhe):
             parts = [p for p in event]
             nevt += 1
@@ -2220,24 +2225,28 @@ class TestMadeventColorFlowRatio(unittest.TestCase):
                 self.assertEqual(len(anti[lbl]), 1,
                                  'anticolour label %s appears on %d legs '
                                  '(event %d)' % (lbl, len(anti[lbl]), nevt))
-            ini = sorted(int(p.pid) for p in parts if p.status == -1)
-            if ini == [21, 21]:
-                ngg += 1
-                key = tuple(sorted((col[l][0], anti[l][0]) for l in col))
-                gg_flows[key] = gg_flows.get(key, 0) + 1
+            # topological signature of the flow: does each colour connection
+            # stay inside the initial / final group, or cross between them?
+            ini = set(i for i, p in enumerate(parts) if p.status == -1)
+            sig = tuple(sorted(('I' if c in ini else 'F')
+                               + ('I' if a in ini else 'F')
+                               for c, a in ((col[l][0], anti[l][0])
+                                            for l in col)))
+            sigs[sig] = sigs.get(sig, 0) + 1
 
         self.assertGreater(nevt, 100, 'too few events generated (%d)' % nevt)
-        # (2) physics: gluon fusion dominates t t~ at the LHC
-        self.assertGreater(ngg / nevt, 0.6,
-                           'g g > t t~ should dominate, got %.3f' % (ngg / nevt))
-        # (3) it has exactly two colour flows, both populated and balanced
-        self.assertEqual(len(gg_flows), 2,
-                         'g g > t t~ should show exactly 2 colour flows, got '
-                         '%d: %s' % (len(gg_flows), gg_flows))
-        for key, cnt in gg_flows.items():
-            self.assertEqual(len(key), 3,
-                             'g g > t t~ flow should have 3 colour connections, '
-                             'got %d: %s' % (len(key), key))
-            self.assertTrue(0.25 < cnt / ngg < 0.75,
-                            'g g > t t~ colour flows unbalanced: %s of %d'
-                            % (gg_flows, ngg))
+        # (2) exactly the two expected colour topologies
+        self.assertEqual(set(sigs), {('FF', 'II'), ('FI', 'IF')},
+                         'unexpected colour-flow topologies: %s' % sigs)
+        same = sigs[('FF', 'II')] / nevt     # connections inside each group
+        cross = sigs[('FI', 'IF')] / nevt    # connections crossing the groups
+        # (3) the asymmetry, and crucially WHICH topology dominates: swapping
+        # the two flow labels would invert this and fail here.
+        self.assertGreater(same, 0.9,
+                           'the initial-initial / final-final colour topology '
+                           'should dominate u u~ > u u~ (measured ~0.98), got '
+                           '%.3f (cross=%.3f)' % (same, cross))
+        self.assertTrue(0.002 < cross < 0.1,
+                        'the crossing colour topology should be present but '
+                        'strongly suppressed (measured ~0.02), got %.4f'
+                        % cross)
