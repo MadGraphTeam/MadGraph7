@@ -1,6 +1,5 @@
 #include "madspace/driver/event_generator.hpp"
 
-#include <atomic>
 #include <cmath>
 #include <filesystem>
 #include <format>
@@ -727,13 +726,6 @@ void EventGenerator::combine_to_lhe(
     std::uint64_t seed = _seed;
     std::mt19937 select_rng = seeded_rng(seed, {kSaltCombineSelect});
     ThreadPool pool(_config.combine_thread_count);
-    // Per-thread LHE-completion streams, keyed by a running thread index. Bit
-    // identical output requires combine_thread_pool_size == 1 (see seeded_rng()).
-    ThreadResource<std::mt19937> rand_gens(
-        pool, [seed, next_index = std::make_shared<std::atomic<std::uint32_t>>(0)]() {
-            return seeded_rng(seed, {kSaltLheComplete, next_index->fetch_add(1)});
-        }
-    );
     auto [channel_data, particle_count, norm_factor] = init_combine();
     std::vector<std::pair<EventBuffer, std::string>> buffers;
     std::vector<std::size_t> idle_buffers;
@@ -755,45 +747,68 @@ void EventGenerator::combine_to_lhe(
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     bool done = false;
+    // Each batch is seeded from its own submission-order sequence number rather
+    // than from whichever worker thread happens to run it, and a batch's formatted
+    // output is only written once every earlier-submitted batch has been written --
+    // buffered out of submission order in ready_slots until its turn comes up --
+    // so the LHE file's event order and content no longer depend on real
+    // completion timing. slot_batch_seq tracks which batch a (reused) buffer slot
+    // currently holds.
+    std::size_t next_batch_seq = 0;
+    std::size_t write_cursor = 0;
+    std::vector<std::size_t> slot_batch_seq(buffers.size());
+    std::unordered_map<std::size_t, std::size_t> ready_slots;
     print_combine_init();
     while (true) {
         _abort_check_function();
         while (idle_buffers.size() > 0 && !done) {
-            std::size_t job_id = idle_buffers.back();
-            auto& [in_buffer, out_buffer] = buffers.at(job_id);
+            std::size_t slot = idle_buffers.back();
+            auto& [in_buffer, out_buffer] = buffers.at(slot);
             read_and_combine(channel_data, in_buffer, norm_factor, select_rng);
             if (in_buffer.event_count() == 0) {
                 done = true;
                 break;
             }
             idle_buffers.pop_back();
+            std::size_t batch_seq = next_batch_seq++;
+            slot_batch_seq.at(slot) = batch_seq;
             pool.submit(
-                [job_id, this, &in_buffer, &out_buffer, &lhe_completer, &rand_gens] {
+                [slot, batch_seq, seed, this, &in_buffer, &out_buffer, &lhe_completer] {
+                    std::mt19937 rand_gen = seeded_rng(
+                        seed, {kSaltLheComplete, static_cast<std::uint32_t>(batch_seq)}
+                    );
                     LHEEvent lhe_event;
                     out_buffer.clear();
                     for (std::size_t i = 0; i < in_buffer.event_count(); ++i) {
                         fill_lhe_event(
-                            lhe_completer, lhe_event, in_buffer, i, rand_gens.get()
+                            lhe_completer, lhe_event, in_buffer, i, rand_gen
                         );
                         lhe_event.format_to(out_buffer);
                     }
-                    return job_id;
+                    return slot;
                 }
             );
         }
 
-        auto done_jobs = pool.wait_multiple();
-        for (std::size_t job_id : done_jobs) {
-            auto& [in_buffer, out_buffer] = buffers.at(job_id);
-            idle_buffers.push_back(job_id);
+        auto done_slots = pool.wait_multiple();
+        for (std::size_t slot : done_slots) {
+            ready_slots.emplace(slot_batch_seq.at(slot), slot);
+        }
+        for (auto it = ready_slots.find(write_cursor); it != ready_slots.end();
+             it = ready_slots.find(write_cursor)) {
+            std::size_t slot = it->second;
+            auto& [in_buffer, out_buffer] = buffers.at(slot);
             event_file.write_string(out_buffer);
             event_count += in_buffer.event_count();
+            idle_buffers.push_back(slot);
+            ready_slots.erase(it);
+            ++write_cursor;
             if (event_count - last_update_count > 10000) {
                 print_combine_update(event_count);
                 last_update_count = event_count;
             }
         }
-        if (done_jobs.size() == 0 && done) {
+        if (done_slots.size() == 0 && done) {
             break;
         }
     }
