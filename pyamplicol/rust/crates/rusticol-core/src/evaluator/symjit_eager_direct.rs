@@ -21,14 +21,89 @@ use symjit::{
     Application, Config, DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT,
     DIRECT_STATUS_INVALID_CONTEXT, DIRECT_STATUS_OK, DIRECT_TABLE_BINDING_ABI,
     DIRECT_TABLE_DESCRIPTOR_ABI, Defuns, DirectPlane, DirectScalar, DirectTableApplication,
-    DirectTableCallViewV1, DirectTableCallable, Storage,
+    DirectTableApplicationMetadata, DirectTableAttachmentLayout, DirectTableCallViewV1,
+    DirectTableCallable, DirectTableInvocationLayout, DirectTableParameterBinding, Storage,
 };
 
 pub(crate) const EAGER_DIRECT_ARENA_CAPABILITY: &str = "eager-direct-arena-v1";
 pub(crate) const EAGER_DIRECT_TABLE_BINDING_ABI: &str = DIRECT_TABLE_BINDING_ABI;
 pub(crate) const EAGER_DIRECT_TABLE_DESCRIPTOR_ABI: &str = DIRECT_TABLE_DESCRIPTOR_ABI;
 
-const SOURCE_APPLICATION_ABI: &str = "symjit-application-storage-v3";
+pub(crate) const EAGER_DIRECT_SOURCE_APPLICATION_ABI: &str = "symjit-application-storage-v3";
+
+/// Build the fixed-width row descriptor used by eager invocation/fanout
+/// Direct-Arena calls.
+///
+/// Prepared eager applications expose every logical complex input as two
+/// scalar source parameters. The direct table binds those split components to
+/// invocation-selected planes. Row fields are tightly packed little-endian
+/// `u32` values in the following order:
+///
+/// - invocation: all split input-plane IDs, attachment start, attachment count;
+/// - attachment: all split destination-plane IDs, factor ID, operation.
+pub(crate) fn eager_direct_table_metadata(
+    input_complex_count: u32,
+    output_complex_count: u32,
+) -> RusticolResult<DirectTableApplicationMetadata> {
+    if input_complex_count == 0 || output_complex_count == 0 {
+        return Err(RusticolError::invalid_argument(
+            "eager direct-table input and output widths must be positive",
+        ));
+    }
+    let input_plane_count = input_complex_count.checked_mul(2).ok_or_else(|| {
+        RusticolError::invalid_argument("eager direct-table input width overflows")
+    })?;
+    let output_plane_count = output_complex_count.checked_mul(2).ok_or_else(|| {
+        RusticolError::invalid_argument("eager direct-table output width overflows")
+    })?;
+    let invocation_stride = input_plane_count
+        .checked_add(2)
+        .and_then(|count| count.checked_mul(4))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("eager direct-table invocation row overflows")
+        })?;
+    let attachment_stride = output_plane_count
+        .checked_add(2)
+        .and_then(|count| count.checked_mul(4))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("eager direct-table attachment row overflows")
+        })?;
+    let invocation = DirectTableInvocationLayout::new(
+        invocation_stride,
+        (0..input_plane_count).map(|field| field * 4).collect(),
+        input_plane_count * 4,
+        (input_plane_count + 1) * 4,
+    )
+    .map_err(|error| {
+        RusticolError::invalid_argument(format!(
+            "could not construct eager direct-table invocation layout: {error}"
+        ))
+    })?;
+    let attachment = DirectTableAttachmentLayout::new_with_destination_plane_offsets(
+        attachment_stride,
+        (0..output_plane_count).map(|field| field * 4).collect(),
+        output_plane_count * 4,
+        (output_plane_count + 1) * 4,
+    )
+    .map_err(|error| {
+        RusticolError::invalid_argument(format!(
+            "could not construct eager direct-table attachment layout: {error}"
+        ))
+    })?;
+    DirectTableApplicationMetadata::new_with_parameter_bindings(
+        invocation,
+        attachment,
+        (0..input_plane_count)
+            .map(DirectTableParameterBinding::Plane)
+            .collect(),
+        0,
+    )
+    .map_err(|error| {
+        RusticolError::invalid_argument(format!(
+            "could not construct eager direct-table metadata: {error}"
+        ))
+    })
+}
 
 /// One persistent SymJIT plane-catalog entry backed by the eager arena.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -165,6 +240,15 @@ impl EagerDirectTableWorkspace {
         self.arena.split_slices_mut()
     }
 
+    pub(crate) fn clear_current_active(
+        &mut self,
+        component_base: u32,
+        component_count: u32,
+    ) -> RusticolResult<()> {
+        self.arena
+            .clear_current_active(component_base, component_count)
+    }
+
     pub(crate) fn scalar_values_mut(&mut self) -> &mut [f64] {
         &mut self.scalar_values
     }
@@ -241,10 +325,10 @@ impl LoadedSymjitEagerDirectTable {
         descriptor_abi: &str,
         binding_abi: &str,
     ) -> RusticolResult<Self> {
-        if source_application_abi != SOURCE_APPLICATION_ABI {
+        if source_application_abi != EAGER_DIRECT_SOURCE_APPLICATION_ABI {
             return Err(RusticolError::compatibility(format!(
                 "unsupported eager Direct-Arena source application ABI \
-                 {source_application_abi:?}; expected {SOURCE_APPLICATION_ABI:?}"
+                 {source_application_abi:?}; expected {EAGER_DIRECT_SOURCE_APPLICATION_ABI:?}"
             )));
         }
         if descriptor_abi != EAGER_DIRECT_TABLE_DESCRIPTOR_ABI {
@@ -628,7 +712,7 @@ mod tests {
             &source_bytes,
             &descriptor,
             PathBuf::from("eager-table-test.symjit"),
-            SOURCE_APPLICATION_ABI,
+            EAGER_DIRECT_SOURCE_APPLICATION_ABI,
             EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
             EAGER_DIRECT_TABLE_BINDING_ABI,
         )
@@ -1056,7 +1140,7 @@ mod tests {
                 &[0xff],
                 &[],
                 PathBuf::from("malformed-eager-table.symjit"),
-                SOURCE_APPLICATION_ABI,
+                EAGER_DIRECT_SOURCE_APPLICATION_ABI,
                 EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
                 EAGER_DIRECT_TABLE_BINDING_ABI,
             )

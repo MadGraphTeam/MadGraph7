@@ -196,6 +196,7 @@ impl EagerExecutionProfile {
     }
 }
 
+mod direct_invocation_arena;
 mod execute;
 mod plan;
 mod plan_v3;
