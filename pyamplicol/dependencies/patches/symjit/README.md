@@ -5,14 +5,19 @@ This development-only series targets released SymJIT 2.21.1 at revision
 
 ## Patches
 
-1. `0001-direct-arena-applications.patch` adds the portable Direct-Arena
-   application transform used by Rusticol recurrence execution. Generated
-   kernels read and update aligned split-complex arena planes directly, so the
-   recurrence runtime does not construct packed evaluator inputs or scatter
-   outputs. Multi-component in-place finalizers snapshot their fixed inputs in
-   generated stack storage before aliased writes, preserving full-current
-   semantics without caller-side scratch buffers. The patch supports scalar
-   and vector AMD64 and AArch64 generators.
+1. `0001-aarch64-compression-and-direct-arena.patch` combines two compatible
+   extensions against the same immutable upstream revision:
+   - deterministic relative compressed-funclet calls for scalar, SIMD, and
+     fast-complex AArch64 code;
+   - the portable Direct-Arena application transform used by Rusticol
+     recurrence execution.
+
+   Direct-Arena kernels read and update aligned split-complex arena planes
+   directly, so the recurrence runtime does not construct packed evaluator
+   inputs or scatter outputs. Multi-component in-place finalizers snapshot
+   their fixed inputs in generated stack storage before aliased writes,
+   preserving full-current semantics without caller-side scratch buffers. The
+   extension supports scalar and vector AMD64 and AArch64 generators.
    SymJIT 2.21.1 already provides the AArch64 scalar return-status fix; this
    patch does not replace or modify that upstream fix.
 

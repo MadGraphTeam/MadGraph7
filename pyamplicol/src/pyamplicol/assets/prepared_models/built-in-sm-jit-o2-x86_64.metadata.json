@@ -1,37 +1,37 @@
 {
   "backend": "jit",
   "build_contract": {
-    "candidate_fingerprint": "5a971149dea0",
+    "candidate_fingerprint": "754beb0c980a",
     "mode": "candidate",
     "sources": {
-      "symbolica": "e4167e767147ab8f3b4f039057c396c8fa961f6a",
-      "symbolica-community": "4daa45e793a3775f13bee33c4ddd2ba7f22ba714",
-      "symjit": "1d9e7b104c29d612981b1d59cae0cfe8fbf9a4d1"
+      "symbolica": "77c137481904b8a5531ede86e3ef36b82beed7fd",
+      "symbolica-community": "0deaa0f1484ec5c24f5f109176fa66f0d30134ca",
+      "symjit": "48197f32536c894b51ef25b2cf05ddd05c22675f"
     }
   },
   "bundle": "built-in-sm-jit-o2-x86_64.pyamplicol-model",
-  "bundle_sha256": "1bbbdb11e24dc762ccfb3019965e73ed24f43a92bdfd46ab32bc2caba3d83114",
-  "bundle_size": 4286148,
+  "bundle_sha256": "c786b9cad7a2a07d2ae702452aa974f86c8dee7459bc8739e6dbace11b4bfa08",
+  "bundle_size": 7882506,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
-    "symbolica_version": "2.1.0",
+    "symbolica_version": "2.2.0",
     "symjit_application_abi": "symjit-application-storage-v3",
-    "symjit_version": "2.20.2",
+    "symjit_version": "2.21.1",
     "ufo_model_loader_version": "0.1.7"
   },
   "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
   "id": "built-in-sm-jit-o2",
   "jit_optimization_level": 2,
-  "kernel_count": 55,
+  "kernel_count": 61,
   "model": "built-in-sm",
   "prepared_model_bundle_schema": 1,
   "producer": {
     "compiled_model_schema": 9,
-    "model_compiler_sha256": "d3fc026f574eb82ce1b8f478f6daadd088e4db5bb8f14228e329acebdba5c185",
+    "model_compiler_sha256": "83cbf09d149b55d8a0a546c3aee3bf1179cceb5f4654815779e737ce58efdf02",
     "model_compiler_version": 13,
-    "model_source_digest": "69230e7824aa65bbd9053b7f2fa34d78438004b642e6887f8747dae82a0025cf",
-    "package_version": "0.1.0.dev0+candidate.5a971149dea0",
-    "prepared_pack_compiler_sha256": "2ec6696cd78d97657ace4abb3da3569ff208f4811eed8a61506731aa31f50f8d"
+    "model_source_digest": "838f1ca629c989084416142a3af9fcae6b6b5dcd3894ff26974ec4f2a9f78739",
+    "package_version": "0.1.0.dev0+candidate.754beb0c980a",
+    "prepared_pack_compiler_sha256": "496b96c767e9734edec6f26e517e7412c9bb40d02ae672009156f7ad222118f1"
   },
   "schema_version": 1,
   "target": {

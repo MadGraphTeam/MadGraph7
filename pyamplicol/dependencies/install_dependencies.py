@@ -391,6 +391,8 @@ def _contributor_patches(payload: dict[str, Any]) -> tuple[ContributorPatch, ...
         )
         seen_names.add(name)
         seen_paths.add(relative)
+    if len(patches) != 1:
+        raise SetupError("contributor lock must list the one exact SymJIT patch")
     return tuple(patches)
 
 
@@ -613,6 +615,61 @@ def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
                         f"unsupported SymJIT archive member: {member.name}"
                     )
         os.replace(extracted, destination)
+
+
+def _apply_patch(runner: Runner, checkout: Path, patch: Path) -> None:
+    environment = os.environ.copy()
+    environment["GIT_CEILING_DIRECTORIES"] = str(checkout.parent.resolve())
+    command = ["git", "apply", "--no-index"]
+    if runner.dry_run:
+        print(
+            f"$ {shlex.join([*command, str(patch)])}"
+            f"  # cwd={checkout}"
+        )
+        return
+    check = subprocess.run(
+        [*command, "--check", str(patch)],
+        cwd=checkout,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    if check.returncode == 0:
+        runner.run([*command, patch], cwd=checkout, env=environment)
+        return
+    reverse = subprocess.run(
+        [*command, "--reverse", "--check", str(patch)],
+        cwd=checkout,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    if reverse.returncode == 0:
+        return
+    raise SetupError(
+        f"patch does not apply cleanly to {checkout}: {patch.name}\n"
+        f"{check.stderr}{reverse.stderr}"
+    )
+
+
+def _apply_managed_patches(runner: Runner, payload: dict[str, Any]) -> None:
+    patch_series: list[tuple[Path, Path]] = []
+    for entry in payload.get("patches", ()):
+        dependency = str(entry["dependency"])
+        if dependency != "symjit":
+            raise SetupError(
+                f"unsupported candidate dependency patch target: {dependency}"
+            )
+        patch = DEPENDENCIES / str(entry["path"])
+        if not patch.is_file():
+            raise SetupError(f"candidate dependency patch is missing: {patch}")
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        if digest != str(entry["sha256"]):
+            raise SetupError(f"dependency patch digest changed: {patch}")
+        patch_series.append((CHECKOUTS / "symjit", patch))
+
+    for checkout, patch in patch_series:
+        _apply_patch(runner, checkout, patch)
 
 
 def _replace_section(text: str, name: str, body: str) -> str:

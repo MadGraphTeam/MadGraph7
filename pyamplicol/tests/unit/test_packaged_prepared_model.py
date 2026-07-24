@@ -59,13 +59,13 @@ def test_packaged_builtin_sm_jit_o2_is_discoverable_and_validated(
         assert compiled.prepared_backend == "jit"
     with prepared_models.open_packaged_prepared_model() as bundle:
         assert bundle.backend == "jit"
-        assert len(bundle.kernel_pack.kernels) == metadata["kernel_count"] == 55
+        assert len(bundle.kernel_pack.kernels) == metadata["kernel_count"] == 61
         eligible_ids = {
             kernel.kernel_id
             for kernel in bundle.kernel_pack.kernels
             if PREPARED_INDEPENDENT_BLOCK_PROOF in kernel.proof_classes
         }
-        assert len(eligible_ids) == 35
+        assert len(eligible_ids) == 37
         assert {
             variant.base_kernel_id
             for variant in bundle.kernel_pack.kernel_variants

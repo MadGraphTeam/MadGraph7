@@ -73,7 +73,7 @@ def test_symjit_patch_is_revision_digest_and_tree_pinned() -> None:
 
     assert len(patches) == 1
     patch = patches[0]
-    assert patch.name == "symjit-aarch64-compressed-funclets"
+    assert patch.name == "symjit-aarch64-compression-and-direct-arena"
     assert patch.target == "symjit"
     assert patch.applies_to_revision == payload["symjit"]["candidate_revision"]
     assert patch.sha256 == hashlib.sha256(patch.path.read_bytes()).hexdigest()
@@ -210,6 +210,40 @@ def test_toml_section_replacement_is_idempotent() -> None:
     assert once == twice
     assert 'a = "1"' not in once
     assert once.count('b = "2"') == 1
+
+
+def test_archive_checkout_patch_does_not_discover_parent_repository(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=repository,
+        check=True,
+    )
+    parent_payload = repository / "payload.txt"
+    parent_payload.write_text("old\n", encoding="utf-8")
+    checkout = repository / "checkouts" / "dependency"
+    checkout.mkdir(parents=True)
+    checkout_payload = checkout / "payload.txt"
+    checkout_payload.write_text("old\n", encoding="utf-8")
+    patch = repository / "change.patch"
+    patch.write_text(
+        "--- a/payload.txt\n"
+        "+++ b/payload.txt\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n",
+        encoding="utf-8",
+    )
+
+    module._apply_patch(module.Runner(dry_run=False), checkout, patch)
+    module._apply_patch(module.Runner(dry_run=False), checkout, patch)
+
+    assert checkout_payload.read_text(encoding="utf-8") == "new\n"
+    assert parent_payload.read_text(encoding="utf-8") == "old\n"
 
 
 def test_candidate_community_lock_is_resolved_from_the_upstream_lock(
