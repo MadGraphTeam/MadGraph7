@@ -77,15 +77,16 @@ private:
     std::vector<bool> _channel_optimizing;
     std::vector<double> _channel_integral_fractions;
     std::vector<std::size_t> _context_job_counts;
-    // Estimated count_unweighted contribution of jobs that have been dispatched for
-    // a channel but not yet committed, keyed by channel index. Added to a channel's
-    // committed count_unweighted when deciding whether to schedule more work for it,
-    // so that jobs already in flight (but whose actual contribution isn't known
-    // until they commit) aren't invisible to that decision. Without this, a burst of
-    // already-dispatched jobs can all commit after a channel's target was already
-    // met, overshooting it by an amount that depends on real scheduling timing
-    // rather than on the seed -- see GeneratorBatchJob::reserved_count.
-    std::vector<double> _channel_reserved_count;
+    // True while a channel has a steady-state (non-VEGAS) generation batch
+    // dispatched but not yet fully committed. Mirrors _channel_optimizing's role
+    // for VEGAS batches: while true, no new batch is created for this channel, so
+    // the next batch's size (see next_batch_job_count()) is always computed from
+    // fully-committed data. Without this, jobs already dispatched but not yet
+    // committed are invisible to the "does this channel need more work" decision,
+    // so a burst of them can all commit after the channel's target was already met
+    // -- overshooting it by an amount that depends on real scheduling timing rather
+    // than on the seed.
+    std::vector<bool> _channel_batch_pending;
     ResultQueue _result_queue;
 
     // Base seed for reproducible event generation. 0 means "seed
@@ -124,13 +125,15 @@ private:
     void generate_deterministic();
     void commit_generate_deterministic(GeneratorBatchJob& job);
 
-    // Estimate a not-yet-dispatched job's eventual count_unweighted contribution
-    // from the channel's committed efficiency so far (1.0, i.e. the full batch,
-    // before any data is committed), add it to _channel_reserved_count, and return
-    // it so the caller can store it on the job for release_reserved_count() once
-    // the job commits. See _channel_reserved_count for why this is needed.
-    double reserve_job_count(std::size_t channel_index);
-    void release_reserved_count(const GeneratorBatchJob& job);
+    // Size a new steady-state generation batch for a channel from fully-committed
+    // data only: the channel's own observed efficiency so far (count_unweighted /
+    // count_opt, or the pessimistic 1.0 -- i.e. a whole raw batch -- before any data
+    // exists yet) and its remaining need (target - count_unweighted). Capped to
+    // generation_batch_fraction of the remaining need so a single batch never bets
+    // everything on an estimate that may still be noisy, and floored at
+    // min_batch_jobs so a lone active channel still gets enough parallel jobs to
+    // keep all worker threads busy.
+    std::size_t next_batch_job_count(std::size_t channel_index, double target) const;
 
     bool start_jobs();
     void update_integral();

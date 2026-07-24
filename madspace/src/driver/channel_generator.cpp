@@ -507,7 +507,7 @@ void ChannelEventGenerator::start_job(
                     job.hists.push_back(item.cpu());
                 }
             }
-            if (job.vegas_batch_size != 0) {
+            if (job.is_vegas_batch) {
                 if (_vegas_optimizer) {
                     auto hist = runtimes.vegas_histogram->run(
                         {job.events.at(_field_indices.random),

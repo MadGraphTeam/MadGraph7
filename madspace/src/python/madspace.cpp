@@ -1429,7 +1429,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite(
             "cut_efficiency_threshold", &GeneratorConfig::cut_efficiency_threshold
         )
-        .def_readwrite("max_cut_repetitions", &GeneratorConfig::max_cut_repetitions);
+        .def_readwrite("max_cut_repetitions", &GeneratorConfig::max_cut_repetitions)
+        .def_readwrite(
+            "generation_batch_fraction", &GeneratorConfig::generation_batch_fraction
+        )
+        .def_readwrite("min_batch_jobs", &GeneratorConfig::min_batch_jobs);
 
     py::classh<GeneratorStatus>(m, "GeneratorStatus")
         .def(py::init<>())
