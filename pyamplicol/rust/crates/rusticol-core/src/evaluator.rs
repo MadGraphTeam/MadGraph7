@@ -32,6 +32,10 @@ pub(crate) mod symjit_direct;
 #[path = "evaluator/symjit_compiled_direct.rs"]
 pub(crate) mod symjit_compiled_direct;
 
+#[cfg(feature = "f64-symjit")]
+#[path = "evaluator/symjit_eager_direct.rs"]
+pub(crate) mod symjit_eager_direct;
+
 #[path = "evaluator/recurrence_source_direct.rs"]
 pub(crate) mod recurrence_source_direct;
 
