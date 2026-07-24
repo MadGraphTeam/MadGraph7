@@ -439,13 +439,17 @@ fn warmed_topology_replay_tiles_allocate_zero_heap_bytes_and_remain_correct() {
         .unwrap();
     assert_eq!(warm_output.destination_re(0).unwrap(), EXPECTED_RE);
     assert_eq!(warm_output.destination_im(0).unwrap(), EXPECTED_IM);
+    runtime.reset_counters();
 
     let (result, allocation_count, allocated_bytes) = count_allocations(|| {
         let mut observed_re = [0.0; POINT_COUNT as usize];
         let mut observed_im = [0.0; POINT_COUNT as usize];
         for _ in 0..32 {
-            let output =
-                runtime.execute_replay_tile_from_external(&selector, POINT_COUNT, &momenta)?;
+            let output = runtime.execute_replay_tile_from_external_unprofiled(
+                &selector,
+                POINT_COUNT,
+                &momenta,
+            )?;
             observed_re.copy_from_slice(output.destination_re(0).ok_or_else(|| {
                 RusticolError::internal("missing direct recurrence real destination")
             })?);
@@ -461,4 +465,8 @@ fn warmed_topology_replay_tiles_allocate_zero_heap_bytes_and_remain_correct() {
     assert_eq!(observed_im, EXPECTED_IM);
     assert_eq!(allocation_count, 0, "warmed recurrence loop allocated");
     assert_eq!(allocated_bytes, 0, "warmed recurrence loop allocated bytes");
+    assert_eq!(runtime.counters(), Default::default());
+    assert_eq!(runtime.role_timings(), Default::default());
+    assert_eq!(runtime.activity_counters(), Default::default());
+    assert_eq!(runtime.phase_timings(), Default::default());
 }

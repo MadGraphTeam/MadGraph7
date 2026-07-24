@@ -422,6 +422,31 @@ def _benchmark_summary(
         else "complete"
     )
     breakdown = result.timing_breakdown
+    recurrence_timing = (
+        breakdown is not None and breakdown.execution_mode == "recurrence"
+    )
+    if recurrence_timing:
+        profile_metric_label = (
+            "paired recurrence"
+            if paired_timing_samples
+            else (
+                "diagnostic recurrence"
+                if separate_timing_samples
+                else "recurrence schedule"
+            )
+        )
+        profile_quantity = "recurrence schedule"
+    else:
+        profile_metric_label = (
+            "paired evaluator"
+            if paired_timing_samples
+            else (
+                "diagnostic evaluator"
+                if separate_timing_samples
+                else "evaluator time"
+            )
+        )
+        profile_quantity = "evaluator"
     profile_repetitions_value = environment.get("native_profile_repetitions_per_sample")
     profile_repetitions = (
         int(profile_repetitions_value)
@@ -461,15 +486,7 @@ def _benchmark_summary(
             "GREEN",
         ),
         (
-            (
-                "paired evaluator"
-                if paired_timing_samples
-                else (
-                    "diagnostic evaluator"
-                    if separate_timing_samples
-                    else "evaluator time"
-                )
-            ),
+            profile_metric_label,
             evaluator_text,
             "CYAN",
         ),
@@ -510,7 +527,8 @@ def _benchmark_summary(
             "timing sources",
             (
                 f"wall={environment.get('wall_time_source', 'unavailable')} "
-                f"via {wall_pass}; evaluator={evaluator_source} via {evaluator_pass}"
+                f"via {wall_pass}; {profile_quantity}={evaluator_source} "
+                f"via {evaluator_pass}"
             ),
             None,
         ),
@@ -520,8 +538,8 @@ def _benchmark_summary(
                 (
                     f"one shared native pass: {result.sample_count} blocks x "
                     f"{profile_repetitions} repetitions x "
-                    f"{result.effective_config.batch_size} points; wall, evaluator, "
-                    "and breakdown use the same blocks"
+                    f"{result.effective_config.batch_size} points; wall, "
+                    f"{profile_quantity}, and breakdown use the same blocks"
                 )
                 if shared_timing_samples
                 else (
@@ -534,8 +552,9 @@ def _benchmark_summary(
                     else (
                         f"separate passes: headline wall {result.sample_count} "
                         f"blocks x {result.repetitions_per_sample} repetitions x "
-                        f"{result.effective_config.batch_size} points; evaluator and "
-                        f"breakdown {breakdown.sample_count} diagnostic blocks x "
+                        f"{result.effective_config.batch_size} points; "
+                        f"{profile_quantity} and breakdown "
+                        f"{breakdown.sample_count} diagnostic blocks x "
                         f"{profile_repetitions} repetitions "
                         f"({profile_points} points/block)"
                         if timing_sample_contract
@@ -727,13 +746,72 @@ def _benchmark_summary(
             (
                 "Profile wall (headline)"
                 if shared_timing_samples
-                else "Profile wall (diagnostic pass)",
+                else (
+                    "Profile wall (paired profiled pass)"
+                    if paired_timing_samples
+                    else "Profile wall (diagnostic pass)"
+                ),
                 breakdown.wall_time,
             ),
-            ("Source fill", breakdown.source_fill_time),
-            ("Momentum setup", breakdown.momentum_setup_time),
-            ("Recurrence execution", breakdown.stage_evaluator_call_time),
-            ("Other Rusticol core", breakdown.other_core_time),
+            ("Native input pack (exclusive)", breakdown.native_input_pack_time),
+            (
+                "Native input crossing (exclusive)",
+                breakdown.native_input_crossing_time,
+            ),
+            ("Runtime orchestration (exclusive)", breakdown.orchestration_time),
+            ("State prepare (exclusive)", breakdown.state_prepare_time),
+            ("State clear (exclusive)", breakdown.state_clear_time),
+            ("Source preparation (exclusive)", breakdown.source_fill_time),
+            (
+                "External momentum flatten (exclusive)",
+                momentum_input_setup_time,
+            ),
+            (
+                "Model parameter setup (exclusive)",
+                breakdown.model_parameter_setup_time,
+            ),
+            (
+                "Momentum-form fill (exclusive)",
+                breakdown.recurrence_momentum_fill_time,
+            ),
+            (
+                "Union source fill (exclusive)",
+                breakdown.recurrence_union_source_fill_time,
+            ),
+            (
+                "Recurrence schedule (inclusive)",
+                breakdown.recurrence_schedule_time,
+            ),
+            (
+                "Source kernels (schedule attribution; do not add)",
+                breakdown.recurrence_source_kernel_time,
+            ),
+            (
+                "Contribution kernels (schedule attribution; do not add)",
+                breakdown.recurrence_contribution_kernel_time,
+            ),
+            (
+                "Current finalization (schedule attribution; do not add)",
+                breakdown.recurrence_finalization_time,
+            ),
+            (
+                "Amplitude closure (schedule attribution; do not add)",
+                breakdown.recurrence_closure_time,
+            ),
+            (
+                "Replay output mapping (exclusive)",
+                breakdown.recurrence_replay_output_mapping_time,
+            ),
+            ("Reduction (exclusive)", breakdown.reduction_time),
+            (
+                "Total materialization (exclusive)",
+                breakdown.total_materialization_time,
+            ),
+            ("Final output copy (exclusive)", breakdown.final_output_copy_time),
+            ("Selector planning (exclusive)", breakdown.selector_planner_time),
+            ("Selector gather (exclusive)", breakdown.selector_gather_time),
+            ("Selector scatter (exclusive)", breakdown.selector_scatter_time),
+            ("Other Rusticol core (exclusive)", breakdown.other_core_time),
         )
     else:
         component_rows = (
@@ -816,8 +894,12 @@ def _benchmark_summary(
             "Stage evaluator envelope (top-level)",
             "Amplitude evaluator envelope (top-level)",
             "Eager execution (inclusive)",
-            "Recurrence execution",
+            "Recurrence schedule (inclusive)",
             "Kernel calls (exclusive)",
+            "Source kernels (schedule attribution; do not add)",
+            "Contribution kernels (schedule attribution; do not add)",
+            "Current finalization (schedule attribution; do not add)",
+            "Amplitude closure (schedule attribution; do not add)",
         }:
             value = _paint(value, "CYAN", enabled=color)
         component_table.add_row((label, value, relative))

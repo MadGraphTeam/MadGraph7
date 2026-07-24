@@ -11,9 +11,10 @@ use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use super::direct_backend::{
-    DIRECT_STATUS_OK, DirectArenaView, DirectExecutionCounters, DirectExecutorCatalog,
-    DirectFactorView, DirectMomentumView, DirectParameterView, DirectUnionSourceDispatchHandle,
-    DirectWorkspace, execute_direct_plan,
+    DIRECT_STATUS_OK, DirectArenaView, DirectExecutionCounters, DirectExecutionRoleTimings,
+    DirectExecutorCatalog, DirectFactorView, DirectMomentumView, DirectParameterView,
+    DirectUnionSourceDispatchHandle, DirectWorkspace, execute_direct_plan_profiled,
+    execute_direct_plan_unprofiled,
 };
 use super::direct_plan::{
     DirectAmplitudeDestinationDescriptor, DirectRecurrencePlan, DirectResolvedHelicityDescriptor,
@@ -218,6 +219,7 @@ pub struct DirectRecurrenceExecutionRuntime {
     last_public_flow_id: Option<u32>,
     last_representative_flow_id: Option<u32>,
     counters: DirectExecutionCounters,
+    role_timings: DirectExecutionRoleTimings,
     activity_counters: DirectRuntimeActivityCounters,
     timings: DirectRuntimePhaseTimings,
 }
@@ -371,6 +373,7 @@ impl DirectRecurrenceExecutionRuntime {
             last_public_flow_id: None,
             last_representative_flow_id: None,
             counters: DirectExecutionCounters::default(),
+            role_timings: DirectExecutionRoleTimings::default(),
             activity_counters: DirectRuntimeActivityCounters::default(),
             timings: DirectRuntimePhaseTimings::default(),
         })
@@ -554,6 +557,24 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<()> {
+        self.fill_momenta_from_external_impl::<true>(selector, point_count, external_four_momenta)
+    }
+
+    pub fn fill_momenta_from_external_unprofiled(
+        &mut self,
+        selector: &DirectReplaySelectorPlan,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<()> {
+        self.fill_momenta_from_external_impl::<false>(selector, point_count, external_four_momenta)
+    }
+
+    fn fill_momenta_from_external_impl<const PROFILE: bool>(
+        &mut self,
+        selector: &DirectReplaySelectorPlan,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<()> {
         self.validate_replay_selector(selector)?;
         self.validate_point_count(point_count)?;
         if self.lorentz_component_count != 4 {
@@ -575,7 +596,7 @@ impl DirectRecurrenceExecutionRuntime {
             )));
         }
 
-        let started = Instant::now();
+        let started = PROFILE.then(Instant::now);
         let point_stride = self.point_stride as usize;
         let active_points = point_count as usize;
         let previous_points = self.momentum_filled_points as usize;
@@ -627,29 +648,33 @@ impl DirectRecurrenceExecutionRuntime {
 
         self.momentum_filled_points = point_count;
         self.momentum_replay_selector = Some(selector.identity());
-        self.activity_counters.momentum_fill_calls =
-            self.activity_counters.momentum_fill_calls.saturating_add(1);
-        self.activity_counters.momentum_forms_filled = self
-            .activity_counters
-            .momentum_forms_filled
-            .saturating_add(form_count as u64);
-        self.activity_counters.momentum_terms_filled = self
-            .activity_counters
-            .momentum_terms_filled
-            .saturating_add(terms.len() as u64);
-        let scalar_values = (form_count as u64)
-            .saturating_mul(4)
-            .saturating_mul(u64::from(point_count));
-        self.activity_counters.momentum_scalar_values_filled = self
-            .activity_counters
-            .momentum_scalar_values_filled
-            .saturating_add(scalar_values);
-        self.timings.momentum_fill += started.elapsed();
+        if PROFILE {
+            self.activity_counters.momentum_fill_calls =
+                self.activity_counters.momentum_fill_calls.saturating_add(1);
+            self.activity_counters.momentum_forms_filled = self
+                .activity_counters
+                .momentum_forms_filled
+                .saturating_add(form_count as u64);
+            self.activity_counters.momentum_terms_filled = self
+                .activity_counters
+                .momentum_terms_filled
+                .saturating_add(terms.len() as u64);
+            let scalar_values = (form_count as u64)
+                .saturating_mul(4)
+                .saturating_mul(u64::from(point_count));
+            self.activity_counters.momentum_scalar_values_filled = self
+                .activity_counters
+                .momentum_scalar_values_filled
+                .saturating_add(scalar_values);
+            self.timings.momentum_fill += started
+                .expect("profiled momentum fill has a start time")
+                .elapsed();
+        }
         Ok(())
     }
 
     /// Fill canonical momentum forms without a replay permutation.
-    fn fill_union_momenta_from_external(
+    fn fill_union_momenta_from_external<const PROFILE: bool>(
         &mut self,
         point_count: u32,
         external_four_momenta: &[f64],
@@ -679,7 +704,7 @@ impl DirectRecurrenceExecutionRuntime {
             )));
         }
 
-        let started = Instant::now();
+        let started = PROFILE.then(Instant::now);
         let point_stride = self.point_stride as usize;
         let active_points = point_count as usize;
         let previous_points = self.momentum_filled_points as usize;
@@ -723,25 +748,29 @@ impl DirectRecurrenceExecutionRuntime {
 
         self.momentum_filled_points = point_count;
         self.momentum_replay_selector = None;
-        self.activity_counters.momentum_fill_calls =
-            self.activity_counters.momentum_fill_calls.saturating_add(1);
-        self.activity_counters.momentum_forms_filled = self
-            .activity_counters
-            .momentum_forms_filled
-            .saturating_add(form_count as u64);
-        self.activity_counters.momentum_terms_filled = self
-            .activity_counters
-            .momentum_terms_filled
-            .saturating_add(terms.len() as u64);
-        self.activity_counters.momentum_scalar_values_filled = self
-            .activity_counters
-            .momentum_scalar_values_filled
-            .saturating_add(
-                (form_count as u64)
-                    .saturating_mul(4)
-                    .saturating_mul(u64::from(point_count)),
-            );
-        self.timings.momentum_fill += started.elapsed();
+        if PROFILE {
+            self.activity_counters.momentum_fill_calls =
+                self.activity_counters.momentum_fill_calls.saturating_add(1);
+            self.activity_counters.momentum_forms_filled = self
+                .activity_counters
+                .momentum_forms_filled
+                .saturating_add(form_count as u64);
+            self.activity_counters.momentum_terms_filled = self
+                .activity_counters
+                .momentum_terms_filled
+                .saturating_add(terms.len() as u64);
+            self.activity_counters.momentum_scalar_values_filled = self
+                .activity_counters
+                .momentum_scalar_values_filled
+                .saturating_add(
+                    (form_count as u64)
+                        .saturating_mul(4)
+                        .saturating_mul(u64::from(point_count)),
+                );
+            self.timings.momentum_fill += started
+                .expect("profiled union momentum fill has a start time")
+                .elapsed();
+        }
         Ok(())
     }
 
@@ -790,12 +819,17 @@ impl DirectRecurrenceExecutionRuntime {
         self.activity_counters
     }
 
+    pub const fn role_timings(&self) -> DirectExecutionRoleTimings {
+        self.role_timings
+    }
+
     pub const fn phase_timings(&self) -> DirectRuntimePhaseTimings {
         self.timings
     }
 
     pub fn reset_counters(&mut self) {
         self.counters = DirectExecutionCounters::default();
+        self.role_timings = DirectExecutionRoleTimings::default();
         self.activity_counters = DirectRuntimeActivityCounters::default();
         self.timings = DirectRuntimePhaseTimings::default();
     }
@@ -835,6 +869,22 @@ impl DirectRecurrenceExecutionRuntime {
         selector: &DirectReplaySelectorPlan,
         point_count: u32,
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.execute_replay_tile_impl::<true>(selector, point_count)
+    }
+
+    pub fn execute_replay_tile_unprofiled(
+        &mut self,
+        selector: &DirectReplaySelectorPlan,
+        point_count: u32,
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.execute_replay_tile_impl::<false>(selector, point_count)
+    }
+
+    fn execute_replay_tile_impl<const PROFILE: bool>(
+        &mut self,
+        selector: &DirectReplaySelectorPlan,
+        point_count: u32,
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
         self.validate_replay_selector(selector)?;
         self.validate_point_count(point_count)?;
         if self.momentum_filled_points != point_count
@@ -845,8 +895,8 @@ impl DirectRecurrenceExecutionRuntime {
             ));
         }
 
-        self.execute_direct_tile(point_count)?;
-        let started = Instant::now();
+        self.execute_direct_tile_impl::<PROFILE>(point_count)?;
+        let started = PROFILE.then(Instant::now);
         let scale_re = selector.phase_re * f64::from(selector.multiplicity);
         let scale_im = selector.phase_im * f64::from(selector.multiplicity);
         let point_stride = self.point_stride as usize;
@@ -869,15 +919,19 @@ impl DirectRecurrenceExecutionRuntime {
             }
             scaled_values = scaled_values.saturating_add(u64::from(point_count));
         }
-        self.activity_counters.replay_schedule_executions = self
-            .activity_counters
-            .replay_schedule_executions
-            .saturating_add(1);
-        self.activity_counters.replay_output_values_scaled = self
-            .activity_counters
-            .replay_output_values_scaled
-            .saturating_add(scaled_values);
-        self.timings.replay_output_mapping += started.elapsed();
+        if PROFILE {
+            self.activity_counters.replay_schedule_executions = self
+                .activity_counters
+                .replay_schedule_executions
+                .saturating_add(1);
+            self.activity_counters.replay_output_values_scaled = self
+                .activity_counters
+                .replay_output_values_scaled
+                .saturating_add(scaled_values);
+            self.timings.replay_output_mapping += started
+                .expect("profiled replay mapping has a start time")
+                .elapsed();
+        }
         self.last_point_count = point_count;
         self.last_public_flow_id = Some(selector.public_flow_id);
         self.last_representative_flow_id = Some(selector.representative_flow_id);
@@ -900,6 +954,16 @@ impl DirectRecurrenceExecutionRuntime {
         self.execute_replay_tile(selector, point_count)
     }
 
+    pub fn execute_replay_tile_from_external_unprofiled(
+        &mut self,
+        selector: &DirectReplaySelectorPlan,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.fill_momenta_from_external_unprofiled(selector, point_count, external_four_momenta)?;
+        self.execute_replay_tile_unprofiled(selector, point_count)
+    }
+
     /// Fill one runtime helicity's union sources and execute the compact
     /// all-flow schedule exactly once.
     pub fn execute_union_tile_from_external(
@@ -908,21 +972,49 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.execute_union_tile_from_external_impl::<true>(
+            selector,
+            point_count,
+            external_four_momenta,
+        )
+    }
+
+    pub fn execute_union_tile_from_external_unprofiled(
+        &mut self,
+        selector: &DirectUnionHelicitySelectorPlan,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.execute_union_tile_from_external_impl::<false>(
+            selector,
+            point_count,
+            external_four_momenta,
+        )
+    }
+
+    fn execute_union_tile_from_external_impl<const PROFILE: bool>(
+        &mut self,
+        selector: &DirectUnionHelicitySelectorPlan,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
         self.validate_union_selector(selector)?;
-        self.fill_union_momenta_from_external(point_count, external_four_momenta)?;
-        self.execute_union_sources(selector, point_count)?;
-        self.execute_direct_tile(point_count)?;
-        self.activity_counters.union_schedule_executions = self
-            .activity_counters
-            .union_schedule_executions
-            .saturating_add(1);
+        self.fill_union_momenta_from_external::<PROFILE>(point_count, external_four_momenta)?;
+        self.execute_union_sources::<PROFILE>(selector, point_count)?;
+        self.execute_direct_tile_impl::<PROFILE>(point_count)?;
+        if PROFILE {
+            self.activity_counters.union_schedule_executions = self
+                .activity_counters
+                .union_schedule_executions
+                .saturating_add(1);
+        }
         self.last_point_count = point_count;
         self.last_public_flow_id = None;
         self.last_representative_flow_id = None;
         Ok(self.borrowed_output(point_count, None, None))
     }
 
-    fn execute_union_sources(
+    fn execute_union_sources<const PROFILE: bool>(
         &mut self,
         selector: &DirectUnionHelicitySelectorPlan,
         point_count: u32,
@@ -994,7 +1086,7 @@ impl DirectRecurrenceExecutionRuntime {
             value_count: factor_count,
         };
 
-        let started = Instant::now();
+        let started = PROFILE.then(Instant::now);
         let status = unsafe {
             (handle.call)(
                 handle.context,
@@ -1013,29 +1105,42 @@ impl DirectRecurrenceExecutionRuntime {
                 point_count,
             )
         };
-        self.timings.union_source_fill += started.elapsed();
+        if PROFILE {
+            self.timings.union_source_fill += started
+                .expect("profiled union source fill has a start time")
+                .elapsed();
+        }
         if status != DIRECT_STATUS_OK {
             return Err(RusticolError::evaluation(format!(
                 "direct recurrence union source dispatcher returned status {status}"
             )));
         }
-        self.counters.source_calls = self.counters.source_calls.saturating_add(1);
-        self.counters.source_rows = self
-            .counters
-            .source_rows
-            .saturating_add(u64::from(selection_count));
-        self.activity_counters.union_source_dispatch_calls = self
-            .activity_counters
-            .union_source_dispatch_calls
-            .saturating_add(1);
-        self.activity_counters.union_source_rows = self
-            .activity_counters
-            .union_source_rows
-            .saturating_add(u64::from(selection_count));
+        if PROFILE {
+            self.counters.source_calls = self.counters.source_calls.saturating_add(1);
+            self.counters.source_rows = self
+                .counters
+                .source_rows
+                .saturating_add(u64::from(selection_count));
+            self.activity_counters.union_source_dispatch_calls = self
+                .activity_counters
+                .union_source_dispatch_calls
+                .saturating_add(1);
+            self.activity_counters.union_source_rows = self
+                .activity_counters
+                .union_source_rows
+                .saturating_add(u64::from(selection_count));
+        }
         Ok(())
     }
 
     fn execute_direct_tile(&mut self, point_count: u32) -> RusticolResult<()> {
+        self.execute_direct_tile_impl::<true>(point_count)
+    }
+
+    fn execute_direct_tile_impl<const PROFILE: bool>(
+        &mut self,
+        point_count: u32,
+    ) -> RusticolResult<()> {
         self.validate_point_count(point_count)?;
         self.last_point_count = 0;
         self.last_public_flow_id = None;
@@ -1073,20 +1178,36 @@ impl DirectRecurrenceExecutionRuntime {
                 factors_im: self.factors_im.as_slice(),
                 point_stride: self.point_stride,
             };
-            let started = Instant::now();
-            let result = execute_direct_plan(
-                &self.plan,
-                &self.executors,
-                &mut workspace,
-                point_count,
-                &mut self.counters,
-            );
-            self.timings.direct_execution += started.elapsed();
+            let started = PROFILE.then(Instant::now);
+            let result = if PROFILE {
+                execute_direct_plan_profiled(
+                    &self.plan,
+                    &self.executors,
+                    &mut workspace,
+                    point_count,
+                    &mut self.counters,
+                    &mut self.role_timings,
+                )
+            } else {
+                execute_direct_plan_unprofiled(
+                    &self.plan,
+                    &self.executors,
+                    &mut workspace,
+                    point_count,
+                )
+            };
+            if PROFILE {
+                self.timings.direct_execution += started
+                    .expect("profiled direct execution has a start time")
+                    .elapsed();
+            }
             result?;
         }
 
-        self.activity_counters.schedule_executions =
-            self.activity_counters.schedule_executions.saturating_add(1);
+        if PROFILE {
+            self.activity_counters.schedule_executions =
+                self.activity_counters.schedule_executions.saturating_add(1);
+        }
         Ok(())
     }
 

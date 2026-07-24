@@ -226,6 +226,61 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "Rusticol Timing Breakdown (paired profiled attribution)" in rendered
 
 
+def test_recurrence_profile_reports_paired_schedule_and_nested_attribution() -> None:
+    result = _benchmark_result()
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    component = breakdown.source_fill_time
+    schedule = breakdown.stage_evaluator_call_time
+    recurrence_breakdown = replace(
+        breakdown,
+        execution_mode="recurrence",
+        stage_input_pack_time=None,
+        stage_evaluator_call_time=None,
+        output_assign_time=None,
+        amplitude_input_pack_time=None,
+        amplitude_evaluator_call_time=None,
+        reduction_time=component,
+        stages=(),
+        recurrence_momentum_fill_time=component,
+        recurrence_union_source_fill_time=component,
+        recurrence_schedule_time=schedule,
+        recurrence_source_kernel_time=component,
+        recurrence_contribution_kernel_time=component,
+        recurrence_finalization_time=component,
+        recurrence_closure_time=component,
+        recurrence_replay_output_mapping_time=component,
+    )
+    rendered = render_summary(
+        replace(
+            result,
+            environment={
+                **result.environment,
+                "execution_mode": "recurrence",
+                "evaluator_time_source": (
+                    "runtime_profile_core_recurrence_schedule_time"
+                ),
+            },
+            timing_breakdown=recurrence_breakdown,
+        ),
+        color=False,
+    )
+
+    assert rendered is not None
+    assert "paired recurrence" in rendered
+    assert "paired evaluator" not in rendered
+    assert (
+        "Rusticol Recurrence Timing Breakdown (paired profiled attribution)"
+        in rendered
+    )
+    assert "Profile wall (paired profiled pass)" in rendered
+    assert "Recurrence schedule (inclusive)" in rendered
+    assert "Contribution kernels (schedule attribution; do not add)" in rendered
+    assert "Current finalization (schedule attribution; do not add)" in rendered
+    assert "Replay output mapping (exclusive)" in rendered
+    assert "runtime_profile_core_recurrence_schedule_time" in rendered
+
+
 def test_separate_breakdown_samples_are_labeled_explicitly() -> None:
     result = _benchmark_result()
     breakdown = result.timing_breakdown

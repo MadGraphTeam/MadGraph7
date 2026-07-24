@@ -2620,6 +2620,62 @@ fn eager_native_profile_rejects_top_level_overlap() {
 }
 
 #[test]
+fn recurrence_native_profile_accepts_nested_schedule_attribution() {
+    let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
+    profile.total_s = 12.0e-3;
+    profile.source_fill_s = 0.5e-3;
+    profile.momentum_input_setup_s = 0.5e-3;
+    profile.recurrence_momentum_fill_s = 1.0e-3;
+    profile.recurrence_union_source_fill_s = 0.5e-3;
+    profile.recurrence_schedule_s = 8.0e-3;
+    profile.recurrence_source_kernel_s = 0.5e-3;
+    profile.recurrence_contribution_kernel_s = 5.0e-3;
+    profile.recurrence_finalization_s = 1.0e-3;
+    profile.recurrence_closure_s = 0.5e-3;
+    profile.recurrence_replay_output_mapping_s = 0.5e-3;
+    profile.reduction_s = 0.5e-3;
+
+    profile.validate_recurrence_top_level_accounting().unwrap();
+}
+
+#[test]
+fn recurrence_native_profile_rejects_top_level_overlap() {
+    let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
+    profile.total_s = 10.0e-3;
+    profile.recurrence_momentum_fill_s = 4.0e-3;
+    profile.recurrence_schedule_s = 7.0e-3;
+
+    let error = profile
+        .validate_recurrence_top_level_accounting()
+        .unwrap_err();
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Internal);
+    assert!(error.to_string().contains("exclusive top-level phases"));
+    assert!(error.to_string().contains("exceeding wall time"));
+}
+
+#[test]
+fn recurrence_native_profile_rejects_attribution_larger_than_schedule() {
+    let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
+    profile.total_s = 10.0e-3;
+    profile.recurrence_schedule_s = 7.0e-3;
+    profile.recurrence_source_kernel_s = 2.0e-3;
+    profile.recurrence_contribution_kernel_s = 6.0e-3;
+
+    let error = profile
+        .validate_recurrence_top_level_accounting()
+        .unwrap_err();
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Internal);
+    assert!(error.to_string().contains("schedule sub-attribution"));
+    assert!(
+        error
+            .to_string()
+            .contains("exceeding inclusive recurrence schedule")
+    );
+}
+
+#[test]
 fn compiled_native_profile_rejects_top_level_overlap() {
     let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
     profile.total_s = 10.0e-3;
@@ -2640,6 +2696,8 @@ fn native_profile_accumulates_compiled_accounting() {
     let mut profile: NativeRuntimeProfile = RuntimeProfile {
         orchestration_s: 1.0,
         stage_leaf_input_pack_s: 2.0,
+        recurrence_schedule_s: 6.0,
+        recurrence_contribution_kernel_s: 4.0,
         stage_leaf_input_pack_by_stage_s: vec![2.0],
         stage_leaf_input_copy_component_count: 3,
         evaluator_backend_call_count: 4,
@@ -2650,6 +2708,8 @@ fn native_profile_accumulates_compiled_accounting() {
     let repeated: NativeRuntimeProfile = RuntimeProfile {
         orchestration_s: 10.0,
         stage_leaf_input_pack_s: 20.0,
+        recurrence_schedule_s: 60.0,
+        recurrence_contribution_kernel_s: 40.0,
         stage_leaf_input_pack_by_stage_s: vec![20.0, 30.0],
         stage_leaf_input_copy_component_count: 30,
         evaluator_backend_call_count: 40,
@@ -2662,6 +2722,8 @@ fn native_profile_accumulates_compiled_accounting() {
 
     assert_eq!(profile.orchestration_s, 11.0);
     assert_eq!(profile.stage_leaf_input_pack_s, 22.0);
+    assert_eq!(profile.recurrence_schedule_s, 66.0);
+    assert_eq!(profile.recurrence_contribution_kernel_s, 44.0);
     assert_eq!(profile.stage_leaf_input_pack_by_stage_s, [22.0, 30.0]);
     assert_eq!(profile.stage_leaf_input_copy_component_count, 33);
     assert_eq!(profile.evaluator_backend_call_count, 44);

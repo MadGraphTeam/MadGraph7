@@ -108,6 +108,14 @@ class _NativeProfileSample:
     eager_scatter_finalization_time: float | None
     eager_closure_time: float | None
     eager_copy_out_time: float | None
+    recurrence_momentum_fill_time: float | None
+    recurrence_union_source_fill_time: float | None
+    recurrence_schedule_time: float | None
+    recurrence_source_kernel_time: float | None
+    recurrence_contribution_kernel_time: float | None
+    recurrence_finalization_time: float | None
+    recurrence_closure_time: float | None
+    recurrence_replay_output_mapping_time: float | None
     counters: _NativeProfileCounterSample | None
 
 
@@ -368,10 +376,19 @@ class BenchmarkBackend:
                         assert evaluator_samples is not None
                         assert native_profile_samples is not None
                         native_profile_samples.append(native_sample)
-                        evaluator_samples.append(
-                            native_sample.stage_evaluator_call_time
-                            + (native_sample.amplitude_evaluator_call_time or 0.0)
-                        )
+                        if native_sample.execution_mode == "recurrence":
+                            if native_sample.recurrence_schedule_time is None:
+                                raise EvaluationError(
+                                    "native recurrence schedule timing is unavailable"
+                                )
+                            evaluator_samples.append(
+                                native_sample.recurrence_schedule_time
+                            )
+                        else:
+                            evaluator_samples.append(
+                                native_sample.stage_evaluator_call_time
+                                + (native_sample.amplitude_evaluator_call_time or 0.0)
+                            )
                         evaluator_elapsed += profile_duration
                     if self._progress is not None:
                         self._progress.emit(
@@ -472,6 +489,11 @@ class BenchmarkBackend:
             )
             assert native_profile_samples is not None
             timing_breakdown = _timing_breakdown(native_profile_samples)
+            evaluator_time_source = (
+                "runtime_profile_core_recurrence_schedule_time"
+                if timing_breakdown.execution_mode == "recurrence"
+                else "runtime_profile_core_evaluator_call_time"
+            )
             native_profile_repetitions = (
                 calibration.repetitions_per_sample
                 if repeated_profiler is not None
@@ -486,7 +508,7 @@ class BenchmarkBackend:
             evaluator_environment = {
                 "wall_time_source": wall_time_source,
                 "wall_time_sample_pass": wall_sample_pass,
-                "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+                "evaluator_time_source": evaluator_time_source,
                 "evaluator_time_sample_pass": (
                     "runtime.profile_repeated"
                     if repeated_profiler is not None
@@ -1111,6 +1133,10 @@ def _native_profile_sample(
     stage_output_assign = _profile_float_sequence_or_none(
         profile, "stage_output_assign_by_stage_time_s"
     )
+    execution_mode = _profile_execution_mode(
+        profile,
+        stage_vectors_present_but_empty=stage_vectors_present_but_empty,
+    )
 
     stage_input_pack_total = (
         sum(stage_input_pack)
@@ -1122,8 +1148,10 @@ def _native_profile_sample(
         if stage_evaluator_call is not None
         else _profile_float_or_none(profile, "stage_evaluator_call_time_s")
     )
-    if stage_evaluator_call_total is None:
+    if stage_evaluator_call_total is None and execution_mode != "recurrence":
         raise EvaluationError("native runtime stage evaluator timing is unavailable")
+    if stage_evaluator_call_total is None:
+        stage_evaluator_call_total = 0.0
     output_assign_total = (
         sum(stage_output_assign)
         if stage_output_assign is not None
@@ -1144,12 +1172,8 @@ def _native_profile_sample(
         if stage_evaluator_output_gather is not None
         else _profile_float_or_none(profile, "stage_evaluator_output_gather_time_s")
     )
-    execution_mode = _profile_execution_mode(
-        profile,
-        stage_vectors_present_but_empty=stage_vectors_present_but_empty,
-    )
     amplitude_evaluator_call: float | None = None
-    if execution_mode != "eager":
+    if execution_mode not in {"eager", "recurrence"}:
         amplitude_evaluator_call = _profile_float_or_none(
             profile, "amplitude_evaluator_call_time_s"
         )
@@ -1189,34 +1213,35 @@ def _native_profile_sample(
                 momentum_input_setup_time - model_parameter_setup_time,
                 0.0,
             )
+    compiled_profile = execution_mode not in {"eager", "recurrence"}
     stage_input_pack_time = (
         None
-        if execution_mode == "eager" or stage_input_pack_total is None
+        if not compiled_profile or stage_input_pack_total is None
         else stage_input_pack_total * per_point
     )
     stage_leaf_input_pack_time = (
         None
-        if execution_mode == "eager" or stage_leaf_input_pack_total is None
+        if not compiled_profile or stage_leaf_input_pack_total is None
         else stage_leaf_input_pack_total * per_point
     )
     stage_evaluator_call_time = stage_evaluator_call_total * per_point
     stage_backend_call_time = (
         None
-        if execution_mode == "eager" or stage_backend_call_total is None
+        if not compiled_profile or stage_backend_call_total is None
         else stage_backend_call_total * per_point
     )
     stage_evaluator_output_gather_time = (
         None
-        if execution_mode == "eager" or stage_evaluator_output_gather_total is None
+        if not compiled_profile or stage_evaluator_output_gather_total is None
         else stage_evaluator_output_gather_total * per_point
     )
     output_assign_time = (
         None
-        if execution_mode == "eager" or output_assign_total is None
+        if not compiled_profile or output_assign_total is None
         else output_assign_total * per_point
     )
     amplitude_input_pack_time = (
-        None if execution_mode == "eager" else normalized("amplitude_input_pack_time_s")
+        normalized("amplitude_input_pack_time_s") if compiled_profile else None
     )
     amplitude_evaluator_call_time = (
         None
@@ -1224,24 +1249,18 @@ def _native_profile_sample(
         else amplitude_evaluator_call * per_point
     )
     amplitude_leaf_input_pack_time = (
-        None
-        if execution_mode == "eager"
-        else normalized("amplitude_leaf_input_pack_time_s")
+        normalized("amplitude_leaf_input_pack_time_s") if compiled_profile else None
     )
     amplitude_backend_call_time = (
-        None
-        if execution_mode == "eager"
-        else normalized("amplitude_backend_call_time_s")
+        normalized("amplitude_backend_call_time_s") if compiled_profile else None
     )
     amplitude_evaluator_output_gather_time = (
-        None
-        if execution_mode == "eager"
-        else normalized("amplitude_evaluator_output_gather_time_s")
+        normalized("amplitude_evaluator_output_gather_time_s")
+        if compiled_profile
+        else None
     )
     amplitude_output_remap_time = (
-        None
-        if execution_mode == "eager"
-        else normalized("amplitude_output_remap_time_s")
+        normalized("amplitude_output_remap_time_s") if compiled_profile else None
     )
     reduction_time = (
         normalized("eager_reduction_time_s")
@@ -1264,7 +1283,24 @@ def _native_profile_sample(
     eager_scatter_finalization_time = normalized("eager_scatter_finalization_time_s")
     eager_closure_time = normalized("eager_closure_time_s")
     eager_copy_out_time = normalized("eager_copy_out_time_s")
-    accounted = (
+    recurrence_momentum_fill_time = normalized("recurrence_momentum_fill_time_s")
+    recurrence_union_source_fill_time = normalized(
+        "recurrence_union_source_fill_time_s"
+    )
+    recurrence_schedule_time = normalized("recurrence_schedule_time_s")
+    recurrence_source_kernel_time = normalized("recurrence_source_kernel_time_s")
+    recurrence_contribution_kernel_time = normalized(
+        "recurrence_contribution_kernel_time_s"
+    )
+    recurrence_finalization_time = normalized("recurrence_finalization_time_s")
+    recurrence_closure_time = normalized("recurrence_closure_time_s")
+    recurrence_replay_output_mapping_time = normalized(
+        "recurrence_replay_output_mapping_time_s"
+    )
+    if execution_mode == "recurrence" and recurrence_schedule_time is None:
+        raise EvaluationError("native recurrence schedule timing is unavailable")
+
+    common_accounted = (
         native_input_pack_time,
         native_input_crossing_time,
         orchestration_time,
@@ -1273,12 +1309,29 @@ def _native_profile_sample(
         source_fill_time,
         momentum_input_setup_time,
         model_parameter_setup_time,
-        eager_execution_time if execution_mode == "eager" else stage_input_pack_time,
-        None if execution_mode == "eager" else stage_evaluator_call_time,
-        None if execution_mode == "eager" else output_assign_time,
-        None if execution_mode == "eager" else amplitude_input_pack_time,
-        None if execution_mode == "eager" else amplitude_evaluator_call_time,
-        None if execution_mode == "eager" else reduction_time,
+    )
+    if execution_mode == "eager":
+        mode_accounted = (eager_execution_time,)
+    elif execution_mode == "recurrence":
+        mode_accounted = (
+            recurrence_momentum_fill_time,
+            recurrence_union_source_fill_time,
+            recurrence_schedule_time,
+            recurrence_replay_output_mapping_time,
+            reduction_time,
+        )
+    else:
+        mode_accounted = (
+            stage_input_pack_time,
+            stage_evaluator_call_time,
+            output_assign_time,
+            amplitude_input_pack_time,
+            amplitude_evaluator_call_time,
+            reduction_time,
+        )
+    accounted = (
+        *common_accounted,
+        *mode_accounted,
         total_materialization_time,
         final_output_copy_time,
         selector_planner_time,
@@ -1318,6 +1371,25 @@ def _native_profile_sample(
                 f"{exclusive_eager_total:.9e}s/point, exceeding the inclusive "
                 f"eager execution time {eager_execution_time:.9e}s/point"
             )
+    if execution_mode == "recurrence" and recurrence_schedule_time is not None:
+        recurrence_attribution = (
+            recurrence_source_kernel_time,
+            recurrence_contribution_kernel_time,
+            recurrence_finalization_time,
+            recurrence_closure_time,
+        )
+        recurrence_attributed_total = sum(
+            value or 0.0 for value in recurrence_attribution
+        )
+        if recurrence_attributed_total > (
+            recurrence_schedule_time + accounting_tolerance
+        ):
+            raise EvaluationError(
+                "native recurrence profile schedule sub-attribution accounts for "
+                f"{recurrence_attributed_total:.9e}s/point, exceeding the "
+                "inclusive recurrence schedule time "
+                f"{recurrence_schedule_time:.9e}s/point"
+            )
     other_core_time = (
         None if wall_time is None else max(wall_time - accounted_total, 0.0)
     )
@@ -1353,22 +1425,24 @@ def _native_profile_sample(
         selector_gather_time=selector_gather_time,
         selector_scatter_time=selector_scatter_time,
         other_core_time=other_core_time,
-        stage_input_pack_times=normalized_sequence(stage_input_pack),
-        stage_leaf_input_pack_times=(
-            None
-            if execution_mode == "eager"
-            else normalized_sequence(stage_leaf_input_pack)
+        stage_input_pack_times=(
+            normalized_sequence(stage_input_pack) if compiled_profile else None
         ),
-        stage_evaluator_call_times=normalized_sequence(stage_evaluator_call),
+        stage_leaf_input_pack_times=(
+            normalized_sequence(stage_leaf_input_pack) if compiled_profile else None
+        ),
+        stage_evaluator_call_times=(
+            normalized_sequence(stage_evaluator_call) if compiled_profile else None
+        ),
         stage_backend_call_times=(
-            None
-            if execution_mode == "eager"
-            else normalized_sequence(stage_backend_call)
+            normalized_sequence(stage_backend_call) if compiled_profile else None
         ),
         stage_evaluator_output_gather_times=normalized_sequence(
-            None if execution_mode == "eager" else stage_evaluator_output_gather
+            stage_evaluator_output_gather if compiled_profile else None
         ),
-        stage_output_assign_times=normalized_sequence(stage_output_assign),
+        stage_output_assign_times=(
+            normalized_sequence(stage_output_assign) if compiled_profile else None
+        ),
         eager_initialize_time=eager_initialize_time,
         eager_gather_time=eager_gather_time,
         eager_kernel_call_time=eager_kernel_call_time,
@@ -1377,6 +1451,16 @@ def _native_profile_sample(
         eager_scatter_finalization_time=eager_scatter_finalization_time,
         eager_closure_time=eager_closure_time,
         eager_copy_out_time=eager_copy_out_time,
+        recurrence_momentum_fill_time=recurrence_momentum_fill_time,
+        recurrence_union_source_fill_time=recurrence_union_source_fill_time,
+        recurrence_schedule_time=recurrence_schedule_time,
+        recurrence_source_kernel_time=recurrence_source_kernel_time,
+        recurrence_contribution_kernel_time=recurrence_contribution_kernel_time,
+        recurrence_finalization_time=recurrence_finalization_time,
+        recurrence_closure_time=recurrence_closure_time,
+        recurrence_replay_output_mapping_time=(
+            recurrence_replay_output_mapping_time
+        ),
         counters=counters,
     )
 
@@ -1608,7 +1692,9 @@ def _timing_breakdown(
             [sample.stage_leaf_input_pack_time for sample in samples]
         ),
         stage_evaluator_call_time=(
-            None if execution_mode == "eager" else evaluator_call_time
+            None
+            if execution_mode in {"eager", "recurrence"}
+            else evaluator_call_time
         ),
         stage_backend_call_time=_component_timing(
             [sample.stage_backend_call_time for sample in samples]
@@ -1682,6 +1768,30 @@ def _timing_breakdown(
         ),
         eager_copy_out_time=_component_timing(
             [sample.eager_copy_out_time for sample in samples]
+        ),
+        recurrence_momentum_fill_time=_component_timing(
+            [sample.recurrence_momentum_fill_time for sample in samples]
+        ),
+        recurrence_union_source_fill_time=_component_timing(
+            [sample.recurrence_union_source_fill_time for sample in samples]
+        ),
+        recurrence_schedule_time=_component_timing(
+            [sample.recurrence_schedule_time for sample in samples]
+        ),
+        recurrence_source_kernel_time=_component_timing(
+            [sample.recurrence_source_kernel_time for sample in samples]
+        ),
+        recurrence_contribution_kernel_time=_component_timing(
+            [sample.recurrence_contribution_kernel_time for sample in samples]
+        ),
+        recurrence_finalization_time=_component_timing(
+            [sample.recurrence_finalization_time for sample in samples]
+        ),
+        recurrence_closure_time=_component_timing(
+            [sample.recurrence_closure_time for sample in samples]
+        ),
+        recurrence_replay_output_mapping_time=_component_timing(
+            [sample.recurrence_replay_output_mapping_time for sample in samples]
         ),
         stages=tuple(stages),
         counters=_profile_counter_summary(samples),

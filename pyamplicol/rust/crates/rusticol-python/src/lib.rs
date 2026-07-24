@@ -1063,6 +1063,32 @@ fn runtime_profile_to_python<'py>(
     payload.set_item("eager_closure_time_s", profile.eager_closure_s)?;
     payload.set_item("eager_reduction_time_s", profile.eager_reduction_s)?;
     payload.set_item("eager_copy_out_time_s", profile.eager_copy_out_s)?;
+    payload.set_item(
+        "recurrence_momentum_fill_time_s",
+        profile.recurrence_momentum_fill_s,
+    )?;
+    payload.set_item(
+        "recurrence_union_source_fill_time_s",
+        profile.recurrence_union_source_fill_s,
+    )?;
+    payload.set_item("recurrence_schedule_time_s", profile.recurrence_schedule_s)?;
+    payload.set_item(
+        "recurrence_source_kernel_time_s",
+        profile.recurrence_source_kernel_s,
+    )?;
+    payload.set_item(
+        "recurrence_contribution_kernel_time_s",
+        profile.recurrence_contribution_kernel_s,
+    )?;
+    payload.set_item(
+        "recurrence_finalization_time_s",
+        profile.recurrence_finalization_s,
+    )?;
+    payload.set_item("recurrence_closure_time_s", profile.recurrence_closure_s)?;
+    payload.set_item(
+        "recurrence_replay_output_mapping_time_s",
+        profile.recurrence_replay_output_mapping_s,
+    )?;
     payload.set_item("selector_planner_time_s", profile.selector_planner_s)?;
     payload.set_item("selector_gather_time_s", profile.selector_gather_s)?;
     payload.set_item("selector_scatter_time_s", profile.selector_scatter_s)?;

@@ -659,7 +659,9 @@ class BenchmarkTimingBreakdown:
     Internal leaf/backend/output-gather/remap fields explain their enclosing
     work but are not additive top-level phases. Leaf gathering is owned by the
     evaluator envelope for full stages and by the input-pack envelope for
-    composed selected-chunk paths.
+    composed selected-chunk paths. The recurrence schedule is an inclusive
+    top-level phase; its source-kernel, contribution-kernel, finalization, and
+    closure fields are sub-attribution and must not be added to it.
     """
 
     sample_count: int
@@ -696,6 +698,14 @@ class BenchmarkTimingBreakdown:
     selector_planner_time: BenchmarkComponentTiming | None = None
     selector_gather_time: BenchmarkComponentTiming | None = None
     selector_scatter_time: BenchmarkComponentTiming | None = None
+    recurrence_momentum_fill_time: BenchmarkComponentTiming | None = None
+    recurrence_union_source_fill_time: BenchmarkComponentTiming | None = None
+    recurrence_schedule_time: BenchmarkComponentTiming | None = None
+    recurrence_source_kernel_time: BenchmarkComponentTiming | None = None
+    recurrence_contribution_kernel_time: BenchmarkComponentTiming | None = None
+    recurrence_finalization_time: BenchmarkComponentTiming | None = None
+    recurrence_closure_time: BenchmarkComponentTiming | None = None
+    recurrence_replay_output_mapping_time: BenchmarkComponentTiming | None = None
     counters: BenchmarkProfileCounters | None = None
     stage_leaf_input_pack_time: BenchmarkComponentTiming | None = None
     stage_backend_call_time: BenchmarkComponentTiming | None = None
@@ -756,6 +766,14 @@ class BenchmarkTimingBreakdown:
             "eager_scatter_finalization_time",
             "eager_closure_time",
             "eager_copy_out_time",
+            "recurrence_momentum_fill_time",
+            "recurrence_union_source_fill_time",
+            "recurrence_schedule_time",
+            "recurrence_source_kernel_time",
+            "recurrence_contribution_kernel_time",
+            "recurrence_finalization_time",
+            "recurrence_closure_time",
+            "recurrence_replay_output_mapping_time",
         ):
             value = getattr(self, name)
             if value is not None and not isinstance(value, BenchmarkComponentTiming):
@@ -788,10 +806,11 @@ class BenchmarkResult:
     points. For native f64 evaluation, ``wall_time_per_point`` is measured by
     Rusticol around repeated core evaluations of an already packed momentum
     buffer; caller-language conversion and adapter overhead are excluded.
-    ``evaluator_time_per_point`` is the sum of generic-stage and amplitude
-    evaluator calls measured by the bounded native profiler. ``interrupted``
-    marks a valid partial result computed only from timing blocks that finished
-    before sampling was interrupted.
+    For compiled/eager execution, ``evaluator_time_per_point`` is the relevant
+    evaluator envelope measured by the bounded native profiler. For recurrence,
+    it is the inclusive recurrence schedule measured by the paired profiled
+    pass. ``interrupted`` marks a valid partial result computed only from timing
+    blocks that finished before sampling was interrupted.
     """
 
     requested_config: BenchmarkConfig

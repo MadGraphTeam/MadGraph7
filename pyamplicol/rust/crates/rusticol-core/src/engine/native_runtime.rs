@@ -797,15 +797,7 @@ impl NativeRuntime {
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Recurrence(runtime) => {
-                let nested = batch.materialize_nested();
-                let (values, _profile) = runtime.run_f64(&mut self.runtime, &nested)?;
-                if values.len() != output.len() {
-                    return Err(RusticolError::integrity(
-                        "recurrence evaluation returned an inconsistent output length",
-                    ));
-                }
-                output.copy_from_slice(&values);
-                Ok(())
+                runtime.run_f64_view_into_unprofiled(&mut self.runtime, batch, None, None, output)
             }
         }
     }
@@ -836,22 +828,13 @@ impl NativeRuntime {
                 write_resolved_f64_totals(&resolved, output)
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Recurrence(runtime) => {
-                let nested = batch.materialize_nested();
-                let (values, _profile) = runtime.run_f64_with_global_selectors(
-                    &mut self.runtime,
-                    &nested,
-                    selected_helicities,
-                    selected_colors,
-                )?;
-                if values.len() != output.len() {
-                    return Err(RusticolError::integrity(
-                        "recurrence selected evaluation returned an inconsistent output length",
-                    ));
-                }
-                output.copy_from_slice(&values);
-                Ok(())
-            }
+            NativeExecutionLane::Recurrence(runtime) => runtime.run_f64_view_into_unprofiled(
+                &mut self.runtime,
+                batch,
+                selected_helicities,
+                selected_colors,
+                output,
+            ),
         }
     }
 
@@ -1068,11 +1051,7 @@ impl NativeRuntime {
                 as u64;
         profile.native_output_allocation_count = 1;
         profile.total_s = total_start.elapsed().as_secs_f64();
-        if self.execution_lane.is_eager() {
-            profile.validate_eager_top_level_accounting()?;
-        } else {
-            profile.validate_compiled_top_level_accounting()?;
-        }
+        self.validate_profile_accounting(&profile)?;
         Ok(NativeProfiledEvaluation { values, profile })
     }
 
@@ -1175,11 +1154,7 @@ impl NativeRuntime {
                     as u64;
                 profile.native_output_allocation_count = 1;
                 profile.total_s = total_start.elapsed().as_secs_f64();
-                if self.execution_lane.is_eager() {
-                    profile.validate_eager_top_level_accounting()?;
-                } else {
-                    profile.validate_compiled_top_level_accounting()?;
-                }
+                self.validate_profile_accounting(&profile)?;
                 return Ok(NativeProfiledEvaluation { values, profile });
             }
 
@@ -1273,11 +1248,7 @@ impl NativeRuntime {
                 as u64;
             profile.native_output_allocation_count = 1;
             profile.total_s = total_start.elapsed().as_secs_f64();
-            if self.execution_lane.is_eager() {
-                profile.validate_eager_top_level_accounting()?;
-            } else {
-                profile.validate_compiled_top_level_accounting()?;
-            }
+            self.validate_profile_accounting(&profile)?;
             Ok(NativeProfiledEvaluation { values, profile })
         })();
         self.point_selector_scratch = selector_scratch;
@@ -1346,12 +1317,20 @@ impl NativeRuntime {
         }
         let mut profile = *profile.expect("positive repetitions checked");
         profile.total_s = started.elapsed().as_secs_f64();
-        if self.execution_lane.is_eager() {
-            profile.validate_eager_top_level_accounting()?;
-        } else {
-            profile.validate_compiled_top_level_accounting()?;
-        }
+        self.validate_profile_accounting(&profile)?;
         Ok(NativeProfiledEvaluation { values, profile })
+    }
+
+    fn validate_profile_accounting(&self, profile: &NativeRuntimeProfile) -> RusticolResult<()> {
+        match &self.execution_lane {
+            NativeExecutionLane::Compiled => profile.validate_compiled_top_level_accounting(),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Eager(_) => profile.validate_eager_top_level_accounting(),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(_) => {
+                profile.validate_recurrence_top_level_accounting()
+            }
+        }
     }
 
     pub fn evaluate_resolved_f64(

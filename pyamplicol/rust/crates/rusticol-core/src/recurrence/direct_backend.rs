@@ -17,6 +17,7 @@ pub use super::direct_plan::{
 };
 use crate::{RusticolError, RusticolResult};
 use std::ffi::{c_int, c_void};
+use std::time::{Duration, Instant};
 
 pub const RECURRENCE_DIRECT_BACKEND_ABI: &str = "rusticol.recurrence-direct-backend.v1";
 
@@ -420,12 +421,72 @@ pub struct DirectExecutionCounters {
     pub scatter_bytes: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DirectExecutionRoleTimings {
+    pub source: Duration,
+    pub contribution: Duration,
+    pub finalization: Duration,
+    pub closure: Duration,
+}
+
 pub fn execute_direct_plan(
     plan: &DirectRecurrencePlan,
     executors: &DirectExecutorCatalog,
     workspace: &mut DirectWorkspace<'_>,
     point_count: u32,
     counters: &mut DirectExecutionCounters,
+) -> RusticolResult<()> {
+    let mut unused_timings = DirectExecutionRoleTimings::default();
+    execute_direct_plan_impl::<true>(
+        plan,
+        executors,
+        workspace,
+        point_count,
+        counters,
+        &mut unused_timings,
+    )
+}
+
+pub fn execute_direct_plan_profiled(
+    plan: &DirectRecurrencePlan,
+    executors: &DirectExecutorCatalog,
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+    counters: &mut DirectExecutionCounters,
+    timings: &mut DirectExecutionRoleTimings,
+) -> RusticolResult<()> {
+    execute_direct_plan_impl::<true>(plan, executors, workspace, point_count, counters, timings)
+}
+
+/// Execute the authenticated schedule without touching profiling counters.
+///
+/// This is a distinct const-generic specialization so release builds remove
+/// every role-counter branch from the ordinary native evaluation path.
+pub fn execute_direct_plan_unprofiled(
+    plan: &DirectRecurrencePlan,
+    executors: &DirectExecutorCatalog,
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+) -> RusticolResult<()> {
+    let mut unused = DirectExecutionCounters::default();
+    let mut unused_timings = DirectExecutionRoleTimings::default();
+    execute_direct_plan_impl::<false>(
+        plan,
+        executors,
+        workspace,
+        point_count,
+        &mut unused,
+        &mut unused_timings,
+    )
+}
+
+fn execute_direct_plan_impl<const PROFILE: bool>(
+    plan: &DirectRecurrencePlan,
+    executors: &DirectExecutorCatalog,
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+    counters: &mut DirectExecutionCounters,
+    timings: &mut DirectExecutionRoleTimings,
 ) -> RusticolResult<()> {
     workspace.validate(point_count)?;
     if executors.plan_layout_digest != plan.runtime_layout_digest() {
@@ -461,6 +522,7 @@ pub fn execute_direct_plan(
             RusticolError::integrity("direct recurrence row-group range overflows usize")
         })?;
         let handle = executors.require(descriptor.direct_executor_id, descriptor.role)?;
+        let started = PROFILE.then(Instant::now);
         let status = unsafe {
             match handle {
                 DirectExecutorHandle::Source { call, context } => {
@@ -469,8 +531,10 @@ pub fn execute_direct_plan(
                             "direct recurrence source row group is out of bounds",
                         )
                     })?;
-                    counters.source_calls += 1;
-                    counters.source_rows += u64::from(descriptor.row_count);
+                    if PROFILE {
+                        counters.source_calls += 1;
+                        counters.source_rows += u64::from(descriptor.row_count);
+                    }
                     call(
                         context,
                         arena,
@@ -488,8 +552,10 @@ pub fn execute_direct_plan(
                             "direct recurrence contribution row group is out of bounds",
                         )
                     })?;
-                    counters.contribution_calls += 1;
-                    counters.contribution_rows += u64::from(descriptor.row_count);
+                    if PROFILE {
+                        counters.contribution_calls += 1;
+                        counters.contribution_rows += u64::from(descriptor.row_count);
+                    }
                     call(
                         context,
                         arena,
@@ -507,8 +573,10 @@ pub fn execute_direct_plan(
                             "direct recurrence finalization row group is out of bounds",
                         )
                     })?;
-                    counters.finalization_calls += 1;
-                    counters.finalization_rows += u64::from(descriptor.row_count);
+                    if PROFILE {
+                        counters.finalization_calls += 1;
+                        counters.finalization_rows += u64::from(descriptor.row_count);
+                    }
                     call(
                         context,
                         arena,
@@ -526,8 +594,10 @@ pub fn execute_direct_plan(
                             "direct recurrence closure row group is out of bounds",
                         )
                     })?;
-                    counters.closure_calls += 1;
-                    counters.closure_rows += u64::from(descriptor.row_count);
+                    if PROFILE {
+                        counters.closure_calls += 1;
+                        counters.closure_rows += u64::from(descriptor.row_count);
+                    }
                     call(
                         context,
                         arena,
@@ -541,6 +611,17 @@ pub fn execute_direct_plan(
                 }
             }
         };
+        if PROFILE {
+            let elapsed = started
+                .expect("profiled direct row group has a start time")
+                .elapsed();
+            match descriptor.role {
+                DirectExecutorRole::Source => timings.source += elapsed,
+                DirectExecutorRole::Contribution => timings.contribution += elapsed,
+                DirectExecutorRole::Finalization => timings.finalization += elapsed,
+                DirectExecutorRole::Closure => timings.closure += elapsed,
+            }
+        }
         check_status(descriptor.role, descriptor.direct_executor_id, status)?;
     }
     Ok(())

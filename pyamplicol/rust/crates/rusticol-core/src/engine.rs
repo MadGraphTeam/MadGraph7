@@ -2316,6 +2316,17 @@ struct RuntimeProfile {
     eager_closure_s: f64,
     eager_reduction_s: f64,
     eager_copy_out_s: f64,
+    recurrence_momentum_fill_s: f64,
+    recurrence_union_source_fill_s: f64,
+    /// Inclusive top-level recurrence schedule envelope. The role-specific
+    /// recurrence fields below are internal attribution and must not be added
+    /// to top-level accounting.
+    recurrence_schedule_s: f64,
+    recurrence_source_kernel_s: f64,
+    recurrence_contribution_kernel_s: f64,
+    recurrence_finalization_s: f64,
+    recurrence_closure_s: f64,
+    recurrence_replay_output_mapping_s: f64,
 }
 
 // Saved SymJIT applications are native payloads and do not currently guarantee
@@ -2727,6 +2738,19 @@ pub struct NativeRuntimeProfile {
     pub eager_closure_s: f64,
     pub eager_reduction_s: f64,
     pub eager_copy_out_s: f64,
+    pub recurrence_momentum_fill_s: f64,
+    pub recurrence_union_source_fill_s: f64,
+    /// Inclusive top-level recurrence schedule envelope.
+    pub recurrence_schedule_s: f64,
+    /// Internal attribution owned by `recurrence_schedule_s`.
+    pub recurrence_source_kernel_s: f64,
+    /// Internal attribution owned by `recurrence_schedule_s`.
+    pub recurrence_contribution_kernel_s: f64,
+    /// Internal attribution owned by `recurrence_schedule_s`.
+    pub recurrence_finalization_s: f64,
+    /// Internal attribution owned by `recurrence_schedule_s`.
+    pub recurrence_closure_s: f64,
+    pub recurrence_replay_output_mapping_s: f64,
     pub selector_planner_s: f64,
     pub selector_gather_s: f64,
     pub selector_scatter_s: f64,
@@ -2815,6 +2839,14 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
             eager_closure_s: profile.eager_closure_s,
             eager_reduction_s: profile.eager_reduction_s,
             eager_copy_out_s: profile.eager_copy_out_s,
+            recurrence_momentum_fill_s: profile.recurrence_momentum_fill_s,
+            recurrence_union_source_fill_s: profile.recurrence_union_source_fill_s,
+            recurrence_schedule_s: profile.recurrence_schedule_s,
+            recurrence_source_kernel_s: profile.recurrence_source_kernel_s,
+            recurrence_contribution_kernel_s: profile.recurrence_contribution_kernel_s,
+            recurrence_finalization_s: profile.recurrence_finalization_s,
+            recurrence_closure_s: profile.recurrence_closure_s,
+            recurrence_replay_output_mapping_s: profile.recurrence_replay_output_mapping_s,
             selector_planner_s: 0.0,
             selector_gather_s: 0.0,
             selector_scatter_s: 0.0,
@@ -2866,6 +2898,93 @@ impl NativeRuntimeProfile {
         self.validate_top_level_accounting(false)
     }
 
+    fn validate_recurrence_top_level_accounting(&self) -> RusticolResult<()> {
+        let phases = [
+            ("native input pack", self.native_input_pack_s),
+            ("native input crossing", self.native_input_crossing_s),
+            ("runtime orchestration", self.orchestration_s),
+            ("state preparation", self.state_prepare_s),
+            ("state clearing", self.state_clear_s),
+            ("source preparation", self.source_fill_s),
+            ("external momentum flatten", self.momentum_input_setup_s),
+            ("model parameter setup", self.model_parameter_setup_s),
+            (
+                "recurrence momentum-form fill",
+                self.recurrence_momentum_fill_s,
+            ),
+            (
+                "recurrence union source fill",
+                self.recurrence_union_source_fill_s,
+            ),
+            ("inclusive recurrence schedule", self.recurrence_schedule_s),
+            (
+                "recurrence replay output mapping",
+                self.recurrence_replay_output_mapping_s,
+            ),
+            ("reduction", self.reduction_s),
+            ("total materialization", self.total_materialization_s),
+            ("final output copy", self.final_output_copy_s),
+            ("selector planning", self.selector_planner_s),
+            ("selector gather", self.selector_gather_s),
+            ("selector scatter", self.selector_scatter_s),
+        ];
+        self.validate_exclusive_phases(&phases)?;
+
+        let schedule_attribution = [
+            ("source kernels", self.recurrence_source_kernel_s),
+            (
+                "contribution kernels",
+                self.recurrence_contribution_kernel_s,
+            ),
+            ("current finalization", self.recurrence_finalization_s),
+            ("amplitude closure", self.recurrence_closure_s),
+        ];
+        for (label, value) in &schedule_attribution {
+            if !value.is_finite() || *value < 0.0 {
+                return Err(RusticolError::internal(format!(
+                    "native recurrence profile has invalid {label} time {value:.9e}s"
+                )));
+            }
+        }
+        let attributed = schedule_attribution
+            .iter()
+            .map(|(_, value)| value)
+            .sum::<f64>();
+        let tolerance = 1.0e-9_f64.max(self.recurrence_schedule_s * 1.0e-12);
+        if attributed > self.recurrence_schedule_s + tolerance {
+            return Err(RusticolError::internal(format!(
+                "native recurrence schedule sub-attribution accounts for {attributed:.9e}s, exceeding inclusive recurrence schedule time {schedule:.9e}s",
+                schedule = self.recurrence_schedule_s,
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_exclusive_phases(&self, phases: &[(&str, f64)]) -> RusticolResult<()> {
+        if !self.total_s.is_finite() || self.total_s < 0.0 {
+            return Err(RusticolError::internal(format!(
+                "native profile has invalid wall time {:.9e}s",
+                self.total_s,
+            )));
+        }
+        for (label, value) in phases {
+            if !value.is_finite() || *value < 0.0 {
+                return Err(RusticolError::internal(format!(
+                    "native profile has invalid {label} time {value:.9e}s"
+                )));
+            }
+        }
+        let accounted = phases.iter().map(|(_, value)| value).sum::<f64>();
+        let tolerance = 1.0e-9_f64.max(self.total_s * 1.0e-12);
+        if accounted > self.total_s + tolerance {
+            return Err(RusticolError::internal(format!(
+                "native profile exclusive top-level phases account for {accounted:.9e}s, exceeding wall time {wall:.9e}s",
+                wall = self.total_s,
+            )));
+        }
+        Ok(())
+    }
+
     fn validate_top_level_accounting(&self, eager: bool) -> RusticolResult<()> {
         let mut phases = vec![
             ("native input pack", self.native_input_pack_s),
@@ -2896,28 +3015,7 @@ impl NativeRuntimeProfile {
             ("selector gather", self.selector_gather_s),
             ("selector scatter", self.selector_scatter_s),
         ]);
-        if !self.total_s.is_finite() || self.total_s < 0.0 {
-            return Err(RusticolError::internal(format!(
-                "native profile has invalid wall time {:.9e}s",
-                self.total_s,
-            )));
-        }
-        for (label, value) in &phases {
-            if !value.is_finite() || *value < 0.0 {
-                return Err(RusticolError::internal(format!(
-                    "native profile has invalid {label} time {value:.9e}s"
-                )));
-            }
-        }
-        let accounted = phases.iter().map(|(_, value)| value).sum::<f64>();
-        let tolerance = 1.0e-9_f64.max(self.total_s * 1.0e-12);
-        if accounted > self.total_s + tolerance {
-            return Err(RusticolError::internal(format!(
-                "native profile exclusive top-level phases account for {accounted:.9e}s, exceeding wall time {wall:.9e}s",
-                wall = self.total_s,
-            )));
-        }
-        Ok(())
+        self.validate_exclusive_phases(&phases)
     }
 
     #[inline(never)]
@@ -2983,6 +3081,14 @@ impl NativeRuntimeProfile {
         self.eager_closure_s += other.eager_closure_s;
         self.eager_reduction_s += other.eager_reduction_s;
         self.eager_copy_out_s += other.eager_copy_out_s;
+        self.recurrence_momentum_fill_s += other.recurrence_momentum_fill_s;
+        self.recurrence_union_source_fill_s += other.recurrence_union_source_fill_s;
+        self.recurrence_schedule_s += other.recurrence_schedule_s;
+        self.recurrence_source_kernel_s += other.recurrence_source_kernel_s;
+        self.recurrence_contribution_kernel_s += other.recurrence_contribution_kernel_s;
+        self.recurrence_finalization_s += other.recurrence_finalization_s;
+        self.recurrence_closure_s += other.recurrence_closure_s;
+        self.recurrence_replay_output_mapping_s += other.recurrence_replay_output_mapping_s;
         self.selector_planner_s += other.selector_planner_s;
         self.selector_gather_s += other.selector_gather_s;
         self.selector_scatter_s += other.selector_scatter_s;

@@ -4,9 +4,10 @@
 
 use super::recurrence_backend::NativeRecurrenceDirectExecutorOwners;
 use super::*;
-use crate::recurrence::direct_backend::DirectExecutorCatalog;
+use crate::recurrence::direct_backend::{DirectExecutionRoleTimings, DirectExecutorCatalog};
 use crate::recurrence::direct_runtime::{
-    DirectRecurrenceExecutionRuntime, DirectReplaySelectorPlan, DirectUnionHelicitySelectorPlan,
+    DirectRecurrenceExecutionRuntime, DirectReplaySelectorPlan, DirectRuntimePhaseTimings,
+    DirectUnionHelicitySelectorPlan,
 };
 use crate::recurrence::{DIRECT_NONE_U32, DirectRecurrencePlan, RecurrenceStrategy};
 use std::collections::BTreeMap;
@@ -193,6 +194,244 @@ impl RecurrenceNativeRuntime {
         self.run_f64_with_global_selectors(common, batch, None, None)
     }
 
+    /// Clock-free totals path used by the native f64 ABI.
+    ///
+    /// Momentum input and result storage remain borrowed throughout this
+    /// call. Selector membership is tested against the authenticated public
+    /// axes directly so a warmed evaluation does not allocate temporary
+    /// index vectors.
+    pub(super) fn run_f64_view_into_unprofiled(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        if output.len() != batch.point_count() {
+            return Err(RusticolError::invalid_argument(format!(
+                "recurrence output has length {}, expected {}",
+                output.len(),
+                batch.point_count()
+            )));
+        }
+        if batch.external_count() != self.external_source_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "recurrence input has {} external momenta, expected {}",
+                batch.external_count(),
+                self.external_source_count
+            )));
+        }
+        let physics = common.physics.as_ref().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        self.validate_public_axis_lengths(physics)?;
+        validate_recurrence_selector_ids(physics, selected_helicities, selected_colors)?;
+        output.fill(0.0);
+        self.prepare_parameters(common)?;
+
+        match &self.selectors {
+            RecurrenceNativeSelectors::TopologyReplay { .. } => self
+                .run_replay_view_into_unprofiled(
+                    physics,
+                    common.normalization_factor,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                    output,
+                ),
+            RecurrenceNativeSelectors::AllFlowUnion { .. } => self.run_union_view_into_unprofiled(
+                physics,
+                common.normalization_factor,
+                batch,
+                selected_helicities,
+                selected_colors,
+                output,
+            ),
+        }
+    }
+
+    fn run_replay_view_into_unprofiled(
+        &mut self,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        for color_index in 0..physics.manifest.color_components.len() {
+            if !physics.color_is_computed(color_index)
+                || !recurrence_color_is_selected(physics, selected_colors, color_index)
+            {
+                continue;
+            }
+            let color_weight = physics.manifest.color_components[color_index].coefficient();
+
+            let mut tile_start = 0usize;
+            while tile_start < batch.point_count() {
+                let tile_stop =
+                    (tile_start + self.effective_point_tile_size()).min(batch.point_count());
+                let point_count =
+                    self.flatten_external_tile_view(batch.subview(tile_start, tile_stop)?)?;
+                let input_len = self.external_tile_input_len(point_count)?;
+                let (replay_selector, destination_physics_helicity) = match &self.selectors {
+                    RecurrenceNativeSelectors::TopologyReplay {
+                        replay_selectors,
+                        destination_physics_helicity_by_flow,
+                    } => (
+                        replay_selectors.get(color_index).ok_or_else(|| {
+                            RusticolError::integrity(
+                                "recurrence replay selector is outside the public color axis",
+                            )
+                        })?,
+                        destination_physics_helicity_by_flow
+                            .get(color_index)
+                            .ok_or_else(|| {
+                                RusticolError::integrity(
+                                    "recurrence replay flow has no destination-helicity mapping",
+                                )
+                            })?,
+                    ),
+                    RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
+                };
+                let direct_output = self
+                    .scheduler
+                    .execute_replay_tile_from_external_unprofiled(
+                        replay_selector,
+                        direct_point_count(point_count)?,
+                        &self.external_momenta[..input_len],
+                    )?;
+
+                for destination_id in direct_output.selected_destination_ids() {
+                    let helicity_index = *destination_physics_helicity
+                        .get(destination_id as usize)
+                        .ok_or_else(|| {
+                            RusticolError::integrity(
+                                "recurrence destination-helicity mapping is incomplete",
+                            )
+                        })?;
+                    if !recurrence_helicity_is_selected(
+                        physics,
+                        selected_helicities,
+                        helicity_index,
+                    ) {
+                        continue;
+                    }
+                    let helicity = &physics.manifest.helicities[helicity_index];
+                    if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
+                    {
+                        continue;
+                    }
+                    let values_re =
+                        direct_output
+                            .destination_re(destination_id)
+                            .ok_or_else(|| {
+                                RusticolError::integrity(
+                                    "recurrence selected amplitude destination is absent",
+                                )
+                            })?;
+                    let values_im =
+                        direct_output
+                            .destination_im(destination_id)
+                            .ok_or_else(|| {
+                                RusticolError::integrity(
+                                    "recurrence selected amplitude destination is absent",
+                                )
+                            })?;
+                    let weight = helicity.coefficient * color_weight * normalization_factor;
+                    for point in 0..point_count {
+                        output[tile_start + point] += weight
+                            * values_re[point]
+                                .mul_add(values_re[point], values_im[point] * values_im[point]);
+                    }
+                }
+                tile_start = tile_stop;
+            }
+        }
+        Ok(())
+    }
+
+    fn run_union_view_into_unprofiled(
+        &mut self,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        for helicity_index in 0..physics.manifest.helicities.len() {
+            if !recurrence_helicity_is_selected(physics, selected_helicities, helicity_index) {
+                continue;
+            }
+            let helicity = &physics.manifest.helicities[helicity_index];
+            if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0 {
+                continue;
+            }
+            let selector = self.union_helicity_selector(helicity_index)?;
+            let mut tile_start = 0usize;
+            while tile_start < batch.point_count() {
+                let tile_stop =
+                    (tile_start + self.effective_point_tile_size()).min(batch.point_count());
+                let point_count =
+                    self.flatten_external_tile_view(batch.subview(tile_start, tile_stop)?)?;
+                let input_len = self.external_tile_input_len(point_count)?;
+                let destination_by_public_flow = match &self.selectors {
+                    RecurrenceNativeSelectors::AllFlowUnion {
+                        destination_by_public_flow,
+                        ..
+                    } => destination_by_public_flow,
+                    RecurrenceNativeSelectors::TopologyReplay { .. } => unreachable!(),
+                };
+                let direct_output = self.scheduler.execute_union_tile_from_external_unprofiled(
+                    &selector,
+                    direct_point_count(point_count)?,
+                    &self.external_momenta[..input_len],
+                )?;
+
+                for color_index in 0..physics.manifest.color_components.len() {
+                    if !physics.color_is_computed(color_index)
+                        || !recurrence_color_is_selected(physics, selected_colors, color_index)
+                    {
+                        continue;
+                    }
+                    let destination_id =
+                        *destination_by_public_flow.get(color_index).ok_or_else(|| {
+                            RusticolError::integrity(
+                                "all-flow-union color is outside retained public coverage",
+                            )
+                        })?;
+                    let values_re =
+                        direct_output
+                            .destination_re(destination_id)
+                            .ok_or_else(|| {
+                                RusticolError::integrity(
+                                    "all-flow-union amplitude destination is absent",
+                                )
+                            })?;
+                    let values_im =
+                        direct_output
+                            .destination_im(destination_id)
+                            .ok_or_else(|| {
+                                RusticolError::integrity(
+                                    "all-flow-union amplitude destination is absent",
+                                )
+                            })?;
+                    let color_weight = physics.manifest.color_components[color_index].coefficient();
+                    let weight = helicity.coefficient * color_weight * normalization_factor;
+                    for point in 0..point_count {
+                        output[tile_start + point] += weight
+                            * values_re[point]
+                                .mul_add(values_re[point], values_im[point] * values_im[point]);
+                    }
+                }
+                tile_start = tile_stop;
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn run_f64_with_global_selectors(
         &mut self,
         common: &mut ExecutionRuntime,
@@ -225,10 +464,11 @@ impl RecurrenceNativeRuntime {
         self.validate_public_axes(&physics, &helicity_indices, &color_indices)?;
 
         let mut values = vec![0.0; batch.len()];
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
-        let mut momentum_setup = parameter_started.elapsed();
-        let mut direct_execution = Duration::ZERO;
+        let parameter_setup = parameter_started.elapsed();
+        let mut external_momentum_flatten = Duration::ZERO;
         let mut reduction = Duration::ZERO;
 
         for color_index in color_indices {
@@ -241,7 +481,7 @@ impl RecurrenceNativeRuntime {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
                 let flatten_started = Instant::now();
                 let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
-                momentum_setup += flatten_started.elapsed();
+                external_momentum_flatten += flatten_started.elapsed();
                 let input_len = point_count
                     .checked_mul(self.external_source_count)
                     .and_then(|values| values.checked_mul(4))
@@ -250,7 +490,6 @@ impl RecurrenceNativeRuntime {
                             "recurrence external-momentum tile length overflows",
                         )
                     })?;
-                let execute_started = Instant::now();
                 let replay_selector = match &self.selectors {
                     RecurrenceNativeSelectors::TopologyReplay {
                         replay_selectors, ..
@@ -270,7 +509,6 @@ impl RecurrenceNativeRuntime {
                     })?,
                     &self.external_momenta[..input_len],
                 )?;
-                direct_execution += execute_started.elapsed();
 
                 let reduction_started = Instant::now();
                 let destination_physics_helicity = match &self.selectors {
@@ -328,9 +566,11 @@ impl RecurrenceNativeRuntime {
             values,
             direct_profile(
                 total_started.elapsed(),
-                momentum_setup,
-                direct_execution,
+                parameter_setup,
+                external_momentum_flatten,
                 reduction,
+                profile_before,
+                DirectProfileSnapshot::capture(&self.scheduler),
             ),
         ))
     }
@@ -382,10 +622,11 @@ impl RecurrenceNativeRuntime {
             helicity_position[index] = Some(position);
         }
 
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
-        let mut momentum_setup = parameter_started.elapsed();
-        let mut direct_execution = Duration::ZERO;
+        let parameter_setup = parameter_started.elapsed();
+        let mut external_momentum_flatten = Duration::ZERO;
         let mut reduction = Duration::ZERO;
 
         for (color_position, color_index) in color_indices.iter().copied().enumerate() {
@@ -398,7 +639,7 @@ impl RecurrenceNativeRuntime {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
                 let flatten_started = Instant::now();
                 let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
-                momentum_setup += flatten_started.elapsed();
+                external_momentum_flatten += flatten_started.elapsed();
                 let input_len = point_count
                     .checked_mul(self.external_source_count)
                     .and_then(|count| count.checked_mul(4))
@@ -407,7 +648,6 @@ impl RecurrenceNativeRuntime {
                             "recurrence external-momentum tile length overflows",
                         )
                     })?;
-                let execute_started = Instant::now();
                 let replay_selector = match &self.selectors {
                     RecurrenceNativeSelectors::TopologyReplay {
                         replay_selectors, ..
@@ -427,7 +667,6 @@ impl RecurrenceNativeRuntime {
                     })?,
                     &self.external_momenta[..input_len],
                 )?;
-                direct_execution += execute_started.elapsed();
 
                 let reduction_started = Instant::now();
                 let destination_physics_helicity = match &self.selectors {
@@ -493,9 +732,11 @@ impl RecurrenceNativeRuntime {
             },
             direct_profile(
                 total_started.elapsed(),
-                momentum_setup,
-                direct_execution,
+                parameter_setup,
+                external_momentum_flatten,
                 reduction,
+                profile_before,
+                DirectProfileSnapshot::capture(&self.scheduler),
             ),
         ))
     }
@@ -526,10 +767,11 @@ impl RecurrenceNativeRuntime {
             .collect::<RusticolResult<Vec<_>>>()?;
 
         let mut values = vec![0.0; batch.len()];
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
-        let mut momentum_setup = parameter_started.elapsed();
-        let mut direct_execution = Duration::ZERO;
+        let parameter_setup = parameter_started.elapsed();
+        let mut external_momentum_flatten = Duration::ZERO;
         let mut reduction = Duration::ZERO;
 
         for helicity_index in helicity_indices {
@@ -543,7 +785,7 @@ impl RecurrenceNativeRuntime {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
                 let flatten_started = Instant::now();
                 let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
-                momentum_setup += flatten_started.elapsed();
+                external_momentum_flatten += flatten_started.elapsed();
                 let input_len = point_count
                     .checked_mul(self.external_source_count)
                     .and_then(|count| count.checked_mul(4))
@@ -552,7 +794,6 @@ impl RecurrenceNativeRuntime {
                             "recurrence external-momentum tile length overflows",
                         )
                     })?;
-                let execute_started = Instant::now();
                 let output = self.scheduler.execute_union_tile_from_external(
                     &selector,
                     u32::try_from(point_count).map_err(|_| {
@@ -562,7 +803,6 @@ impl RecurrenceNativeRuntime {
                     })?,
                     &self.external_momenta[..input_len],
                 )?;
-                direct_execution += execute_started.elapsed();
 
                 let reduction_started = Instant::now();
                 for (color_index, destination_id) in color_destinations.iter().copied() {
@@ -592,9 +832,11 @@ impl RecurrenceNativeRuntime {
             values,
             direct_profile(
                 total_started.elapsed(),
-                momentum_setup,
-                direct_execution,
+                parameter_setup,
+                external_momentum_flatten,
                 reduction,
+                profile_before,
+                DirectProfileSnapshot::capture(&self.scheduler),
             ),
         ))
     }
@@ -643,10 +885,11 @@ impl RecurrenceNativeRuntime {
             })?
         ];
 
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
-        let mut momentum_setup = parameter_started.elapsed();
-        let mut direct_execution = Duration::ZERO;
+        let parameter_setup = parameter_started.elapsed();
+        let mut external_momentum_flatten = Duration::ZERO;
         let mut reduction = Duration::ZERO;
 
         for (helicity_position, helicity_index) in helicity_indices.iter().copied().enumerate() {
@@ -660,7 +903,7 @@ impl RecurrenceNativeRuntime {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
                 let flatten_started = Instant::now();
                 let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
-                momentum_setup += flatten_started.elapsed();
+                external_momentum_flatten += flatten_started.elapsed();
                 let input_len = point_count
                     .checked_mul(self.external_source_count)
                     .and_then(|count| count.checked_mul(4))
@@ -669,7 +912,6 @@ impl RecurrenceNativeRuntime {
                             "recurrence external-momentum tile length overflows",
                         )
                     })?;
-                let execute_started = Instant::now();
                 let output = self.scheduler.execute_union_tile_from_external(
                     &selector,
                     u32::try_from(point_count).map_err(|_| {
@@ -679,7 +921,6 @@ impl RecurrenceNativeRuntime {
                     })?,
                     &self.external_momenta[..input_len],
                 )?;
-                direct_execution += execute_started.elapsed();
 
                 let reduction_started = Instant::now();
                 for (color_position, color_index, destination_id) in
@@ -719,9 +960,11 @@ impl RecurrenceNativeRuntime {
             },
             direct_profile(
                 total_started.elapsed(),
-                momentum_setup,
-                direct_execution,
+                parameter_setup,
+                external_momentum_flatten,
                 reduction,
+                profile_before,
+                DirectProfileSnapshot::capture(&self.scheduler),
             ),
         ))
     }
@@ -828,12 +1071,50 @@ impl RecurrenceNativeRuntime {
         Ok(point_count)
     }
 
-    fn validate_public_axes(
-        &self,
-        physics: &PhysicsRuntime,
-        helicity_indices: &[usize],
-        color_indices: &[usize],
-    ) -> RusticolResult<()> {
+    fn flatten_external_tile_view(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+    ) -> RusticolResult<usize> {
+        let point_count = batch.point_count();
+        if point_count > self.effective_point_tile_size() {
+            return Err(RusticolError::invalid_argument(
+                "recurrence point tile exceeds its persistent workspace",
+            ));
+        }
+        if batch.external_count() != self.external_source_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "recurrence input has {} external momenta, expected {}",
+                batch.external_count(),
+                self.external_source_count
+            )));
+        }
+        for point_index in 0..point_count {
+            let point = batch.point(point_index);
+            for source_slot in 0..self.external_source_count {
+                let momentum = point.momentum(source_slot).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "validated recurrence momentum view is missing an external leg",
+                    )
+                })?;
+                let start = (point_index * self.external_source_count + source_slot) * 4;
+                self.external_momenta[start..start + 4].copy_from_slice(&momentum);
+            }
+        }
+        Ok(point_count)
+    }
+
+    fn external_tile_input_len(&self, point_count: usize) -> RusticolResult<usize> {
+        point_count
+            .checked_mul(self.external_source_count)
+            .and_then(|count| count.checked_mul(4))
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "recurrence external-momentum tile length overflows",
+                )
+            })
+    }
+
+    fn validate_public_axis_lengths(&self, physics: &PhysicsRuntime) -> RusticolResult<()> {
         let (color_count, helicity_count) = match &self.selectors {
             RecurrenceNativeSelectors::TopologyReplay {
                 replay_selectors, ..
@@ -853,6 +1134,18 @@ impl RecurrenceNativeRuntime {
                 "recurrence selectors do not cover the public physics axes",
             ));
         }
+        Ok(())
+    }
+
+    fn validate_public_axes(
+        &self,
+        physics: &PhysicsRuntime,
+        helicity_indices: &[usize],
+        color_indices: &[usize],
+    ) -> RusticolResult<()> {
+        self.validate_public_axis_lengths(physics)?;
+        let color_count = physics.manifest.color_components.len();
+        let helicity_count = physics.manifest.helicities.len();
         if color_indices.iter().any(|index| *index >= color_count)
             || helicity_indices
                 .iter()
@@ -864,6 +1157,58 @@ impl RecurrenceNativeRuntime {
         }
         Ok(())
     }
+}
+
+fn validate_recurrence_selector_ids(
+    physics: &PhysicsRuntime,
+    selected_helicities: Option<&BTreeSet<String>>,
+    selected_colors: Option<&BTreeSet<String>>,
+) -> RusticolResult<()> {
+    if let Some(ids) = selected_helicities {
+        if let Some(id) = ids
+            .iter()
+            .find(|id| !physics.helicity_index_by_id.contains_key(*id))
+        {
+            return Err(RusticolError::selector(format!(
+                "unknown resolved helicity id {id:?}"
+            )));
+        }
+    }
+    if let Some(ids) = selected_colors {
+        if let Some(id) = ids
+            .iter()
+            .find(|id| !physics.color_index_by_id.contains_key(*id))
+        {
+            return Err(RusticolError::selector(format!(
+                "unknown resolved color component id {id:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[inline(always)]
+fn recurrence_helicity_is_selected(
+    physics: &PhysicsRuntime,
+    selected: Option<&BTreeSet<String>>,
+    index: usize,
+) -> bool {
+    selected.is_none_or(|ids| ids.contains(&physics.manifest.helicities[index].id))
+}
+
+#[inline(always)]
+fn recurrence_color_is_selected(
+    physics: &PhysicsRuntime,
+    selected: Option<&BTreeSet<String>>,
+    index: usize,
+) -> bool {
+    selected.is_none_or(|ids| ids.contains(physics.manifest.color_components[index].id()))
+}
+
+fn direct_point_count(point_count: usize) -> RusticolResult<u32> {
+    u32::try_from(point_count).map_err(|_| {
+        RusticolError::invalid_argument("recurrence point tile exceeds the native u32 ABI")
+    })
 }
 
 fn union_destination_ids(
@@ -1045,16 +1390,69 @@ fn map_representative_helicity_to_public(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct DirectProfileSnapshot {
+    phases: DirectRuntimePhaseTimings,
+    roles: DirectExecutionRoleTimings,
+}
+
+impl DirectProfileSnapshot {
+    fn capture(runtime: &DirectRecurrenceExecutionRuntime) -> Self {
+        Self {
+            phases: runtime.phase_timings(),
+            roles: runtime.role_timings(),
+        }
+    }
+}
+
 fn direct_profile(
     total: Duration,
-    momentum_setup: Duration,
-    direct_execution: Duration,
+    parameter_setup: Duration,
+    external_momentum_flatten: Duration,
     reduction: Duration,
+    before: DirectProfileSnapshot,
+    after: DirectProfileSnapshot,
 ) -> RuntimeProfile {
+    let momentum_fill = after
+        .phases
+        .momentum_fill
+        .saturating_sub(before.phases.momentum_fill);
+    let union_source_fill = after
+        .phases
+        .union_source_fill
+        .saturating_sub(before.phases.union_source_fill);
+    let direct_execution = after
+        .phases
+        .direct_execution
+        .saturating_sub(before.phases.direct_execution);
+    let replay_output_mapping = after
+        .phases
+        .replay_output_mapping
+        .saturating_sub(before.phases.replay_output_mapping);
+    let source_kernel = after.roles.source.saturating_sub(before.roles.source);
+    let contribution_kernel = after
+        .roles
+        .contribution
+        .saturating_sub(before.roles.contribution);
+    let finalization = after
+        .roles
+        .finalization
+        .saturating_sub(before.roles.finalization);
+    let closure = after.roles.closure.saturating_sub(before.roles.closure);
     RuntimeProfile {
-        momentum_setup_s: profile_duration_seconds(momentum_setup),
+        momentum_setup_s: profile_duration_seconds(external_momentum_flatten + momentum_fill),
+        momentum_input_setup_s: profile_duration_seconds(external_momentum_flatten),
+        model_parameter_setup_s: profile_duration_seconds(parameter_setup),
         stage_evaluator_call_s: profile_duration_seconds(direct_execution),
         stage_evaluator_s: profile_duration_seconds(direct_execution),
+        recurrence_momentum_fill_s: profile_duration_seconds(momentum_fill),
+        recurrence_union_source_fill_s: profile_duration_seconds(union_source_fill),
+        recurrence_schedule_s: profile_duration_seconds(direct_execution),
+        recurrence_source_kernel_s: profile_duration_seconds(source_kernel),
+        recurrence_contribution_kernel_s: profile_duration_seconds(contribution_kernel),
+        recurrence_finalization_s: profile_duration_seconds(finalization),
+        recurrence_closure_s: profile_duration_seconds(closure),
+        recurrence_replay_output_mapping_s: profile_duration_seconds(replay_output_mapping),
         reduction_s: profile_duration_seconds(reduction),
         total_s: profile_duration_seconds(total),
         ..RuntimeProfile::default()

@@ -260,6 +260,48 @@ class _TimedRuntimeWithRepeatedProfile(_TimedRuntimeWithNativeWall):
         }
 
 
+class _TimedRuntimeWithRecurrenceRepeatedProfile(_TimedRuntimeWithRepeatedProfile):
+    def profile_repeated(
+        self,
+        momenta: object,
+        repetitions: int,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        assert kwargs["helicities"] is None
+        assert kwargs["color_flows"] is None
+        assert kwargs["precision"] == 16
+        assert kwargs["include_values"] is False
+        self.repeated_profile_calls += 1
+        points = len(momenta) * repetitions  # type: ignore[arg-type]
+        per_point = {
+            "wall_time_s": 20.0e-6,
+            "native_input_pack_time_s": 1.0e-6,
+            "native_input_crossing_time_s": 0.5e-6,
+            "orchestration_time_s": 0.5e-6,
+            "state_prepare_time_s": 0.5e-6,
+            "state_clear_time_s": 0.5e-6,
+            "source_fill_time_s": 1.0e-6,
+            "momentum_input_setup_time_s": 0.5e-6,
+            "model_parameter_setup_time_s": 0.5e-6,
+            "recurrence_momentum_fill_time_s": 2.0e-6,
+            "recurrence_union_source_fill_time_s": 0.0,
+            "recurrence_schedule_time_s": 10.0e-6,
+            "recurrence_source_kernel_time_s": 1.0e-6,
+            "recurrence_contribution_kernel_time_s": 6.0e-6,
+            "recurrence_finalization_time_s": 2.0e-6,
+            "recurrence_closure_time_s": 1.0e-6,
+            "recurrence_replay_output_mapping_time_s": 1.0e-6,
+            "reduction_time_s": 1.0e-6,
+            "total_materialization_time_s": 0.5e-6,
+            "final_output_copy_time_s": 0.5e-6,
+        }
+        return {
+            "execution_mode": "recurrence",
+            "points": points,
+            **{key: value * points for key, value in per_point.items()},
+        }
+
+
 def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
     runtime = _Runtime()
     config = BenchmarkConfig(
@@ -565,6 +607,65 @@ def test_repeated_native_profile_is_paired_with_unprofiled_headline_samples(
     )
 
 
+def test_recurrence_profile_uses_paired_schedule_attribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithRecurrenceRepeatedProfile(clock)
+    runtime.repeated_profile_calls = 0
+    runtime.native_wall_calls = 0
+    config = BenchmarkConfig(
+        target_runtime=0.1,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=4,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.wall_time_per_point == pytest.approx(0.25e-3)
+    assert result.evaluator_time_per_point == pytest.approx(10.0e-6)
+    assert result.environment["evaluator_time_source"] == (
+        "runtime_profile_core_recurrence_schedule_time"
+    )
+    assert result.environment["timing_sample_contract"] == (
+        "paired_unprofiled_headline_profiled_attribution_v1"
+    )
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    assert breakdown.execution_mode == "recurrence"
+    assert breakdown.stage_evaluator_call_time is None
+    assert breakdown.amplitude_evaluator_call_time is None
+    assert breakdown.stages == ()
+    assert breakdown.recurrence_schedule_time is not None
+    assert breakdown.recurrence_schedule_time.mean_seconds_per_point == pytest.approx(
+        10.0e-6
+    )
+    assert breakdown.recurrence_contribution_kernel_time is not None
+    contribution = breakdown.recurrence_contribution_kernel_time
+    assert contribution.mean_seconds_per_point == pytest.approx(6.0e-6)
+    assert breakdown.other_core_time is not None
+    assert breakdown.other_core_time.mean_seconds_per_point == pytest.approx(0.0)
+
+
+def test_recurrence_profile_rejects_sub_attribution_larger_than_schedule() -> None:
+    profile = {
+        "execution_mode": "recurrence",
+        "points": 1,
+        "wall_time_s": 20.0e-6,
+        "recurrence_schedule_time_s": 10.0e-6,
+        "recurrence_source_kernel_time_s": 4.0e-6,
+        "recurrence_contribution_kernel_time_s": 7.0e-6,
+    }
+
+    with pytest.raises(EvaluationError, match="schedule sub-attribution"):
+        benchmark_module._native_profile_sample(profile, fallback_points=1)
+
+
 def test_keyboard_interrupt_returns_statistics_for_complete_samples(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -755,6 +856,16 @@ def test_timing_breakdown_preserves_legacy_positional_field_order() -> None:
     ] == (legacy_fields)
     fields = tuple(BenchmarkTimingBreakdown.__dataclass_fields__)
     assert fields.index("counters") == len(fields) - 8
+    assert fields[fields.index("counters") - 8 : fields.index("counters")] == (
+        "recurrence_momentum_fill_time",
+        "recurrence_union_source_fill_time",
+        "recurrence_schedule_time",
+        "recurrence_source_kernel_time",
+        "recurrence_contribution_kernel_time",
+        "recurrence_finalization_time",
+        "recurrence_closure_time",
+        "recurrence_replay_output_mapping_time",
+    )
     assert fields[-7:] == (
         "stage_leaf_input_pack_time",
         "stage_backend_call_time",

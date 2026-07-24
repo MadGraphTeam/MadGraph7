@@ -55,6 +55,15 @@ fn generated_recurrence_artifact_loads_when_fixture_is_supplied() {
         .expect("evaluate generated recurrence artifact");
     assert_eq!(values.len(), 1);
     assert!(values[0].is_finite());
+    let mut direct_values = [f64::NAN];
+    runtime
+        .evaluate_f64_into(&momenta, 1, &mut direct_values)
+        .expect("evaluate generated recurrence artifact into caller storage");
+    assert_close(
+        direct_values[0],
+        values[0],
+        "recurrence direct-output total",
+    );
 
     let resolved = runtime
         .evaluate_resolved_f64(&momenta, 1, None, None)
@@ -85,5 +94,22 @@ fn generated_recurrence_artifact_loads_when_fixture_is_supplied() {
         selected_total[0],
         selected.totals()[0],
         "recurrence selected color total",
+    );
+    let mut selected_direct = [f64::NAN];
+    runtime
+        .evaluate_f64_into_with_selectors(
+            &momenta,
+            1,
+            None,
+            Some(&selected.color_ids),
+            None,
+            None,
+            &mut selected_direct,
+        )
+        .expect("evaluate selected recurrence component into caller storage");
+    assert_close(
+        selected_direct[0],
+        selected_total[0],
+        "recurrence selected direct-output total",
     );
 }

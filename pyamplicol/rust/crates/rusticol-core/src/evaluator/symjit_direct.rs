@@ -18,8 +18,9 @@ use crate::recurrence::{
 };
 use crate::{RusticolError, RusticolResult};
 use std::any::Any;
+use std::cell::RefCell;
 use std::ffi::{c_int, c_void};
-use std::mem::MaybeUninit;
+use std::mem::size_of;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::ptr;
@@ -36,6 +37,10 @@ const MAX_DIRECT_PLANES: usize = 512;
 const MAX_DIRECT_SCALARS: usize = 256;
 const STATUS_BOUNDS: c_int = 4;
 const STATUS_ROLE_MISMATCH: c_int = 5;
+const STATUS_DESCRIPTOR_IDENTITY_MISMATCH: c_int = 6;
+const STATUS_DESCRIPTOR_CACHE_CAPACITY: c_int = 7;
+const MAX_DESCRIPTOR_CACHE_ROW_GROUPS: usize = 4_096;
+const MAX_DESCRIPTOR_CACHE_BYTES: usize = 256 * 1024 * 1024;
 
 /// One model-fixed input-plane projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -83,6 +88,104 @@ struct SymjitDirectExecutorContext {
     input_planes: Box<[SymjitDirectPlaneProjection]>,
     scalars: Box<[SymjitDirectScalarProjection]>,
     display_path: PathBuf,
+    descriptor_cache: RefCell<DescriptorCache>,
+}
+
+// Direct descriptors borrow persistent runtime storage through raw FFI
+// pointers. An entry is usable only after this complete identity is matched;
+// the owning runtime keeps these buffers fixed behind its exclusive `&mut`
+// evaluation API.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DescriptorStorageIdentity {
+    current_re: usize,
+    current_im: usize,
+    current_scalar_len: u64,
+    amplitude_re: usize,
+    amplitude_im: usize,
+    amplitude_scalar_len: u64,
+    arena_point_stride: u32,
+    momenta: usize,
+    momentum_scalar_len: u64,
+    momentum_form_count: u32,
+    momentum_lorentz_component_count: u16,
+    momentum_point_stride: u32,
+    parameter_re: usize,
+    parameter_im: usize,
+    parameter_count: u32,
+    factor_re: usize,
+    factor_im: usize,
+    factor_count: u32,
+}
+
+impl DescriptorStorageIdentity {
+    fn new(
+        arena: DirectArenaView,
+        momenta: DirectMomentumView,
+        parameters: DirectParameterView,
+        factors: DirectFactorView,
+    ) -> Self {
+        Self {
+            current_re: arena.current_re.addr(),
+            current_im: arena.current_im.addr(),
+            current_scalar_len: arena.current_scalar_len,
+            amplitude_re: arena.amplitude_re.addr(),
+            amplitude_im: arena.amplitude_im.addr(),
+            amplitude_scalar_len: arena.amplitude_scalar_len,
+            arena_point_stride: arena.point_stride,
+            momenta: momenta.values.addr(),
+            momentum_scalar_len: momenta.scalar_len,
+            momentum_form_count: momenta.form_count,
+            momentum_lorentz_component_count: momenta.lorentz_component_count,
+            momentum_point_stride: momenta.point_stride,
+            parameter_re: parameters.values_re.addr(),
+            parameter_im: parameters.values_im.addr(),
+            parameter_count: parameters.value_count,
+            factor_re: factors.values_re.addr(),
+            factor_im: factors.values_im.addr(),
+            factor_count: factors.value_count,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RowTableIdentity {
+    role: DirectExecutorRole,
+    address: usize,
+    row_count: u32,
+}
+
+struct CachedRowGroupDescriptors {
+    table: RowTableIdentity,
+    planes_per_row: usize,
+    scalars_per_row: usize,
+    planes: Box<[DirectPlane]>,
+    scalars: Box<[DirectScalar]>,
+}
+
+impl CachedRowGroupDescriptors {
+    fn planes(&self, row: usize) -> &[DirectPlane] {
+        let start = row * self.planes_per_row;
+        &self.planes[start..start + self.planes_per_row]
+    }
+
+    fn scalars(&self, row: usize) -> &[DirectScalar] {
+        let start = row * self.scalars_per_row;
+        &self.scalars[start..start + self.scalars_per_row]
+    }
+
+    fn descriptor_bytes(&self) -> usize {
+        self.planes.len() * size_of::<DirectPlane>()
+            + self.scalars.len() * size_of::<DirectScalar>()
+    }
+}
+
+#[derive(Default)]
+struct DescriptorCache {
+    storage: Option<DescriptorStorageIdentity>,
+    row_groups: Vec<CachedRowGroupDescriptors>,
+    descriptor_bytes: usize,
+    #[cfg(test)]
+    build_count: usize,
 }
 
 impl LoadedSymjitDirectExecutor {
@@ -148,6 +251,7 @@ impl LoadedSymjitDirectExecutor {
                 input_planes: input_planes.into_boxed_slice(),
                 scalars: scalars.into_boxed_slice(),
                 display_path,
+                descriptor_cache: RefCell::new(DescriptorCache::default()),
             }),
         })
     }
@@ -219,6 +323,7 @@ impl LoadedSymjitDirectExecutor {
                 input_planes: input_planes.into_boxed_slice(),
                 scalars: scalars.into_boxed_slice(),
                 display_path,
+                descriptor_cache: RefCell::new(DescriptorCache::default()),
             }),
         })
     }
@@ -253,6 +358,29 @@ impl LoadedSymjitDirectExecutor {
     fn simd_lane_width(&self) -> usize {
         self.context.simd_lane_width
     }
+
+    #[cfg(test)]
+    fn descriptor_cache_snapshot(&self) -> DescriptorCacheSnapshot {
+        let cache = self.context.descriptor_cache.borrow();
+        let first = cache.row_groups.first();
+        DescriptorCacheSnapshot {
+            row_group_count: cache.row_groups.len(),
+            build_count: cache.build_count,
+            descriptor_bytes: cache.descriptor_bytes,
+            first_plane_address: first.map_or(0, |entry| entry.planes.as_ptr().addr()),
+            first_scalar_address: first.map_or(0, |entry| entry.scalars.as_ptr().addr()),
+        }
+    }
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DescriptorCacheSnapshot {
+    row_group_count: usize,
+    build_count: usize,
+    descriptor_bytes: usize,
+    first_plane_address: usize,
+    first_scalar_address: usize,
 }
 
 fn validate_projections(
@@ -373,20 +501,13 @@ unsafe extern "C" fn execute_contribution_rows(
 ) -> c_int {
     invoke_typed_rows(
         context,
-        DirectExecutorRole::Contribution,
+        arena,
+        momenta,
+        parameters,
+        factors,
         rows,
         row_count,
         point_count,
-        |context, row| {
-            context.execute_row(
-                DirectRowRef::Contribution(row),
-                arena,
-                momenta,
-                parameters,
-                factors,
-                point_count,
-            )
-        },
     )
 }
 
@@ -402,20 +523,13 @@ unsafe extern "C" fn execute_finalization_rows(
 ) -> c_int {
     invoke_typed_rows(
         context,
-        DirectExecutorRole::Finalization,
+        arena,
+        momenta,
+        parameters,
+        factors,
         rows,
         row_count,
         point_count,
-        |context, row| {
-            context.execute_row(
-                DirectRowRef::Finalization(row),
-                arena,
-                momenta,
-                parameters,
-                factors,
-                point_count,
-            )
-        },
     )
 }
 
@@ -431,30 +545,25 @@ unsafe extern "C" fn execute_closure_rows(
 ) -> c_int {
     invoke_typed_rows(
         context,
-        DirectExecutorRole::Closure,
+        arena,
+        momenta,
+        parameters,
+        factors,
         rows,
         row_count,
         point_count,
-        |context, row| {
-            context.execute_row(
-                DirectRowRef::Closure(row),
-                arena,
-                momenta,
-                parameters,
-                factors,
-                point_count,
-            )
-        },
     )
 }
 
-fn invoke_typed_rows<T>(
+fn invoke_typed_rows<T: DirectTypedRow>(
     context: *const c_void,
-    role: DirectExecutorRole,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    parameters: DirectParameterView,
+    factors: DirectFactorView,
     rows: *const T,
     row_count: u32,
     point_count: u32,
-    mut execute: impl FnMut(&SymjitDirectExecutorContext, &T) -> c_int,
 ) -> c_int {
     if context.is_null() {
         return DIRECT_STATUS_INVALID_CONTEXT;
@@ -464,17 +573,18 @@ fn invoke_typed_rows<T>(
     }
     let result = catch_unwind(AssertUnwindSafe(|| {
         let context = unsafe { &*context.cast::<SymjitDirectExecutorContext>() };
-        if context.role != role {
+        if context.role != T::ROLE {
             return STATUS_ROLE_MISMATCH;
         }
-        let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
-        for row in rows {
-            let status = execute(context, row);
-            if status != DIRECT_STATUS_OK {
-                return status;
-            }
-        }
-        DIRECT_STATUS_OK
+        context.execute_rows(
+            arena,
+            momenta,
+            parameters,
+            factors,
+            rows,
+            row_count,
+            point_count,
+        )
     }));
     result.unwrap_or(DIRECT_STATUS_EXECUTION_FAILED)
 }
@@ -483,6 +593,36 @@ enum DirectRowRef<'a> {
     Contribution(&'a DirectContributionRow),
     Finalization(&'a DirectFinalizationRow),
     Closure(&'a DirectClosureRow),
+}
+
+trait DirectTypedRow {
+    const ROLE: DirectExecutorRole;
+
+    fn direct_row_ref(&self) -> DirectRowRef<'_>;
+}
+
+impl DirectTypedRow for DirectContributionRow {
+    const ROLE: DirectExecutorRole = DirectExecutorRole::Contribution;
+
+    fn direct_row_ref(&self) -> DirectRowRef<'_> {
+        DirectRowRef::Contribution(self)
+    }
+}
+
+impl DirectTypedRow for DirectFinalizationRow {
+    const ROLE: DirectExecutorRole = DirectExecutorRole::Finalization;
+
+    fn direct_row_ref(&self) -> DirectRowRef<'_> {
+        DirectRowRef::Finalization(self)
+    }
+}
+
+impl DirectTypedRow for DirectClosureRow {
+    const ROLE: DirectExecutorRole = DirectExecutorRole::Closure;
+
+    fn direct_row_ref(&self) -> DirectRowRef<'_> {
+        DirectRowRef::Closure(self)
+    }
 }
 
 impl DirectRowRef<'_> {
@@ -550,13 +690,14 @@ impl DirectRowRef<'_> {
 
 impl SymjitDirectExecutorContext {
     #[allow(clippy::too_many_arguments)]
-    fn execute_row(
+    fn execute_rows<T: DirectTypedRow>(
         &self,
-        row: DirectRowRef<'_>,
         arena: DirectArenaView,
         momenta: DirectMomentumView,
         parameters: DirectParameterView,
         factors: DirectFactorView,
+        rows: *const T,
+        row_count: u32,
         point_count: u32,
     ) -> c_int {
         if point_count == 0 || arena.point_stride == 0 || point_count > arena.point_stride {
@@ -566,52 +707,173 @@ impl SymjitDirectExecutorContext {
             return DIRECT_STATUS_INVALID_ARGUMENT;
         }
 
+        let storage = DescriptorStorageIdentity::new(arena, momenta, parameters, factors);
+        let table = RowTableIdentity {
+            role: T::ROLE,
+            address: rows.addr(),
+            row_count,
+        };
+        let mut cache = self.descriptor_cache.borrow_mut();
+        if cache
+            .storage
+            .is_some_and(|cached_storage| cached_storage != storage)
+        {
+            return STATUS_DESCRIPTOR_IDENTITY_MISMATCH;
+        }
+        if let Some(entry) = cache
+            .row_groups
+            .iter()
+            .find(|entry| entry.table.address == table.address)
+        {
+            if entry.table != table {
+                return STATUS_DESCRIPTOR_IDENTITY_MISMATCH;
+            }
+            return self.invoke_cached_rows(entry, point_count);
+        }
+
+        if cache.row_groups.len() >= MAX_DESCRIPTOR_CACHE_ROW_GROUPS {
+            return STATUS_DESCRIPTOR_CACHE_CAPACITY;
+        }
         let metadata = self.callable.metadata();
-        let mut planes = [const { MaybeUninit::<DirectPlane>::uninit() }; MAX_DIRECT_PLANES];
-        let mut scalars = [const { MaybeUninit::<DirectScalar>::uninit() }; MAX_DIRECT_SCALARS];
-
-        for (index, projection) in self.input_planes.iter().copied().enumerate() {
-            let Some(plane) = resolve_plane(projection, &row, arena, momenta) else {
-                return STATUS_BOUNDS;
-            };
-            planes[index].write(plane);
-        }
-        let input_plane_count = self.input_planes.len();
-        for (output, &alias) in metadata.output_alias_inputs.iter().enumerate() {
-            let Some(source) = planes.get(alias as usize) else {
-                return STATUS_BOUNDS;
-            };
-            // Alias indices were authenticated against the initialized input
-            // projection prefix when the prepared application was loaded.
-            let source = unsafe { source.assume_init() };
-            planes[input_plane_count + output].write(source);
-        }
-
-        for (index, projection) in self.scalars.iter().enumerate() {
-            let Some(scalar) = resolve_scalar(projection, &row, parameters, factors) else {
-                return STATUS_BOUNDS;
-            };
-            scalars[index].write(scalar);
-        }
-
-        let plane_count = input_plane_count + metadata.output_alias_inputs.len();
-        // Both prefixes are initialized completely above. The remainder of
-        // each fixed-capacity stack array is deliberately left untouched.
-        let planes = unsafe {
-            std::slice::from_raw_parts(planes.as_ptr().cast::<DirectPlane>(), plane_count)
+        let planes_per_row = self.input_planes.len() + metadata.output_alias_inputs.len();
+        let scalars_per_row = self.scalars.len();
+        let Some(descriptor_bytes) =
+            descriptor_cache_entry_bytes(row_count, planes_per_row, scalars_per_row)
+        else {
+            return STATUS_DESCRIPTOR_CACHE_CAPACITY;
         };
-        let scalars = unsafe {
-            std::slice::from_raw_parts(scalars.as_ptr().cast::<DirectScalar>(), self.scalars.len())
-        };
-        let status = unsafe {
-            self.callable
-                .invoke_unchecked(planes, scalars, 0, point_count as usize)
-        };
-        if status == DIRECT_STATUS_EXECUTION_FAILED {
-            let _ = &self.display_path;
+        if cache
+            .descriptor_bytes
+            .checked_add(descriptor_bytes)
+            .is_none_or(|total| total > MAX_DESCRIPTOR_CACHE_BYTES)
+        {
+            return STATUS_DESCRIPTOR_CACHE_CAPACITY;
         }
-        status
+        let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
+        let entry = match self.build_cached_row_group(
+            table,
+            rows,
+            arena,
+            momenta,
+            parameters,
+            factors,
+            planes_per_row,
+            scalars_per_row,
+        ) {
+            Ok(entry) => entry,
+            Err(status) => return status,
+        };
+        debug_assert_eq!(entry.descriptor_bytes(), descriptor_bytes);
+        cache.storage.get_or_insert(storage);
+        cache.descriptor_bytes += descriptor_bytes;
+        #[cfg(test)]
+        {
+            cache.build_count += 1;
+        }
+        cache.row_groups.push(entry);
+        self.invoke_cached_rows(
+            cache
+                .row_groups
+                .last()
+                .expect("descriptor cache entry was just appended"),
+            point_count,
+        )
     }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_cached_row_group<T: DirectTypedRow>(
+        &self,
+        table: RowTableIdentity,
+        rows: &[T],
+        arena: DirectArenaView,
+        momenta: DirectMomentumView,
+        parameters: DirectParameterView,
+        factors: DirectFactorView,
+        planes_per_row: usize,
+        scalars_per_row: usize,
+    ) -> Result<CachedRowGroupDescriptors, c_int> {
+        let Some(plane_count) = rows.len().checked_mul(planes_per_row) else {
+            return Err(STATUS_DESCRIPTOR_CACHE_CAPACITY);
+        };
+        let Some(scalar_count) = rows.len().checked_mul(scalars_per_row) else {
+            return Err(STATUS_DESCRIPTOR_CACHE_CAPACITY);
+        };
+        let mut planes = Vec::new();
+        let mut scalars = Vec::new();
+        if planes.try_reserve_exact(plane_count).is_err()
+            || scalars.try_reserve_exact(scalar_count).is_err()
+        {
+            return Err(STATUS_DESCRIPTOR_CACHE_CAPACITY);
+        }
+
+        let metadata = self.callable.metadata();
+        for typed_row in rows {
+            let row = typed_row.direct_row_ref();
+            let row_plane_start = planes.len();
+            for projection in self.input_planes.iter().copied() {
+                let Some(plane) = resolve_plane(projection, &row, arena, momenta) else {
+                    return Err(STATUS_BOUNDS);
+                };
+                planes.push(plane);
+            }
+            for &alias in &metadata.output_alias_inputs {
+                let Some(source) = planes.get(row_plane_start + alias as usize).copied() else {
+                    return Err(STATUS_BOUNDS);
+                };
+                planes.push(source);
+            }
+            for projection in self.scalars.iter() {
+                let Some(scalar) = resolve_scalar(projection, &row, parameters, factors) else {
+                    return Err(STATUS_BOUNDS);
+                };
+                scalars.push(scalar);
+            }
+        }
+        debug_assert_eq!(planes.len(), plane_count);
+        debug_assert_eq!(scalars.len(), scalar_count);
+        Ok(CachedRowGroupDescriptors {
+            table,
+            planes_per_row,
+            scalars_per_row,
+            planes: planes.into_boxed_slice(),
+            scalars: scalars.into_boxed_slice(),
+        })
+    }
+
+    fn invoke_cached_rows(&self, entry: &CachedRowGroupDescriptors, point_count: u32) -> c_int {
+        for row in 0..entry.table.row_count as usize {
+            let status = unsafe {
+                self.callable.invoke_unchecked(
+                    entry.planes(row),
+                    entry.scalars(row),
+                    0,
+                    point_count as usize,
+                )
+            };
+            if status != DIRECT_STATUS_OK {
+                if status == DIRECT_STATUS_EXECUTION_FAILED {
+                    let _ = &self.display_path;
+                }
+                return status;
+            }
+        }
+        DIRECT_STATUS_OK
+    }
+}
+
+fn descriptor_cache_entry_bytes(
+    row_count: u32,
+    planes_per_row: usize,
+    scalars_per_row: usize,
+) -> Option<usize> {
+    let row_count = row_count as usize;
+    let plane_bytes = row_count
+        .checked_mul(planes_per_row)?
+        .checked_mul(size_of::<DirectPlane>())?;
+    let scalar_bytes = row_count
+        .checked_mul(scalars_per_row)?
+        .checked_mul(size_of::<DirectScalar>())?;
+    plane_bytes.checked_add(scalar_bytes)
 }
 
 fn resolve_plane(
@@ -873,10 +1135,63 @@ mod tests {
     use crate::recurrence::direct_backend::{
         DirectFactorView, DirectMomentumView, DirectParameterView,
     };
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
     use symjit::{
         Compiler, DirectApplication, DirectApplicationMetadata,
         DirectDestinationOperation as SymjitDestinationOperation, DirectInputBinding, Expr,
     };
+
+    thread_local! {
+        static TRACK_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
+        static ALLOCATION_COUNT: Cell<usize> = const { Cell::new(0) };
+        static ALLOCATED_BYTES: Cell<usize> = const { Cell::new(0) };
+    }
+
+    struct CountingAllocator;
+
+    #[global_allocator]
+    static GLOBAL_ALLOCATOR: CountingAllocator = CountingAllocator;
+
+    unsafe impl GlobalAlloc for CountingAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            count_allocation(layout.size());
+            unsafe { System.alloc(layout) }
+        }
+
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            count_allocation(layout.size());
+            unsafe { System.alloc_zeroed(layout) }
+        }
+
+        unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            count_allocation(new_size);
+            unsafe { System.realloc(pointer, layout, new_size) }
+        }
+
+        unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(pointer, layout) }
+        }
+    }
+
+    fn count_allocation(bytes: usize) {
+        let tracking = TRACK_ALLOCATIONS.try_with(Cell::get).unwrap_or(false);
+        if tracking {
+            let _ = ALLOCATION_COUNT.try_with(|count| count.set(count.get() + 1));
+            let _ = ALLOCATED_BYTES.try_with(|total| total.set(total.get().saturating_add(bytes)));
+        }
+    }
+
+    fn count_allocations<T>(operation: impl FnOnce() -> T) -> (T, usize, usize) {
+        ALLOCATION_COUNT.with(|count| count.set(0));
+        ALLOCATED_BYTES.with(|total| total.set(0));
+        TRACK_ALLOCATIONS.with(|tracking| tracking.set(true));
+        let result = operation();
+        TRACK_ALLOCATIONS.with(|tracking| tracking.set(false));
+        let count = ALLOCATION_COUNT.with(Cell::get);
+        let bytes = ALLOCATED_BYTES.with(Cell::get);
+        (result, count, bytes)
+    }
 
     fn direct_contribution_bytes() -> Vec<u8> {
         let mut config = Config::default();
@@ -1194,6 +1509,31 @@ mod tests {
             )
         };
         assert_eq!(status, DIRECT_STATUS_OK);
+        let warmed_cache = executor.descriptor_cache_snapshot();
+        assert_eq!(warmed_cache.row_group_count, 1);
+        assert_eq!(warmed_cache.build_count, 1);
+        assert!(warmed_cache.descriptor_bytes > 0);
+        assert_ne!(warmed_cache.first_plane_address, 0);
+        assert_ne!(warmed_cache.first_scalar_address, 0);
+
+        current_re[5..].copy_from_slice(&original_re);
+        current_im[5..].copy_from_slice(&original_im);
+        let (status, allocation_count, allocated_bytes) = count_allocations(|| unsafe {
+            call(
+                context,
+                arena,
+                momentum_view,
+                parameter_view,
+                factor_view,
+                ptr::from_ref(&row),
+                1,
+                point_stride,
+            )
+        });
+        assert_eq!(status, DIRECT_STATUS_OK);
+        assert_eq!(allocation_count, 0, "warmed descriptor call allocated");
+        assert_eq!(allocated_bytes, 0, "warmed descriptor call allocated bytes");
+        assert_eq!(executor.descriptor_cache_snapshot(), warmed_cache);
 
         let scale_re = factor_re[0] * parameter_re[0] - factor_im[0] * parameter_im[0];
         let scale_im = factor_re[0] * parameter_im[0] + factor_im[0] * parameter_re[0];
@@ -1205,6 +1545,216 @@ mod tests {
             assert!((current_re[5 + point] - expected_re).abs() < 1.0e-12);
             assert!((current_im[5 + point] - expected_im).abs() < 1.0e-12);
         }
+    }
+
+    #[test]
+    fn descriptor_storage_identity_covers_every_pointer_length_and_stride() {
+        let mut current_re = [0.0; 8];
+        let mut current_im = [0.0; 8];
+        let mut amplitude_re = [0.0; 4];
+        let mut amplitude_im = [0.0; 4];
+        let momenta = [0.0; 16];
+        let parameter_re = [0.0; 2];
+        let parameter_im = [0.0; 2];
+        let factor_re = [0.0; 2];
+        let factor_im = [0.0; 2];
+        let mut alternate_mut = [0.0; 8];
+        let alternate = [0.0; 16];
+        let arena = DirectArenaView {
+            current_re: current_re.as_mut_ptr(),
+            current_im: current_im.as_mut_ptr(),
+            current_scalar_len: current_re.len() as u64,
+            amplitude_re: amplitude_re.as_mut_ptr(),
+            amplitude_im: amplitude_im.as_mut_ptr(),
+            amplitude_scalar_len: amplitude_re.len() as u64,
+            point_stride: 4,
+        };
+        let momenta_view = DirectMomentumView {
+            values: momenta.as_ptr(),
+            scalar_len: momenta.len() as u64,
+            form_count: 1,
+            lorentz_component_count: 4,
+            point_stride: 4,
+        };
+        let parameter_view = DirectParameterView {
+            values_re: parameter_re.as_ptr(),
+            values_im: parameter_im.as_ptr(),
+            value_count: 2,
+        };
+        let factor_view = DirectFactorView {
+            values_re: factor_re.as_ptr(),
+            values_im: factor_im.as_ptr(),
+            value_count: 2,
+        };
+        let identity =
+            DescriptorStorageIdentity::new(arena, momenta_view, parameter_view, factor_view);
+
+        macro_rules! assert_identity_change {
+            ($arena:expr, $momenta:expr, $parameters:expr, $factors:expr) => {
+                assert_ne!(
+                    identity,
+                    DescriptorStorageIdentity::new($arena, $momenta, $parameters, $factors)
+                )
+            };
+        }
+
+        let mut changed = arena;
+        changed.current_re = alternate_mut.as_mut_ptr();
+        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
+        let mut changed = arena;
+        changed.current_im = alternate_mut.as_mut_ptr();
+        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
+        let mut changed = arena;
+        changed.current_scalar_len += 1;
+        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
+        let mut changed = arena;
+        changed.amplitude_re = alternate_mut.as_mut_ptr();
+        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
+        let mut changed = arena;
+        changed.amplitude_im = alternate_mut.as_mut_ptr();
+        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
+        let mut changed = arena;
+        changed.amplitude_scalar_len += 1;
+        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
+        let mut changed = arena;
+        changed.point_stride += 1;
+        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
+
+        let mut changed = momenta_view;
+        changed.values = alternate.as_ptr();
+        assert_identity_change!(arena, changed, parameter_view, factor_view);
+        let mut changed = momenta_view;
+        changed.scalar_len += 1;
+        assert_identity_change!(arena, changed, parameter_view, factor_view);
+        let mut changed = momenta_view;
+        changed.form_count += 1;
+        assert_identity_change!(arena, changed, parameter_view, factor_view);
+        let mut changed = momenta_view;
+        changed.lorentz_component_count += 1;
+        assert_identity_change!(arena, changed, parameter_view, factor_view);
+        let mut changed = momenta_view;
+        changed.point_stride += 1;
+        assert_identity_change!(arena, changed, parameter_view, factor_view);
+
+        let mut changed = parameter_view;
+        changed.values_re = alternate.as_ptr();
+        assert_identity_change!(arena, momenta_view, changed, factor_view);
+        let mut changed = parameter_view;
+        changed.values_im = alternate.as_ptr();
+        assert_identity_change!(arena, momenta_view, changed, factor_view);
+        let mut changed = parameter_view;
+        changed.value_count += 1;
+        assert_identity_change!(arena, momenta_view, changed, factor_view);
+
+        let mut changed = factor_view;
+        changed.values_re = alternate.as_ptr();
+        assert_identity_change!(arena, momenta_view, parameter_view, changed);
+        let mut changed = factor_view;
+        changed.values_im = alternate.as_ptr();
+        assert_identity_change!(arena, momenta_view, parameter_view, changed);
+        let mut changed = factor_view;
+        changed.value_count += 1;
+        assert_identity_change!(arena, momenta_view, parameter_view, changed);
+    }
+
+    #[test]
+    fn descriptor_cache_rejects_stale_storage_and_row_table_identities() {
+        let executor = contribution_executor();
+        let DirectExecutorHandle::Contribution { call, context } = executor.handle() else {
+            unreachable!()
+        };
+        let point_stride = 2_u32;
+        let mut current_re = [1.0, 2.0, 0.0, 0.0];
+        let mut current_im = [0.0; 4];
+        let mut amplitude_re = [0.0; 2];
+        let mut amplitude_im = [0.0; 2];
+        let momenta = [0.0; 8];
+        let parameter_re = [1.0];
+        let parameter_im = [0.0];
+        let factor_re = [1.0];
+        let factor_im = [0.0];
+        let arena = DirectArenaView {
+            current_re: current_re.as_mut_ptr(),
+            current_im: current_im.as_mut_ptr(),
+            current_scalar_len: current_re.len() as u64,
+            amplitude_re: amplitude_re.as_mut_ptr(),
+            amplitude_im: amplitude_im.as_mut_ptr(),
+            amplitude_scalar_len: amplitude_re.len() as u64,
+            point_stride,
+        };
+        let momenta_view = DirectMomentumView {
+            values: momenta.as_ptr(),
+            scalar_len: momenta.len() as u64,
+            form_count: 1,
+            lorentz_component_count: 4,
+            point_stride,
+        };
+        let parameter_view = DirectParameterView {
+            values_re: parameter_re.as_ptr(),
+            values_im: parameter_im.as_ptr(),
+            value_count: 1,
+        };
+        let factor_view = DirectFactorView {
+            values_re: factor_re.as_ptr(),
+            values_im: factor_im.as_ptr(),
+            value_count: 1,
+        };
+        let row = DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+            destination_component_base: 1,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        let warmup_status = unsafe {
+            call(
+                context,
+                arena,
+                momenta_view,
+                parameter_view,
+                factor_view,
+                ptr::from_ref(&row),
+                1,
+                point_stride,
+            )
+        };
+        assert_eq!(warmup_status, DIRECT_STATUS_OK);
+        let warmed_cache = executor.descriptor_cache_snapshot();
+
+        let mut changed_factors = factor_view;
+        changed_factors.value_count += 1;
+        let stale_storage_status = unsafe {
+            call(
+                context,
+                arena,
+                momenta_view,
+                parameter_view,
+                changed_factors,
+                ptr::from_ref(&row),
+                1,
+                point_stride,
+            )
+        };
+        assert_eq!(stale_storage_status, STATUS_DESCRIPTOR_IDENTITY_MISMATCH);
+        assert_eq!(executor.descriptor_cache_snapshot(), warmed_cache);
+
+        let stale_table_status = unsafe {
+            call(
+                context,
+                arena,
+                momenta_view,
+                parameter_view,
+                factor_view,
+                ptr::from_ref(&row),
+                2,
+                point_stride,
+            )
+        };
+        assert_eq!(stale_table_status, STATUS_DESCRIPTOR_IDENTITY_MISMATCH);
+        assert_eq!(executor.descriptor_cache_snapshot(), warmed_cache);
     }
 
     #[test]

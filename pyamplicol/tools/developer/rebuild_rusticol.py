@@ -242,6 +242,19 @@ def main() -> int:
             if len(wheels) != 1:
                 raise RuntimeError(f"expected one Rusticol wheel, found {len(wheels)}")
             extension = _install_extension(wheels[0])
+            subprocess.run(
+                [
+                    str(args.python),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--force-reinstall",
+                    "--no-deps",
+                    str(wheels[0]),
+                ],
+                cwd=ROOT,
+                check=True,
+            )
     _publish_info(payload, extension=extension, native_digest=native_digest)
     subprocess.run(
         [
