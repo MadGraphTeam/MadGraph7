@@ -6,6 +6,7 @@
 #include "madspace/driver/tensor.hpp"
 
 #include <memory>
+#include <optional>
 
 namespace madspace {
 namespace gpu {
@@ -31,9 +32,13 @@ public:
     };
 
     GpuRuntime(const Function& function, ContextPtr context);
-    TensorVec run(const TensorVec& inputs) override;
+    TensorVec
+    run(const TensorVec& inputs,
+        std::optional<std::uint64_t> seed = std::nullopt) override;
     std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad(
-        const TensorVec& inputs, const std::vector<bool>& input_requires_grad
+        const TensorVec& inputs,
+        const std::vector<bool>& input_requires_grad,
+        std::optional<std::uint64_t> seed = std::nullopt
     ) override;
     std::pair<TensorVec, TensorVec> run_backward(
         const TensorVec& output_grads,

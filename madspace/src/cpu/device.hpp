@@ -1,15 +1,28 @@
 #pragma once
 
+#include <cstdint>
+#include <random>
+
 #include "madspace/driver/tensor.hpp"
 #include "madspace/driver/thread_pool.hpp"
+#include "madspace/util.hpp"
 #include "simd.hpp"
 
 namespace madspace {
 namespace cpu {
 
+class CpuRuntime;
+
 class CpuDevice : public Device {
 public:
     static constexpr bool is_concurrent = false;
+
+    // Returns the generator randomness consumed by this device's op_random /
+    // op_random_int / op_unweight should draw from. The base implementation (used
+    // for CpuDevice and AsyncCpuDevice, i.e. whenever no per-call seed is in play)
+    // falls back to the runtime's non-deterministic per-thread stream; SeqCpuDevice
+    // hides this with its own seeded generator.
+    std::mt19937& rand_gen(CpuRuntime& runtime) const;
 
     std::pair<void*, Tensor> allocate(std::size_t size, AllocHint hint) const override {
         std::pair<void*, Tensor> ret{new std::byte[size], Tensor()};
@@ -65,6 +78,16 @@ public:
 
 protected:
     CpuDevice() = default;
+};
+
+class SeqCpuDevice : public CpuDevice {
+public:
+    explicit SeqCpuDevice(std::uint64_t seed) : _rand_gen(seeded_rng(seed)) {}
+
+    std::mt19937& rand_gen(CpuRuntime&) const { return _rand_gen; }
+
+private:
+    mutable std::mt19937 _rand_gen;
 };
 
 class AsyncCpuDevice : public CpuDevice {

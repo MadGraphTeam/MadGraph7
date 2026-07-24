@@ -84,24 +84,6 @@ if _source_hash != ms.SOURCE_HASH:
 logger = logging.getLogger("madevent7")
 
 
-def derive_seed(base_seed: int, index: int) -> int:
-    """Derive an independent per-context stream seed from the run_card seed.
-
-    Returns 0 (i.e. seed non-deterministically) when ``base_seed`` is 0, which is
-    the run_card default. Otherwise the base seed and context ``index`` are mixed
-    with splitmix64 so that distinct contexts get well-separated streams and two
-    different base seeds never collide onto the same context seed.
-    """
-    if base_seed == 0:
-        return 0
-    mask = (1 << 64) - 1
-    x = (base_seed + index * 0x9E3779B97F4A7C15) & mask
-    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & mask
-    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & mask
-    x = x ^ (x >> 31)
-    return x or 1
-
-
 def get_start_time():
     return time.time(), time.process_time()
 
@@ -217,12 +199,11 @@ class MadgraphProcess:
 
     def init_context(self) -> None:
         device_names = self.run_card["run"]["devices"]
-        base_seed = self.run_card["run"]["seed"]
         self.contexts = []
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
-        for i, device_name in enumerate(device_names):
+        for device_name in device_names:
             if ":" in device_name:
                 device_type, device_index_str = device_name.split(":")
                 device_index = int(device_index_str)
@@ -241,11 +222,7 @@ class MadgraphProcess:
                 pool_size = self.run_card["run"]["cpu_thread_pool_size"]
             self.devices.append(device)
             self.pool_sizes.append(pool_size)
-            self.contexts.append(ms.Context(
-                device=device,
-                thread_count=pool_size,
-                seed=derive_seed(base_seed, i),
-            ))
+            self.contexts.append(ms.Context(device=device, thread_count=pool_size))
 
     def parse_observable(self, name: str, order_observable: str) -> dict:
         parts = name.split("-")
@@ -440,6 +417,7 @@ class MadgraphProcess:
             channels=channel_generators,
             status_file=os.path.join(self.run_path, "info.json"),
             config=self.event_generator_config,
+            seed=self.run_card["run"]["seed"],
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -450,36 +428,42 @@ class MadgraphProcess:
         return event_generator
 
     def survey_phasespaces(
-        self, phasespaces: list[PhaseSpace | None]
+        self, phasespaces: list[PhaseSpace | None], survey_pass: int = 0
     ) -> ms.EventGenerator | None:
         ps_filtered = [ps for ps in phasespaces if ps is not None]
         if len(ps_filtered) == 0:
             return None
         event_generator = self.build_event_generator(ps_filtered)
-        event_generator.survey()
+        event_generator.survey(survey_pass)
         return event_generator
 
     def survey(self) -> None:
+        # survey_pass distinguishes the survey() calls below: "both" mode can
+        # re-survey a channel carried over unchanged from the multichannel pass
+        # into the final (simplified) pass, and both passes schedule jobs on the
+        # same underlying ChannelEventGenerator. The explicit pass index keeps each
+        # pass's job seeds independent of the other passes' job counts, rather than
+        # depending on call history.
         phasespace_mode = self.run_card["phasespace"]["mode"]
         if phasespace_mode == "multichannel":
             self.phasespaces = [
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
         elif phasespace_mode == "flat":
             self.phasespaces = [
                 subproc.build_flat_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
         elif phasespace_mode == "both":
             kept_count = self.run_card["phasespace"]["simplified_channel_count"]
             phasespaces_multi = [
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
-            evgen_multi = self.survey_phasespaces(phasespaces_multi)
+            evgen_multi = self.survey_phasespaces(phasespaces_multi, 0)
 
             phasespaces_flat = [
                 subproc.build_flat_phasespace()
@@ -487,7 +471,7 @@ class MadgraphProcess:
                 None
                 for subproc in self.subprocesses
             ]
-            #evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
+            #evgen_flat = self.survey_phasespaces(phasespaces_flat, 1)
 
             channel_status = evgen_multi.channel_status()
             cross_sections = []
@@ -508,7 +492,7 @@ class MadgraphProcess:
                     self.subprocesses, phasespaces_multi, phasespaces_flat, cross_sections
                 )
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 2)
         else:
             raise ValueError("Unknown phasespace mode")
 
@@ -563,10 +547,7 @@ class MadgraphProcess:
 
         gen_context = self.contexts[0]
         opt_context = ms.Context(
-            device=self.devices[0],
-            thread_count=self.pool_sizes[0],
-            # distinct stream from the generation contexts (offset the index)
-            seed=derive_seed(self.run_card["run"]["seed"], 1000),
+            device=self.devices[0], thread_count=self.pool_sizes[0]
         )
         opt_context.copy_globals_from(gen_context)
 

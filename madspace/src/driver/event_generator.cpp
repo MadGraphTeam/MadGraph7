@@ -18,7 +18,7 @@ namespace {
 // per-thread index.
 constexpr std::uint32_t kSaltCombineSelect = 1; // channel selection in read_and_combine
 constexpr std::uint32_t kSaltLheComplete = 2;   // colour/helicity in fill_lhe_event
-constexpr std::uint32_t kSaltUnweight = 3;       // final unweighting
+constexpr std::uint32_t kSaltUnweight = 3;      // final unweighting
 } // namespace
 
 const GeneratorConfig EventGenerator::default_config = {};
@@ -27,7 +27,8 @@ EventGenerator::EventGenerator(
     const std::vector<ContextPtr>& contexts,
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
     const std::string& status_file,
-    const GeneratorConfig& config
+    const GeneratorConfig& config,
+    std::uint64_t seed
 ) :
     _config(config),
     _status{
@@ -52,10 +53,13 @@ EventGenerator::EventGenerator(
     _channel_optimizing(channels.size()),
     _channel_integral_fractions(channels.size(), 1.),
     _context_job_counts(contexts.size()),
-    _deterministic(!contexts.empty() && contexts.at(0)->seed() != 0),
+    _seed(seed),
+    _deterministic(seed != 0),
     _status_file(status_file) {}
 
-void EventGenerator::survey() {
+void EventGenerator::survey(std::size_t survey_pass) {
+    _survey_job = true;
+    _survey_pass = survey_pass;
     if (_deterministic) {
         survey_deterministic();
         return;
@@ -152,6 +156,7 @@ void EventGenerator::survey() {
 }
 
 void EventGenerator::generate() {
+    _survey_job = false;
     if (_deterministic) {
         generate_deterministic();
         return;
@@ -461,7 +466,8 @@ bool EventGenerator::start_jobs() {
                 job.split_job_count = split_job_count * (1 + job.unweight);
                 job.job_id = _job_id;
                 job.context_index = context_index;
-                _channels.at(job.channel_index)->start_job(job, _result_queue);
+                _channels.at(job.channel_index)
+                    ->start_job(job, _result_queue, _seed, _survey_job, _survey_pass);
                 _channel_job_counts.at(job.channel_index) += 1 + job.unweight;
                 ++_job_id;
                 ++job_count;
@@ -533,7 +539,7 @@ void EventGenerator::update_counts() {
 
 void EventGenerator::combine_to_compact_npy(const std::string& file_name) {
     reset_start_time();
-    std::mt19937 select_rng = seeded_rng(_contexts.at(0)->seed(), {kSaltCombineSelect});
+    std::mt19937 select_rng = seeded_rng(_seed, {kSaltCombineSelect});
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout layout(
         EventRecord::layout(
@@ -570,7 +576,7 @@ void EventGenerator::combine_to_lhe_npy(
     const std::string& file_name, LHECompleter& lhe_completer
 ) {
     reset_start_time();
-    std::uint64_t seed = _contexts.at(0)->seed();
+    std::uint64_t seed = _seed;
     std::mt19937 select_rng = seeded_rng(seed, {kSaltCombineSelect});
     std::mt19937 rand_gen = seeded_rng(seed, {kSaltLheComplete});
     auto [channel_data, particle_count, norm_factor] = init_combine();
@@ -634,14 +640,13 @@ void EventGenerator::combine_to_lhe(
     const std::string& file_name, LHECompleter& lhe_completer
 ) {
     reset_start_time();
-    std::uint64_t seed = _contexts.at(0)->seed();
+    std::uint64_t seed = _seed;
     std::mt19937 select_rng = seeded_rng(seed, {kSaltCombineSelect});
     ThreadPool pool(_config.combine_thread_count);
     // Per-thread LHE-completion streams, keyed by a running thread index. Bit
     // identical output requires combine_thread_pool_size == 1 (see seeded_rng()).
     ThreadResource<std::mt19937> rand_gens(
-        pool,
-        [seed, next_index = std::make_shared<std::atomic<std::uint32_t>>(0)]() {
+        pool, [seed, next_index = std::make_shared<std::atomic<std::uint32_t>>(0)]() {
             return seeded_rng(seed, {kSaltLheComplete, next_index->fetch_add(1)});
         }
     );
@@ -728,7 +733,7 @@ void EventGenerator::add_timing_data(const std::string& key) {
 }
 
 void EventGenerator::unweight_all() {
-    std::mt19937 rand_gen = seeded_rng(_contexts.at(0)->seed(), {kSaltUnweight});
+    std::mt19937 rand_gen = seeded_rng(_seed, {kSaltUnweight});
     bool done = true;
     double total_eff_count = 0.;
     for (auto [channel, integral_fraction] :

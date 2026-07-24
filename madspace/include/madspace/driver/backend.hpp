@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/context.hpp"
@@ -11,9 +12,16 @@ namespace madspace {
 class Runtime {
 public:
     virtual ~Runtime() = default;
-    virtual TensorVec run(const TensorVec& inputs) = 0;
+    // `seed`, when set, makes the random numbers drawn during this call a
+    // deterministic function of `seed` alone, independent of which thread executes
+    // it. Backends that cannot support this (e.g. GPU, or a CPU runtime executing
+    // concurrently) should reject a non-null seed rather than silently ignore it.
+    virtual TensorVec
+    run(const TensorVec& inputs, std::optional<std::uint64_t> seed = std::nullopt) = 0;
     virtual std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad(
-        const TensorVec& inputs, const std::vector<bool>& input_requires_grad
+        const TensorVec& inputs,
+        const std::vector<bool>& input_requires_grad,
+        std::optional<std::uint64_t> seed = std::nullopt
     ) = 0;
     virtual std::pair<TensorVec, TensorVec> run_backward(
         const TensorVec& output_grads,
@@ -21,14 +29,6 @@ public:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads = false
     ) = 0;
-
-    // Deterministic per-job RNG. Between begin_job_rng(seed) and end_job_rng(), all
-    // randomness consumed by run() on the CALLING thread is drawn from a generator
-    // seeded by `seed`, so a job's random numbers depend only on `seed` and not on
-    // which pool thread executes it. Backends that cannot support this (e.g. GPU)
-    // keep the default no-op and fall back to their usual per-thread streams.
-    virtual void begin_job_rng(std::uint64_t seed) {}
-    virtual void end_job_rng() {}
 
     friend std::unique_ptr<Runtime>
     build_runtime(const Function& function, ContextPtr context, bool concurrent);

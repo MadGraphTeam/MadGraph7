@@ -31,23 +31,6 @@ import json
 import tomllib
 import argparse
 
-def derive_seed(base_seed: int, index: int) -> int:
-    """Derive an independent per-context stream seed from the base seed.
-
-    Returns 0 (seed non-deterministically) when ``base_seed`` is 0. Otherwise the
-    base seed and context ``index`` are mixed with splitmix64 so distinct contexts
-    get well-separated streams and different base seeds never collide.
-    """
-    if base_seed == 0:
-        return 0
-    mask = (1 << 64) - 1
-    x = (base_seed + index * 0x9E3779B97F4A7C15) & mask
-    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & mask
-    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & mask
-    x = x ^ (x >> 31)
-    return x or 1
-
-
 def resolve_verbosity(verbosity: str) -> str:
     """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
     whether stdout is attached to a terminal; other values pass through
@@ -139,7 +122,7 @@ def main() -> None:
     device_names = args.device if args.device else run_args["devices"]
     contexts = []
     device_types = []
-    for i, device_name in enumerate(device_names):
+    for device_name in device_names:
         if ":" in device_name:
             device_type, device_index_str = device_name.split(":")
             device_index = int(device_index_str)
@@ -156,10 +139,7 @@ def main() -> None:
         else:
             device = ms.cpu_device()
             pool_size = args.cpu_thread_pool_size
-        contexts.append(ms.Context(
-            device=device, thread_count=pool_size,
-            seed=derive_seed(args.seed, i),
-        ))
+        contexts.append(ms.Context(device=device, thread_count=pool_size))
 
     # set up generator configuration
     config = ms.GeneratorConfig()
@@ -198,6 +178,7 @@ def main() -> None:
         channels=channel_generators,
         status_file=os.path.join(run_path, "info.json"),
         config=config,
+        seed=args.seed,
     )
 
     # run generation

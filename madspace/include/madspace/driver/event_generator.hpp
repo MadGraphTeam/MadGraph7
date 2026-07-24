@@ -31,9 +31,16 @@ public:
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
         const std::string& status_file = "",
-        const GeneratorConfig& config = default_config
+        const GeneratorConfig& config = default_config,
+        std::uint64_t seed = 0
     );
-    void survey();
+    // `survey_pass` distinguishes independent survey() calls that end up
+    // scheduling jobs on the same ChannelEventGenerator (e.g. an initial
+    // multichannel survey followed by a post-simplification re-survey of a channel
+    // that got carried over unchanged): each pass gets its own seed salt, so a
+    // pass's job seeds depend only on its own logical identity, never on how many
+    // jobs a previous, unrelated survey pass happened to schedule first.
+    void survey(std::size_t survey_pass = 0);
     void generate();
     void combine_to_compact_npy(const std::string& file_name);
     void combine_to_lhe_npy(const std::string& file_name, LHECompleter& lhe_completer);
@@ -72,7 +79,18 @@ private:
     std::vector<std::size_t> _context_job_counts;
     ResultQueue _result_queue;
 
-    // Deterministic-path state. _deterministic is set from the context seed. Generate
+    // Base seed for reproducible event generation. 0 means "seed
+    // non-deterministically" (the historical default); see seeded_rng().
+    std::uint64_t _seed;
+
+    // Job-scheduling context for the currently running survey()/generate() call,
+    // read by start_jobs() when it hands a job's seed derivation off to its
+    // ChannelEventGenerator. Set once at the top of survey()/generate(), before
+    // the scheduling loop starts.
+    bool _survey_job = false;
+    std::size_t _survey_pass = 0;
+
+    // Deterministic-path state. _deterministic is set from _seed. Generate
     // completions are buffered in _ready_gen and committed in ascending job id, with
     // _commit_cursor pointing at the next job id to commit.
     bool _deterministic = false;

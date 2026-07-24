@@ -61,7 +61,13 @@ public:
     void integrate(const GeneratorBatchJob& job);
     void optimize_vegas(const GeneratorBatchJob& job);
     double channel_weight_sum(std::size_t event_count);
-    void start_job(GeneratorBatchJob& job, ResultQueue& result_queue);
+    void start_job(
+        GeneratorBatchJob& job,
+        ResultQueue& result_queue,
+        std::uint64_t seed,
+        bool is_survey,
+        std::size_t survey_pass
+    );
     void start_unweight_job(GeneratorBatchJob& job, ResultQueue& result_queue);
     // Synchronous unweighting used by the deterministic generation path: runs the
     // unweighter on the calling (harvest) thread against the current max weight so
@@ -132,10 +138,14 @@ private:
     std::optional<Function> _histogram_function;
     RunningIntegral _cross_section;
     double _max_weight = 0.;
-    // Monotonic per-channel counter assigned to each scheduled job (main thread) to
-    // key its deterministic random stream; never reset, so re-used jobs keep unique
-    // streams across survey/generate.
-    std::size_t _rng_seq = 0;
+    // Monotonic per-channel counters assigned to each scheduled job (main thread) to
+    // key its deterministic random stream; never reset. Survey and generate use
+    // independent counters so a generate job's seed never depends on how many
+    // survey jobs happened to run first, and vice versa; see
+    // EventGenerator::survey()'s survey_pass for why survey jobs additionally key
+    // off the calling survey pass.
+    std::size_t _survey_rng_seq = 0;
+    std::size_t _generate_rng_seq = 0;
     std::size_t _unweighted_count = 0;
     std::size_t _iters_without_improvement = 0;
     double _best_rsd = std::numeric_limits<double>::max();

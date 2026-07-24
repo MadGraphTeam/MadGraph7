@@ -1610,7 +1610,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     );
 }
 
-TensorVec GpuRuntime::run(const TensorVec& inputs) {
+TensorVec GpuRuntime::run(const TensorVec& inputs, std::optional<std::uint64_t>) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     auto& streams = _streams.get();
     auto& events = _events.get();
@@ -1650,7 +1650,9 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
 }
 
 std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
-    const TensorVec& inputs, const std::vector<bool>& input_requires_grad
+    const TensorVec& inputs,
+    const std::vector<bool>& input_requires_grad,
+    std::optional<std::uint64_t>
 ) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     auto& streams = _streams.get();

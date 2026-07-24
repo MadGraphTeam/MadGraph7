@@ -244,18 +244,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("__dlpack_device__", &dlpack_device);
 
     py::classh<Context>(m, "Context")
+        .def(py::init<int>(), py::arg("thread_count") = -1)
         .def(
-            py::init<int, std::uint64_t>(),
-            py::arg("thread_count") = -1,
-            py::arg("seed") = 0
+            py::init<DevicePtr, int>(), py::arg("device"), py::arg("thread_count") = -1
         )
-        .def(
-            py::init<DevicePtr, int, std::uint64_t>(),
-            py::arg("device"),
-            py::arg("thread_count") = -1,
-            py::arg("seed") = 0
-        )
-        .def_property_readonly("seed", &Context::seed)
         .def(
             "load_matrix_element",
             &Context::load_matrix_element,
@@ -1721,7 +1713,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<ContextPtr>&,
                 const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
                 const std::string&,
-                const GeneratorConfig&>(),
+                const GeneratorConfig&,
+                std::uint64_t>(),
             py::arg("contexts"),
             py::arg("channels"),
             py::arg("status_file") = "",
@@ -1729,9 +1722,10 @@ PYBIND11_MODULE(_madspace_py, m) {
                 "config",
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
-            )
+            ),
+            py::arg("seed") = 0
         )
-        .def("survey", &EventGenerator::survey)
+        .def("survey", &EventGenerator::survey, py::arg("survey_pass") = 0)
         .def("generate", &EventGenerator::generate)
         .def(
             "combine_to_compact_npy",

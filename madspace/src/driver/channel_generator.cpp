@@ -11,6 +11,11 @@ namespace {
 constexpr std::uint64_t kPhaseGenerate = 1;
 constexpr std::uint64_t kPhaseUnweight = 2;
 
+// Salts keeping a job's base-seed derivation (see start_job) independent between
+// survey and generate calls.
+constexpr std::uint64_t kJobKindSurvey = 1;
+constexpr std::uint64_t kJobKindGenerate = 2;
+
 int event_extra_flags(const std::unordered_map<std::string, std::size_t>& index_map) {
     int flags = 0;
     if (index_map.contains("fact_scale1")) {
@@ -394,24 +399,55 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
 }
 
 void ChannelEventGenerator::start_job(
-    GeneratorBatchJob& job, ResultQueue& result_queue
+    GeneratorBatchJob& job,
+    ResultQueue& result_queue,
+    std::uint64_t seed,
+    bool is_survey,
+    std::size_t survey_pass
 ) {
     // Assign the job's deterministic base seed on the (single) scheduling thread so
     // it depends only on the job's logical identity, not on which worker runs it.
-    std::uint64_t context_seed = _contexts.at(job.context_index)->seed();
-    job.rng_seed = context_seed == 0
-        ? 0
-        : mix_seed(context_seed, {job.channel_index, _rng_seq++});
+    // Survey and generate draw from independent counters (see _survey_rng_seq /
+    // _generate_rng_seq) so a job's seed never depends on job counts from the other
+    // kind of call; survey jobs additionally key off survey_pass so that a channel
+    // re-surveyed across multiple independent survey() calls doesn't need its job
+    // count inferred from call history.
+    if (seed == 0) {
+        job.rng_seed = 0;
+    } else if (is_survey) {
+        job.rng_seed = mix_seed(
+            seed,
+            {job.context_index,
+             job.channel_index,
+             kJobKindSurvey,
+             survey_pass,
+             _survey_rng_seq++}
+        );
+    } else {
+        job.rng_seed = mix_seed(
+            seed,
+            {job.context_index,
+             job.channel_index,
+             kJobKindGenerate,
+             _generate_rng_seq++}
+        );
+    }
     _contexts.at(job.context_index)
         ->thread_pool()
         .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
-            if (job.rng_seed != 0) {
-                runtimes.integrand_channel->begin_job_rng(
-                    mix_seed(job.rng_seed, {kPhaseGenerate})
-                );
-            }
+            // Every runtime->run() call below that can consume randomness gets its
+            // own sub-seed, uniquely salted by a running call index, derived from
+            // the job's base seed. This keeps each call fully deterministic without
+            // sharing mutable RNG state across independent Runtime objects.
+            std::uint64_t rng_call_index = 0;
+            auto next_seed = [&]() -> std::optional<std::uint64_t> {
+                if (job.rng_seed == 0) {
+                    return std::nullopt;
+                }
+                return mix_seed(job.rng_seed, {kPhaseGenerate, rng_call_index++});
+            };
             std::size_t max_batch_size =
                 context->device()->device_type() == DeviceType::cpu
                 ? _config.cpu_batch_size
@@ -425,8 +461,9 @@ void ChannelEventGenerator::start_job(
             std::size_t total_count = 0, repetitions = 0;
             TensorVec all_ps_points;
             while (true) {
-                auto ps_points =
-                    runtimes.integrand_channel->run({Tensor({batch_size})});
+                auto ps_points = runtimes.integrand_channel->run(
+                    {Tensor({batch_size})}, next_seed()
+                );
                 std::size_t acc_count =
                     ps_points
                         .at(_integrand_channel_function.outputs().index_map().at(
@@ -461,13 +498,14 @@ void ChannelEventGenerator::start_job(
                     (target_count - total_count) / cut_eff
                 );
             }
-            job.events = runtimes.integrand_common->run(all_ps_points);
+            job.events = runtimes.integrand_common->run(all_ps_points, next_seed());
 
             job.weights = job.events.at(_field_indices.weight).cpu();
             if (runtimes.observable_histograms) {
                 auto hists = runtimes.observable_histograms->run(
                     {job.events.at(_field_indices.weight),
-                     job.events.at(_field_indices.momenta)}
+                     job.events.at(_field_indices.momenta)},
+                    next_seed()
                 );
                 for (auto& item : hists) {
                     job.hists.push_back(item.cpu());
@@ -477,7 +515,8 @@ void ChannelEventGenerator::start_job(
                 if (_vegas_optimizer) {
                     auto hist = runtimes.vegas_histogram->run(
                         {job.events.at(_field_indices.random),
-                         job.events.at(_field_indices.weight)}
+                         job.events.at(_field_indices.weight)},
+                        next_seed()
                     );
                     for (auto& item : hist) {
                         job.vegas_hist.push_back(item.cpu());
@@ -488,14 +527,11 @@ void ChannelEventGenerator::start_job(
                         job.events.begin() + _field_indices.rest, job.events.end()
                     };
                     args.push_back(job.events.at(_field_indices.weight));
-                    auto hist = runtimes.discrete_histogram->run(args);
+                    auto hist = runtimes.discrete_histogram->run(args, next_seed());
                     for (auto& item : hist) {
                         job.discrete_hist.push_back(item.cpu());
                     }
                 }
-            }
-            if (job.rng_seed != 0) {
-                runtimes.integrand_channel->end_job_rng();
             }
             result_queue.push(job.job_id);
             return std::nullopt;
@@ -511,21 +547,16 @@ void ChannelEventGenerator::start_unweight_job(
         .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
-            if (job.rng_seed != 0) {
-                runtimes.unweighter->begin_job_rng(
-                    mix_seed(job.rng_seed, {kPhaseUnweight})
-                );
-            }
+            std::optional<std::uint64_t> seed = job.rng_seed == 0
+                ? std::nullopt
+                : std::optional(mix_seed(job.rng_seed, {kPhaseUnweight}));
             std::vector<Tensor> unweighter_args(
                 job.events.begin(), job.events.begin() + _field_indices.random
             );
             unweighter_args.push_back(Tensor(job.max_weight, context->device()));
-            TensorVec unw_events = runtimes.unweighter->run(unweighter_args);
+            TensorVec unw_events = runtimes.unweighter->run(unweighter_args, seed);
             for (auto& item : unw_events) {
                 job.unweighted_events.push_back(item.cpu());
-            }
-            if (job.rng_seed != 0) {
-                runtimes.unweighter->end_job_rng();
             }
             result_queue.push(job.job_id);
             return std::nullopt;
@@ -536,20 +567,17 @@ void ChannelEventGenerator::unweight_job_inline(GeneratorBatchJob& job) {
     auto& runtimes = _runtimes.at(job.context_index);
     auto& context = _contexts.at(job.context_index);
     job.max_weight = _max_weight;
-    if (job.rng_seed != 0) {
-        runtimes.unweighter->begin_job_rng(mix_seed(job.rng_seed, {kPhaseUnweight}));
-    }
+    std::optional<std::uint64_t> seed = job.rng_seed == 0
+        ? std::nullopt
+        : std::optional(mix_seed(job.rng_seed, {kPhaseUnweight}));
     std::vector<Tensor> unweighter_args(
         job.events.begin(), job.events.begin() + _field_indices.random
     );
     unweighter_args.push_back(Tensor(job.max_weight, context->device()));
-    TensorVec unw_events = runtimes.unweighter->run(unweighter_args);
+    TensorVec unw_events = runtimes.unweighter->run(unweighter_args, seed);
     job.unweighted_events.clear();
     for (auto& item : unw_events) {
         job.unweighted_events.push_back(item.cpu());
-    }
-    if (job.rng_seed != 0) {
-        runtimes.unweighter->end_job_rng();
     }
 }
 

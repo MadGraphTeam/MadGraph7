@@ -1,7 +1,6 @@
 #include "runtime.hpp"
 
 #include <algorithm>
-#include <atomic>
 #include <memory>
 #include <random>
 #include <ranges>
@@ -48,15 +47,6 @@ using namespace madspace::cpu;
 using namespace madspace::kernels;
 
 namespace {
-
-// Per-thread deterministic job generator. When a job installs one via
-// begin_job_rng(), every op_random/op_random_int/op_unweight on this thread draws
-// from it instead of the pool generator, so the job's random numbers depend only
-// on its seed and not on which thread happened to run it. Integrand runtimes are
-// single-threaded (concurrent == false), so the whole job runs on one thread and
-// a single continuous stream spans all of its random draws.
-thread_local std::mt19937 t_job_rng;
-thread_local bool t_job_rng_active = false;
 
 template <typename D>
 void op_matrix_element(
@@ -624,10 +614,10 @@ void op_random(
     auto& runtime = instruction.runtime;
     device.foreach (
         flat_view.shape[0],
-        [flat_view, &runtime](std::size_t count, std::size_t offset) mutable {
+        [flat_view, &runtime, &device](std::size_t count, std::size_t offset) mutable {
             auto output_view = TensorView<double, 1>(flat_view);
             std::uniform_real_distribution<double> dist;
-            auto& rand_gen = runtime.rand_gen();
+            auto& rand_gen = device.rand_gen(runtime);
             for (std::size_t i = offset; i < offset + count; ++i) {
                 output_view[i] = dist(rand_gen);
             }
@@ -647,10 +637,12 @@ void op_random_int(
     auto& runtime = instruction.runtime;
     device.foreach (
         flat_view.shape[0],
-        [flat_view, max_val, &runtime](std::size_t count, std::size_t offset) mutable {
+        [flat_view, max_val, &runtime, &device](
+            std::size_t count, std::size_t offset
+        ) mutable {
             auto output_view = TensorView<me_int_t, 1>(flat_view);
             std::uniform_int_distribution<me_int_t> dist(0, max_val - 1);
-            auto& rand_gen = runtime.rand_gen();
+            auto& rand_gen = device.rand_gen(runtime);
             for (std::size_t i = offset; i < offset + count; ++i) {
                 output_view[i] = dist(rand_gen);
             }
@@ -684,6 +676,7 @@ void op_unweight(
          indices_view_flat,
          uw_weights_view_flat,
          &runtime,
+         &device,
          batch_size,
          &indices,
          &uw_weights,
@@ -694,7 +687,7 @@ void op_unweight(
             TensorView<me_int_t, 1> indices_view(indices_view_flat);
             TensorView<double, 1> uw_weights_view(uw_weights_view_flat);
             std::uniform_real_distribution<double> dist;
-            auto& rand_gen = runtime.rand_gen();
+            auto& rand_gen = device.rand_gen(runtime);
             std::size_t count = 0;
             for (std::size_t i = 0; i < batch_size; ++i) {
                 double w = weights_view[i], w_max = max_weight_view[i];
@@ -891,17 +884,10 @@ void op_discrete_histogram(
 
 } // namespace
 
-std::mt19937& CpuRuntime::rand_gen() {
-    return t_job_rng_active ? t_job_rng : _rand_gens.get();
-}
+std::mt19937& CpuRuntime::rand_gen() { return _rand_gens.get(); }
 
-void CpuRuntime::begin_job_rng(std::uint64_t seed) {
-    t_job_rng = seeded_rng(seed);
-    t_job_rng_active = true;
-}
-
-void CpuRuntime::end_job_rng() {
-    t_job_rng_active = false;
+std::mt19937& CpuDevice::rand_gen(CpuRuntime& runtime) const {
+    return runtime.rand_gen();
 }
 
 CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concurrent) :
@@ -909,12 +895,9 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     _input_count(function.inputs().size()),
     _rand_gens(
         context->thread_pool(),
-        // Fallback per-thread streams used when no per-job generator is installed
-        // (context seed 0, i.e. non-deterministic mode). Keyed by a running thread
-        // index so the streams are independent.
-        [seed = context->seed(),
-         next_index = std::make_shared<std::atomic<std::uint32_t>>(0)]() {
-            return seeded_rng(seed, {next_index->fetch_add(1)});
+        []() {
+            std::random_device rand_device;
+            return std::mt19937(rand_device());
         }
     ),
     _concurrent(concurrent) {
@@ -1097,22 +1080,36 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     }
 }
 
-TensorVec CpuRuntime::run(const TensorVec& inputs) {
+TensorVec CpuRuntime::run(const TensorVec& inputs, std::optional<std::uint64_t> seed) {
     if (_concurrent && _context->thread_pool().thread_count() > 1) {
+        if (seed) {
+            throw std::runtime_error(
+                "CpuRuntime::run: a seed cannot be used with a concurrently "
+                "executing runtime"
+            );
+        }
         auto [outputs, locals, eval_grad] = run_concurrent(inputs, {}, false);
         return outputs;
     } else {
-        return run_single(inputs);
+        return run_single(inputs, seed);
     }
 }
 
 std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_with_grad(
-    const TensorVec& inputs, const std::vector<bool>& input_requires_grad
+    const TensorVec& inputs,
+    const std::vector<bool>& input_requires_grad,
+    std::optional<std::uint64_t> seed
 ) {
     if (_concurrent && _context->thread_pool().thread_count() > 1) {
+        if (seed) {
+            throw std::runtime_error(
+                "CpuRuntime::run_with_grad: a seed cannot be used with a "
+                "concurrently executing runtime"
+            );
+        }
         return run_concurrent(inputs, input_requires_grad, true);
     } else {
-        return run_with_grad_single(inputs, input_requires_grad);
+        return run_with_grad_single(inputs, input_requires_grad, seed);
     }
 }
 
@@ -1133,13 +1130,23 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward(
     }
 }
 
-TensorVec CpuRuntime::run_single(const TensorVec& inputs) const {
-    auto& device = CpuDevice::instance();
+TensorVec CpuRuntime::run_single(
+    const TensorVec& inputs, std::optional<std::uint64_t> seed
+) const {
+    if (seed) {
+        SeqCpuDevice device(*seed);
+        return run_single_impl(inputs, device);
+    }
+    return run_single_impl(inputs, CpuDevice::instance());
+}
+
+template <typename D>
+TensorVec CpuRuntime::run_single_impl(const TensorVec& inputs, const D& device) const {
     auto locals = _locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
 
     for (auto& instr : _instructions) {
-        using DeviceType = CpuDevice;
+        using DeviceType = D;
         switch (instr.opcode) {
         case -1: // free memory
             locals[instr.input_indices[0]].reset(device);
@@ -1155,9 +1162,26 @@ TensorVec CpuRuntime::run_single(const TensorVec& inputs) const {
 }
 
 std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_with_grad_single(
-    const TensorVec& inputs, const std::vector<bool>& input_requires_grad
+    const TensorVec& inputs,
+    const std::vector<bool>& input_requires_grad,
+    std::optional<std::uint64_t> seed
 ) const {
-    auto& device = CpuDevice::instance();
+    if (seed) {
+        SeqCpuDevice device(*seed);
+        return run_with_grad_single_impl(inputs, input_requires_grad, device);
+    }
+    return run_with_grad_single_impl(
+        inputs, input_requires_grad, CpuDevice::instance()
+    );
+}
+
+template <typename D>
+std::tuple<TensorVec, TensorVec, std::vector<bool>>
+CpuRuntime::run_with_grad_single_impl(
+    const TensorVec& inputs,
+    const std::vector<bool>& input_requires_grad,
+    const D& device
+) const {
     auto locals = _locals_init;
     auto requires_grad = _requires_grad_init;
     std::vector<bool> store_local(locals.size());
@@ -1186,7 +1210,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_with_grad_si
                 }
             }
         }
-        using DeviceType = CpuDevice;
+        using DeviceType = D;
         switch (instr.opcode) {
         case -1: { // free memory
             auto input_index = instr.input_indices[0];
@@ -1508,3 +1532,16 @@ extern "C" Runtime*
 build_runtime(const Function& function, ContextPtr context, bool concurrent) {
     return new CpuRuntime(function, context, concurrent);
 }
+
+template TensorVec
+CpuRuntime::run_single_impl<CpuDevice>(const TensorVec&, const CpuDevice&) const;
+template TensorVec
+CpuRuntime::run_single_impl<SeqCpuDevice>(const TensorVec&, const SeqCpuDevice&) const;
+template std::tuple<TensorVec, TensorVec, std::vector<bool>>
+CpuRuntime::run_with_grad_single_impl<CpuDevice>(
+    const TensorVec&, const std::vector<bool>&, const CpuDevice&
+) const;
+template std::tuple<TensorVec, TensorVec, std::vector<bool>>
+CpuRuntime::run_with_grad_single_impl<SeqCpuDevice>(
+    const TensorVec&, const std::vector<bool>&, const SeqCpuDevice&
+) const;

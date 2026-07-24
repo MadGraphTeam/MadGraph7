@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <random>
 
 #include "madspace/compgraphs/function.hpp"
@@ -37,9 +38,13 @@ public:
 
     CpuRuntime(const Function& function, ContextPtr context, bool concurrent);
 
-    TensorVec run(const TensorVec& inputs) override;
+    TensorVec
+    run(const TensorVec& inputs,
+        std::optional<std::uint64_t> seed = std::nullopt) override;
     std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad(
-        const TensorVec& inputs, const std::vector<bool>& input_requires_grad
+        const TensorVec& inputs,
+        const std::vector<bool>& input_requires_grad,
+        std::optional<std::uint64_t> seed = std::nullopt
     ) override;
     std::pair<TensorVec, TensorVec> run_backward(
         const TensorVec& output_grads,
@@ -49,16 +54,25 @@ public:
     ) override;
 
     Context& context() { return *_context; }
-    // Returns the active per-job generator when one is installed on this thread
-    // (see begin_job_rng), otherwise the thread's pool generator.
+    // Fallback non-deterministic per-thread generator, used whenever no per-call
+    // seed is in play (see cpu::SeqCpuDevice).
     std::mt19937& rand_gen();
-    void begin_job_rng(std::uint64_t seed) override;
-    void end_job_rng() override;
 
 private:
-    TensorVec run_single(const TensorVec& inputs) const;
+    TensorVec
+    run_single(const TensorVec& inputs, std::optional<std::uint64_t> seed) const;
+    template <typename D>
+    TensorVec run_single_impl(const TensorVec& inputs, const D& device) const;
     std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad_single(
-        const TensorVec& inputs, const std::vector<bool>& input_requires_grad
+        const TensorVec& inputs,
+        const std::vector<bool>& input_requires_grad,
+        std::optional<std::uint64_t> seed
+    ) const;
+    template <typename D>
+    std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad_single_impl(
+        const TensorVec& inputs,
+        const std::vector<bool>& input_requires_grad,
+        const D& device
     ) const;
     std::tuple<TensorVec, TensorVec, std::vector<bool>> run_concurrent(
         const TensorVec& inputs,
