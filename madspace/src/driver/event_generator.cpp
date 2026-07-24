@@ -53,6 +53,7 @@ EventGenerator::EventGenerator(
     _channel_optimizing(channels.size()),
     _channel_integral_fractions(channels.size(), 1.),
     _context_job_counts(contexts.size()),
+    _channel_reserved_count(channels.size()),
     _seed(seed),
     _deterministic(seed != 0),
     _status_file(status_file) {}
@@ -182,7 +183,8 @@ void EventGenerator::generate() {
                 std::size_t& channel_job_count = _channel_job_counts.at(channel_index);
                 double integral_frac = _channel_integral_fractions.at(channel_index);
                 if (integral_frac > 0 &&
-                    channel->status().count_unweighted >=
+                    channel->status().count_unweighted +
+                            _channel_reserved_count.at(channel_index) >=
                         integral_frac * _config.target_count) {
                     continue;
                 }
@@ -200,6 +202,7 @@ void EventGenerator::generate() {
                         .channel_index = channel_index,
                         .unweight = true,
                         .vegas_batch_size = 0,
+                        .reserved_count = reserve_job_count(channel_index),
                     });
                 }
             }
@@ -214,6 +217,7 @@ void EventGenerator::generate() {
             auto& context_job_count = _context_job_counts.at(job.context_index);
             if (job.vegas_batch_size > 0 && channel_job_count == job.split_job_count) {
                 channel->clear_events();
+                _channel_reserved_count.at(job.channel_index) = 0.;
             }
             --channel_job_count;
             --context_job_count;
@@ -231,6 +235,7 @@ void EventGenerator::generate() {
             } else {
                 channel->write_events(job.unweighted_events, job.max_weight);
                 update_counts();
+                release_reserved_count(job);
             }
             if (job.vegas_batch_size > 0 && channel_job_count == 0) {
                 channel->optimize_vegas(job);
@@ -263,6 +268,7 @@ void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
     auto& context_job_count = _context_job_counts.at(job.context_index);
     if (job.vegas_batch_size > 0 && channel_job_count == job.split_job_count) {
         channel->clear_events();
+        _channel_reserved_count.at(job.channel_index) = 0.;
     }
     channel->integrate(job);
     update_integral();
@@ -271,6 +277,7 @@ void EventGenerator::commit_generate_deterministic(GeneratorBatchJob& job) {
         channel->unweight_job_inline(job);
         channel->write_events(job.unweighted_events, job.max_weight);
         update_counts();
+        release_reserved_count(job);
     }
     channel_job_count -= 1 + job.unweight;
     context_job_count -= 1;
@@ -305,7 +312,8 @@ void EventGenerator::generate_deterministic() {
                 auto& channel = _channels.at(channel_index);
                 double integral_frac = _channel_integral_fractions.at(channel_index);
                 if (integral_frac > 0 &&
-                    channel->status().count_unweighted >=
+                    channel->status().count_unweighted +
+                            _channel_reserved_count.at(channel_index) >=
                         integral_frac * _config.target_count) {
                     continue;
                 }
@@ -323,6 +331,7 @@ void EventGenerator::generate_deterministic() {
                         .channel_index = channel_index,
                         .unweight = true,
                         .vegas_batch_size = 0,
+                        .reserved_count = reserve_job_count(channel_index),
                     });
                 }
             }
@@ -444,6 +453,23 @@ void EventGenerator::survey_deterministic() {
         }
     }
     print_survey_update(true, done_event_count, total_event_count, iter - 1);
+}
+
+double EventGenerator::reserve_job_count(std::size_t channel_index) {
+    auto& status = _channels.at(channel_index)->status();
+    // Before any data has committed for this channel, assume the pessimistic 1.0
+    // (a whole batch's worth), so we under- rather than over-schedule until the
+    // real efficiency is known.
+    double efficiency = status.count_opt > 0
+        ? status.count_unweighted / static_cast<double>(status.count_opt)
+        : 1.;
+    double reserved = efficiency * static_cast<double>(_config.cpu_batch_size);
+    _channel_reserved_count.at(channel_index) += reserved;
+    return reserved;
+}
+
+void EventGenerator::release_reserved_count(const GeneratorBatchJob& job) {
+    _channel_reserved_count.at(job.channel_index) -= job.reserved_count;
 }
 
 bool EventGenerator::start_jobs() {

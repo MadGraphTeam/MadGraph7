@@ -108,6 +108,11 @@ struct GeneratorBatchJob {
     // time from (context seed, channel, per-channel job sequence). 0 means "use the
     // non-deterministic pool generator" (context seed 0). See ChannelEventGenerator.
     std::uint64_t rng_seed = 0;
+    // Estimated contribution to the channel's count_unweighted, reserved against
+    // the channel's target at the time this job was scheduled and released once its
+    // actual contribution has been counted. See
+    // EventGenerator::_channel_reserved_count.
+    double reserved_count = 0.;
 };
 
 void to_json(nlohmann::json& j, const GeneratorStatus& status);
