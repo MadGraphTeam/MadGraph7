@@ -2257,6 +2257,19 @@ def test_runtime_only_revision_hops_allow_generation_reuse(
     previous = dict(eager_fix_current)
     previous["head"] = "a0fd4a458c281b1838df10c6547395edc6e65618"
     assert report._source_provenance_generation_reusable(previous)
+
+    producer_fence_current = dict(current)
+    producer_fence_current["head"] = report.ARTIFACT_PRODUCER_FRESHNESS_REVISION
+    monkeypatch.setattr(
+        report,
+        "_report_source_provenance",
+        lambda: producer_fence_current,
+    )
+    producer_previous = dict(producer_fence_current)
+    producer_previous["head"] = "48aa3c598f8846927e6cacf3a98efa4517a855db"
+    assert report._source_provenance_generation_reusable(producer_previous)
+    monkeypatch.setattr(report, "_report_source_provenance", lambda: eager_fix_current)
+
     stale_eager_measurement = {
         "metadata": {
             "source_provenance": previous,
