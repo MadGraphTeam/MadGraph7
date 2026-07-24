@@ -2045,3 +2045,59 @@ class TestMadeventCrossingHelicity(unittest.TestCase):
         self.assertTrue(0.02 < f0 < 0.45,
                         'W+ longitudinal fraction unphysical: %.3f (%s)'
                         % (f0, counts))
+
+
+class TestColorFlowCode(unittest.TestCase):
+    """The canonical COLOUR-FLOW code, the colour analogue of the canonical
+    helicity code.
+
+    A colour flow is labelled by its connectivity once the INITIAL-state legs
+    swap their colour/anticolour roles (the LHE convention runs initial-state
+    colour lines 'through', so without that flip a label sits in the same slot
+    on two legs and the flow is not a colour<->anticolour bijection). Ordering
+    the colour and anticolour slots by leg, digit i is the anticolour slot that
+    colour slot i connects to and code = sum_i digit_i * N^i.
+
+    Two properties make it usable as an event label and make crossing
+    transparent (both verified here):
+      (a) every basis flow is a clean bijection, i.e. it encodes at all;
+      (b) the code is INJECTIVE over a process's colour basis, so the code
+          identifies the flow and no per-process flow table is needed.
+    Crossing-covariance (relabelling legs by the crossing permutation carries a
+    base flow's code onto the crossed process's own flow code) is exercised by
+    the crossing machinery itself: _router_colmap matches flows through the
+    same _color_flow_canon helper.
+    """
+
+    # (process, expected number of colour flows) -- includes g g > g g g, whose
+    # 24 flows over 5 colour slots is the widest case that stays quick.
+    PROCS = [('u u~ > g g', 2), ('g g > g g', 6), ('u u~ > u u~', 2),
+             ('g g > t t~', 2), ('u u~ > g g g', 6), ('g g > g g g', 24)]
+
+    def test_color_flow_code_bijective_and_injective(self):
+        import madgraph.core.helas_objects as helas_objects
+        import madgraph.iolibs.export_v4 as export_v4
+        exp = export_v4.ProcessExporterFortranMEGroup.__new__(
+            export_v4.ProcessExporterFortranMEGroup)
+        checked = 0
+        for proc, nflow_exp in self.PROCS:
+            cmd = cmd_interface.MasterCmd()
+            cmd.exec_cmd('generate %s' % proc, printcmd=False)
+            me = helas_objects.HelasMultiProcess(cmd._curr_amps)
+            for m in me.get('matrix_elements'):
+                if not m.get('color_basis'):
+                    continue
+                codes = exp._color_flow_codes(m)
+                # (a) every flow is a clean colour<->anticolour bijection
+                self.assertIsNotNone(
+                    codes, '%s: a colour flow is not a clean bijection -- the '
+                    'initial-state colour/anticolour flip is required' % proc)
+                self.assertEqual(len(codes), nflow_exp,
+                                 '%s: expected %d colour flows, got %d'
+                                 % (proc, nflow_exp, len(codes)))
+                # (b) the code identifies the flow
+                self.assertEqual(len(set(codes)), len(codes),
+                                 '%s: colour-flow codes collide: %s'
+                                 % (proc, codes))
+                checked += 1
+        self.assertTrue(checked, 'no coloured matrix element was checked')

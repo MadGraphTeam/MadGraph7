@@ -9347,6 +9347,83 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             repr_dict, ninitial)
         return [[tuple(cf[l.get('number')]) for l in legs] for cf in flows]
 
+    @staticmethod
+    def _color_flow_canon(flow, states):
+        """Label-independent canonical form of one colour flow: the set of
+        (colour-leg, anticolour-leg) connections, with INITIAL-state legs
+        swapping the two roles so that every colour index connects to an
+        anticolour index (the LHE convention runs initial-state colour lines
+        'through', so without this swap a label can sit in the same slot on two
+        legs and the flow is not a bijection). Shared by _router_colmap
+        (topology matching) and _color_flow_code."""
+        col, anti = {}, {}
+        for leg, (c, a) in enumerate(flow):
+            if states[leg] is False:
+                c, a = a, c
+            if c:
+                col.setdefault(c, []).append(leg)
+            if a:
+                anti.setdefault(a, []).append(leg)
+        conns = set()
+        for lbl in set(list(col) + list(anti)):
+            for cc, aa in zip(sorted(col.get(lbl, [])),
+                              sorted(anti.get(lbl, []))):
+                conns.add((cc, aa))
+        return frozenset(conns)
+
+    @staticmethod
+    def _color_flow_code(conns):
+        """Canonical integer code of a colour flow from its canonical
+        connections (see _color_flow_canon).
+
+        Order the colour slots and the anticolour slots by leg -- a gluon holds
+        one slot of each kind, a sextet two -- then digit i is the index of the
+        anticolour slot that colour slot i connects to, and
+
+            code = sum_i digit_i * N^i          (N = number of anticolour slots)
+
+        This is the colour analogue of the canonical helicity code. It is
+        injective over a process's colour basis, and crossing-covariant:
+        relabelling the legs with the crossing permutation carries the base
+        code onto the crossed process's own code (the initial-state flip is
+        what makes the connectivity invariant under a crossing, exactly as the
+        conjugate+state flip cancellation does for the helicity). Note the code
+        space is N^N while only the basis flows are realised, so -- like the
+        helicity allowed-list -- the codes are a sparse subset."""
+        ordered = sorted(conns)
+        acol = sorted(a for _c, a in conns)
+        nslot = len(acol)
+        code = 0
+        used = set()
+        for i, (_c, a) in enumerate(ordered):
+            slot = -1
+            for j, aa in enumerate(acol):
+                if aa == a and j not in used:
+                    slot = j
+                    break
+            if slot < 0:
+                return None
+            used.add(slot)
+            code += slot * (nslot ** i)
+        return code
+
+    def _color_flow_codes(self, matrix_element):
+        """Canonical colour-flow codes of an ME, one per colour-basis flow in
+        basis order. None if the ME has no colour basis or a flow is not a clean
+        colour<->anticolour bijection."""
+        flows = self._module_color_flows(matrix_element)
+        if not flows:
+            return None
+        states = [l.get('state') for l in
+                  matrix_element.get('processes')[0].get_legs_with_decays()]
+        codes = []
+        for fl in flows:
+            code = self._color_flow_code(self._color_flow_canon(fl, states))
+            if code is None:
+                return None
+            codes.append(code)
+        return codes
+
     def _router_colmap(self, router_me, base_me, cross):
         """Map each base colour-flow index to this subprocess's flow index.
 
@@ -9371,22 +9448,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             inv[leg] = s
 
         def canon(flow):
-            # Topology (label independent): pair each label's colour leg with its
-            # anticolour leg, incoming legs swapping the two roles.
-            col, anti = {}, {}
-            for leg, (c, a) in enumerate(flow):
-                if rstates[leg] is False:
-                    c, a = a, c
-                if c:
-                    col.setdefault(c, []).append(leg)
-                if a:
-                    anti.setdefault(a, []).append(leg)
-            conns = set()
-            for lbl in set(list(col) + list(anti)):
-                for cc, aa in zip(sorted(col.get(lbl, [])),
-                                  sorted(anti.get(lbl, []))):
-                    conns.add((cc, aa))
-            return frozenset(conns)
+            # Topology (label independent), shared with the colour-flow code.
+            return self._color_flow_canon(flow, rstates)
 
         rindex = {}
         for j, fl in enumerate(rflows):
