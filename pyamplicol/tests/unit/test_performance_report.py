@@ -2089,7 +2089,7 @@ def test_retiming_reuses_only_current_pyamplicol_artifacts(
             artifact_dir,
             previous,
         )
-        == 12.5
+        is None
     )
 
     _write_current_report_artifact(

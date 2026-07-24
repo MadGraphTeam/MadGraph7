@@ -7093,9 +7093,11 @@ def _artifact_producer_version_current(artifact_path: Path) -> bool:
     producer = payload.get("producer")
     if not isinstance(producer, Mapping):
         return False
+    if producer.get("version") != _current_pyamplicol_version():
+        return False
     versions = producer.get("versions")
     if not isinstance(versions, Mapping):
-        return producer.get("version") == _current_pyamplicol_version()
+        return True
     process_artifact = versions.get("process_artifact")
     compiled_model = versions.get("compiled_model")
     if (
