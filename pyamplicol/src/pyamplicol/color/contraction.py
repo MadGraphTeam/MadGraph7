@@ -204,16 +204,12 @@ def _build_repeated_color_contraction_block(
         component_count=len(components),
         component_group_ids=component_group_ids,
         entries=tuple(base_entries),
-        factorized_block=(
-            _build_klein_four_walsh_block(
-                tuple(
-                    descriptors_by_component_and_sector[0][sector_id].word
-                    for sector_id in sorted_sector_ids
-                ),
-                tuple(base_entries),
-            )
-            if accuracy == "full"
-            else None
+        factorized_block=_build_klein_four_walsh_block(
+            tuple(
+                descriptors_by_component_and_sector[0][sector_id].word
+                for sector_id in sorted_sector_ids
+            ),
+            tuple(base_entries),
         ),
     )
 
@@ -222,87 +218,21 @@ def _build_klein_four_walsh_block(
     words: Sequence[Sequence[int]],
     entries: Sequence[ColorContractionTemplateEntry],
 ) -> FactorizedColorContractionBlock | None:
-    """Recognize a complete scalar permutation orbit with a free C2 x C2 action."""
+    """Recognize an exact free C2 x C2 action on one color matrix."""
 
     if not words:
         return None
-    canonical_word = tuple(words[0])
+    canonical_words = tuple(tuple(word) for word in words)
+    canonical_word = canonical_words[0]
     if len(set(canonical_word)) != len(canonical_word):
         return None
     if any(
         len(word) != len(canonical_word)
         or len(set(word)) != len(word)
         or set(word) != set(canonical_word)
-        for word in words
+        for word in canonical_words
     ):
         return None
-
-    positions = {
-        label: tuple(tuple(word).index(label) for word in words)
-        for label in canonical_word
-    }
-    variable_labels = tuple(
-        label for label in canonical_word if len(set(positions[label])) > 1
-    )
-    variable_count = len(variable_labels)
-    if variable_count < 4 or len(words) != math.factorial(variable_count):
-        return None
-    rank_by_label = {
-        label: rank for rank, label in enumerate(sorted(variable_labels))
-    }
-    permutations = tuple(
-        tuple(rank_by_label[label] for label in word if label in rank_by_label)
-        for word in words
-    )
-    expected_ranks = set(range(variable_count))
-    if any(set(permutation) != expected_ranks for permutation in permutations):
-        return None
-    index_by_permutation = {
-        permutation: index for index, permutation in enumerate(permutations)
-    }
-    if len(index_by_permutation) != math.factorial(variable_count):
-        return None
-
-    first_generator = tuple(
-        1 if rank == 0 else 0 if rank == 1 else rank
-        for rank in range(variable_count)
-    )
-    second_generator = tuple(
-        3 if rank == 2 else 2 if rank == 3 else rank
-        for rank in range(variable_count)
-    )
-
-    def act(
-        substitution: tuple[int, ...], permutation: tuple[int, ...]
-    ) -> tuple[int, ...]:
-        return tuple(substitution[rank] for rank in permutation)
-
-    product_generator = tuple(
-        first_generator[second_generator[rank]]
-        for rank in range(variable_count)
-    )
-    substitutions = (
-        tuple(range(variable_count)),
-        first_generator,
-        second_generator,
-        product_generator,
-    )
-    remaining = set(range(len(permutations)))
-    cosets: list[tuple[int, int, int, int]] = []
-    while remaining:
-        representative_index = min(remaining)
-        representative = permutations[representative_index]
-        try:
-            coset = tuple(
-                index_by_permutation[act(substitution, representative)]
-                for substitution in substitutions
-            )
-        except KeyError:
-            return None
-        if len(set(coset)) != 4 or not set(coset).issubset(remaining):
-            return None
-        cosets.append((coset[0], coset[1], coset[2], coset[3]))
-        remaining.difference_update(coset)
 
     matrix: dict[tuple[int, int], float] = {}
     for entry in entries:
@@ -327,22 +257,154 @@ def _build_klein_four_walsh_block(
     def matrix_value(left: int, right: int) -> float:
         return matrix.get((min(left, right), max(left, right)), 0.0)
 
-    for left_coset in cosets:
-        for right_coset in cosets:
-            for left_subgroup_index in range(4):
-                for right_subgroup_index in range(4):
-                    if matrix_value(
-                        left_coset[left_subgroup_index],
-                        right_coset[right_subgroup_index],
-                    ) != matrix_value(
-                        left_coset[0],
-                        right_coset[left_subgroup_index ^ right_subgroup_index],
-                    ):
-                        return None
-    return FactorizedColorContractionBlock(
-        kind="klein-four-walsh",
-        cosets=tuple(cosets),
+    def matrix_is_invariant(action: tuple[int, ...]) -> bool:
+        return all(
+            matrix_value(action[left], action[right]) == weight
+            for (left, right), weight in matrix.items()
+        )
+
+    def action_cosets(
+        first_action: tuple[int, ...],
+        second_action: tuple[int, ...],
+    ) -> tuple[tuple[int, int, int, int], ...] | None:
+        expected_indices = list(range(len(canonical_words)))
+        if (
+            sorted(first_action) != expected_indices
+            or sorted(second_action) != expected_indices
+            or any(
+                first_action[first_action[index]] != index
+                or second_action[second_action[index]] != index
+                or first_action[second_action[index]]
+                != second_action[first_action[index]]
+                for index in expected_indices
+            )
+        ):
+            return None
+        product_action = tuple(
+            first_action[second_action[index]] for index in expected_indices
+        )
+        remaining = set(expected_indices)
+        cosets: list[tuple[int, int, int, int]] = []
+        while remaining:
+            representative = min(remaining)
+            coset = (
+                representative,
+                first_action[representative],
+                second_action[representative],
+                product_action[representative],
+            )
+            if len(set(coset)) != 4 or not set(coset).issubset(remaining):
+                return None
+            cosets.append(coset)
+            remaining.difference_update(coset)
+        return tuple(cosets)
+
+    def matrix_has_klein_four_blocks(
+        cosets: Sequence[tuple[int, int, int, int]],
+    ) -> bool:
+        return all(
+            matrix_value(
+                left_coset[left_subgroup_index],
+                right_coset[right_subgroup_index],
+            )
+            == matrix_value(
+                left_coset[0],
+                right_coset[left_subgroup_index ^ right_subgroup_index],
+            )
+            for left_coset in cosets
+            for right_coset in cosets
+            for left_subgroup_index in range(4)
+            for right_subgroup_index in range(4)
+        )
+
+    # Preserve the established plan for a complete scalar permutation orbit.
+    positions = {
+        label: tuple(word.index(label) for word in canonical_words)
+        for label in canonical_word
+    }
+    variable_labels = tuple(
+        label for label in canonical_word if len(set(positions[label])) > 1
     )
+    variable_count = len(variable_labels)
+    if variable_count >= 4 and len(canonical_words) == math.factorial(variable_count):
+        rank_by_label = {
+            label: rank for rank, label in enumerate(sorted(variable_labels))
+        }
+        permutations = tuple(
+            tuple(rank_by_label[label] for label in word if label in rank_by_label)
+            for word in canonical_words
+        )
+        expected_ranks = set(range(variable_count))
+        index_by_permutation = {
+            permutation: index for index, permutation in enumerate(permutations)
+        }
+        if (
+            all(set(permutation) == expected_ranks for permutation in permutations)
+            and len(index_by_permutation) == math.factorial(variable_count)
+        ):
+            substitutions = (
+                tuple(
+                    1 if rank == 0 else 0 if rank == 1 else rank
+                    for rank in range(variable_count)
+                ),
+                tuple(
+                    3 if rank == 2 else 2 if rank == 3 else rank
+                    for rank in range(variable_count)
+                ),
+            )
+            actions = tuple(
+                tuple(
+                    index_by_permutation[
+                        tuple(substitution[rank] for rank in permutation)
+                    ]
+                    for permutation in permutations
+                )
+                for substitution in substitutions
+            )
+            cosets = action_cosets(actions[0], actions[1])
+            if cosets is not None and matrix_has_klein_four_blocks(cosets):
+                return FactorizedColorContractionBlock(
+                    kind="klein-four-walsh",
+                    cosets=cosets,
+                )
+
+    # Multi-open-line bases are often unions of permutation orbits rather than
+    # one full symmetric-group orbit.  Discover exact label-swap automorphisms
+    # of the actual word set and matrix; no particle or process identity is
+    # assumed, and any incomplete or weight-asymmetric orbit falls back.
+    index_by_word = {
+        word: index for index, word in enumerate(canonical_words)
+    }
+    if len(index_by_word) != len(canonical_words):
+        return None
+    invariant_swaps: list[tuple[tuple[int, int], tuple[int, ...]]] = []
+    ordered_labels = sorted(canonical_word)
+    for left_offset, left_label in enumerate(ordered_labels):
+        for right_label in ordered_labels[left_offset + 1 :]:
+            substitution = {left_label: right_label, right_label: left_label}
+            try:
+                action = tuple(
+                    index_by_word[
+                        tuple(substitution.get(label, label) for label in word)
+                    ]
+                    for word in canonical_words
+                )
+            except KeyError:
+                continue
+            if matrix_is_invariant(action):
+                invariant_swaps.append(((left_label, right_label), action))
+
+    for first_offset, (first_labels, first_action) in enumerate(invariant_swaps):
+        for second_labels, second_action in invariant_swaps[first_offset + 1 :]:
+            if set(first_labels) & set(second_labels):
+                continue
+            cosets = action_cosets(first_action, second_action)
+            if cosets is not None and matrix_has_klein_four_blocks(cosets):
+                return FactorizedColorContractionBlock(
+                    kind="klein-four-walsh",
+                    cosets=cosets,
+                )
+    return None
 
 
 def _binary64_bits(value: float) -> bytes:

@@ -41,6 +41,7 @@ class SymbolicaEvaluatorSettings:
     direct_translation: bool = True
     jit_direct_translation: bool = False
     jit_optimization_level: int = 3
+    jit_compress: bool = True
     max_horner_scheme_variables: int = 1000
     max_common_pair_cache_entries: int = 5000000
     max_common_pair_distance: int = 1000
@@ -76,6 +77,8 @@ class SymbolicaEvaluatorSettings:
             raise NativeEvaluationError(
                 "symbolica jit optimization level must be 0, 1, 2, or 3"
             )
+        if not isinstance(self.jit_compress, bool):
+            raise NativeEvaluationError("symbolica jit_compress must be a boolean")
         if self.compiled_optimization_level not in (0, 1, 2, 3):
             raise NativeEvaluationError(
                 "symbolica compiled optimization level must be 0, 1, 2, or 3"
@@ -129,6 +132,7 @@ class SymbolicaEvaluatorSettings:
             "direct_translation": self.direct_translation,
             "jit_direct_translation": self.jit_direct_translation,
             "jit_optimization_level": self.jit_optimization_level,
+            "jit_compress": self.jit_compress,
             "max_horner_scheme_variables": self.max_horner_scheme_variables,
             "max_common_pair_cache_entries": self.max_common_pair_cache_entries,
             "max_common_pair_distance": self.max_common_pair_distance,

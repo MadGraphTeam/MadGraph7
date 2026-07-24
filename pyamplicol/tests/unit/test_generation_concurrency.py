@@ -18,6 +18,7 @@ from pyamplicol.config import (
     EvaluatorOptimizationConfig,
     GenerationConfig,
     GenerationValidationConfig,
+    JITConfig,
     ProcessConfig,
     ProcessEntry,
     RunConfig,
@@ -125,7 +126,8 @@ def test_symbolica_resources_do_not_nest_generation_worker_fanout() -> None:
             action="generate",
             generation=GenerationConfig(workers=3),
             evaluator=EvaluatorConfig(
-                optimization=EvaluatorOptimizationConfig(cores=4)
+                optimization=EvaluatorOptimizationConfig(cores=4),
+                jit=JITConfig(compress=False),
             ),
         ),
         None,
@@ -135,6 +137,7 @@ def test_symbolica_resources_do_not_nest_generation_worker_fanout() -> None:
 
     assert backend._process_worker_count(5) == 3
     assert settings.n_cores == 4
+    assert settings.jit_compress is False
     assert settings.compiled_chunk_compile_workers == 1
 
 

@@ -69,11 +69,11 @@ pyamplicol generate --card benchmark_z6g_all_flows_single_helicity.toml
 pyamplicol profile --card benchmark_z6g_all_flows_single_helicity.toml
 ```
 
-Both profiles use native Rusticol wall timing, JIT O3, 64-point batches, two
-warmups, at least five samples, and a twenty-second target. The cards use
-`u u~ > Z g g g g g g` as requested; the PDF's literal reference family uses
-`d d~ > Z + (n-1)g`, so replace `u u~` with `d d~` when reproducing that exact
-row rather than the equivalent up-quark topology.
+Both profiles use native Rusticol wall timing, compressed JIT O3, 64-point
+batches, two warmups, at least five samples, and a twenty-second target. The
+cards use `u u~ > Z g g g g g g` as requested; the PDF's literal reference
+family uses `d d~ > Z + (n-1)g`, so replace `u u~` with `d d~` when reproducing
+that exact row rather than the equivalent up-quark topology.
 
 The runtime selector can be changed without regenerating. For example:
 

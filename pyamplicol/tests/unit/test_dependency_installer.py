@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import subprocess
 import sys
@@ -53,16 +54,84 @@ def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> N
         "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
     )
     assert loader["release_status"] == "verified"
-    assert "patches" not in payload
+    assert all(patch["target"] != "ufo_model_loader" for patch in payload["patches"])
 
 
 def test_legacy_oracle_uses_the_pinned_remote_branch_without_local_patches() -> None:
     module = _module()
     payload = module._lock()
-    assert "patches" not in payload
+    assert all(patch["target"] != "legacy_amplicol" for patch in payload["patches"])
     assert not tuple(
         (module.DEPENDENCIES / "patches" / "legacy-amplicol").glob("*.patch")
     )
+
+
+def test_symjit_patch_is_revision_digest_and_tree_pinned() -> None:
+    module = _module()
+    payload = module._lock()
+    patches = module._contributor_patches(payload)
+
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch.name == "symjit-aarch64-compressed-funclets"
+    assert patch.target == "symjit"
+    assert patch.applies_to_revision == payload["symjit"]["candidate_revision"]
+    assert patch.sha256 == hashlib.sha256(patch.path.read_bytes()).hexdigest()
+    assert len(payload["symjit"]["candidate_tree_sha256"]) == 64
+    assert payload["symjit"]["release_status"] == "patched-candidate"
+
+
+def test_contributor_patch_application_is_exact_idempotent_and_fails_on_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    dependencies = tmp_path / "dependencies"
+    checkouts = dependencies / "checkouts"
+    target = checkouts / "symjit"
+    target.mkdir(parents=True)
+    source = target / "value.txt"
+    source.write_text("before\n", encoding="utf-8")
+    patch_path = dependencies / "patches" / "symjit" / "change.patch"
+    patch_path.parent.mkdir(parents=True)
+    patch_path.write_text(
+        "diff --git a/value.txt b/value.txt\n"
+        "--- a/value.txt\n"
+        "+++ b/value.txt\n"
+        "@@ -1 +1 @@\n"
+        "-before\n"
+        "+after\n",
+        encoding="utf-8",
+    )
+    revision = "a" * 40
+    payload = {
+        "symjit": {"candidate_revision": revision},
+        "patches": [
+            {
+                "name": "test-patch",
+                "target": "symjit",
+                "path": "patches/symjit/change.patch",
+                "sha256": hashlib.sha256(patch_path.read_bytes()).hexdigest(),
+                "applies_to_revision": revision,
+            }
+        ],
+    }
+    monkeypatch.setattr(module, "DEPENDENCIES", dependencies)
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
+    runner = module.Runner(dry_run=False)
+
+    module._apply_contributor_patches(runner, payload)
+    assert source.read_text(encoding="utf-8") == "after\n"
+    module._apply_contributor_patches(runner, payload)
+    assert source.read_text(encoding="utf-8") == "after\n"
+
+    source.write_text("ambient drift\n", encoding="utf-8")
+    with pytest.raises(module.SetupError, match="neither cleanly applicable"):
+        module._apply_contributor_patches(runner, payload)
+
+    patch_path.write_bytes(patch_path.read_bytes() + b"# tampered\n")
+    with pytest.raises(module.SetupError, match="digest mismatch"):
+        module._contributor_patches(payload)
 
 
 def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(

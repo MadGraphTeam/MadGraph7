@@ -20,7 +20,7 @@ import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +31,7 @@ CONTRIBUTOR_LOCK = DEPENDENCIES / "contributor-lock.toml"
 LOCK = RELEASE_LOCK
 PYTHON_LOCK = DEPENDENCIES / "python-runtime-lock.toml"
 CHECKOUTS = DEPENDENCIES / "checkouts"
+PATCHES = DEPENDENCIES / "patches"
 WHEELHOUSE = DEPENDENCIES / "wheelhouse"
 VENV = ROOT / ".venv"
 STATE = DEPENDENCIES / "install-state.json"
@@ -88,6 +89,16 @@ class Source:
         return CHECKOUTS / self.key
 
 
+@dataclass(frozen=True)
+class ContributorPatch:
+    name: str
+    target: str
+    relative_path: str
+    path: Path
+    sha256: str
+    applies_to_revision: str
+
+
 class Runner:
     def __init__(self, *, dry_run: bool) -> None:
         self.dry_run = dry_run
@@ -99,6 +110,7 @@ class Runner:
         cwd: Path | None = None,
         env: dict[str, str] | None = None,
         capture: bool = False,
+        check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         rendered = [str(item) for item in command]
         suffix = f"  # cwd={cwd}" if cwd else ""
@@ -112,7 +124,7 @@ class Runner:
             text=True,
             capture_output=capture,
         )
-        if completed.returncode != 0:
+        if check and completed.returncode != 0:
             if capture:
                 print(completed.stdout, end="")
                 print(completed.stderr, end="", file=sys.stderr)
@@ -285,6 +297,213 @@ def _source_tree_sha256(root: Path) -> str:
             else:
                 digest.update(b"O")
     return digest.hexdigest()
+
+
+def _contributor_patches(payload: dict[str, Any]) -> tuple[ContributorPatch, ...]:
+    """Load and verify every tracked contributor patch before touching sources."""
+
+    raw_patches = payload.get("patches")
+    if not isinstance(raw_patches, list) or not raw_patches:
+        raise SetupError("contributor lock must list at least one source patch")
+    allowed_keys = {
+        "name",
+        "target",
+        "path",
+        "sha256",
+        "applies_to_revision",
+    }
+    dependency_root = DEPENDENCIES.resolve()
+    patches: list[ContributorPatch] = []
+    seen_names: set[str] = set()
+    seen_paths: set[str] = set()
+    for index, entry in enumerate(raw_patches):
+        if not isinstance(entry, dict) or set(entry) != allowed_keys:
+            raise SetupError(
+                f"contributor patch {index} must contain only "
+                + "/".join(sorted(allowed_keys))
+            )
+        values = {key: entry[key] for key in allowed_keys}
+        if not all(isinstance(value, str) and value for value in values.values()):
+            raise SetupError(
+                f"contributor patch {index} fields must be nonempty strings"
+            )
+        name = str(entry["name"])
+        target = str(entry["target"])
+        relative = str(entry["path"])
+        expected_sha256 = str(entry["sha256"])
+        revision = str(entry["applies_to_revision"])
+        if name in seen_names:
+            raise SetupError(f"contributor patch name is repeated: {name}")
+        if relative in seen_paths:
+            raise SetupError(f"contributor patch path is repeated: {relative}")
+        if target != "symjit":
+            raise SetupError(f"unsupported contributor patch target: {target}")
+        target_revision = str(payload["symjit"]["candidate_revision"])
+        if revision != target_revision:
+            raise SetupError(
+                f"contributor patch {name} targets revision {revision}, "
+                f"expected {target_revision}"
+            )
+        if _SHA256_PATTERN.fullmatch(expected_sha256) is None:
+            raise SetupError(f"contributor patch {name} has an invalid SHA-256")
+        pure = PurePosixPath(relative)
+        if (
+            pure.is_absolute()
+            or not pure.parts
+            or pure.parts[0] != "patches"
+            or pure.suffix != ".patch"
+            or any(part in {"", ".", ".."} for part in pure.parts)
+        ):
+            raise SetupError(
+                f"contributor patch {name} has an unsafe dependency path: {relative}"
+            )
+        path = DEPENDENCIES.joinpath(*pure.parts)
+        try:
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(dependency_root)
+        except (OSError, ValueError) as error:
+            raise SetupError(
+                f"contributor patch {name} is missing or escapes dependencies: "
+                f"{relative}"
+            ) from error
+        current = DEPENDENCIES
+        for part in pure.parts:
+            current /= part
+            if current.is_symlink():
+                raise SetupError(f"contributor patch {name} may not use symlinks")
+        if not resolved.is_file():
+            raise SetupError(f"contributor patch {name} is not a regular file")
+        actual_sha256 = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        if actual_sha256 != expected_sha256:
+            raise SetupError(
+                f"contributor patch {name} digest mismatch: "
+                f"expected {expected_sha256}, got {actual_sha256}"
+            )
+        patches.append(
+            ContributorPatch(
+                name=name,
+                target=target,
+                relative_path=pure.as_posix(),
+                path=resolved,
+                sha256=expected_sha256,
+                applies_to_revision=revision,
+            )
+        )
+        seen_names.add(name)
+        seen_paths.add(relative)
+    if len(patches) != 1:
+        raise SetupError("contributor lock must list the one exact SymJIT patch")
+    return tuple(patches)
+
+
+def _patch_state(patches: Sequence[ContributorPatch]) -> list[dict[str, str]]:
+    return [
+        {
+            "name": patch.name,
+            "target": patch.target,
+            "path": patch.relative_path,
+            "sha256": patch.sha256,
+            "applies_to_revision": patch.applies_to_revision,
+        }
+        for patch in patches
+    ]
+
+
+def _apply_contributor_patches(runner: Runner, payload: dict[str, Any]) -> None:
+    """Apply each exact patch once, or verify that it is already fully applied."""
+
+    for patch in _contributor_patches(payload):
+        destination = CHECKOUTS / patch.target
+        if runner.dry_run:
+            print(
+                f"# verify/apply {patch.name} to {patch.target} "
+                f"at {patch.applies_to_revision}"
+            )
+            continue
+        if not destination.is_dir():
+            raise SetupError(f"contributor patch target is missing: {patch.target}")
+        patch_environment = dict(os.environ)
+        for name in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"):
+            patch_environment.pop(name, None)
+        # The managed archive is intentionally not a Git checkout.  Prevent Git
+        # from discovering pyAmpliCol's parent repository, where the checkout is
+        # ignored and `git apply` would silently skip every patch path.
+        patch_environment["GIT_CEILING_DIRECTORIES"] = str(destination.parent.resolve())
+        forward = [
+            "git",
+            "apply",
+            "--check",
+            "--whitespace=nowarn",
+            patch.path,
+        ]
+        reverse = [
+            "git",
+            "apply",
+            "--check",
+            "--reverse",
+            "--whitespace=nowarn",
+            patch.path,
+        ]
+        can_apply = runner.run(
+            forward,
+            cwd=destination,
+            env=patch_environment,
+            capture=True,
+            check=False,
+        )
+        is_applied = runner.run(
+            reverse,
+            cwd=destination,
+            env=patch_environment,
+            capture=True,
+            check=False,
+        )
+        if can_apply.returncode == 0 and is_applied.returncode == 0:
+            raise SetupError(
+                f"contributor patch {patch.name} has ambiguous apply state"
+            )
+        if can_apply.returncode == 0:
+            runner.run(
+                ["git", "apply", "--whitespace=nowarn", patch.path],
+                cwd=destination,
+                env=patch_environment,
+                capture=True,
+            )
+            is_applied = runner.run(
+                reverse,
+                cwd=destination,
+                env=patch_environment,
+                capture=True,
+                check=False,
+            )
+        if is_applied.returncode != 0:
+            detail = (
+                can_apply.stderr.strip()
+                or is_applied.stderr.strip()
+                or "patch does not match the managed source"
+            )
+            raise SetupError(
+                f"contributor patch {patch.name} is neither cleanly applicable "
+                f"nor fully applied; rerun with --reset: {detail}"
+            )
+
+
+def _verify_symjit_tree(runner: Runner, payload: dict[str, Any]) -> str | None:
+    """Verify the fully patched and configured SymJIT source-tree identity."""
+
+    expected = payload["symjit"].get("candidate_tree_sha256")
+    if not isinstance(expected, str) or _SHA256_PATTERN.fullmatch(expected) is None:
+        raise SetupError("contributor lock has no valid SymJIT candidate tree SHA-256")
+    if runner.dry_run:
+        print(f"# verify configured SymJIT tree at sha256:{expected}")
+        return None
+    actual = _source_tree_sha256(CHECKOUTS / "symjit")
+    if actual != expected:
+        raise SetupError(
+            "configured SymJIT source tree digest mismatch: "
+            f"expected {expected}, got {actual}; rerun with --reset"
+        )
+    return actual
 
 
 def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
@@ -930,6 +1149,7 @@ def _write_state(
         }
         if source.branch is not None:
             source_state[source.key]["branch"] = source.branch
+    patches = _contributor_patches(payload)
     state = {
         "schema_version": 1,
         "created_utc": datetime.now(UTC).isoformat(),
@@ -946,7 +1166,7 @@ def _write_state(
         ).hexdigest(),
         "cargo_config_sha256": hashlib.sha256(CARGO_CONFIG.read_bytes()).hexdigest(),
         "sources": source_state,
-        "patches": [],
+        "patches": _patch_state(patches),
     }
     symjit = payload["symjit"]
     source_state["symjit"] = {
@@ -954,6 +1174,7 @@ def _write_state(
         "revision": str(symjit["candidate_revision"]),
         "version": str(symjit["candidate_version"]),
         "archive_sha256": str(symjit["archive_sha256"]),
+        "patch_sha256": patches[0].sha256,
         "worktree_sha256": _source_tree_sha256(CHECKOUTS / "symjit"),
     }
     STATE.write_text(
@@ -989,7 +1210,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     for source in sources:
         _checkout(runner, source, update=args.update)
     _materialize_symjit(runner, payload)
+    _apply_contributor_patches(runner, payload)
     _configure_sources(runner)
+    _verify_symjit_tree(runner, payload)
     _write_cargo_config(runner)
     _write_candidate_lock(runner)
     _write_state(runner, payload, sources)

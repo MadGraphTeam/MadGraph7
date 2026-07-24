@@ -327,9 +327,9 @@ def test_full_color_permutation_orbit_emits_klein_four_walsh_plan() -> None:
     )
 
 
-def test_walsh_factorization_is_full_color_only_and_falls_back_safely() -> None:
+def test_nlc_permutation_orbit_emits_klein_four_walsh_plan() -> None:
     nlc_plan = build_color_plan(
-        build_process_ir("d d~ > z g g g g", color_accuracy="nlc"),
+        build_process_ir("g g > t t~ g g", color_accuracy="nlc"),
         color_accuracy="nlc",
     )
     nlc_groups = tuple(
@@ -346,8 +346,14 @@ def test_walsh_factorization_is_full_color_only_and_falls_back_safely() -> None:
     nlc_contraction = build_color_contraction_plan(nlc_plan, nlc_groups)
     assert nlc_contraction is not None
     assert nlc_contraction.repeated_block is not None
-    assert nlc_contraction.repeated_block.factorized_block is None
-    assert not artifact_writer._runtime_schema_uses_walsh_color_contraction(
+    factorized = nlc_contraction.repeated_block.factorized_block
+    assert factorized is not None
+    assert factorized.kind == "klein-four-walsh"
+    assert len(factorized.cosets) == len(nlc_plan.sectors) // 4
+    assert sorted(index for coset in factorized.cosets for index in coset) == list(
+        range(len(nlc_plan.sectors))
+    )
+    assert artifact_writer._runtime_schema_uses_walsh_color_contraction(
         {
             "amplitude_stage": {
                 "color_contraction": nlc_contraction.to_json_dict()
@@ -355,16 +361,18 @@ def test_walsh_factorization_is_full_color_only_and_falls_back_safely() -> None:
         }
     )
 
-    full_plan = build_color_plan(
-        build_process_ir("d d~ > z g g g g", color_accuracy="full"),
-        color_accuracy="full",
+
+def test_malformed_nlc_permutation_orbit_falls_back_safely() -> None:
+    nlc_plan = build_color_plan(
+        build_process_ir("g g > t t~ g g", color_accuracy="nlc"),
+        color_accuracy="nlc",
     )
     duplicate_word = tuple(
-        full_plan.sectors[0].word_labels or full_plan.sectors[0].color_words[0]
+        nlc_plan.sectors[0].word_labels or nlc_plan.sectors[0].color_words[0]
     )
     malformed_groups = tuple(
         ColorGroupDescriptor(
-            group_id=component_index * len(full_plan.sectors) + sector_index,
+            group_id=component_index * len(nlc_plan.sectors) + sector_index,
             helicity_key=(f"helicity:{component_index}",),
             sector_id=sector.id,
             word=(
@@ -375,9 +383,9 @@ def test_walsh_factorization_is_full_color_only_and_falls_back_safely() -> None:
             helicity_weight=1.0,
         )
         for component_index in range(2)
-        for sector_index, sector in enumerate(full_plan.sectors)
+        for sector_index, sector in enumerate(nlc_plan.sectors)
     )
-    malformed_contraction = build_color_contraction_plan(full_plan, malformed_groups)
+    malformed_contraction = build_color_contraction_plan(nlc_plan, malformed_groups)
     assert malformed_contraction is not None
     assert malformed_contraction.repeated_block is not None
     assert malformed_contraction.repeated_block.factorized_block is None
@@ -388,6 +396,102 @@ def test_walsh_factorization_is_full_color_only_and_falls_back_safely() -> None:
             }
         }
     )
+
+
+def test_small_nlc_permutation_orbit_falls_back_safely() -> None:
+    plan = build_color_plan(
+        build_process_ir("g g > t t~ g", color_accuracy="nlc"),
+        color_accuracy="nlc",
+    )
+    groups = tuple(
+        ColorGroupDescriptor(
+            group_id=component_index * len(plan.sectors) + sector_index,
+            helicity_key=(f"helicity:{component_index}",),
+            sector_id=sector.id,
+            word=tuple(sector.word_labels or sector.color_words[0]),
+            helicity_weight=1.0,
+        )
+        for component_index in range(2)
+        for sector_index, sector in enumerate(plan.sectors)
+    )
+
+    contraction = build_color_contraction_plan(plan, groups)
+
+    assert contraction is not None
+    assert contraction.repeated_block is not None
+    assert contraction.repeated_block.factorized_block is None
+
+
+@pytest.mark.parametrize(("accuracy", "entry_count"), [("nlc", 384), ("full", 984)])
+def test_two_open_line_orbit_discovers_exact_klein_four_action(
+    accuracy: str,
+    entry_count: int,
+) -> None:
+    plan = build_color_plan(
+        build_process_ir("d d~ > t t~ g g g", color_accuracy=accuracy),
+        color_accuracy=accuracy,
+    )
+    sectors = tuple(
+        sector
+        for sector in plan.sectors
+        if (1 <= sector.id < 48 and sector.id % 2 == 1)
+        or (48 <= sector.id < 96 and sector.id % 2 == 0)
+    )
+    groups = tuple(
+        ColorGroupDescriptor(
+            group_id=component_index * len(sectors) + sector_index,
+            helicity_key=(f"helicity:{component_index}",),
+            sector_id=sector.id,
+            word=tuple(sector.word_labels or sector.color_words[0]),
+            helicity_weight=1.0,
+        )
+        for component_index in range(2)
+        for sector_index, sector in enumerate(sectors)
+    )
+
+    contraction = build_color_contraction_plan(plan, groups)
+
+    assert len(sectors) == 48
+    assert contraction is not None
+    block = contraction.repeated_block
+    assert block is not None
+    assert len(block.entries) == entry_count
+    factorized = block.factorized_block
+    assert factorized is not None
+    assert len(factorized.cosets) == len(sectors) // 4
+    assert sorted(index for coset in factorized.cosets for index in coset) == list(
+        range(len(sectors))
+    )
+
+
+def test_partial_two_open_line_orbit_falls_back_safely() -> None:
+    plan = build_color_plan(
+        build_process_ir("d d~ > t t~ g g g", color_accuracy="nlc"),
+        color_accuracy="nlc",
+    )
+    sectors = tuple(
+        sector
+        for sector in plan.sectors
+        if (1 <= sector.id < 48 and sector.id % 2 == 1)
+        or (48 <= sector.id < 96 and sector.id % 2 == 0)
+    )[:-1]
+    groups = tuple(
+        ColorGroupDescriptor(
+            group_id=component_index * len(sectors) + sector_index,
+            helicity_key=(f"helicity:{component_index}",),
+            sector_id=sector.id,
+            word=tuple(sector.word_labels or sector.color_words[0]),
+            helicity_weight=1.0,
+        )
+        for component_index in range(2)
+        for sector_index, sector in enumerate(sectors)
+    )
+
+    contraction = build_color_contraction_plan(plan, groups)
+
+    assert contraction is not None
+    assert contraction.repeated_block is not None
+    assert contraction.repeated_block.factorized_block is None
 
 
 def test_color_contraction_compaction_falls_back_for_nonidentical_components() -> None:

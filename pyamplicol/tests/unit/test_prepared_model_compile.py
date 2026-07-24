@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pyamplicol.config import EvaluatorConfig
+import pytest
+
+from pyamplicol.config import EvaluatorConfig, JITConfig
 from pyamplicol.models.loading import compile_model_source
 from pyamplicol.models.prepared_catalog import (
     PREPARED_INDEPENDENT_BLOCK_PROOF,
@@ -11,7 +13,10 @@ from pyamplicol.models.prepared_catalog import (
     PreparedKernelInput,
     PreparedKernelSpec,
 )
-from pyamplicol.models.prepared_compile import prepare_model_bundle
+from pyamplicol.models.prepared_compile import (
+    prepare_model_bundle,
+    prepared_symbolica_settings,
+)
 
 
 class _FakeJitAdapter:
@@ -112,6 +117,18 @@ def _block_catalog() -> PreparedKernelCatalog:
     )
 
 
+@pytest.mark.parametrize("compress", (True, False))
+def test_prepared_symbolica_settings_forward_jit_compression(
+    compress: bool,
+) -> None:
+    settings = prepared_symbolica_settings(
+        EvaluatorConfig(jit=JITConfig(compress=compress))
+    )
+
+    assert settings.jit_compress is compress
+    assert settings.to_json_dict()["jit_compress"] is compress
+
+
 def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     tmp_path: Path,
     monkeypatch,
@@ -143,6 +160,7 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     assert result.output.name.endswith(".pyamplicol-model")
     assert result.kernel_count == 1
     assert result.bundle.backend == "jit"
+    assert result.bundle.kernel_pack.optimization_settings["jit_compress"] is True
     assert result.bundle.kernel_pack.target["portable"] is False
     assert str(result.bundle.kernel_pack.target["target_triple"]).startswith(
         "symjit-storage-v3-"

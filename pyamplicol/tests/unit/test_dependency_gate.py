@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import importlib.util
 import json
 import sys
@@ -98,13 +100,15 @@ def test_candidate_gate_fails_closed_before_contributor_install(
     assert "symbolica-unverified" not in codes
 
 
-def test_candidate_gate_uses_revisions_without_source_tree_fingerprints(
+def test_candidate_gate_uses_revisions_and_pinned_symjit_tree_fingerprint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     module = _module()
     contributor = module._load_contributor_lock()
     revisions = module._candidate_revisions(contributor)
+    patch_state, patch_issues = module._candidate_patch_contract(contributor)
+    assert patch_issues == []
     state_path = tmp_path / "install-state.json"
     candidate_lock = tmp_path / "candidate-Cargo.lock"
     cargo_config = tmp_path / "candidate-cargo-config.toml"
@@ -118,6 +122,8 @@ def test_candidate_gate_uses_revisions_without_source_tree_fingerprints(
         {
             "version": contributor["symjit"]["candidate_version"],
             "archive_sha256": contributor["symjit"]["archive_sha256"],
+            "patch_sha256": patch_state[0]["sha256"],
+            "worktree_sha256": contributor["symjit"]["candidate_tree_sha256"],
         }
     )
     state_path.write_text(
@@ -125,7 +131,11 @@ def test_candidate_gate_uses_revisions_without_source_tree_fingerprints(
             {
                 "schema_version": 1,
                 "publishable": False,
+                "contributor_lock_sha256": hashlib.sha256(
+                    module.CONTRIBUTOR_LOCK_PATH.read_bytes()
+                ).hexdigest(),
                 "sources": source_state,
+                "patches": patch_state,
             }
         ),
         encoding="utf-8",
@@ -147,7 +157,29 @@ def test_candidate_gate_uses_revisions_without_source_tree_fingerprints(
         "_git_head",
         lambda path: revisions[path.name],
     )
+    monkeypatch.setattr(
+        module,
+        "_source_tree_sha256",
+        lambda _path: contributor["symjit"]["candidate_tree_sha256"],
+    )
     assert module._candidate_issues(module._load_lock()) == []
+
+
+def test_candidate_patch_contract_rejects_tampered_patch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    contributor = copy.deepcopy(module._load_contributor_lock())
+    dependencies = tmp_path / "dependencies"
+    patch = dependencies / contributor["patches"][0]["path"]
+    patch.parent.mkdir(parents=True)
+    patch.write_bytes(b"tampered patch\n")
+    monkeypatch.setattr(module, "DEPENDENCIES_PATH", dependencies)
+
+    _, issues = module._candidate_patch_contract(contributor)
+
+    assert [issue.code for issue in issues] == ["candidate-patch-digest"]
 
 
 def test_online_gate_checks_each_exact_published_dependency(

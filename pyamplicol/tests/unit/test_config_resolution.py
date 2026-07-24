@@ -128,6 +128,25 @@ def test_eager_evaluator_card_and_dotted_overrides_round_trip() -> None:
     assert resolve_config(tomllib.loads(serialized)).effective == config
 
 
+def test_jit_compression_card_and_dotted_override_round_trip() -> None:
+    pytest.importorskip("tomli_w")
+    config = resolve_config(
+        {
+            "action": "generate",
+            "evaluator": {"jit": {"compress": False}},
+        },
+        overrides=("evaluator.jit.compress=true",),
+    ).effective
+
+    assert config.evaluator.jit.compress is True
+    plain = config_to_dict(config)
+    assert plain["evaluator"]["jit"]["compress"] is True  # type: ignore[index]
+    assert resolve_config(plain).effective == config
+    serialized = config_to_toml(config)
+    assert "compress = true" in serialized
+    assert resolve_config(tomllib.loads(serialized)).effective == config
+
+
 def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
     pytest.importorskip("tomli_w")
     config = resolve_config(

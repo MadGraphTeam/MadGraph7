@@ -460,6 +460,14 @@ def _prepared_pack_effective_values(
             )
         return settings[name]
 
+    def optional_bool(name: str, *, default: bool) -> bool:
+        value = settings.get(name, default)
+        if not isinstance(value, bool):
+            raise GenerationError(
+                f"prepared kernel pack has a non-boolean optimization setting {name!r}"
+            )
+        return value
+
     values: dict[str, object] = {
         "evaluator.backend": pack.backend,
         "evaluator.optimization.horner_iterations": required("iterations"),
@@ -477,6 +485,12 @@ def _prepared_pack_effective_values(
     }
     if pack.backend == "jit":
         values["evaluator.jit.optimization_level"] = required("jit_optimization_level")
+        # Packs produced before this setting became public used the uncompressed
+        # SymJIT path, so the compatibility default must remain false.
+        values["evaluator.jit.compress"] = optional_bool(
+            "jit_compress",
+            default=False,
+        )
         return values
     optimization_level = required("compiled_optimization_level")
     if isinstance(optimization_level, bool) or not isinstance(optimization_level, int):
@@ -2360,6 +2374,7 @@ class GenerationBackend:
             n_cores=cores,
             jit_direct_translation=False,
             jit_optimization_level=run.evaluator.jit.optimization_level,
+            jit_compress=run.evaluator.jit.compress,
             max_horner_scheme_variables=optimization.max_horner_variables,
             max_common_pair_cache_entries=(optimization.max_common_pair_cache_entries),
             max_common_pair_distance=optimization.max_common_pair_distance,

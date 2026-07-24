@@ -569,6 +569,7 @@ class JITConfig:
     optimization_level: Literal[0, 1, 2, 3] = field(
         default=3, metadata=_setting("int", choices=(0, 1, 2, 3))
     )
+    compress: bool = field(default=True, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
         if isinstance(self.optimization_level, bool) or not isinstance(
@@ -582,6 +583,8 @@ class JITConfig:
             (0, 1, 2, 3),
             "evaluator.jit.optimization_level",
         )
+        if not isinstance(self.compress, bool):
+            raise ConfigurationError("evaluator.jit.compress must be a boolean")
 
 
 @dataclass(frozen=True, slots=True)

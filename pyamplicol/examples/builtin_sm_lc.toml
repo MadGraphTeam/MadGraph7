@@ -25,6 +25,7 @@ batch_size = 128
 
 [evaluator.jit]
 optimization_level = 3
+compress = true
 
 [output]
 progress = "auto"

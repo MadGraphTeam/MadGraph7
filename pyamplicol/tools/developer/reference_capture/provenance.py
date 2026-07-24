@@ -324,6 +324,33 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
     project = as_mapping(release.get("project"), "release-lock.project")
     symbolica_source = as_mapping(sources.get("symbolica"), "source symbolica")
     symjit_source = as_mapping(sources.get("symjit"), "source symjit")
+    contributor_patches = contributor.get("patches")
+    installed_patches = state.get("patches")
+    if (
+        not isinstance(contributor_patches, list)
+        or len(contributor_patches) != 1
+        or installed_patches != contributor_patches
+    ):
+        raise CaptureError(
+            "installed contributor patch state does not match the contributor lock"
+        )
+    symjit_patch = as_mapping(
+        contributor_patches[0],
+        "contributor-lock.patches[0]",
+    )
+    patch_sha256 = str(symjit_patch.get("sha256", ""))
+    patch_path = symjit_patch.get("path")
+    if (
+        symjit_patch.get("target") != "symjit"
+        or not isinstance(patch_path, str)
+        or not patch_path
+        or _SHA256_RE.fullmatch(patch_sha256) is None
+        or symjit_source.get("patch_sha256") != patch_sha256
+    ):
+        raise CaptureError("installed SymJIT patch provenance is invalid")
+    tracked_patch = CONTRIBUTOR_LOCK.parent / patch_path
+    if not tracked_patch.is_file() or sha256_file(tracked_patch) != patch_sha256:
+        raise CaptureError("tracked SymJIT patch does not match its locked digest")
 
     legacy_module = developer_module("legacy_amplicol")
     legacy_digest = canonical_sha256(
@@ -377,6 +404,7 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
             "version": str(symjit["candidate_version"]),
             "revision": str(symjit_source["revision"]),
             "content_sha256": str(symjit_source["worktree_sha256"]),
+            "patch_sha256": patch_sha256,
             "serialization_abi": str(abis["symbolica_serialization"]),
             "license": "MIT",
         },

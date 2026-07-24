@@ -127,6 +127,9 @@ collect_factors = "auto"
 [evaluator.jit]
 # evaluator.jit.optimization_level: Integer 0 through 3. Default 3.
 optimization_level = 3
+# evaluator.jit.compress: Factor repeated instruction sequences into applets.
+# Default true.
+compress = true
 
 [evaluator.cpp]
 # evaluator.cpp.optimization: Compiler optimization token. Default "O3".

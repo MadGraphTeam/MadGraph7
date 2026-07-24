@@ -16,30 +16,36 @@ serialization/runtime compatibility has not been marked verified.
 
 `just dev-install` uses immutable Symbolica/GammaLoop source revisions and the
 checksummed SymJIT source archive listed in `contributor-lock.toml`.
-It applies no source patches. Candidate mode
-exists for development and physics validation only. It installs the verified
-published `ufo-model-loader==0.1.7` wheel directly from the hash-locked runtime
-closure. Artifacts produced in this mode record the candidate revisions and
-are not eligible for PyPI publication.
+It applies only the target-, revision-, and SHA-256-pinned patches listed in
+that lock. Candidate mode exists for development and physics validation only.
+It installs the verified published `ufo-model-loader==0.1.7` wheel directly
+from the hash-locked runtime closure. Artifacts produced in this mode record
+the candidate revisions, patch identity, and resulting source-tree identity
+and are not eligible for PyPI publication.
 
 The contributor build uses the checksummed upstream source archive for SymJIT
 2.21.1 at revision `48197f32536c894b51ef25b2cf05ddd05c22675f`.
-The installer changes only the crate target from `cdylib` to `rlib` so
-Symbolica can consume it as a Rust dependency; no SymJIT source patch is
-applied. It uses Symbolica and symbolica-community at the immutable
-planned-release revisions recorded in the lock. GammaLoop is pinned to the
-merged main revision that provides Spenso's cached symbolic-parallelism
-policy. Spynso3 initializes that policy in `Auto` mode, checking the license
-once and keeping symbolic tensor reductions serial for restricted users or
-parallel for licensed users. The matching Symbolica, symbolica-community, and
-SymJIT versions must be published before a strict PyPI build can replace the
-currently verified release pins.
+The installer verifies and applies the tracked AArch64 compressed-funclet patch
+before changing the crate target from `cdylib` to `rlib` so Symbolica can
+consume it as a Rust dependency. It then verifies the complete configured tree
+against the lock. The patch enables relative funclet calls for scalar, SIMD,
+and fast-complex AArch64 code and makes funclet emission deterministic; its
+tests cover evaluation parity and storage-v3 round trips. The build uses
+Symbolica and symbolica-community at the immutable planned-release revisions
+recorded in the lock. GammaLoop is pinned to the merged main revision that
+provides Spenso's cached symbolic-parallelism policy. Spynso3 initializes that
+policy in `Auto` mode, checking the license once and keeping symbolic tensor
+reductions serial for restricted users or parallel for licensed users. The
+matching Symbolica, symbolica-community, and SymJIT versions must be published
+with the required fixes before a strict PyPI build can replace the currently
+verified release pins.
 
-The planned Symbolica revision still has one upstream release blocker for
+The contributor-only SymJIT patch and planned Symbolica revision remain
+upstream release blockers. The Symbolica revision also has a blocker for
 pyAmpliCol's compiled-complex C++/CUDA path: complex constants can be emitted
 with nested scalar wrappers that do not compile as `std::complex<double>`.
-Candidate mode remains intentionally unpatched; publication requires an
-upstream fix or an explicit exclusion of that capability.
+Publication requires upstream fixes or an explicit exclusion of the affected
+capabilities; the release dependency gate remains unchanged and fails closed.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. The pinned

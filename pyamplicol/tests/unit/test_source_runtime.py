@@ -409,6 +409,17 @@ def test_native_provenance_digest_implementations_match(tmp_path: Path) -> None:
         sys.path.pop(0)
     source_root = _source_root(tmp_path)
 
+    before = module._native_build_inputs_digest(source_root)
+    patch = source_root / "dependencies/patches/symjit/fix.patch"
+    patch.parent.mkdir(parents=True)
+    patch.write_text("first patch\n", encoding="utf-8")
     expected = module._native_build_inputs_digest(source_root)
+    assert expected != before
     assert backend._native_build_inputs_digest(source_root) == expected
     assert versions._native_build_inputs_digest(source_root) == expected
+
+    patch.write_text("second patch\n", encoding="utf-8")
+    changed = module._native_build_inputs_digest(source_root)
+    assert changed != expected
+    assert backend._native_build_inputs_digest(source_root) == changed
+    assert versions._native_build_inputs_digest(source_root) == changed

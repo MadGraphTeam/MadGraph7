@@ -154,6 +154,7 @@ def test_cli_artifact_preserves_restricted_resource_provenance(
             "4",
             "--cores",
             "8",
+            "--no-jit-compress",
             "--format",
             "json",
             "--progress",
@@ -180,6 +181,8 @@ def test_cli_artifact_preserves_restricted_resource_provenance(
     assert effective["process"]["entries"] == [{"expression": "p p > z"}]
     assert requested["evaluator"]["optimization"]["cores"] == 8
     assert effective["evaluator"]["optimization"]["cores"] == 1
+    assert requested["evaluator"]["jit"]["compress"] is False
+    assert effective["evaluator"]["jit"]["compress"] is False
     assert requested["generation"]["emit_api_bundle"] is True
     assert effective["generation"]["emit_api_bundle"] is False
     assert requested != effective

@@ -238,7 +238,8 @@ pyamplicol generate "p p > Z j j" artifacts/pp_zjj \
   --flavor-scheme 2 \
   --max-quark-lines 2 \
   --color-accuracy lc \
-  --jit-optimization-level 3
+  --jit-optimization-level 3 \
+  --jit-compress
 ```
 
 Configuration precedence is defaults, TOML, dedicated command flags, ordered

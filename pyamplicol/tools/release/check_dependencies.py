@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -13,7 +15,7 @@ import tomllib
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 try:
@@ -39,6 +41,7 @@ STATE_PATH = ROOT / "dependencies" / "install-state.json"
 CANDIDATE_LOCK_PATH = ROOT / "dependencies" / "candidate-Cargo.lock"
 CARGO_CONFIG_PATH = ROOT / "dependencies" / "candidate-cargo-config.toml"
 CHECKOUTS_PATH = ROOT / "dependencies" / "checkouts"
+DEPENDENCIES_PATH = ROOT / "dependencies"
 
 _REGISTRY_SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
 _LOCAL_CRATES = {"rusticol-capi", "rusticol-core", "rusticol-python"}
@@ -51,6 +54,24 @@ _CANDIDATE_LOCAL_CRATES = {
 }
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _CANONICAL_NAME = re.compile(r"[-_.]+")
+_SOURCE_TREE_EXCLUDES = {
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "target",
+}
+_PATCH_KEYS = {
+    "name",
+    "target",
+    "path",
+    "sha256",
+    "applies_to_revision",
+}
 
 
 @dataclass(frozen=True)
@@ -459,6 +480,162 @@ def _git_head(path: Path) -> str | None:
     return completed.stdout.strip() if completed.returncode == 0 else None
 
 
+def _source_tree_sha256(root: Path) -> str:
+    """Match the installer's deterministic candidate source-tree fingerprint."""
+
+    digest = hashlib.sha256()
+    for raw_directory, raw_directories, raw_files in os.walk(root, topdown=True):
+        directory = Path(raw_directory)
+        directories = sorted(
+            name for name in raw_directories if name not in _SOURCE_TREE_EXCLUDES
+        )
+        raw_directories[:] = [
+            name for name in directories if not (directory / name).is_symlink()
+        ]
+        entries = [
+            *(
+                directory / name
+                for name in directories
+                if (directory / name).is_symlink()
+            ),
+            *(
+                directory / name
+                for name in sorted(raw_files)
+                if name not in _SOURCE_TREE_EXCLUDES
+                and not name.endswith((".pyc", ".pyo"))
+            ),
+        ]
+        for path in entries:
+            relative = path.relative_to(root).as_posix().encode("utf-8")
+            mode = path.lstat().st_mode & 0o111
+            digest.update(len(relative).to_bytes(8, "big"))
+            digest.update(relative)
+            digest.update(mode.to_bytes(2, "big"))
+            if path.is_symlink():
+                target = os.readlink(path).encode("utf-8")
+                digest.update(b"L")
+                digest.update(len(target).to_bytes(8, "big"))
+                digest.update(target)
+            elif path.is_file():
+                digest.update(b"F")
+                with path.open("rb") as stream:
+                    while block := stream.read(1024 * 1024):
+                        digest.update(block)
+            else:
+                digest.update(b"O")
+    return digest.hexdigest()
+
+
+def _candidate_patch_contract(
+    contributor: dict[str, Any],
+) -> tuple[list[dict[str, str]], list[GateIssue]]:
+    """Return the canonical patch state after checking paths and digests."""
+
+    raw_patches = contributor.get("patches")
+    if not isinstance(raw_patches, list) or len(raw_patches) != 1:
+        return [], [
+            GateIssue(
+                "candidate-patch-contract",
+                "contributor-lock.toml must list the one exact SymJIT patch",
+            )
+        ]
+    dependency_root = DEPENDENCIES_PATH.resolve()
+    expected: list[dict[str, str]] = []
+    issues: list[GateIssue] = []
+    for index, entry in enumerate(raw_patches):
+        if not isinstance(entry, dict) or set(entry) != _PATCH_KEYS:
+            issues.append(
+                GateIssue(
+                    "candidate-patch-contract",
+                    f"contributor patch {index} has invalid fields",
+                )
+            )
+            continue
+        if not all(isinstance(entry[key], str) and entry[key] for key in _PATCH_KEYS):
+            issues.append(
+                GateIssue(
+                    "candidate-patch-contract",
+                    f"contributor patch {index} fields must be nonempty strings",
+                )
+            )
+            continue
+        canonical = {key: str(entry[key]) for key in _PATCH_KEYS}
+        name = canonical["name"]
+        target = canonical["target"]
+        revision = canonical["applies_to_revision"]
+        relative = canonical["path"]
+        expected_sha256 = canonical["sha256"]
+        symjit = contributor.get("symjit")
+        if (
+            target != "symjit"
+            or not isinstance(symjit, dict)
+            or revision != symjit.get("candidate_revision")
+        ):
+            issues.append(
+                GateIssue(
+                    "candidate-patch-contract",
+                    f"contributor patch {name} does not target the locked SymJIT "
+                    "revision",
+                )
+            )
+        pure = PurePosixPath(relative)
+        if (
+            pure.is_absolute()
+            or not pure.parts
+            or pure.parts[0] != "patches"
+            or pure.suffix != ".patch"
+            or any(part in {"", ".", ".."} for part in pure.parts)
+        ):
+            issues.append(
+                GateIssue(
+                    "candidate-patch-path",
+                    f"contributor patch {name} has an unsafe path: {relative}",
+                )
+            )
+            continue
+        path = DEPENDENCIES_PATH.joinpath(*pure.parts)
+        try:
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(dependency_root)
+        except (OSError, ValueError):
+            issues.append(
+                GateIssue(
+                    "candidate-patch-missing",
+                    f"contributor patch is missing or escapes dependencies: {relative}",
+                )
+            )
+            continue
+        if path.is_symlink() or not resolved.is_file():
+            issues.append(
+                GateIssue(
+                    "candidate-patch-path",
+                    f"contributor patch must be a regular non-symlink file: {relative}",
+                )
+            )
+            continue
+        if _SHA256.fullmatch(expected_sha256) is None:
+            issues.append(
+                GateIssue(
+                    "candidate-patch-contract",
+                    f"contributor patch {name} has an invalid SHA-256",
+                )
+            )
+            continue
+        actual_sha256 = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        if actual_sha256 != expected_sha256:
+            issues.append(
+                GateIssue(
+                    "candidate-patch-digest",
+                    f"contributor patch {name} digest mismatch: expected "
+                    f"{expected_sha256}, got {actual_sha256}",
+                )
+            )
+            continue
+        canonical["path"] = pure.as_posix()
+        expected.append(canonical)
+    return expected, issues
+
+
 def _candidate_config_issues() -> list[GateIssue]:
     try:
         config = _load_toml(CARGO_CONFIG_PATH)
@@ -548,6 +725,23 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                 "candidate installer state must explicitly be non-publishable",
             )
         )
+    contributor_digest = hashlib.sha256(CONTRIBUTOR_LOCK_PATH.read_bytes()).hexdigest()
+    if state.get("contributor_lock_sha256") != contributor_digest:
+        issues.append(
+            GateIssue(
+                "candidate-state-lock",
+                "installer state is not bound to the current contributor lock",
+            )
+        )
+    patch_state, patch_issues = _candidate_patch_contract(contributor)
+    issues.extend(patch_issues)
+    if state.get("patches") != patch_state:
+        issues.append(
+            GateIssue(
+                "candidate-state-patches",
+                "installer patch state does not match contributor-lock.toml",
+            )
+        )
     sources = state.get("sources")
     revisions = _candidate_revisions(contributor)
     if not isinstance(sources, dict):
@@ -567,6 +761,7 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                 )
             if name == "symjit":
                 symjit = contributor["symjit"]
+                expected_tree = symjit.get("candidate_tree_sha256")
                 archive_matches = (
                     isinstance(entry, dict)
                     and entry.get("version") == symjit.get("candidate_version")
@@ -580,6 +775,55 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                             "contributor-lock.toml",
                         )
                     )
+                if (
+                    not isinstance(expected_tree, str)
+                    or _SHA256.fullmatch(expected_tree) is None
+                ):
+                    issues.append(
+                        GateIssue(
+                            "candidate-source-tree",
+                            "contributor lock has no valid SymJIT candidate tree "
+                            "SHA-256",
+                        )
+                    )
+                elif isinstance(entry, dict):
+                    if entry.get("worktree_sha256") != expected_tree:
+                        issues.append(
+                            GateIssue(
+                                "candidate-source-tree",
+                                "installer state has the wrong SymJIT source-tree "
+                                "digest",
+                            )
+                        )
+                    if len(patch_state) == 1 and entry.get(
+                        "patch_sha256"
+                    ) != patch_state[0].get("sha256"):
+                        issues.append(
+                            GateIssue(
+                                "candidate-source-patch",
+                                "installer SymJIT source entry has the wrong patch "
+                                "digest",
+                            )
+                        )
+                    if checkout.is_dir():
+                        try:
+                            actual_tree = _source_tree_sha256(checkout)
+                        except OSError as error:
+                            issues.append(
+                                GateIssue(
+                                    "candidate-source-tree",
+                                    f"could not fingerprint managed SymJIT: {error}",
+                                )
+                            )
+                        else:
+                            if actual_tree != expected_tree:
+                                issues.append(
+                                    GateIssue(
+                                        "candidate-source-tree",
+                                        "managed SymJIT source tree does not match "
+                                        "contributor-lock.toml",
+                                    )
+                                )
             elif not checkout.is_dir() or _git_head(checkout) != revision:
                 issues.append(
                     GateIssue(
@@ -587,18 +831,6 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                         f"candidate checkout {name} is not at {revision}",
                     )
                 )
-    for entry in contributor.get("patches", []):
-        relative = entry.get("path") if isinstance(entry, dict) else None
-        if (
-            not isinstance(relative, str)
-            or not (ROOT / "dependencies" / relative).is_file()
-        ):
-            issues.append(
-                GateIssue(
-                    "candidate-patch-missing",
-                    f"contributor patch is missing: {relative}",
-                )
-            )
     return [*issues, *_candidate_config_issues()]
 
 

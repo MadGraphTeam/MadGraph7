@@ -57,12 +57,17 @@ _NATIVE_BUILD_INPUT_FILES = (
     Path("dependencies/install-state.json"),
     Path("dependencies/release-lock.toml"),
 )
-_NATIVE_BUILD_INPUT_TREES = (Path("build_backend"), Path("rust"))
+_NATIVE_BUILD_INPUT_TREES = (
+    Path("build_backend"),
+    Path("dependencies/patches"),
+    Path("rust"),
+)
 _NATIVE_BUILD_INPUT_SUFFIXES = {
     ".f90",
     ".h",
     ".hpp",
     ".json",
+    ".patch",
     ".py",
     ".pyi",
     ".rs",

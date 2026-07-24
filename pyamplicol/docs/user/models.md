@@ -99,7 +99,7 @@ backend:
 
 ```console
 pyamplicol model compile models/json/sm/sm.json models/ufo-sm-jit-o3.pyamplicol-model \
-  --backend jit --jit-optimization-level 3
+  --backend jit --jit-optimization-level 3 --jit-compress
 pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_ufo_eager \
   --model models/ufo-sm-jit-o3.pyamplicol-model --execution-mode eager
 ```

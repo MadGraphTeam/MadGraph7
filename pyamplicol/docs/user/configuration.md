@@ -175,7 +175,7 @@ Execution mode and evaluator backend are independent choices:
 
 | Backend | Use |
 | --- | --- |
-| `jit` | Default direct SymJIT application, optimization level 3 |
+| `jit` | Default direct SymJIT application, optimization level 3, compression enabled |
 | `asm` | Symbolica assembly evaluator |
 | `cpp` | Generated/compiled C++ evaluator with `[evaluator.cpp]` options |
 
@@ -187,6 +187,14 @@ backend and code-shaping optimization settings are authoritative; conflicting
 requests are retained in the requested configuration, adjusted in the effective
 configuration, and reported once. Pass an explicit prepared-model path to
 select built-in C++ or ASM instead of the packaged JIT O3 pack.
+
+`evaluator.jit.compress = true` factors repeated complex instruction
+sequences into internal SymJIT applets. It is enabled by default and changes
+only generated evaluator structure, not physics results or runtime APIs. Use
+`--no-jit-compress` or set the card field to `false` for controlled A/B
+measurements and debugging. Prepared bundles bake this choice into their
+kernel pack, so eager generation reports the pack's value as the effective
+configuration when it differs from the request.
 
 `.pyAmplicol-model.json` model IR is architecture-independent. SymJIT
 storage-v3 prepared packs are instead portable only within their architecture

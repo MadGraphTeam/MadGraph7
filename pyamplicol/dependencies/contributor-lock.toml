@@ -21,8 +21,16 @@ archive_prefix = "symjit-48197f32536c894b51ef25b2cf05ddd05c22675f"
 archive_sha256 = "876930348cc06761ca780570fb282d009f143f4a469e321e3b5039c5ee217424"
 candidate_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
 application_storage_version = 3
-release_status = "unpatched-candidate"
+candidate_tree_sha256 = "1f4db1ac71d1a4e80f80e9726ed4274bccd3e4666ea4d016b9acd3f52f23952d"
+release_status = "patched-candidate"
 license = "MIT"
+
+[[patches]]
+name = "symjit-aarch64-compressed-funclets"
+target = "symjit"
+path = "patches/symjit/0001-aarch64-compressed-funclets.patch"
+sha256 = "da1add46715e39071518f326322985a75d5eb0fe9762e3a585f824117b45573f"
+applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
 
 [gammaloop_candidate]
 source_url = "https://github.com/alphal00p/gammaloop.git"

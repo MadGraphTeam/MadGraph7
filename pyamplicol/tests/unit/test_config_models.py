@@ -34,7 +34,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 67
+    assert len(FIELD_REGISTRY) == 68
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
@@ -44,6 +44,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         2,
         3,
     )
+    assert FIELD_REGISTRY["evaluator.jit.compress"].kind == "bool"
+    assert FIELD_REGISTRY["evaluator.jit.compress"].default is True
     assert FIELD_REGISTRY["evaluator.execution_mode"].choices == (
         EvaluatorExecutionMode.COMPILED,
         EvaluatorExecutionMode.EAGER,
@@ -126,11 +128,13 @@ def test_process_entries_validate_names_and_uniqueness() -> None:
         )
 
 
-def test_schema_and_jit_levels_reject_boolean_integers() -> None:
+def test_schema_and_jit_settings_reject_wrong_boolean_integer_types() -> None:
     with pytest.raises(ConfigurationError, match="schema_version"):
         RunConfig(action="generate", schema_version=True)  # type: ignore[arg-type]
     with pytest.raises(ConfigurationError, match="optimization_level"):
         JITConfig(optimization_level=True)  # type: ignore[arg-type]
+    with pytest.raises(ConfigurationError, match="compress"):
+        JITConfig(compress=1)  # type: ignore[arg-type]
 
 
 def test_contract_defaults_are_typed() -> None:
@@ -140,6 +144,7 @@ def test_contract_defaults_are_typed() -> None:
     assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.COMPILED
+    assert config.evaluator.jit.compress is True
     assert config.evaluator.eager == EagerEvaluatorConfig()
     assert config.schema_version == 1
     assert config.generation.validation.samples == 10

@@ -31,3 +31,4 @@ backend = "jit"
 
 [evaluator.jit]
 optimization_level = 3
+compress = true

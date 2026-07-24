@@ -401,6 +401,12 @@ def _add_evaluator_options(
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--jit-compress",
+        dest="evaluator.jit.compress",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--cpp-optimization",
         dest="evaluator.cpp.optimization",
         default=argparse.SUPPRESS,

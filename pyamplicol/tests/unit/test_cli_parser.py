@@ -44,6 +44,18 @@ def test_generate_accepts_eager_execution_mode_override() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.EAGER
 
 
+@pytest.mark.parametrize(
+    ("flag", "expected"),
+    (("--jit-compress", True), ("--no-jit-compress", False)),
+)
+def test_generate_accepts_jit_compression_override(
+    flag: str,
+    expected: bool,
+) -> None:
+    config = parse_cli(("generate", flag)).resolve().effective
+    assert config.evaluator.jit.compress is expected
+
+
 def test_generate_accepts_lc_flow_layout_override() -> None:
     resolution = parse_cli(
         ("generate", "--lc-flow-layout", "all-flow-union")

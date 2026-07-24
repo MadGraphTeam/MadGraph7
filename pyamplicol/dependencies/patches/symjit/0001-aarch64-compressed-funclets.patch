@@ -1,0 +1,325 @@
+# Upstream: SymJIT 2.21.1, revision 48197f32536c894b51ef25b2cf05ddd05c22675f
+# Purpose: deterministic compressed funclets for AArch64 scalar, SIMD, and fast-complex code.
+diff --git a/rust/arm/complex.rs b/rust/arm/complex.rs
+index 7b9152d552f511917bf86dc8b2edcab19895cbe5..fb7620d43c297eb9812cb32c5c240023f0556a2f 100644
+--- a/rust/arm/complex.rs
++++ b/rust/arm/complex.rs
+@@ -83,7 +83,7 @@ impl Generator for ArmComplexGenerator {
+     }
+ 
+     fn support_funclet(&self) -> FuncletType {
+-        FuncletType::None
++        FuncletType::Real
+     }
+ 
+     fn seal(&mut self) {
+@@ -500,8 +500,8 @@ impl Generator for ArmComplexGenerator {
+         Ok(())
+     }
+ 
+-    fn call_funclet(&mut self, _label: &str) {
+-        todo!();
++    fn call_funclet(&mut self, label: &str) {
++        self.jump(label, 0, |offset, _| arm! {bl label(offset)});
+     }
+ 
+     fn ret(&mut self) {
+diff --git a/rust/arm/macros.rs b/rust/arm/macros.rs
+index 4a207593535d347efc6b97012778db5f2c9e140e..59b079bffa08d1b8d8c19e4d53fd262a85e43b16 100644
+--- a/rust/arm/macros.rs
++++ b/rust/arm/macros.rs
+@@ -378,6 +378,11 @@ macro_rules! arm {
+             assert!(ofs.abs() < 1 << 27);
+             0x14000000 | (ofs as u32 >> 2) & 0x03ffffff
+     }};
++    (bl label($ofs:expr)) => {{
++            let ofs = $ofs;
++            assert!(ofs.abs() < 1 << 27);
++            0x94000000 | (ofs as u32 >> 2) & 0x03ffffff
++    }};
+     (b.eq label($ofs:expr)) => { 0x54000000 | ofs_pc!($ofs) };
+     (b.ne label($ofs:expr)) => { 0x54000001 | ofs_pc!($ofs) };
+     (b.lt label($ofs:expr)) => { 0x5400000B | ofs_pc!($ofs) };
+diff --git a/rust/arm/mod.rs b/rust/arm/mod.rs
+index 6509ebe88b683e3968feced664aaf7746333115f..ca4722ff2722546cf7343d9c2eac11a92a3043a1 100644
+--- a/rust/arm/mod.rs
++++ b/rust/arm/mod.rs
+@@ -318,3 +318,39 @@ fn add_stack(a: &mut Assembler, size: u32) {
+     }
+     emit(a, arm! {add sp, sp, #size & 0x0fff});
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::config::Config;
++    use crate::generator::{FuncletType, Generator};
++
++    fn first_funclet_call<G: Generator>(mut generator: G) -> u32 {
++        generator.call_funclet("target");
++        generator.branch("done");
++        generator.set_label("target");
++        generator.ret();
++        generator.set_label("done");
++        generator.seal();
++
++        let bytes = generator.bytes();
++        u32::from_le_bytes(bytes[..4].try_into().unwrap())
++    }
++
++    #[test]
++    fn generators_emit_relative_funclet_calls() {
++        let config = Config::default();
++
++        let scalar = ArmGenerator::new(config.clone());
++        assert!(matches!(scalar.support_funclet(), FuncletType::Complex));
++        assert_eq!(first_funclet_call(scalar), 0x9400_0002);
++
++        let vector = ArmSimdGenerator::new(config.clone());
++        assert!(matches!(vector.support_funclet(), FuncletType::Complex));
++        assert_eq!(first_funclet_call(vector), 0x9400_0002);
++
++        let complex = ArmComplexGenerator::new(config);
++        assert!(matches!(complex.support_funclet(), FuncletType::Real));
++        assert_eq!(first_funclet_call(complex), 0x9400_0002);
++    }
++}
+diff --git a/rust/arm/scalar.rs b/rust/arm/scalar.rs
+index e184accd34a3de15ef1879f53ff2d7fcd368cd6a..e51d70f0a18264242968f296daada4db68b8a67c 100644
+--- a/rust/arm/scalar.rs
++++ b/rust/arm/scalar.rs
+@@ -86,7 +86,7 @@ impl Generator for ArmGenerator {
+     }
+ 
+     fn support_funclet(&self) -> FuncletType {
+-        FuncletType::None
++        FuncletType::Complex
+     }
+ 
+     fn seal(&mut self) {
+@@ -432,8 +432,8 @@ impl Generator for ArmGenerator {
+         Ok(())
+     }
+ 
+-    fn call_funclet(&mut self, _label: &str) {
+-        todo!();
++    fn call_funclet(&mut self, label: &str) {
++        self.jump(label, 0, |offset, _| arm! {bl label(offset)});
+     }
+ 
+     fn ret(&mut self) {
+diff --git a/rust/arm/vector.rs b/rust/arm/vector.rs
+index fde35c602ca5af289499c8f9c62b7c1f974f1a93..2605f45bfaaa246a35c5ed9468cc906963b90ada 100644
+--- a/rust/arm/vector.rs
++++ b/rust/arm/vector.rs
+@@ -119,7 +119,7 @@ impl Generator for ArmSimdGenerator {
+     }
+ 
+     fn support_funclet(&self) -> FuncletType {
+-        FuncletType::None
++        FuncletType::Complex
+     }
+ 
+     fn seal(&mut self) {
+@@ -650,8 +650,8 @@ impl Generator for ArmSimdGenerator {
+         Ok(())
+     }
+ 
+-    fn call_funclet(&mut self, _label: &str) {
+-        todo!();
++    fn call_funclet(&mut self, label: &str) {
++        self.jump(label, 0, |offset, _| arm! {bl label(offset)});
+     }
+ 
+     fn ret(&mut self) {
+diff --git a/rust/mir.rs b/rust/mir.rs
+index 8a75e552897aa0d5dbf7a596a53c3407b06239fa..3df56b81ea878f8f4b6e7d484eb8cd7e7529f6a7 100644
+--- a/rust/mir.rs
++++ b/rust/mir.rs
+@@ -81,7 +81,7 @@ pub enum FusedOp {
+     NegMulSub = 3, // -a * b - c
+ }
+ 
+-#[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
++#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+ #[repr(u8)]
+ pub enum FuncletOp {
+     Times,
+@@ -1637,7 +1637,10 @@ impl Mir {
+ 
+         ir.branch("@funclets");
+ 
+-        for f in funclets.iter() {
++        let mut funclets: Vec<_> = funclets.into_iter().collect();
++        funclets.sort_unstable();
++
++        for f in &funclets {
+             // println!("{:?}", &f);
+             match f {
+                 (FuncletOp::Times, args) => {
+diff --git a/rust/utils.rs b/rust/utils.rs
+index 05312182e8b1af9539bceef03273ffd01f9b563f..1ebf8d38ace0c7cde61b9f6cff63a109ecdc2f2c 100644
+--- a/rust/utils.rs
++++ b/rust/utils.rs
+@@ -50,7 +50,7 @@ pub enum DataType {
+     F64,
+ }
+ 
+-#[derive(Copy, Clone, PartialEq, Hash, Eq)]
++#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+ pub enum Reg {
+     Ret,
+     Temp,
+diff --git a/tests/arm_compress.rs b/tests/arm_compress.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ba94f388a368ebdc3ea482006afd0e23cd8bdfc4
+--- /dev/null
++++ b/tests/arm_compress.rs
+@@ -0,0 +1,147 @@
++#![cfg(target_arch = "aarch64")]
++
++use anyhow::Result;
++use symjit::{Application, Compiled, Compiler, CompilerType, Complex, Config, Expr, Storage};
++use wide::f64x2;
++
++fn expression() -> (Vec<Expr>, Expr) {
++    let x = Expr::var("x");
++    let y = Expr::var("y");
++    let z = Expr::var("z");
++    let mut out = &x * &y;
++
++    for _ in 0..32 {
++        out = &(&out * &x) + &(&y * &z);
++        out = &out / &(&z + &Expr::from(2));
++    }
++
++    (vec![x, y, z], out)
++}
++
++fn config(fast_complex: bool, use_simd: bool, compress: bool) -> Config {
++    let mut config = Config::new(CompilerType::Arm, 0).unwrap();
++    config.set_complex(true);
++    config.set_fast_complex(fast_complex);
++    config.set_simd(use_simd);
++    config.set_compact(true);
++    config.set_compress(compress);
++    config.set_opt_level(2);
++    config
++}
++
++fn compile(fast_complex: bool, use_simd: bool, compress: bool) -> Result<symjit::Application> {
++    let (states, output) = expression();
++    Compiler::with_config(config(fast_complex, use_simd, compress)).compile(&states, &[output])
++}
++
++#[test]
++fn compressed_scalar_and_fast_complex_match_expanded() -> Result<()> {
++    let args = [
++        Complex::new(1.25, -0.75),
++        Complex::new(-0.5, 0.25),
++        Complex::new(0.75, 1.5),
++    ];
++
++    for fast_complex in [false, true] {
++        let expanded = compile(fast_complex, false, false)?;
++        let compressed = compile(fast_complex, false, true)?;
++        let mut expanded_out = [Complex::default()];
++        let mut compressed_out = [Complex::default()];
++        expanded.evaluate(&args, &mut expanded_out);
++        compressed.evaluate(&args, &mut compressed_out);
++        assert_eq!(expanded_out, compressed_out);
++        assert!(
++            compressed.compiled.as_ref().unwrap().dumps().len()
++                < expanded.compiled.as_ref().unwrap().dumps().len()
++        );
++    }
++
++    Ok(())
++}
++
++#[test]
++fn compressed_vector_matches_expanded() -> Result<()> {
++    let args = [
++        Complex::new(f64x2::new([1.25, -0.25]), f64x2::new([-0.75, 0.5])),
++        Complex::new(f64x2::new([-0.5, 0.75]), f64x2::new([0.25, -1.0])),
++        Complex::new(f64x2::new([0.75, 1.0]), f64x2::new([1.5, -0.5])),
++    ];
++    let mut expanded = compile(false, true, false)?;
++    let mut compressed = compile(false, true, true)?;
++    expanded.prepare_simd();
++    compressed.prepare_simd();
++    let mut expanded_out = [Complex::default()];
++    let mut compressed_out = [Complex::default()];
++    expanded.evaluate(&args, &mut expanded_out);
++    compressed.evaluate(&args, &mut compressed_out);
++    assert_eq!(expanded_out, compressed_out);
++    assert!(
++        compressed.compiled_simd.as_ref().unwrap().dumps().len()
++            < expanded.compiled_simd.as_ref().unwrap().dumps().len()
++    );
++
++    Ok(())
++}
++
++#[test]
++fn compressed_emission_is_deterministic() -> Result<()> {
++    let first = compile(false, false, true)?;
++    let second = compile(false, false, true)?;
++    assert_eq!(
++        first.compiled.as_ref().unwrap().dumps(),
++        second.compiled.as_ref().unwrap().dumps()
++    );
++
++    Ok(())
++}
++
++#[test]
++fn compressed_storage_v3_roundtrip_is_exact_and_stable() -> Result<()> {
++    let mut expanded = compile(true, true, false)?;
++    let mut compressed = compile(true, true, true)?;
++    expanded.prepare_simd();
++    compressed.prepare_simd();
++
++    let mut stored = Vec::new();
++    compressed.save(&mut stored)?;
++    let mut stored_slice = stored.as_slice();
++    let loaded = Application::load(&mut stored_slice, &config(true, true, true))?;
++    assert!(stored_slice.is_empty());
++
++    let scalar_args = [
++        Complex::new(1.25, -0.75),
++        Complex::new(-0.5, 0.25),
++        Complex::new(0.75, 1.5),
++    ];
++    let mut expanded_scalar = [Complex::default()];
++    let mut loaded_scalar = [Complex::default()];
++    expanded.evaluate(&scalar_args, &mut expanded_scalar);
++    loaded.evaluate(&scalar_args, &mut loaded_scalar);
++    assert_eq!(expanded_scalar, loaded_scalar);
++
++    let vector_args = [
++        Complex::new(f64x2::new([1.25, -0.25]), f64x2::new([-0.75, 0.5])),
++        Complex::new(f64x2::new([-0.5, 0.75]), f64x2::new([0.25, -1.0])),
++        Complex::new(f64x2::new([0.75, 1.0]), f64x2::new([1.5, -0.5])),
++    ];
++    let mut expanded_vector = [Complex::default()];
++    let mut loaded_vector = [Complex::default()];
++    expanded.evaluate(&vector_args, &mut expanded_vector);
++    loaded.evaluate(&vector_args, &mut loaded_vector);
++    assert_eq!(expanded_vector, loaded_vector);
++
++    assert_eq!(
++        compressed.compiled.as_ref().unwrap().dumps(),
++        loaded.compiled.as_ref().unwrap().dumps()
++    );
++    assert_eq!(
++        compressed.compiled_simd.as_ref().unwrap().dumps(),
++        loaded.compiled_simd.as_ref().unwrap().dumps()
++    );
++
++    let mut stored_again = Vec::new();
++    loaded.save(&mut stored_again)?;
++    assert_eq!(stored, stored_again);
++
++    Ok(())
++}

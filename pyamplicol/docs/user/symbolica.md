@@ -40,6 +40,11 @@ generation-time resource clamp. SymJIT is a separate MIT-licensed runtime
 dependency. This runtime capability does not change the terms governing
 Symbolica use during model compilation or process generation.
 
+SymJIT compression is enabled by default during generation. It factors
+repeated complex instruction sequences into internal applets without changing
+the evaluator ABI or numerical contract. Set `evaluator.jit.compress = false`
+or pass `--no-jit-compress` to generate an uncompressed evaluator.
+
 Artifacts generated with the ASM or C++ evaluator backend use the same
 Symbolica-independent f64 Rusticol interface. They load a precompiled evaluator
 library instead of a SymJIT application and are executable only when the

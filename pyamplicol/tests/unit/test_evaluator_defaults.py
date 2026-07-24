@@ -7,6 +7,7 @@ import sys
 import pytest
 
 from pyamplicol.evaluators import SymbolicaEvaluatorSettings
+from pyamplicol.evaluators.symbolica_compile import _symbolica_evaluator_kwargs
 
 
 def test_evaluator_defaults_preserve_production_optimization_policy() -> None:
@@ -15,10 +16,36 @@ def test_evaluator_defaults_preserve_production_optimization_policy() -> None:
     assert settings.iterations == 10
     assert settings.cpe_iterations is None
     assert settings.jit_optimization_level == 3
+    assert settings.jit_compress is True
     assert settings.jit_direct_translation is False
     assert settings.max_horner_scheme_variables == 1000
     assert settings.max_common_pair_cache_entries == 5_000_000
     assert settings.max_common_pair_distance == 1000
+
+
+@pytest.mark.parametrize(
+    ("compress", "jit_options"),
+    ((True, {"compress": "true"}), (False, {})),
+)
+def test_jit_compression_is_forwarded_to_symbolica(
+    compress: bool,
+    jit_options: dict[str, str],
+) -> None:
+    settings = SymbolicaEvaluatorSettings(jit_compress=compress)
+
+    assert settings.to_json_dict()["jit_compress"] is compress
+    assert (
+        _symbolica_evaluator_kwargs(
+            settings,
+            verbose=False,
+        )["jit_options"]
+        == jit_options
+    )
+
+
+def test_jit_compression_setting_requires_a_boolean() -> None:
+    with pytest.raises(ValueError, match="jit_compress"):
+        SymbolicaEvaluatorSettings(jit_compress=1)  # type: ignore[arg-type]
 
 
 def test_evaluator_module_import_is_symbolica_lazy() -> None:

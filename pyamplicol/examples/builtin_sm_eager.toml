@@ -26,6 +26,7 @@ batch_size = 128
 
 [evaluator.jit]
 optimization_level = 3
+compress = true
 
 [evaluator.eager]
 point_tile_size = 1024

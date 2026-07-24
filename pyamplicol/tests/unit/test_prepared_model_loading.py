@@ -24,7 +24,12 @@ from pyamplicol.models.prepared_target import (
 )
 
 
-def _prepared_builtin_sm(tmp_path: Path, *, machine: str | None = None) -> Path:
+def _prepared_builtin_sm(
+    tmp_path: Path,
+    *,
+    machine: str | None = None,
+    jit_compress: bool | None = True,
+) -> Path:
     compiled = compile_model_source("built-in-sm", use_cache=False)
     kernel = PreparedKernelRecord(
         kernel_id=0,
@@ -53,17 +58,20 @@ def _prepared_builtin_sm(tmp_path: Path, *, machine: str | None = None) -> Path:
             "evaluator_state_path": "kernels/0/exact.evaluator.bin",
         },
     )
+    optimization_settings: dict[str, object] = {
+        "iterations": 10,
+        "cpe_iterations": None,
+        "jit_optimization_level": 3,
+        "max_horner_scheme_variables": 1000,
+        "max_common_pair_cache_entries": 5_000_000,
+        "max_common_pair_distance": 1000,
+        "collect_factors": False,
+    }
+    if jit_compress is not None:
+        optimization_settings["jit_compress"] = jit_compress
     pack = PreparedKernelPack(
         backend="jit",
-        optimization_settings={
-            "iterations": 10,
-            "cpe_iterations": None,
-            "jit_optimization_level": 3,
-            "max_horner_scheme_variables": 1000,
-            "max_common_pair_cache_entries": 5_000_000,
-            "max_common_pair_distance": 1000,
-            "collect_factors": False,
-        },
+        optimization_settings=optimization_settings,
         producer={"distribution": "pyamplicol", "version": "test"},
         dependency_abis={"symjit_application": SYMJIT_STORAGE_V3_ABI},
         provenance={"compiled_model": "test"},
@@ -207,6 +215,7 @@ def test_eager_plan_accepts_prepared_model(
     assert plan.estimated_coverage["model_kind"] == "prepared"
     assert plan.effective_settings.evaluator.backend == "jit"
     assert plan.effective_settings.evaluator.jit.optimization_level == 3
+    assert plan.effective_settings.evaluator.jit.compress is True
     assert {
         adjustment.path for adjustment in plan.adjustments
     } >= {"evaluator.optimization.collect_factors"}
@@ -218,13 +227,13 @@ def test_eager_prepared_pack_settings_are_authoritative(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
-    model = ModelSource.from_path(_prepared_builtin_sm(tmp_path))
+    model = ModelSource.from_path(_prepared_builtin_sm(tmp_path, jit_compress=False))
     config = RunConfig(
         action=Action.GENERATE,
         evaluator=EvaluatorConfig(
             backend="cpp",
             execution_mode="eager",
-            jit=JITConfig(optimization_level=1),
+            jit=JITConfig(optimization_level=1, compress=True),
         ),
     )
 
@@ -232,11 +241,32 @@ def test_eager_prepared_pack_settings_are_authoritative(
 
     assert plan.requested_settings.evaluator.backend == "cpp"
     assert plan.requested_settings.evaluator.jit.optimization_level == 1
+    assert plan.requested_settings.evaluator.jit.compress is True
     assert plan.effective_settings.evaluator.backend == "jit"
     assert plan.effective_settings.evaluator.jit.optimization_level == 3
+    assert plan.effective_settings.evaluator.jit.compress is False
     by_path = {adjustment.path: adjustment for adjustment in plan.adjustments}
     assert by_path["evaluator.backend"].requested == "cpp"
     assert by_path["evaluator.backend"].effective == "jit"
     assert by_path["evaluator.jit.optimization_level"].requested == 1
     assert by_path["evaluator.jit.optimization_level"].effective == 3
+    assert by_path["evaluator.jit.compress"].requested is True
+    assert by_path["evaluator.jit.compress"].effective is False
     assert "prepared model settings" in caplog.text
+
+
+def test_legacy_prepared_jit_pack_defaults_compression_to_false(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    model = ModelSource.from_path(_prepared_builtin_sm(tmp_path, jit_compress=None))
+
+    plan = Generator(_eager_config()).plan("d d~ > z", model=model)
+
+    assert plan.requested_settings.evaluator.jit.compress is True
+    assert plan.effective_settings.evaluator.jit.compress is False
+    by_path = {adjustment.path: adjustment for adjustment in plan.adjustments}
+    assert "prepared eager kernel pack is authoritative" in by_path[
+        "evaluator.jit.compress"
+    ].reason

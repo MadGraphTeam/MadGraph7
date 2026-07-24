@@ -531,6 +531,7 @@ def _symbolica_evaluator_kwargs(
         "direct_translation": settings.direct_translation,
         "jit_direct_translation": settings.jit_direct_translation,
         "jit_optimization_level": settings.jit_optimization_level,
+        "jit_options": ({"compress": "true"} if settings.jit_compress else {}),
         "max_horner_scheme_variables": settings.max_horner_scheme_variables,
         "max_common_pair_cache_entries": settings.max_common_pair_cache_entries,
         "max_common_pair_distance": settings.max_common_pair_distance,
