@@ -1971,3 +1971,77 @@ class TestCrossingPartition(unittest.TestCase):
                 eliminated_any = True
         self.assertTrue(eliminated_any,
                         'no module was eliminated by crossing in p p > j j')
+
+
+class TestMadeventCrossingHelicity(unittest.TestCase):
+    """End-to-end regression for the crossed-helicity label written to the LHE.
+
+    The madevent helicity path is the phase-4 GET_NHEL decoder plus the phase-5
+    runtime crossing encode (the base-selected helicity code is relabelled into
+    the dependent's canonical code by permuting its mixed-radix digits with the
+    crossing permutation, replacing the old DSIG_XGHEL / router HELMAP tables).
+    p p > w+ j is the sharp test: its crossed subprocesses (u g > w+ d, ...) put
+    the W+ -- a massive vector with THREE helicity states -- in a leg the
+    crossing moved, so a bug in the relabel scrambles the W+ helicity. The W+
+    polarisation is physically CHIRAL (asymmetric transverse states) with a
+    populated longitudinal (0) state; a scrambled relabel typically reads a
+    quark leg's +-1 into the W+ slot and destroys that structure.
+
+    This runs a full (small) madevent generation, so it is a slow test.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_mev_hel_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def test_w_helicity_asymmetry_ppwj(self):
+        from madgraph import MG5DIR
+        from madgraph.various import lhe_parser
+        outdir = pjoin(self.tmpdir, 'ppwj')
+        card = pjoin(self.tmpdir, 'cmd.txt')
+        with open(card, 'w') as f:
+            f.write('generate p p > w+ j\n'
+                    'output madevent %s -f\n'
+                    'launch\n'
+                    'set nevents 1000\n'
+                    'set iseed 777\n' % outdir)
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+
+        lhe = pjoin(outdir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        self.assertTrue(os.path.isfile(lhe),
+                        'madevent produced no LHE file (%s)' % lhe)
+
+        counts = {-1: 0, 0: 0, 1: 0}
+        nevt = 0
+        for event in lhe_parser.EventFile(lhe):
+            for part in event:
+                if part.pid == 24 and part.status == 1:  # the final-state W+
+                    hel = int(round(part.helicity))
+                    self.assertIn(hel, (-1, 0, 1),
+                                  'W+ has undefined/non-physical helicity %r -- '
+                                  'helicity output off or scrambled'
+                                  % part.helicity)
+                    counts[hel] += 1
+            nevt += 1
+        total = sum(counts.values())
+        self.assertGreater(nevt, 100, 'too few events generated (%d)' % nevt)
+        self.assertEqual(total, nevt, 'expected exactly one final-state W+ per '
+                         'event (got %d W+ in %d events)' % (total, nevt))
+
+        fm, f0, fp = (counts[-1] / total, counts[0] / total, counts[1] / total)
+        # All three W+ helicity states populated, incl. the longitudinal 0.
+        for hel in (-1, 0, 1):
+            self.assertGreater(counts[hel], 0,
+                               'W+ helicity %d not populated: %s' % (hel, counts))
+        # The two transverse states are chirally asymmetric.
+        self.assertGreater(abs(fm - fp), 0.05,
+                           'W+ transverse helicities not chirally asymmetric: %s'
+                           % counts)
+        # The longitudinal fraction sits in a physical window (a scrambled
+        # relabel collapses or inflates it out of this range).
+        self.assertTrue(0.02 < f0 < 0.45,
+                        'W+ longitudinal fraction unphysical: %.3f (%s)'
+                        % (f0, counts))
