@@ -10,6 +10,7 @@
 compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;
+pub mod direct_arena;
 pub mod eager_layout;
 mod eager_lowering_v3;
 mod eager_plan_v3_pacbin;
