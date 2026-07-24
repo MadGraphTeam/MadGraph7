@@ -573,17 +573,29 @@ C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 
     integer FUNCTION GET_NHEL%(proc_id)s(hel, ipart)
 c         if hel>0 return the helicity of particule ipart for the selected helicity configuration
-c         if hel=0 return the number of helicity state possible for that particle 
+c         if hel=0 return the number of helicity state possible for that particle
       implicit none
-      integer hel,i, ipart
+      integer hel, i, ipart
       Include 'nexternal.inc'
-      integer one_nhel(nexternal)
-      INTEGER                 NCOMB
-      PARAMETER (             NCOMB=%(ncomb)d)
-      INTEGER NHEL(NEXTERNAL,0:NCOMB)
-      %(helicity_lines)s
-
-      get_nhel%(proc_id)s = nhel(ipart, iabs(hel))
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+      %(nhstate_data)s
+      %(states_data)s
+      INTEGER XGW, XGD, XGK
+      IF (hel.EQ.0) THEN
+c        Number of helicity states for particle ipart.
+         get_nhel%(proc_id)s = NHSTATE(ipart)
+      ELSE
+c        Decode the canonical mixed-radix helicity code into particle ipart's
+c        helicity value (last external leg = least-significant digit).
+         XGW = 1
+         DO XGK = ipart+1, NEXTERNAL
+            XGW = XGW * NHSTATE(XGK)
+         ENDDO
+         XGD = MOD((IABS(hel)-1)/XGW, NHSTATE(ipart))
+         get_nhel%(proc_id)s = STATES(XGD+1, ipart)
+      ENDIF
       return
       end
 

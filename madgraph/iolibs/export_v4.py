@@ -7829,23 +7829,6 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         crossed = [tuple(row[P[k]] * S[k] for k in range(nx)) for row in bh]
         return bh, crossed
 
-    def _crossgroup_helmap(self, dep_me, base_me, cross):
-        """1-based map from a base helicity index to the DEPENDENT helicity index
-        carrying the physically-crossed configuration. The base SMATRIX selects a
-        helicity in ITS own NHEL enumeration, but the event is written through the
-        dependent's own get_helicities, so the index must be translated. The label
-        uses the UNSIGNED crossed config (signed=False): the LHE helicity is the
-        raw NHEL value APPLY_CROSSING permutes, not NHEL*IC (see
-        _crossed_helicity_configs). Returns the identity if that is not a clean
-        permutation of the dependent's table."""
-        _, crossed = self._crossed_helicity_configs(base_me, cross, signed=False)
-        dh = [tuple(x) for x in dep_me.get_helicity_matrix()]
-        dhpos = {cfg: i for i, cfg in enumerate(dh)}
-        hmap = [dhpos.get(c, -1) for c in crossed]
-        if -1 in hmap or sorted(hmap) != list(range(len(crossed))):
-            return list(range(1, len(crossed) + 1))
-        return [h + 1 for h in hmap]
-
     def _crossgroup_base_helperm(self, base_me, cross):
         """1-based base->base helicity permutation of a crossing: pi[hb] = the base
         index whose NHEL row equals the crossed row of hb. So the dependent for
@@ -7960,17 +7943,38 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                 '      INTEGER DSIG_XGROUTE(%d)' % len(all_flv),
                 '      DATA DSIG_XGROUTE /%s/' % ','.join(str(x) for x in flav_idx)]
 
-        # Per-flavor event helicity + colour maps (base index -> dependent index).
-        ncomb = base_me.get_helicity_combinations()
-        helmap = [self._crossgroup_helmap(matrix_element, base_me,
-                                          (iflav - 1) // nflav_base)
-                  for iflav in flav_idx]
+        # Per-flavor colour map (base flow -> dependent flow).
         colmap = [self._router_colmap(matrix_element, base_me,
                                       (iflav - 1) // nflav_base)
                   for iflav in flav_idx]
         ncol = len(colmap[0]) if colmap else 0
-        hel_post = self._crossgroup_remap_decl(
-            decl, 'DSIG_XGHEL', helmap, ncomb, 'selected_hel')
+        # Event helicity: relabel the base's selected helicity code into this
+        # (crossed) subprocess's canonical code by permuting the code's
+        # mixed-radix digits with the crossing permutation (GET_CROSS_PERM),
+        # decoded directly by this subprocess's get_nhel. Replaces the explicit
+        # base->dep helicity map. GET_CROSS_PERM takes the extended base index
+        # (DSIG_XGROUTE(flav)); cross 0 gives the identity permutation.
+        nhstate = [len(s) for s in base_me.get_helicity_per_particle()]
+        decl += ['      INTEGER XPERM(NEXTERNAL), XSGN(NEXTERNAL), XDUMF',
+                 '      INTEGER XBDIG(NEXTERNAL), XHR, XHK',
+                 '      INTEGER XNHS(NEXTERNAL)',
+                 '      DATA XNHS /%s/' % ','.join(str(n) for n in nhstate)]
+        hel_post = (
+            '\n      CALL CR%s_GET_CROSS_PERM(DSIG_XGROUTE({flav}), XPERM,'
+            ' XSGN, XDUMF)'
+            '\n      IF (selected_hel{idx}.GE.1) THEN'
+            '\n        XHR = selected_hel{idx} - 1'
+            '\n        DO XHK=NEXTERNAL,1,-1'
+            '\n          XBDIG(XHK) = MOD(XHR, XNHS(XHK))'
+            '\n          XHR = XHR / XNHS(XHK)'
+            '\n        ENDDO'
+            '\n        selected_hel{idx} = 0'
+            '\n        DO XHK=1,NEXTERNAL'
+            '\n          selected_hel{idx} = selected_hel{idx} * XNHS(XPERM(XHK))'
+            ' + XBDIG(XPERM(XHK))'
+            '\n        ENDDO'
+            '\n        selected_hel{idx} = selected_hel{idx} + 1'
+            '\n      ENDIF') % base_proc_id
         # Colour: unlike helicity, a base->dep index relabel of selected_col is
         # NOT sufficient. The base SMATRIX picked its flow with select_color,
         # which masks the base-order JAMP2 with THIS (dependent) binary's ICOLAMP
@@ -8040,22 +8044,6 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                 hel_post.format(idx='(IVEC)', flav='IFLAV_VEC(IVEC)')
                 + col_vec_call),
         }
-
-    def _crossgroup_remap_decl(self, decl, name, maps, size, var):
-        """Helper for _dsig_crossgroup_fills: if any flavor's map is non-identity,
-        append the DATA declaration of a (size, nflav) remap table to ``decl`` and
-        return a str.format template with fields {idx} (the (1)/(IVEC) slot) and
-        {flav} (the flavor expression). Otherwise return an empty string. The DATA
-        is column-major (index fastest, then flavor)."""
-        identity = list(range(1, size + 1))
-        if all(m == identity for m in maps):
-            return ''
-        flat = ','.join(str(x) for col in maps for x in col)
-        decl.append('      INTEGER %s(%d,%d)' % (name, size, len(maps)))
-        decl.append('      DATA %s /%s/' % (name, flat))
-        return ('\n      IF ({v}{{idx}}.GE.1.AND.{v}{{idx}}.LE.{n}) '
-                '{v}{{idx}} = {name}({v}{{idx}}, {{flav}})').format(
-                    v=var, n=size, name=name)
 
     def _crossgroup_colsel_helper(self, proc_id, ncol, nflav, col_flat):
         """Emit XG_SELCOL<proc_id>, the cross-group (Track B) colour-selection
@@ -8258,8 +8246,15 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         replace_dict['ncomb']= ncomb
         helicity_lines = self.get_helicity_lines(matrix_element, add_nb_comb=True)
         replace_dict['helicity_lines'] = helicity_lines
+        # Canonical helicity decoder tables for GET_NHEL: the per-event helicity
+        # label is the mixed-radix code, so GET_NHEL decodes it (per-leg states)
+        # rather than indexing an NHEL config table.
+        hel_data = self._helstate_data(matrix_element)
+        replace_dict['maxhel'] = hel_data['maxhel']
+        replace_dict['nhstate_data'] = hel_data['nhstate_data']
+        replace_dict['states_data'] = hel_data['states_data']
 
-        context = {'read_write_good_hel':True}        
+        context = {'read_write_good_hel':True}
         if not isinstance(self, ProcessExporterFortranMEGroup):            
             replace_dict['read_write_good_hel'] = self.read_write_good_hel(ncomb)
             context['nogrouping'] = True
@@ -9427,32 +9422,51 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             config_map=config_map, subproc_number=subproc_number)
         dispatch = []
         decl = []
+        # Shared temporaries for the runtime helicity encode below. The base
+        # returns its selected helicity as ITS canonical code; the event is
+        # written through THIS module's get_nhel<i>, which decodes THIS
+        # (crossed) module's code -- so relabel by permuting the code's
+        # mixed-radix digits with the crossing permutation (GET_CROSS_PERM),
+        # exactly the dependent-vs-base relation dep_states[k]==base_states[PERM[k]].
+        encode_used = False
+        baked_nhs = {}   # base_index -> baked base-NHSTATE array name
         for flav0, (base_index, iflav) in enumerate(routing):
             base_me = matrix_elements[base_index]
             nflav_base = len(base_me.get_external_flavors_with_iden())
             cross = (iflav - 1) // nflav_base
             colmap = self._router_colmap(matrix_element, base_me, cross)
-            helmap = self._crossgroup_helmap(matrix_element, base_me, cross)
             kw = 'IF' if flav0 == 0 else 'ELSE IF'
             dispatch.append('      %s (IFLAV.EQ.%d) THEN' % (kw, flav0 + 1))
             dispatch.append(
                 '        CALL SMATRIX%d(P, %d, RHEL, RCOL, channel, IVEC, ANS,'
                 ' IHEL, ICOL)' % (base_index + 1, iflav))
-            # The base returns its selected helicity/colour in the BASE's own
-            # enumeration; the event is written through THIS module's get_nhel<i>
-            # / ICOLUP, so remap each to the module's convention (identity =
-            # skip). HELMAP uses the UNSIGNED crossed config (see
-            # _crossgroup_helmap): the LHE helicity label is the raw NHEL value,
-            # NOT NHEL*IC, so a crossed fermion/vector leg must not pick up an
-            # extra sign -- without this the crossed leg's helicity is flipped
-            # (invisible on non-chiral p p > j j, wrong for e.g. w+ w- j j).
-            if helmap and helmap != list(range(1, len(helmap) + 1)):
-                hname = 'HELMAP_%s_%d' % (proc_id, flav0 + 1)
-                decl.append('      INTEGER %s(%d)' % (hname, len(helmap)))
-                decl.append('      DATA %s /%s/' % (
-                    hname, ','.join(str(x) for x in helmap)))
-                dispatch.append('        IF (IHEL.GE.1.AND.IHEL.LE.%d)'
-                                ' IHEL = %s(IHEL)' % (len(helmap), hname))
+            # Encode the crossed helicity code (skip cross 0 = identity).
+            if cross != 0:
+                encode_used = True
+                if base_index not in baked_nhs:
+                    nsname = 'XNHS%d' % (base_index + 1)
+                    nhstate = [len(s) for s in
+                               base_me.get_helicity_per_particle()]
+                    decl.append('      INTEGER %s(NEXTERNAL)' % nsname)
+                    decl.append('      DATA %s /%s/' % (
+                        nsname, ','.join(str(n) for n in nhstate)))
+                    baked_nhs[base_index] = nsname
+                nsname = baked_nhs[base_index]
+                dispatch += [
+                    '        CALL CR%d_GET_CROSS_PERM(%d, XPERM, XSGN, XDUMF)'
+                    % (base_index + 1, iflav),
+                    '        XHR = IHEL - 1',
+                    '        DO XHK=NEXTERNAL,1,-1',
+                    '          XBDIG(XHK) = MOD(XHR, %s(XHK))' % nsname,
+                    '          XHR = XHR / %s(XHK)' % nsname,
+                    '        ENDDO',
+                    '        IHEL = 0',
+                    '        DO XHK=1,NEXTERNAL',
+                    '          IHEL = IHEL * %s(XPERM(XHK)) + XBDIG(XPERM(XHK))'
+                    % nsname,
+                    '        ENDDO',
+                    '        IHEL = IHEL + 1',
+                ]
             # A non-identity colmap has to be applied; skip it when it is the
             # identity (single flow, or the flow orders already agree).
             if colmap and colmap != list(range(1, len(colmap) + 1)):
@@ -9464,6 +9478,9 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                                 ' ICOL = %s(ICOL)' % (len(colmap), cname))
         if dispatch:
             dispatch.append('      ENDIF')
+        if encode_used:
+            decl = ['      INTEGER XPERM(NEXTERNAL), XSGN(NEXTERNAL), XDUMF',
+                    '      INTEGER XBDIG(NEXTERNAL), XHR, XHK'] + decl
         replace_dict['smatrix_router_decl'] = '\n'.join(decl)
         replace_dict['smatrix_router_dispatch'] = '\n'.join(dispatch)
         tpl = open(pjoin(_file_path, 'iolibs', 'template_files',
