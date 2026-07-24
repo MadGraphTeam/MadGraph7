@@ -9,6 +9,7 @@
 mod abi;
 mod layout;
 mod profile;
+mod reduction;
 mod storage;
 
 pub use abi::{
@@ -19,6 +20,7 @@ pub use layout::{
     DirectArenaAssignment, DirectArenaInterval, DirectArenaLayout, assign_direct_arena,
 };
 pub use profile::{DirectArenaTrafficCounters, DirectArenaTrafficKind};
+pub use reduction::DirectAmplitudePlanes;
 pub use storage::{
     AlignedF64Buffer, DIRECT_ARENA_ALIGNMENT, DirectArenaAllocationCounters, DirectArenaWorkspace,
     DirectPointTile, DirectPointTiles, checked_aligned_point_stride, checked_plane_scalar_len,

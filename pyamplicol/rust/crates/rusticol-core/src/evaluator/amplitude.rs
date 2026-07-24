@@ -3,6 +3,36 @@
 use super::super::*;
 use super::*;
 
+trait AmplitudeSamples: Copy {
+    fn value(self, row: usize, output: usize, output_length: usize) -> Complex<f64>;
+}
+
+#[derive(Clone, Copy)]
+struct RowMajorAmplitudeSamples {
+    values: *const Complex<f64>,
+    len: usize,
+}
+
+impl AmplitudeSamples for RowMajorAmplitudeSamples {
+    #[inline(always)]
+    fn value(self, row: usize, output: usize, output_length: usize) -> Complex<f64> {
+        let index = row * output_length + output;
+        debug_assert!(index < self.len);
+        // SAFETY: the row-major constructor records the immutable amplitude
+        // buffer's exact length. Reduction never mutates that buffer and all
+        // point/output dimensions are validated before the first access.
+        unsafe { *self.values.add(index) }
+    }
+}
+
+impl AmplitudeSamples for crate::direct_arena::DirectAmplitudePlanes<'_> {
+    #[inline(always)]
+    fn value(self, row: usize, output: usize, _output_length: usize) -> Complex<f64> {
+        let (re, im) = self.value_unchecked(output, row);
+        c64(re, im)
+    }
+}
+
 #[inline(always)]
 fn sum_real_hermitian_products(left: &[Complex<f64>], right: &[Complex<f64>]) -> f64 {
     debug_assert_eq!(left.len(), right.len());
@@ -447,14 +477,58 @@ impl AmplitudeRuntime {
         raw_sums: &mut [f64],
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
     ) -> RusticolResult<()> {
-        let amplitudes = &self.output_scratch_f64;
-        if amplitudes.len() != batch_size * self.output_length {
+        if self.output_scratch_f64.len() != batch_size * self.output_length {
             return Err(RusticolError::invalid_argument(format!(
                 "generic amplitude output buffer has length {}, expected {}",
-                amplitudes.len(),
+                self.output_scratch_f64.len(),
                 batch_size * self.output_length
             )));
         }
+        let samples = RowMajorAmplitudeSamples {
+            values: self.output_scratch_f64.as_ptr(),
+            len: self.output_scratch_f64.len(),
+        };
+        self.reduce_amplitude_samples_f64_into_selected_slice(
+            samples,
+            batch_size,
+            raw_sums,
+            selected_color_sector_ids,
+        )
+    }
+
+    /// Reduce canonical split-complex amplitude planes without packing them
+    /// into the legacy point-major complex buffer.
+    #[allow(dead_code)]
+    pub(crate) fn reduce_planes_f64_into_selected_slice(
+        &mut self,
+        amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
+        raw_sums: &mut [f64],
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+    ) -> RusticolResult<()> {
+        let plane_count = usize::try_from(amplitudes.component_count()?)
+            .map_err(|_| RusticolError::invalid_argument("amplitude plane count exceeds usize"))?;
+        if plane_count != self.output_length {
+            return Err(RusticolError::invalid_argument(format!(
+                "direct amplitude plane count is {plane_count}, expected {}",
+                self.output_length
+            )));
+        }
+        let batch_size = amplitudes.point_count() as usize;
+        self.reduce_amplitude_samples_f64_into_selected_slice(
+            amplitudes,
+            batch_size,
+            raw_sums,
+            selected_color_sector_ids,
+        )
+    }
+
+    fn reduce_amplitude_samples_f64_into_selected_slice<S: AmplitudeSamples>(
+        &mut self,
+        amplitudes: S,
+        batch_size: usize,
+        raw_sums: &mut [f64],
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+    ) -> RusticolResult<()> {
         if raw_sums.len() != batch_size {
             return Err(RusticolError::invalid_argument(format!(
                 "generic reduction output has length {}, expected {batch_size}",
@@ -478,7 +552,6 @@ impl AmplitudeRuntime {
                     .group_scratch_f64
                     .resize(contraction.group_count, c64(0.0, 0.0));
                 for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
-                    let row_offset = row * self.output_length;
                     if let (Some(walsh_block), Some(output_indices)) = (
                         repeated_block.walsh_block.as_ref(),
                         repeated_block.singleton_output_indices.as_deref(),
@@ -488,9 +561,12 @@ impl AmplitudeRuntime {
                         for (coset_index, coset) in walsh_block.cosets.iter().enumerate() {
                             for component_index in 0..component_count {
                                 let source = |local_group_index: usize| {
-                                    amplitudes[row_offset
-                                        + output_indices
-                                            [local_group_index * component_count + component_index]]
+                                    amplitudes.value(
+                                        row,
+                                        output_indices
+                                            [local_group_index * component_count + component_index],
+                                        self.output_length,
+                                    )
                                 };
                                 let x0 = source(coset[0]);
                                 let x1 = source(coset[1]);
@@ -538,9 +614,12 @@ impl AmplitudeRuntime {
                             for (coset_index, coset) in walsh_block.cosets.iter().enumerate() {
                                 for component_index in 0..component_count {
                                     let source = |local_group_index: usize| {
-                                        amplitudes[row_offset
-                                            + output_indices[local_group_index * component_count
-                                                + component_index]]
+                                        amplitudes.value(
+                                            row,
+                                            output_indices[local_group_index * component_count
+                                                + component_index],
+                                            self.output_length,
+                                        )
                                     };
                                     let x0 = source(coset[0]);
                                     let x1 = source(coset[1]);
@@ -599,11 +678,12 @@ impl AmplitudeRuntime {
                                         let target = ((subgroup_index * coset_count + coset_index)
                                             * component_count)
                                             + component_index;
-                                        contraction.group_scratch_f64[target] = amplitudes
-                                            [row_offset
-                                                + output_indices[local_group_index
-                                                    * component_count
-                                                    + component_index]];
+                                        contraction.group_scratch_f64[target] = amplitudes.value(
+                                            row,
+                                            output_indices[local_group_index * component_count
+                                                + component_index],
+                                            self.output_length,
+                                        );
                                     }
                                     let mut stride = 1;
                                     while stride < walsh_block.subgroup_order {
@@ -654,7 +734,7 @@ impl AmplitudeRuntime {
                         for (target, output_index) in
                             contraction.group_scratch_f64.iter_mut().zip(output_indices)
                         {
-                            *target = amplitudes[row_offset + *output_index];
+                            *target = amplitudes.value(row, *output_index, self.output_length);
                         }
                     } else {
                         for (target, group_index) in contraction
@@ -664,7 +744,7 @@ impl AmplitudeRuntime {
                         {
                             let mut sum = c64(0.0, 0.0);
                             for output_index in &self.raw_sum_groups[*group_index].indices {
-                                sum += amplitudes[row_offset + *output_index];
+                                sum += amplitudes.value(row, *output_index, self.output_length);
                             }
                             *target = sum;
                         }
@@ -704,12 +784,11 @@ impl AmplitudeRuntime {
                 .group_scratch_f64
                 .resize(batch_size * contraction.group_count, c64(0.0, 0.0));
             for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
-                let row_offset = row * self.output_length;
                 let group_row = row * contraction.group_count;
                 for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
                     let mut sum = c64(0.0, 0.0);
                     for index in &group.indices {
-                        sum += amplitudes[row_offset + *index];
+                        sum += amplitudes.value(row, *index, self.output_length);
                     }
                     contraction.group_scratch_f64[group_row + group_index] = sum;
                 }
@@ -724,7 +803,6 @@ impl AmplitudeRuntime {
             return Ok(());
         }
         for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
-            let row_offset = row * self.output_length;
             if self.has_coherent_groups {
                 for group in &self.raw_sum_groups {
                     if !raw_sum_group_is_selected(group, selected_color_sector_ids) {
@@ -732,7 +810,7 @@ impl AmplitudeRuntime {
                     }
                     let mut sum = c64(0.0, 0.0);
                     for index in &group.indices {
-                        sum += amplitudes[row_offset + *index];
+                        sum += amplitudes.value(row, *index, self.output_length);
                     }
                     let weight = if selected_color_sector_ids.is_none() {
                         group.all_sector_weight
@@ -750,7 +828,7 @@ impl AmplitudeRuntime {
                 ) {
                     continue;
                 }
-                let value = amplitudes[row_offset + index];
+                let value = amplitudes.value(row, index, self.output_length);
                 let weight = if selected_color_sector_ids.is_none() {
                     self.raw_sum_all_sector_weights[index]
                 } else {
@@ -974,14 +1052,82 @@ impl AmplitudeRuntime {
         target_component_count: usize,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        let amplitudes = &self.output_scratch_f64;
-        if amplitudes.len() != batch_size * self.output_length {
+        if self.output_scratch_f64.len() != batch_size * self.output_length {
             return Err(RusticolError::invalid_argument(format!(
                 "generic amplitude output buffer has length {}, expected {}",
-                amplitudes.len(),
+                self.output_scratch_f64.len(),
                 batch_size * self.output_length
             )));
         }
+        let amplitudes = RowMajorAmplitudeSamples {
+            values: self.output_scratch_f64.as_ptr(),
+            len: self.output_scratch_f64.len(),
+        };
+        self.reduce_amplitude_samples_f64_routed_totals_into(
+            amplitudes,
+            batch_size,
+            physics,
+            normalization_factor,
+            selected_helicity_ids,
+            selected_color_ids,
+            replay_entry,
+            source_component_count,
+            target_component_count,
+            output,
+        )
+    }
+
+    /// Plane-native counterpart of the LC topology-replay totals reducer.
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    pub(crate) fn reduce_planes_f64_routed_totals_into(
+        &mut self,
+        amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        replay_entry: &LcResolvedReplayEntry,
+        source_component_count: usize,
+        target_component_count: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let plane_count = usize::try_from(amplitudes.component_count()?)
+            .map_err(|_| RusticolError::invalid_argument("amplitude plane count exceeds usize"))?;
+        if plane_count != self.output_length {
+            return Err(RusticolError::invalid_argument(format!(
+                "direct amplitude plane count is {plane_count}, expected {}",
+                self.output_length
+            )));
+        }
+        self.reduce_amplitude_samples_f64_routed_totals_into(
+            amplitudes,
+            amplitudes.point_count() as usize,
+            physics,
+            normalization_factor,
+            selected_helicity_ids,
+            selected_color_ids,
+            replay_entry,
+            source_component_count,
+            target_component_count,
+            output,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reduce_amplitude_samples_f64_routed_totals_into<S: AmplitudeSamples>(
+        &mut self,
+        amplitudes: S,
+        batch_size: usize,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        replay_entry: &LcResolvedReplayEntry,
+        source_component_count: usize,
+        target_component_count: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
         if output.len() != batch_size {
             return Err(RusticolError::invalid_argument(format!(
                 "routed reduction output has length {}, expected {batch_size}",
@@ -1054,7 +1200,6 @@ impl AmplitudeRuntime {
         for (row, target_total) in output.iter_mut().enumerate() {
             let source_row = &mut self.resolved_source_row_scratch_f64;
             source_row.fill(0.0);
-            let row_offset = row * self.output_length;
             for (group, member_weights) in self
                 .raw_sum_groups
                 .iter()
@@ -1062,7 +1207,7 @@ impl AmplitudeRuntime {
             {
                 let mut sum = c64(0.0, 0.0);
                 for index in &group.indices {
-                    sum += amplitudes[row_offset + *index];
+                    sum += amplitudes.value(row, *index, self.output_length);
                 }
                 let contribution = normalization_factor
                     * group.all_sector_weight
