@@ -886,8 +886,8 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     _rand_gens(
         context->thread_pool(),
         []() {
-            std::random_device rand_device;
-            return std::mt19937(rand_device());
+
+	return make_rng();
         }
     ),
     _concurrent(concurrent) {

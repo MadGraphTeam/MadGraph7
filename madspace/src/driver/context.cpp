@@ -1,5 +1,6 @@
 #include "madspace/driver/context.hpp"
 
+#include <atomic>
 #include <dlfcn.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
@@ -9,6 +10,34 @@
 
 using namespace madspace;
 using json = nlohmann::json;
+
+namespace {
+	std::atomic<std::int64_t> g_generation_seed{-1};
+	std::atomic<std::uint64_t> g_rng_stream{0};
+} 
+
+void madspace::set_generation_seed(std::int64_t seed) {
+    g_generation_seed.store(seed);
+    g_rng_stream.store(0);
+}
+
+std::mt19937 madspace::make_rng() {
+    std::int64_t seed = g_generation_seed.load();
+    if (seed < 0) {
+        std::random_device rand_device;
+        return std::mt19937(rand_device());
+    }
+    // distinct deterministic sub-stream per RNG created
+    std::uint64_t base = static_cast<std::uint64_t>(seed);
+    std::uint64_t stream = g_rng_stream.fetch_add(1);
+    std::seed_seq seq{
+        static_cast<std::uint32_t>(base),
+        static_cast<std::uint32_t>(base >> 32),
+        static_cast<std::uint32_t>(stream),
+        static_cast<std::uint32_t>(stream >> 32)
+    }; // more entropy - hopefully uncorrelated 
+    return std::mt19937(seq);
+}
 
 MatrixElementApi::MatrixElementApi(
     const std::string& file,

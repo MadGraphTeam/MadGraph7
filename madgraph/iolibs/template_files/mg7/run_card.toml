@@ -14,6 +14,7 @@ combine_thread_pool_size = %(run.combine_thread_pool_size)s
 output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
 verbosity = %(run.verbosity)s # options: silent, pretty, log
 dummy_matrix_element = %(run.dummy_matrix_element)s
+iseed = %(run.iseed)s # -1 random
 
 [gridpack]
 save_gridpack = %(gridpack.save_gridpack)s

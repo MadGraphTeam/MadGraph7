@@ -281,6 +281,10 @@ PYBIND11_MODULE(_madspace_py, m) {
     m.def("default_context", &default_context);
     m.def("default_cuda_context", &default_cuda_context, py::arg("index") = 0);
     m.def("default_hip_context", &default_hip_context, py::arg("index") = 0);
+    m.def(
+        "set_generation_seed", &set_generation_seed, py::arg("seed"),
+        "Seed the event-generation RNGs deterministically (seed < 0 -> random )."
+    );
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
