@@ -2153,13 +2153,58 @@ class Event(list):
         self.tag = self.tag[:start] + text % data + self.tag[stop+9:]
         
             
-    def parse_lo_weight(self):
-        """ """
-        
-        
+    def reconstruct_lo_weight(self, nqcd, ebeam):
+        """Reconstruct the LO reweighting information (the content of an <mgrwt>
+        block) from the event itself, for a process with a *single* alpha_s
+        power ``nqcd``. This is what systematics.get_lo_wgt needs to compute the
+        scale/PDF uncertainties on events that do not carry an <mgrwt> block
+        (e.g. the mg7 output).
+
+        Everything but the alpha_s power is taken from the event: the two
+        initial-state partons give the PDF pdg codes and, together with the beam
+        energies ``ebeam = (ebeam1, ebeam2)``, the Bjorken-x (x_i = E_i/ebeam_i,
+        exact for the collinear massless initial state of an LHE event); the
+        renormalisation and factorisation scales are the event scale (SCALUP).
+        With a single alpha_s power there is no clustering, so there is a single
+        PDF reweight entry per beam and no separate alpha_s reweight scale --
+        matching what MadEvent writes for an unmatched LO event (verified
+        against a real <mgrwt>: x_i, pdg, scale and n_qcd all coincide).
+
+        Scope: this is only valid for an unmatched (ickkw=0) LO sample with the
+        standard collinear massless initial state. It does NOT reproduce the
+        <mgrwt> of a matched sample (ickkw>0, where the clustering fills asrwt
+        and multiple pdf reweight entries) nor the EVA/DIS special cases; use the
+        real <mgrwt> block for those."""
+
+        initial = [p for p in self if int(p.status) == -1]
+        if len(initial) != 2:
+            return None
+        if ebeam is None:
+            ebeam = (0., 0.)
+        scale = float(self.scale)
+        loweight = {'n_qcd': int(nqcd),
+                    'ren_scale': scale,
+                    'asrwt': [],
+                    'tot_fact': 1.0}
+        for beam, (part, eb) in enumerate(zip(initial, ebeam), start=1):
+            x = abs(float(part.E)) / eb if eb else 0.0
+            loweight['n_pdfrw%d' % beam] = 1
+            loweight['pdf_pdg_code%d' % beam] = [int(part.pid)]
+            loweight['pdf_x%d' % beam] = [x]
+            loweight['pdf_q%d' % beam] = [scale]
+        return loweight
+
+    def parse_lo_weight(self, nqcd=None, ebeam=None):
+        """Return the LO reweighting information (from the <mgrwt> block).
+
+        If the event carries no <mgrwt> block, it is reconstructed from the
+        event for a process with a single alpha_s power when ``nqcd`` is given
+        (see :meth:`reconstruct_lo_weight`); ``ebeam=(ebeam1, ebeam2)`` supplies
+        the beam energies needed for the Bjorken-x. Otherwise returns None."""
+
         if hasattr(self, 'loweight'):
             return self.loweight
-        
+
         if not hasattr(Event, 'loweight_pattern'):
             Event.loweight_pattern = re.compile('''<rscale>\\s*(?P<nqcd>\\d+)\\s+(?P<ren_scale>[\\d.e+-]+)\\s*</rscale>\\s*\n\\s*
                                     <asrwt>\\s*(?P<asrwt>[\\s\\d.+-e]+)\\s*</asrwt>\\s*\n\\s*
@@ -2202,11 +2247,18 @@ class Event(list):
             self.loweight['n_pdfrw2'] = npdf
             self.loweight['pdf_pdg_code2'] = [int(i) for i in args[1:1+npdf]]
             self.loweight['pdf_x2'] = [float(i) for i in args[1+npdf:1+2*npdf]]
-            self.loweight['pdf_q2'] = [float(i) for i in args[1+2*npdf:1+3*npdf]]            
-            
+            self.loweight['pdf_q2'] = [float(i) for i in args[1+2*npdf:1+3*npdf]]
+
+        elif nqcd is not None:
+            # no <mgrwt> block: reconstruct it from the event (single alpha_s
+            # power) so systematics can still be computed (e.g. mg7 output).
+            loweight = self.reconstruct_lo_weight(nqcd, ebeam)
+            if loweight is None:
+                return None
+            self.loweight = loweight
         else:
             return None
-        return self.loweight            
+        return self.loweight
     
             
     def parse_matching_scale(self):

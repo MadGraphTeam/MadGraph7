@@ -332,20 +332,17 @@ decay z > l+ l-
         self.assertNotRegex(banner_text, r'(?mi)^\s*decay\s+82\s+[0-9eE.+-]+\s+# added\s*$')
         self.assertNotRegex(banner_text, r'(?mi)^\s*decay\s+83\s+[0-9eE.+-]+\s+# added\s*$')
 
-    @unittest.expectedFailure
     def test_madspin_mixed_flavor_decay_log_summary_mg7(self):
-        """TODO (mg7 + MadSpin): same check as
-        test_madspin_mixed_flavor_decay_log_summary but with the current
-        default 'mg7' (madspace/madnis) exporter instead of Fortran madevent.
+        """Same check as test_madspin_mixed_flavor_decay_log_summary but with the
+        default 'mg7' (madspace) exporter instead of Fortran madevent: drive the
+        whole chain through the madevent-style launch command interface
+        (output mg7 -> launch -> madspin=ON + decay lines) and verify MadSpin's
+        density path runs on the mg7 events and emits its
+        'MadSpin unweight efficiency: ...' summary line.
 
-        This is *expected to fail for now*: the mg7 launch does not run the
-        MadSpin density flow and does not emit the
-        'MadSpin unweight efficiency: ...' summary line (it currently runs the
-        madnis pipeline instead, which here does not produce decayed events in
-        the bounded time). It is kept as an @expectedFailure so it is tracked
-        in CI: once mg7 + MadSpin is supported it will report an *unexpected
-        success*, which is the signal to wire mg7 into the MadSpin flow and
-        drop this decorator.
+        NB: 'set nevents 500' relies on the mg7 run_card editor accepting the
+        legacy madevent name (mapped to generation.events); without it the run
+        would generate the full default 100k events and risk the timeout below.
         """
         cmd_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.cmd')
         log_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.log')
@@ -369,10 +366,10 @@ decay z > l+ l-
         with open(cmd_path, 'w') as fsock:
             fsock.write(command)
 
-        # Bounded and with stdin closed so an (expected) failing mg7 run never
-        # blocks on the launch card menu -- it does not understand the
-        # madevent-style madspin=ON/shower=OFF switches -- and a TimeoutExpired
-        # is itself the expected failure.
+        # Bounded and with stdin closed so the run never blocks on a prompt.
+        # With 'set nevents 500' honoured the decay is quick; a timeout here
+        # would signal a regression (e.g. nevents no longer applied -> the full
+        # 100k events get decayed).
         with open(log_path, 'w') as log_file:
             try:
                 return_code = subprocess.call(
@@ -381,11 +378,18 @@ decay z > l+ l-
                     stdin=subprocess.DEVNULL,
                     stdout=log_file, stderr=subprocess.STDOUT, timeout=240)
             except subprocess.TimeoutExpired:
-                self.fail('mg7 + MadSpin run timed out (TODO: not supported yet)')
-        self.assertEqual(return_code, 0)
-
+                self.fail('mg7 + MadSpin run timed out (is set nevents applied?)')
         with open(log_path) as log_file:
             log = log_file.read()
+        # On failure, surface the tail of the mg7 run log (which lives in a tmp
+        # dir CI does not upload) so the reason is visible in the CI output.
+        if return_code != 0 or not re.search(r'MadSpin\s+unweight\s+efficiency', log):
+            print('\n===== test_madspin_mixed_flavor_decay_log_summary_mg7: '
+                  'mg5_aMC log tail (rc=%s) =====\n%s'
+                  % (return_code, '\n'.join(log.splitlines()[-150:])),
+                  file=sys.stderr, flush=True)
+        self.assertEqual(return_code, 0)
+
         self.assertIsNotNone(
             re.search(r'MadSpin\s+unweight\s+efficiency', log),
             msg='mg7 + MadSpin: density-mode summary line not found in log')
