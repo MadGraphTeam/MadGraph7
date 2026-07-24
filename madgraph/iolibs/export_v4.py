@@ -1813,11 +1813,22 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
     #===========================================================================
     # get_leshouche_lines
     #===========================================================================
-    def get_leshouche_lines(self, matrix_element, numproc):
-        """Write the leshouche.inc file for MG4"""
+    def get_leshouche_lines(self, matrix_element, numproc, drop_icolup=False):
+        """Write the leshouche.inc file for MG4
+
+        With *drop_icolup* the ICOLUP table is omitted for any ME whose colour
+        flows have a canonical code: the consumer (addmothers) rebuilds the tags
+        from colorflow.inc instead, so the table would be dead weight. It is
+        still written for an ME without a usable code, which is what addmothers
+        falls back to. Only the madevent exporters set this -- MadWeight ships
+        no addmothers.f and keeps reading ICOLUP."""
 
         # Extract number of external particles
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
+        if drop_icolup and self._color_code_tables(matrix_element):
+            drop_icolup = True
+        else:
+            drop_icolup = False
 
         lines = []
         real_iproc = -1
@@ -1855,7 +1866,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
             # Here goes the color connections corresponding to the JAMPs
             # Only one output, for the first subproc!
-            if iproc == 0:
+            if iproc == 0 and not drop_icolup:
                 # If no color basis, just output trivial color flow
                 if not matrix_element.get('color_basis'):
                     for i in [1, 2]:
@@ -7080,6 +7091,10 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         self.write_leshouche_file(writers.FortranWriter(filename),
                              matrix_element)
 
+        filename = pjoin(Ppath, 'colorflow.inc')
+        self.write_colorflow_file(writers.FortranWriter(filename),
+                             matrix_element)
+
         filename = pjoin(Ppath, 'maxamps.inc')
         nb_flavor_per_proc = matrix_element.get_nb_flavors()
         # Compute actual MAXPROC: for merged processes each flavor combination
@@ -9063,6 +9078,205 @@ c           This is dummy particle used in multiparticle vertices
         else:
             return replace_dict
 
+    def _module_color_flows(self, matrix_element):
+        """Return the colour-flow decomposition (leshouche ICOLUP) of an ME as a
+        list, one entry per flow, of (colour, anticolour) per leg in leg order.
+        None if the ME has no colour basis."""
+        if not matrix_element.get('color_basis'):
+            return None
+        proc = matrix_element.get('processes')[0]
+        legs = proc.get_legs_with_decays()
+        ninitial = matrix_element.get_nexternal_ninitial()[1]
+        repr_dict = {l.get('number'):
+                     proc.get('model').get_particle(l.get('id')).get_color()
+                     * (-1) ** (1 + l.get('state')) for l in legs}
+        flows = matrix_element.get('color_basis').color_flow_decomposition(
+            repr_dict, ninitial)
+        return [[tuple(cf[l.get('number')]) for l in legs] for cf in flows]
+
+    @staticmethod
+    def _color_flow_canon(flow, states):
+        """Label-independent canonical form of one colour flow: the set of
+        (colour-leg, anticolour-leg) connections, with INITIAL-state legs
+        swapping the two roles so that every colour index connects to an
+        anticolour index (the LHE convention runs initial-state colour lines
+        'through', so without this swap a label can sit in the same slot on two
+        legs and the flow is not a bijection). Shared by _router_colmap
+        (topology matching) and _color_flow_code."""
+        col, anti = {}, {}
+        for leg, (c, a) in enumerate(flow):
+            if states[leg] is False:
+                c, a = a, c
+            if c:
+                col.setdefault(c, []).append(leg)
+            if a:
+                anti.setdefault(a, []).append(leg)
+        conns = set()
+        for lbl in set(list(col) + list(anti)):
+            for cc, aa in zip(sorted(col.get(lbl, [])),
+                              sorted(anti.get(lbl, []))):
+                conns.add((cc, aa))
+        return frozenset(conns)
+
+    @staticmethod
+    def _color_flow_code(conns):
+        """Canonical integer code of a colour flow from its canonical
+        connections (see _color_flow_canon).
+
+        Order the colour slots and the anticolour slots by leg -- a gluon holds
+        one slot of each kind, a sextet two -- then digit i is the index of the
+        anticolour slot that colour slot i connects to, and
+
+            code = sum_i digit_i * N^i          (N = number of anticolour slots)
+
+        This is the colour analogue of the canonical helicity code. It is
+        injective over a process's colour basis, and crossing-covariant:
+        relabelling the legs with the crossing permutation carries the base
+        code onto the crossed process's own code (the initial-state flip is
+        what makes the connectivity invariant under a crossing, exactly as the
+        conjugate+state flip cancellation does for the helicity). Note the code
+        space is N^N while only the basis flows are realised, so -- like the
+        helicity allowed-list -- the codes are a sparse subset."""
+        ordered = sorted(conns)
+        acol = sorted(a for _c, a in conns)
+        nslot = len(acol)
+        code = 0
+        used = set()
+        for i, (_c, a) in enumerate(ordered):
+            slot = -1
+            for j, aa in enumerate(acol):
+                if aa == a and j not in used:
+                    slot = j
+                    break
+            if slot < 0:
+                return None
+            used.add(slot)
+            code += slot * (nslot ** i)
+        return code
+
+    @staticmethod
+    def _color_flow_slots(conns):
+        """(colour-slot legs, anticolour-slot legs) of a process, each ordered by
+        leg, read off one canonical flow.
+
+        This is FLOW-INDEPENDENT process data -- which legs carry a colour resp.
+        anticolour index is fixed by the colour representations (after the
+        initial-state flip), not by which flow is picked -- so it is the colour
+        analogue of the per-leg helicity-state counts, and it is all a decoder
+        needs besides the code itself."""
+        return ([c for c, _a in sorted(conns)],
+                sorted(a for _c, a in conns))
+
+    @staticmethod
+    def _color_flow_decode(code, colslots, acolslots):
+        """Inverse of _color_flow_code: rebuild a flow's canonical connections
+        from its code and the process's slot structure (see _color_flow_slots).
+
+        digit_i = (code // N^i) %% N is the anticolour slot that colour slot i
+        connects to. NOTE: for a leg carrying two slots of the same kind (a
+        sextet) encode/decode must agree on the tie-break between its slots;
+        that case is untested."""
+        nslot = len(acolslots)
+        if nslot == 0:
+            return frozenset()
+        conns = set()
+        for i, cleg in enumerate(colslots):
+            digit = (code // (nslot ** i)) % nslot
+            conns.add((cleg, acolslots[digit]))
+        return frozenset(conns)
+
+    def _color_flow_codes(self, matrix_element):
+        """Canonical colour-flow codes of an ME, one per colour-basis flow in
+        basis order. None if the ME has no colour basis or a flow is not a clean
+        colour<->anticolour bijection."""
+        flows = self._module_color_flows(matrix_element)
+        if not flows:
+            return None
+        states = [l.get('state') for l in
+                  matrix_element.get('processes')[0].get_legs_with_decays()]
+        codes = []
+        for fl in flows:
+            code = self._color_flow_code(self._color_flow_canon(fl, states))
+            if code is None:
+                return None
+            codes.append(code)
+        return codes
+
+    def _color_code_tables(self, matrix_element):
+        """Per-ME colour tables for the generated fortran, or None if the ME has
+        no usable colour code: (codes, colour-slot legs, anticolour-slot legs),
+        the two slot lists 1-based so they index the fortran leg arrays.
+
+        This is ALL the colour data an ME needs, and it is per-ME rather than
+        per-(base, crossing) pair: the slot structure is flow-independent (see
+        _color_flow_slots) and the codes are label-independent, so any crossing
+        of this ME reuses the same three arrays."""
+        flows = self._module_color_flows(matrix_element)
+        if not flows:
+            return None
+        # A negative tag marks a colour SEXTET (color_flow_decomposition stores
+        # it in the opposite slot, so one leg carries two slots of the same
+        # kind). The code has no room for that sign, and a decoder rebuilding
+        # the tags could not restore it, so leave those to the ICOLUP table.
+        if any(c < 0 or a < 0 for fl in flows for c, a in fl):
+            return None
+        states = [l.get('state') for l in
+                  matrix_element.get('processes')[0].get_legs_with_decays()]
+        conns = [self._color_flow_canon(fl, states) for fl in flows]
+        codes = [self._color_flow_code(c) for c in conns]
+        if any(c is None for c in codes) or len(set(codes)) != len(codes):
+            return None
+        colslots, acolslots = self._color_flow_slots(conns[0])
+        if not acolslots:
+            return None
+        # flow-independence is what lets a single table serve every crossing
+        for c in conns[1:]:
+            if self._color_flow_slots(c) != (colslots, acolslots):
+                return None
+        return (codes, [l + 1 for l in colslots], [l + 1 for l in acolslots])
+
+    #===========================================================================
+    # get_colorflow_lines / write_colorflow_file
+    #===========================================================================
+    def get_colorflow_lines(self, matrix_element, numproc):
+        """DATA lines of colorflow.inc for one subprocess: the canonical
+        colour-flow CODE of each flow plus the slot structure needed to decode
+        it (see _color_flow_code / _color_flow_decode).
+
+        addmothers rebuilds the event's colour tags from these instead of
+        reading the ICOLUP table, which is why leshouche.inc can drop ICOLUP
+        whenever this is emitted. NCOLSLOT is 0 when the ME has no usable code
+        (no colour, a sextet, or an epsilon structure); addmothers then falls
+        back to ICOLUP, which get_leshouche_lines still writes in that case."""
+        tables = self._color_code_tables(matrix_element)
+        if not tables:
+            return ["DATA NCOLSLOT(%d)/0/" % (numproc + 1)]
+        codes, colslots, acolslots = tables
+        return [
+            "DATA NCOLSLOT(%d)/%d/" % (numproc + 1, len(colslots)),
+            "DATA (ICOLCSL(i,%d),i=1,%d)/%s/" % (
+                numproc + 1, len(colslots),
+                ",".join(str(l) for l in colslots)),
+            "DATA (ICOLASL(i,%d),i=1,%d)/%s/" % (
+                numproc + 1, len(acolslots),
+                ",".join(str(l) for l in acolslots)),
+            "DATA (ICOLCODE(i,%d),i=1,%d)/%s/" % (
+                numproc + 1, len(codes),
+                ",".join(str(c) for c in codes)),
+        ]
+
+    def write_colorflow_file(self, writer, matrix_element):
+        """Write colorflow.inc for a single (non-grouped) subprocess."""
+        writer.writelines(self.get_colorflow_lines(matrix_element, 0))
+        return True
+
+    def write_leshouche_file(self, writer, matrix_element):
+        """Write leshouche.inc, without the ICOLUP table when the colour code
+        can supply the tags (see get_colorflow_lines)."""
+        writer.writelines(self.get_leshouche_lines(matrix_element, 0,
+                                                   drop_icolup=True))
+        return True
+
     #===========================================================================
     # write_addmothers
     #===========================================================================
@@ -9331,157 +9545,6 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     #===========================================================================
     # write_matrix_router_file
     #===========================================================================
-    def _module_color_flows(self, matrix_element):
-        """Return the colour-flow decomposition (leshouche ICOLUP) of an ME as a
-        list, one entry per flow, of (colour, anticolour) per leg in leg order.
-        None if the ME has no colour basis."""
-        if not matrix_element.get('color_basis'):
-            return None
-        proc = matrix_element.get('processes')[0]
-        legs = proc.get_legs_with_decays()
-        ninitial = matrix_element.get_nexternal_ninitial()[1]
-        repr_dict = {l.get('number'):
-                     proc.get('model').get_particle(l.get('id')).get_color()
-                     * (-1) ** (1 + l.get('state')) for l in legs}
-        flows = matrix_element.get('color_basis').color_flow_decomposition(
-            repr_dict, ninitial)
-        return [[tuple(cf[l.get('number')]) for l in legs] for cf in flows]
-
-    @staticmethod
-    def _color_flow_canon(flow, states):
-        """Label-independent canonical form of one colour flow: the set of
-        (colour-leg, anticolour-leg) connections, with INITIAL-state legs
-        swapping the two roles so that every colour index connects to an
-        anticolour index (the LHE convention runs initial-state colour lines
-        'through', so without this swap a label can sit in the same slot on two
-        legs and the flow is not a bijection). Shared by _router_colmap
-        (topology matching) and _color_flow_code."""
-        col, anti = {}, {}
-        for leg, (c, a) in enumerate(flow):
-            if states[leg] is False:
-                c, a = a, c
-            if c:
-                col.setdefault(c, []).append(leg)
-            if a:
-                anti.setdefault(a, []).append(leg)
-        conns = set()
-        for lbl in set(list(col) + list(anti)):
-            for cc, aa in zip(sorted(col.get(lbl, [])),
-                              sorted(anti.get(lbl, []))):
-                conns.add((cc, aa))
-        return frozenset(conns)
-
-    @staticmethod
-    def _color_flow_code(conns):
-        """Canonical integer code of a colour flow from its canonical
-        connections (see _color_flow_canon).
-
-        Order the colour slots and the anticolour slots by leg -- a gluon holds
-        one slot of each kind, a sextet two -- then digit i is the index of the
-        anticolour slot that colour slot i connects to, and
-
-            code = sum_i digit_i * N^i          (N = number of anticolour slots)
-
-        This is the colour analogue of the canonical helicity code. It is
-        injective over a process's colour basis, and crossing-covariant:
-        relabelling the legs with the crossing permutation carries the base
-        code onto the crossed process's own code (the initial-state flip is
-        what makes the connectivity invariant under a crossing, exactly as the
-        conjugate+state flip cancellation does for the helicity). Note the code
-        space is N^N while only the basis flows are realised, so -- like the
-        helicity allowed-list -- the codes are a sparse subset."""
-        ordered = sorted(conns)
-        acol = sorted(a for _c, a in conns)
-        nslot = len(acol)
-        code = 0
-        used = set()
-        for i, (_c, a) in enumerate(ordered):
-            slot = -1
-            for j, aa in enumerate(acol):
-                if aa == a and j not in used:
-                    slot = j
-                    break
-            if slot < 0:
-                return None
-            used.add(slot)
-            code += slot * (nslot ** i)
-        return code
-
-    @staticmethod
-    def _color_flow_slots(conns):
-        """(colour-slot legs, anticolour-slot legs) of a process, each ordered by
-        leg, read off one canonical flow.
-
-        This is FLOW-INDEPENDENT process data -- which legs carry a colour resp.
-        anticolour index is fixed by the colour representations (after the
-        initial-state flip), not by which flow is picked -- so it is the colour
-        analogue of the per-leg helicity-state counts, and it is all a decoder
-        needs besides the code itself."""
-        return ([c for c, _a in sorted(conns)],
-                sorted(a for _c, a in conns))
-
-    @staticmethod
-    def _color_flow_decode(code, colslots, acolslots):
-        """Inverse of _color_flow_code: rebuild a flow's canonical connections
-        from its code and the process's slot structure (see _color_flow_slots).
-
-        digit_i = (code // N^i) %% N is the anticolour slot that colour slot i
-        connects to. NOTE: for a leg carrying two slots of the same kind (a
-        sextet) encode/decode must agree on the tie-break between its slots;
-        that case is untested."""
-        nslot = len(acolslots)
-        if nslot == 0:
-            return frozenset()
-        conns = set()
-        for i, cleg in enumerate(colslots):
-            digit = (code // (nslot ** i)) % nslot
-            conns.add((cleg, acolslots[digit]))
-        return frozenset(conns)
-
-    def _color_flow_codes(self, matrix_element):
-        """Canonical colour-flow codes of an ME, one per colour-basis flow in
-        basis order. None if the ME has no colour basis or a flow is not a clean
-        colour<->anticolour bijection."""
-        flows = self._module_color_flows(matrix_element)
-        if not flows:
-            return None
-        states = [l.get('state') for l in
-                  matrix_element.get('processes')[0].get_legs_with_decays()]
-        codes = []
-        for fl in flows:
-            code = self._color_flow_code(self._color_flow_canon(fl, states))
-            if code is None:
-                return None
-            codes.append(code)
-        return codes
-
-    def _color_code_tables(self, matrix_element):
-        """Per-ME colour tables for the generated fortran, or None if the ME has
-        no usable colour code: (codes, colour-slot legs, anticolour-slot legs),
-        the two slot lists 1-based so they index the fortran leg arrays.
-
-        This is ALL the colour data an ME needs, and it is per-ME rather than
-        per-(base, crossing) pair: the slot structure is flow-independent (see
-        _color_flow_slots) and the codes are label-independent, so any crossing
-        of this ME reuses the same three arrays."""
-        flows = self._module_color_flows(matrix_element)
-        if not flows:
-            return None
-        states = [l.get('state') for l in
-                  matrix_element.get('processes')[0].get_legs_with_decays()]
-        conns = [self._color_flow_canon(fl, states) for fl in flows]
-        codes = [self._color_flow_code(c) for c in conns]
-        if any(c is None for c in codes) or len(set(codes)) != len(codes):
-            return None
-        colslots, acolslots = self._color_flow_slots(conns[0])
-        if not acolslots:
-            return None
-        # flow-independence is what lets a single table serve every crossing
-        for c in conns[1:]:
-            if self._color_flow_slots(c) != (colslots, acolslots):
-                return None
-        return (codes, [l + 1 for l in colslots], [l + 1 for l in acolslots])
-
     def _router_colmap(self, router_me, base_me, cross):
         """Map each base colour-flow index to this subprocess's flow index.
 
@@ -9980,6 +10043,10 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
 
         filename = 'leshouche.inc'
         self.write_leshouche_file(writers.FortranWriter(filename),
+                                   subproc_group)
+
+        filename = 'colorflow.inc'
+        self.write_colorflow_file(writers.FortranWriter(filename),
                                    subproc_group)
 
         filename = 'maxamps.inc'
@@ -10500,8 +10567,18 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         for iproc, matrix_element in \
             enumerate(subproc_group.get('matrix_elements')):
             all_lines.extend(self.get_leshouche_lines(matrix_element,
-                                                 iproc))
+                                                 iproc, drop_icolup=True))
         # Write the file
+        writer.writelines(all_lines)
+        return True
+
+    def write_colorflow_file(self, writer, subproc_group):
+        """Write colorflow.inc for a subprocess group (one entry per ME)."""
+
+        all_lines = []
+        for iproc, matrix_element in \
+            enumerate(subproc_group.get('matrix_elements')):
+            all_lines.extend(self.get_colorflow_lines(matrix_element, iproc))
         writer.writelines(all_lines)
         return True
 
