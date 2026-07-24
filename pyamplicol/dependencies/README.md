@@ -25,14 +25,15 @@ and are not eligible for PyPI publication.
 
 The contributor build uses the checksummed upstream source archive for SymJIT
 2.21.1 at revision `48197f32536c894b51ef25b2cf05ddd05c22675f`.
-The installer verifies and applies both the tracked AArch64
-compressed-funclet patch and the recurrence Direct-Arena application extension
-before changing the crate target from `cdylib` to `rlib` so Symbolica can
-consume it as a Rust dependency. It then verifies the complete configured tree
-against the lock. The compression patch enables deterministic relative
-funclet calls for scalar, SIMD, and fast-complex AArch64 code. The Direct-Arena
-extension adds recurrence-only arena callables; ordinary SymJIT applications
-and compiled/eager execution remain unchanged. The build uses Symbolica and
+The installer verifies and applies the ordered, individually checksummed
+SymJIT patch set before changing the crate target from `cdylib` to `rlib` so
+Symbolica can consume it as a Rust dependency. It then verifies the complete
+configured tree against the lock. The first patch provides deterministic
+AArch64 compressed funclets and the recurrence Direct-Arena application. The
+second adds the fused compiled DirectApplication storage-v3 contract and the
+table-aware eager DirectTableApplication contract. It also retains bounded,
+read-only loading of the accepted recurrence storage-v1 payloads; v3 is the
+only writer and v2 remains rejected. The build uses Symbolica and
 symbolica-community at the immutable planned-release revisions recorded in the
 lock. GammaLoop is pinned to the merged main revision that provides Spenso's
 cached symbolic-parallelism policy. Spynso3 initializes that policy in `Auto`

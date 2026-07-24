@@ -5,6 +5,10 @@ schema_version = 1
 [abis]
 symbolica_serialization = "symbolica-bincode2-v1"
 symjit_application = "symjit-application-storage-v3"
+symjit_direct_application = "symjit-direct-application-storage-v3"
+symjit_direct_application_legacy_recurrence = "symjit-direct-application-storage-v1"
+symjit_direct_table_binding = "symjit-direct-table-binding-v2"
+symjit_direct_table_descriptor = "symjit-direct-table-descriptor-v1"
 
 [symbolica]
 source_url = "https://github.com/symbolica-dev/symbolica.git"
@@ -21,7 +25,8 @@ archive_prefix = "symjit-48197f32536c894b51ef25b2cf05ddd05c22675f"
 archive_sha256 = "876930348cc06761ca780570fb282d009f143f4a469e321e3b5039c5ee217424"
 candidate_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
 application_storage_version = 3
-candidate_tree_sha256 = "932bb24df2633cc8bbf9c743a80282662d11e70b692885de5ff7a3ed20b3df31"
+patched_tree_sha256 = "c1aed5919ae63ef705299d220f7d3a872409ca65052c21432ecbb6f13757dd02"
+candidate_tree_sha256 = "9fa001ea3add37341461009ae4ab25093a94f95db9440a2a6a7605373c5f50f7"
 release_status = "patched-candidate"
 license = "MIT"
 
@@ -50,4 +55,11 @@ name = "symjit-aarch64-compression-and-direct-arena"
 target = "symjit"
 path = "patches/symjit/0001-aarch64-compression-and-direct-arena.patch"
 sha256 = "6d456e69fc160ec5361188f60f994d10fb2dd3360eb47a91c4979a1bde69626e"
+applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
+
+[[patches]]
+name = "symjit-eager-and-compiled-direct-arena"
+target = "symjit"
+path = "patches/symjit/0002-eager-and-compiled-direct-arena.patch"
+sha256 = "3c5e07f6e47e42bb7c51a53ed16fdca402ecae05fceea1bcfcff8b4145bbb299"
 applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
