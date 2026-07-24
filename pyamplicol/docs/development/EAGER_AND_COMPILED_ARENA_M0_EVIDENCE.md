@@ -31,7 +31,8 @@ requires:
 - the exact `u u~ > Z g g g g g g` standard candle;
 - compiled, eager, and recurrence lanes;
 - batches 1, 128, and 1024;
-- JIT O3 and at least seven interleaved worker subprocesses per cell;
+- an O3 process-generation request and at least seven interleaved worker
+  subprocesses per cell;
 - at least seven native wall blocks per worker;
 - warmed, unprofiled `runtime_core_repeated_wall_time` evidence;
 - complete physical flow and helicity axes;
@@ -44,9 +45,12 @@ requires:
   selector, logical reduction, and applicable execution-schedule identities.
 
 Generation-model identities follow an exact role matrix. Built-in compiled
-captures use `built-in-sm-source`; built-in eager and recurrence captures use
-the packaged `built-in-sm-jit-o2` prepared model and must agree exactly.
-Every UFO-SM lane uses the same explicit prepared-model file identity. A
+captures use `built-in-sm-source` and execute the requested O3 process-local
+stages. Built-in eager and recurrence captures use the packaged
+`built-in-sm-jit-o2` prepared model and must agree exactly. Every UFO-SM lane
+uses the same explicit portable prepared-model file identity. Prepared-model
+applications therefore execute at their immutable portable O2 level while the
+process-generation request and semantic generation signature remain O3. A
 different supported identity kind remains invalid even if configuration,
 generation signatures, both layout captures, and the request pin are all
 rewritten consistently.
@@ -279,19 +283,22 @@ comparisons.
 ## Frozen accepted-base inputs
 
 The immutable local baseline root is
-`/private/tmp/pyamplicol-eager-compiled-arena-baseline`. It was cloned
-copy-on-write from the exact accepted recurrence build after
+`/private/tmp/pyamplicol-eager-compiled-arena-baseline`. Its runtime wheel was
+built offline from the clean detached source checkout
+`/private/tmp/pyamplicol-eager-compiled-arena-base-src` after
 `443f354a467cdda187996bef1a41fbd5a00ae28d` became both the recurrence
 source-freeze and `origin/main`. The accepted production-source parent is
 `585456ed1726c43eef3ce35c7a126c17730e8a0d`; the child adds only acceptance
-and audit ledgers.
+and audit ledgers. The wheel build ran under the 30 GiB watchdog (peak RSS
+1.937 GiB) using only a copy-on-write clone of the existing offline dependency
+and Cargo caches.
 
 - wheel:
   `pyamplicol-0.1.0.dev0+candidate.c0fd7ce438fb-cp311-abi3-macosx_11_0_arm64.whl`;
 - wheel SHA-256:
-  `07427f13dac5ee8b9229eee93c892f482738b26b2b0bf37581d3d8820b343a0e`;
+  `e0fb076738201d11fc0aa4c73c5b55e5d9440efa18a22a2f4c0c16f0de9655f6`;
 - native build-input SHA-256:
-  `a0d05eafc7236a44bc22de1a68c0f1f3839166e99668be4c60551f75a2399ec0`;
+  `f91ebcc3eb431e3e1e72ac8a4e02dea194c17c2118f57a2742d0c8c5a73b3088`;
 - package version: `0.1.0.dev0+candidate.c0fd7ce438fb`;
 - native ABI version: `1`;
 - prepared SymJIT version/revision: `2.21.1` /

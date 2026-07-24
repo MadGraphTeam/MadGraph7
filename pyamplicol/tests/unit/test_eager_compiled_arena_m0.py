@@ -183,16 +183,26 @@ def _make_capture(
     layout: str,
     fixture: dict[str, object],
 ) -> tuple[dict[str, object], dict[str, Any]]:
-    arguments = z6g._arguments(
+    argument_tokens = [
         "--jit-optimization-level",
         "3",
         "--lc-flow-layout",
         layout,
-    )
+    ]
+    if model != "built-in-sm":
+        argument_tokens.extend(("--prepared-model", f"/prepared/{model}.pacbin"))
+    arguments = z6g._arguments(*argument_tokens)
     schedule = z6g._passing_schedule(
         jit_optimization_level=3,
         lc_flow_layout=layout,
     )
+    for entry in schedule["entries"]:
+        entry["pre_timing_verification"]["effective_contract"][
+            "jit_optimization_level"
+        ] = benchmark._expected_effective_jit_optimization_level(
+            arguments,
+            mode=entry["mode"],
+        )
     root_bindings = {
         "source_identity_sha256": m0._canonical_sha256(SOURCE),
         "runtime_provenance_sha256": m0._canonical_sha256(RUNTIME),
@@ -284,7 +294,11 @@ def _make_capture(
             "effective_contract": {
                 "execution_mode": mode,
                 "backend": "jit",
-                "jit_optimization_level": 3,
+                "jit_optimization_level": (
+                    3
+                    if model_identities[mode]["kind"] == "built-in-sm-source"
+                    else m0.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+                ),
                 "color_accuracy": "lc",
                 "lc_flow_layout": layout,
             },
@@ -954,9 +968,9 @@ def test_cli_accepts_the_content_addressed_positive_fixture(
             lambda corpus: corpus["captures"][("built-in-sm", "topology-replay")][
                 "generation"
             ]["recurrence"]["effective_contract"].__setitem__(
-                "jit_optimization_level", 2
+                "jit_optimization_level", 3
             ),
-            id="recurrence-generation-contract-drift",
+            id="recurrence-prepared-generation-contract-drift",
         ),
         pytest.param(
             lambda corpus: corpus["captures"][("built-in-sm", "topology-replay")][

@@ -867,6 +867,33 @@ def test_pairwise_validation_recomputes_lane_point_evidence() -> None:
         benchmark._pairwise_profile_validation(profiles)
 
 
+@pytest.mark.parametrize(
+    ("mode", "prepared", "expected"),
+    [
+        ("compiled", False, 3),
+        ("eager", False, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
+        ("recurrence", False, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
+        ("compiled", True, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
+        ("eager", True, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
+        ("recurrence", True, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
+    ],
+)
+def test_effective_jit_level_distinguishes_source_and_prepared_execution(
+    tmp_path: Path,
+    mode: str,
+    prepared: bool,
+    expected: int,
+) -> None:
+    values = ["--jit-optimization-level", "3"]
+    if prepared:
+        values.extend(("--prepared-model", str(tmp_path / "model.pyamplicol-model")))
+    arguments = _arguments(*values)
+    assert (
+        benchmark._expected_effective_jit_optimization_level(arguments, mode=mode)
+        == expected
+    )
+
+
 def test_partial_lane_capture_never_vacuously_passes() -> None:
     arguments = _arguments("--mode", "recurrence")
     schedule = _passing_schedule(modes=("recurrence",))

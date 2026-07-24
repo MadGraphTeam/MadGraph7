@@ -47,6 +47,7 @@ from typing import Any, Literal, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 PREPARED_MODEL_ID = "built-in-sm-jit-o2"
+PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL = 2
 DEFAULT_BATCH_SIZES = (1, 128, 1024)
 MIN_AUTHORITATIVE_SAMPLES = 7
 EXECUTION_MODES = ("compiled", "eager", "recurrence")
@@ -1369,7 +1370,10 @@ def _validate_artifact_contract(
     expected = {
         "execution_mode": mode,
         "backend": "jit",
-        "jit_optimization_level": arguments.jit_optimization_level,
+        "jit_optimization_level": _expected_effective_jit_optimization_level(
+            arguments,
+            mode=mode,
+        ),
         "color_accuracy": "lc",
         "lc_flow_layout": arguments.lc_flow_layout,
     }
@@ -1379,6 +1383,31 @@ def _validate_artifact_contract(
                 f"artifact effective {key} does not match {value!r}: {artifact}"
             )
     return effective
+
+
+def _expected_effective_jit_optimization_level(
+    arguments: argparse.Namespace,
+    *,
+    mode: str,
+) -> int:
+    """Return the executable optimization level, not merely the request.
+
+    Process-local compiled DAGs honor the requested JIT level.  Eager and
+    recurrence lanes consume the portable prepared-model applications, as do
+    all lanes when an explicit prepared model is supplied.  Those immutable
+    applications are deliberately stored at the portable O2 level even when
+    the process-generation request remains O3.
+    """
+
+    prepared_model = getattr(arguments, "prepared_model", None)
+    prepared_model_path = getattr(arguments, "prepared_model_path", None)
+    if (
+        prepared_model is not None
+        or prepared_model_path is not None
+        or mode != "compiled"
+    ):
+        return PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+    return int(arguments.jit_optimization_level)
 
 
 def _reuse_signature_path(artifact: Path) -> Path:
@@ -4071,7 +4100,12 @@ def _profile_measurement_contract(
                     expected_effective_contract = {
                         "execution_mode": mode,
                         "backend": "jit",
-                        "jit_optimization_level": arguments.jit_optimization_level,
+                        "jit_optimization_level": (
+                            _expected_effective_jit_optimization_level(
+                                arguments,
+                                mode=mode,
+                            )
+                        ),
                         "color_accuracy": "lc",
                         "lc_flow_layout": arguments.lc_flow_layout,
                     }

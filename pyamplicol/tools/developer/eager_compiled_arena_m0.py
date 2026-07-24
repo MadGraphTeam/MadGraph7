@@ -51,6 +51,7 @@ PROCESS = "u u~ > z g g g g g g"
 EXTERNAL_LEG_COUNT = 9
 LC_COLOR_WORD_LENGTH = 8
 BUILTIN_PACKAGED_MODEL_RESOURCE_ID = "built-in-sm-jit-o2"
+PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL = 2
 
 SELECTED_WORKLOAD = "single-runtime-selected-flow/helicity-sum"
 UNION_WORKLOAD = "all-flows/runtime-selected-single-helicity"
@@ -687,6 +688,7 @@ def _revalidation_arguments(configuration: Mapping[str, Any]) -> SimpleNamespace
         helicity=configuration.get("helicity_request"),
         lc_flow_layout=configuration.get("lc_flow_layout"),
         jit_optimization_level=configuration.get("jit_optimization_level"),
+        prepared_model_path=configuration.get("prepared_model_path"),
         process_expression=None,
         gluon_count=configuration.get("gluon_count"),
         specialize_flow_at_generation=configuration.get(
@@ -938,6 +940,17 @@ def _validate_generation_model_identities(
     else:
         _die(f"{label} has an unsupported model-family role")
     return identities
+
+
+def _expected_effective_jit_optimization_level(
+    model_identity: Mapping[str, Any],
+) -> int:
+    kind = model_identity.get("kind")
+    if kind == "built-in-sm-source":
+        return 3
+    if kind in {"packaged-prepared-model", "explicit-prepared-model"}:
+        return PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+    _die("generation model identity has an unsupported source kind")
 
 
 def _selector_entry(
@@ -1294,14 +1307,20 @@ def _validate_capture(
             record.get("effective_contract"),
             f"{label}.generation.{mode}.effective_contract",
         )
+        expected_effective_jit_level = _expected_effective_jit_optimization_level(
+            expected_mode_model
+        )
         if (
             contract.get("execution_mode") != mode
             or contract.get("backend") != "jit"
-            or contract.get("jit_optimization_level") != 3
+            or contract.get("jit_optimization_level") != expected_effective_jit_level
             or contract.get("color_accuracy") != "lc"
             or contract.get("lc_flow_layout") != layout
         ):
-            _die(f"{label} generation lane {mode} was not built as JIT O3")
+            _die(
+                f"{label} generation lane {mode} has the wrong effective "
+                "JIT optimization level"
+            )
         signature = _require_mapping(
             record.get("semantic_generation_signature"),
             f"{label}.generation.{mode}.semantic_generation_signature",
