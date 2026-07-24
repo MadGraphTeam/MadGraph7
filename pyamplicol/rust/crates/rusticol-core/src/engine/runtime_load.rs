@@ -3414,6 +3414,16 @@ fn ensure_execution_capabilities_supported(manifest: &ExecutionManifest) -> Rust
         execution_capabilities.insert(COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY.to_string());
         execution_capabilities.insert(COMPILED_RUNTIME_SELECTORS_CAPABILITY.to_string());
     }
+    if manifest
+        .runtime_schema
+        .amplitude_stage
+        .color_contraction
+        .as_ref()
+        .and_then(|contraction| contraction.repeated_block.as_ref())
+        .is_some_and(|repeated| repeated.factorized_block.is_some())
+    {
+        execution_capabilities.insert(COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY.to_string());
+    }
     validate_declared_execution_capabilities(
         &manifest.required_runtime_capabilities,
         &execution_capabilities,
@@ -3474,6 +3484,73 @@ mod legacy_primary_recurrence_capability_tests {
         let error = validate_declared_execution_capabilities(&declared, &actual)
             .expect_err("unrelated missing capabilities remain invalid");
         assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    }
+}
+
+#[cfg(all(test, feature = "f64-symjit"))]
+mod walsh_color_contraction_capability_tests {
+    use super::*;
+    use serde_json::json;
+
+    const DIRECT: &str = "symjit.application.complex-f64.v1";
+
+    fn manifest(has_factorized_block: bool, declares_capability: bool) -> ExecutionManifest {
+        let mut value = crate::artifact::tests::minimal_execution_manifest(
+            "p0",
+            "a b > c",
+            DIRECT,
+            crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
+        );
+        if has_factorized_block {
+            value["runtime_schema"]["amplitude_stage"]["color_contraction"] = json!({
+                "supported": true,
+                "reason": null,
+                "group_count": 8,
+                "includes_color_factor": true,
+                "entries": [],
+                "repeated_block": {
+                    "component_count": 2,
+                    "component_group_ids": [0, 1, 2, 3, 4, 5, 6, 7],
+                    "entries": [],
+                    "factorized_block": {
+                        "kind": "klein-four-walsh",
+                        "cosets": [[0, 1, 2, 3]],
+                    },
+                },
+            });
+        }
+        if declares_capability {
+            value["required_runtime_capabilities"] =
+                json!([COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY, DIRECT]);
+        }
+        serde_json::from_value(value).expect("deserialize Walsh capability fixture")
+    }
+
+    #[test]
+    fn supported_capabilities_include_walsh_color_contraction() {
+        assert!(
+            supported_runtime_capabilities().contains(&COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY)
+        );
+    }
+
+    #[test]
+    fn walsh_color_contraction_requires_an_exact_capability_declaration() {
+        ensure_execution_capabilities_supported(&manifest(false, false))
+            .expect("legacy execution without Walsh metadata");
+        ensure_execution_capabilities_supported(&manifest(true, true))
+            .expect("Walsh execution with matching capability");
+
+        for manifest in [manifest(true, false), manifest(false, true)] {
+            let error = ensure_execution_capabilities_supported(&manifest)
+                .expect_err("Walsh capability drift must fail closed");
+            assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+            assert!(
+                error
+                    .to_string()
+                    .contains(COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY),
+                "{error}"
+            );
+        }
     }
 }
 

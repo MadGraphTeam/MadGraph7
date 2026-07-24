@@ -1079,6 +1079,37 @@ def test_exact_compact_complex_off_diagonal_entries_match_expanded() -> None:
     )
 
 
+def test_exact_color_contraction_ignores_walsh_acceleration_metadata() -> None:
+    groups = {group_id: object() for group_id in range(8)}
+    compact = {
+        "group_count": 8,
+        "entries": [],
+        "logical_entry_count": 2,
+        "repeated_block": {
+            "component_count": 2,
+            "component_group_ids": list(range(8)),
+            "entries": [
+                {
+                    "left_group_index": 0,
+                    "right_group_index": 3,
+                    "weight": [2.0, 0.0],
+                    "symmetry_factor": 2.0,
+                }
+            ],
+            "factorized_block": {
+                "kind": "klein-four-walsh",
+                "cosets": [[0, 1, 2, 3]],
+            },
+        },
+    }
+    without_acceleration = copy.deepcopy(compact)
+    del without_acceleration["repeated_block"]["factorized_block"]
+
+    assert tuple(_validated_color_contraction_entries(compact, groups)) == tuple(
+        _validated_color_contraction_entries(without_acceleration, groups)
+    )
+
+
 def test_exact_helicity_plan_fails_closed_on_inconsistent_routes() -> None:
     execution, physics = _quotient_metadata()
     malformed = copy.deepcopy(execution)

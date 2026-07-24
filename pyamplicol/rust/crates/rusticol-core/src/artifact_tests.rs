@@ -7,6 +7,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static TEST_ARTIFACT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+#[test]
+fn walsh_color_contraction_is_a_known_artifact_capability() {
+    let capability = crate::engine::COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY.to_string();
+    let validated =
+        validate_runtime_capabilities(std::slice::from_ref(&capability), "test capabilities")
+            .expect("Walsh color-contraction capability");
+
+    assert_eq!(validated, BTreeSet::from([capability]));
+}
+
 #[cfg(feature = "f64-symjit")]
 const PYTHON_PACBIN_GOLDEN_HEX: &str = concat!(
     "50414342494e000001004000000000004000000000000000c000000000000000",

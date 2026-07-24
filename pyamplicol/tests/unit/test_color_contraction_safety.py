@@ -7,6 +7,7 @@ from math import isclose, nextafter
 import pytest
 
 import pyamplicol.color as color
+import pyamplicol.generation.artifact_writer as artifact_writer
 from pyamplicol.color import (
     ColorContractionEntry,
     ColorGroupDescriptor,
@@ -321,6 +322,9 @@ def test_full_color_permutation_orbit_emits_klein_four_walsh_plan() -> None:
     payload = contraction.to_json_dict()
     assert payload["repeated_block"] == block.to_json_dict()
     assert _color_contraction(payload)["repeated_block"] == block.to_json_dict()
+    assert artifact_writer._runtime_schema_uses_walsh_color_contraction(
+        {"amplitude_stage": {"color_contraction": payload}}
+    )
 
 
 def test_walsh_factorization_is_full_color_only_and_falls_back_safely() -> None:
@@ -343,6 +347,13 @@ def test_walsh_factorization_is_full_color_only_and_falls_back_safely() -> None:
     assert nlc_contraction is not None
     assert nlc_contraction.repeated_block is not None
     assert nlc_contraction.repeated_block.factorized_block is None
+    assert not artifact_writer._runtime_schema_uses_walsh_color_contraction(
+        {
+            "amplitude_stage": {
+                "color_contraction": nlc_contraction.to_json_dict()
+            }
+        }
+    )
 
     full_plan = build_color_plan(
         build_process_ir("d d~ > z g g g g", color_accuracy="full"),
@@ -370,6 +381,13 @@ def test_walsh_factorization_is_full_color_only_and_falls_back_safely() -> None:
     assert malformed_contraction is not None
     assert malformed_contraction.repeated_block is not None
     assert malformed_contraction.repeated_block.factorized_block is None
+    assert not artifact_writer._runtime_schema_uses_walsh_color_contraction(
+        {
+            "amplitude_stage": {
+                "color_contraction": malformed_contraction.to_json_dict()
+            }
+        }
+    )
 
 
 def test_color_contraction_compaction_falls_back_for_nonidentical_components() -> None:

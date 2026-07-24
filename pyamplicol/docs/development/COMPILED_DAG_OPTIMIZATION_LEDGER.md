@@ -831,6 +831,14 @@ under `/private/tmp/pyamplicol-s5-walsh-proof`. Focused evidence comprises
 repeated-colour Rust tests, Ruff, rustfmt, affected-crate checks, a guarded
 candidate build (`1.286 GiB` peak), and native artifact evaluations.
 
+Artifacts containing the optional plan declare the conditional runtime
+capability `rusticol.compiled.color-contraction-walsh.v1`. Declaration is
+lane-local and recursively aggregated into each enclosing execution and the
+outer artifact. Rust independently derives the capability from the parsed
+runtime schema and rejects both missing and spurious declarations, while
+artifacts without the plan retain their previous capability set. This makes
+the optional representation fail closed without a schema-version change.
+
 ## Milestone 14: selected-flow backend gap audit
 
 Status: accounting complete; no code change retained.

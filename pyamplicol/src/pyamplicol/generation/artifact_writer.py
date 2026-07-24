@@ -30,6 +30,7 @@ from pyamplicol.config import (
 )
 
 from .._internal.versions import (
+    COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
     COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
     COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
@@ -1441,6 +1442,10 @@ def _compiled_execution_lane_manifest(
     required_runtime_capabilities = set(
         _required_runtime_capabilities(stage_evaluators)
     )
+    if _runtime_schema_uses_walsh_color_contraction(runtime_schema):
+        required_runtime_capabilities.add(
+            COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        )
     if serialized_model_parameters is not None:
         required_runtime_capabilities.update(
             _required_runtime_capabilities(serialized_model_parameters)
@@ -2525,6 +2530,10 @@ def _compiled_process_runtime_capabilities(
     process: CompiledProcessArtifact,
 ) -> tuple[str, ...]:
     capabilities = set(_required_runtime_capabilities(process.stage_manifest))
+    if _runtime_schema_uses_walsh_color_contraction(
+        _runtime_schema_mapping(process.runtime_schema)
+    ):
+        capabilities.add(COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY)
     if process.model_parameter_evaluator is not None:
         capabilities.update(
             _required_runtime_capabilities(process.model_parameter_evaluator)
@@ -2577,10 +2586,29 @@ def _runtime_schema_uses_primary_helicity_recurrence(
     )
 
 
+def _runtime_schema_uses_walsh_color_contraction(
+    runtime_schema: Mapping[str, object],
+) -> bool:
+    amplitude_stage = runtime_schema.get("amplitude_stage")
+    if not isinstance(amplitude_stage, Mapping):
+        return False
+    contraction = amplitude_stage.get("color_contraction")
+    if not isinstance(contraction, Mapping):
+        return False
+    repeated_block = contraction.get("repeated_block")
+    return isinstance(repeated_block, Mapping) and (
+        repeated_block.get("factorized_block") is not None
+    )
+
+
 def _compiled_execution_runtime_capabilities(
     execution: CompiledExecutionArtifact,
 ) -> tuple[str, ...]:
     capabilities = set(_required_runtime_capabilities(execution.stage_manifest))
+    if _runtime_schema_uses_walsh_color_contraction(
+        _runtime_schema_mapping(execution.runtime_schema)
+    ):
+        capabilities.add(COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY)
     if _runtime_schema_uses_primary_helicity_recurrence(
         _runtime_schema_mapping(execution.runtime_schema),
         has_helicity_sum_execution=False,

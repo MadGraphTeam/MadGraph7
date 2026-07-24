@@ -10,6 +10,7 @@ import pytest
 import pyamplicol.generation.artifact_writer as artifact_writer
 import pyamplicol.generation.service as service_module
 from pyamplicol._internal.versions import (
+    COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
     COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
     COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
@@ -27,6 +28,7 @@ from pyamplicol.generation.artifact_writer import (
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
 )
+from pyamplicol.generation.contracts import RuntimeExpressionSchema
 from pyamplicol.generation.evaluator_container import PacbinReader
 from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.generation.service import _ProcessSelection
@@ -353,6 +355,13 @@ def test_all_flow_union_artifact_omits_duplicate_execution_lanes(
 
 def test_color_topology_lane_capability_is_publicly_supported() -> None:
     assert COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY in EVALUATOR_RUNTIME_CAPABILITIES
+
+
+def test_walsh_color_contraction_capability_is_publicly_supported() -> None:
+    assert (
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        in EVALUATOR_RUNTIME_CAPABILITIES
+    )
 
 
 def test_helicity_selector_union_capability_is_publicly_supported() -> None:
@@ -696,6 +705,94 @@ def test_compiled_process_capabilities_use_primary_execution_lane(
         COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         SYMJIT_F64_RUNTIME_CAPABILITY,
+    )
+
+
+def test_walsh_color_contraction_capability_is_lane_local_and_parent_aggregated(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    artifact = _materialize_without_symbolica(monkeypatch, tmp_path)
+
+    def with_walsh(
+        schema: RuntimeExpressionSchema,
+    ) -> RuntimeExpressionSchema:
+        payload = schema.to_mapping()
+        amplitude_stage = payload["amplitude_stage"]
+        assert isinstance(amplitude_stage, dict)
+        amplitude_stage["color_contraction"] = {
+            "color_accuracy": "full",
+            "supported": True,
+            "reason": None,
+            "group_count": 8,
+            "includes_color_factor": True,
+            "entry_count": 0,
+            "logical_entry_count": 0,
+            "storage": "test",
+            "entries": [],
+            "repeated_block": {
+                "component_count": 2,
+                "component_group_ids": list(range(8)),
+                "entries": [],
+                "factorized_block": {
+                    "kind": "klein-four-walsh",
+                    "cosets": [[0, 1, 2, 3]],
+                },
+            },
+        }
+        return RuntimeExpressionSchema.from_mapping(payload)
+
+    old_manifest = artifact_writer._execution_manifest(
+        artifact,
+        artifact.runtime_schema.to_mapping(),
+    )
+    assert (
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        not in old_manifest["required_runtime_capabilities"]
+    )
+
+    primary = replace(artifact, runtime_schema=with_walsh(artifact.runtime_schema))
+    primary_manifest = artifact_writer._execution_manifest(
+        primary,
+        primary.runtime_schema.to_mapping(),
+    )
+    assert (
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        in primary_manifest["required_runtime_capabilities"]
+    )
+    assert (
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        not in primary_manifest["compiled"]["stage_evaluators"][
+            "required_runtime_capabilities"
+        ]
+    )
+    assert (
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        in artifact_writer._compiled_process_runtime_capabilities(primary)
+    )
+
+    assert artifact.helicity_sum_execution is not None
+    auxiliary = replace(
+        artifact.helicity_sum_execution,
+        runtime_schema=with_walsh(artifact.helicity_sum_execution.runtime_schema),
+    )
+    parent = replace(artifact, helicity_sum_execution=auxiliary)
+    parent_manifest = artifact_writer._execution_manifest(
+        parent,
+        parent.runtime_schema.to_mapping(),
+    )
+    auxiliary_manifest = parent_manifest["helicity_sum_execution"]
+    assert (
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        in auxiliary_manifest["required_runtime_capabilities"]
+    )
+    assert (
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        in parent_manifest["required_runtime_capabilities"]
+    )
+    assert (
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        in artifact_writer._compiled_process_runtime_capabilities(parent)
     )
 
 

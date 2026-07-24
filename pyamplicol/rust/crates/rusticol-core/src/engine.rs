@@ -141,6 +141,8 @@ pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =
     "rusticol.compiled.helicity-selector-union.v1";
 pub const COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY: &str =
     "rusticol.compiled.helicity-primary-recurrence.v1";
+pub const COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY: &str =
+    "rusticol.compiled.color-contraction-walsh.v1";
 pub const COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY: &str =
     "rusticol.compiled.color-topology-lanes.v1";
 #[cfg(feature = "f64-symjit")]
@@ -170,6 +172,7 @@ pub fn preflight_prepared_kernel_pack(
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCapability {
+    CompiledColorContractionWalshV1,
     CompiledColorTopologyLanesV1,
     CompiledHelicityDualLaneV1,
     CompiledHelicityPrimaryRecurrenceV1,
@@ -187,6 +190,7 @@ pub enum RuntimeCapability {
 impl RuntimeCapability {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::CompiledColorContractionWalshV1 => COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
             Self::CompiledColorTopologyLanesV1 => COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
             Self::CompiledHelicityDualLaneV1 => COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
             Self::CompiledHelicityPrimaryRecurrenceV1 => {
@@ -209,6 +213,8 @@ impl RuntimeCapability {
 
 pub fn supported_runtime_capabilities() -> Vec<&'static str> {
     let mut capabilities = vec![
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
