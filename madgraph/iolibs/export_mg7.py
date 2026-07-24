@@ -124,7 +124,12 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     prop_name = f"p{prop_index}"
                     diagram_edge_names[legs[-1].get("number")] = prop_name
                     vertex_props.append(prop_name)
-                    propagators.append(final_part.get_pdg_code())
+                    sign = (
+                        1
+                        if final_part.get("is_part") or final_part.get("self_antipart") else
+                        -1
+                    )
+                    propagators.append(sign * final_part.get("pdg_code"))
                     if legs[-1].get("onshell"):
                         on_shell_propagators.append(prop_index)
                 vertices.append(vertex_props)
@@ -170,12 +175,12 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             # Get the list of color flows
             color_flow_dicts = self.color_basis.color_flow_decomposition(repr_dict, n_initial)
             # And output them properly
-            color_flows = [[
+            color_flows = [
                 [[color_flow_dict[leg.get("number")][i] for i in [0, 1]] for leg in legs]
                 for color_flow_dict in color_flow_dicts
-            ]] * len(self.all_flavors_same_initial) #TODO: this is wrong for multiple flavors!!!
+            ]
         else:
-            color_flows = [[[[0, 0]] * n_external]] * len(self.all_flavors_same_initial) #TODO: this is wrong for multiple flavors!!!
+            color_flows = [[[0, 0]] * n_external]
 
         # We need the both particle and antiparticle wf_ids, since the identity
         # depends on the direction of the wf.
