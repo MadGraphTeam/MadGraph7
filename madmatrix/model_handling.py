@@ -2076,6 +2076,31 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             icolamp_text += text % (iconfigc+1, iconfig_to_diag[iconfigc+1]-1) # diag - 1 is to follow MadSpace indexing
             icolamp.append(icolamp_text)
         replace_dict['is_LC'] = '\n'.join(icolamp)
+
+        # Canonical colour-flow code of each colour flow -- baked so the ME can
+        # return the self-describing code (the MG7 colour encoding) instead of a
+        # raw flow index. Same encoding as the fortran output / subprocesses.json
+        # (get_color_code_tables); valid==false leaves the flows to the fallback.
+        codes = None
+        if self.color_basis:
+            n_initial = self.matrix_element.get_nexternal_ninitial()[1]
+            legs = self.process.get_legs_with_decays()
+            repr_dict = {leg.get("number"):
+                         self.model.get_particle(leg.get("id")).get_color()
+                         * (-1) ** (1 + leg.get("state")) for leg in legs}
+            color_flow_dicts = self.color_basis.color_flow_decomposition(
+                repr_dict, n_initial)
+            codes, _slots = self.get_color_code_tables(color_flow_dicts, legs)
+        if codes is None:
+            replace_dict['colorflowcode_valid'] = 'false'
+            replace_dict['colorflowcode_lines'] = '\n'.join(
+                '    0, // colour flow %d (no usable code -- use the tag table)'
+                % i for i in range(nb_color))
+        else:
+            replace_dict['colorflowcode_valid'] = 'true'
+            replace_dict['colorflowcode_lines'] = '\n'.join(
+                '    %d, // colour flow %d' % (c, i)
+                for i, c in enumerate(codes))
         ff.write(template % replace_dict)
         ff.close()
 
