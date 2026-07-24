@@ -279,16 +279,22 @@ class _CompiledComplexEvaluatorAdapter:
         else:
             self.evaluator_state_path = None
         compile_started = time.perf_counter()
+        compile_kwargs: dict[str, object] = {
+            "inline_asm": settings.compiled_inline_asm,
+            "optimization_level": settings.compiled_optimization_level,
+            "native": settings.compiled_native,
+            "compiler_path": settings.compiler_path,
+            "compiler_flags": _compiled_compiler_flags(settings),
+        }
+        custom_header = _compiled_complex_custom_header(settings)
+        if custom_header is not None:
+            compile_kwargs["custom_header"] = custom_header
         self._compiled = evaluator.compile(
             function_name,
             str(self.source_path),
             str(self.library_path),
             self.number_type,
-            inline_asm=settings.compiled_inline_asm,
-            optimization_level=settings.compiled_optimization_level,
-            native=settings.compiled_native,
-            compiler_path=settings.compiler_path,
-            compiler_flags=_compiled_compiler_flags(settings),
+            **compile_kwargs,
         )
         self.build_timing["cxx_compile_s"] = time.perf_counter() - compile_started
 
@@ -382,6 +388,31 @@ class _CompiledComplexEvaluatorAdapter:
 
 def _compiled_compiler_flags(settings: SymbolicaEvaluatorSettings) -> tuple[str, ...]:
     return tuple(settings.compiler_flags)
+
+
+_CPP_COMPLEX_LITERAL_COMPAT_HEADER = r"""
+template<typename Complex, typename Value>
+inline Complex pyamplicol_complex_literal(Value value) {
+    return Complex(value);
+}
+
+template<typename Complex, typename Real, typename Imag>
+inline Complex pyamplicol_complex_literal(Real real, Imag imag) {
+    return Complex(std::real(real), std::real(imag));
+}
+
+#define T(...) pyamplicol_complex_literal<T>(__VA_ARGS__)
+""".strip()
+
+
+def _compiled_complex_custom_header(
+    settings: SymbolicaEvaluatorSettings,
+) -> str | None:
+    """Adapt Symbolica 2.2 nested complex literals in generated C++ sources."""
+
+    if settings.compiled_inline_asm != "none":
+        return None
+    return _CPP_COMPLEX_LITERAL_COMPAT_HEADER
 
 
 def _symjit_element_layout() -> str:
