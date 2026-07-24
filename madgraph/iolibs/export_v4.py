@@ -9407,6 +9407,37 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             code += slot * (nslot ** i)
         return code
 
+    @staticmethod
+    def _color_flow_slots(conns):
+        """(colour-slot legs, anticolour-slot legs) of a process, each ordered by
+        leg, read off one canonical flow.
+
+        This is FLOW-INDEPENDENT process data -- which legs carry a colour resp.
+        anticolour index is fixed by the colour representations (after the
+        initial-state flip), not by which flow is picked -- so it is the colour
+        analogue of the per-leg helicity-state counts, and it is all a decoder
+        needs besides the code itself."""
+        return ([c for c, _a in sorted(conns)],
+                sorted(a for _c, a in conns))
+
+    @staticmethod
+    def _color_flow_decode(code, colslots, acolslots):
+        """Inverse of _color_flow_code: rebuild a flow's canonical connections
+        from its code and the process's slot structure (see _color_flow_slots).
+
+        digit_i = (code // N^i) %% N is the anticolour slot that colour slot i
+        connects to. NOTE: for a leg carrying two slots of the same kind (a
+        sextet) encode/decode must agree on the tie-break between its slots;
+        that case is untested."""
+        nslot = len(acolslots)
+        if nslot == 0:
+            return frozenset()
+        conns = set()
+        for i, cleg in enumerate(colslots):
+            digit = (code // (nslot ** i)) % nslot
+            conns.add((cleg, acolslots[digit]))
+        return frozenset(conns)
+
     def _color_flow_codes(self, matrix_element):
         """Canonical colour-flow codes of an ME, one per colour-basis flow in
         basis order. None if the ME has no colour basis or a flow is not a clean

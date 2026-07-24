@@ -2101,3 +2101,44 @@ class TestColorFlowCode(unittest.TestCase):
                                  % (proc, codes))
                 checked += 1
         self.assertTrue(checked, 'no coloured matrix element was checked')
+
+    def test_color_flow_code_round_trip(self):
+        """decode(code(flow)) reproduces the flow's canonical connectivity, and
+        the slot structure is FLOW-INDEPENDENT (it is process data, fixed by the
+        colour representations). Together these are what allow the colour tags
+        to be rebuilt from the code alone instead of read out of the generated
+        ICOLUP table -- the step this encoding is aiming at.
+        """
+        import madgraph.core.helas_objects as helas_objects
+        import madgraph.iolibs.export_v4 as export_v4
+        exp = export_v4.ProcessExporterFortranMEGroup.__new__(
+            export_v4.ProcessExporterFortranMEGroup)
+        checked = 0
+        for proc, _nflow in self.PROCS:
+            cmd = cmd_interface.MasterCmd()
+            cmd.exec_cmd('generate %s' % proc, printcmd=False)
+            me = helas_objects.HelasMultiProcess(cmd._curr_amps)
+            for m in me.get('matrix_elements'):
+                if not m.get('color_basis'):
+                    continue
+                states = [l.get('state') for l in
+                          m.get('processes')[0].get_legs_with_decays()]
+                slots = None
+                for flow in exp._module_color_flows(m):
+                    conns = exp._color_flow_canon(flow, states)
+                    this = exp._color_flow_slots(conns)
+                    if slots is None:
+                        slots = this
+                    # the slot structure must not depend on the flow
+                    self.assertEqual(this, slots,
+                                     '%s: slot structure varies between flows '
+                                     '(%s vs %s)' % (proc, this, slots))
+                    code = exp._color_flow_code(conns)
+                    self.assertIsNotNone(code, '%s: flow did not encode' % proc)
+                    back = exp._color_flow_decode(code, slots[0], slots[1])
+                    self.assertEqual(back, conns,
+                                     '%s: code %d does not round-trip\n  got %s'
+                                     '\n  want %s'
+                                     % (proc, code, sorted(back), sorted(conns)))
+                    checked += 1
+        self.assertTrue(checked, 'no colour flow was round-tripped')
