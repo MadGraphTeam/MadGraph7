@@ -8,7 +8,8 @@
 //! call does not gather inputs, scatter outputs, rebuild descriptors, or
 //! allocate.
 
-// This bounded milestone is intentionally not wired into the engine yet.
+// Some ABI construction helpers remain test-only even though this adapter is
+// now the production compiled-JIT O3 execution path.
 #![allow(dead_code)]
 
 use std::any::Any;

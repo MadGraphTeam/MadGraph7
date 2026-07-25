@@ -63,10 +63,71 @@ impl EvaluatorGroup {
         })
     }
 
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn load_exact_from_plane(
+        stage: &GenericSerializedStageEvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+    ) -> RusticolResult<Self> {
+        let manifest = &stage.evaluator;
+        let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled plane-arena exact evaluator has no serialized bindings",
+            )
+        })?;
+        let (input_len, _) = manifest.io_len()?;
+        let leaf_layout = manifest.leaf_layout()?;
+        if leaf_layout.len() != direct.leaves.len() {
+            return Err(RusticolError::integrity(
+                "compiled plane-arena exact leaf bindings are incomplete",
+            ));
+        }
+        let mut evaluators = Vec::new();
+        let mut input_mappings = Vec::new();
+        for (leaf, binding) in leaf_layout.iter().zip(&direct.leaves) {
+            flatten_exact_evaluators_from_store(leaf.evaluator, payloads, &mut evaluators)?;
+            let mapping = if binding.input_indices.len() == input_len
+                && binding
+                    .input_indices
+                    .iter()
+                    .enumerate()
+                    .all(|(expected, index)| expected == *index)
+            {
+                None
+            } else {
+                Some(binding.input_indices.clone())
+            };
+            input_mappings.push(mapping);
+        }
+        let input_mapping_spans = input_mappings
+            .iter()
+            .map(|mapping| {
+                mapping
+                    .as_deref()
+                    .map(contiguous_input_spans)
+                    .unwrap_or_default()
+            })
+            .collect();
+        let output_len = direct.leaves.last().map_or(0, |leaf| leaf.output_stop);
+        Ok(Self {
+            evaluators,
+            input_len,
+            input_mappings,
+            input_mapping_spans,
+            output_len,
+            chunk_parameter_scratch_f64: Vec::new(),
+            chunk_scratch_f64: Vec::new(),
+            chunk_parameter_scratch_aosoa_f64: Vec::new(),
+            chunk_scratch_aosoa_f64: Vec::new(),
+            chunk_input_mapping_scratch: Vec::new(),
+        })
+    }
+
     pub(crate) fn uses_simd_jit(&self) -> bool {
         self.evaluators
             .iter()
             .any(|evaluator| match &evaluator.eval {
+                #[cfg(feature = "symbolica-runtime")]
+                F64Evaluator::ExactOnly => false,
                 #[cfg(feature = "f64-symjit")]
                 F64Evaluator::SymjitApplication(_) => true,
                 #[cfg(feature = "symbolica-runtime")]
@@ -2005,6 +2066,8 @@ impl LoadedEvaluator {
 
     fn simd_lane_width(&self) -> Option<usize> {
         match &self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => None,
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => eval.simd_lane_width(),
             #[cfg(feature = "f64-compiled")]
@@ -2034,6 +2097,8 @@ impl LoadedEvaluator {
         out: &mut [f64],
     ) -> RusticolResult<bool> {
         match &self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Ok(false),
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => {
                 eval.evaluate_aosoa_blocks(block_count, params, out)
@@ -2052,6 +2117,10 @@ impl LoadedEvaluator {
         out: &mut [Complex<f64>],
     ) -> RusticolResult<()> {
         match &mut self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Err(RusticolError::integrity(
+                "compiled plane-arena exact evaluator cannot execute f64",
+            )),
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => eval.evaluate_batch(batch_size, params, out),
             #[cfg(feature = "f64-compiled")]
@@ -2085,6 +2154,10 @@ impl LoadedEvaluator {
         out: &mut [Complex<f64>],
     ) -> RusticolResult<()> {
         match &mut self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Err(RusticolError::integrity(
+                "compiled plane-arena exact evaluator cannot execute f64",
+            )),
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => {
                 eval.evaluate_batch_unpadded(batch_size, params, out)
@@ -2111,6 +2184,56 @@ impl LoadedEvaluator {
                     .map_err(RusticolError::evaluation)
             }
         }
+    }
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn flatten_exact_evaluators_from_store(
+    manifest: &EvaluatorManifest,
+    payloads: &EvaluatorPayloadStore,
+    output: &mut Vec<LoadedEvaluator>,
+) -> RusticolResult<()> {
+    match manifest {
+        EvaluatorManifest::SymjitApplication {
+            input_len,
+            output_len,
+            evaluator_state_path,
+            evaluator_state_runtime_capability,
+            ..
+        } => {
+            let state_path = evaluator_state_path.as_ref().ok_or_else(|| {
+                RusticolError::compatibility(
+                    "compiled plane-arena exact execution requires evaluator-state payloads",
+                )
+            })?;
+            if evaluator_state_runtime_capability.as_deref()
+                != Some(SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY)
+            {
+                return Err(RusticolError::compatibility(format!(
+                    "SymJIT evaluator state {state_path:?} does not declare capability {:?}",
+                    SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
+                )));
+            }
+            output.push(LoadedEvaluator {
+                eval: F64Evaluator::ExactOnly,
+                exact_eval: None,
+                exact_eval_source: Some(payloads.source(state_path)?),
+                double_eval: None,
+                arb_eval: None,
+                input_len: *input_len,
+                output_len: *output_len,
+            });
+            Ok(())
+        }
+        EvaluatorManifest::Chunked { chunks, .. } => {
+            for chunk in chunks {
+                flatten_exact_evaluators_from_store(chunk, payloads, output)?;
+            }
+            Ok(())
+        }
+        _ => Err(RusticolError::compatibility(
+            "compiled plane-arena exact execution requires SymJIT source leaves",
+        )),
     }
 }
 

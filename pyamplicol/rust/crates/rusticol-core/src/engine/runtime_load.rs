@@ -2,21 +2,272 @@
 
 use super::*;
 
-#[cfg(feature = "f64-symjit")]
 fn compiled_direct_developer_oracle_enabled() -> bool {
-    // Legacy SymJIT application payloads are lowered in memory only for the
-    // retained-artifact dual-run oracle. Production activation waits for the
-    // generated compiled-plane capability and a locality-positive end-to-end
-    // reducer/layout. Keeping this test-only also prevents silently changing
-    // the execution of existing compiled artifacts.
-    #[cfg(test)]
+    // Legacy SymJIT application payloads may be lowered in memory only for the
+    // retained-artifact dual-run oracle. Production requires the generated
+    // compiled-plane capability and never enters this test-only escape hatch.
+    #[cfg(all(test, feature = "f64-symjit"))]
     {
         std::env::var_os("RUSTICOL_TEST_ENABLE_COMPILED_DIRECT").is_some()
     }
-    #[cfg(not(test))]
+    #[cfg(not(all(test, feature = "f64-symjit")))]
     {
         false
     }
+}
+
+fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> RusticolResult<bool> {
+    let declared_execution = manifest
+        .required_runtime_capabilities
+        .iter()
+        .any(|value| value == COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY);
+    let Some(stages) = manifest.compiled.stage_evaluators.as_ref() else {
+        if declared_execution {
+            return Err(RusticolError::integrity(
+                "compiled-plane-arena-v1 is declared without fused stage evaluators",
+            ));
+        }
+        return Ok(false);
+    };
+    let declared_stage = stages
+        .required_runtime_capabilities
+        .iter()
+        .any(|value| value == COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY);
+    let all_stages = stages
+        .stages
+        .iter()
+        .chain(std::iter::once(&stages.amplitude_stage))
+        .collect::<Vec<_>>();
+    let all_symjit = all_stages.iter().all(|stage| {
+        stage.evaluator.leaf_layout().is_ok_and(|leaves| {
+            !leaves.is_empty()
+                && leaves.iter().all(|leaf| {
+                    matches!(leaf.evaluator, EvaluatorManifest::SymjitApplication { .. })
+                })
+        })
+    });
+    let direct_count = all_stages
+        .iter()
+        .filter(|stage| stage.compiled_plane_arena.is_some())
+        .count();
+
+    if !declared_execution && !declared_stage && direct_count == 0 {
+        if all_symjit && !compiled_direct_developer_oracle_enabled() {
+            return Err(RusticolError::compatibility(
+                "this compiled f64 artifact predates compiled-plane-arena-v1; regenerate it with \
+                 `pyamplicol generate-process` using the current pyAmpliCol build",
+            ));
+        }
+        return Ok(false);
+    }
+    if !declared_execution || !declared_stage || direct_count != all_stages.len() || !all_symjit {
+        return Err(RusticolError::integrity(
+            "compiled-plane-arena-v1 capability, fused SymJIT leaves, and stage bindings do not \
+             form one complete execution contract",
+        ));
+    }
+    for (position, stage) in all_stages.into_iter().enumerate() {
+        validate_compiled_plane_arena_stage(
+            stage,
+            position == stages.stages.len(),
+            manifest.runtime_schema.value_storage.component_count,
+            manifest.runtime_schema.amplitude_stage.output_count,
+        )?;
+    }
+    Ok(true)
+}
+
+fn validate_compiled_plane_arena_stage(
+    stage: &GenericSerializedStageEvaluatorManifest,
+    is_amplitude: bool,
+    value_component_count: usize,
+    amplitude_component_count: usize,
+) -> RusticolResult<()> {
+    let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
+        RusticolError::integrity("compiled plane-arena fused stage has no direct bindings")
+    })?;
+    if direct.schema_version != 1
+        || direct.kind != "compiled-plane-arena-stage"
+        || direct.application_abi != COMPILED_PLANE_DIRECT_APPLICATION_ABI
+        || direct.source_application_abi != COMPILED_PLANE_SOURCE_APPLICATION_ABI
+        || direct.element_layout != "split-complex-component-major"
+        || direct.output_operation != "overwrite"
+        || direct.output_factor != "identity"
+        || direct.input_output_aliasing != "forbidden"
+        || direct.output_output_aliasing != "forbidden"
+    {
+        return Err(RusticolError::compatibility(format!(
+            "compiled plane-arena stage {:?} has an incompatible direct ABI",
+            stage.evaluator_label
+        )));
+    }
+    if stage.parameter_layout != "stage-local-value-momentum"
+        || direct.input_bindings.len() != stage.parameter_count
+        || direct.output_bindings.len() != stage.output_length
+        || direct.leaves.is_empty()
+    {
+        return Err(RusticolError::integrity(format!(
+            "compiled plane-arena stage {:?} has incomplete direct bindings",
+            stage.evaluator_label
+        )));
+    }
+    u32::try_from(value_component_count)
+        .and_then(|_| u32::try_from(amplitude_component_count))
+        .and_then(|_| u32::try_from(stage.parameter_count))
+        .and_then(|_| u32::try_from(stage.output_length))
+        .map_err(|_| {
+            RusticolError::integrity(
+                "compiled plane-arena plane or scalar address space exceeds u32",
+            )
+        })?;
+
+    let mut canonical_inputs = vec![None; stage.parameter_count];
+    for component in &stage.input_components {
+        let slot = canonical_inputs
+            .get_mut(component.parameter_index)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "compiled plane-arena input binding index is out of bounds",
+                )
+            })?;
+        if slot
+            .replace(CompiledPlaneInputBindingManifest {
+                parameter_index: component.parameter_index,
+                kind: component.kind.clone(),
+                source_id: component.source_id,
+                component: component.component,
+                global_component: component.global_component,
+                real_valued: component.real_valued,
+            })
+            .is_some()
+        {
+            return Err(RusticolError::integrity(
+                "compiled plane-arena input bindings contain duplicates",
+            ));
+        }
+    }
+    if canonical_inputs.iter().any(Option::is_none)
+        || canonical_inputs
+            .into_iter()
+            .map(Option::unwrap)
+            .ne(direct.input_bindings.iter().cloned())
+    {
+        return Err(RusticolError::integrity(format!(
+            "compiled plane-arena stage {:?} input bindings disagree with the DAG",
+            stage.evaluator_label
+        )));
+    }
+
+    let expected_arena = if is_amplitude { "amplitude" } else { "current" };
+    let output_limit = if is_amplitude {
+        amplitude_component_count
+    } else {
+        value_component_count
+    };
+    let mut canonical_outputs = vec![None; stage.output_length];
+    let mut output_components = BTreeSet::new();
+    for slot in &stage.output_slots {
+        let output_len = slot
+            .output_stop
+            .checked_sub(slot.output_start)
+            .filter(|length| slot.component_stop.checked_sub(slot.component_start) == Some(*length))
+            .ok_or_else(|| {
+                RusticolError::integrity("compiled plane-arena output binding range is invalid")
+            })?;
+        if slot.output_stop > stage.output_length || slot.component_stop > output_limit {
+            return Err(RusticolError::integrity(
+                "compiled plane-arena output binding is out of bounds",
+            ));
+        }
+        for offset in 0..output_len {
+            let output_index = slot.output_start + offset;
+            let component = slot.component_start + offset;
+            if !output_components.insert(component)
+                || canonical_outputs[output_index]
+                    .replace(CompiledPlaneOutputBindingManifest {
+                        output_index,
+                        arena: expected_arena.to_string(),
+                        component,
+                    })
+                    .is_some()
+            {
+                return Err(RusticolError::integrity(
+                    "compiled plane-arena output bindings alias",
+                ));
+            }
+        }
+    }
+    if canonical_outputs.iter().any(Option::is_none)
+        || canonical_outputs
+            .into_iter()
+            .map(Option::unwrap)
+            .ne(direct.output_bindings.iter().cloned())
+    {
+        return Err(RusticolError::integrity(format!(
+            "compiled plane-arena stage {:?} output bindings disagree with the DAG",
+            stage.evaluator_label
+        )));
+    }
+    if !is_amplitude {
+        let input_currents = direct
+            .input_bindings
+            .iter()
+            .filter(|binding| binding.kind == "value")
+            .map(|binding| binding.global_component)
+            .collect::<BTreeSet<_>>();
+        if output_components
+            .iter()
+            .any(|component| input_currents.contains(component))
+        {
+            return Err(RusticolError::integrity(
+                "compiled plane-arena fused stage aliases an input and output plane",
+            ));
+        }
+    }
+
+    let canonical_leaves = stage.evaluator.leaf_layout()?;
+    if canonical_leaves.len() != direct.leaves.len() {
+        return Err(RusticolError::integrity(
+            "compiled plane-arena leaf bindings do not cover the evaluator",
+        ));
+    }
+    for (canonical, binding) in canonical_leaves.iter().zip(&direct.leaves) {
+        let EvaluatorManifest::SymjitApplication {
+            application_path,
+            application_abi,
+            input_len,
+            output_len,
+            optimization_level,
+            ..
+        } = canonical.evaluator
+        else {
+            return Err(RusticolError::integrity(
+                "compiled plane-arena stage contains a non-SymJIT leaf",
+            ));
+        };
+        if *optimization_level != 3 || binding.optimization_level != 3 {
+            return Err(RusticolError::compatibility(
+                "compiled-plane-arena-v1 requires compiled JIT optimization level 3; \
+                 regenerate with evaluator.jit.optimization_level=3",
+            ));
+        }
+        if binding.application_path != *application_path
+            || binding.source_application_abi != *application_abi
+            || binding.source_application_abi != direct.source_application_abi
+            || binding.optimization_level != *optimization_level
+            || binding.input_len != *input_len
+            || binding.output_len != *output_len
+            || binding.input_indices != canonical.input_indices
+            || binding.output_start != canonical.output_range.start
+            || binding.output_stop != canonical.output_range.end
+        {
+            return Err(RusticolError::integrity(format!(
+                "compiled plane-arena stage {:?} leaf bindings disagree with its source payload",
+                stage.evaluator_label
+            )));
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn build_lc_topology_replay_mappings(
@@ -2917,6 +3168,7 @@ impl ExecutionRuntime {
         validate_helicity_sum_execution(&manifest)?;
         validate_helicity_selector_executions(&manifest)?;
         validate_color_selector_executions(&manifest)?;
+        let compiled_plane_arena = validate_compiled_plane_arena_contract(&manifest)?;
         ensure_execution_capabilities_supported(&manifest)?;
         let helicity_sum_manifest = manifest.helicity_sum_execution.take();
         let helicity_selector_manifests =
@@ -2979,21 +3231,8 @@ impl ExecutionRuntime {
             runtime.refresh_derived_model_parameters()?;
         }
         if let Some(stage_evaluators) = stage_evaluators {
-            let stages = stage_evaluators
-                .stages
-                .iter()
-                .map(|stage| StageRuntime::load(stage, payloads))
-                .collect::<RusticolResult<Vec<_>>>()?;
-            runtime.stages = Some(stages);
-            runtime.amplitude_stage = Some(AmplitudeRuntime::load(
-                &amplitude_stage_manifest,
-                &stage_evaluators.amplitude_stage,
-                payloads,
-            )?);
             #[cfg(feature = "f64-symjit")]
-            if compiled_direct_developer_oracle_enabled()
-                && compiled_direct_prototype::compiled_direct_symjit_supported(&stage_evaluators)?
-            {
+            if compiled_plane_arena {
                 let direct =
                     compiled_direct_prototype::CompiledDirectEnginePrototype::load_production(
                         &stage_evaluators.stages,
@@ -3005,6 +3244,34 @@ impl ExecutionRuntime {
                         runtime.model_parameter_values_f64.len(),
                         stage_evaluators.amplitude_stage.output_length,
                     )?;
+                #[cfg(feature = "symbolica-runtime")]
+                {
+                    // Preserve the public exact-precision API without
+                    // instantiating a second f64 evaluator representation.
+                    // These groups own only lazy evaluator-state sources;
+                    // every f64 entry point fails closed on ExactOnly and the
+                    // production hot path remains the Direct application.
+                    runtime.stages = Some(
+                        stage_evaluators
+                            .stages
+                            .iter()
+                            .map(|stage| StageRuntime::load_exact_from_plane(stage, payloads))
+                            .collect::<RusticolResult<Vec<_>>>()?,
+                    );
+                    runtime.amplitude_stage = Some(AmplitudeRuntime::load_exact_from_plane(
+                        &amplitude_stage_manifest,
+                        &stage_evaluators.amplitude_stage,
+                        payloads,
+                    )?);
+                }
+                #[cfg(not(feature = "symbolica-runtime"))]
+                {
+                    runtime.stages = Some(Vec::new());
+                    runtime.amplitude_stage = Some(AmplitudeRuntime::load_reducer_only(
+                        &amplitude_stage_manifest,
+                        &stage_evaluators.amplitude_stage,
+                    )?);
+                }
                 let mut color_schedules = BTreeMap::new();
                 if let Some(color_plan) = runtime.compiled_color_execution_plan.as_ref() {
                     for (sector_id, schedule) in &color_plan.schedules_by_materialized_sector {
@@ -3014,6 +3281,57 @@ impl ExecutionRuntime {
                 }
                 runtime.compiled_direct_color_schedules = color_schedules;
                 runtime.compiled_direct_runtime = Some(direct);
+            } else {
+                let stages = stage_evaluators
+                    .stages
+                    .iter()
+                    .map(|stage| StageRuntime::load(stage, payloads))
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                runtime.stages = Some(stages);
+                runtime.amplitude_stage = Some(AmplitudeRuntime::load(
+                    &amplitude_stage_manifest,
+                    &stage_evaluators.amplitude_stage,
+                    payloads,
+                )?);
+                #[cfg(feature = "f64-symjit")]
+                if compiled_direct_developer_oracle_enabled()
+                    && compiled_direct_prototype::compiled_direct_symjit_supported(
+                        &stage_evaluators,
+                    )?
+                {
+                    let direct =
+                        compiled_direct_prototype::CompiledDirectEnginePrototype::load_production(
+                            &stage_evaluators.stages,
+                            &stage_evaluators.amplitude_stage,
+                            payloads,
+                            &runtime.sources,
+                            runtime.value_parameter_count,
+                            runtime.momentum_parameter_count,
+                            runtime.model_parameter_values_f64.len(),
+                            stage_evaluators.amplitude_stage.output_length,
+                        )?;
+                    runtime.compiled_direct_runtime = Some(direct);
+                }
+            }
+            #[cfg(not(feature = "f64-symjit"))]
+            {
+                if compiled_plane_arena {
+                    return Err(RusticolError::unsupported_runtime_capability(
+                        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+                        "this Rusticol build has no SymJIT DirectApplication backend",
+                    ));
+                }
+                let stages = stage_evaluators
+                    .stages
+                    .iter()
+                    .map(|stage| StageRuntime::load(stage, payloads))
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                runtime.stages = Some(stages);
+                runtime.amplitude_stage = Some(AmplitudeRuntime::load(
+                    &amplitude_stage_manifest,
+                    &stage_evaluators.amplitude_stage,
+                    payloads,
+                )?);
             }
         }
         Ok(runtime)
@@ -3375,6 +3693,23 @@ fn ensure_execution_capabilities_supported(manifest: &ExecutionManifest) -> Rust
             }
             stage_capabilities.insert(COMPILED_RUNTIME_SELECTORS_CAPABILITY.to_string());
         }
+        if stages
+            .required_runtime_capabilities
+            .iter()
+            .any(|capability| capability == COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY)
+        {
+            let all_direct = stages
+                .stages
+                .iter()
+                .chain(std::iter::once(&stages.amplitude_stage))
+                .all(|stage| stage.compiled_plane_arena.is_some());
+            if !all_direct {
+                return Err(RusticolError::integrity(
+                    "compiled-plane-arena-v1 capability has incomplete stage metadata",
+                ));
+            }
+            stage_capabilities.insert(COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY.to_string());
+        }
         validate_declared_capabilities(
             &stages.required_runtime_capabilities,
             &stage_capabilities,
@@ -3480,6 +3815,171 @@ fn validate_declared_execution_capabilities(
     Err(RusticolError::integrity(format!(
         "execution manifest capabilities {declared:?} do not match evaluator capabilities {actual:?}"
     )))
+}
+
+#[cfg(all(test, feature = "f64-symjit"))]
+mod compiled_plane_arena_contract_tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    fn source_binding(parameter_index: usize) -> Value {
+        let (kind, source_id, component, global_component, real_valued) = if parameter_index < 2 {
+            ("value", parameter_index, 0, parameter_index, false)
+        } else {
+            (
+                "momentum",
+                (parameter_index - 2) / 4,
+                (parameter_index - 2) % 4,
+                parameter_index,
+                true,
+            )
+        };
+        json!({
+            "parameter_index": parameter_index,
+            "kind": kind,
+            "source_id": source_id,
+            "component": component,
+            "global_component": global_component,
+            "real_valued": real_valued,
+        })
+    }
+
+    fn arena_manifest() -> ExecutionManifest {
+        let mut value = crate::artifact::tests::minimal_execution_manifest(
+            "p0",
+            "a b > c",
+            SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
+            crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
+        );
+        let stage = &mut value["compiled"]["stage_evaluators"]["amplitude_stage"];
+        stage["parameter_layout"] = json!("stage-local-value-momentum");
+        stage["input_components"] = Value::Array((0..14).map(source_binding).collect());
+        stage["compiled_plane_arena"] = json!({
+            "schema_version": 1,
+            "kind": "compiled-plane-arena-stage",
+            "application_abi": COMPILED_PLANE_DIRECT_APPLICATION_ABI,
+            "source_application_abi": COMPILED_PLANE_SOURCE_APPLICATION_ABI,
+            "element_layout": "split-complex-component-major",
+            "output_operation": "overwrite",
+            "output_factor": "identity",
+            "input_output_aliasing": "forbidden",
+            "output_output_aliasing": "forbidden",
+            "input_bindings": (0..14).map(source_binding).collect::<Vec<_>>(),
+            "output_bindings": [{
+                "output_index": 0,
+                "arena": "amplitude",
+                "component": 0,
+            }],
+            "leaves": [{
+                "application_path": "evaluators/direct.symjit",
+                "source_application_abi": COMPILED_PLANE_SOURCE_APPLICATION_ABI,
+                "optimization_level": 3,
+                "input_len": 14,
+                "output_len": 1,
+                "input_indices": (0..14).collect::<Vec<_>>(),
+                "output_start": 0,
+                "output_stop": 1,
+            }],
+        });
+        value["compiled"]["stage_evaluators"]["parameter_layout"] =
+            json!("stage-local-value-momentum");
+        value["compiled"]["stage_evaluators"]["required_runtime_capabilities"] = json!([
+            COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+            SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
+        ]);
+        value["required_runtime_capabilities"] = json!([
+            COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+            SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
+        ]);
+        serde_json::from_value(value).expect("deserialize compiled plane-arena fixture")
+    }
+
+    #[test]
+    fn pre_arena_compiled_f64_requires_actionable_regeneration() {
+        let value = crate::artifact::tests::minimal_execution_manifest(
+            "p0",
+            "a b > c",
+            SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
+            crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
+        );
+        let manifest =
+            serde_json::from_value(value).expect("deserialize pre-arena compiled fixture");
+
+        let error = validate_compiled_plane_arena_contract(&manifest)
+            .expect_err("pre-arena compiled f64 must fail closed");
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(error.to_string().contains("compiled-plane-arena-v1"));
+        assert!(error.to_string().contains("generate-process"));
+    }
+
+    #[test]
+    fn complete_plane_contract_is_supported_and_exact() {
+        let manifest = arena_manifest();
+
+        assert!(validate_compiled_plane_arena_contract(&manifest).unwrap());
+        ensure_execution_capabilities_supported(&manifest).unwrap();
+        assert!(
+            supported_runtime_capabilities().contains(&COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY)
+        );
+    }
+
+    #[test]
+    fn plane_contract_rejects_binding_and_capability_drift() {
+        let mut manifest = arena_manifest();
+        manifest
+            .compiled
+            .stage_evaluators
+            .as_mut()
+            .unwrap()
+            .amplitude_stage
+            .compiled_plane_arena
+            .as_mut()
+            .unwrap()
+            .input_bindings[2]
+            .global_component = 99;
+        let error = validate_compiled_plane_arena_contract(&manifest).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+        assert!(error.to_string().contains("input bindings disagree"));
+
+        let mut manifest = arena_manifest();
+        manifest
+            .compiled
+            .stage_evaluators
+            .as_mut()
+            .unwrap()
+            .required_runtime_capabilities
+            .retain(|value| value != COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY);
+        let error = validate_compiled_plane_arena_contract(&manifest).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    }
+
+    #[test]
+    fn plane_contract_rejects_non_o3_before_payload_loading() {
+        let mut manifest = arena_manifest();
+        let stage = &mut manifest
+            .compiled
+            .stage_evaluators
+            .as_mut()
+            .unwrap()
+            .amplitude_stage;
+        let EvaluatorManifest::SymjitApplication {
+            optimization_level, ..
+        } = &mut stage.evaluator
+        else {
+            panic!("compiled plane fixture must use one SymJIT evaluator");
+        };
+        *optimization_level = 2;
+        stage.compiled_plane_arena.as_mut().unwrap().leaves[0].optimization_level = 2;
+
+        let error = validate_compiled_plane_arena_contract(&manifest).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(
+            error
+                .to_string()
+                .contains("requires compiled JIT optimization level 3")
+        );
+    }
 }
 
 #[cfg(test)]
@@ -4698,6 +5198,7 @@ mod helicity_recurrence_contract_tests {
                 chunk_input_indices: Some(vec![vec![1], vec![0]]),
                 chunks: vec![leaf("right"), leaf("left")],
             },
+            compiled_plane_arena: None,
         };
 
         let dependencies = compiled_input_current_ids_by_chunk(
@@ -4778,6 +5279,7 @@ mod helicity_recurrence_contract_tests {
                 expression_ready: true,
                 blockers: Vec::new(),
                 evaluator: chunked(output_lengths),
+                compiled_plane_arena: None,
             }
         }
         fn slot(

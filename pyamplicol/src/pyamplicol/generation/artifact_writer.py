@@ -37,6 +37,8 @@ from .._internal.versions import (
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
     COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
     COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+    COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+    COMPILED_PLANE_DIRECT_APPLICATION_ABI,
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
     EVALUATOR_RUNTIME_CAPABILITIES,
@@ -2218,7 +2220,31 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
         )
     )
     declared = set(_required_runtime_capabilities(result))
-    evaluator_capabilities = declared - {COMPILED_RUNTIME_SELECTORS_CAPABILITY}
+    direct_stages = [
+        stage.get("compiled_plane_arena") is not None
+        for stage in (*_sequence(result["stages"]), result["amplitude_stage"])
+    ]
+    has_direct_capability = COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY in declared
+    if (
+        SYMJIT_F64_RUNTIME_CAPABILITY in actual
+        and not bool(direct_stages and all(direct_stages))
+    ):
+        raise ValueError(
+            "compiled SymJIT artifacts require compiled-plane-arena-v1 "
+            "metadata for every fused stage"
+        )
+    if has_direct_capability != bool(direct_stages and all(direct_stages)):
+        raise ValueError(
+            "compiled plane-arena capability and fused-stage metadata disagree"
+        )
+    if any(direct_stages) and not all(direct_stages):
+        raise ValueError(
+            "compiled plane-arena metadata must cover every fused stage"
+        )
+    evaluator_capabilities = declared - {
+        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+        COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    }
     if set(actual) != evaluator_capabilities:
         raise ValueError(
             "stage evaluator runtime capabilities do not match evaluator payloads"
@@ -2227,7 +2253,7 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
 
 
 def _serialized_stage(record: Mapping[str, object]) -> dict[str, object]:
-    return {
+    result = {
         **_select(
             record,
             "stage_index",
@@ -2251,6 +2277,103 @@ def _serialized_stage(record: Mapping[str, object]) -> dict[str, object]:
         ),
         "evaluator": _evaluator(_mapping(record["evaluator"])),
     }
+    direct = record.get("compiled_plane_arena")
+    if direct is not None:
+        result["compiled_plane_arena"] = _compiled_plane_arena_stage(
+            _mapping(direct),
+            stage=result,
+        )
+    return result
+
+
+def _compiled_plane_arena_stage(
+    record: Mapping[str, object],
+    *,
+    stage: Mapping[str, object],
+) -> dict[str, object]:
+    result = {
+        **_select(
+            record,
+            "schema_version",
+            "kind",
+            "application_abi",
+            "source_application_abi",
+            "element_layout",
+            "output_operation",
+            "output_factor",
+            "input_output_aliasing",
+            "output_output_aliasing",
+        ),
+        "input_bindings": [
+            _select(
+                _mapping(item),
+                "parameter_index",
+                "kind",
+                "source_id",
+                "component",
+                "global_component",
+                "real_valued",
+            )
+            for item in _sequence(record["input_bindings"])
+        ],
+        "output_bindings": [
+            _select(
+                _mapping(item),
+                "output_index",
+                "arena",
+                "component",
+            )
+            for item in _sequence(record["output_bindings"])
+        ],
+        "leaves": [
+            _select(
+                _mapping(item),
+                "application_path",
+                "source_application_abi",
+                "optimization_level",
+                "input_len",
+                "output_len",
+                "input_indices",
+                "output_start",
+                "output_stop",
+            )
+            for item in _sequence(record["leaves"])
+        ],
+    }
+    if (
+        result["schema_version"] != 1
+        or result["kind"] != "compiled-plane-arena-stage"
+        or result["application_abi"] != COMPILED_PLANE_DIRECT_APPLICATION_ABI
+        or result["source_application_abi"] != SYMJIT_APPLICATION_ABI
+        or result["element_layout"] != "split-complex-component-major"
+        or result["output_operation"] != "overwrite"
+        or result["output_factor"] != "identity"
+        or result["input_output_aliasing"] != "forbidden"
+        or result["output_output_aliasing"] != "forbidden"
+    ):
+        raise ValueError("compiled plane-arena stage contract is incompatible")
+    if len(result["input_bindings"]) != int(stage["parameter_count"]):
+        raise ValueError("compiled plane-arena input binding count is invalid")
+    if len(result["output_bindings"]) != int(stage["output_length"]):
+        raise ValueError("compiled plane-arena output binding count is invalid")
+    if not result["leaves"]:
+        raise ValueError("compiled plane-arena stage has no fused leaves")
+    output_cursor = 0
+    for leaf in result["leaves"]:
+        leaf_map = _mapping(leaf)
+        input_indices = list(_sequence(leaf_map["input_indices"]))
+        if (
+            leaf_map["source_application_abi"] != SYMJIT_APPLICATION_ABI
+            or len(input_indices) != int(leaf_map["input_len"])
+            or leaf_map["output_start"] != output_cursor
+            or leaf_map["output_stop"]
+            != output_cursor + int(leaf_map["output_len"])
+        ):
+            raise ValueError("compiled plane-arena leaf bindings are invalid")
+        output_cursor = int(leaf_map["output_stop"])
+    if output_cursor != int(stage["output_length"]):
+        raise ValueError("compiled plane-arena leaves do not cover stage outputs")
+    return result
 
 
 def _model_parameter_evaluator(record: Mapping[str, object]) -> dict[str, object]:

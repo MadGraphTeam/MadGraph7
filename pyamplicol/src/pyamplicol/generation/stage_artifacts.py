@@ -13,7 +13,13 @@ import numpy as np
 
 from .._internal.physics.parameters import ParamBuilder
 from .._internal.physics.symbols import symbols
-from .._internal.versions import COMPILED_RUNTIME_SELECTORS_CAPABILITY
+from .._internal.versions import (
+    COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+    COMPILED_PLANE_DIRECT_APPLICATION_ABI,
+    COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    SYMJIT_APPLICATION_ABI,
+    SYMJIT_F64_RUNTIME_CAPABILITY,
+)
 from ..evaluators.execution_schema import (
     aggregate_runtime_capabilities,
     evaluator_runtime_capabilities,
@@ -98,6 +104,9 @@ def write_generic_stage_evaluator_artifacts(
         )
         payload = prepared_stage.to_json_dict()
         payload["evaluator"] = compile_stage(prepared_stage)
+        direct = _compiled_plane_arena_stage(payload)
+        if direct is not None:
+            payload["compiled_plane_arena"] = direct
         stage_timings.append(
             _stage_build_timing_record(
                 prepared_stage.evaluator_label,
@@ -124,6 +133,9 @@ def write_generic_stage_evaluator_artifacts(
     )
     amplitude_payload = prepared_amplitude_stage.to_json_dict()
     amplitude_payload["evaluator"] = compile_stage(prepared_amplitude_stage)
+    direct = _compiled_plane_arena_stage(amplitude_payload)
+    if direct is not None:
+        amplitude_payload["compiled_plane_arena"] = direct
     stage_timings.append(
         _stage_build_timing_record(
             blueprint.amplitude_stage.evaluator_label,
@@ -315,6 +327,240 @@ def write_model_parameter_evaluator_artifact(
     }
 
 
+def _compiled_plane_arena_stage(
+    stage: Mapping[str, object],
+) -> dict[str, object] | None:
+    """Freeze one fused SymJIT stage's direct plane bindings.
+
+    The ordinary SymJIT application remains a cold source payload.  Its
+    row-major interface is not the execution contract: this record fixes the
+    canonical preorder leaf maps, arena inputs, and overwrite destinations
+    used to lower and bind the factor-free DirectApplication at load time.
+    """
+
+    if stage.get("parameter_layout") != "stage-local-value-momentum":
+        return None
+    evaluator = stage.get("evaluator")
+    if not isinstance(evaluator, Mapping):
+        raise ValueError("compiled stage evaluator metadata is invalid")
+    parameter_count = stage.get("parameter_count")
+    output_length = stage.get("output_length")
+    if (
+        isinstance(parameter_count, bool)
+        or not isinstance(parameter_count, int)
+        or parameter_count < 0
+        or isinstance(output_length, bool)
+        or not isinstance(output_length, int)
+        or output_length < 1
+    ):
+        raise ValueError("compiled stage dimensions are invalid")
+
+    leaves, output_stop = _compiled_plane_arena_leaves(
+        evaluator,
+        tuple(range(parameter_count)),
+        0,
+    )
+    if leaves is None:
+        return None
+    if output_stop != output_length:
+        raise ValueError(
+            "compiled plane-arena leaves do not cover the fused stage outputs"
+        )
+
+    raw_inputs = stage.get("input_components")
+    if not isinstance(raw_inputs, Sequence) or isinstance(
+        raw_inputs, (str, bytes)
+    ):
+        raise ValueError("compiled plane-arena input bindings are absent")
+    inputs: list[dict[str, object] | None] = [None] * parameter_count
+    for raw in raw_inputs:
+        if not isinstance(raw, Mapping):
+            raise ValueError("compiled plane-arena input binding is invalid")
+        parameter_index = raw.get("parameter_index")
+        kind = raw.get("kind")
+        if (
+            isinstance(parameter_index, bool)
+            or not isinstance(parameter_index, int)
+            or not 0 <= parameter_index < parameter_count
+            or inputs[parameter_index] is not None
+            or kind not in {"value", "momentum", "model_parameter"}
+        ):
+            raise ValueError("compiled plane-arena input bindings are inconsistent")
+        inputs[parameter_index] = {
+            "parameter_index": parameter_index,
+            "kind": kind,
+            "source_id": _required_nonnegative_int(raw, "source_id"),
+            "component": _required_nonnegative_int(raw, "component"),
+            "global_component": _required_nonnegative_int(
+                raw, "global_component"
+            ),
+            "real_valued": bool(raw.get("real_valued", False)),
+        }
+    if any(binding is None for binding in inputs):
+        raise ValueError("compiled plane-arena input bindings are incomplete")
+
+    raw_slots = stage.get("output_slots")
+    if not isinstance(raw_slots, Sequence) or isinstance(
+        raw_slots, (str, bytes)
+    ):
+        raise ValueError("compiled plane-arena output bindings are absent")
+    arena = (
+        "amplitude"
+        if str(stage.get("stage_kind", "")).startswith("amplitude")
+        else "current"
+    )
+    outputs: list[dict[str, object] | None] = [None] * output_length
+    seen_components: set[int] = set()
+    for raw in raw_slots:
+        if not isinstance(raw, Mapping):
+            raise ValueError("compiled plane-arena output slot is invalid")
+        output_start = _required_nonnegative_int(raw, "output_start")
+        output_stop = _required_nonnegative_int(raw, "output_stop")
+        component_start = _required_nonnegative_int(raw, "component_start")
+        component_stop = _required_nonnegative_int(raw, "component_stop")
+        if (
+            output_stop < output_start
+            or component_stop - component_start != output_stop - output_start
+            or output_stop > output_length
+        ):
+            raise ValueError("compiled plane-arena output slot range is invalid")
+        for offset in range(output_stop - output_start):
+            output_index = output_start + offset
+            component = component_start + offset
+            if outputs[output_index] is not None or component in seen_components:
+                raise ValueError("compiled plane-arena output bindings alias")
+            seen_components.add(component)
+            outputs[output_index] = {
+                "output_index": output_index,
+                "arena": arena,
+                "component": component,
+            }
+    if any(binding is None for binding in outputs):
+        raise ValueError("compiled plane-arena output bindings are incomplete")
+
+    return {
+        "schema_version": 1,
+        "kind": "compiled-plane-arena-stage",
+        "application_abi": COMPILED_PLANE_DIRECT_APPLICATION_ABI,
+        "source_application_abi": SYMJIT_APPLICATION_ABI,
+        "element_layout": "split-complex-component-major",
+        "output_operation": "overwrite",
+        "output_factor": "identity",
+        "input_output_aliasing": "forbidden",
+        "output_output_aliasing": "forbidden",
+        "input_bindings": inputs,
+        "output_bindings": outputs,
+        "leaves": leaves,
+    }
+
+
+def _compiled_plane_arena_leaves(
+    evaluator: Mapping[str, object],
+    parent_inputs: tuple[int, ...],
+    output_start: int,
+) -> tuple[list[dict[str, object]] | None, int]:
+    kind = evaluator.get("kind")
+    if kind == "chunked-symbolica-evaluator":
+        chunks = evaluator.get("chunks")
+        if not isinstance(chunks, Sequence) or isinstance(chunks, (str, bytes)):
+            raise ValueError("compiled chunked evaluator has invalid children")
+        input_len = evaluator.get("input_len")
+        if input_len is not None and input_len != len(parent_inputs):
+            raise ValueError("compiled chunked evaluator input width changed")
+        raw_maps = evaluator.get("chunk_input_indices")
+        if raw_maps is None:
+            input_maps = [parent_inputs] * len(chunks)
+        else:
+            if not isinstance(raw_maps, Sequence) or isinstance(
+                raw_maps, (str, bytes)
+            ) or len(raw_maps) != len(chunks):
+                raise ValueError("compiled chunk input maps are invalid")
+            input_maps = []
+            for raw_map in raw_maps:
+                if not isinstance(raw_map, Sequence) or isinstance(
+                    raw_map, (str, bytes)
+                ):
+                    raise ValueError("compiled chunk input map is invalid")
+                mapped: list[int] = []
+                for raw_index in raw_map:
+                    if (
+                        isinstance(raw_index, bool)
+                        or not isinstance(raw_index, int)
+                        or not 0 <= raw_index < len(parent_inputs)
+                    ):
+                        raise ValueError(
+                            "compiled chunk input map references an absent input"
+                        )
+                    mapped.append(parent_inputs[raw_index])
+                input_maps.append(tuple(mapped))
+        result: list[dict[str, object]] = []
+        cursor = output_start
+        for raw_chunk, mapped in zip(chunks, input_maps, strict=True):
+            if not isinstance(raw_chunk, Mapping):
+                raise ValueError("compiled evaluator child is invalid")
+            child, cursor = _compiled_plane_arena_leaves(
+                raw_chunk, mapped, cursor
+            )
+            if child is None:
+                return None, output_start
+            result.extend(child)
+        return result, cursor
+
+    if kind != "symjit-application-evaluator":
+        return None, output_start
+    if (
+        evaluator.get("runtime_capability") != SYMJIT_F64_RUNTIME_CAPABILITY
+        or evaluator.get("application_abi") != SYMJIT_APPLICATION_ABI
+        or evaluator.get("element_layout") != "complex-f64"
+        or evaluator.get("batch_layout") != "row-major"
+    ):
+        raise ValueError("compiled SymJIT leaf has an incompatible source ABI")
+    input_len = _required_nonnegative_int(evaluator, "input_len")
+    output_len = _required_nonnegative_int(evaluator, "output_len")
+    optimization_level = _required_nonnegative_int(
+        evaluator, "optimization_level"
+    )
+    application_path = evaluator.get("application_path")
+    if (
+        input_len != len(parent_inputs)
+        or output_len < 1
+        or not isinstance(application_path, str)
+        or not application_path
+    ):
+        raise ValueError("compiled SymJIT leaf metadata is invalid")
+    if optimization_level != 3:
+        raise ValueError(
+            "compiled-plane-arena-v1 requires compiled JIT optimization level 3; "
+            "regenerate with evaluator.jit.optimization_level=3"
+        )
+    output_stop = output_start + output_len
+    return (
+        [
+            {
+                "application_path": application_path,
+                "source_application_abi": SYMJIT_APPLICATION_ABI,
+                "optimization_level": optimization_level,
+                "input_len": input_len,
+                "output_len": output_len,
+                "input_indices": list(parent_inputs),
+                "output_start": output_start,
+                "output_stop": output_stop,
+            }
+        ],
+        output_stop,
+    )
+
+
+def _required_nonnegative_int(
+    record: Mapping[str, object],
+    name: str,
+) -> int:
+    value = record.get(name)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"compiled plane-arena {name.replace('_', ' ')} is invalid")
+    return value
+
+
 def _finalize_stage_evaluator_payload(
     blueprint: GenericStageCompilerBlueprint,
     *,
@@ -377,6 +623,25 @@ def _finalize_stage_evaluator_payload(
         for slot in stage.output_slots
     ):
         required_runtime_capabilities.add(COMPILED_RUNTIME_SELECTORS_CAPABILITY)
+    direct_stage_count = sum(
+        "compiled_plane_arena" in payload
+        for payload in (*stage_payloads, amplitude_payload)
+    )
+    stage_count = len(stage_payloads) + 1
+    requires_direct = SYMJIT_F64_RUNTIME_CAPABILITY in required_runtime_capabilities
+    if requires_direct and direct_stage_count != stage_count:
+        raise ValueError(
+            "compiled SymJIT artifacts require compiled-plane-arena-v1 "
+            "metadata for every fused stage"
+        )
+    if direct_stage_count:
+        if direct_stage_count != stage_count:
+            raise ValueError(
+                "compiled plane-arena metadata must cover every fused stage"
+            )
+        required_runtime_capabilities.add(
+            COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY
+        )
     return {
         "kind": "generic-dag-stage-evaluator-artifacts",
         "required_runtime_capabilities": sorted(required_runtime_capabilities),
@@ -537,6 +802,9 @@ def build_and_write_generic_stage_evaluator_artifacts(
             current_stage_position=position,
             current_stage_count=current_stage_count,
         )
+        direct = _compiled_plane_arena_stage(payload)
+        if direct is not None:
+            payload["compiled_plane_arena"] = direct
         timing = _stage_build_timing_record(
             prepared_stage.evaluator_label,
             payload["evaluator"],

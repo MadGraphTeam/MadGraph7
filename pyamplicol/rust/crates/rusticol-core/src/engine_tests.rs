@@ -944,7 +944,7 @@ fn test_amplitude_runtime(
         resolved_target_row_scratch_f64: Vec::new(),
         routed_reduction_scratch: RoutedReductionScratch::default(),
         evaluator_output_order: None,
-        evaluator: empty_evaluator_group(),
+        evaluator: Some(empty_evaluator_group()),
     }
 }
 
@@ -1786,7 +1786,7 @@ fn reduction_test_amplitude(
         resolved_target_row_scratch_f64: Vec::new(),
         routed_reduction_scratch: RoutedReductionScratch::default(),
         evaluator_output_order: None,
-        evaluator: empty_evaluator_group(),
+        evaluator: Some(empty_evaluator_group()),
     }
 }
 

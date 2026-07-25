@@ -8,45 +8,89 @@ impl StageRuntime {
         payloads: &EvaluatorPayloadStore,
     ) -> RusticolResult<Self> {
         let evaluator = EvaluatorGroup::load_from_store(&stage.evaluator, payloads)?;
+        Self::load_with_evaluator(stage, evaluator, false)
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn load_exact_from_plane(
+        stage: &GenericSerializedStageEvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+    ) -> RusticolResult<Self> {
+        let evaluator = EvaluatorGroup::load_exact_from_plane(stage, payloads)?;
+        Self::load_with_evaluator(stage, evaluator, true)
+    }
+
+    fn load_with_evaluator(
+        stage: &GenericSerializedStageEvaluatorManifest,
+        evaluator: EvaluatorGroup,
+        plane_bindings: bool,
+    ) -> RusticolResult<Self> {
         let mut outputs = Vec::new();
-        for slot in &stage.output_slots {
-            let output_len = slot
-                .output_stop
-                .checked_sub(slot.output_start)
-                .ok_or_else(|| {
-                    RusticolError::invalid_argument(format!(
-                        "generic stage {} has an invalid output slot range",
-                        stage.evaluator_label
-                    ))
-                })?;
-            let component_len = slot
-                .component_stop
-                .checked_sub(slot.component_start)
-                .ok_or_else(|| {
-                    RusticolError::invalid_argument(format!(
-                        "generic stage {} has an invalid component slot range",
-                        stage.evaluator_label
-                    ))
-                })?;
-            if output_len != component_len {
-                return Err(RusticolError::invalid_argument(format!(
-                    "generic stage {} output slot length does not match component length",
-                    stage.evaluator_label
-                )));
+        if plane_bindings {
+            let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
+                RusticolError::integrity(
+                    "compiled plane-arena exact stage has no serialized bindings",
+                )
+            })?;
+            for binding in &direct.output_bindings {
+                if binding.arena != "current" {
+                    return Err(RusticolError::integrity(
+                        "compiled plane-arena exact current stage names the wrong output arena",
+                    ));
+                }
+                outputs.push((binding.output_index, binding.component));
             }
-            for component in 0..component_len {
-                outputs.push((
-                    slot.output_start + component,
-                    slot.component_start + component,
-                ));
+        } else {
+            for slot in &stage.output_slots {
+                let output_len =
+                    slot.output_stop
+                        .checked_sub(slot.output_start)
+                        .ok_or_else(|| {
+                            RusticolError::invalid_argument(format!(
+                                "generic stage {} has an invalid output slot range",
+                                stage.evaluator_label
+                            ))
+                        })?;
+                let component_len = slot
+                    .component_stop
+                    .checked_sub(slot.component_start)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(format!(
+                            "generic stage {} has an invalid component slot range",
+                            stage.evaluator_label
+                        ))
+                    })?;
+                if output_len != component_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "generic stage {} output slot length does not match component length",
+                        stage.evaluator_label
+                    )));
+                }
+                for component in 0..component_len {
+                    outputs.push((
+                        slot.output_start + component,
+                        slot.component_start + component,
+                    ));
+                }
             }
         }
         outputs.sort_unstable_by_key(|(column, _state_offset)| *column);
         let (input_components, input_spans) =
             if stage.parameter_layout == "stage-local-value-momentum" {
                 let mut map = vec![0usize; stage.parameter_count];
-                for component in &stage.input_components {
-                    map[component.parameter_index] = component.global_component;
+                if plane_bindings {
+                    let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
+                        RusticolError::integrity(
+                            "compiled plane-arena exact stage has no serialized bindings",
+                        )
+                    })?;
+                    for component in &direct.input_bindings {
+                        map[component.parameter_index] = component.global_component;
+                    }
+                } else {
+                    for component in &stage.input_components {
+                        map[component.parameter_index] = component.global_component;
+                    }
                 }
                 let spans = contiguous_input_spans(&map);
                 (Some(map), spans)

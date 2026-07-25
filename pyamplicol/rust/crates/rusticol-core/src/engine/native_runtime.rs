@@ -33,6 +33,10 @@ fn attach_point_selector_profile(
 }
 
 fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
+    #[cfg(feature = "f64-symjit")]
+    if runtime.compiled_direct_runtime.is_some() {
+        return true;
+    }
     runtime
         .stages
         .as_ref()
@@ -40,7 +44,8 @@ fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
         || runtime
             .amplitude_stage
             .as_ref()
-            .is_some_and(|stage| stage.evaluator.uses_simd_jit())
+            .and_then(|stage| stage.evaluator.as_ref())
+            .is_some_and(EvaluatorGroup::uses_simd_jit)
         || runtime
             .helicity_sum_runtime
             .as_deref()
@@ -53,6 +58,69 @@ fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
             .color_selector_runtimes
             .values()
             .any(|lane| execution_uses_simd_jit(lane))
+}
+
+#[cfg(feature = "f64-symjit")]
+#[derive(Clone, Copy, Debug, Default)]
+struct CompiledDirectProfileSnapshot {
+    engine_count: usize,
+    source_fill_bytes: u64,
+    momentum_fill_bytes: u64,
+    parameter_fill_bytes: u64,
+    amplitude_clear_bytes: u64,
+    backend_call_count: u64,
+}
+
+#[cfg(feature = "f64-symjit")]
+fn compiled_direct_profile_snapshot(
+    runtime: &ExecutionRuntime,
+) -> RusticolResult<CompiledDirectProfileSnapshot> {
+    let mut snapshot = CompiledDirectProfileSnapshot::default();
+    if let Some(direct) = runtime.compiled_direct_runtime.as_ref() {
+        let traffic = direct.traffic();
+        traffic.leaf.validate_direct()?;
+        if traffic.boundary_input_bytes
+            | traffic.boundary_current_output_bytes
+            | traffic.boundary_amplitude_output_bytes
+            != 0
+        {
+            return Err(RusticolError::integrity(
+                "production compiled Direct-Arena profile observed developer boundary traffic",
+            ));
+        }
+        snapshot.engine_count += 1;
+        snapshot.source_fill_bytes = traffic.source_fill_bytes;
+        snapshot.momentum_fill_bytes = traffic.momentum_fill_bytes;
+        snapshot.parameter_fill_bytes = traffic.parameter_fill_bytes;
+        snapshot.amplitude_clear_bytes = traffic.amplitude_clear_bytes;
+        snapshot.backend_call_count = traffic.leaf.calls;
+    }
+    let children = runtime
+        .helicity_sum_runtime
+        .iter()
+        .map(Box::as_ref)
+        .chain(runtime.helicity_selector_runtimes.iter().map(Box::as_ref))
+        .chain(runtime.color_selector_runtimes.values().map(Box::as_ref));
+    for child in children {
+        let child = compiled_direct_profile_snapshot(child)?;
+        snapshot.engine_count += child.engine_count;
+        snapshot.source_fill_bytes = snapshot
+            .source_fill_bytes
+            .saturating_add(child.source_fill_bytes);
+        snapshot.momentum_fill_bytes = snapshot
+            .momentum_fill_bytes
+            .saturating_add(child.momentum_fill_bytes);
+        snapshot.parameter_fill_bytes = snapshot
+            .parameter_fill_bytes
+            .saturating_add(child.parameter_fill_bytes);
+        snapshot.amplitude_clear_bytes = snapshot
+            .amplitude_clear_bytes
+            .saturating_add(child.amplitude_clear_bytes);
+        snapshot.backend_call_count = snapshot
+            .backend_call_count
+            .saturating_add(child.backend_call_count);
+    }
+    Ok(snapshot)
 }
 
 impl NativeRuntime {
@@ -965,6 +1033,57 @@ impl NativeRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
     ) -> Result<(Vec<f64>, RuntimeProfile), RusticolError> {
+        #[cfg(feature = "f64-symjit")]
+        if matches!(&self.execution_lane, NativeExecutionLane::Compiled) {
+            let before = compiled_direct_profile_snapshot(&self.runtime)?;
+            if before.engine_count != 0 {
+                let total_start = Instant::now();
+                let mut values = vec![0.0; batch.len()];
+                self.runtime.run_f64_selected_into_unprofiled(
+                    F64MomentumBatchView::from_nested(batch, self.runtime.external_count)?,
+                    selected_helicities,
+                    selected_colors,
+                    &mut values,
+                )?;
+                let total_s = total_start.elapsed().as_secs_f64();
+                let after = compiled_direct_profile_snapshot(&self.runtime)?;
+                let f64_bytes = std::mem::size_of::<f64>() as u64;
+                let complex_bytes = 2 * f64_bytes;
+                return Ok((
+                    values,
+                    RuntimeProfile {
+                        // The direct hot path is deliberately uninstrumented.
+                        // Until its three coarse phase clocks are added, keep
+                        // the complete measured envelope in orchestration so
+                        // top-level accounting remains exact rather than
+                        // manufacturing dense-stage timing fields.
+                        orchestration_s: total_s,
+                        total_s,
+                        source_component_count: after
+                            .source_fill_bytes
+                            .saturating_sub(before.source_fill_bytes)
+                            / complex_bytes,
+                        momentum_component_count: after
+                            .momentum_fill_bytes
+                            .saturating_sub(before.momentum_fill_bytes)
+                            / f64_bytes,
+                        model_parameter_component_count: after
+                            .parameter_fill_bytes
+                            .saturating_sub(before.parameter_fill_bytes)
+                            / complex_bytes,
+                        state_clear_component_count: after
+                            .amplitude_clear_bytes
+                            .saturating_sub(before.amplitude_clear_bytes)
+                            / complex_bytes,
+                        evaluator_backend_call_count: after
+                            .backend_call_count
+                            .saturating_sub(before.backend_call_count),
+                        total_materialized_value_count: batch.len() as u64,
+                        ..RuntimeProfile::default()
+                    },
+                ));
+            }
+        }
         match &mut self.execution_lane {
             NativeExecutionLane::Compiled => {
                 self.runtime
@@ -1064,7 +1183,30 @@ impl NativeRuntime {
         let total_start = Instant::now();
         let (batch, native_input_pack_elapsed, native_input_crossing_elapsed) =
             self.prepare_f64_batch_profile(momenta, point_count)?;
-        let (values, profile) = if helicity_ids.is_some() || color_ids.is_some() {
+        let compiled_direct_profile = {
+            #[cfg(feature = "f64-symjit")]
+            {
+                matches!(&self.execution_lane, NativeExecutionLane::Compiled)
+                    && compiled_direct_profile_snapshot(&self.runtime)?.engine_count != 0
+            }
+            #[cfg(not(feature = "f64-symjit"))]
+            {
+                false
+            }
+        };
+        let (values, profile) = if compiled_direct_profile {
+            if helicity_ids.is_some() || color_ids.is_some() {
+                self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
+                self.record_resolved_warnings(helicity_ids, color_ids)?;
+            }
+            let selected_helicities = selector_set(helicity_ids, "helicity")?;
+            let selected_colors = selector_set(color_ids, "color component")?;
+            self.run_selected_f64_batch_profile(
+                &batch,
+                selected_helicities.as_ref(),
+                selected_colors.as_ref(),
+            )?
+        } else if helicity_ids.is_some() || color_ids.is_some() {
             self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
             self.record_resolved_warnings(helicity_ids, color_ids)?;
             let selected_helicities = selector_set(helicity_ids, "helicity")?;

@@ -1583,6 +1583,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::CompiledHelicityDualLaneV1,
         RuntimeCapability::CompiledHelicityPrimaryRecurrenceV1,
         RuntimeCapability::CompiledHelicitySelectorUnionV1,
+        RuntimeCapability::CompiledPlaneArenaV1,
         RuntimeCapability::CompiledRuntimeSelectorsV1,
         RuntimeCapability::EagerDagComplexF64V1,
         RuntimeCapability::EagerRuntimeLayoutComplexF64V1,

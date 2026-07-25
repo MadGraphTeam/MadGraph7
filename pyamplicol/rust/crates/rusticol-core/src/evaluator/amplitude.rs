@@ -133,6 +133,26 @@ impl AmplitudeRuntime {
         stage: &GenericSerializedStageEvaluatorManifest,
         payloads: &EvaluatorPayloadStore,
     ) -> RusticolResult<Self> {
+        let mut runtime = Self::load_reducer_only(amplitude_stage, stage)?;
+        runtime.evaluator = Some(EvaluatorGroup::load_from_store(&stage.evaluator, payloads)?);
+        Ok(runtime)
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn load_exact_from_plane(
+        amplitude_stage: &GenericAmplitudeStageManifest,
+        stage: &GenericSerializedStageEvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+    ) -> RusticolResult<Self> {
+        let mut runtime = Self::load_reducer_only(amplitude_stage, stage)?;
+        runtime.evaluator = Some(EvaluatorGroup::load_exact_from_plane(stage, payloads)?);
+        Ok(runtime)
+    }
+
+    pub(crate) fn load_reducer_only(
+        amplitude_stage: &GenericAmplitudeStageManifest,
+        stage: &GenericSerializedStageEvaluatorManifest,
+    ) -> RusticolResult<Self> {
         if stage.stage_kind != "amplitude-roots" {
             return Err(RusticolError::invalid_argument(
                 "generic amplitude runtime expected an amplitude-roots stage",
@@ -177,8 +197,14 @@ impl AmplitudeRuntime {
         let (input_components, input_spans) =
             if stage.parameter_layout == "stage-local-value-momentum" {
                 let mut map = vec![0usize; stage.parameter_count];
-                for component in &stage.input_components {
-                    map[component.parameter_index] = component.global_component;
+                if let Some(direct) = stage.compiled_plane_arena.as_ref() {
+                    for component in &direct.input_bindings {
+                        map[component.parameter_index] = component.global_component;
+                    }
+                } else {
+                    for component in &stage.input_components {
+                        map[component.parameter_index] = component.global_component;
+                    }
                 }
                 let spans = contiguous_input_spans(&map);
                 (Some(map), spans)
@@ -187,27 +213,15 @@ impl AmplitudeRuntime {
             };
         let mut evaluator_output_order = vec![usize::MAX; stage.output_length];
         let mut canonical_outputs = vec![false; stage.output_length];
-        for slot in &stage.output_slots {
-            let output_len = slot
-                .output_stop
-                .checked_sub(slot.output_start)
-                .ok_or_else(|| {
-                    RusticolError::artifact("amplitude evaluator has an invalid output range")
-                })?;
-            let component_len = slot
-                .component_stop
-                .checked_sub(slot.component_start)
-                .ok_or_else(|| {
-                    RusticolError::artifact("amplitude evaluator has an invalid component range")
-                })?;
-            if output_len != component_len {
-                return Err(RusticolError::artifact(
-                    "amplitude evaluator output and component ranges disagree",
-                ));
-            }
-            for offset in 0..output_len {
-                let evaluator_output = slot.output_start + offset;
-                let canonical_output = slot.component_start + offset;
+        if let Some(direct) = stage.compiled_plane_arena.as_ref() {
+            for binding in &direct.output_bindings {
+                if binding.arena != "amplitude" {
+                    return Err(RusticolError::integrity(
+                        "compiled plane-arena amplitude binding names the wrong arena",
+                    ));
+                }
+                let evaluator_output = binding.output_index;
+                let canonical_output = binding.component;
                 if evaluator_output >= stage.output_length
                     || canonical_output >= stage.output_length
                     || evaluator_output_order[evaluator_output] != usize::MAX
@@ -219,6 +233,45 @@ impl AmplitudeRuntime {
                 }
                 evaluator_output_order[evaluator_output] = canonical_output;
                 canonical_outputs[canonical_output] = true;
+            }
+        } else {
+            for slot in &stage.output_slots {
+                let output_len =
+                    slot.output_stop
+                        .checked_sub(slot.output_start)
+                        .ok_or_else(|| {
+                            RusticolError::artifact(
+                                "amplitude evaluator has an invalid output range",
+                            )
+                        })?;
+                let component_len = slot
+                    .component_stop
+                    .checked_sub(slot.component_start)
+                    .ok_or_else(|| {
+                        RusticolError::artifact(
+                            "amplitude evaluator has an invalid component range",
+                        )
+                    })?;
+                if output_len != component_len {
+                    return Err(RusticolError::artifact(
+                        "amplitude evaluator output and component ranges disagree",
+                    ));
+                }
+                for offset in 0..output_len {
+                    let evaluator_output = slot.output_start + offset;
+                    let canonical_output = slot.component_start + offset;
+                    if evaluator_output >= stage.output_length
+                        || canonical_output >= stage.output_length
+                        || evaluator_output_order[evaluator_output] != usize::MAX
+                        || canonical_outputs[canonical_output]
+                    {
+                        return Err(RusticolError::artifact(
+                            "amplitude evaluator output mapping is not a permutation",
+                        ));
+                    }
+                    evaluator_output_order[evaluator_output] = canonical_output;
+                    canonical_outputs[canonical_output] = true;
+                }
             }
         }
         if evaluator_output_order.contains(&usize::MAX)
@@ -250,7 +303,7 @@ impl AmplitudeRuntime {
             resolved_target_row_scratch_f64: Vec::new(),
             routed_reduction_scratch: RoutedReductionScratch::default(),
             evaluator_output_order,
-            evaluator: EvaluatorGroup::load_from_store(&stage.evaluator, payloads)?,
+            evaluator: None,
         })
     }
 
@@ -259,6 +312,11 @@ impl AmplitudeRuntime {
         batch_size: usize,
         state: &[Complex<f64>],
     ) -> RusticolResult<()> {
+        let evaluator = self.evaluator.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled plane-arena reducer cannot execute a dense amplitude evaluator",
+            )
+        })?;
         let evaluator_params = if let Some(input_components) = self.input_components.as_ref() {
             let local_parameter_count = input_components.len();
             let global_parameter_count = state.len().checked_div(batch_size).ok_or_else(|| {
@@ -288,7 +346,7 @@ impl AmplitudeRuntime {
             state
         };
         if let Some(order) = self.evaluator_output_order.as_deref() {
-            self.evaluator.evaluate_batch_into(
+            evaluator.evaluate_batch_into(
                 batch_size,
                 evaluator_params,
                 &mut self.evaluator_output_scratch_f64,
@@ -300,7 +358,7 @@ impl AmplitudeRuntime {
                 &mut self.output_scratch_f64,
             )
         } else {
-            self.evaluator.evaluate_batch_into(
+            evaluator.evaluate_batch_into(
                 batch_size,
                 evaluator_params,
                 &mut self.output_scratch_f64,
@@ -313,6 +371,11 @@ impl AmplitudeRuntime {
         batch_size: usize,
         state: &[Complex<f64>],
     ) -> RusticolResult<AmplitudeEvaluationProfile> {
+        let evaluator_runtime = self.evaluator.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled plane-arena reducer cannot profile a dense amplitude evaluator",
+            )
+        })?;
         let mut input_pack_elapsed = Duration::ZERO;
         let input_copy_component_count;
         let mut scratch_reallocation_count = 0;
@@ -358,7 +421,7 @@ impl AmplitudeRuntime {
         }
         let mut output_remap_elapsed = Duration::ZERO;
         if let Some(order) = self.evaluator_output_order.as_deref() {
-            evaluator = self.evaluator.evaluate_batch_into_profile(
+            evaluator = evaluator_runtime.evaluate_batch_into_profile(
                 batch_size,
                 evaluator_params,
                 &mut self.evaluator_output_scratch_f64,
@@ -373,7 +436,7 @@ impl AmplitudeRuntime {
             )?;
             output_remap_elapsed = remap_start.elapsed();
         } else {
-            evaluator = self.evaluator.evaluate_batch_into_profile(
+            evaluator = evaluator_runtime.evaluate_batch_into_profile(
                 batch_size,
                 evaluator_params,
                 &mut self.output_scratch_f64,
@@ -401,8 +464,13 @@ impl AmplitudeRuntime {
         state: &[Complex<f64>],
         active_chunk_indices: &[usize],
     ) -> RusticolResult<()> {
+        let evaluator = self.evaluator.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled plane-arena reducer cannot execute selected dense amplitude chunks",
+            )
+        })?;
         if let Some(order) = self.evaluator_output_order.as_deref() {
-            self.evaluator.evaluate_selected_chunks_f64_into_output(
+            evaluator.evaluate_selected_chunks_f64_into_output(
                 batch_size,
                 state,
                 self.input_components.as_deref(),
@@ -417,7 +485,7 @@ impl AmplitudeRuntime {
                 &mut self.output_scratch_f64,
             )
         } else {
-            self.evaluator.evaluate_selected_chunks_f64_into_output(
+            evaluator.evaluate_selected_chunks_f64_into_output(
                 batch_size,
                 state,
                 self.input_components.as_deref(),
@@ -434,19 +502,22 @@ impl AmplitudeRuntime {
         state: &[Complex<f64>],
         active_chunk_indices: &[usize],
     ) -> RusticolResult<AmplitudeEvaluationProfile> {
+        let evaluator_runtime = self.evaluator.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled plane-arena reducer cannot profile selected dense amplitude chunks",
+            )
+        })?;
         let evaluator;
         let mut output_remap_elapsed = Duration::ZERO;
         if let Some(order) = self.evaluator_output_order.as_deref() {
-            evaluator = self
-                .evaluator
-                .evaluate_selected_chunks_f64_into_output_profile(
-                    batch_size,
-                    state,
-                    self.input_components.as_deref(),
-                    &self.input_spans,
-                    &mut self.evaluator_output_scratch_f64,
-                    active_chunk_indices,
-                )?;
+            evaluator = evaluator_runtime.evaluate_selected_chunks_f64_into_output_profile(
+                batch_size,
+                state,
+                self.input_components.as_deref(),
+                &self.input_spans,
+                &mut self.evaluator_output_scratch_f64,
+                active_chunk_indices,
+            )?;
             let remap_start = Instant::now();
             remap_amplitude_outputs(
                 batch_size,
@@ -456,16 +527,14 @@ impl AmplitudeRuntime {
             )?;
             output_remap_elapsed = remap_start.elapsed();
         } else {
-            evaluator = self
-                .evaluator
-                .evaluate_selected_chunks_f64_into_output_profile(
-                    batch_size,
-                    state,
-                    self.input_components.as_deref(),
-                    &self.input_spans,
-                    &mut self.output_scratch_f64,
-                    active_chunk_indices,
-                )?;
+            evaluator = evaluator_runtime.evaluate_selected_chunks_f64_into_output_profile(
+                batch_size,
+                state,
+                self.input_components.as_deref(),
+                &self.input_spans,
+                &mut self.output_scratch_f64,
+                active_chunk_indices,
+            )?;
         }
         Ok(AmplitudeEvaluationProfile {
             input_pack_s: evaluator.leaf_input_pack_s,
@@ -2540,6 +2609,11 @@ impl AmplitudeRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        let evaluator = self.evaluator.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled plane-arena reducer cannot execute an exact dense amplitude evaluator",
+            )
+        })?;
         let mut input_pack_elapsed = Duration::ZERO;
         let (evaluated, evaluator_call_s) = if let Some(input_components) =
             self.input_components.as_ref()
@@ -2570,7 +2644,7 @@ impl AmplitudeRuntime {
             }
             input_pack_elapsed = pack_start.elapsed();
             let eval_start = Instant::now();
-            let evaluated = self.evaluator.evaluate_batch_generic(
+            let evaluated = evaluator.evaluate_batch_generic(
                 batch_size,
                 &parameter_scratch,
                 binary_precision,
@@ -2579,8 +2653,7 @@ impl AmplitudeRuntime {
         } else {
             let eval_start = Instant::now();
             let evaluated =
-                self.evaluator
-                    .evaluate_batch_generic(batch_size, state, binary_precision)?;
+                evaluator.evaluate_batch_generic(batch_size, state, binary_precision)?;
             (evaluated, eval_start.elapsed().as_secs_f64())
         };
         if evaluated.len() != batch_size * self.output_length {

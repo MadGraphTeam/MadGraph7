@@ -175,6 +175,9 @@ pub const RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY: &str =
 pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
+pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
+pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "symjit-direct-application-storage-v3";
+pub const COMPILED_PLANE_SOURCE_APPLICATION_ABI: &str = "symjit-application-storage-v3";
 pub const COMPILED_HELICITY_DUAL_LANE_CAPABILITY: &str = "rusticol.compiled.helicity-dual-lane.v1";
 pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =
     "rusticol.compiled.helicity-selector-union.v1";
@@ -219,6 +222,7 @@ pub enum RuntimeCapability {
     CompiledHelicityDualLaneV1,
     CompiledHelicityPrimaryRecurrenceV1,
     CompiledHelicitySelectorUnionV1,
+    CompiledPlaneArenaV1,
     CompiledRuntimeSelectorsV1,
     EagerDagComplexF64V1,
     EagerRuntimeLayoutComplexF64V1,
@@ -245,6 +249,7 @@ impl RuntimeCapability {
                 COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
             }
             Self::CompiledHelicitySelectorUnionV1 => COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+            Self::CompiledPlaneArenaV1 => COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
             Self::CompiledRuntimeSelectorsV1 => COMPILED_RUNTIME_SELECTORS_CAPABILITY,
             Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
             Self::EagerRuntimeLayoutComplexF64V1 => EAGER_RUNTIME_LAYOUT_CAPABILITY,
@@ -276,6 +281,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+        #[cfg(feature = "f64-symjit")]
+        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -879,6 +886,58 @@ struct GenericSerializedStageEvaluatorManifest {
     expression_ready: bool,
     blockers: Vec<String>,
     evaluator: EvaluatorManifest,
+    #[serde(default)]
+    compiled_plane_arena: Option<CompiledPlaneArenaStageManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CompiledPlaneArenaStageManifest {
+    schema_version: u32,
+    kind: String,
+    application_abi: String,
+    source_application_abi: String,
+    element_layout: String,
+    output_operation: String,
+    output_factor: String,
+    input_output_aliasing: String,
+    output_output_aliasing: String,
+    input_bindings: Vec<CompiledPlaneInputBindingManifest>,
+    output_bindings: Vec<CompiledPlaneOutputBindingManifest>,
+    leaves: Vec<CompiledPlaneLeafManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct CompiledPlaneInputBindingManifest {
+    parameter_index: usize,
+    kind: String,
+    source_id: usize,
+    component: usize,
+    global_component: usize,
+    #[serde(default)]
+    real_valued: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct CompiledPlaneOutputBindingManifest {
+    output_index: usize,
+    arena: String,
+    component: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct CompiledPlaneLeafManifest {
+    application_path: String,
+    source_application_abi: String,
+    optimization_level: u8,
+    input_len: usize,
+    output_len: usize,
+    input_indices: Vec<usize>,
+    output_start: usize,
+    output_stop: usize,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1983,6 +2042,8 @@ struct EvaluatorGroup {
 // only the SymJIT variant would add an indirection to every hot kernel call.
 #[allow(clippy::large_enum_variant)]
 enum F64Evaluator {
+    #[cfg(feature = "symbolica-runtime")]
+    ExactOnly,
     #[cfg(feature = "f64-symjit")]
     SymjitApplication(SymjitApplicationEvaluator),
     #[cfg(feature = "f64-compiled")]
@@ -3589,7 +3650,7 @@ struct AmplitudeRuntime {
     resolved_target_row_scratch_f64: Vec<f64>,
     routed_reduction_scratch: RoutedReductionScratch,
     evaluator_output_order: Option<Vec<usize>>,
-    evaluator: EvaluatorGroup,
+    evaluator: Option<EvaluatorGroup>,
 }
 
 mod runtime_load;

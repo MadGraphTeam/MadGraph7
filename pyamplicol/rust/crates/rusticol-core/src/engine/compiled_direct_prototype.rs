@@ -1118,12 +1118,6 @@ fn evaluate_validated_schedule(
     traffic.validate_direct()
 }
 
-#[derive(Clone, Copy)]
-enum OutputArena {
-    Current,
-    Amplitude,
-}
-
 fn load_stage(
     stage: &GenericSerializedStageEvaluatorManifest,
     is_amplitude: bool,
@@ -1133,39 +1127,40 @@ fn load_stage(
     amplitude_component_count: usize,
     structural_zero_components: &BTreeSet<usize>,
 ) -> RusticolResult<LoadedStage> {
+    let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
+        RusticolError::integrity(format!(
+            "compiled Direct-Arena stage {:?} has no serialized plane bindings",
+            stage.evaluator_label
+        ))
+    })?;
     if stage.parameter_layout != "stage-local-value-momentum"
-        || stage.input_components.len() != stage.parameter_count
+        || direct.input_bindings.len() != stage.parameter_count
     {
         return Err(RusticolError::compatibility(format!(
-            "compiled Direct-Arena stage {:?} requires complete stage-local input metadata",
+            "compiled Direct-Arena stage {:?} requires complete serialized input bindings",
             stage.evaluator_label
         )));
     }
     let mut components = vec![None; stage.parameter_count];
-    for component in &stage.input_components {
+    for component in &direct.input_bindings {
         if component.parameter_index >= components.len()
             || components[component.parameter_index]
                 .replace(component)
                 .is_some()
         {
             return Err(RusticolError::integrity(format!(
-                "compiled Direct-Arena stage {:?} has invalid input-component metadata",
+                "compiled Direct-Arena stage {:?} has invalid serialized input bindings",
                 stage.evaluator_label
             )));
         }
     }
     if components.iter().any(Option::is_none) {
         return Err(RusticolError::integrity(format!(
-            "compiled Direct-Arena stage {:?} has incomplete input-component metadata",
+            "compiled Direct-Arena stage {:?} has incomplete serialized input bindings",
             stage.evaluator_label
         )));
     }
 
-    let output_arena = if is_amplitude {
-        OutputArena::Amplitude
-    } else {
-        OutputArena::Current
-    };
     let output_limit = if is_amplitude {
         amplitude_component_count
     } else {
@@ -1173,37 +1168,31 @@ fn load_stage(
     };
     let mut output_components = vec![None; stage.output_length];
     let mut seen_output_components = BTreeSet::new();
-    for slot in &stage.output_slots {
-        let output_len = slot
-            .output_stop
-            .checked_sub(slot.output_start)
-            .ok_or_else(|| RusticolError::integrity("compiled output slot range underflows"))?;
-        if slot.component_stop.checked_sub(slot.component_start) != Some(output_len)
-            || slot.output_stop > output_components.len()
-            || slot.component_stop > output_limit
+    let expected_arena = if is_amplitude { "amplitude" } else { "current" };
+    for binding in &direct.output_bindings {
+        if binding.output_index >= output_components.len()
+            || binding.component >= output_limit
+            || binding.arena != expected_arena
         {
             return Err(RusticolError::integrity(format!(
-                "compiled Direct-Arena stage {:?} has an invalid output slot",
+                "compiled Direct-Arena stage {:?} has an invalid serialized output binding",
                 stage.evaluator_label
             )));
         }
-        for offset in 0..output_len {
-            let component = slot.component_start + offset;
-            if !seen_output_components.insert(component) {
-                return Err(RusticolError::integrity(format!(
-                    "compiled Direct-Arena stage {:?} aliases output component {component}",
-                    stage.evaluator_label
-                )));
-            }
-            if output_components[slot.output_start + offset]
-                .replace(component)
-                .is_some()
-            {
-                return Err(RusticolError::integrity(format!(
-                    "compiled Direct-Arena stage {:?} has overlapping output slots",
-                    stage.evaluator_label
-                )));
-            }
+        if !seen_output_components.insert(binding.component) {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena stage {:?} aliases output component {}",
+                stage.evaluator_label, binding.component
+            )));
+        }
+        if output_components[binding.output_index]
+            .replace(binding)
+            .is_some()
+        {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena stage {:?} has duplicate serialized output indices",
+                stage.evaluator_label
+            )));
         }
     }
     if output_components.iter().any(Option::is_none) {
@@ -1231,10 +1220,10 @@ fn load_stage(
     let mut loaded = Vec::with_capacity(leaf_layout.len());
     let mut leaf_plans = Vec::with_capacity(leaf_layout.len());
     let mut output_cursor = 0usize;
-    for leaf in leaf_layout {
+    for (leaf_index, leaf) in leaf_layout.into_iter().enumerate() {
         let EvaluatorManifest::SymjitApplication {
             runtime_capability,
-            application_path,
+            application_path: _,
             application_abi,
             input_len,
             output_len,
@@ -1254,6 +1243,12 @@ fn load_stage(
                 stage.evaluator_label
             )));
         };
+        if *optimization_level != 3 {
+            return Err(RusticolError::compatibility(
+                "compiled-plane-arena-v1 requires compiled JIT optimization level 3; \
+                 regenerate with evaluator.jit.optimization_level=3",
+            ));
+        }
         validate_manifest_metadata(&SymjitApplicationMetadata {
             runtime_capability,
             application_abi,
@@ -1268,36 +1263,52 @@ fn load_stage(
             endianness,
             required_defuns,
         })?;
-        if *optimization_level != 3 {
-            return Err(RusticolError::compatibility(format!(
-                "compiled Direct-Arena stage {:?} requires self-contained O3 leaves",
-                stage.evaluator_label
-            )));
-        }
-        if leaf.input_indices.len() != *input_len {
+        let direct_leaf = direct.leaves.get(leaf_index).ok_or_else(|| {
+            RusticolError::integrity("compiled plane-arena leaf bindings are incomplete")
+        })?;
+        let (
+            application_path,
+            source_application_abi,
+            direct_input_len,
+            direct_output_len,
+            direct_input_indices,
+            direct_output_range,
+        ) = (
+            direct_leaf.application_path.as_str(),
+            direct_leaf.source_application_abi.as_str(),
+            direct_leaf.input_len,
+            direct_leaf.output_len,
+            direct_leaf.input_indices.as_slice(),
+            direct_leaf.output_start..direct_leaf.output_stop,
+        );
+        if direct_input_indices.len() != direct_input_len {
             return Err(RusticolError::integrity(format!(
                 "compiled Direct-Arena stage {:?} leaf input map has the wrong length",
                 stage.evaluator_label
             )));
         }
-        if leaf.output_range.start != output_cursor
-            || leaf.output_range.end
-                != output_cursor.checked_add(*output_len).ok_or_else(|| {
-                    RusticolError::integrity("compiled Direct-Arena leaf output range overflows")
-                })?
-            || leaf.output_range.end > output_components.len()
+        if direct_output_range.start != output_cursor
+            || direct_output_range.end
+                != output_cursor
+                    .checked_add(direct_output_len)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "compiled Direct-Arena leaf output range overflows",
+                        )
+                    })?
+            || direct_output_range.end > output_components.len()
         {
             return Err(RusticolError::integrity(
                 "compiled Direct-Arena canonical leaf output range disagrees with the stage",
             ));
         }
-        let output_stop = leaf.output_range.end;
+        let output_stop = direct_output_range.end;
 
-        let mut source_inputs = Vec::with_capacity(*input_len * 2);
+        let mut source_inputs = Vec::with_capacity(direct_input_len * 2);
         let mut plane_bindings = Vec::new();
         let mut scalar_bindings = Vec::new();
         let mut input_currents = BTreeSet::new();
-        for &parameter_index in &leaf.input_indices {
+        for &parameter_index in direct_input_indices {
             let component = components
                 .get(parameter_index)
                 .and_then(|value| *value)
@@ -1321,30 +1332,35 @@ fn load_stage(
                 &mut scalar_bindings,
             )?;
         }
-        let mut outputs = Vec::with_capacity(*output_len * 2);
-        for component in output_components[output_cursor..output_stop]
+        let mut outputs = Vec::with_capacity(direct_output_len * 2);
+        for binding in output_components[output_cursor..output_stop]
             .iter()
             .map(|value| value.expect("output coverage validated"))
         {
-            let plane = |imaginary| match output_arena {
-                OutputArena::Current => CompiledDirectArenaPlane::Current {
-                    component: component as u32,
+            let component = u32::try_from(binding.component)
+                .map_err(|_| RusticolError::integrity("compiled output plane index exceeds u32"))?;
+            let plane = |imaginary| match binding.arena.as_str() {
+                "current" => Ok(CompiledDirectArenaPlane::Current {
+                    component,
                     imaginary,
-                },
-                OutputArena::Amplitude => CompiledDirectArenaPlane::Amplitude {
-                    component: component as u32,
+                }),
+                "amplitude" => Ok(CompiledDirectArenaPlane::Amplitude {
+                    component,
                     imaginary,
-                },
+                }),
+                _ => Err(RusticolError::integrity(
+                    "compiled output binding names an unsupported arena",
+                )),
             };
-            outputs.push(CompiledDirectOutputBinding(plane(false)));
-            outputs.push(CompiledDirectOutputBinding(plane(true)));
+            outputs.push(CompiledDirectOutputBinding(plane(false)?));
+            outputs.push(CompiledDirectOutputBinding(plane(true)?));
         }
         let source = payloads.source(application_path)?;
         let bytes = source.read()?;
         loaded.push(LoadedSymjitCompiledDirectStage::load_source_bytes(
             bytes.as_ref(),
             PathBuf::from(source.display_name()),
-            application_abi,
+            source_application_abi,
             source_inputs,
             plane_bindings,
             scalar_bindings,
@@ -1360,14 +1376,14 @@ fn load_stage(
             } else {
                 output_components[output_cursor..output_stop]
                     .iter()
-                    .map(|value| value.expect("output coverage validated"))
+                    .map(|value| value.expect("output coverage validated").component)
                     .collect::<Vec<_>>()
                     .into_boxed_slice()
             },
             output_amplitude_components: if is_amplitude {
                 output_components[output_cursor..output_stop]
                     .iter()
-                    .map(|value| value.expect("output coverage validated"))
+                    .map(|value| value.expect("output coverage validated").component)
                     .collect::<Vec<_>>()
                     .into_boxed_slice()
             } else {
@@ -1389,7 +1405,7 @@ fn load_stage(
 }
 
 fn append_component_bindings(
-    component: &GenericStageInputComponentManifest,
+    component: &CompiledPlaneInputBindingManifest,
     value_component_count: usize,
     momentum_component_count: usize,
     structural_zero_components: &BTreeSet<usize>,
@@ -1598,6 +1614,70 @@ mod tests {
         evaluator: EvaluatorManifest,
         amplitude: bool,
     ) -> GenericSerializedStageEvaluatorManifest {
+        let leaf_layout = evaluator.leaf_layout().unwrap();
+        let direct_leaves = leaf_layout
+            .iter()
+            .map(|leaf| {
+                let EvaluatorManifest::SymjitApplication {
+                    application_path,
+                    application_abi,
+                    optimization_level,
+                    input_len,
+                    output_len,
+                    ..
+                } = leaf.evaluator
+                else {
+                    panic!("compiled Direct-Arena test leaf must be SymJIT");
+                };
+                CompiledPlaneLeafManifest {
+                    application_path: application_path.clone(),
+                    source_application_abi: application_abi.clone(),
+                    optimization_level: *optimization_level,
+                    input_len: *input_len,
+                    output_len: *output_len,
+                    input_indices: leaf.input_indices.clone(),
+                    output_start: leaf.output_range.start,
+                    output_stop: leaf.output_range.end,
+                }
+            })
+            .collect();
+        let direct_inputs = inputs
+            .iter()
+            .map(|input| CompiledPlaneInputBindingManifest {
+                parameter_index: input.parameter_index,
+                kind: input.kind.clone(),
+                source_id: input.source_id,
+                component: input.component,
+                global_component: input.global_component,
+                real_valued: input.real_valued,
+            })
+            .collect();
+        let direct_outputs = output_components
+            .iter()
+            .copied()
+            .enumerate()
+            .map(
+                |(output_index, component)| CompiledPlaneOutputBindingManifest {
+                    output_index,
+                    arena: if amplitude { "amplitude" } else { "current" }.to_string(),
+                    component,
+                },
+            )
+            .collect();
+        let compiled_plane_arena = Some(CompiledPlaneArenaStageManifest {
+            schema_version: 1,
+            kind: "compiled-plane-arena-stage".to_string(),
+            application_abi: COMPILED_PLANE_DIRECT_APPLICATION_ABI.to_string(),
+            source_application_abi: COMPILED_PLANE_SOURCE_APPLICATION_ABI.to_string(),
+            element_layout: "split-complex-component-major".to_string(),
+            output_operation: "overwrite".to_string(),
+            output_factor: "identity".to_string(),
+            input_output_aliasing: "forbidden".to_string(),
+            output_output_aliasing: "forbidden".to_string(),
+            input_bindings: direct_inputs,
+            output_bindings: direct_outputs,
+            leaves: direct_leaves,
+        });
         let value_parameter_count = inputs.iter().filter(|item| item.kind == "value").count();
         let momentum_parameter_count = inputs.iter().filter(|item| item.kind == "momentum").count();
         let model_parameter_count = inputs
@@ -1643,6 +1723,7 @@ mod tests {
             expression_ready: true,
             blockers: Vec::new(),
             evaluator,
+            compiled_plane_arena,
         }
     }
 
