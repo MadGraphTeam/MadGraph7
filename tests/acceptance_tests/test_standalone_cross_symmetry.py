@@ -1945,7 +1945,20 @@ class TestCrossingPartition(unittest.TestCase):
         cmd = cmd_interface.MasterCmd()
         cmd.run_cmd('import model sm')
         cmd.run_cmd('define j = g u u~')
-        cmd.run_cmd('generate %s' % proc)
+        # partition_crossing_classes operates on the FULL (unmerged) matrix-element
+        # list -- exactly what the madevent output reconstructs from the recorded
+        # crossings before grouping. Generate unmerged here so the routing has the
+        # crossed modules to eliminate (the default merge_crossing='record' would
+        # fold them away at generation, leaving nothing to route).
+        old = os.environ.get('MG_MERGE_CROSSING')
+        os.environ['MG_MERGE_CROSSING'] = 'off'
+        try:
+            cmd.run_cmd('generate %s' % proc)
+        finally:
+            if old is None:
+                os.environ.pop('MG_MERGE_CROSSING', None)
+            else:
+                os.environ['MG_MERGE_CROSSING'] = old
         groups = group_subprocs.SubProcessGroup.group_amplitudes(
             cmd._curr_amps, 'madevent')
         for g in groups:
