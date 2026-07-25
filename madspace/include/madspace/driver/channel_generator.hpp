@@ -146,7 +146,13 @@ private:
     // never reset. Separate for survey/generate so neither depends on the other.
     std::size_t _survey_rng_seq = 0;
     std::size_t _generate_rng_seq = 0;
+    // Progress of unweight_file()'s final pass over _weight_file: _unweighted_count
+    // is the index up to which it's been scanned under the *current* _max_weight,
+    // and _unweighted_accept_count the number of those accepted. Both reset to 0
+    // whenever _max_weight changes (forcing a full rescan), since a changed
+    // max_weight invalidates every prior accept/reject decision.
     std::size_t _unweighted_count = 0;
+    std::size_t _unweighted_accept_count = 0;
     std::size_t _iters_without_improvement = 0;
     double _best_rsd = std::numeric_limits<double>::max();
     std::vector<double> _large_weights;

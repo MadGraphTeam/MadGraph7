@@ -291,7 +291,7 @@ void ChannelEventGenerator::unweight_file(std::mt19937& rand_gen) {
     std::size_t buf_size = 1000000;
     std::uniform_real_distribution<double> rand_dist;
     EventBuffer buffer(0, 0, weight_file_layout);
-    std::size_t accept_count = _unweighted_count;
+    std::size_t accept_count = _unweighted_accept_count;
     for (std::size_t i = _unweighted_count; i < _weight_file.event_count();
          i += buf_size) {
         _weight_file.seek(i);
@@ -308,6 +308,8 @@ void ChannelEventGenerator::unweight_file(std::mt19937& rand_gen) {
         _weight_file.seek(i);
         _weight_file.write(buffer);
     }
+    _unweighted_count = _weight_file.event_count();
+    _unweighted_accept_count = accept_count;
     _status.count_unweighted = accept_count;
 }
 
@@ -567,6 +569,7 @@ void ChannelEventGenerator::clear_events() {
     _status.count_unweighted = 0;
     _max_weight = 0;
     _unweighted_count = 0;
+    _unweighted_accept_count = 0;
     _status.count_opt = 0;
     _status.count_after_cuts_opt = 0;
     _event_file.clear();
@@ -617,6 +620,7 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
                 _status.count_unweighted *= _max_weight / w;
                 _max_weight = w;
                 _unweighted_count = 0;
+                _unweighted_accept_count = 0;
             }
             break;
         }

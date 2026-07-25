@@ -904,11 +904,18 @@ void EventGenerator::add_timing_data(const std::string& key) {
 }
 
 void EventGenerator::unweight_all() {
-    std::mt19937 rand_gen = seeded_rng(_seed, {salt_unweight});
+    std::size_t call_index = _unweight_call_index++;
     bool done = true;
     double total_eff_count = 0.;
-    for (auto& channel : _channels) {
+    for (std::size_t channel_index = 0; auto& channel : _channels) {
+        std::mt19937 rand_gen = seeded_rng(
+            _seed,
+            {salt_unweight,
+             static_cast<std::uint32_t>(call_index),
+             static_cast<std::uint32_t>(channel_index)}
+        );
         channel->unweight_file(rand_gen);
+        ++channel_index;
 
         std::size_t chan_target = channel->status().count_target;
         if (channel->status().count_unweighted < chan_target) {

@@ -42,7 +42,8 @@ public:
     void combine_to_compact_npy(const std::string& file_name);
     void combine_to_lhe_npy(const std::string& file_name, LHECompleter& lhe_completer);
     void combine_to_lhe(
-        const std::string& file_name, LHECompleter& lhe_completer,
+        const std::string& file_name,
+        LHECompleter& lhe_completer,
         const LHEMeta& meta = {}
     );
     GeneratorStatus status() const { return _status; }
@@ -96,6 +97,11 @@ private:
 
     // Base seed for reproducible event generation; 0 means non-deterministic.
     std::uint64_t _seed;
+
+    // unweight_all() may run more than once per generate() (a channel's target can
+    // grow after it looked done, un-finishing it and triggering another round).
+    // Salted by this counter so repeated calls don't replay the same stream.
+    std::size_t _unweight_call_index = 0;
 
     // Scheduling context for the running survey()/generate() call, read by
     // start_jobs() to derive job seeds.
