@@ -358,7 +358,9 @@ def _parse_stages(
     finalizations: tuple[_ExactFinalizationRow, ...],
 ) -> tuple[_ExactStageV3, ...]:
     stages = []
-    cursors = [0, 0, 0]
+    invocation_cursor = 0
+    attachment_cursor = 0
+    finalization_cursor = 0
     previous_stage = -1
     for index, raw in enumerate(_sequence(raw_stages, "compact eager stages")):
         context = f"compact eager stage {index}"
@@ -367,17 +369,42 @@ def _parse_stages(
         if stage_index <= previous_stage:
             raise ArtifactError("compact eager stage indices must increase")
         previous_stage = stage_index
-        ranges = []
-        for range_index, table in enumerate((invocations, attachments, finalizations)):
-            start = _integer(values[1 + 2 * range_index], f"{context} start")
-            count = _integer(values[2 + 2 * range_index], f"{context} count")
-            if start != cursors[range_index] or start + count > len(table):
-                raise ArtifactError(f"{context} has a non-contiguous table range")
-            cursors[range_index] = start + count
-            ranges.append(table[start : start + count])
+
+        invocation_start = _integer(values[1], f"{context} start")
+        invocation_count = _integer(values[2], f"{context} count")
+        if (
+            invocation_start != invocation_cursor
+            or invocation_start + invocation_count > len(invocations)
+        ):
+            raise ArtifactError(f"{context} has a non-contiguous table range")
+        invocation_cursor = invocation_start + invocation_count
+        stage_invocation_rows = invocations[invocation_start:invocation_cursor]
+
         attachment_start = _integer(values[3], f"{context} attachment start")
+        attachment_count = _integer(values[4], f"{context} count")
+        if (
+            attachment_start != attachment_cursor
+            or attachment_start + attachment_count > len(attachments)
+        ):
+            raise ArtifactError(f"{context} has a non-contiguous table range")
+        attachment_cursor = attachment_start + attachment_count
+        stage_attachments = attachments[attachment_start:attachment_cursor]
+
+        finalization_start = _integer(values[5], f"{context} start")
+        finalization_count = _integer(values[6], f"{context} count")
+        if (
+            finalization_start != finalization_cursor
+            or finalization_start + finalization_count > len(finalizations)
+        ):
+            raise ArtifactError(f"{context} has a non-contiguous table range")
+        finalization_cursor = finalization_start + finalization_count
+        stage_finalizations = finalizations[
+            finalization_start:finalization_cursor
+        ]
+
         if any(
-            invocation.attachment_start < attachment_start for invocation in ranges[0]
+            invocation.attachment_start < attachment_start
+            for invocation in stage_invocation_rows
         ):
             raise ArtifactError(
                 f"{context} has an invocation before its attachment range"
@@ -395,17 +422,21 @@ def _parse_stages(
                 invocation.attachment_count,
                 invocation.selector_domain_id,
             )
-            for invocation in ranges[0]
+            for invocation in stage_invocation_rows
         )
         stages.append(
             _ExactStageV3(
                 stage_index,
                 stage_invocations,
-                tuple(ranges[1]),
-                tuple(ranges[2]),
+                stage_attachments,
+                stage_finalizations,
             )
         )
-    if cursors != [len(invocations), len(attachments), len(finalizations)]:
+    if (
+        invocation_cursor != len(invocations)
+        or attachment_cursor != len(attachments)
+        or finalization_cursor != len(finalizations)
+    ):
         raise ArtifactError("compact eager stages do not cover their exact tables")
     return tuple(stages)
 

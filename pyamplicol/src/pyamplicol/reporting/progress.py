@@ -386,8 +386,9 @@ class _LineProgressSink:
             self.descriptions.pop(event.task_id, None)
 
 
-class _TtyMessageStream(io.TextIOBase):
+class _TtyMessageStream(io.StringIO):
     def __init__(self, sink: TtyProgressSink) -> None:
+        super().__init__()
         self._sink = sink
 
     def writable(self) -> bool:
