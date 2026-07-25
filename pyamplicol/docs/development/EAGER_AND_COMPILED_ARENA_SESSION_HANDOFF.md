@@ -47,10 +47,11 @@ goal has passed its acceptance gates.
   `25f9770623e3d8466f1690b0da2f22f3feacb7dd`.
 - Runtime cutover milestone:
   `15c0596dd3088861d903a2927ea33042191c1402`.
-- The remote feature ref was last confirmed at `15c0596`; later local commits
-  initially could not be pushed because the restricted network operation
-  stalled without output. Check the remote again; do not assume that it
-  remained there.
+- The remote feature branch and `main` were successfully fast-forwarded
+  through the initial handoff commit
+  `efe1bb0281c1ec81a83b9a80dfe386a29b0b5f55`. The documentation-only commit
+  containing this update is its direct descendant; use `git rev-parse
+  origin/main` for that final exact SHA.
 - The source tree was restored clean before writing this document. An
   unsuccessful exact-color experiment was deliberately reverted and is not
   part of the feature history.
