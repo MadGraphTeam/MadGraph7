@@ -418,10 +418,16 @@ def _contact_recurrence_color_contract(
     kernel: CompiledOrientedKernel,
     term_by_id: dict[int, CompiledVertexTerm],
 ) -> tuple[str, str, tuple[tuple[str, str], ...]] | None:
-    if "::contact-" not in kernel.vertex:
+    is_partial = kernel.vertex.endswith("::contact-partial")
+    is_final = kernel.vertex.endswith(("::contact-final", "::contact-final-fused"))
+    if not is_partial and not is_final:
+        # Balanced contact-tree lowering has its own compiler-owned singlet
+        # auxiliaries and is not described by the four-point split proof.
+        # Its trilinear color projection is authenticated by the generic
+        # compiler-generated contract below.
         return None
 
-    stage = "partial" if kernel.vertex.endswith("::contact-partial") else "final"
+    stage = "partial" if is_partial else "final"
     owner_matches = []
     orientation_matches = []
     fused_term_ids = set(kernel.term_ids or (kernel.term_id,))

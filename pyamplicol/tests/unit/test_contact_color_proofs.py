@@ -16,12 +16,16 @@ from pyamplicol.models.compiler_contacts import (
     _four_point_contact_color_split,
     _record_contact_decomposition_proofs,
 )
-from pyamplicol.models.compiler_entry import _compile_four_point_contact_kernels
+from pyamplicol.models.compiler_entry import (
+    _compile_four_point_contact_kernels,
+    _contact_recurrence_color_contract,
+)
 from pyamplicol.models.compiler_tensor_ordering import (
     compile_tensor_ordering_metadata,
 )
 from pyamplicol.models.contracts import (
     CompiledModelIR,
+    CompiledOrientedKernel,
     CompiledParticleRecord,
     CompiledVertexTerm,
 )
@@ -81,14 +85,31 @@ def _proof_term(
     )[0]
 
 
+def test_contact_tree_uses_its_compiler_owned_singlet_contract() -> None:
+    kernel = CompiledOrientedKernel(
+        kind=1,
+        term_id=25,
+        vertex="V_5_SCALAR_00000::contact-tree-partial",
+        particles=("scalar_0", "scalar_0", "__pyamplicol_contact_tree_25_r0_1_2"),
+        source_particle_legs=(1, 2, -1),
+        component_expressions=("1",),
+        coupling_expression="1",
+        coupling_orders=(),
+        runtime_parameters=(),
+        color_source="1",
+        color_expression="1",
+    )
+
+    assert _contact_recurrence_color_contract(kernel, {}) is None
+
+
 def test_unproved_colored_four_point_contact_fails_closed() -> None:
     term = _term(
         color_source="UFO::{}::T(1,2,3)",
         color_expression="model_adversarial::T(1,2,3)",
     )
     particles = tuple(
-        _adjoint(name, 9_300_000 + index)
-        for index, name in enumerate(term.particles)
+        _adjoint(name, 9_300_000 + index) for index, name in enumerate(term.particles)
     )
 
     proved_term = _proof_term(term, particles, model_name="adversarial-contact")
@@ -101,9 +122,10 @@ def test_unproved_colored_four_point_contact_fails_closed() -> None:
     assert {reason.code for reason in proof.unsupported_reasons} == {
         "unsupported-color-factor-count"
     }
-    assert dict(proof.unsupported_reasons[0].context)[
-        "normalized_color_expression"
-    ] == term.color_expression
+    assert (
+        dict(proof.unsupported_reasons[0].context)["normalized_color_expression"]
+        == term.color_expression
+    )
     auxiliaries, kernels = _compile_four_point_contact_kernels(
         (proved_term,),
         particles,
@@ -132,9 +154,7 @@ def test_structure_constant_contact_preserves_exact_color_coefficient() -> None:
         "*spenso::f(ufo_c_dummy_7_adjoint,ufo_c_3,ufo_c_4)"
     )
     scaled = _term(
-        color_source=(
-            "-3/2*UFO::{}::f(2,-7,1)*UFO::{}::f(-7,3,4)"
-        ),
+        color_source=("-3/2*UFO::{}::f(2,-7,1)*UFO::{}::f(-7,3,4)"),
         color_expression=f"-3/2*{unit_expression}",
     )
     unit = _term(
@@ -183,9 +203,7 @@ def test_structure_constant_contact_preserves_exact_color_coefficient() -> None:
     assert chosen.dummy_index_mapping.normalized_symbol == "ufo_c_dummy_7_adjoint"
     assert chosen.dummy_index_mapping.outer_slot == 1
     assert chosen.dummy_index_mapping.final_slot == 0
-    partials = tuple(
-        item for item in chosen.orientations if item.stage == "partial"
-    )
+    partials = tuple(item for item in chosen.orientations if item.stage == "partial")
     finals = tuple(item for item in chosen.orientations if item.stage == "final")
     assert tuple(item.input_legs for item in partials) == ((1, 0), (0, 1))
     assert tuple(item.permutation_parity for item in partials) == (-1, 1)
@@ -249,9 +267,7 @@ def test_structure_constant_contact_does_not_duplicate_normalization_sign() -> N
 
 def test_structure_constant_contact_rejects_residual_color_tensor() -> None:
     term = _term(
-        color_source=(
-            "UFO::{}::f(-1,1,2)*UFO::{}::f(3,4,-1)*UFO::{}::T(1,2,3)"
-        ),
+        color_source=("UFO::{}::f(-1,1,2)*UFO::{}::f(3,4,-1)*UFO::{}::T(1,2,3)"),
         color_expression=(
             "spenso::f(ufo_c_dummy_1_adjoint,ufo_c_1,ufo_c_2)"
             "*spenso::f(ufo_c_3,ufo_c_4,ufo_c_dummy_1_adjoint)"
@@ -260,8 +276,7 @@ def test_structure_constant_contact_rejects_residual_color_tensor() -> None:
     )
 
     particles = tuple(
-        _adjoint(name, 9_500_000 + index)
-        for index, name in enumerate(term.particles)
+        _adjoint(name, 9_500_000 + index) for index, name in enumerate(term.particles)
     )
     proved_term = _proof_term(
         term,
@@ -362,8 +377,7 @@ def test_contact_proof_round_trips_and_lowering_does_not_rediscover(
     )
 
     assert (
-        restored.contact_decomposition_proof
-        == proved_term.contact_decomposition_proof
+        restored.contact_decomposition_proof == proved_term.contact_decomposition_proof
     )
     assert auxiliaries
     assert any(kernel.vertex.endswith("::contact-final") for kernel in kernels)
@@ -433,6 +447,5 @@ def test_contact_proof_identity_and_algorithm_fail_closed() -> None:
         )
 
     assert compiler_fingerprint()["contact_decomposition_policy"] == (
-        f"{CONTACT_DECOMPOSITION_ALGORITHM}-v"
-        f"{CONTACT_DECOMPOSITION_ALGORITHM_VERSION}"
+        f"{CONTACT_DECOMPOSITION_ALGORITHM}-v{CONTACT_DECOMPOSITION_ALGORITHM_VERSION}"
     )
