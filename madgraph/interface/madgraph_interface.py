@@ -3403,7 +3403,16 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # from the amplitude list ("do not generate diagrams"), silently losing
         # those partonic contributions, so it must not be reachable from
         # --use_crossing: use_crossing=False has to remain a complete output.
+        #
+        # merge_crossing='record' keeps the partonic contribution (records the
+        # crossed process on the base instead of dropping it) so the crossed
+        # subprocess is never generated but is still reached through the base's
+        # crossing-aware SMATRIX. TEMP: gated on an env var during staged rollout
+        # (standalone consumes it first, madevent next); becomes the default for
+        # crossing-enabled output once both backends read the metadata.
         merge_crossing = False
+        if os.environ.get('MG_MERGE_CROSSING') == 'record':
+            merge_crossing = 'record'
 
         # Check the validity of the arguments
         self.check_add(args)

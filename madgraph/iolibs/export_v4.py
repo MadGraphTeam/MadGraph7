@@ -5748,15 +5748,19 @@ C       so this also stays correct for split-order processes.
 
         # NFLAV as matrix.f computes it, so CROSS*NFLAV+flav decodes correctly.
         # It is assigned to a local NFLAV here so the loop body reads generically
-        # (FLAV_IDX = I*NFLAV+J) instead of a bare literal. The whole section is
-        # gated behind IF(.FALSE.) so it is present only as a ready-to-enable
-        # example -- flip it to .TRUE. to actually print the crossed processes.
+        # (FLAV_IDX = I*NFLAV+J) instead of a bare literal. The loop is gated
+        # behind IF(.FALSE.) unless crossed subprocesses were folded into this ME
+        # (merge_crossing='record'): then those partonic contributions have no
+        # directory of their own and this driver is the only place they are
+        # exercised, so the demo is enabled to actually evaluate them.
         n_table, _ = self._build_flav_table_flat(matrix_element)
+        loop_gate = ('.true.' if matrix_element.get('crossed_processes')
+                     else '.false.')
 
         sep = ('        write (*,*) "-----------------------------------------'
                '------------------------------------"')
         lines = [
-            '      if(.false.) then',
+            '      if(%s) then' % loop_gate,
             '      write (*,*)',
             '      write (*,*) " Crossing-symmetry examples (crossed processes):"',
             '      write (*,*)',
