@@ -3565,6 +3565,11 @@ struct RoutedReductionScratch {
     raw_member_weights: Vec<(usize, usize, f64)>,
     selected_member_weights: Vec<(usize, usize, f64)>,
     selected_member_weight_ranges: Vec<std::ops::Range<usize>>,
+    direct_group_re: Vec<f64>,
+    direct_group_im: Vec<f64>,
+    direct_source_components: Vec<f64>,
+    direct_target_components: Vec<f64>,
+    direct_totals: Vec<f64>,
 }
 
 struct AmplitudeRuntime {
