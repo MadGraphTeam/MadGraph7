@@ -665,6 +665,28 @@ def _build_parameters(
         )
 
     all_names = tuple(sorted(defaults.keys() | definitions.keys()))
+    # Prepared kernels only retain model-parameter descriptors that survive
+    # exact expression simplification.  A restricted mass such as UFO ``Me``
+    # can therefore be absent from every kernel input while still being
+    # required by SourceIR at runtime.  Recurrence owns a parameter workspace
+    # with one slot per catalog parameter, so bind every otherwise-unbound
+    # required parameter to a deterministic free slot.  Existing kernel input
+    # indices remain authoritative.
+    occupied_prepared_ids = set(prepared_parameter_ids.values())
+    free_prepared_ids = iter(
+        index for index in range(len(all_names)) if index not in occupied_prepared_ids
+    )
+    for name in sorted(required_names):
+        if name in prepared_parameter_ids:
+            continue
+        try:
+            prepared_parameter_ids[name] = next(free_prepared_ids)
+        except StopIteration as exc:  # pragma: no cover - guarded by cardinality
+            raise RecurrenceTemplateError(
+                "recurrence catalog has no free prepared slot for required "
+                f"model parameter {name!r}"
+            ) from exc
+
     ids = {name: _token("parameter", {"name": name}) for name in all_names}
     external_ids = tuple(
         sorted(ids[name] for name in all_names if name not in definitions)

@@ -18,6 +18,7 @@ from typing import Any, Final, Literal
 
 import numpy as np
 
+from ..color.public_flows import amplicol_legacy_two_line_public_word
 from .recurrence_fermion_pairing import FermionPairingCatalogV1
 
 RECURRENCE_BUILDER_INPUT_ABI: Final = "pyamplicol-recurrence-builder-input-v2"
@@ -1691,10 +1692,39 @@ def _validate_logical_relations(
             == (construction_word[0], *reversed(construction_word[1:]))
             and flow.source_slot_permutation == tuple(range(len(external_legs)))
         )
-        if mapped_word != flow.word_source_slots and not reflected_trace:
+        mapped_open_lines = tuple(
+            (
+                flow.source_slot_permutation[line.fundamental_source_slot],
+                flow.source_slot_permutation[line.antifundamental_source_slot],
+                tuple(
+                    flow.source_slot_permutation[source_slot]
+                    for source_slot in line.adjoint_source_slots
+                ),
+                tuple(
+                    flow.source_slot_permutation[source_slot]
+                    for source_slot in line.singlet_source_slots
+                ),
+            )
+            for line in construction_sector.open_strings
+        )
+        mapped_initial_source_slots = tuple(
+            flow.source_slot_permutation[leg.source_slot]
+            for leg in external_legs
+            if leg.is_initial
+        )
+        legacy_two_line_word = amplicol_legacy_two_line_public_word(
+            mapped_word,
+            mapped_open_lines,
+            mapped_initial_source_slots,
+        )
+        if (
+            mapped_word != flow.word_source_slots
+            and not reflected_trace
+            and legacy_two_line_word != flow.word_source_slots
+        ):
             raise RecurrenceColumnarInputError(
                 "public flow word is neither its gathered construction word nor "
-                "an anchored folded-trace reflection"
+                "an authenticated compatibility spelling"
             )
 
     roles = tuple(item.role for item in digests)
