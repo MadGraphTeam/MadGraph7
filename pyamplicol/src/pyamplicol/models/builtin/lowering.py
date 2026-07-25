@@ -429,6 +429,17 @@ class BuiltinSMLoweringMixin:
                 input_order=input_order,
             )
 
+        fermion_pair_orientations = {
+            21: (0, 1),
+            22: (1, 0),
+        }
+        input_order = fermion_pair_orientations.get(kind)
+        if input_order is not None:
+            return VertexEvaluationEquivalence(
+                class_id="builtin-sm:fermion-pair-to-vector",
+                input_order=input_order,
+            )
+
         return super().vertex_evaluation_equivalence(kind)
 
     def vertex_component_expression(

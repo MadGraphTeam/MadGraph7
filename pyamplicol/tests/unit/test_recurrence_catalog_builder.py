@@ -216,6 +216,54 @@ def test_verified_auxiliary_transition_mirrors_are_not_double_counted() -> None:
     assert {transition.canonical_input_order for transition in transitions} == {(0, 1)}
 
 
+def test_verified_fermion_pair_transition_mirrors_are_not_double_counted() -> None:
+    model = BuiltinSMModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+    states = {state.template_id: state for state in catalog.current_states}
+
+    transitions = tuple(
+        transition
+        for transition in catalog.transitions
+        if transition.equivalence_class == "builtin-sm:fermion-pair-to-vector"
+        and {
+            states[state_id].particle_id
+            for state_id in transition.input_state_template_ids
+        }
+        == {-11, 11}
+        and states[transition.result_state_template_id].particle_id in {22, 23}
+        and all(
+            states[state_id].dimension == 2
+            for state_id in transition.input_state_template_ids
+        )
+    )
+
+    # One photon and one Z transition survive for each physical chiral pair.
+    # The mirrored (fermion, antifermion) and (antifermion, fermion) model
+    # orientations are certified evaluator aliases, not independent diagrams.
+    assert len(transitions) == 4
+    assert {transition.canonical_input_order for transition in transitions} == {(0, 1)}
+    assert {
+        (
+            tuple(
+                states[state_id].chirality
+                for state_id in transition.input_state_template_ids
+            ),
+            states[transition.result_state_template_id].particle_id,
+        )
+        for transition in transitions
+    } == {
+        ((1, -1), 22),
+        ((1, -1), 23),
+        ((-1, 1), 22),
+        ((-1, 1), 23),
+    }
+
+
 def test_concatenate_keep_alias_retains_canonical_parent_order() -> None:
     one = ExactComplexRationalV1.one()
 

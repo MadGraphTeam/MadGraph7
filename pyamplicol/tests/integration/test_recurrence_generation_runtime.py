@@ -10,6 +10,7 @@ import os
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -37,6 +38,7 @@ _PROCESS = "d d~ > z g g"
 _THREE_LINE_PROCESS = "d d~ > u u~ s s~"
 _PURE_GLUON_PROCESS = "g g > g g"
 _SAME_FLAVOUR_PROCESS = "d d~ > d d~"
+_NEUTRAL_CURRENT_PROCESS = "d d~ > e+ e-"
 _CONTRACTED_COLOR_PROCESSES = (
     _PROCESS,
     _THREE_LINE_PROCESS,
@@ -68,6 +70,14 @@ _UFO_SM_ROOT = (
     / "models"
     / "json"
     / "sm"
+)
+_REFERENCE_PAYLOAD = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "reference"
+        / "physics-v2.json"
+    ).read_text(encoding="utf-8")
 )
 
 _Point = tuple[tuple[float, ...], ...]
@@ -137,6 +147,20 @@ def _validation_points(process_expression: str) -> _Points:
             tuple(float(component) for component in particle.momentum)
             for particle in generic_validation_point(process_expression)
         ),
+    )
+
+
+def _reference_case(case_id: str) -> dict[str, Any]:
+    return next(case for case in _REFERENCE_PAYLOAD["cases"] if case["id"] == case_id)
+
+
+def _reference_point(point_id: str) -> _Point:
+    point = next(
+        item for item in _REFERENCE_PAYLOAD["points"] if item["id"] == point_id
+    )
+    return tuple(
+        tuple(float(component) for component in momentum)
+        for momentum in point["momenta"]
     )
 
 
@@ -835,6 +859,98 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         recurrence,
         compiled,
         points,
+    )
+
+
+@pytest.mark.parametrize(
+    ("color_accuracy", "lc_flow_layout", "case_id"),
+    (
+        ("lc", "topology-replay", "case:sm_ddbar_ee:lc"),
+        ("lc", "all-flow-union", "case:sm_ddbar_ee:lc"),
+        ("nlc", "topology-replay", "case:sm_ddbar_ee:nlc"),
+        ("full", "topology-replay", "case:sm_ddbar_ee:full"),
+    ),
+)
+def test_builtin_neutral_current_recurrence_matches_legacy_oracle(
+    tmp_path: Path,
+    color_accuracy: str,
+    lc_flow_layout: str,
+    case_id: str,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+) -> None:
+    """Guard the incoming-spin average and mirrored fermion-pair orientation."""
+
+    _require_native_recurrence()
+    artifact = tmp_path / f"{color_accuracy}-{lc_flow_layout}"
+    Generator(
+        _generation_config(
+            "recurrence",
+            color_accuracy=color_accuracy,
+            lc_flow_layout=lc_flow_layout,
+        )
+    ).generate(
+        _NEUTRAL_CURRENT_PROCESS,
+        artifact,
+        model=builtin_sm_recurrence_jit_o2_model,
+    )
+
+    reference = _reference_case(case_id)
+    observation = reference["observations"][0]
+    reference_point = _reference_point(observation["point_id"])
+    point = (
+        reference_point[0],
+        reference_point[1],
+        reference_point[3],
+        reference_point[2],
+    )
+    runtime = Runtime.load(artifact)
+    resolved = runtime.evaluate_resolved((point,))
+    helicity_values = {
+        helicity.id: helicity.values for helicity in runtime.physics.helicities
+    }
+    actual = {
+        (helicity_values[helicity_id], color_id): complex(
+            resolved.values[0][helicity_index][color_index]
+        )
+        for helicity_index, helicity_id in enumerate(resolved.helicity_ids)
+        for color_index, color_id in enumerate(resolved.color_ids)
+    }
+    expected = {
+        (
+            (
+                helicity["values"][0],
+                helicity["values"][1],
+                helicity["values"][3],
+                helicity["values"][2],
+            ),
+            color["id"],
+        ): float(
+            observation["values"][helicity_index][color_index]
+        )
+        for helicity_index, helicity in enumerate(reference["axes"]["helicities"])
+        for color_index, color in enumerate(reference["axes"]["colors"])
+    }
+
+    assert set(actual) == set(expected)
+    assert {key: value.real for key, value in actual.items()} == pytest.approx(
+        expected,
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert {key: value.imag for key, value in actual.items()} == pytest.approx(
+        dict.fromkeys(actual, 0.0),
+        abs=1.0e-15,
+    )
+    expected_total = float(observation["total"])
+    assert runtime.evaluate((point,))[0] == pytest.approx(
+        complex(expected_total),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert resolved.total()[0] == pytest.approx(
+        complex(expected_total),
+        rel=1.0e-12,
+        abs=1.0e-15,
     )
 
 
