@@ -246,6 +246,7 @@ class _CompiledComplexEvaluatorAdapter:
         *,
         input_len: int,
         output_len: int,
+        compile_dense: bool = True,
     ) -> None:
         safe_label = _safe_symbol_name(label)
         unique = uuid.uuid4().hex
@@ -278,25 +279,27 @@ class _CompiledComplexEvaluatorAdapter:
             self.build_timing["evaluator_save_s"] = time.perf_counter() - save_started
         else:
             self.evaluator_state_path = None
-        compile_started = time.perf_counter()
-        compile_kwargs: dict[str, object] = {
-            "inline_asm": settings.compiled_inline_asm,
-            "optimization_level": settings.compiled_optimization_level,
-            "native": settings.compiled_native,
-            "compiler_path": settings.compiler_path,
-            "compiler_flags": _compiled_compiler_flags(settings),
-        }
-        custom_header = _compiled_complex_custom_header(settings)
-        if custom_header is not None:
-            compile_kwargs["custom_header"] = custom_header
-        self._compiled = evaluator.compile(
-            function_name,
-            str(self.source_path),
-            str(self.library_path),
-            self.number_type,
-            **compile_kwargs,
-        )
-        self.build_timing["cxx_compile_s"] = time.perf_counter() - compile_started
+        self._compiled = None
+        if compile_dense:
+            compile_started = time.perf_counter()
+            compile_kwargs: dict[str, object] = {
+                "inline_asm": settings.compiled_inline_asm,
+                "optimization_level": settings.compiled_optimization_level,
+                "native": settings.compiled_native,
+                "compiler_path": settings.compiler_path,
+                "compiler_flags": _compiled_compiler_flags(settings),
+            }
+            custom_header = _compiled_complex_custom_header(settings)
+            if custom_header is not None:
+                compile_kwargs["custom_header"] = custom_header
+            self._compiled = evaluator.compile(
+                function_name,
+                str(self.source_path),
+                str(self.library_path),
+                self.number_type,
+                **compile_kwargs,
+            )
+            self.build_timing["cxx_compile_s"] = time.perf_counter() - compile_started
         self.native_direct_application = None
 
     def evaluate_complex(self, parameter_rows: Any) -> Any:
@@ -305,7 +308,13 @@ class _CompiledComplexEvaluatorAdapter:
         )
 
     def _evaluate_complex_prepared(self, parameter_rows: np.ndarray) -> Any:
-        return self._compiled.evaluate(parameter_rows)
+        if self._compiled is not None:
+            return self._compiled.evaluate(parameter_rows)
+        if self._source_evaluator is None:
+            raise NativeEvaluationError(
+                "direct-only compiled evaluator has no generation-time source state"
+            )
+        return self._source_evaluator.evaluate_complex(parameter_rows)
 
     @classmethod
     def from_artifact(
@@ -313,6 +322,11 @@ class _CompiledComplexEvaluatorAdapter:
         manifest: dict[str, Any],
         artifact_dir: Path,
     ) -> _CompiledComplexEvaluatorAdapter:
+        if manifest.get("native_direct_application") is not None:
+            raise NativeEvaluationError(
+                "plane-native compiled process evaluators load only through "
+                "Rusticol Direct-Arena; no dense callable fallback is retained"
+            )
         from symbolica import CompiledComplexEvaluator
 
         instance = cls.__new__(cls)
@@ -358,7 +372,7 @@ class _CompiledComplexEvaluatorAdapter:
         )
         return instance
 
-    def compile_native_direct_application_prototype(
+    def compile_native_direct_application(
         self,
         parameter_kinds: Sequence[object],
         *,
@@ -367,13 +381,15 @@ class _CompiledComplexEvaluatorAdapter:
         simd_lane_width: int = 2,
         output_dir: Path | None = None,
     ) -> Any:
-        """Emit this real compiled leaf directly against persistent planes.
+        """Emit this compiled leaf directly against persistent arena planes.
 
-        This cold-path method is the integration seam for the risk-first C++
-        producer prototype.  Stage lowering must supply semantic storage kinds;
-        guessing model scalars from evaluator arity is intentionally forbidden.
-        The returned library is direct-only.  It is not published by the
-        production artifact manifest yet.
+        Stage lowering supplies semantic storage kinds; guessing model scalars
+        from evaluator arity is intentionally forbidden.  Both public native
+        backends use this independent plane-native instruction emitter.  For an
+        ``asm`` selection the historical dense scalar-row library may contain
+        Symbolica inline assembly, while the production DirectApplication is
+        deliberately regenerated as a plane loop from the same optimized
+        instruction stream.  It never wraps or calls that dense entry point.
         """
 
         from .native_direct_cpp import (
@@ -388,10 +404,19 @@ class _CompiledComplexEvaluatorAdapter:
                 "native DirectApplication production requires the retained "
                 "Symbolica evaluator state; regenerate this compiled leaf"
             )
-        if self.runtime_capability != SYMBOLICA_CPP_RUNTIME_CAPABILITY:
+        if self.runtime_capability not in {
+            SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+            SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+        }:
             raise NativeEvaluationError(
-                "native DirectApplication C++ production cannot wrap an ASM "
-                "or non-C++ compiled evaluator"
+                "native DirectApplication production requires a C++ or ASM "
+                "compiled evaluator"
+            )
+        optimization = self.settings.get("compiled_optimization_level", 3)
+        if optimization != 3:
+            raise NativeEvaluationError(
+                "native DirectApplication production requires compiled "
+                "optimization level 3"
             )
         try:
             kinds = tuple(
@@ -428,7 +453,14 @@ class _CompiledComplexEvaluatorAdapter:
         self.build_timing["native_direct_cpp_compile_s"] = result.compile_seconds
         return result
 
+    # Kept as a narrow source-level alias for existing producer tests.  Artifact
+    # production uses ``compile_native_direct_application`` exclusively.
+    compile_native_direct_application_prototype = compile_native_direct_application
+
     def artifact_manifest(self, artifact_dir: Path) -> dict[str, Any]:
+        direct = self.native_direct_application
+        source_path = self.source_path if direct is None else direct.source_path
+        library_path = self.library_path if direct is None else direct.library_path
         manifest = {
             "kind": "compiled-complex-evaluator",
             "runtime_capability": self.runtime_capability,
@@ -439,11 +471,11 @@ class _CompiledComplexEvaluatorAdapter:
             "output_len": self.output_len,
             "settings": self.settings,
             "source_path": _artifact_path_for_manifest(
-                self.source_path,
+                source_path,
                 artifact_dir,
             ),
             "library_path": _artifact_path_for_manifest(
-                self.library_path,
+                library_path,
                 artifact_dir,
             ),
             "evaluator_state_path": (
@@ -456,9 +488,9 @@ class _CompiledComplexEvaluatorAdapter:
             ),
             "build_timing": dict(self.build_timing),
         }
-        if self.native_direct_application is not None:
+        if direct is not None:
             manifest["native_direct_application"] = _native_direct_application_manifest(
-                self.native_direct_application,
+                direct,
                 artifact_dir,
                 expected_function_name=self.function_name,
             )
@@ -528,6 +560,55 @@ def _native_direct_application_manifest(
         "logical_stack_bytes": source.logical_stack_bytes,
         "output_semantics": "factor-free-overwrite",
     }
+
+
+def compile_native_direct_applications(
+    evaluator: Any,
+    parameter_kinds: Sequence[object],
+    *,
+    target_triple: str,
+    cpu_features: Sequence[str] = (),
+    simd_lane_width: int = 2,
+) -> bool:
+    """Compile every native leaf in one evaluator tree as DirectApplication.
+
+    Chunk input maps are composed here, before artifact serialization, so each
+    leaf receives exactly the semantic storage classes represented by its
+    retained Symbolica instruction stream.
+    """
+
+    kinds = tuple(parameter_kinds)
+    if isinstance(evaluator, _CompiledComplexEvaluatorAdapter):
+        evaluator.compile_native_direct_application(
+            kinds,
+            target_triple=target_triple,
+            cpu_features=cpu_features,
+            simd_lane_width=simd_lane_width,
+        )
+        return True
+    if isinstance(evaluator, _ChunkedSymbolicaEvaluator):
+        compiled = False
+        for child, indices in zip(
+            evaluator._evaluators,
+            evaluator._chunk_input_indices,
+            strict=True,
+        ):
+            child_kinds = tuple(kinds[index] for index in indices)
+            child_compiled = compile_native_direct_applications(
+                child,
+                child_kinds,
+                target_triple=target_triple,
+                cpu_features=cpu_features,
+                simd_lane_width=simd_lane_width,
+            )
+            if compiled and not child_compiled:
+                raise NativeEvaluationError(
+                    "native DirectApplication compilation cannot mix native "
+                    "and non-native evaluator chunks"
+                )
+            compiled = compiled or child_compiled
+        return compiled
+    return False
 
 
 def _compiled_compiler_flags(settings: SymbolicaEvaluatorSettings) -> tuple[str, ...]:

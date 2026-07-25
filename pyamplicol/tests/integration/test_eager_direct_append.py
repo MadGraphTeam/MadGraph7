@@ -88,7 +88,7 @@ def test_compiled_append_preserves_existing_direct_eager_process(
             generation=generation,
             evaluator=EvaluatorConfig(
                 execution_mode="compiled",
-                jit=JITConfig(optimization_level=0),
+                jit=JITConfig(optimization_level=3),
             ),
         )
     ).generate("u u~ > z", artifact, model=prepared, mode="append")
@@ -97,9 +97,10 @@ def test_compiled_append_preserves_existing_direct_eager_process(
     assert after == pytest.approx(before, rel=1.0e-12, abs=1.0e-15)
 
     appended_manifest = load_manifest(artifact)
-    assert "eager-direct-arena-v1" in (
-        appended_manifest.runtime["required_runtime_capabilities"]
-    )
+    assert {
+        "eager-direct-arena-v1",
+        "rusticol.eager-runtime-layout.complex-f64.v1",
+    }.issubset(appended_manifest.runtime["required_runtime_capabilities"])
     kernel_pack = json.loads(
         (artifact / "model/eager-kernel-pack.json").read_text(encoding="utf-8")
     )

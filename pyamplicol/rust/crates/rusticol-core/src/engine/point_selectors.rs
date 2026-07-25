@@ -274,6 +274,8 @@ struct SelectorSetCacheEntry {
 }
 
 impl SelectorSetCache {
+    const MAX_ENTRIES: usize = 64;
+
     pub(super) fn resolve(
         &mut self,
         ids: Option<&[String]>,
@@ -300,6 +302,9 @@ impl SelectorSetCache {
                 "resolved {kind} selection contains duplicate ids"
             )));
         }
+        if self.entries.len() == Self::MAX_ENTRIES {
+            self.entries.remove(0);
+        }
         self.entries.push(SelectorSetCacheEntry {
             ids: ids.to_vec(),
             selected,
@@ -311,6 +316,26 @@ impl SelectorSetCache {
                 .expect("selector cache entry was just appended")
                 .selected,
         ))
+    }
+}
+
+#[cfg(test)]
+mod selector_set_cache_tests {
+    use super::*;
+
+    #[test]
+    fn selector_set_cache_is_bounded_and_rejects_duplicates() {
+        let mut cache = SelectorSetCache::default();
+        for index in 0..=SelectorSetCache::MAX_ENTRIES {
+            let ids = vec![format!("id-{index}")];
+            cache.resolve(Some(&ids), "test").unwrap();
+        }
+        assert_eq!(cache.entries.len(), SelectorSetCache::MAX_ENTRIES);
+        assert_eq!(cache.entries[0].ids, vec!["id-1"]);
+
+        let duplicate = vec!["same".to_string(), "same".to_string()];
+        assert!(cache.resolve(Some(&duplicate), "test").is_err());
+        assert_eq!(cache.entries.len(), SelectorSetCache::MAX_ENTRIES);
     }
 }
 

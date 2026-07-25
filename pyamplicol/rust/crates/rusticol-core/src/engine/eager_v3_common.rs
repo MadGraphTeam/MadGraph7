@@ -215,11 +215,11 @@ impl EagerV3CommonParts {
             helicity_recurrence: None,
             compiled_helicity_execution_plan: None,
             compiled_color_execution_plan: None,
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             compiled_direct_runtime: None,
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             compiled_direct_color_schedules: BTreeMap::new(),
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             compiled_direct_helicity_schedules: BTreeMap::new(),
             helicity_sum_runtime: None,
             helicity_selector_runtimes: Vec::new(),

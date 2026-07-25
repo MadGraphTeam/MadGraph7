@@ -11,14 +11,23 @@
 
 #![allow(dead_code)]
 
+#[cfg(feature = "f64-symjit")]
 use std::path::PathBuf;
 use std::ptr;
 
+#[cfg(feature = "f64-compiled")]
+use super::evaluator::native_compiled_direct::{
+    BoundNativeCompiledDirectStage, LoadedNativeCompiledDirectStage,
+    NativeCompiledDirectArenaPlane, NativeCompiledDirectOutputBinding,
+    NativeCompiledDirectPlaneBinding, NativeCompiledDirectScalarBinding,
+};
+#[cfg(feature = "f64-symjit")]
 use super::evaluator::symjit_compiled_direct::{
     BoundSymjitCompiledDirectStage, CompiledDirectArenaPlane, CompiledDirectOutputBinding,
     CompiledDirectPlaneBinding, CompiledDirectScalarBinding, CompiledDirectSourceInputBinding,
     LoadedSymjitCompiledDirectStage,
 };
+#[cfg(feature = "f64-symjit")]
 use super::evaluator::{SymjitApplicationMetadata, validate_manifest_metadata};
 use super::sources::RuntimeSourceState;
 use super::*;
@@ -80,13 +89,63 @@ struct DirectLeafPlan {
     output_amplitude_components: Box<[usize]>,
 }
 
+enum LoadedCompiledDirectLeaf {
+    #[cfg(feature = "f64-symjit")]
+    Symjit(LoadedSymjitCompiledDirectStage),
+    #[cfg(feature = "f64-compiled")]
+    Native(LoadedNativeCompiledDirectStage),
+}
+
+enum BoundCompiledDirectLeaf {
+    #[cfg(feature = "f64-symjit")]
+    Symjit(BoundSymjitCompiledDirectStage),
+    #[cfg(feature = "f64-compiled")]
+    Native(BoundNativeCompiledDirectStage),
+}
+
+impl LoadedCompiledDirectLeaf {
+    unsafe fn bind(
+        self,
+        arena: crate::direct_arena::DirectArenaView,
+        momenta: DirectMomentumView,
+        parameters: DirectParameterView,
+        _zero_plane: &AlignedF64Buffer,
+    ) -> RusticolResult<BoundCompiledDirectLeaf> {
+        match self {
+            #[cfg(feature = "f64-symjit")]
+            Self::Symjit(leaf) => {
+                // SAFETY: forwarded from the engine's fixed-allocation bind.
+                unsafe { leaf.bind(arena, momenta, parameters, _zero_plane) }
+                    .map(BoundCompiledDirectLeaf::Symjit)
+            }
+            #[cfg(feature = "f64-compiled")]
+            Self::Native(leaf) => {
+                // SAFETY: forwarded from the engine's fixed-allocation bind.
+                unsafe { leaf.bind(arena, momenta, parameters) }
+                    .map(BoundCompiledDirectLeaf::Native)
+            }
+        }
+    }
+}
+
+impl BoundCompiledDirectLeaf {
+    fn evaluate(&self, point_start: u32, point_count: u32) -> RusticolResult<()> {
+        match self {
+            #[cfg(feature = "f64-symjit")]
+            Self::Symjit(leaf) => leaf.evaluate(point_start, point_count),
+            #[cfg(feature = "f64-compiled")]
+            Self::Native(leaf) => leaf.evaluate(point_start, point_count),
+        }
+    }
+}
+
 struct LoadedStage {
-    leaves: Vec<LoadedSymjitCompiledDirectStage>,
+    leaves: Vec<LoadedCompiledDirectLeaf>,
     leaf_plans: Vec<DirectLeafPlan>,
 }
 
 struct BoundStage {
-    leaves: Vec<BoundSymjitCompiledDirectStage>,
+    leaves: Vec<BoundCompiledDirectLeaf>,
     leaf_plans: Vec<DirectLeafPlan>,
 }
 
@@ -841,6 +900,7 @@ impl CompiledDirectEnginePrototype {
     }
 }
 
+#[cfg(feature = "f64-symjit")]
 pub(crate) fn compiled_direct_symjit_supported(
     evaluators: &GenericStageEvaluatorArtifactsManifest,
 ) -> RusticolResult<bool> {
@@ -1221,69 +1281,27 @@ fn load_stage(
     let mut leaf_plans = Vec::with_capacity(leaf_layout.len());
     let mut output_cursor = 0usize;
     for (leaf_index, leaf) in leaf_layout.into_iter().enumerate() {
-        let EvaluatorManifest::SymjitApplication {
-            runtime_capability,
-            application_path: _,
-            application_abi,
-            input_len,
-            output_len,
-            element_layout,
-            batch_layout,
-            compiler_type,
-            translation_mode,
-            optimization_level,
-            word_bits,
-            endianness,
-            required_defuns,
-            ..
-        } = leaf.evaluator
-        else {
-            return Err(RusticolError::compatibility(format!(
-                "compiled Direct-Arena stage {:?} contains a non-SymJIT leaf",
-                stage.evaluator_label
-            )));
-        };
-        if *optimization_level != 3 {
-            return Err(RusticolError::compatibility(
-                "compiled-plane-arena-v1 requires compiled JIT optimization level 3; \
-                 regenerate with evaluator.jit.optimization_level=3",
-            ));
-        }
-        validate_manifest_metadata(&SymjitApplicationMetadata {
-            runtime_capability,
-            application_abi,
-            input_len: *input_len,
-            output_len: *output_len,
-            element_layout,
-            batch_layout,
-            compiler_type,
-            translation_mode,
-            optimization_level: *optimization_level,
-            word_bits: *word_bits,
-            endianness,
-            required_defuns,
-        })?;
+        let (input_len, output_len) = leaf.evaluator.io_len()?;
         let direct_leaf = direct.leaves.get(leaf_index).ok_or_else(|| {
             RusticolError::integrity("compiled plane-arena leaf bindings are incomplete")
         })?;
-        let (
-            application_path,
-            source_application_abi,
-            direct_input_len,
-            direct_output_len,
-            direct_input_indices,
-            direct_output_range,
-        ) = (
-            direct_leaf.application_path.as_str(),
-            direct_leaf.source_application_abi.as_str(),
-            direct_leaf.input_len,
-            direct_leaf.output_len,
-            direct_leaf.input_indices.as_slice(),
-            direct_leaf.output_start..direct_leaf.output_stop,
-        );
+        let direct_input_indices = direct_leaf.input_indices.as_slice();
+        let direct_output_range = direct_leaf.output_start..direct_leaf.output_stop;
+        let direct_input_len = direct_leaf.input_len;
+        let direct_output_len = direct_leaf.output_len;
         if direct_input_indices.len() != direct_input_len {
             return Err(RusticolError::integrity(format!(
                 "compiled Direct-Arena stage {:?} leaf input map has the wrong length",
+                stage.evaluator_label
+            )));
+        }
+        if direct_input_len != input_len
+            || direct_output_len != output_len
+            || direct_input_indices != leaf.input_indices
+            || direct_output_range != leaf.output_range
+        {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena stage {:?} leaf bindings disagree with canonical layout",
                 stage.evaluator_label
             )));
         }
@@ -1304,10 +1322,8 @@ fn load_stage(
         }
         let output_stop = direct_output_range.end;
 
-        let mut source_inputs = Vec::with_capacity(direct_input_len * 2);
-        let mut plane_bindings = Vec::new();
-        let mut scalar_bindings = Vec::new();
         let mut input_currents = BTreeSet::new();
+        let mut input_components = Vec::with_capacity(direct_input_len);
         for &parameter_index in direct_input_indices {
             let component = components
                 .get(parameter_index)
@@ -1322,50 +1338,156 @@ fn load_stage(
                     input_currents.insert(component.global_component);
                 }
             }
-            append_component_bindings(
-                component,
-                value_component_count,
-                momentum_component_count,
-                structural_zero_components,
-                &mut source_inputs,
-                &mut plane_bindings,
-                &mut scalar_bindings,
-            )?;
+            input_components.push(component);
         }
-        let mut outputs = Vec::with_capacity(direct_output_len * 2);
-        for binding in output_components[output_cursor..output_stop]
+        let canonical_outputs = output_components[output_cursor..output_stop]
             .iter()
             .map(|value| value.expect("output coverage validated"))
-        {
-            let component = u32::try_from(binding.component)
-                .map_err(|_| RusticolError::integrity("compiled output plane index exceeds u32"))?;
-            let plane = |imaginary| match binding.arena.as_str() {
-                "current" => Ok(CompiledDirectArenaPlane::Current {
-                    component,
-                    imaginary,
-                }),
-                "amplitude" => Ok(CompiledDirectArenaPlane::Amplitude {
-                    component,
-                    imaginary,
-                }),
-                _ => Err(RusticolError::integrity(
-                    "compiled output binding names an unsupported arena",
-                )),
-            };
-            outputs.push(CompiledDirectOutputBinding(plane(false)?));
-            outputs.push(CompiledDirectOutputBinding(plane(true)?));
-        }
-        let source = payloads.source(application_path)?;
-        let bytes = source.read()?;
-        loaded.push(LoadedSymjitCompiledDirectStage::load_source_bytes(
-            bytes.as_ref(),
-            PathBuf::from(source.display_name()),
-            source_application_abi,
-            source_inputs,
-            plane_bindings,
-            scalar_bindings,
-            outputs,
-        )?);
+            .collect::<Vec<_>>();
+
+        let loaded_leaf = match leaf.evaluator {
+            #[cfg(feature = "f64-symjit")]
+            EvaluatorManifest::SymjitApplication {
+                runtime_capability,
+                application_path,
+                application_abi,
+                element_layout,
+                batch_layout,
+                compiler_type,
+                translation_mode,
+                optimization_level,
+                word_bits,
+                endianness,
+                required_defuns,
+                ..
+            } => {
+                if *optimization_level != 3 {
+                    return Err(RusticolError::compatibility(
+                        "compiled-plane-arena-v1 requires compiled JIT optimization level 3; \
+                         regenerate with evaluator.jit.optimization_level=3",
+                    ));
+                }
+                validate_manifest_metadata(&SymjitApplicationMetadata {
+                    runtime_capability,
+                    application_abi,
+                    input_len,
+                    output_len,
+                    element_layout,
+                    batch_layout,
+                    compiler_type,
+                    translation_mode,
+                    optimization_level: *optimization_level,
+                    word_bits: *word_bits,
+                    endianness,
+                    required_defuns,
+                })?;
+                if direct_leaf.application_path != *application_path
+                    || direct_leaf.source_application_abi != *application_abi
+                    || direct_leaf.source_application_abi != direct.source_application_abi
+                {
+                    return Err(RusticolError::integrity(
+                        "compiled SymJIT Direct-Arena leaf identity is inconsistent",
+                    ));
+                }
+                let mut source_inputs = Vec::with_capacity(direct_input_len * 2);
+                let mut plane_bindings = Vec::new();
+                let mut scalar_bindings = Vec::new();
+                for component in &input_components {
+                    append_component_bindings(
+                        component,
+                        value_component_count,
+                        momentum_component_count,
+                        structural_zero_components,
+                        &mut source_inputs,
+                        &mut plane_bindings,
+                        &mut scalar_bindings,
+                    )?;
+                }
+                let outputs = symjit_output_bindings(&canonical_outputs)?;
+                let source = payloads.source(application_path)?;
+                let bytes = source.read()?;
+                LoadedCompiledDirectLeaf::Symjit(
+                    LoadedSymjitCompiledDirectStage::load_source_bytes(
+                        bytes.as_ref(),
+                        PathBuf::from(source.display_name()),
+                        &direct_leaf.source_application_abi,
+                        source_inputs,
+                        plane_bindings,
+                        scalar_bindings,
+                        outputs,
+                    )?,
+                )
+            }
+            #[cfg(feature = "f64-compiled")]
+            EvaluatorManifest::CompiledComplex {
+                runtime_capability,
+                function_name,
+                number_type,
+                native_direct_application: Some(application),
+                ..
+            } => {
+                if !matches!(
+                    runtime_capability.as_str(),
+                    SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY
+                        | SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY
+                ) || number_type != "complex"
+                {
+                    return Err(RusticolError::compatibility(
+                        "compiled native Direct-Arena leaf has an incompatible backend",
+                    ));
+                }
+                application.validate(function_name, input_len, output_len)?;
+                if direct_leaf.optimization_level != 3
+                    || direct_leaf.application_path != application.library_path
+                    || direct_leaf.source_application_abi != application.application_abi
+                    || direct.source_application_abi != application.application_abi
+                    || direct.application_abi != application.application_abi
+                {
+                    return Err(RusticolError::integrity(
+                        "compiled native Direct-Arena leaf identity is inconsistent",
+                    ));
+                }
+                let mut plane_bindings = Vec::new();
+                let mut scalar_bindings = Vec::new();
+                for component in &input_components {
+                    append_native_component_bindings(
+                        component,
+                        value_component_count,
+                        momentum_component_count,
+                        structural_zero_components,
+                        &mut plane_bindings,
+                        &mut scalar_bindings,
+                    )?;
+                }
+                let outputs = native_output_bindings(&canonical_outputs)?;
+                let library = payloads.physical_path(&application.library_path)?;
+                LoadedCompiledDirectLeaf::Native(LoadedNativeCompiledDirectStage::load(
+                    library,
+                    function_name,
+                    &application.application_abi,
+                    plane_bindings,
+                    scalar_bindings,
+                    outputs,
+                )?)
+            }
+            #[cfg(feature = "f64-compiled")]
+            EvaluatorManifest::CompiledComplex {
+                native_direct_application: None,
+                ..
+            } => {
+                return Err(RusticolError::compatibility(
+                    "compiled native Direct-Arena leaf has no plane-native DirectApplication; \
+                     regenerate the artifact",
+                ));
+            }
+            _ => {
+                return Err(RusticolError::compatibility(format!(
+                    "compiled Direct-Arena stage {:?} contains an unsupported leaf",
+                    stage.evaluator_label
+                )));
+            }
+        };
+        loaded.push(loaded_leaf);
         leaf_plans.push(DirectLeafPlan {
             input_current_components: input_currents
                 .into_iter()
@@ -1404,6 +1526,138 @@ fn load_stage(
     })
 }
 
+#[cfg(feature = "f64-symjit")]
+fn symjit_output_bindings(
+    outputs: &[&CompiledPlaneOutputBindingManifest],
+) -> RusticolResult<Vec<CompiledDirectOutputBinding>> {
+    let mut bindings = Vec::with_capacity(outputs.len() * 2);
+    for output in outputs {
+        let component = u32::try_from(output.component)
+            .map_err(|_| RusticolError::integrity("compiled output plane index exceeds u32"))?;
+        let plane = |imaginary| match output.arena.as_str() {
+            "current" => Ok(CompiledDirectArenaPlane::Current {
+                component,
+                imaginary,
+            }),
+            "amplitude" => Ok(CompiledDirectArenaPlane::Amplitude {
+                component,
+                imaginary,
+            }),
+            _ => Err(RusticolError::integrity(
+                "compiled output binding names an unsupported arena",
+            )),
+        };
+        bindings.push(CompiledDirectOutputBinding(plane(false)?));
+        bindings.push(CompiledDirectOutputBinding(plane(true)?));
+    }
+    Ok(bindings)
+}
+
+#[cfg(feature = "f64-compiled")]
+fn native_output_bindings(
+    outputs: &[&CompiledPlaneOutputBindingManifest],
+) -> RusticolResult<Vec<NativeCompiledDirectOutputBinding>> {
+    let mut bindings = Vec::with_capacity(outputs.len() * 2);
+    for output in outputs {
+        let component = u32::try_from(output.component)
+            .map_err(|_| RusticolError::integrity("compiled output plane index exceeds u32"))?;
+        let plane = |imaginary| match output.arena.as_str() {
+            "current" => Ok(NativeCompiledDirectArenaPlane::Current {
+                component,
+                imaginary,
+            }),
+            "amplitude" => Ok(NativeCompiledDirectArenaPlane::Amplitude {
+                component,
+                imaginary,
+            }),
+            _ => Err(RusticolError::integrity(
+                "compiled output binding names an unsupported arena",
+            )),
+        };
+        bindings.push(NativeCompiledDirectOutputBinding(plane(false)?));
+        bindings.push(NativeCompiledDirectOutputBinding(plane(true)?));
+    }
+    Ok(bindings)
+}
+
+#[cfg(feature = "f64-compiled")]
+fn append_native_component_bindings(
+    component: &CompiledPlaneInputBindingManifest,
+    value_component_count: usize,
+    momentum_component_count: usize,
+    structural_zero_components: &BTreeSet<usize>,
+    planes: &mut Vec<NativeCompiledDirectPlaneBinding>,
+    scalars: &mut Vec<NativeCompiledDirectScalarBinding>,
+) -> RusticolResult<()> {
+    match component.kind.as_str() {
+        "value" => {
+            if component.global_component >= value_component_count {
+                return Err(RusticolError::integrity(
+                    "compiled Direct-Arena value input is outside current planes",
+                ));
+            }
+            if structural_zero_components.contains(&component.global_component) {
+                planes.push(NativeCompiledDirectPlaneBinding::Zero);
+                if !component.real_valued {
+                    planes.push(NativeCompiledDirectPlaneBinding::Zero);
+                }
+                return Ok(());
+            }
+            let current = |imaginary| {
+                NativeCompiledDirectPlaneBinding::Arena(NativeCompiledDirectArenaPlane::Current {
+                    component: component.global_component as u32,
+                    imaginary,
+                })
+            };
+            planes.push(current(false));
+            if !component.real_valued {
+                planes.push(current(true));
+            }
+        }
+        "momentum" => {
+            let local = component
+                .global_component
+                .checked_sub(value_component_count)
+                .filter(|index| *index < momentum_component_count)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "compiled Direct-Arena momentum input is outside momentum planes",
+                    )
+                })?;
+            planes.push(NativeCompiledDirectPlaneBinding::Momentum {
+                form: u32::try_from(local / 4)
+                    .map_err(|_| RusticolError::integrity("compiled momentum form exceeds u32"))?,
+                lorentz_component: (local % 4) as u16,
+            });
+            if !component.real_valued {
+                planes.push(NativeCompiledDirectPlaneBinding::Zero);
+            }
+        }
+        "model_parameter" => {
+            let index = u32::try_from(component.source_id).map_err(|_| {
+                RusticolError::integrity("compiled model parameter index exceeds u32")
+            })?;
+            scalars.push(NativeCompiledDirectScalarBinding::Parameter {
+                index,
+                imaginary: false,
+            });
+            if !component.real_valued {
+                scalars.push(NativeCompiledDirectScalarBinding::Parameter {
+                    index,
+                    imaginary: true,
+                });
+            }
+        }
+        kind => {
+            return Err(RusticolError::compatibility(format!(
+                "compiled Direct-Arena does not support input kind {kind:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "f64-symjit")]
 fn append_component_bindings(
     component: &CompiledPlaneInputBindingManifest,
     value_component_count: usize,
@@ -1511,11 +1765,12 @@ fn append_component_bindings(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "f64-symjit"))]
 mod tests {
     use super::super::evaluator::count_test_allocations;
     use super::*;
     use std::fs;
+    use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Instant;
     use symjit::{Compiler, Config, Expr, Storage};
@@ -1572,6 +1827,108 @@ mod tests {
         }
     }
 
+    fn native_direct_fixture() -> (PathBuf, String) {
+        let directory = test_payload_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("native_direct_leaf.cpp");
+        let library_name = if cfg!(target_os = "macos") {
+            "libnative_direct_leaf.dylib"
+        } else {
+            "libnative_direct_leaf.so"
+        };
+        let library = directory.join(library_name);
+        fs::write(
+            &source,
+            r#"#include <cstdint>
+struct Metadata {
+  std::uint32_t abi_version;
+  std::uint32_t struct_size;
+  std::uint32_t flags;
+  std::uint32_t input_plane_count;
+  std::uint32_t scalar_input_count;
+  std::uint32_t output_plane_count;
+  std::uint32_t simd_lane_width;
+  std::uint32_t reserved;
+};
+struct InputPlane { const double* values; };
+struct OutputPlane { double* values; };
+struct Scalar { const double* value; };
+extern "C" Metadata native_direct_leaf_direct_application_v1_metadata() noexcept {
+  return Metadata{1u, sizeof(Metadata), 63u, 2u, 0u, 2u, 2u, 0u};
+}
+extern "C" int native_direct_leaf_direct_application_v1(
+    const InputPlane* inputs, std::uint32_t input_count,
+    const Scalar*, std::uint32_t scalar_count,
+    const OutputPlane* outputs, std::uint32_t output_count,
+    std::uint32_t point_start, std::uint32_t point_count) noexcept {
+  if (inputs == nullptr || outputs == nullptr || input_count != 2u ||
+      scalar_count != 0u || output_count != 2u || point_count == 0u) return 2;
+  for (std::uint32_t offset = 0; offset < point_count; ++offset) {
+    const std::uint32_t point = point_start + offset;
+    outputs[0].values[point] = 2.0 * inputs[0].values[point];
+    outputs[1].values[point] = 2.0 * inputs[1].values[point];
+  }
+  return 0;
+}
+"#,
+        )
+        .unwrap();
+        let compiler = std::env::var("CXX").unwrap_or_else(|_| "c++".to_string());
+        let mut command = Command::new(compiler);
+        command.args(["-std=c++17", "-O3"]);
+        if cfg!(target_os = "macos") {
+            command.arg("-dynamiclib");
+        } else {
+            command.args(["-shared", "-fPIC"]);
+        }
+        let output = command
+            .arg(&source)
+            .arg("-o")
+            .arg(&library)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "could not compile native plane fixture: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        (directory, library_name.to_string())
+    }
+
+    fn native_evaluator(library_path: &str, runtime_capability: &str) -> EvaluatorManifest {
+        EvaluatorManifest::CompiledComplex {
+            runtime_capability: runtime_capability.to_string(),
+            function_name: "native_direct_leaf".to_string(),
+            input_len: 1,
+            output_len: 1,
+            library_path: "absent-dense-library".to_string(),
+            evaluator_state_path: None,
+            number_type: "complex".to_string(),
+            native_direct_application: Some(NativeCompiledDirectApplicationManifest {
+                application_abi:
+                    super::super::evaluator::native_compiled_direct::
+                        NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+                        .to_string(),
+                function_name: "native_direct_leaf".to_string(),
+                source_path: "native_direct_leaf.cpp".to_string(),
+                library_path: library_path.to_string(),
+                target: NativeCompiledDirectTargetManifest {
+                    triple: crate::runtime_target_info().triple,
+                    cpu_features: Vec::new(),
+                },
+                evaluator_state_sha256: "a".repeat(64),
+                instruction_count: 1,
+                temporary_count: 0,
+                input_plane_count: 2,
+                scalar_input_count: 0,
+                output_plane_count: 2,
+                simd_lane_width: 2,
+                logical_stack_bytes: 32,
+                output_semantics: "factor-free-overwrite".to_string(),
+            }),
+        }
+    }
+
     fn input_component(
         kind: &str,
         source_id: usize,
@@ -1615,26 +1972,60 @@ mod tests {
         amplitude: bool,
     ) -> GenericSerializedStageEvaluatorManifest {
         let leaf_layout = evaluator.leaf_layout().unwrap();
+        let mut direct_application_abi = None;
+        let mut direct_source_abi = None;
         let direct_leaves = leaf_layout
             .iter()
             .map(|leaf| {
-                let EvaluatorManifest::SymjitApplication {
-                    application_path,
-                    application_abi,
-                    optimization_level,
-                    input_len,
-                    output_len,
-                    ..
-                } = leaf.evaluator
-                else {
-                    panic!("compiled Direct-Arena test leaf must be SymJIT");
+                let (application_path, application_abi, optimization_level, input_len, output_len) =
+                    match leaf.evaluator {
+                        EvaluatorManifest::SymjitApplication {
+                            application_path,
+                            application_abi,
+                            optimization_level,
+                            input_len,
+                            output_len,
+                            ..
+                        } => (
+                            application_path,
+                            application_abi,
+                            *optimization_level,
+                            *input_len,
+                            *output_len,
+                        ),
+                        EvaluatorManifest::CompiledComplex {
+                            input_len,
+                            output_len,
+                            native_direct_application: Some(application),
+                            ..
+                        } => (
+                            &application.library_path,
+                            &application.application_abi,
+                            3,
+                            *input_len,
+                            *output_len,
+                        ),
+                        _ => panic!("compiled Direct-Arena test leaf must be direct-capable"),
+                    };
+                if let Some(expected) = direct_source_abi.as_ref() {
+                    assert_eq!(expected, application_abi);
+                } else {
+                    direct_source_abi = Some(application_abi.clone());
                 };
+                if direct_application_abi.is_none() {
+                    direct_application_abi =
+                        Some(if application_abi == SYMJIT_APPLICATION_STORAGE_ABI {
+                            COMPILED_PLANE_DIRECT_APPLICATION_ABI.to_string()
+                        } else {
+                            application_abi.clone()
+                        });
+                }
                 CompiledPlaneLeafManifest {
                     application_path: application_path.clone(),
                     source_application_abi: application_abi.clone(),
-                    optimization_level: *optimization_level,
-                    input_len: *input_len,
-                    output_len: *output_len,
+                    optimization_level,
+                    input_len,
+                    output_len,
                     input_indices: leaf.input_indices.clone(),
                     output_start: leaf.output_range.start,
                     output_stop: leaf.output_range.end,
@@ -1667,8 +2058,8 @@ mod tests {
         let compiled_plane_arena = Some(CompiledPlaneArenaStageManifest {
             schema_version: 1,
             kind: "compiled-plane-arena-stage".to_string(),
-            application_abi: COMPILED_PLANE_DIRECT_APPLICATION_ABI.to_string(),
-            source_application_abi: COMPILED_PLANE_SOURCE_APPLICATION_ABI.to_string(),
+            application_abi: direct_application_abi.unwrap(),
+            source_application_abi: direct_source_abi.unwrap(),
             element_layout: "split-complex-component-major".to_string(),
             output_operation: "overwrite".to_string(),
             output_factor: "identity".to_string(),
@@ -1744,6 +2135,52 @@ mod tests {
             (actual - expected).abs() <= tolerance,
             "{context}: actual={actual:.17e} expected={expected:.17e} tolerance={tolerance:.17e}"
         );
+    }
+
+    #[test]
+    fn cpp_and_asm_native_leaves_execute_only_through_canonical_planes() {
+        let (payload_root, library_name) = native_direct_fixture();
+        let payloads = EvaluatorPayloadStore::directory(&payload_root);
+        for runtime_capability in [
+            SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY,
+            SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY,
+        ] {
+            let amplitude = stage_manifest(
+                runtime_capability,
+                vec![input_component("value", 0, 0, 0, 0, false)],
+                &[0],
+                native_evaluator(&library_name, runtime_capability),
+                true,
+            );
+            let mut direct = CompiledDirectEnginePrototype::load(
+                &[],
+                &amplitude,
+                &payloads,
+                &[0],
+                1,
+                1,
+                0,
+                0,
+                1,
+                129,
+            )
+            .unwrap();
+            let input = (0..129)
+                .map(|point| Complex::new(point as f64 + 0.25, 0.5 - point as f64))
+                .collect::<Vec<_>>();
+            direct.begin_tile_from_state(129, 1, &input).unwrap();
+            direct.evaluate_all(129).unwrap();
+            let mut output = vec![Complex::new(0.0, 0.0); 129];
+            direct
+                .extract_amplitudes_row_major(129, &mut output)
+                .unwrap();
+            for (actual, input) in output.into_iter().zip(&input) {
+                assert_eq!(actual, *input * 2.0);
+            }
+            assert_eq!(direct.traffic().leaf.calls, 1);
+            direct.traffic().leaf.validate_direct().unwrap();
+        }
+        fs::remove_dir_all(payload_root).unwrap();
     }
 
     fn disable_compiled_direct_recursive(runtime: &mut ExecutionRuntime) {

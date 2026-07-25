@@ -49,6 +49,23 @@ fn compiled_manifest(runtime_capability: &str, exact_state_path: &str, input_len
         "evaluator_state_path": exact_state_path,
         "settings": {"optimization_level": "o3"},
         "build_timing": {"compile_s": 0.0},
+        "direct_table": {
+            "capability": crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            "source_application_abi":
+                crate::eager_layout::EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI,
+            "descriptor_abi": crate::eager_layout::EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+            "binding_abi": crate::eager_layout::EAGER_DIRECT_TABLE_BINDING_ABI,
+            "library_path": "kernels/7/library-0",
+            "function_name": "pyamplicol_eager_direct_table_k00000007_v1",
+            "evaluator_state_sha256": "b".repeat(64),
+            "input_complex_count": input_len,
+            "output_complex_count": 1,
+            "invocation_stride": (2 * input_len + 2) * 4,
+            "attachment_stride": 16,
+            "simd_lane_width": 2,
+            "instruction_count": 1,
+            "temporary_count": 0,
+        },
     })
 }
 
@@ -136,7 +153,7 @@ fn eager_direct_table_manifest_is_explicit_and_fail_closed() {
         .expect("valid direct table metadata");
     assert_eq!(direct.input_complex_count, 1);
     assert_eq!(direct.output_complex_count, 1);
-    assert_eq!(direct.descriptor_size_bytes, 128);
+    assert_eq!(direct.descriptor_size_bytes, Some(128));
 
     for (field, value) in [
         ("capability", json!("wrong-capability")),
@@ -672,8 +689,10 @@ fn retained_ddbar_z3g_multistage_invocations_match_packet_execution() {
         role: kernel.role,
         inputs: &kernel.inputs,
         output_component_count: kernel.output_component_count,
-        source_application: &source_bytes,
-        descriptor: &descriptor,
+        application: crate::eager_runtime::EagerDirectPreparedApplication::Symjit {
+            source_application: &source_bytes,
+            descriptor: &descriptor,
+        },
         display_path: PathBuf::from(application_source.display_name()),
     };
 
@@ -782,7 +801,7 @@ fn retained_ddbar_z3g_multistage_invocations_match_packet_execution() {
     );
 }
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
 fn generated_eager_artifact_loads_when_fixture_is_supplied() {
     let Some(root) = std::env::var_os("RUSTICOL_EAGER_ARTIFACT") else {
@@ -1077,7 +1096,10 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
     );
 }
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(all(
+    any(feature = "f64-compiled", feature = "f64-symjit"),
+    any(target_os = "linux", target_os = "macos")
+))]
 #[test]
 fn generated_eager_native_into_is_warmed_allocation_free_when_fixture_is_supplied() {
     let Some(root) = std::env::var_os("RUSTICOL_EAGER_ARTIFACT") else {
@@ -1209,6 +1231,55 @@ fn generated_eager_native_into_is_warmed_allocation_free_when_fixture_is_supplie
         (allocations, bytes),
         (0, 0),
         "warmed eager alternating selectors allocated"
+    );
+
+    runtime
+        .evaluate_resolved_f64(&momenta, point_count, None, None)
+        .expect("warm eager borrowed-input resolved values");
+    let (resolved, allocations, bytes) =
+        count_allocations(|| runtime.evaluate_resolved_f64(&momenta, point_count, None, None));
+    let resolved = resolved.expect("repeat eager borrowed-input resolved values");
+    let result_owned_allocation_bound = resolved.helicity_ids.len() + resolved.color_ids.len() + 12;
+    assert!(
+        allocations <= result_owned_allocation_bound,
+        "warmed eager resolved path retained point-sized input containers: \
+         allocations={allocations} bytes={bytes} result_bound={result_owned_allocation_bound}"
+    );
+    assert_eq!(resolved.point_count, point_count);
+    assert_eq!(
+        resolved.values.len(),
+        point_count * resolved.helicity_ids.len() * resolved.color_ids.len()
+    );
+
+    runtime
+        .evaluate_resolved_f64(
+            &momenta,
+            point_count,
+            Some(&selected_helicities),
+            selected_colors.as_ref().map(|ids| ids.as_slice()),
+        )
+        .expect("warm eager selected borrowed-input resolved values");
+    let (selected_resolved, allocations, bytes) = count_allocations(|| {
+        runtime.evaluate_resolved_f64(
+            &momenta,
+            point_count,
+            Some(&selected_helicities),
+            selected_colors.as_ref().map(|ids| ids.as_slice()),
+        )
+    });
+    let selected_resolved =
+        selected_resolved.expect("repeat eager selected borrowed-input resolved values");
+    let result_owned_allocation_bound =
+        selected_resolved.helicity_ids.len() + selected_resolved.color_ids.len() + 12;
+    assert!(
+        allocations <= result_owned_allocation_bound,
+        "warmed selected eager resolved path retained point-sized input containers: \
+         allocations={allocations} bytes={bytes} result_bound={result_owned_allocation_bound}"
+    );
+    assert_eq!(selected_resolved.point_count, point_count);
+    assert_eq!(
+        selected_resolved.values.len(),
+        point_count * selected_resolved.helicity_ids.len() * selected_resolved.color_ids.len()
     );
 
     let mut sentinel = [37.0_f64, 41.0];

@@ -27,9 +27,9 @@ use crate::{
 };
 
 use super::direct_invocation_arena::{
-    EagerDirectPreparedKernel, SemanticCatalog, assigned_component, count_u32, derive_event_layout,
-    invalid, push_u32, resolve_coupling, row_active, validate_active_groups,
-    validate_callable_identity, validate_component_buffer,
+    EagerDirectPreparedApplication, EagerDirectPreparedKernel, SemanticCatalog, assigned_component,
+    count_u32, derive_event_layout, invalid, push_u32, resolve_coupling, row_active,
+    validate_active_groups, validate_callable_identity, validate_component_buffer,
 };
 use super::execute::AccumulationFactor;
 use super::plan::{
@@ -935,14 +935,41 @@ fn load_applications(
             ))
         })?;
         validate_callable_identity(kernel, artifact)?;
-        let application = LoadedSymjitEagerDirectTable::load_prepared_application_bytes(
-            artifact.source_application,
-            artifact.descriptor,
-            artifact.display_path.clone(),
-            EAGER_DIRECT_SOURCE_APPLICATION_ABI,
-            EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
-            EAGER_DIRECT_TABLE_BINDING_ABI,
-        )?;
+        let application = match &artifact.application {
+            EagerDirectPreparedApplication::Symjit {
+                source_application,
+                descriptor,
+            } => LoadedSymjitEagerDirectTable::load_prepared_application_bytes(
+                source_application,
+                descriptor,
+                artifact.display_path.clone(),
+                EAGER_DIRECT_SOURCE_APPLICATION_ABI,
+                EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+                EAGER_DIRECT_TABLE_BINDING_ABI,
+            )?,
+            EagerDirectPreparedApplication::Native {
+                library_path,
+                function_name,
+                source_application_abi,
+                invocation_stride,
+                attachment_stride,
+                target_triple,
+                evaluator_state_sha256,
+                simd_lane_width,
+            } => LoadedSymjitEagerDirectTable::load_native_application(
+                library_path,
+                function_name,
+                artifact.display_path.clone(),
+                source_application_abi,
+                *invocation_stride,
+                *attachment_stride,
+                count_u32(artifact.inputs.len(), "native eager input width")?,
+                artifact.output_component_count,
+                target_triple,
+                evaluator_state_sha256,
+                *simd_lane_width,
+            )?,
+        };
         applications.insert(artifact.kernel_id, Arc::new(application));
     }
     Ok(applications)
@@ -2460,8 +2487,10 @@ mod tests {
                 role: EagerKernelRole::Vertex,
                 inputs: &inputs,
                 output_component_count: 1,
-                source_application: source,
-                descriptor,
+                application: EagerDirectPreparedApplication::Symjit {
+                    source_application: source,
+                    descriptor,
+                },
                 display_path: PathBuf::from("whole-plan-vertex.symjit"),
             },
             EagerDirectPreparedKernel {
@@ -2469,8 +2498,10 @@ mod tests {
                 role: EagerKernelRole::Closure,
                 inputs: &inputs,
                 output_component_count: 1,
-                source_application: source,
-                descriptor,
+                application: EagerDirectPreparedApplication::Symjit {
+                    source_application: source,
+                    descriptor,
+                },
                 display_path: PathBuf::from("whole-plan-closure.symjit"),
             },
         ];

@@ -23,6 +23,9 @@ SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
 NATIVE_COMPILED_DIRECT_APPLICATION_ABI = (
     "pyamplicol-native-compiled-direct-application-v1"
 )
+NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI = (
+    "pyamplicol-eager-native-direct-table-v1"
+)
 COMPILED_PLANE_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v3"
 EAGER_DIRECT_TABLE_DESCRIPTOR_ABI = "symjit-direct-table-descriptor-v1"
 EAGER_DIRECT_TABLE_BINDING_ABI = "symjit-direct-table-binding-v2"

@@ -207,15 +207,17 @@ pub(crate) struct EagerScheduleAuditRow {
     pub(crate) destination_count: usize,
 }
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod direct_execution_arena;
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod direct_invocation_arena;
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use direct_execution_arena::EagerDirectExecutionRuntime;
-#[cfg(feature = "f64-symjit")]
-pub(crate) use direct_invocation_arena::EagerDirectPreparedKernel;
-#[cfg(all(test, feature = "f64-symjit"))]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(crate) use direct_invocation_arena::{
+    EagerDirectPreparedApplication, EagerDirectPreparedKernel,
+};
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 pub(crate) use direct_invocation_arena::{
     run_retained_multistage_oracle, select_retained_multistage_candidate,
 };

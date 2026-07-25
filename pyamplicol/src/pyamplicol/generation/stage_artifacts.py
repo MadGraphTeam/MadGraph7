@@ -17,6 +17,9 @@ from .._internal.versions import (
     COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
     COMPILED_PLANE_DIRECT_APPLICATION_ABI,
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+    SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+    SYMBOLICA_CPP_RUNTIME_CAPABILITY,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
 )
@@ -355,10 +358,12 @@ def _compiled_plane_arena_stage(
     ):
         raise ValueError("compiled stage dimensions are invalid")
 
-    leaves, output_stop = _compiled_plane_arena_leaves(
-        evaluator,
-        tuple(range(parameter_count)),
-        0,
+    leaves, output_stop, application_abi, source_application_abi = (
+        _compiled_plane_arena_leaves(
+            evaluator,
+            tuple(range(parameter_count)),
+            0,
+        )
     )
     if leaves is None:
         return None
@@ -368,9 +373,7 @@ def _compiled_plane_arena_stage(
         )
 
     raw_inputs = stage.get("input_components")
-    if not isinstance(raw_inputs, Sequence) or isinstance(
-        raw_inputs, (str, bytes)
-    ):
+    if not isinstance(raw_inputs, Sequence) or isinstance(raw_inputs, (str, bytes)):
         raise ValueError("compiled plane-arena input bindings are absent")
     inputs: list[dict[str, object] | None] = [None] * parameter_count
     for raw in raw_inputs:
@@ -391,18 +394,14 @@ def _compiled_plane_arena_stage(
             "kind": kind,
             "source_id": _required_nonnegative_int(raw, "source_id"),
             "component": _required_nonnegative_int(raw, "component"),
-            "global_component": _required_nonnegative_int(
-                raw, "global_component"
-            ),
+            "global_component": _required_nonnegative_int(raw, "global_component"),
             "real_valued": bool(raw.get("real_valued", False)),
         }
     if any(binding is None for binding in inputs):
         raise ValueError("compiled plane-arena input bindings are incomplete")
 
     raw_slots = stage.get("output_slots")
-    if not isinstance(raw_slots, Sequence) or isinstance(
-        raw_slots, (str, bytes)
-    ):
+    if not isinstance(raw_slots, Sequence) or isinstance(raw_slots, (str, bytes)):
         raise ValueError("compiled plane-arena output bindings are absent")
     arena = (
         "amplitude"
@@ -441,8 +440,8 @@ def _compiled_plane_arena_stage(
     return {
         "schema_version": 1,
         "kind": "compiled-plane-arena-stage",
-        "application_abi": COMPILED_PLANE_DIRECT_APPLICATION_ABI,
-        "source_application_abi": SYMJIT_APPLICATION_ABI,
+        "application_abi": application_abi,
+        "source_application_abi": source_application_abi,
         "element_layout": "split-complex-component-major",
         "output_operation": "overwrite",
         "output_factor": "identity",
@@ -458,7 +457,12 @@ def _compiled_plane_arena_leaves(
     evaluator: Mapping[str, object],
     parent_inputs: tuple[int, ...],
     output_start: int,
-) -> tuple[list[dict[str, object]] | None, int]:
+) -> tuple[
+    list[dict[str, object]] | None,
+    int,
+    str | None,
+    str | None,
+]:
     kind = evaluator.get("kind")
     if kind == "chunked-symbolica-evaluator":
         chunks = evaluator.get("chunks")
@@ -471,9 +475,11 @@ def _compiled_plane_arena_leaves(
         if raw_maps is None:
             input_maps = [parent_inputs] * len(chunks)
         else:
-            if not isinstance(raw_maps, Sequence) or isinstance(
-                raw_maps, (str, bytes)
-            ) or len(raw_maps) != len(chunks):
+            if (
+                not isinstance(raw_maps, Sequence)
+                or isinstance(raw_maps, (str, bytes))
+                or len(raw_maps) != len(chunks)
+            ):
                 raise ValueError("compiled chunk input maps are invalid")
             input_maps = []
             for raw_map in raw_maps:
@@ -495,32 +501,65 @@ def _compiled_plane_arena_leaves(
                 input_maps.append(tuple(mapped))
         result: list[dict[str, object]] = []
         cursor = output_start
+        application_abi: str | None = None
+        source_application_abi: str | None = None
         for raw_chunk, mapped in zip(chunks, input_maps, strict=True):
             if not isinstance(raw_chunk, Mapping):
                 raise ValueError("compiled evaluator child is invalid")
-            child, cursor = _compiled_plane_arena_leaves(
-                raw_chunk, mapped, cursor
+            child, cursor, child_application_abi, child_source_abi = (
+                _compiled_plane_arena_leaves(raw_chunk, mapped, cursor)
             )
             if child is None:
-                return None, output_start
+                return None, output_start, None, None
+            if application_abi is None:
+                application_abi = child_application_abi
+                source_application_abi = child_source_abi
+            elif (
+                child_application_abi != application_abi
+                or child_source_abi != source_application_abi
+            ):
+                raise ValueError(
+                    "compiled plane-arena evaluator chunks mix direct ABIs"
+                )
             result.extend(child)
-        return result, cursor
+        return result, cursor, application_abi, source_application_abi
 
-    if kind != "symjit-application-evaluator":
-        return None, output_start
-    if (
-        evaluator.get("runtime_capability") != SYMJIT_F64_RUNTIME_CAPABILITY
-        or evaluator.get("application_abi") != SYMJIT_APPLICATION_ABI
-        or evaluator.get("element_layout") != "complex-f64"
-        or evaluator.get("batch_layout") != "row-major"
-    ):
-        raise ValueError("compiled SymJIT leaf has an incompatible source ABI")
+    if kind == "symjit-application-evaluator":
+        if (
+            evaluator.get("runtime_capability") != SYMJIT_F64_RUNTIME_CAPABILITY
+            or evaluator.get("application_abi") != SYMJIT_APPLICATION_ABI
+            or evaluator.get("element_layout") != "complex-f64"
+            or evaluator.get("batch_layout") != "row-major"
+        ):
+            raise ValueError("compiled SymJIT leaf has an incompatible source ABI")
+        application_path = evaluator.get("application_path")
+        source_application_abi = SYMJIT_APPLICATION_ABI
+        application_abi = COMPILED_PLANE_DIRECT_APPLICATION_ABI
+        optimization_level = _required_nonnegative_int(evaluator, "optimization_level")
+    elif kind == "compiled-complex-evaluator":
+        if evaluator.get("runtime_capability") not in {
+            SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+            SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+        }:
+            raise ValueError(
+                "compiled native leaf has an incompatible runtime capability"
+            )
+        direct = evaluator.get("native_direct_application")
+        if not isinstance(direct, Mapping):
+            raise ValueError(
+                "compiled native leaf has no plane-native DirectApplication"
+            )
+        application_abi = direct.get("application_abi")
+        application_path = direct.get("library_path")
+        source_application_abi = application_abi
+        optimization_level = 3
+        if application_abi != NATIVE_COMPILED_DIRECT_APPLICATION_ABI:
+            raise ValueError("compiled native leaf has an incompatible direct ABI")
+    else:
+        return None, output_start, None, None
+
     input_len = _required_nonnegative_int(evaluator, "input_len")
     output_len = _required_nonnegative_int(evaluator, "output_len")
-    optimization_level = _required_nonnegative_int(
-        evaluator, "optimization_level"
-    )
-    application_path = evaluator.get("application_path")
     if (
         input_len != len(parent_inputs)
         or output_len < 1
@@ -538,7 +577,7 @@ def _compiled_plane_arena_leaves(
         [
             {
                 "application_path": application_path,
-                "source_application_abi": SYMJIT_APPLICATION_ABI,
+                "source_application_abi": source_application_abi,
                 "optimization_level": optimization_level,
                 "input_len": input_len,
                 "output_len": output_len,
@@ -548,6 +587,8 @@ def _compiled_plane_arena_leaves(
             }
         ],
         output_stop,
+        str(application_abi),
+        str(source_application_abi),
     )
 
 
@@ -628,20 +669,25 @@ def _finalize_stage_evaluator_payload(
         for payload in (*stage_payloads, amplitude_payload)
     )
     stage_count = len(stage_payloads) + 1
-    requires_direct = SYMJIT_F64_RUNTIME_CAPABILITY in required_runtime_capabilities
+    requires_direct = bool(
+        required_runtime_capabilities
+        & {
+            SYMJIT_F64_RUNTIME_CAPABILITY,
+            SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+            SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+        }
+    )
     if requires_direct and direct_stage_count != stage_count:
         raise ValueError(
-            "compiled SymJIT artifacts require compiled-plane-arena-v1 "
-            "metadata for every fused stage"
+            "compiled f64 artifacts require compiled-plane-arena-v1 metadata "
+            "for every fused stage"
         )
     if direct_stage_count:
         if direct_stage_count != stage_count:
             raise ValueError(
                 "compiled plane-arena metadata must cover every fused stage"
             )
-        required_runtime_capabilities.add(
-            COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY
-        )
+        required_runtime_capabilities.add(COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY)
     return {
         "kind": "generic-dag-stage-evaluator-artifacts",
         "required_runtime_capabilities": sorted(required_runtime_capabilities),
@@ -947,6 +993,9 @@ def _compile_default_stage_evaluator(
                 for function, arguments, body in stage.symbolica_functions
             },
             output_partitions=stage.selector_output_partitions,
+            native_direct_only=(
+                getattr(candidate_settings, "backend", None) == "compiled-complex"
+            ),
         )
 
     autotune_timing: dict[str, float] = {}
@@ -963,6 +1012,11 @@ def _compile_default_stage_evaluator(
         )
     else:
         evaluator = compile_with(settings, stage.evaluator_label)
+    _compile_native_stage_direct_applications(
+        evaluator,
+        stage,
+        settings,
+    )
     symbolica_build_s = time.perf_counter() - symbolica_started
     artifact_started = time.perf_counter()
     manifest = _symbolica_evaluator_artifact_manifest(evaluator, artifact_dir)
@@ -974,6 +1028,65 @@ def _compile_default_stage_evaluator(
         timing["artifact_manifest_s"] = artifact_manifest_s
         timing["stage_evaluator_build_s"] = symbolica_build_s + artifact_manifest_s
     return manifest
+
+
+def _compile_native_stage_direct_applications(
+    evaluator: Any,
+    stage: GenericCompiledStageBlueprint,
+    settings: Any,
+) -> None:
+    """Produce the direct-only native companion before serialization."""
+
+    if getattr(settings, "backend", None) != "compiled-complex":
+        return
+    from ..evaluators.native_direct_cpp import NativeDirectCppParameterKind
+    from ..evaluators.symbolica_adapters import (
+        compile_native_direct_applications,
+    )
+    from ..models.prepared_target import native_prepared_target
+
+    components: list[object | None] = [None] * stage.parameter_count
+    for component in stage.input_components:
+        if (
+            component.parameter_index >= len(components)
+            or components[component.parameter_index] is not None
+        ):
+            raise ValueError(
+                "native DirectApplication stage input bindings are invalid"
+            )
+        if component.kind == "model_parameter":
+            kind = (
+                NativeDirectCppParameterKind.REAL_SCALAR
+                if component.real_valued
+                else NativeDirectCppParameterKind.COMPLEX_SCALAR
+            )
+        else:
+            kind = (
+                NativeDirectCppParameterKind.REAL_PLANE
+                if component.real_valued
+                else NativeDirectCppParameterKind.COMPLEX_PLANE
+            )
+        components[component.parameter_index] = kind
+    if any(component is None for component in components):
+        raise ValueError("native DirectApplication stage input bindings are incomplete")
+
+    include_features = bool(getattr(settings, "compiled_native", False))
+    target = native_prepared_target(include_cpu_features=include_features)
+    target_triple = str(target["target_triple"])
+    cpu_features = tuple(str(item) for item in target["cpu_features"])
+    simd_lane_width = (
+        4 if target_triple.startswith("x86_64") and "avx2" in cpu_features else 2
+    )
+    if not compile_native_direct_applications(
+        evaluator,
+        components,
+        target_triple=target_triple,
+        cpu_features=cpu_features,
+        simd_lane_width=simd_lane_width,
+    ):
+        raise ValueError(
+            "compiled native stage did not produce a plane-native DirectApplication"
+        )
 
 
 def _compile_measured_stage_output_chunks(

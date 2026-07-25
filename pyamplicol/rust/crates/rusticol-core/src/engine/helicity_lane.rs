@@ -20,7 +20,7 @@ pub(super) struct CompiledHelicityExecutionPlan {
     schedules_by_physical_helicity: Vec<Option<Arc<CompiledHelicitySelectorSchedule>>>,
 }
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 fn validate_direct_materialized_sector_selection(
     color_schedules: &BTreeMap<i64, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
     selected: Option<&BTreeSet<i64>>,
@@ -43,7 +43,7 @@ fn validate_direct_materialized_sector_selection(
     Ok(())
 }
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 fn evaluate_direct_helicity_schedule(
     direct: &mut compiled_direct_prototype::CompiledDirectEnginePrototype,
     schedules: &BTreeMap<usize, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
@@ -71,11 +71,11 @@ impl ExecutionRuntime {
         if amplitude.color_contraction.is_none() {
             return true;
         }
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             self.compiled_direct_runtime.is_some()
         }
-        #[cfg(not(feature = "f64-symjit"))]
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
             false
         }
@@ -210,7 +210,7 @@ impl ExecutionRuntime {
                 "helicity recurrence schedules do not cover every physical helicity",
             ));
         }
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             let mut direct_schedules = BTreeMap::new();
             if let Some(direct) = self.compiled_direct_runtime.as_ref() {
@@ -561,7 +561,7 @@ impl ExecutionRuntime {
         schedule: &CompiledHelicitySelectorSchedule,
         execute_union: bool,
     ) -> RusticolResult<ResolvedValues<f64>> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if self.compiled_direct_runtime.is_some() {
             return self.run_f64_materialized_helicity_direct_resolved_unprofiled(
                 batch,
@@ -602,7 +602,7 @@ impl ExecutionRuntime {
         execute_union: bool,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if self.compiled_direct_runtime.is_some() {
             return self.run_f64_materialized_helicity_direct_add_into_unprofiled(
                 batch,
@@ -634,7 +634,7 @@ impl ExecutionRuntime {
             )
     }
 
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     #[allow(clippy::too_many_arguments)]
     fn run_f64_materialized_helicity_direct_resolved_unprofiled(
         &mut self,
@@ -724,7 +724,7 @@ impl ExecutionRuntime {
         })
     }
 
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     #[allow(clippy::too_many_arguments)]
     fn run_f64_materialized_helicity_direct_add_into_unprofiled(
         &mut self,
@@ -801,7 +801,7 @@ impl ExecutionRuntime {
         Ok(())
     }
 
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn run_f64_materialized_helicity_direct_routed_components_add_unprofiled(
         &mut self,

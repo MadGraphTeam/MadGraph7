@@ -222,7 +222,7 @@ def test_prepared_native_direct_source_reuses_authenticated_library() -> None:
     )
 
 
-def test_native_split_real_header_exports_scalar_and_direct_abis() -> None:
+def test_native_split_real_header_exports_only_direct_abis() -> None:
     import pyamplicol.models.prepared_compile as prepared_compile
 
     kernel = _catalog().kernels[0]
@@ -230,12 +230,16 @@ def test_native_split_real_header_exports_scalar_and_direct_abis() -> None:
     header = prepared_compile._native_split_real_custom_header(
         kernel,
         raw_function_name="prepared_split",
-        complex_function_name="prepared",
         direct_spec=spec,
+        eager_direct_source=(
+            'extern "C" int pyamplicol_eager_direct_table_k00000000_v1('
+            "const void*) { return 0; }"
+        ),
     )
 
-    assert "prepared_complexf64_get_buffer_len" in header
-    assert "prepared_complexf64(" in header
+    assert "prepared_complexf64_get_buffer_len" not in header
+    assert "prepared_complexf64(" not in header
+    assert "pyamplicol_eager_direct_table_k00000000_v1" in header
     assert spec.native_entry_point in header
     assert "DirectArenaView arena" in header
     assert "DirectMomentumView momenta" in header
@@ -255,7 +259,6 @@ def test_native_split_real_header_exports_scalar_and_direct_abis() -> None:
     asm_header = prepared_compile._native_split_real_custom_header(
         kernel,
         raw_function_name="prepared_split",
-        complex_function_name="prepared",
         direct_spec=spec,
         raw_parameters_const=True,
     )
@@ -263,6 +266,41 @@ def test_native_split_real_header_exports_scalar_and_direct_abis() -> None:
         'extern "C" void prepared_split_realf64('
         "const double*, double*, double*);"
     ) in asm_header
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        (
+            {
+                "target_triple": "x86_64-unknown-linux-gnu",
+                "cpu_features": ["avx2"],
+            },
+            4,
+        ),
+        (
+            {
+                "target_triple": "x86_64-unknown-linux-gnu",
+                "cpu_features": [],
+            },
+            2,
+        ),
+        (
+            {
+                "target_triple": "aarch64-apple-darwin",
+                "cpu_features": ["neon"],
+            },
+            2,
+        ),
+    ],
+)
+def test_native_eager_simd_width_follows_portable_target(
+    target: dict[str, object],
+    expected: int,
+) -> None:
+    import pyamplicol.models.prepared_compile as prepared_compile
+
+    assert prepared_compile._native_eager_simd_lane_width(target) == expected
 
 
 def test_native_direct_header_reads_binding_coupling_from_context() -> None:
@@ -312,7 +350,6 @@ def test_native_direct_header_reads_binding_coupling_from_context() -> None:
     header = prepared_compile._native_split_real_custom_header(
         kernel,
         raw_function_name="prepared_split",
-        complex_function_name="prepared",
         direct_spec=spec,
     )
 
@@ -402,6 +439,10 @@ def test_native_direct_complex_contract_matches_exact_arithmetic(
         settings=settings,
         staging=tmp_path,
         direct_spec=spec,
+    )
+    assert manifest["function_name"] == manifest["direct_table"]["function_name"]
+    assert "_complexf64(" not in Path(manifest["source_path"]).read_text(
+        encoding="utf-8"
     )
 
     class Arena(ctypes.Structure):

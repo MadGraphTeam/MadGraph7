@@ -38,11 +38,18 @@ fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> Rusti
         .iter()
         .chain(std::iter::once(&stages.amplitude_stage))
         .collect::<Vec<_>>();
-    let all_symjit = all_stages.iter().all(|stage| {
+    let all_direct_capable = all_stages.iter().all(|stage| {
         stage.evaluator.leaf_layout().is_ok_and(|leaves| {
             !leaves.is_empty()
                 && leaves.iter().all(|leaf| {
-                    matches!(leaf.evaluator, EvaluatorManifest::SymjitApplication { .. })
+                    matches!(
+                        leaf.evaluator,
+                        EvaluatorManifest::SymjitApplication { .. }
+                            | EvaluatorManifest::CompiledComplex {
+                                native_direct_application: Some(_),
+                                ..
+                            }
+                    )
                 })
         })
     });
@@ -52,18 +59,22 @@ fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> Rusti
         .count();
 
     if !declared_execution && !declared_stage && direct_count == 0 {
-        if all_symjit && !compiled_direct_developer_oracle_enabled() {
-            return Err(RusticolError::compatibility(
-                "this compiled f64 artifact predates compiled-plane-arena-v1; regenerate it with \
-                 `pyamplicol generate-process` using the current pyAmpliCol build",
-            ));
+        if compiled_direct_developer_oracle_enabled() {
+            return Ok(false);
         }
-        return Ok(false);
+        return Err(RusticolError::compatibility(
+            "this compiled f64 artifact predates compiled-plane-arena-v1; regenerate it with \
+             `pyamplicol generate-process` using the current pyAmpliCol build",
+        ));
     }
-    if !declared_execution || !declared_stage || direct_count != all_stages.len() || !all_symjit {
+    if !declared_execution
+        || !declared_stage
+        || direct_count != all_stages.len()
+        || !all_direct_capable
+    {
         return Err(RusticolError::integrity(
-            "compiled-plane-arena-v1 capability, fused SymJIT leaves, and stage bindings do not \
-             form one complete execution contract",
+            "compiled-plane-arena-v1 capability, fused direct-capable leaves, and stage bindings \
+             do not form one complete execution contract",
         ));
     }
     for (position, stage) in all_stages.into_iter().enumerate() {
@@ -86,10 +97,18 @@ fn validate_compiled_plane_arena_stage(
     let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
         RusticolError::integrity("compiled plane-arena fused stage has no direct bindings")
     })?;
+    let symjit_contract = direct.application_abi == COMPILED_PLANE_DIRECT_APPLICATION_ABI
+        && direct.source_application_abi == COMPILED_PLANE_SOURCE_APPLICATION_ABI;
+    #[cfg(feature = "f64-compiled")]
+    let native_contract = direct.application_abi
+        == super::evaluator::native_compiled_direct::NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+        && direct.source_application_abi
+            == super::evaluator::native_compiled_direct::NATIVE_COMPILED_DIRECT_APPLICATION_ABI;
+    #[cfg(not(feature = "f64-compiled"))]
+    let native_contract = false;
     if direct.schema_version != 1
         || direct.kind != "compiled-plane-arena-stage"
-        || direct.application_abi != COMPILED_PLANE_DIRECT_APPLICATION_ABI
-        || direct.source_application_abi != COMPILED_PLANE_SOURCE_APPLICATION_ABI
+        || !(symjit_contract || native_contract)
         || direct.element_layout != "split-complex-component-major"
         || direct.output_operation != "overwrite"
         || direct.output_factor != "identity"
@@ -232,31 +251,55 @@ fn validate_compiled_plane_arena_stage(
         ));
     }
     for (canonical, binding) in canonical_leaves.iter().zip(&direct.leaves) {
-        let EvaluatorManifest::SymjitApplication {
-            application_path,
-            application_abi,
-            input_len,
-            output_len,
-            optimization_level,
-            ..
-        } = canonical.evaluator
-        else {
-            return Err(RusticolError::integrity(
-                "compiled plane-arena stage contains a non-SymJIT leaf",
-            ));
-        };
-        if *optimization_level != 3 || binding.optimization_level != 3 {
+        let (application_path, application_abi, input_len, output_len, optimization_level) =
+            match canonical.evaluator {
+                EvaluatorManifest::SymjitApplication {
+                    application_path,
+                    application_abi,
+                    input_len,
+                    output_len,
+                    optimization_level,
+                    ..
+                } => (
+                    application_path.as_str(),
+                    application_abi.as_str(),
+                    *input_len,
+                    *output_len,
+                    *optimization_level,
+                ),
+                EvaluatorManifest::CompiledComplex {
+                    function_name,
+                    input_len,
+                    output_len,
+                    native_direct_application: Some(application),
+                    ..
+                } => {
+                    application.validate(function_name, *input_len, *output_len)?;
+                    (
+                        application.library_path.as_str(),
+                        application.application_abi.as_str(),
+                        *input_len,
+                        *output_len,
+                        3,
+                    )
+                }
+                _ => {
+                    return Err(RusticolError::integrity(
+                        "compiled plane-arena stage contains a leaf without a direct application",
+                    ));
+                }
+            };
+        if optimization_level != 3 || binding.optimization_level != 3 {
             return Err(RusticolError::compatibility(
-                "compiled-plane-arena-v1 requires compiled JIT optimization level 3; \
-                 regenerate with evaluator.jit.optimization_level=3",
+                "compiled-plane-arena-v1 requires optimization level 3; regenerate the artifact",
             ));
         }
-        if binding.application_path != *application_path
-            || binding.source_application_abi != *application_abi
+        if binding.application_path != application_path
+            || binding.source_application_abi != application_abi
             || binding.source_application_abi != direct.source_application_abi
-            || binding.optimization_level != *optimization_level
-            || binding.input_len != *input_len
-            || binding.output_len != *output_len
+            || binding.optimization_level != optimization_level
+            || binding.input_len != input_len
+            || binding.output_len != output_len
             || binding.input_indices != canonical.input_indices
             || binding.output_start != canonical.output_range.start
             || binding.output_stop != canonical.output_range.end
@@ -3125,11 +3168,11 @@ impl ExecutionRuntime {
             helicity_recurrence,
             compiled_helicity_execution_plan: None,
             compiled_color_execution_plan,
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             compiled_direct_runtime: None,
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             compiled_direct_color_schedules: BTreeMap::new(),
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             compiled_direct_helicity_schedules: BTreeMap::new(),
             helicity_sum_runtime,
             helicity_selector_runtimes,
@@ -3233,7 +3276,7 @@ impl ExecutionRuntime {
             runtime.refresh_derived_model_parameters()?;
         }
         if let Some(stage_evaluators) = stage_evaluators {
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             if compiled_plane_arena {
                 let direct =
                     compiled_direct_prototype::CompiledDirectEnginePrototype::load_production(
@@ -3315,12 +3358,12 @@ impl ExecutionRuntime {
                     runtime.compiled_direct_runtime = Some(direct);
                 }
             }
-            #[cfg(not(feature = "f64-symjit"))]
+            #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
             {
                 if compiled_plane_arena {
                     return Err(RusticolError::unsupported_runtime_capability(
                         COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
-                        "this Rusticol build has no SymJIT DirectApplication backend",
+                        "this Rusticol build has no compiled DirectApplication backend",
                     ));
                 }
                 let stages = stage_evaluators

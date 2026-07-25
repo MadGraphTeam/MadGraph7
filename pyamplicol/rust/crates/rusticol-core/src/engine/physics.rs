@@ -75,6 +75,32 @@ impl PhysicsRuntime {
         Ok(indices)
     }
 
+    pub(super) fn validate_helicity_id_slice(&self, ids: Option<&[String]>) -> RusticolResult<()> {
+        self.validate_id_slice(ids, &self.helicity_index_by_id, "helicity")
+    }
+
+    pub(super) fn validate_color_id_slice(&self, ids: Option<&[String]>) -> RusticolResult<()> {
+        self.validate_id_slice(ids, &self.color_index_by_id, "color component")
+    }
+
+    fn validate_id_slice(
+        &self,
+        ids: Option<&[String]>,
+        available: &BTreeMap<String, usize>,
+        kind: &str,
+    ) -> RusticolResult<()> {
+        if let Some(ids) = ids {
+            for id in ids {
+                if !available.contains_key(id) {
+                    return Err(RusticolError::selector(format!(
+                        "unknown resolved {kind} id {id:?}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn select_indices_into(
         &self,
         ids: Option<&BTreeSet<String>>,

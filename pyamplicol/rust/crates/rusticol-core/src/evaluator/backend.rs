@@ -2225,6 +2225,29 @@ fn flatten_exact_evaluators_from_store(
             });
             Ok(())
         }
+        EvaluatorManifest::CompiledComplex {
+            input_len,
+            output_len,
+            evaluator_state_path,
+            native_direct_application: Some(_),
+            ..
+        } => {
+            let state_path = evaluator_state_path.as_ref().ok_or_else(|| {
+                RusticolError::compatibility(
+                    "compiled plane-arena exact execution requires evaluator-state payloads",
+                )
+            })?;
+            output.push(LoadedEvaluator {
+                eval: F64Evaluator::ExactOnly,
+                exact_eval: None,
+                exact_eval_source: Some(payloads.source(state_path)?),
+                double_eval: None,
+                arb_eval: None,
+                input_len: *input_len,
+                output_len: *output_len,
+            });
+            Ok(())
+        }
         EvaluatorManifest::Chunked { chunks, .. } => {
             for chunk in chunks {
                 flatten_exact_evaluators_from_store(chunk, payloads, output)?;
@@ -2232,7 +2255,7 @@ fn flatten_exact_evaluators_from_store(
             Ok(())
         }
         _ => Err(RusticolError::compatibility(
-            "compiled plane-arena exact execution requires SymJIT source leaves",
+            "compiled plane-arena exact execution requires direct leaves with evaluator state",
         )),
     }
 }

@@ -872,11 +872,6 @@ def _write_eager_kernel_pack(
     if {kernel.kernel_id for kernel in selected} != set(kernel_ids):
         missing = sorted(set(kernel_ids) - {kernel.kernel_id for kernel in selected})
         raise ValueError(f"prepared model omits referenced eager kernels {missing}")
-    if require_eager_direct and bundle.kernel_pack.backend != "jit":
-        raise ValueError(
-            "eager-direct-arena-v1 currently requires a JIT prepared model; "
-            "regenerate with evaluator.backend = 'jit'"
-        )
     selected_variants = tuple(
         variant
         for variant in bundle.kernel_pack.kernel_variants
@@ -893,17 +888,27 @@ def _write_eager_kernel_pack(
         payload = kernel.to_dict()
         if require_eager_direct:
             manifest = _mapping(payload["f64_evaluator_manifest"])
-            direct_manifest, descriptor_path, descriptor = (
-                _eager_direct_evaluator_manifest(
+            if bundle.kernel_pack.backend == "jit":
+                direct_manifest, descriptor_path, descriptor = (
+                    _eager_direct_evaluator_manifest(
+                        bundle=bundle,
+                        kernel_id=kernel.kernel_id,
+                        input_complex_count=kernel.input_arity,
+                        output_complex_count=kernel.output_arity,
+                        manifest=manifest,
+                    )
+                )
+                direct_descriptors[descriptor_path] = descriptor
+            else:
+                direct_manifest = _eager_native_direct_evaluator_manifest(
+                    backend=bundle.kernel_pack.backend,
                     bundle=bundle,
                     kernel_id=kernel.kernel_id,
                     input_complex_count=kernel.input_arity,
                     output_complex_count=kernel.output_arity,
                     manifest=manifest,
                 )
-            )
             payload["f64_evaluator_manifest"] = direct_manifest
-            direct_descriptors[descriptor_path] = descriptor
         kernel_payloads.append(payload)
     pack_payload["kernels"] = kernel_payloads
     pack_payload["kernel_variants"] = [
@@ -976,9 +981,7 @@ def _eager_direct_evaluator_manifest(
         output_complex_count=output_complex_count,
     )
     descriptor_s = time.perf_counter() - started
-    descriptor_path = (
-        f"kernels/{kernel_id}/eager-direct-table-descriptor-v1.bin"
-    )
+    descriptor_path = f"kernels/{kernel_id}/eager-direct-table-descriptor-v1.bin"
     result = _plain_mapping(manifest)
     timing = _plain_mapping(_mapping(result.get("build_timing", {})))
     timing["eager_direct_descriptor_s"] = descriptor_s
@@ -997,6 +1000,73 @@ def _eager_direct_evaluator_manifest(
     return result, descriptor_path, descriptor
 
 
+def _eager_native_direct_evaluator_manifest(
+    *,
+    backend: str,
+    bundle: object,
+    kernel_id: int,
+    input_complex_count: int,
+    output_complex_count: int,
+    manifest: Mapping[str, object],
+) -> dict[str, object]:
+    del bundle
+    if backend not in {"cpp", "asm"}:
+        raise ValueError(f"unsupported eager native DirectTable backend {backend!r}")
+    if manifest.get("kind") != "compiled-complex-evaluator":
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} is not a native "
+            "compiled evaluator"
+        )
+    expected_capability = {
+        "cpp": SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+        "asm": SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+    }[backend]
+    if manifest.get("runtime_capability") != expected_capability:
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} native capability "
+            "does not match its prepared backend"
+        )
+    direct = _mapping(manifest.get("direct_table"))
+    from .._internal.versions import (
+        NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI,
+    )
+
+    expected = {
+        "capability": EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        "source_application_abi": (NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI),
+        "descriptor_abi": EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+        "binding_abi": EAGER_DIRECT_TABLE_BINDING_ABI,
+    }
+    for field, value in expected.items():
+        if direct.get(field) != value:
+            raise ValueError(
+                f"eager-direct-arena-v1 kernel {kernel_id} native "
+                f"DirectTable {field} is incompatible"
+            )
+    library_path = direct.get("library_path")
+    function_name = direct.get("function_name")
+    if (
+        not isinstance(library_path, str)
+        or not library_path
+        or library_path != manifest.get("library_path")
+        or not isinstance(function_name, str)
+        or not function_name
+    ):
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} native DirectTable "
+            "library binding is invalid"
+        )
+    if (
+        direct.get("input_complex_count") != input_complex_count
+        or direct.get("output_complex_count") != output_complex_count
+    ):
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} native DirectTable "
+            "width is incompatible"
+        )
+    return _plain_mapping(manifest)
+
+
 def _derive_eager_direct_descriptor(
     source_application: bytes,
     *,
@@ -1010,9 +1080,7 @@ def _derive_eager_direct_descriptor(
         output_complex_count,
     )
     if not isinstance(descriptor, bytes) or not descriptor:
-        raise RuntimeError(
-            "Rusticol returned an invalid eager DirectTable descriptor"
-        )
+        raise RuntimeError("Rusticol returned an invalid eager DirectTable descriptor")
     return descriptor
 
 
@@ -2369,22 +2437,24 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
         for stage in (*_sequence(result["stages"]), result["amplitude_stage"])
     ]
     has_direct_capability = COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY in declared
-    if (
-        SYMJIT_F64_RUNTIME_CAPABILITY in actual
-        and not bool(direct_stages and all(direct_stages))
+    direct_evaluator_capabilities = {
+        SYMJIT_F64_RUNTIME_CAPABILITY,
+        SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+        SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+    }
+    if set(actual) & direct_evaluator_capabilities and not bool(
+        direct_stages and all(direct_stages)
     ):
         raise ValueError(
-            "compiled SymJIT artifacts require compiled-plane-arena-v1 "
-            "metadata for every fused stage"
+            "compiled f64 artifacts require compiled-plane-arena-v1 metadata "
+            "for every fused stage"
         )
     if has_direct_capability != bool(direct_stages and all(direct_stages)):
         raise ValueError(
             "compiled plane-arena capability and fused-stage metadata disagree"
         )
     if any(direct_stages) and not all(direct_stages):
-        raise ValueError(
-            "compiled plane-arena metadata must cover every fused stage"
-        )
+        raise ValueError("compiled plane-arena metadata must cover every fused stage")
     evaluator_capabilities = declared - {
         COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
@@ -2484,11 +2554,18 @@ def _compiled_plane_arena_stage(
             for item in _sequence(record["leaves"])
         ],
     }
+    symjit_contract = (
+        result["application_abi"] == COMPILED_PLANE_DIRECT_APPLICATION_ABI
+        and result["source_application_abi"] == SYMJIT_APPLICATION_ABI
+    )
+    native_contract = (
+        result["application_abi"] == NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+        and result["source_application_abi"] == NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+    )
     if (
         result["schema_version"] != 1
         or result["kind"] != "compiled-plane-arena-stage"
-        or result["application_abi"] != COMPILED_PLANE_DIRECT_APPLICATION_ABI
-        or result["source_application_abi"] != SYMJIT_APPLICATION_ABI
+        or not (symjit_contract or native_contract)
         or result["element_layout"] != "split-complex-component-major"
         or result["output_operation"] != "overwrite"
         or result["output_factor"] != "identity"
@@ -2507,11 +2584,10 @@ def _compiled_plane_arena_stage(
         leaf_map = _mapping(leaf)
         input_indices = list(_sequence(leaf_map["input_indices"]))
         if (
-            leaf_map["source_application_abi"] != SYMJIT_APPLICATION_ABI
+            leaf_map["source_application_abi"] != result["source_application_abi"]
             or len(input_indices) != int(leaf_map["input_len"])
             or leaf_map["output_start"] != output_cursor
-            or leaf_map["output_stop"]
-            != output_cursor + int(leaf_map["output_len"])
+            or leaf_map["output_stop"] != output_cursor + int(leaf_map["output_len"])
         ):
             raise ValueError("compiled plane-arena leaf bindings are invalid")
         output_cursor = int(leaf_map["output_stop"])
@@ -2630,16 +2706,25 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
             raise ValueError("compiled evaluator has an invalid runtime capability")
         direct = record.get("native_direct_application")
         if direct is not None:
-            if result["runtime_capability"] != SYMBOLICA_CPP_RUNTIME_CAPABILITY:
+            if result["runtime_capability"] not in {
+                SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+                SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+            }:
                 raise ValueError(
-                    "native DirectApplication C++ metadata cannot accompany "
-                    "an ASM evaluator"
+                    "native DirectApplication metadata requires a compiled "
+                    "C++ or ASM evaluator"
                 )
-            result["native_direct_application"] = _native_compiled_direct_application(
+            direct_application = _native_compiled_direct_application(
                 _mapping(direct),
                 expected_function_name=str(result["function_name"]),
                 expected_output_count=int(result["output_len"]),
             )
+            if result["library_path"] != direct_application["library_path"]:
+                raise ValueError(
+                    "compiled process DirectApplication must be the sole native "
+                    "library payload; dense/direct dual production is forbidden"
+                )
+            result["native_direct_application"] = direct_application
         return result
     if kind == "chunked-symbolica-evaluator":
         result = {

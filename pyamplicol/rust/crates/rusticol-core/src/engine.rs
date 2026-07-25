@@ -300,13 +300,13 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_DAG_RUNTIME_CAPABILITY,
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_RUNTIME_LAYOUT_CAPABILITY,
@@ -2748,12 +2748,12 @@ struct ExecutionRuntime {
     helicity_recurrence: Option<HelicityRecurrenceRuntime>,
     compiled_helicity_execution_plan: Option<CompiledHelicityExecutionPlan>,
     compiled_color_execution_plan: Option<CompiledColorExecutionPlan>,
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     compiled_direct_runtime: Option<compiled_direct_prototype::CompiledDirectEnginePrototype>,
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     compiled_direct_color_schedules:
         BTreeMap<i64, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     compiled_direct_helicity_schedules:
         BTreeMap<usize, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
     helicity_sum_runtime: Option<Box<ExecutionRuntime>>,
@@ -3684,7 +3684,7 @@ use model_parameters::*;
 
 mod evaluation;
 use evaluation::resolved_f64_totals;
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod compiled_direct_prototype;
 mod helicity_lane;
 use helicity_lane::*;
@@ -3755,9 +3755,16 @@ use point_selectors::*;
 
 #[path = "evaluator.rs"]
 mod evaluator;
+#[cfg(all(
+    test,
+    feature = "f64-compiled",
+    not(feature = "f64-symjit"),
+    any(target_os = "linux", target_os = "macos")
+))]
+pub(crate) use evaluator::native_direct::tests::count_allocations;
 #[cfg(all(test, feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_direct::tests::count_allocations;
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_eager_direct;
 use evaluator::*;
 

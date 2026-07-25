@@ -115,7 +115,7 @@ pub(super) struct EagerNativeRuntime {
     legacy_scheduler: Option<crate::EagerExecutionRuntime>,
     #[cfg(test)]
     legacy_backend: Option<PreparedEvaluatorBackend>,
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     direct_scheduler: Option<crate::eager_runtime::EagerDirectExecutionRuntime>,
     #[cfg(test)]
     direct_mode: EagerDirectValidationMode,
@@ -208,7 +208,7 @@ impl EagerNativeRuntime {
         Self {
             legacy_scheduler: Some(scheduler),
             legacy_backend: Some(backend),
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             direct_scheduler: None,
             direct_mode: EagerDirectValidationMode::Disabled,
             backend_name,
@@ -252,7 +252,7 @@ impl EagerNativeRuntime {
         }
     }
 
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     pub(super) fn new_direct(
         scheduler: crate::eager_runtime::EagerDirectExecutionRuntime,
         backend_name: String,
@@ -315,7 +315,7 @@ impl EagerNativeRuntime {
         }
     }
 
-    #[cfg(all(test, feature = "f64-symjit"))]
+    #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
     pub(super) fn with_direct_validation(
         mut self,
         scheduler: crate::eager_runtime::EagerDirectExecutionRuntime,
@@ -326,7 +326,7 @@ impl EagerNativeRuntime {
         self
     }
 
-    #[cfg(all(test, feature = "f64-symjit"))]
+    #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
     fn audit_direct_schedule(&mut self, active_groups: Option<&[u32]>) -> RusticolResult<()> {
         if std::env::var("PYAMPLICOL_EAGER_DIRECT_ARENA_AUDIT").as_deref() != Ok("1") {
             return Ok(());
@@ -382,7 +382,7 @@ impl EagerNativeRuntime {
 
     #[cfg(not(test))]
     fn execute_full_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             return self
                 .direct_scheduler
@@ -401,11 +401,11 @@ impl EagerNativeRuntime {
                     &mut self.reduced,
                 );
         }
-        #[cfg(not(feature = "f64-symjit"))]
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
             let _ = point_count;
             Err(RusticolError::compatibility(
-                "eager-direct-arena-v1 requires the f64-symjit feature; regenerate or load \
+                "eager-direct-arena-v1 requires the f64-compiled or f64-symjit feature; regenerate or load \
                  this artifact with a Direct-Arena-capable runtime",
             ))
         }
@@ -432,7 +432,7 @@ impl EagerNativeRuntime {
                 )
             }
             EagerDirectValidationMode::Direct => {
-                #[cfg(feature = "f64-symjit")]
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
                     return self
                         .direct_scheduler
@@ -451,10 +451,10 @@ impl EagerNativeRuntime {
                             &mut self.reduced,
                         );
                 }
-                #[cfg(not(feature = "f64-symjit"))]
+                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
                     Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-symjit feature",
+                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
                     ))
                 }
             }
@@ -476,7 +476,7 @@ impl EagerNativeRuntime {
                         &mut self.reduced,
                     )?;
                 }
-                #[cfg(feature = "f64-symjit")]
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
                     self.direct_amplitudes
                         .resize(self.amplitudes.len(), crate::EagerComplex64::new(0.0, 0.0));
@@ -501,10 +501,10 @@ impl EagerNativeRuntime {
                     )?;
                     compare_direct_real("full totals", &self.reduced, &self.direct_reduced)
                 }
-                #[cfg(not(feature = "f64-symjit"))]
+                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
                     Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-symjit feature",
+                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
                     ))
                 }
             }
@@ -513,7 +513,7 @@ impl EagerNativeRuntime {
 
     #[cfg(not(test))]
     fn execute_full_totals_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             return self
                 .direct_scheduler
@@ -531,11 +531,11 @@ impl EagerNativeRuntime {
                     &mut self.reduced,
                 );
         }
-        #[cfg(not(feature = "f64-symjit"))]
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
             let _ = point_count;
             Err(RusticolError::compatibility(
-                "eager-direct-arena-v1 requires the f64-symjit feature; regenerate or load \
+                "eager-direct-arena-v1 requires the f64-compiled or f64-symjit feature; regenerate or load \
                  this artifact with a Direct-Arena-capable runtime",
             ))
         }
@@ -543,7 +543,7 @@ impl EagerNativeRuntime {
 
     #[cfg(test)]
     fn execute_full_totals_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if self.direct_mode == EagerDirectValidationMode::Direct {
             return self
                 .direct_scheduler
@@ -570,7 +570,7 @@ impl EagerNativeRuntime {
         active_groups: &[u32],
         point_count: usize,
     ) -> RusticolResult<()> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             return self
                 .direct_scheduler
@@ -589,11 +589,11 @@ impl EagerNativeRuntime {
                     &mut self.amplitudes,
                 );
         }
-        #[cfg(not(feature = "f64-symjit"))]
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
             let _ = (active_groups, point_count);
             Err(RusticolError::compatibility(
-                "eager-direct-arena-v1 requires the f64-symjit feature; regenerate or load \
+                "eager-direct-arena-v1 requires the f64-compiled or f64-symjit feature; regenerate or load \
                  this artifact with a Direct-Arena-capable runtime",
             ))
         }
@@ -624,7 +624,7 @@ impl EagerNativeRuntime {
                 )
             }
             EagerDirectValidationMode::Direct => {
-                #[cfg(feature = "f64-symjit")]
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
                     return self
                         .direct_scheduler
@@ -643,10 +643,10 @@ impl EagerNativeRuntime {
                             &mut self.amplitudes,
                         );
                 }
-                #[cfg(not(feature = "f64-symjit"))]
+                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
                     Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-symjit feature",
+                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
                     ))
                 }
             }
@@ -669,7 +669,7 @@ impl EagerNativeRuntime {
                         &mut self.amplitudes,
                     )?;
                 }
-                #[cfg(feature = "f64-symjit")]
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
                     self.direct_amplitudes.clear();
                     self.direct_amplitudes
@@ -693,10 +693,10 @@ impl EagerNativeRuntime {
                         &self.direct_amplitudes,
                     )
                 }
-                #[cfg(not(feature = "f64-symjit"))]
+                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
                     Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-symjit feature",
+                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
                     ))
                 }
             }
@@ -713,7 +713,7 @@ impl EagerNativeRuntime {
         point_count: usize,
         reduced: &mut [f64],
     ) -> RusticolResult<()> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             return self
                 .direct_scheduler
@@ -734,7 +734,7 @@ impl EagerNativeRuntime {
                     reduced,
                 );
         }
-        #[cfg(not(feature = "f64-symjit"))]
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
             let _ = (
                 group_offsets,
@@ -744,7 +744,7 @@ impl EagerNativeRuntime {
                 reduced,
             );
             Err(RusticolError::compatibility(
-                "eager-direct-arena-v1 requires the f64-symjit feature; regenerate or load \
+                "eager-direct-arena-v1 requires the f64-compiled or f64-symjit feature; regenerate or load \
                  this artifact with a Direct-Arena-capable runtime",
             ))
         }
@@ -781,7 +781,7 @@ impl EagerNativeRuntime {
                 )
             }
             EagerDirectValidationMode::Direct => {
-                #[cfg(feature = "f64-symjit")]
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
                     return self
                         .direct_scheduler
@@ -802,10 +802,10 @@ impl EagerNativeRuntime {
                             reduced,
                         );
                 }
-                #[cfg(not(feature = "f64-symjit"))]
+                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
                     Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-symjit feature",
+                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
                     ))
                 }
             }
@@ -829,7 +829,7 @@ impl EagerNativeRuntime {
                         reduced,
                     )?;
                 }
-                #[cfg(feature = "f64-symjit")]
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
                     self.direct_reduced.resize(point_count, 0.0);
                     self.direct_scheduler
@@ -849,10 +849,10 @@ impl EagerNativeRuntime {
                         )?;
                     compare_direct_real("per-point selected totals", reduced, &self.direct_reduced)
                 }
-                #[cfg(not(feature = "f64-symjit"))]
+                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
                     Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-symjit feature",
+                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
                     ))
                 }
             }
@@ -865,7 +865,7 @@ impl EagerNativeRuntime {
         active_groups: Option<&[u32]>,
         point_count: usize,
     ) -> RusticolResult<crate::eager_runtime::EagerExecutionProfile> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             let scheduler = self.direct_scheduler.as_mut().ok_or_else(|| {
                 RusticolError::internal("production eager runtime has no Direct-Arena scheduler")
@@ -890,11 +890,11 @@ impl EagerNativeRuntime {
                 )
             };
         }
-        #[cfg(not(feature = "f64-symjit"))]
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
             let _ = (active_groups, point_count);
             Err(RusticolError::compatibility(
-                "eager-direct-arena-v1 requires the f64-symjit feature; regenerate or load \
+                "eager-direct-arena-v1 requires the f64-compiled or f64-symjit feature; regenerate or load \
                  this artifact with a Direct-Arena-capable runtime",
             ))
         }
@@ -906,7 +906,7 @@ impl EagerNativeRuntime {
         active_groups: Option<&[u32]>,
         point_count: usize,
     ) -> RusticolResult<crate::eager_runtime::EagerExecutionProfile> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if self.direct_mode != EagerDirectValidationMode::Disabled {
             self.audit_direct_schedule(active_groups)?;
         }
@@ -941,7 +941,7 @@ impl EagerNativeRuntime {
                 }
             }
             EagerDirectValidationMode::Direct => {
-                #[cfg(feature = "f64-symjit")]
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
                     let scheduler = self.direct_scheduler.as_mut().ok_or_else(|| {
                         RusticolError::internal("eager direct mode has no Direct-Arena scheduler")
@@ -966,10 +966,10 @@ impl EagerNativeRuntime {
                         )
                     };
                 }
-                #[cfg(not(feature = "f64-symjit"))]
+                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
                     Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-symjit feature",
+                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
                     ))
                 }
             }
@@ -1003,7 +1003,7 @@ impl EagerNativeRuntime {
                         )?
                     }
                 };
-                #[cfg(feature = "f64-symjit")]
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
                     self.direct_amplitudes
                         .resize(self.amplitudes.len(), crate::EagerComplex64::new(0.0, 0.0));
@@ -1045,11 +1045,11 @@ impl EagerNativeRuntime {
                     let _ = legacy;
                     return Ok(direct);
                 }
-                #[cfg(not(feature = "f64-symjit"))]
+                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
                     let _ = legacy;
                     Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-symjit feature",
+                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
                     ))
                 }
             }
@@ -1285,22 +1285,61 @@ impl EagerNativeRuntime {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn run_f64_view_with_lc_topology_replay_into_unprofiled(
+    /// Resolve eager components directly from a borrowed momentum view.
+    ///
+    /// The returned value and public-axis vectors are the only result-owned
+    /// allocations. Input crossing, eager source preparation, and topology
+    /// replay all consume the borrowed flat view without constructing nested
+    /// point or momentum containers.
+    pub(super) fn run_resolved_f64_view_unprofiled(
         &mut self,
         common: &mut ExecutionRuntime,
         batch: F64MomentumBatchView<'_>,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
-        output: &mut [f64],
-    ) -> RusticolResult<()> {
+    ) -> RusticolResult<ResolvedValues<f64>> {
         let point_count = batch.point_count();
-        if output.len() != point_count {
-            return Err(RusticolError::invalid_argument(format!(
-                "eager topology-replay output has length {}, expected {point_count}",
-                output.len()
-            )));
+        let mut values = Vec::new();
+        if common.lc_topology_replay_enabled {
+            let selection = self.run_resolved_f64_view_with_lc_topology_replay_into_unprofiled(
+                common,
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                &mut values,
+            )?;
+            return Ok(ResolvedValues {
+                values,
+                point_count,
+                helicity_indices: selection.helicity_indices.clone(),
+                color_indices: selection.color_indices.clone(),
+            });
         }
+        self.run_resolved_f64_view_materialized_into_unprofiled(
+            common,
+            batch,
+            selected_helicity_ids,
+            selected_color_ids,
+            &mut values,
+        )?;
+        Ok(ResolvedValues {
+            values,
+            point_count,
+            helicity_indices: self.selected_helicity_indices.clone(),
+            color_indices: self.selected_color_indices.clone(),
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_resolved_f64_view_with_lc_topology_replay_into_unprofiled(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        output: &mut Vec<f64>,
+    ) -> RusticolResult<Arc<LcResolvedReplaySelection>> {
+        let point_count = batch.point_count();
         let physics = common.physics.clone().ok_or_else(|| {
             RusticolError::artifact("eager LC topology replay requires resolved physics metadata")
         })?;
@@ -1345,20 +1384,19 @@ impl EagerNativeRuntime {
             .len()
             .checked_mul(selection.color_indices.len())
             .ok_or_else(|| RusticolError::invalid_argument("resolved eager shape overflows"))?;
-        if target_component_count == 0 {
-            output.fill(0.0);
-            return Ok(());
-        }
         let target_scalar_count = point_count
             .checked_mul(target_component_count)
             .ok_or_else(|| RusticolError::invalid_argument("resolved eager shape overflows"))?;
+        output.resize(target_scalar_count, 0.0);
+        output.fill(0.0);
+        if target_component_count == 0 {
+            return Ok(selection);
+        }
+
         let mappings = Arc::clone(&common.lc_topology_replay_mappings);
         let mappings_per_chunk = replay_mappings_per_expanded_batch(point_count);
         let mut flat_momenta = std::mem::take(&mut self.lc_replay_flat_momenta);
         let mut materialized_values = std::mem::take(&mut self.lc_replay_materialized_values);
-        let mut target_components = std::mem::take(&mut self.lc_replay_target_components);
-        target_components.resize(target_scalar_count, 0.0);
-        target_components.fill(0.0);
         let result = (|| {
             for source_group in &selection.source_groups {
                 for chunk_start in
@@ -1397,7 +1435,7 @@ impl EagerNativeRuntime {
                         &mut materialized_values,
                     )?;
                     accumulate_selected_lc_replay_values_f64(
-                        &mut target_components,
+                        output,
                         point_count,
                         &materialized_values,
                         entry_chunk,
@@ -1406,18 +1444,54 @@ impl EagerNativeRuntime {
                     )?;
                 }
             }
-            for (target, components) in output
-                .iter_mut()
-                .zip(target_components.chunks_exact(target_component_count))
-            {
-                *target = components.iter().sum();
-            }
             Ok(())
         })();
         self.lc_replay_flat_momenta = flat_momenta;
         self.lc_replay_materialized_values = materialized_values;
+        result?;
+        Ok(selection)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_f64_view_with_lc_topology_replay_into_unprofiled(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let point_count = batch.point_count();
+        if output.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "eager topology-replay output has length {}, expected {point_count}",
+                output.len()
+            )));
+        }
+        let mut target_components = std::mem::take(&mut self.lc_replay_target_components);
+        let result = self.run_resolved_f64_view_with_lc_topology_replay_into_unprofiled(
+            common,
+            batch,
+            selected_helicity_ids,
+            selected_color_ids,
+            &mut target_components,
+        );
+        if let Ok(selection) = &result {
+            let target_component_count =
+                selection.helicity_indices.len() * selection.color_indices.len();
+            if target_component_count == 0 {
+                output.fill(0.0);
+            } else {
+                for (target, components) in output
+                    .iter_mut()
+                    .zip(target_components.chunks_exact(target_component_count))
+                {
+                    *target = components.iter().sum();
+                }
+            }
+        }
         self.lc_replay_target_components = target_components;
-        result
+        result.map(|_| ())
     }
 
     pub(super) fn run_f64(
@@ -2152,7 +2226,7 @@ fn fill_selected_eager_group_ids(
     Ok(())
 }
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[cfg(test)]
 fn aggregate_eager_schedule_audit(
     rows: Vec<crate::eager_runtime::EagerScheduleAuditRow>,

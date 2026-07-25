@@ -8,6 +8,9 @@ import pytest
 from pyamplicol._internal.versions import (
     COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
     COMPILED_PLANE_DIRECT_APPLICATION_ABI,
+    NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+    SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+    SYMBOLICA_CPP_RUNTIME_CAPABILITY,
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
@@ -38,9 +41,7 @@ def _leaf(path: str, input_len: int, output_len: int) -> dict[str, object]:
         "endianness": "little",
         "required_defuns": [],
         "evaluator_state_path": None,
-        "evaluator_state_runtime_capability": (
-            SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
-        ),
+        "evaluator_state_runtime_capability": (SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY),
     }
 
 
@@ -114,6 +115,53 @@ def _stage(*, amplitude: bool = False) -> dict[str, object]:
     }
 
 
+def _native_leaf(
+    path: str,
+    input_len: int,
+    output_len: int,
+    runtime_capability: str,
+) -> dict[str, object]:
+    return {
+        "kind": "compiled-complex-evaluator",
+        "runtime_capability": runtime_capability,
+        "backend": "compiled-complex",
+        "number_type": "complex",
+        "function_name": path.replace("/", "_").replace(".", "_"),
+        "input_len": input_len,
+        "output_len": output_len,
+        "settings": {
+            "compiled_optimization_level": 3,
+            "compiled_inline_asm": (
+                "none"
+                if runtime_capability == SYMBOLICA_CPP_RUNTIME_CAPABILITY
+                else "default"
+            ),
+        },
+        "source_path": f"{path}.direct.cpp",
+        "library_path": f"{path}.direct",
+        "evaluator_state_path": f"{path}.evaluator.bin",
+        "native_direct_application": {
+            "application_abi": NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+            "function_name": path.replace("/", "_").replace(".", "_"),
+            "source_path": f"{path}.direct.cpp",
+            "library_path": f"{path}.direct",
+            "target": {
+                "triple": "aarch64-apple-darwin",
+                "cpu_features": [],
+            },
+            "evaluator_state_sha256": "a" * 64,
+            "instruction_count": 1,
+            "temporary_count": 0,
+            "input_plane_count": input_len,
+            "scalar_input_count": 0,
+            "output_plane_count": 2 * output_len,
+            "simd_lane_width": 2,
+            "logical_stack_bytes": 32 * output_len,
+            "output_semantics": "factor-free-overwrite",
+        },
+    }
+
+
 def _set() -> dict[str, object]:
     stage = _stage()
     amplitude = _stage(amplitude=True)
@@ -164,6 +212,36 @@ def test_compiled_plane_contract_rejects_non_o3_generation() -> None:
         _compiled_plane_arena_stage(stage)
 
 
+@pytest.mark.parametrize(
+    "runtime_capability",
+    [SYMBOLICA_CPP_RUNTIME_CAPABILITY, SYMBOLICA_ASM_RUNTIME_CAPABILITY],
+)
+def test_native_compiled_contract_publishes_direct_library_leaves(
+    runtime_capability: str,
+) -> None:
+    stage = _stage()
+    stage["evaluator"] = {
+        "kind": "chunked-symbolica-evaluator",
+        "input_len": 3,
+        "chunk_input_indices": [[0, 2], [1]],
+        "required_runtime_capabilities": [runtime_capability],
+        "chunks": [
+            _native_leaf("compiled/left", 2, 1, runtime_capability),
+            _native_leaf("compiled/right", 1, 1, runtime_capability),
+        ],
+    }
+
+    direct = _compiled_plane_arena_stage(stage)
+
+    assert direct is not None
+    assert direct["application_abi"] == NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+    assert direct["source_application_abi"] == (NATIVE_COMPILED_DIRECT_APPLICATION_ABI)
+    assert [leaf["application_path"] for leaf in direct["leaves"]] == [
+        "compiled/left.direct",
+        "compiled/right.direct",
+    ]
+
+
 def test_stage_set_requires_complete_capability_bound_metadata() -> None:
     serialized = _stage_evaluator_set(_set())
     assert (
@@ -186,13 +264,11 @@ def test_stage_set_requires_complete_capability_bound_metadata() -> None:
     )
     del legacy["stages"][0]["compiled_plane_arena"]
     del legacy["amplitude_stage"]["compiled_plane_arena"]
-    with pytest.raises(ValueError, match="compiled SymJIT artifacts require"):
+    with pytest.raises(ValueError, match="compiled f64 artifacts require"):
         _stage_evaluator_set(legacy)
 
     drift = deepcopy(_set())
-    drift["amplitude_stage"]["compiled_plane_arena"]["leaves"][1][
-        "output_start"
-    ] = 0
+    drift["amplitude_stage"]["compiled_plane_arena"]["leaves"][1]["output_start"] = 0
     with pytest.raises(ValueError, match="leaf bindings"):
         _stage_evaluator_set(drift)
 

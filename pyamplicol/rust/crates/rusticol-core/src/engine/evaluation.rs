@@ -2,7 +2,7 @@
 
 use super::*;
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 fn evaluate_direct_color_schedule(
     direct: &mut compiled_direct_prototype::CompiledDirectEnginePrototype,
     schedules: &BTreeMap<i64, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
@@ -164,7 +164,7 @@ impl ExecutionRuntime {
             {
                 return Ok(());
             }
-            #[cfg(feature = "f64-symjit")]
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             if self.try_run_f64_with_lc_topology_replay_totals_into_unprofiled(
                 batch,
                 selected_helicity_ids,
@@ -258,7 +258,7 @@ impl ExecutionRuntime {
                 selected_color_ids,
             );
         }
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if self.compiled_direct_runtime.is_some() {
             return self.run_f64_materialized_selected_direct_resolved_unprofiled(
                 batch,
@@ -352,7 +352,7 @@ impl ExecutionRuntime {
                         Some(&source_group.color_ids),
                     )?
                 } else {
-                    #[cfg(feature = "f64-symjit")]
+                    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                     if self.compiled_direct_runtime.is_some() {
                         self.run_f64_materialized_selected_direct_resolved_unprofiled(
                             evaluation_view,
@@ -377,7 +377,7 @@ impl ExecutionRuntime {
                                 Some(&source_group.color_ids),
                             )?
                     }
-                    #[cfg(not(feature = "f64-symjit"))]
+                    #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                     {
                         self.run_f64_materialized_selected_for_resolved_unprofiled(
                             evaluation_view,
@@ -549,7 +549,7 @@ impl ExecutionRuntime {
     /// One mapping is streamed at a time. Persistent point-major target
     /// components retain the resolved contract's mapping accumulation and
     /// final H-major/C-minor fold exactly.
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     fn try_run_f64_with_lc_topology_replay_totals_into_unprofiled(
         &mut self,
         batch: F64MomentumBatchView<'_>,
@@ -748,7 +748,7 @@ impl ExecutionRuntime {
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
             )
         })?;
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if self.compiled_direct_runtime.is_some() {
             return self.run_f64_routed_materialized_direct_into_unprofiled(
                 batch,
@@ -807,7 +807,7 @@ impl ExecutionRuntime {
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        #[cfg(feature = "f64-symjit")]
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if self.compiled_direct_runtime.is_some() {
             return self.run_f64_materialized_selected_direct_into_unprofiled(
                 batch,
@@ -833,7 +833,7 @@ impl ExecutionRuntime {
         Ok(())
     }
 
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     fn run_f64_materialized_selected_direct_into_unprofiled(
         &mut self,
         batch: F64MomentumBatchView<'_>,
@@ -902,7 +902,7 @@ impl ExecutionRuntime {
         Ok(())
     }
 
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     #[allow(clippy::too_many_arguments)]
     fn run_f64_materialized_selected_direct_resolved_unprofiled(
         &mut self,
@@ -990,7 +990,7 @@ impl ExecutionRuntime {
         })
     }
 
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     #[allow(clippy::too_many_arguments)]
     fn run_f64_routed_materialized_direct_into_unprofiled(
         &mut self,
@@ -1059,7 +1059,7 @@ impl ExecutionRuntime {
         Ok(())
     }
 
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     #[allow(clippy::too_many_arguments)]
     fn run_f64_routed_materialized_direct_components_add_unprofiled(
         &mut self,

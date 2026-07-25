@@ -318,12 +318,10 @@ def compiler_from_symbolica_settings(
 ) -> NativeDirectCppCompiler:
     """Translate the adapter's recorded settings into the direct compiler."""
 
-    inline_asm = str(settings.get("compiled_inline_asm", "default"))
-    if inline_asm != "none":
-        raise NativeEvaluationError(
-            "native DirectApplication C++ emission cannot reuse an inline-ASM "
-            "scalar-row producer"
-        )
+    # The direct translation is intentionally independent from Symbolica's
+    # dense scalar-row emitter.  An ``asm`` public backend therefore reuses the
+    # same optimized instruction stream and compiler policy here, without
+    # parsing, wrapping, or calling its inline-ASM row function.
     executable_value = settings.get("compiler_path")
     executable = "c++" if executable_value is None else str(executable_value)
     optimization = settings.get("compiled_optimization_level", 3)

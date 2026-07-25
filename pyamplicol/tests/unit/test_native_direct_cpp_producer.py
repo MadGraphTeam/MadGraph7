@@ -21,8 +21,10 @@ from pyamplicol.evaluators.native_direct_cpp import (
     NativeDirectCppParameterKind as ParameterKind,
 )
 from pyamplicol.evaluators.symbolica_adapters import (
+    _CompiledComplexEvaluatorAdapter,
     _native_direct_application_manifest,
 )
+from pyamplicol.evaluators.symbolica_settings import SymbolicaEvaluatorSettings
 from pyamplicol.generation.artifact_writer import _evaluator
 
 
@@ -127,7 +129,7 @@ def test_real_argument_and_stack_contracts_fail_closed() -> None:
         )
 
 
-def test_compiler_settings_reject_inline_asm_and_retain_cpp_flags() -> None:
+def test_compiler_settings_retain_cpp_and_asm_direct_flags() -> None:
     compiler = compiler_from_symbolica_settings(
         {
             "compiled_inline_asm": "none",
@@ -142,12 +144,17 @@ def test_compiler_settings_reject_inline_asm_and_retain_cpp_flags() -> None:
     assert compiler.native_arch is True
     assert compiler.extra_flags == ("-fno-math-errno",)
 
-    with pytest.raises(NativeEvaluationError, match="cannot reuse an inline-ASM"):
-        compiler_from_symbolica_settings(
-            {
-                "compiled_inline_asm": "default",
-            }
-        )
+    asm_compiler = compiler_from_symbolica_settings(
+        {
+            "compiled_inline_asm": "default",
+            "compiled_optimization_level": 3,
+            "compiled_native": False,
+            "compiler_flags": ["-fno-math-errno"],
+        }
+    )
+    assert asm_compiler.optimization_level == 3
+    assert asm_compiler.native_arch is False
+    assert asm_compiler.extra_flags == ("-fno-math-errno",)
 
 
 def test_direct_only_companion_identity_survives_evaluator_manifest(
@@ -185,7 +192,7 @@ def test_direct_only_companion_identity_survives_evaluator_manifest(
             "function_name": "retained_leaf",
             "input_len": 2,
             "output_len": 1,
-            "library_path": "libretained_leaf",
+            "library_path": "libretained_leaf.direct",
             "evaluator_state_path": "retained_leaf.evaluator.bin",
             "number_type": "complex",
             "native_direct_application": identity,
@@ -200,3 +207,70 @@ def test_direct_only_companion_identity_survives_evaluator_manifest(
     assert identity["source_path"] == "retained_leaf.direct.cpp"
     assert identity["library_path"] == "libretained_leaf.direct"
     assert evaluator["native_direct_application"] == identity
+
+    asm_evaluator = _evaluator(
+        {
+            "kind": "compiled-complex-evaluator",
+            "runtime_capability": "symbolica.compiled-asm.complex-f64.v1",
+            "function_name": "retained_leaf",
+            "input_len": 2,
+            "output_len": 1,
+            "library_path": "libretained_leaf.direct",
+            "evaluator_state_path": "retained_leaf.evaluator.bin",
+            "number_type": "complex",
+            "native_direct_application": identity,
+        }
+    )
+    assert asm_evaluator["native_direct_application"] == identity
+
+
+def test_process_stage_adapter_serializes_no_dense_library(tmp_path: Path) -> None:
+    source = _Evaluator(
+        [
+            ("mul", ("out", 0), [("param", 0), ("param", 0)], 0),
+        ]
+    )
+    adapter = _CompiledComplexEvaluatorAdapter(
+        source,
+        SymbolicaEvaluatorSettings(
+            backend="compiled-complex",
+            compiled_inline_asm="none",
+            compiled_output_dir=str(tmp_path),
+        ),
+        "direct only stage",
+        input_len=1,
+        output_len=1,
+        compile_dense=False,
+    )
+    rendered = render_native_direct_cpp(
+        source,
+        _spec(
+            function_name=adapter.function_name,
+            parameter_kinds=(ParameterKind.COMPLEX_PLANE,),
+        ),
+    )
+    direct_source = tmp_path / f"{adapter.function_name}.direct.cpp"
+    direct_library = tmp_path / f"lib{adapter.function_name}.direct"
+    direct_source.write_text(rendered.source, encoding="utf-8")
+    direct_library.write_bytes(b"direct-only-test-library")
+    adapter.native_direct_application = NativeDirectCppArtifact(
+        source_path=direct_source,
+        library_path=direct_library,
+        source=rendered,
+        compiler_command=("c++",),
+        compile_seconds=0.125,
+    )
+
+    manifest = adapter.artifact_manifest(tmp_path)
+
+    assert manifest["library_path"] == direct_library.name
+    assert manifest["source_path"] == direct_source.name
+    assert not adapter.library_path.exists()
+    assert not adapter.source_path.exists()
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted(
+        [
+            direct_source.name,
+            direct_library.name,
+            adapter.evaluator_state_path.name,
+        ]
+    )

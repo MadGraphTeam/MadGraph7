@@ -15,10 +15,14 @@ use crate::direct_arena::{DirectArenaView, DirectArenaWorkspace};
 use crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY;
 pub(crate) use crate::eager_layout::{
     EAGER_DIRECT_SOURCE_APPLICATION_ABI, EAGER_DIRECT_TABLE_BINDING_ABI,
-    EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+    EAGER_DIRECT_TABLE_DESCRIPTOR_ABI, EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI,
 };
 use crate::{RusticolError, RusticolResult};
 use std::any::Any;
+#[cfg(feature = "f64-compiled")]
+use std::ffi::CStr;
+#[cfg(feature = "f64-compiled")]
+use std::os::raw::c_char;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -361,8 +365,50 @@ impl EagerDirectTableWorkspace {
 
 /// Loaded owner of one prepared eager table-aware callable.
 pub(crate) struct LoadedSymjitEagerDirectTable {
-    callable: DirectTableCallable,
+    callable: EagerDirectTableCallable,
     display_path: PathBuf,
+}
+
+enum EagerDirectTableCallable {
+    Symjit(DirectTableCallable),
+    #[cfg(feature = "f64-compiled")]
+    Native(LoadedNativeEagerDirectTable),
+}
+
+#[cfg(feature = "f64-compiled")]
+type NativeEagerDirectTableCall = unsafe extern "C" fn(*const DirectTableCallViewV1) -> i32;
+
+#[cfg(feature = "f64-compiled")]
+#[repr(C)]
+struct NativeEagerDirectTableMetadataV1 {
+    struct_size: u32,
+    abi_version: u32,
+    flags: u32,
+    invocation_stride: u32,
+    attachment_stride: u32,
+    input_complex_count: u32,
+    output_complex_count: u32,
+    simd_lane_width: u32,
+    application_abi: *const c_char,
+    function_name: *const c_char,
+    target_triple: *const c_char,
+    evaluator_state_sha256: *const c_char,
+}
+
+#[cfg(feature = "f64-compiled")]
+type NativeEagerDirectTableMetadataCall =
+    unsafe extern "C" fn() -> *const NativeEagerDirectTableMetadataV1;
+
+#[cfg(feature = "f64-compiled")]
+const NATIVE_EAGER_DIRECT_TABLE_METADATA_VERSION: u32 = 1;
+#[cfg(feature = "f64-compiled")]
+const NATIVE_EAGER_DIRECT_TABLE_REQUIRED_FLAGS: u32 = 0x1f;
+
+#[cfg(feature = "f64-compiled")]
+struct LoadedNativeEagerDirectTable {
+    _library: libloading::Library,
+    call: NativeEagerDirectTableCall,
+    metadata: DirectTableApplicationMetadata,
 }
 
 impl LoadedSymjitEagerDirectTable {
@@ -439,9 +485,160 @@ impl LoadedSymjitEagerDirectTable {
             ))
         })?;
         Ok(Self {
-            callable: applet.into_callable(),
+            callable: EagerDirectTableCallable::Symjit(applet.into_callable()),
             display_path,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn load_native_application(
+        library_path: &Path,
+        function_name: &str,
+        display_path: PathBuf,
+        source_application_abi: &str,
+        invocation_stride: u32,
+        attachment_stride: u32,
+        input_complex_count: u32,
+        output_complex_count: u32,
+        expected_target_triple: &str,
+        expected_evaluator_state_sha256: &str,
+        expected_simd_lane_width: u32,
+    ) -> RusticolResult<Self> {
+        if source_application_abi != EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI {
+            return Err(RusticolError::compatibility(format!(
+                "unsupported native eager DirectTable application ABI \
+                 {source_application_abi:?}; expected \
+                 {EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI:?}"
+            )));
+        }
+        validate_c_symbol(function_name)?;
+        let metadata = eager_direct_table_metadata(input_complex_count, output_complex_count)?;
+        if metadata.invocation.row_stride != invocation_stride
+            || metadata.attachment.row_stride != attachment_stride
+        {
+            return Err(RusticolError::integrity(format!(
+                "native eager DirectTable {} row strides ({invocation_stride}, \
+                 {attachment_stride}) do not match ({}, {})",
+                display_path.display(),
+                metadata.invocation.row_stride,
+                metadata.attachment.row_stride,
+            )));
+        }
+        #[cfg(not(feature = "f64-compiled"))]
+        {
+            let _ = (
+                library_path,
+                function_name,
+                metadata,
+                expected_target_triple,
+                expected_evaluator_state_sha256,
+                expected_simd_lane_width,
+            );
+            return Err(RusticolError::compatibility(
+                "native eager DirectTable execution requires the f64-compiled feature",
+            ));
+        }
+        #[cfg(feature = "f64-compiled")]
+        {
+            let library = unsafe { libloading::Library::new(library_path) }.map_err(|error| {
+                RusticolError::evaluation(format!(
+                    "could not load native eager DirectTable library {}: {error}",
+                    library_path.display()
+                ))
+            })?;
+            let metadata_symbol_name = format!("{function_name}_metadata_v1");
+            let metadata_call = unsafe {
+                library
+                    .get::<NativeEagerDirectTableMetadataCall>(metadata_symbol_name.as_bytes())
+                    .map(|symbol| *symbol)
+                    .map_err(|error| {
+                        RusticolError::compatibility(format!(
+                            "could not load native eager DirectTable metadata symbol \
+                             {metadata_symbol_name:?} from {}: {error}",
+                            library_path.display()
+                        ))
+                    })?
+            };
+            let exported = unsafe { metadata_call() };
+            if exported.is_null() {
+                return Err(RusticolError::integrity(format!(
+                    "native eager DirectTable {} returned null ABI metadata",
+                    display_path.display()
+                )));
+            }
+            let exported = unsafe { &*exported };
+            let expected_struct_size =
+                u32::try_from(std::mem::size_of::<NativeEagerDirectTableMetadataV1>())
+                    .expect("native eager metadata size fits u32");
+            if exported.struct_size != expected_struct_size
+                || exported.abi_version != NATIVE_EAGER_DIRECT_TABLE_METADATA_VERSION
+                || exported.flags != NATIVE_EAGER_DIRECT_TABLE_REQUIRED_FLAGS
+                || exported.invocation_stride != invocation_stride
+                || exported.attachment_stride != attachment_stride
+                || exported.input_complex_count != input_complex_count
+                || exported.output_complex_count != output_complex_count
+                || exported.simd_lane_width != expected_simd_lane_width
+            {
+                return Err(RusticolError::compatibility(format!(
+                    "native eager DirectTable {} exports incompatible ABI metadata",
+                    display_path.display()
+                )));
+            }
+            for (label, pointer, expected) in [
+                (
+                    "application ABI",
+                    exported.application_abi,
+                    source_application_abi,
+                ),
+                ("function name", exported.function_name, function_name),
+                (
+                    "target triple",
+                    exported.target_triple,
+                    expected_target_triple,
+                ),
+                (
+                    "evaluator-state digest",
+                    exported.evaluator_state_sha256,
+                    expected_evaluator_state_sha256,
+                ),
+            ] {
+                let actual = native_metadata_text(pointer, label, &display_path)?;
+                if actual != expected {
+                    return Err(RusticolError::compatibility(format!(
+                        "native eager DirectTable {} {label} is {actual:?}, expected {expected:?}",
+                        display_path.display()
+                    )));
+                }
+            }
+            let call = unsafe {
+                library
+                    .get::<NativeEagerDirectTableCall>(function_name.as_bytes())
+                    .map(|symbol| *symbol)
+                    .map_err(|error| {
+                        RusticolError::evaluation(format!(
+                            "could not load native eager DirectTable symbol \
+                             {function_name:?} from {}: {error}",
+                            library_path.display()
+                        ))
+                    })?
+            };
+            Ok(Self {
+                callable: EagerDirectTableCallable::Native(LoadedNativeEagerDirectTable {
+                    _library: library,
+                    call,
+                    metadata,
+                }),
+                display_path,
+            })
+        }
+    }
+
+    fn metadata(&self) -> &DirectTableApplicationMetadata {
+        match &self.callable {
+            EagerDirectTableCallable::Symjit(callable) => callable.metadata(),
+            #[cfg(feature = "f64-compiled")]
+            EagerDirectTableCallable::Native(callable) => &callable.metadata,
+        }
     }
 
     pub(crate) fn load_rows(
@@ -449,7 +646,7 @@ impl LoadedSymjitEagerDirectTable {
         invocation_bytes: Vec<u8>,
         attachment_bytes: Vec<u8>,
     ) -> RusticolResult<EagerDirectTableRows> {
-        let metadata = self.callable.metadata();
+        let metadata = self.metadata();
         let invocation_count = table_row_count(
             &invocation_bytes,
             metadata.invocation.row_stride,
@@ -481,7 +678,7 @@ impl LoadedSymjitEagerDirectTable {
     ) -> RusticolResult<()> {
         let view = self.call_view(rows, workspace, point_start, point_count)?;
         guard_symjit_panic(
-            || unsafe { self.callable.metadata().validate_call_view(&view) },
+            || unsafe { self.metadata().validate_call_view(&view) },
             &self.display_path,
             "validate table call",
         )?
@@ -505,7 +702,13 @@ impl LoadedSymjitEagerDirectTable {
     ) -> RusticolResult<()> {
         let view = self.call_view(rows, workspace, point_start, point_count)?;
         let status = guard_symjit_panic(
-            || unsafe { self.callable.handle().invoke(&view) },
+            || unsafe {
+                match &self.callable {
+                    EagerDirectTableCallable::Symjit(callable) => callable.handle().invoke(&view),
+                    #[cfg(feature = "f64-compiled")]
+                    EagerDirectTableCallable::Native(callable) => (callable.call)(&view),
+                }
+            },
             &self.display_path,
             "execute checked table call",
         )?;
@@ -533,7 +736,13 @@ impl LoadedSymjitEagerDirectTable {
     ) -> RusticolResult<()> {
         let view = self.call_view(rows, workspace, point_start, point_count)?;
         let status = guard_symjit_panic(
-            || unsafe { self.callable.invoke_unchecked(&view) },
+            || unsafe {
+                match &self.callable {
+                    EagerDirectTableCallable::Symjit(callable) => callable.invoke_unchecked(&view),
+                    #[cfg(feature = "f64-compiled")]
+                    EagerDirectTableCallable::Native(callable) => (callable.call)(&view),
+                }
+            },
             &self.display_path,
             "execute validated table call",
         )?;
@@ -547,7 +756,7 @@ impl LoadedSymjitEagerDirectTable {
         point_start: u32,
         point_count: u32,
     ) -> RusticolResult<DirectTableCallViewV1> {
-        let metadata = self.callable.metadata();
+        let metadata = self.metadata();
         if workspace.scalars.len() != metadata.scalar_input_count as usize {
             return Err(RusticolError::integrity(format!(
                 "eager Direct-Arena scalar catalog has {} entries, expected {}",
@@ -563,6 +772,46 @@ impl LoadedSymjitEagerDirectTable {
             point_count,
         )
     }
+}
+
+#[cfg(feature = "f64-compiled")]
+fn native_metadata_text(
+    pointer: *const c_char,
+    label: &str,
+    display_path: &Path,
+) -> RusticolResult<String> {
+    if pointer.is_null() {
+        return Err(RusticolError::integrity(format!(
+            "native eager DirectTable {} has a null {label}",
+            display_path.display()
+        )));
+    }
+    unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .map(str::to_owned)
+        .map_err(|error| {
+            RusticolError::integrity(format!(
+                "native eager DirectTable {} has non-UTF-8 {label}: {error}",
+                display_path.display()
+            ))
+        })
+}
+
+fn validate_c_symbol(symbol: &str) -> RusticolResult<()> {
+    let mut bytes = symbol.bytes();
+    let Some(first) = bytes.next() else {
+        return Err(RusticolError::artifact(
+            "native eager DirectTable symbol must not be empty",
+        ));
+    };
+    if !(first == b'_' || first.is_ascii_alphabetic())
+        || bytes.any(|byte| !(byte == b'_' || byte.is_ascii_alphanumeric()))
+    {
+        return Err(RusticolError::artifact(format!(
+            "native eager DirectTable symbol {symbol:?} is not a portable C identifier"
+        )));
+    }
+    Ok(())
 }
 
 fn bind_arena_plane(

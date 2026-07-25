@@ -13,7 +13,7 @@ use crate::{
 };
 use serde::Deserialize;
 use serde_json::json;
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use sha2::{Digest, Sha256};
 
 const NATIVE_REDUCTION_GROUPS_EXTENSION_KEY: &str = "native_reduction_groups";
@@ -142,15 +142,15 @@ pub(super) fn load_eager_v3_native_runtime(
         point_tile_size: decoded.runtime_options.point_tile_size,
         workspace_bytes: decoded.runtime_options.workspace_bytes,
     };
-    #[cfg(not(feature = "f64-symjit"))]
+    #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
     {
         let _ = (sections, runtime_options, parameter_projection);
         return Err(RusticolError::compatibility(
             "this artifact requires eager-direct-arena-v1, which is unavailable without the \
-             f64-symjit feature; use a Direct-Arena-capable runtime",
+             f64-compiled/f64-symjit features; use a Direct-Arena-capable runtime",
         ));
     }
-    #[cfg(feature = "f64-symjit")]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     {
         let direct = load_eager_v3_direct_scheduler(
             &pack.manifest,
@@ -220,7 +220,7 @@ pub(super) fn load_eager_v3_native_runtime(
     }
 }
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 fn load_eager_v3_direct_scheduler(
     pack: &PreparedKernelPackManifest,
     payloads: &EvaluatorPayloadStore,
@@ -228,12 +228,24 @@ fn load_eager_v3_direct_scheduler(
     sections: EagerPlanV3Sections<'_>,
     options: EagerRuntimeOptions,
 ) -> RusticolResult<crate::eager_runtime::EagerDirectExecutionRuntime> {
-    if pack.backend != "jit" {
-        return Err(RusticolError::compatibility(format!(
-            "eager-direct-arena-v1 requires the SymJIT prepared backend, found {:?}; no packet \
-             fallback is permitted",
-            pack.backend
-        )));
+    match pack.backend.as_str() {
+        "jit" => {
+            #[cfg(not(feature = "f64-symjit"))]
+            return Err(RusticolError::compatibility(
+                "eager Direct-Arena JIT execution requires the f64-symjit feature",
+            ));
+        }
+        "cpp" | "asm" => {
+            #[cfg(not(feature = "f64-compiled"))]
+            return Err(RusticolError::compatibility(
+                "eager Direct-Arena C++/ASM execution requires the f64-compiled feature",
+            ));
+        }
+        other => {
+            return Err(RusticolError::compatibility(format!(
+                "unsupported eager Direct-Arena prepared backend {other:?}"
+            )));
+        }
     }
 
     struct OwnedPrepared {
@@ -241,9 +253,25 @@ fn load_eager_v3_direct_scheduler(
         role: crate::EagerKernelRole,
         inputs: Vec<crate::EagerKernelInput>,
         output_component_count: u32,
-        source: Vec<u8>,
-        descriptor: Vec<u8>,
+        application: OwnedPreparedApplication,
         display_path: PathBuf,
+    }
+
+    enum OwnedPreparedApplication {
+        Symjit {
+            source: Vec<u8>,
+            descriptor: Vec<u8>,
+        },
+        Native {
+            library_path: PathBuf,
+            function_name: String,
+            source_application_abi: String,
+            invocation_stride: u32,
+            attachment_stride: u32,
+            target_triple: String,
+            evaluator_state_sha256: String,
+            simd_lane_width: u32,
+        },
     }
 
     let mut owned = Vec::with_capacity(decoded.kernel_specs.len());
@@ -259,36 +287,115 @@ fn load_eager_v3_direct_scheduler(
                 ))
             })?;
         let direct = manifest.eager_direct_table_manifest()?;
-        let application_path = manifest
-            .f64_evaluator_manifest
-            .get("application_path")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                RusticolError::compatibility(format!(
-                    "eager Direct-Arena kernel {} has no SymJIT source application",
-                    kernel.kernel_id
-                ))
-            })?;
-        let source = payloads.source(application_path)?;
-        let source_bytes = source.read()?.into_owned();
-        let display_path = PathBuf::from(source.display_name());
-        let descriptor_source = payloads.source(&direct.descriptor_path)?;
-        let descriptor = descriptor_source.read()?.into_owned();
-        if u64::try_from(descriptor.len()).ok() != Some(direct.descriptor_size_bytes) {
-            return Err(RusticolError::integrity(format!(
-                "eager DirectTable descriptor for kernel {} has size {}, expected {}",
-                kernel.kernel_id,
-                descriptor.len(),
-                direct.descriptor_size_bytes,
-            )));
-        }
-        let actual_descriptor_sha = format!("{:x}", Sha256::digest(&descriptor));
-        if actual_descriptor_sha != direct.descriptor_sha256 {
-            return Err(RusticolError::integrity(format!(
-                "eager DirectTable descriptor digest mismatch for kernel {}",
-                kernel.kernel_id
-            )));
-        }
+        let (application, display_path) = match pack.backend.as_str() {
+            "jit" => {
+                if direct.source_application_abi
+                    != crate::eager_layout::EAGER_DIRECT_SOURCE_APPLICATION_ABI
+                {
+                    return Err(RusticolError::compatibility(format!(
+                        "eager Direct-Arena JIT kernel {} has a native source ABI",
+                        kernel.kernel_id
+                    )));
+                }
+                let application_path = manifest
+                    .f64_evaluator_manifest
+                    .get("application_path")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| {
+                        RusticolError::compatibility(format!(
+                            "eager Direct-Arena kernel {} has no SymJIT source application",
+                            kernel.kernel_id
+                        ))
+                    })?;
+                let source = payloads.source(application_path)?;
+                let source_bytes = source.read()?.into_owned();
+                let display_path = PathBuf::from(source.display_name());
+                let descriptor_path = direct.descriptor_path.as_deref().ok_or_else(|| {
+                    RusticolError::artifact("eager JIT DirectTable has no descriptor path")
+                })?;
+                let descriptor_source = payloads.source(descriptor_path)?;
+                let descriptor = descriptor_source.read()?.into_owned();
+                if u64::try_from(descriptor.len()).ok() != direct.descriptor_size_bytes {
+                    return Err(RusticolError::integrity(format!(
+                        "eager DirectTable descriptor for kernel {} has size {}, expected {:?}",
+                        kernel.kernel_id,
+                        descriptor.len(),
+                        direct.descriptor_size_bytes,
+                    )));
+                }
+                let actual_descriptor_sha = format!("{:x}", Sha256::digest(&descriptor));
+                if Some(actual_descriptor_sha.as_str()) != direct.descriptor_sha256.as_deref() {
+                    return Err(RusticolError::integrity(format!(
+                        "eager DirectTable descriptor digest mismatch for kernel {}",
+                        kernel.kernel_id
+                    )));
+                }
+                (
+                    OwnedPreparedApplication::Symjit {
+                        source: source_bytes,
+                        descriptor,
+                    },
+                    display_path,
+                )
+            }
+            "cpp" | "asm" => {
+                if direct.source_application_abi
+                    != crate::eager_layout::EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI
+                {
+                    return Err(RusticolError::compatibility(format!(
+                        "eager Direct-Arena native kernel {} has a JIT source ABI",
+                        kernel.kernel_id
+                    )));
+                }
+                let library_path = direct.library_path.as_deref().ok_or_else(|| {
+                    RusticolError::artifact("eager native DirectTable has no library path")
+                })?;
+                let physical_path = payloads.physical_path(library_path)?;
+                let function_name = direct.function_name.clone().ok_or_else(|| {
+                    RusticolError::artifact("eager native DirectTable has no function name")
+                })?;
+                let expected =
+                    format!("pyamplicol_eager_direct_table_k{:08x}_v1", kernel.kernel_id);
+                if function_name != expected {
+                    return Err(RusticolError::integrity(format!(
+                        "eager native DirectTable kernel {} exports {function_name:?}, expected {expected:?}",
+                        kernel.kernel_id
+                    )));
+                }
+                let expected_state_sha =
+                    direct.evaluator_state_sha256.as_deref().ok_or_else(|| {
+                        RusticolError::artifact(
+                            "eager native DirectTable has no evaluator-state digest",
+                        )
+                    })?;
+                let exact_state = payloads.source(&manifest.exact_evaluator_state_path)?;
+                let exact_state_bytes = exact_state.read()?;
+                let actual_state_sha = format!("{:x}", Sha256::digest(exact_state_bytes.as_ref()));
+                if actual_state_sha != expected_state_sha {
+                    return Err(RusticolError::integrity(format!(
+                        "eager native DirectTable evaluator-state digest mismatch for kernel {}",
+                        kernel.kernel_id
+                    )));
+                }
+                (
+                    OwnedPreparedApplication::Native {
+                        library_path: physical_path.clone(),
+                        function_name,
+                        source_application_abi: direct.source_application_abi.clone(),
+                        invocation_stride: direct.invocation_stride.unwrap_or(0),
+                        attachment_stride: direct.attachment_stride.unwrap_or(0),
+                        target_triple: pack.target.target_triple.clone(),
+                        evaluator_state_sha256: direct
+                            .evaluator_state_sha256
+                            .clone()
+                            .unwrap_or_default(),
+                        simd_lane_width: direct.simd_lane_width.unwrap_or(0),
+                    },
+                    physical_path,
+                )
+            }
+            _ => unreachable!("prepared backend validated"),
+        };
         if direct.input_complex_count
             != count_u32_for_direct(kernel.inputs.len(), "kernel input width")?
             || direct.output_complex_count != kernel.output_component_count
@@ -303,21 +410,48 @@ fn load_eager_v3_direct_scheduler(
             role: kernel.role,
             inputs: kernel.inputs.clone(),
             output_component_count: kernel.output_component_count,
-            source: source_bytes,
-            descriptor,
+            application,
             display_path,
         });
     }
     let prepared = owned
         .iter()
-        .map(|kernel| crate::eager_runtime::EagerDirectPreparedKernel {
-            kernel_id: kernel.kernel_id,
-            role: kernel.role,
-            inputs: &kernel.inputs,
-            output_component_count: kernel.output_component_count,
-            source_application: &kernel.source,
-            descriptor: &kernel.descriptor,
-            display_path: kernel.display_path.clone(),
+        .map(|kernel| {
+            let application = match &kernel.application {
+                OwnedPreparedApplication::Symjit { source, descriptor } => {
+                    crate::eager_runtime::EagerDirectPreparedApplication::Symjit {
+                        source_application: source,
+                        descriptor,
+                    }
+                }
+                OwnedPreparedApplication::Native {
+                    library_path,
+                    function_name,
+                    source_application_abi,
+                    invocation_stride,
+                    attachment_stride,
+                    target_triple,
+                    evaluator_state_sha256,
+                    simd_lane_width,
+                } => crate::eager_runtime::EagerDirectPreparedApplication::Native {
+                    library_path,
+                    function_name,
+                    source_application_abi,
+                    invocation_stride: *invocation_stride,
+                    attachment_stride: *attachment_stride,
+                    target_triple,
+                    evaluator_state_sha256,
+                    simd_lane_width: *simd_lane_width,
+                },
+            };
+            crate::eager_runtime::EagerDirectPreparedKernel {
+                kernel_id: kernel.kernel_id,
+                role: kernel.role,
+                inputs: &kernel.inputs,
+                output_component_count: kernel.output_component_count,
+                application,
+                display_path: kernel.display_path.clone(),
+            }
         })
         .collect::<Vec<_>>();
     crate::eager_runtime::EagerDirectExecutionRuntime::from_plan_v3_sections(
@@ -325,7 +459,7 @@ fn load_eager_v3_direct_scheduler(
     )
 }
 
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 fn count_u32_for_direct(value: usize, label: &str) -> RusticolResult<u32> {
     u32::try_from(value)
         .map_err(|_| RusticolError::invalid_argument(format!("eager direct {label} exceeds u32")))

@@ -14,6 +14,8 @@ pub const EAGER_RUNTIME_LAYOUT_ABI: &str = "pyamplicol-eager-runtime-layout-v1";
 pub const EAGER_RUNTIME_CAPABILITY: &str = "rusticol.eager-runtime-layout.complex-f64.v1";
 pub const EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY: &str = "eager-direct-arena-v1";
 pub const EAGER_DIRECT_SOURCE_APPLICATION_ABI: &str = "symjit-application-storage-v3";
+pub const EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI: &str =
+    "pyamplicol-eager-native-direct-table-v1";
 pub const EAGER_DIRECT_TABLE_DESCRIPTOR_ABI: &str = "symjit-direct-table-descriptor-v1";
 pub const EAGER_DIRECT_TABLE_BINDING_ABI: &str = "symjit-direct-table-binding-v2";
 pub const EAGER_RUNTIME_CONTAINER_KIND: &str = "pyamplicol-eager-runtime-container";

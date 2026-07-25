@@ -13,7 +13,7 @@
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::direct_arena::{
     DirectArenaInterval, DirectArenaLayout, DirectArenaTrafficCounters, assign_direct_arena,
@@ -34,13 +34,29 @@ use super::{
 };
 
 /// One prepared source application and its portable eager table descriptor.
+pub(crate) enum EagerDirectPreparedApplication<'a> {
+    Symjit {
+        source_application: &'a [u8],
+        descriptor: &'a [u8],
+    },
+    Native {
+        library_path: &'a Path,
+        function_name: &'a str,
+        source_application_abi: &'a str,
+        invocation_stride: u32,
+        attachment_stride: u32,
+        target_triple: &'a str,
+        evaluator_state_sha256: &'a str,
+        simd_lane_width: u32,
+    },
+}
+
 pub(crate) struct EagerDirectPreparedKernel<'a> {
     pub kernel_id: u32,
     pub role: EagerKernelRole,
     pub inputs: &'a [EagerKernelInput],
     pub output_component_count: u32,
-    pub source_application: &'a [u8],
-    pub descriptor: &'a [u8],
+    pub application: EagerDirectPreparedApplication<'a>,
     pub display_path: PathBuf,
 }
 
@@ -267,17 +283,42 @@ impl EagerDirectInvocationPrototype {
                 ))
             })?;
             validate_callable_identity(kernel, artifact)?;
-            applications.insert(
-                artifact.kernel_id,
-                LoadedSymjitEagerDirectTable::load_prepared_application_bytes(
-                    artifact.source_application,
-                    artifact.descriptor,
+            let application = match &artifact.application {
+                EagerDirectPreparedApplication::Symjit {
+                    source_application,
+                    descriptor,
+                } => LoadedSymjitEagerDirectTable::load_prepared_application_bytes(
+                    source_application,
+                    descriptor,
                     artifact.display_path.clone(),
                     EAGER_DIRECT_SOURCE_APPLICATION_ABI,
                     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
                     EAGER_DIRECT_TABLE_BINDING_ABI,
                 )?,
-            );
+                EagerDirectPreparedApplication::Native {
+                    library_path,
+                    function_name,
+                    source_application_abi,
+                    invocation_stride,
+                    attachment_stride,
+                    target_triple,
+                    evaluator_state_sha256,
+                    simd_lane_width,
+                } => LoadedSymjitEagerDirectTable::load_native_application(
+                    library_path,
+                    function_name,
+                    artifact.display_path.clone(),
+                    source_application_abi,
+                    *invocation_stride,
+                    *attachment_stride,
+                    count_u32(artifact.inputs.len(), "native eager input width")?,
+                    artifact.output_component_count,
+                    target_triple,
+                    evaluator_state_sha256,
+                    *simd_lane_width,
+                )?,
+            };
+            applications.insert(artifact.kernel_id, application);
         }
 
         let mut calls = Vec::new();
@@ -2062,8 +2103,10 @@ mod tests {
             role: EagerKernelRole::Vertex,
             inputs: &inputs,
             output_component_count: 1,
-            source_application: source,
-            descriptor,
+            application: EagerDirectPreparedApplication::Symjit {
+                source_application: source,
+                descriptor,
+            },
             display_path: PathBuf::from("real-plan-v3-eager-k10.symjit"),
         };
         EagerDirectInvocationPrototype::from_plan_v3_sections(
@@ -2199,8 +2242,10 @@ mod tests {
             role: EagerKernelRole::Vertex,
             inputs: &wrong_inputs,
             output_component_count: 1,
-            source_application: &source,
-            descriptor: &descriptor,
+            application: EagerDirectPreparedApplication::Symjit {
+                source_application: &source,
+                descriptor: &descriptor,
+            },
             display_path: PathBuf::from("wrong-semantic-identity.symjit"),
         };
         let result = EagerDirectInvocationPrototype::from_plan_v3_sections(
