@@ -13,12 +13,13 @@ use pyo3::IntoPyObjectExt;
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyDict, PyList};
+use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList};
 use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
     NativeResolvedEvaluation, NativeRuntime, NativeRuntimeProfile, ParameterKind, ParticleRole,
     ProcessPhysics as CoreProcessPhysics, ReductionKind, RusticolError as CoreError,
-    RusticolErrorKind, preflight_prepared_kernel_pack, runtime_target_info,
+    RusticolErrorKind, eager_direct_descriptor_for_source_application_bytes,
+    preflight_prepared_kernel_pack, runtime_target_info,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -1282,6 +1283,23 @@ fn _preflight_eager_kernel_pack(manifest_path: PathBuf, payload_root: PathBuf) -
 }
 
 #[pyfunction]
+fn _eager_direct_descriptor_v1(
+    py: Python<'_>,
+    source_application: &[u8],
+    input_complex_count: u32,
+    output_complex_count: u32,
+) -> PyResult<Py<PyBytes>> {
+    let descriptor = eager_direct_descriptor_for_source_application_bytes(
+        source_application,
+        input_complex_count,
+        output_complex_count,
+        std::path::Path::new("<prepared eager application>"),
+    )
+    .map_err(python_error)?;
+    Ok(PyBytes::new(py, &descriptor).unbind())
+}
+
+#[pyfunction]
 fn _load_eager_exact_sections_v1(
     py: Python<'_>,
     artifact_root: PathBuf,
@@ -1830,6 +1848,7 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(native_build_inputs_sha256, module)?)?;
     module.add_function(wrap_pyfunction!(target_info, module)?)?;
     module.add_function(wrap_pyfunction!(_preflight_eager_kernel_pack, module)?)?;
+    module.add_function(wrap_pyfunction!(_eager_direct_descriptor_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_load_eager_exact_sections_v1, module)?)?;
     module.add_function(wrap_pyfunction!(
         _load_recurrence_exact_sections_v1,

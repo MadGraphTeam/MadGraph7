@@ -303,7 +303,7 @@ def test_artifact_writer_preserves_direct_symjit_contract(tmp_path: Path) -> Non
     assert serialized["runtime_capability"] == SYMJIT_F64_RUNTIME_CAPABILITY
 
 
-def test_stage_manifest_verifies_aggregated_runtime_capabilities(
+def test_stage_manifest_rejects_compiled_payload_without_direct_arena(
     tmp_path: Path,
 ) -> None:
     generated = _jit_adapter().artifact_manifest(tmp_path)
@@ -344,20 +344,12 @@ def test_stage_manifest_verifies_aggregated_runtime_capabilities(
         "amplitude_stage": amplitude_stage,
     }
 
-    serialized = _stage_evaluator_set(stage_set)
-    assert serialized["required_runtime_capabilities"] == [
-        SYMJIT_F64_RUNTIME_CAPABILITY
-    ]
-
-    stage_set["required_runtime_capabilities"] = [SYMBOLICA_CPP_RUNTIME_CAPABILITY]
-    with pytest.raises(ValueError, match="do not match evaluator payloads"):
+    with pytest.raises(ValueError, match="require compiled-plane-arena-v1"):
         _stage_evaluator_set(stage_set)
 
 
 def test_symjit_application_abi_matches_contributor_contract() -> None:
     lock = tomllib.loads(
-        (ROOT / "dependencies" / "contributor-lock.toml").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
     )
     assert lock["abis"]["symjit_application"] == SYMJIT_APPLICATION_ABI

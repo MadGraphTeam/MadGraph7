@@ -27,6 +27,16 @@ fn c2k_walsh_color_contraction_is_a_known_artifact_capability() {
     assert_eq!(validated, BTreeSet::from([capability]));
 }
 
+#[test]
+fn compiled_plane_arena_is_a_known_artifact_capability() {
+    let capability = crate::engine::COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY.to_string();
+    let validated =
+        validate_runtime_capabilities(std::slice::from_ref(&capability), "test capabilities")
+            .expect("compiled plane-arena capability");
+
+    assert_eq!(validated, BTreeSet::from([capability]));
+}
+
 #[cfg(feature = "f64-symjit")]
 const PYTHON_PACBIN_GOLDEN_HEX: &str = concat!(
     "50414342494e000001004000000000004000000000000000c000000000000000",

@@ -483,13 +483,22 @@ pub(super) fn validate_evaluator_reference(
             ..
         } => validate_evaluator_state_path(artifact, relative_root, evaluator_state_path),
         EvaluatorManifest::CompiledComplex {
+            function_name,
+            input_len,
+            output_len,
             library_path,
             evaluator_state_path,
+            native_direct_application,
             ..
         } => {
             validate_evaluator_state_path(artifact, relative_root, library_path)?;
             if let Some(path) = evaluator_state_path {
                 validate_evaluator_state_path(artifact, relative_root, path)?;
+            }
+            if let Some(application) = native_direct_application {
+                application.validate(function_name, *input_len, *output_len)?;
+                validate_evaluator_state_path(artifact, relative_root, &application.source_path)?;
+                validate_evaluator_state_path(artifact, relative_root, &application.library_path)?;
             }
             Ok(())
         }

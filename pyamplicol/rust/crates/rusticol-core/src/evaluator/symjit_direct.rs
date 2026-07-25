@@ -1065,7 +1065,7 @@ fn panic_detail(payload: Box<dyn Any + Send>) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::recurrence::direct_backend::{
         DirectFactorView, DirectMomentumView, DirectParameterView,
@@ -1117,7 +1117,7 @@ mod tests {
         }
     }
 
-    fn count_allocations<T>(operation: impl FnOnce() -> T) -> (T, usize, usize) {
+    pub(crate) fn count_allocations<T>(operation: impl FnOnce() -> T) -> (T, usize, usize) {
         ALLOCATION_COUNT.with(|count| count.set(0));
         ALLOCATED_BYTES.with(|total| total.set(0));
         TRACK_ALLOCATIONS.with(|tracking| tracking.set(true));

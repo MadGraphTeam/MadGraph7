@@ -49,7 +49,7 @@ def test_selected_lc_artifact_matches_complete_artifact_physical_flow(
             post_build_validation=False,
         ),
     )
-    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=1))
+    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=3))
     complete_path = tmp_path / "complete"
     selected_path = tmp_path / "selected"
 
@@ -174,7 +174,7 @@ def test_complete_pure_gluon_replay_matches_every_sector_specialization(
             post_build_validation=False,
         ),
     )
-    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=0))
+    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=3))
     complete_path = tmp_path / "complete"
     Generator(
         RunConfig(
@@ -308,7 +308,7 @@ def test_complete_lc_fixed_helicity_selection_composes_with_flow_replay(
                     post_build_validation=False,
                 ),
             ),
-            evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=0)),
+            evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=3)),
         )
     ).generate("d d~ > z g g", artifact, model=model)
 
@@ -401,7 +401,7 @@ def test_three_line_lc_publication_reload_and_union_components_match(
             post_build_validation=False,
         ),
     )
-    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=0))
+    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=3))
     complete_path = tmp_path / "complete"
     union_path = tmp_path / "all-flow-union"
     Generator(
@@ -513,7 +513,7 @@ def test_complete_pure_gluon_fixed_helicity_preserves_every_physical_flow(
                     post_build_validation=False,
                 ),
             ),
-            evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=0)),
+            evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=3)),
         )
     ).generate("g g > g g", artifact, model=model)
 
@@ -647,7 +647,7 @@ def test_all_flow_union_supports_complete_and_selected_runtime_axes(
             ),
             evaluator=EvaluatorConfig(
                 execution_mode=execution_mode,
-                jit=JITConfig(optimization_level=0),
+                jit=JITConfig(optimization_level=0 if execution_mode == "eager" else 3),
             ),
         )
     ).generate("d d~ > z g g", artifact, model=model)
@@ -809,7 +809,7 @@ def test_eager_complete_replay_matches_specialized_flows_and_point_selectors(
                     selected_color_sector_ids=(int(sector.id),),
                 ),
                 generation=generation,
-                evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=0)),
+                evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=3)),
             )
         ).generate(process, selected_path)
         selected_runtime = Runtime.load(selected_path)
@@ -890,7 +890,7 @@ def test_external_sm_complete_three_line_flows_match_builtin(
                 post_build_validation=False,
             ),
         ),
-        evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=1)),
+        evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=3)),
     )
     process = "d d~ > u u~ s s~"
     builtin_path = tmp_path / "builtin"
@@ -974,7 +974,7 @@ def test_external_sm_fixed_width_multigluon_current_matches_builtin(
                 post_build_validation=False,
             ),
         ),
-        evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=1)),
+        evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=3)),
     )
     process = "d d~ > t t~ g g"
     builtin_path = tmp_path / "builtin-fixed-width"

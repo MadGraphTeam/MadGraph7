@@ -208,7 +208,7 @@ unsafe fn load_export<T: Copy>(
 }
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::RusticolErrorKind;
     use crate::recurrence::direct_backend::{
@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[cfg(not(feature = "f64-symjit"))]
-    fn count_allocations<T>(operation: impl FnOnce() -> T) -> (T, usize, usize) {
+    pub(crate) fn count_allocations<T>(operation: impl FnOnce() -> T) -> (T, usize, usize) {
         ALLOCATION_COUNT.with(|count| count.set(0));
         ALLOCATED_BYTES.with(|total| total.set(0));
         TRACK_ALLOCATIONS.with(|tracking| tracking.set(true));

@@ -18,6 +18,10 @@ pub(crate) use compiled::*;
 #[path = "evaluator/native_direct.rs"]
 pub(crate) mod native_direct;
 
+#[cfg(feature = "f64-compiled")]
+#[path = "evaluator/native_compiled_direct.rs"]
+pub(crate) mod native_compiled_direct;
+
 #[cfg(feature = "f64-symjit")]
 #[path = "evaluator/symjit.rs"]
 mod symjit;
@@ -27,6 +31,16 @@ pub(crate) use symjit::*;
 #[cfg(feature = "f64-symjit")]
 #[path = "evaluator/symjit_direct.rs"]
 pub(crate) mod symjit_direct;
+#[cfg(all(test, feature = "f64-symjit"))]
+pub(crate) use symjit_direct::tests::count_allocations as count_test_allocations;
+
+#[cfg(feature = "f64-symjit")]
+#[path = "evaluator/symjit_compiled_direct.rs"]
+pub(crate) mod symjit_compiled_direct;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[path = "evaluator/symjit_eager_direct.rs"]
+pub(crate) mod symjit_eager_direct;
 
 #[path = "evaluator/recurrence_source_direct.rs"]
 pub(crate) mod recurrence_source_direct;

@@ -167,6 +167,8 @@ pub const SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY: &str = "symbolica.compiled-
 pub const SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY: &str = "symbolica.compiled-asm.complex-f64.v1";
 pub const EAGER_DAG_RUNTIME_CAPABILITY: &str = crate::EAGER_RUNTIME_CAPABILITY;
 pub const EAGER_RUNTIME_LAYOUT_CAPABILITY: &str = crate::eager_layout::EAGER_RUNTIME_CAPABILITY;
+pub const EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY: &str =
+    crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY;
 pub const EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY: &str =
     crate::EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY;
 pub const RECURRENCE_RUNTIME_CAPABILITY: &str = crate::recurrence::RECURRENCE_RUNTIME_CAPABILITY;
@@ -175,6 +177,9 @@ pub const RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY: &str =
 pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
+pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
+pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "symjit-direct-application-storage-v3";
+pub const COMPILED_PLANE_SOURCE_APPLICATION_ABI: &str = "symjit-application-storage-v3";
 pub const COMPILED_HELICITY_DUAL_LANE_CAPABILITY: &str = "rusticol.compiled.helicity-dual-lane.v1";
 pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =
     "rusticol.compiled.helicity-selector-union.v1";
@@ -210,6 +215,21 @@ pub fn preflight_prepared_kernel_pack(
     PreparedEvaluatorBackend::preflight_all(&pack, payload_root)
 }
 
+#[cfg(feature = "f64-symjit")]
+pub fn eager_direct_descriptor_for_source_application_bytes(
+    source_bytes: &[u8],
+    input_complex_count: u32,
+    output_complex_count: u32,
+    display_path: &Path,
+) -> RusticolResult<Vec<u8>> {
+    evaluator::symjit_eager_direct::eager_direct_descriptor_for_source_application_bytes(
+        source_bytes,
+        input_complex_count,
+        output_complex_count,
+        display_path,
+    )
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCapability {
@@ -219,8 +239,10 @@ pub enum RuntimeCapability {
     CompiledHelicityDualLaneV1,
     CompiledHelicityPrimaryRecurrenceV1,
     CompiledHelicitySelectorUnionV1,
+    CompiledPlaneArenaV1,
     CompiledRuntimeSelectorsV1,
     EagerDagComplexF64V1,
+    EagerDirectArenaV1,
     EagerRuntimeLayoutComplexF64V1,
     EagerLcTopologyReplayComplexF64V1,
     RecurrenceRuntimeComplexF64V1,
@@ -245,8 +267,10 @@ impl RuntimeCapability {
                 COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
             }
             Self::CompiledHelicitySelectorUnionV1 => COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+            Self::CompiledPlaneArenaV1 => COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
             Self::CompiledRuntimeSelectorsV1 => COMPILED_RUNTIME_SELECTORS_CAPABILITY,
             Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
+            Self::EagerDirectArenaV1 => EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
             Self::EagerRuntimeLayoutComplexF64V1 => EAGER_RUNTIME_LAYOUT_CAPABILITY,
             Self::EagerLcTopologyReplayComplexF64V1 => EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
             Self::RecurrenceRuntimeComplexF64V1 => RECURRENCE_RUNTIME_CAPABILITY,
@@ -277,9 +301,13 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_DAG_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_RUNTIME_LAYOUT_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -879,6 +907,58 @@ struct GenericSerializedStageEvaluatorManifest {
     expression_ready: bool,
     blockers: Vec<String>,
     evaluator: EvaluatorManifest,
+    #[serde(default)]
+    compiled_plane_arena: Option<CompiledPlaneArenaStageManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CompiledPlaneArenaStageManifest {
+    schema_version: u32,
+    kind: String,
+    application_abi: String,
+    source_application_abi: String,
+    element_layout: String,
+    output_operation: String,
+    output_factor: String,
+    input_output_aliasing: String,
+    output_output_aliasing: String,
+    input_bindings: Vec<CompiledPlaneInputBindingManifest>,
+    output_bindings: Vec<CompiledPlaneOutputBindingManifest>,
+    leaves: Vec<CompiledPlaneLeafManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct CompiledPlaneInputBindingManifest {
+    parameter_index: usize,
+    kind: String,
+    source_id: usize,
+    component: usize,
+    global_component: usize,
+    #[serde(default)]
+    real_valued: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct CompiledPlaneOutputBindingManifest {
+    output_index: usize,
+    arena: String,
+    component: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct CompiledPlaneLeafManifest {
+    application_path: String,
+    source_application_abi: String,
+    optimization_level: u8,
+    input_len: usize,
+    output_len: usize,
+    input_indices: Vec<usize>,
+    output_start: usize,
+    output_stop: usize,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1573,6 +1653,161 @@ struct GenericValueSlotRefManifest {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct NativeCompiledDirectTargetManifest {
+    triple: String,
+    cpu_features: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NativeCompiledDirectApplicationManifest {
+    application_abi: String,
+    function_name: String,
+    source_path: String,
+    library_path: String,
+    target: NativeCompiledDirectTargetManifest,
+    evaluator_state_sha256: String,
+    instruction_count: u32,
+    temporary_count: u32,
+    input_plane_count: u32,
+    scalar_input_count: u32,
+    output_plane_count: u32,
+    simd_lane_width: u32,
+    logical_stack_bytes: u32,
+    output_semantics: String,
+}
+
+impl NativeCompiledDirectApplicationManifest {
+    fn validate(
+        &self,
+        expected_function_name: &str,
+        input_len: usize,
+        output_len: usize,
+    ) -> RusticolResult<()> {
+        const APPLICATION_ABI: &str = "pyamplicol-native-compiled-direct-application-v1";
+        const OUTPUT_SEMANTICS: &str = "factor-free-overwrite";
+        const MAXIMUM_LOGICAL_STACK_BYTES: u32 = 64 * 1024;
+
+        if self.application_abi != APPLICATION_ABI {
+            return Err(RusticolError::compatibility(format!(
+                "native compiled DirectApplication declares ABI {:?}, expected {APPLICATION_ABI:?}",
+                self.application_abi
+            )));
+        }
+        if self.function_name != expected_function_name {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication function identity does not match its evaluator",
+            ));
+        }
+        if self.source_path.is_empty()
+            || self.library_path.is_empty()
+            || self.source_path == self.library_path
+            || self.target.triple.is_empty()
+            || self.target.triple.contains('\0')
+        {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication paths or target are invalid",
+            ));
+        }
+        if self
+            .target
+            .cpu_features
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+            || self
+                .target
+                .cpu_features
+                .iter()
+                .any(|feature| feature.is_empty() || feature.contains('\0'))
+        {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication CPU features are not sorted and unique",
+            ));
+        }
+        if self.evaluator_state_sha256.len() != 64
+            || !self
+                .evaluator_state_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication evaluator-state digest is invalid",
+            ));
+        }
+        if self.instruction_count == 0
+            || self.input_plane_count == 0
+            || !matches!(self.simd_lane_width, 2 | 4)
+            || self.logical_stack_bytes == 0
+            || self.logical_stack_bytes > MAXIMUM_LOGICAL_STACK_BYTES
+            || self.output_semantics != OUTPUT_SEMANTICS
+        {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication execution shape is invalid",
+            ));
+        }
+
+        let expected_output_planes = u32::try_from(output_len.checked_mul(2).ok_or_else(|| {
+            RusticolError::integrity("native compiled DirectApplication output shape overflows")
+        })?)
+        .map_err(|_| {
+            RusticolError::integrity("native compiled DirectApplication output shape exceeds u32")
+        })?;
+        if self.output_plane_count != expected_output_planes {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication output planes do not match its evaluator",
+            ));
+        }
+
+        let descriptor_count = self
+            .input_plane_count
+            .checked_add(self.scalar_input_count)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "native compiled DirectApplication input descriptor count overflows",
+                )
+            })?;
+        let minimum_descriptors = u32::try_from(input_len).map_err(|_| {
+            RusticolError::integrity(
+                "native compiled DirectApplication logical input count exceeds u32",
+            )
+        })?;
+        let maximum_descriptors = minimum_descriptors.checked_mul(2).ok_or_else(|| {
+            RusticolError::integrity(
+                "native compiled DirectApplication maximum descriptor count overflows",
+            )
+        })?;
+        if descriptor_count < minimum_descriptors || descriptor_count > maximum_descriptors {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication descriptors do not cover evaluator inputs",
+            ));
+        }
+
+        let expected_stack_bytes = self
+            .temporary_count
+            .checked_add(u32::try_from(output_len).map_err(|_| {
+                RusticolError::integrity(
+                    "native compiled DirectApplication output count exceeds u32",
+                )
+            })?)
+            .and_then(|count| count.checked_mul(2))
+            .and_then(|count| count.checked_mul(std::mem::size_of::<f64>() as u32))
+            .and_then(|bytes| bytes.checked_mul(self.simd_lane_width))
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "native compiled DirectApplication logical stack shape overflows",
+                )
+            })?;
+        if self.logical_stack_bytes != expected_stack_bytes {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication logical stack metadata is inconsistent",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "kind")]
 enum EvaluatorManifest {
     #[serde(rename = "symjit-application-evaluator")]
@@ -1609,6 +1844,8 @@ enum EvaluatorManifest {
         library_path: String,
         evaluator_state_path: Option<String>,
         number_type: String,
+        #[serde(default)]
+        native_direct_application: Option<NativeCompiledDirectApplicationManifest>,
     },
     #[serde(rename = "chunked-symbolica-evaluator")]
     Chunked {
@@ -1619,6 +1856,18 @@ enum EvaluatorManifest {
         chunk_input_indices: Option<Vec<Vec<usize>>>,
         chunks: Vec<EvaluatorManifest>,
     },
+}
+
+/// One leaf in the canonical evaluator preorder used by loading, selector
+/// coverage, and Direct-Arena lowering.
+///
+/// Keeping the composed root-input map and output range together prevents
+/// independently implemented flattening walks from silently assigning
+/// selector chunk indices to different leaves.
+struct EvaluatorLeafLayout<'a> {
+    evaluator: &'a EvaluatorManifest,
+    input_indices: Vec<usize>,
+    output_range: std::ops::Range<usize>,
 }
 
 impl EvaluatorManifest {
@@ -1633,12 +1882,22 @@ impl EvaluatorManifest {
                 input_len,
                 output_len,
                 ..
-            }
-            | Self::CompiledComplex {
+            } => Ok((*input_len, *output_len)),
+            Self::CompiledComplex {
+                function_name,
                 input_len,
                 output_len,
                 ..
-            } => Ok((*input_len, *output_len)),
+            } => {
+                if let Self::CompiledComplex {
+                    native_direct_application: Some(application),
+                    ..
+                } = self
+                {
+                    application.validate(function_name, *input_len, *output_len)?;
+                }
+                Ok((*input_len, *output_len))
+            }
             Self::Chunked {
                 input_len,
                 chunk_input_indices,
@@ -1702,11 +1961,12 @@ impl EvaluatorManifest {
         }
     }
 
-    fn leaf_input_indices(&self) -> RusticolResult<Vec<Vec<usize>>> {
-        fn append_leaf_inputs(
-            evaluator: &EvaluatorManifest,
+    fn leaf_layout(&self) -> RusticolResult<Vec<EvaluatorLeafLayout<'_>>> {
+        fn append_leaf_layouts<'a>(
+            evaluator: &'a EvaluatorManifest,
             parent_inputs: &[usize],
-            leaf_inputs: &mut Vec<Vec<usize>>,
+            output_cursor: &mut usize,
+            leaves: &mut Vec<EvaluatorLeafLayout<'a>>,
         ) -> RusticolResult<()> {
             match evaluator {
                 EvaluatorManifest::Chunked {
@@ -1736,34 +1996,53 @@ impl EvaluatorManifest {
                                         })
                                     })
                                     .collect::<RusticolResult<Vec<_>>>()?;
-                                append_leaf_inputs(chunk, &mapped, leaf_inputs)?;
+                                append_leaf_layouts(chunk, &mapped, output_cursor, leaves)?;
                             }
                         }
                         None => {
                             for chunk in chunks {
-                                append_leaf_inputs(chunk, parent_inputs, leaf_inputs)?;
+                                append_leaf_layouts(chunk, parent_inputs, output_cursor, leaves)?;
                             }
                         }
                     }
                 }
                 _ => {
-                    let input_len = evaluator.io_len()?.0;
+                    let (input_len, output_len) = evaluator.io_len()?;
                     if input_len != parent_inputs.len() {
                         return Err(RusticolError::artifact(
                             "evaluator leaf input mapping has an inconsistent length",
                         ));
                     }
-                    leaf_inputs.push(parent_inputs.to_vec());
+                    if output_len == 0 {
+                        return Err(RusticolError::artifact(
+                            "evaluator leaf has an empty output range",
+                        ));
+                    }
+                    let output_stop = output_cursor.checked_add(output_len).ok_or_else(|| {
+                        RusticolError::artifact("evaluator leaf output range overflows usize")
+                    })?;
+                    leaves.push(EvaluatorLeafLayout {
+                        evaluator,
+                        input_indices: parent_inputs.to_vec(),
+                        output_range: *output_cursor..output_stop,
+                    });
+                    *output_cursor = output_stop;
                 }
             }
             Ok(())
         }
 
-        let root_input_len = self.io_len()?.0;
+        let (root_input_len, root_output_len) = self.io_len()?;
         let root_inputs = (0..root_input_len).collect::<Vec<_>>();
-        let mut leaf_inputs = Vec::new();
-        append_leaf_inputs(self, &root_inputs, &mut leaf_inputs)?;
-        Ok(leaf_inputs)
+        let mut output_cursor = 0;
+        let mut leaves = Vec::new();
+        append_leaf_layouts(self, &root_inputs, &mut output_cursor, &mut leaves)?;
+        if output_cursor != root_output_len {
+            return Err(RusticolError::artifact(
+                "evaluator leaf output ranges do not cover the root output",
+            ));
+        }
+        Ok(leaves)
     }
 }
 
@@ -1784,6 +2063,8 @@ struct EvaluatorGroup {
 // only the SymJIT variant would add an indirection to every hot kernel call.
 #[allow(clippy::large_enum_variant)]
 enum F64Evaluator {
+    #[cfg(feature = "symbolica-runtime")]
+    ExactOnly,
     #[cfg(feature = "f64-symjit")]
     SymjitApplication(SymjitApplicationEvaluator),
     #[cfg(feature = "f64-compiled")]
@@ -2475,10 +2756,20 @@ struct ExecutionRuntime {
     lc_resolved_replay_plan: Option<Arc<LcResolvedReplayPlan>>,
     lc_resolved_replay_selection_cache:
         Option<(LcResolvedReplaySelectionKey, Arc<LcResolvedReplaySelection>)>,
+    lc_replay_flat_momenta_scratch: Vec<f64>,
+    lc_replay_target_components_scratch: Vec<f64>,
     #[allow(dead_code)] // Loaded now and consumed by the subsequent selector-execution milestone.
     helicity_recurrence: Option<HelicityRecurrenceRuntime>,
     compiled_helicity_execution_plan: Option<CompiledHelicityExecutionPlan>,
     compiled_color_execution_plan: Option<CompiledColorExecutionPlan>,
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    compiled_direct_runtime: Option<compiled_direct_prototype::CompiledDirectEnginePrototype>,
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    compiled_direct_color_schedules:
+        BTreeMap<i64, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    compiled_direct_helicity_schedules:
+        BTreeMap<usize, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
     helicity_sum_runtime: Option<Box<ExecutionRuntime>>,
     // Lane runtimes are large recursive owners; boxing keeps their addresses stable and avoids
     // moving them when this selector index grows.
@@ -3361,6 +3652,30 @@ enum NativeExecutionLane {
     Recurrence(Box<RecurrenceNativeRuntime>),
 }
 
+impl NativeExecutionLane {
+    const fn is_eager(&self) -> bool {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            matches!(self, Self::Eager(_))
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            false
+        }
+    }
+
+    const fn is_recurrence(&self) -> bool {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            matches!(self, Self::Recurrence(_))
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            false
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct RuntimeParameterSlots {
     real: usize,
@@ -3385,6 +3700,22 @@ struct StageRuntime {
     evaluator: EvaluatorGroup,
 }
 
+#[derive(Default)]
+struct RoutedReductionScratch {
+    helicity_indices: Vec<usize>,
+    color_indices: Vec<usize>,
+    helicity_positions: Vec<Option<usize>>,
+    color_positions: Vec<Option<usize>>,
+    raw_member_weights: Vec<(usize, usize, f64)>,
+    selected_member_weights: Vec<(usize, usize, f64)>,
+    selected_member_weight_ranges: Vec<std::ops::Range<usize>>,
+    direct_group_re: Vec<f64>,
+    direct_group_im: Vec<f64>,
+    direct_source_components: Vec<f64>,
+    direct_target_components: Vec<f64>,
+    direct_totals: Vec<f64>,
+}
+
 struct AmplitudeRuntime {
     output_length: usize,
     raw_sum_weights: Vec<f64>,
@@ -3400,8 +3731,9 @@ struct AmplitudeRuntime {
     output_scratch_f64: Vec<Complex<f64>>,
     resolved_source_row_scratch_f64: Vec<f64>,
     resolved_target_row_scratch_f64: Vec<f64>,
+    routed_reduction_scratch: RoutedReductionScratch,
     evaluator_output_order: Option<Vec<usize>>,
-    evaluator: EvaluatorGroup,
+    evaluator: Option<EvaluatorGroup>,
 }
 
 mod runtime_load;
@@ -3411,7 +3743,9 @@ mod model_parameters;
 use model_parameters::*;
 
 mod evaluation;
-use evaluation::{resolved_f64_totals, write_resolved_f64_totals};
+use evaluation::resolved_f64_totals;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod compiled_direct_prototype;
 mod helicity_lane;
 use helicity_lane::*;
 mod momentum;
@@ -3481,6 +3815,17 @@ use point_selectors::*;
 
 #[path = "evaluator.rs"]
 mod evaluator;
+#[cfg(all(
+    test,
+    feature = "f64-compiled",
+    not(feature = "f64-symjit"),
+    any(target_os = "linux", target_os = "macos")
+))]
+pub(crate) use evaluator::native_direct::tests::count_allocations;
+#[cfg(all(test, feature = "f64-symjit"))]
+pub(crate) use evaluator::symjit_direct::tests::count_allocations;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(crate) use evaluator::symjit_eager_direct;
 use evaluator::*;
 
 #[path = "wavefunctions.rs"]

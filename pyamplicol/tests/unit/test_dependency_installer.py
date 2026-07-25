@@ -66,17 +66,27 @@ def test_legacy_oracle_uses_the_pinned_remote_branch_without_local_patches() -> 
     )
 
 
-def test_symjit_patch_is_revision_digest_and_tree_pinned() -> None:
+def test_symjit_patch_set_is_revision_digest_and_tree_pinned() -> None:
     module = _module()
     payload = module._lock()
     patches = module._contributor_patches(payload)
 
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch.name == "symjit-aarch64-compression-and-direct-arena"
-    assert patch.target == "symjit"
-    assert patch.applies_to_revision == payload["symjit"]["candidate_revision"]
-    assert patch.sha256 == hashlib.sha256(patch.path.read_bytes()).hexdigest()
+    assert [patch.name for patch in patches] == [
+        "symjit-aarch64-compression-and-direct-arena",
+        "symjit-eager-and-compiled-direct-arena",
+        "symjit-x86-direct-table",
+    ]
+    assert all(patch.target == "symjit" for patch in patches)
+    assert all(
+        patch.applies_to_revision == payload["symjit"]["candidate_revision"]
+        for patch in patches
+    )
+    assert all(
+        patch.sha256 == hashlib.sha256(patch.path.read_bytes()).hexdigest()
+        for patch in patches
+    )
+    assert len(module._patch_closure_sha256(patches)) == 64
+    assert len(payload["symjit"]["patched_tree_sha256"]) == 64
     assert len(payload["symjit"]["candidate_tree_sha256"]) == 64
     assert payload["symjit"]["release_status"] == "patched-candidate"
 
@@ -132,6 +142,62 @@ def test_contributor_patch_application_is_exact_idempotent_and_fails_on_drift(
     patch_path.write_bytes(patch_path.read_bytes() + b"# tampered\n")
     with pytest.raises(module.SetupError, match="digest mismatch"):
         module._contributor_patches(payload)
+
+
+def test_overlapping_contributor_patch_series_is_idempotent_by_tree_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    dependencies = tmp_path / "dependencies"
+    checkouts = dependencies / "checkouts"
+    target = checkouts / "symjit"
+    target.mkdir(parents=True)
+    source = target / "value.txt"
+    source.write_text("first\nsecond\n", encoding="utf-8")
+    patch_directory = dependencies / "patches" / "symjit"
+    patch_directory.mkdir(parents=True)
+    first = patch_directory / "first.patch"
+    first.write_text(
+        "--- a/value.txt\n+++ b/value.txt\n@@ -1,2 +1,2 @@\n-first\n+FIRST\n second\n",
+        encoding="utf-8",
+    )
+    second = patch_directory / "second.patch"
+    second.write_text(
+        "--- a/value.txt\n+++ b/value.txt\n@@ -1,2 +1,2 @@\n FIRST\n-second\n+SECOND\n",
+        encoding="utf-8",
+    )
+    revision = "a" * 40
+
+    def patch_entry(name: str, path: Path) -> dict[str, str]:
+        return {
+            "name": name,
+            "target": "symjit",
+            "path": f"patches/symjit/{path.name}",
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "applies_to_revision": revision,
+        }
+
+    payload = {
+        "symjit": {
+            "candidate_revision": revision,
+            "patched_tree_sha256": "0" * 64,
+            "candidate_tree_sha256": "1" * 64,
+        },
+        "patches": [
+            patch_entry("first", first),
+            patch_entry("second", second),
+        ],
+    }
+    monkeypatch.setattr(module, "DEPENDENCIES", dependencies)
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
+    runner = module.Runner(dry_run=False)
+
+    module._apply_contributor_patches(runner, payload)
+    assert source.read_text(encoding="utf-8") == "FIRST\nSECOND\n"
+    payload["symjit"]["patched_tree_sha256"] = module._source_tree_sha256(target)
+    module._apply_contributor_patches(runner, payload)
+    assert source.read_text(encoding="utf-8") == "FIRST\nSECOND\n"
 
 
 def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(
@@ -231,11 +297,7 @@ def test_archive_checkout_patch_does_not_discover_parent_repository(
     checkout_payload.write_text("old\n", encoding="utf-8")
     patch = repository / "change.patch"
     patch.write_text(
-        "--- a/payload.txt\n"
-        "+++ b/payload.txt\n"
-        "@@ -1 +1 @@\n"
-        "-old\n"
-        "+new\n",
+        "--- a/payload.txt\n+++ b/payload.txt\n@@ -1 +1 @@\n-old\n+new\n",
         encoding="utf-8",
     )
 

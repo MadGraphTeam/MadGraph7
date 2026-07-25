@@ -56,34 +56,87 @@ impl PhysicsRuntime {
         &self,
         ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<Vec<usize>> {
-        self.select_indices(ids, &self.helicity_index_by_id, "helicity")
+        let mut indices = Vec::new();
+        self.select_indices_into(ids, &self.helicity_index_by_id, "helicity", &mut indices)?;
+        Ok(indices)
     }
 
     pub(super) fn selected_color_indices(
         &self,
         ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<Vec<usize>> {
-        self.select_indices(ids, &self.color_index_by_id, "color component")
+        let mut indices = Vec::new();
+        self.select_indices_into(
+            ids,
+            &self.color_index_by_id,
+            "color component",
+            &mut indices,
+        )?;
+        Ok(indices)
     }
 
-    pub(super) fn select_indices(
+    pub(super) fn validate_helicity_id_slice(&self, ids: Option<&[String]>) -> RusticolResult<()> {
+        self.validate_id_slice(ids, &self.helicity_index_by_id, "helicity")
+    }
+
+    pub(super) fn validate_color_id_slice(&self, ids: Option<&[String]>) -> RusticolResult<()> {
+        self.validate_id_slice(ids, &self.color_index_by_id, "color component")
+    }
+
+    fn validate_id_slice(
+        &self,
+        ids: Option<&[String]>,
+        available: &BTreeMap<String, usize>,
+        kind: &str,
+    ) -> RusticolResult<()> {
+        if let Some(ids) = ids {
+            for id in ids {
+                if !available.contains_key(id) {
+                    return Err(RusticolError::selector(format!(
+                        "unknown resolved {kind} id {id:?}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn select_indices_into(
         &self,
         ids: Option<&BTreeSet<String>>,
         available: &BTreeMap<String, usize>,
         kind: &str,
-    ) -> RusticolResult<Vec<usize>> {
-        let Some(ids) = ids else {
-            return Ok((0..available.len()).collect());
-        };
-        let mut indices = Vec::with_capacity(ids.len());
-        for id in ids {
-            let index = available.get(id).ok_or_else(|| {
-                RusticolError::selector(format!("unknown resolved {kind} id {id:?}"))
-            })?;
-            indices.push(*index);
+        indices: &mut Vec<usize>,
+    ) -> RusticolResult<()> {
+        indices.clear();
+        if let Some(ids) = ids {
+            for id in ids {
+                let index = available.get(id).ok_or_else(|| {
+                    RusticolError::selector(format!("unknown resolved {kind} id {id:?}"))
+                })?;
+                indices.push(*index);
+            }
+            indices.sort_unstable();
+        } else {
+            indices.extend(0..available.len());
         }
-        indices.sort_unstable();
-        Ok(indices)
+        Ok(())
+    }
+
+    pub(super) fn selected_helicity_indices_into(
+        &self,
+        ids: Option<&BTreeSet<String>>,
+        indices: &mut Vec<usize>,
+    ) -> RusticolResult<()> {
+        self.select_indices_into(ids, &self.helicity_index_by_id, "helicity", indices)
+    }
+
+    pub(super) fn selected_color_indices_into(
+        &self,
+        ids: Option<&BTreeSet<String>>,
+        indices: &mut Vec<usize>,
+    ) -> RusticolResult<()> {
+        self.select_indices_into(ids, &self.color_index_by_id, "color component", indices)
     }
 
     pub(super) fn has_contracted_color_axis(&self) -> bool {
@@ -104,7 +157,24 @@ impl PhysicsRuntime {
         &self,
         group: &crate::ReductionGroup,
     ) -> RusticolResult<Vec<(usize, f64)>> {
-        let mut weights = Vec::with_capacity(group.physical_helicity_ids.len());
+        let mut weights = Vec::new();
+        self.normalized_helicity_weights_into(group, &mut weights)?;
+        Ok(weights)
+    }
+
+    pub(super) fn normalized_helicity_weights_into(
+        &self,
+        group: &crate::ReductionGroup,
+        weights: &mut Vec<(usize, f64)>,
+    ) -> RusticolResult<()> {
+        weights.clear();
+        weights
+            .try_reserve(group.physical_helicity_ids.len())
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "could not reserve normalized helicity weights: {error}"
+                ))
+            })?;
         let mut total = 0.0;
         for id in &group.physical_helicity_ids {
             let index = self.helicity_index_by_id[id];
@@ -118,18 +188,27 @@ impl PhysicsRuntime {
                 group.id
             )));
         }
-        for (_, weight) in &mut weights {
+        for (_, weight) in weights.iter_mut() {
             *weight /= total;
         }
-        Ok(weights)
+        Ok(())
     }
 
     pub(super) fn normalized_member_weights(
         &self,
         group: &crate::ReductionGroup,
     ) -> RusticolResult<Vec<(usize, usize, f64)>> {
-        let mut weights =
-            Vec::with_capacity(group.physical_helicity_ids.len() * group.physical_color_ids.len());
+        let mut weights = Vec::new();
+        self.normalized_member_weights_into(group, &mut weights)?;
+        Ok(weights)
+    }
+
+    pub(super) fn normalized_member_weights_into(
+        &self,
+        group: &crate::ReductionGroup,
+        weights: &mut Vec<(usize, usize, f64)>,
+    ) -> RusticolResult<()> {
+        weights.clear();
         let mut total = 0.0;
         for helicity_id in &group.physical_helicity_ids {
             let helicity_index = self.helicity_index_by_id[helicity_id];
@@ -148,10 +227,10 @@ impl PhysicsRuntime {
                 group.id
             )));
         }
-        for (_, _, weight) in &mut weights {
+        for (_, _, weight) in weights.iter_mut() {
             *weight /= total;
         }
-        Ok(weights)
+        Ok(())
     }
 
     pub(super) fn lc_resolved_replay_plan(
@@ -649,6 +728,17 @@ impl ExecutionRuntime {
             && let Some(color_id) = color_ids.iter().next()
             && let Some(color_index) = physics.color_index_by_id.get(color_id)
             && cached_key.color_indices.as_deref() == Some(std::slice::from_ref(color_index))
+        {
+            return Ok(Arc::clone(selection));
+        }
+        if let Some((cached_key, selection)) = &self.lc_resolved_replay_selection_cache
+            && selected_color_ids.is_none()
+            && cached_key.color_indices.is_none()
+            && let Some(helicity_ids) = selected_helicity_ids
+            && helicity_ids.len() == 1
+            && let Some(helicity_id) = helicity_ids.iter().next()
+            && let Some(helicity_index) = physics.helicity_index_by_id.get(helicity_id)
+            && cached_key.helicity_indices.as_deref() == Some(std::slice::from_ref(helicity_index))
         {
             return Ok(Arc::clone(selection));
         }

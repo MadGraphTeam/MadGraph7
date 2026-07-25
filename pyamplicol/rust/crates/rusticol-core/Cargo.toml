@@ -11,7 +11,7 @@ repository.workspace = true
 
 [features]
 default = ["f64-compiled", "f64-symjit"]
-f64-compiled = ["dep:libloading", "dep:num-complex"]
+f64-compiled = ["dep:libloading", "dep:num-complex", "dep:symjit"]
 f64-symjit = ["dep:num-complex", "dep:symjit"]
 symbolica-runtime = ["dep:symbolica"]
 

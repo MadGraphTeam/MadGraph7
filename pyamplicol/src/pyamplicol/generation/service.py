@@ -58,6 +58,7 @@ from ..models.recurrence_direct_template import (
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .artifact_writer import (
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
     EAGER_PLAN_V3_ABI,
     EAGER_PLAN_V3_RUNTIME_CAPABILITY,
     EAGER_RUNTIME_CONTAINER_KIND,
@@ -724,7 +725,15 @@ def _validate_rust_eager_lowering_result(
     if (
         isinstance(capabilities, str | bytes)
         or not isinstance(capabilities, Sequence)
-        or tuple(capabilities) != (EAGER_PLAN_V3_RUNTIME_CAPABILITY,)
+        or tuple(capabilities)
+        != tuple(
+            sorted(
+                (
+                    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                    EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+                )
+            )
+        )
     ):
         raise GenerationError(
             "Rust eager lowering result has an incompatible runtime capability"

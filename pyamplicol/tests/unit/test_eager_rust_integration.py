@@ -19,6 +19,7 @@ from pyamplicol.api.requests import ModelSource, ProcessRequest
 from pyamplicol.artifacts import ArtifactBuilder
 from pyamplicol.config import Action, EvaluatorConfig, RunConfig
 from pyamplicol.generation.artifact_writer import (
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
     EAGER_PLAN_V3_ABI,
     EAGER_PLAN_V3_RUNTIME_CAPABILITY,
     EAGER_RUNTIME_CONTAINER_KIND,
@@ -124,7 +125,12 @@ def _binding_result(lowering_input: EagerLoweringInputV1) -> dict[str, object]:
         "lowering_input_sha256": lowering_input.digest,
         "eager_plan_abi": EAGER_PLAN_V3_ABI,
         "runtime_layout_abi": EAGER_RUNTIME_LAYOUT_ABI,
-        "required_runtime_capabilities": [EAGER_PLAN_V3_RUNTIME_CAPABILITY],
+        "required_runtime_capabilities": sorted(
+            (
+                EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+            )
+        ),
         "runtime_container": {
             "kind": EAGER_RUNTIME_CONTAINER_KIND,
             "schema_version": EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION,
@@ -388,6 +394,121 @@ def test_plan_v3_is_default_v2_is_explicit_and_compiled_mode_ignores_gate(
     assert evaluator.compiled is compiled
 
 
+def test_eager_direct_descriptor_is_serialized_into_kernel_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = b"portable-symjit-application"
+    descriptor = b"explicit-direct-table-descriptor"
+
+    class Bundle:
+        @staticmethod
+        def read_payload(path: str) -> bytes:
+            assert path == "kernels/17/application.symjit"
+            return source
+
+    monkeypatch.setattr(
+        artifact_writer,
+        "_derive_eager_direct_descriptor",
+        lambda *_args, **_kwargs: descriptor,
+    )
+    manifest, path, payload = artifact_writer._eager_direct_evaluator_manifest(
+        bundle=Bundle(),
+        kernel_id=17,
+        input_complex_count=3,
+        output_complex_count=2,
+        manifest={
+            "kind": "symjit-application-evaluator",
+            "application_path": "kernels/17/application.symjit",
+            "application_abi": artifact_writer.SYMJIT_APPLICATION_ABI,
+            "build_timing": {"jit_materialize_s": 0.5},
+        },
+    )
+
+    assert path == "kernels/17/eager-direct-table-descriptor-v1.bin"
+    assert payload == descriptor
+    assert manifest["build_timing"]["jit_materialize_s"] == 0.5
+    assert manifest["build_timing"]["eager_direct_descriptor_s"] >= 0.0
+    assert manifest["direct_table"] == {
+        "capability": EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        "source_application_abi": artifact_writer.SYMJIT_APPLICATION_ABI,
+        "descriptor_abi": artifact_writer.EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+        "binding_abi": artifact_writer.EAGER_DIRECT_TABLE_BINDING_ABI,
+        "descriptor_path": path,
+        "descriptor_size_bytes": len(descriptor),
+        "descriptor_sha256": hashlib.sha256(descriptor).hexdigest(),
+        "input_complex_count": 3,
+        "output_complex_count": 2,
+    }
+
+
+def test_eager_direct_descriptor_rejects_non_symjit_source() -> None:
+    class Bundle:
+        @staticmethod
+        def read_payload(_path: str) -> bytes:
+            raise AssertionError(
+                "incompatible metadata must fail before payload access"
+            )
+
+    with pytest.raises(ValueError, match="incompatible source ABI"):
+        artifact_writer._eager_direct_evaluator_manifest(
+            bundle=Bundle(),
+            kernel_id=17,
+            input_complex_count=3,
+            output_complex_count=2,
+            manifest={
+                "kind": "symjit-application-evaluator",
+                "application_path": "kernels/17/application.symjit",
+                "application_abi": "symjit-application-storage-v2",
+            },
+        )
+
+
+def test_eager_direct_descriptor_verifies_native_module_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"import": 0, "verify": 0, "descriptor": 0}
+
+    class Native:
+        @staticmethod
+        def _eager_direct_descriptor_v1(
+            source: bytes,
+            input_count: int,
+            output_count: int,
+        ) -> bytes:
+            calls["descriptor"] += 1
+            return source + bytes((input_count, output_count))
+
+    def import_module(name: str) -> object:
+        assert name == "pyamplicol._rusticol"
+        calls["import"] += 1
+        return Native()
+
+    def verify_native_module(_module: object) -> None:
+        calls["verify"] += 1
+
+    artifact_writer._eager_direct_descriptor_operation.cache_clear()
+    monkeypatch.setattr(artifact_writer.importlib, "import_module", import_module)
+    monkeypatch.setattr(
+        artifact_writer,
+        "verify_native_module",
+        verify_native_module,
+    )
+    try:
+        assert artifact_writer._derive_eager_direct_descriptor(
+            b"first",
+            input_complex_count=3,
+            output_complex_count=2,
+        ) == b"first\x03\x02"
+        assert artifact_writer._derive_eager_direct_descriptor(
+            b"second",
+            input_complex_count=4,
+            output_complex_count=1,
+        ) == b"second\x04\x01"
+    finally:
+        artifact_writer._eager_direct_descriptor_operation.cache_clear()
+    assert calls == {"import": 1, "verify": 1, "descriptor": 2}
+
+
 def _writer_process(
     tmp_path: Path,
     *,
@@ -479,7 +600,12 @@ def test_plan_v3_runtime_and_exact_bounded_summary_publish_atomically(
 
     execution_path = output / f"processes/{_PROCESS_ID}/execution.json"
     execution = json.loads(execution_path.read_text(encoding="utf-8"))
-    capabilities = [EAGER_PLAN_V3_RUNTIME_CAPABILITY]
+    capabilities = sorted(
+        (
+            EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+        )
+    )
     assert execution == {
         "schema_version": 3,
         "kind": "pyamplicol-runtime-eager-execution",

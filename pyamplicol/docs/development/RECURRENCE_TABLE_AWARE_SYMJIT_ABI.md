@@ -141,12 +141,13 @@ particle identities, process names, or model-specific logic.
 Suggested public identities are:
 
 ```text
-symjit-direct-table-application-storage-v1
-symjit-direct-table-binding-v1
+symjit-direct-table-descriptor-v1
+symjit-direct-table-binding-v2
 ```
 
-The existing Direct-Arena API may remain for other consumers. Recurrence is
-pre-release and does not need compatibility with its current callable ABI.
+The existing Direct-Arena API remains available to accepted recurrence
+artifacts. New eager table descriptors are a separate lane-specific contract;
+they do not reinterpret recurrence rows or callable roles.
 
 ### Portable binding metadata
 

@@ -2,9 +2,9 @@
 
 use super::eager_v3_manifest::*;
 use crate::eager_layout::{
-    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY,
-    EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA, EAGER_RUNTIME_LAYOUT_ABI,
-    EAGER_SECTION_HEADER_SIZE, EagerSectionHeader, EagerSectionKind,
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
+    EAGER_RUNTIME_CAPABILITY, EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA,
+    EAGER_RUNTIME_LAYOUT_ABI, EAGER_SECTION_HEADER_SIZE, EagerSectionHeader, EagerSectionKind,
 };
 use crate::pacbin::{PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolErrorKind};
@@ -125,6 +125,19 @@ fn every_plan_abi_and_capability_mismatch_fails_closed() {
         fixture.parse().unwrap_err().kind(),
         RusticolErrorKind::Compatibility
     );
+}
+
+#[test]
+fn pre_arena_plan_v3_has_actionable_regeneration_error() {
+    let mut fixture = Fixture::new();
+    let legacy = json!([EAGER_RUNTIME_CAPABILITY]);
+    fixture.manifest["required_runtime_capabilities"] = legacy.clone();
+    fixture.manifest["plan"]["required_runtime_capabilities"] = legacy;
+    fixture.outer.required_runtime_capabilities = vec![EAGER_RUNTIME_CAPABILITY.to_string()];
+    let error = fixture.parse().unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Compatibility);
+    assert!(error.to_string().contains("predates"));
+    assert!(error.to_string().contains("pyamplicol generate"));
 }
 
 #[test]
@@ -328,13 +341,13 @@ fn outer_process() -> ArtifactProcess {
         color_accuracy: "full".to_string(),
         external_pdgs: vec![1, -1, 23, 21],
         physics_path: "physics.json".to_string(),
-        required_runtime_capabilities: vec![EAGER_RUNTIME_CAPABILITY.to_string()],
+        required_runtime_capabilities: direct_capabilities(),
         aliases: Vec::new(),
     }
 }
 
 fn manifest_value(outer: &ArtifactProcess, metadata: &ContainerMetadata) -> Value {
-    let capabilities = json!([EAGER_RUNTIME_CAPABILITY]);
+    let capabilities = json!(direct_capabilities());
     json!({
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
         "kind": EAGER_EXECUTION_KIND,
@@ -377,6 +390,13 @@ fn manifest_value(outer: &ArtifactProcess, metadata: &ContainerMetadata) -> Valu
             "truncated": false,
         },
     })
+}
+
+fn direct_capabilities() -> Vec<String> {
+    vec![
+        EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY.to_string(),
+        EAGER_RUNTIME_CAPABILITY.to_string(),
+    ]
 }
 
 fn inspection_summary(outer: &ArtifactProcess) -> Value {

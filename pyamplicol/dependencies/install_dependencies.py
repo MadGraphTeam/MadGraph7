@@ -391,8 +391,6 @@ def _contributor_patches(payload: dict[str, Any]) -> tuple[ContributorPatch, ...
         )
         seen_names.add(name)
         seen_paths.add(relative)
-    if len(patches) != 1:
-        raise SetupError("contributor lock must list the one exact SymJIT patch")
     return tuple(patches)
 
 
@@ -409,17 +407,45 @@ def _patch_state(patches: Sequence[ContributorPatch]) -> list[dict[str, str]]:
     ]
 
 
+def _patch_closure_sha256(patches: Sequence[ContributorPatch]) -> str:
+    """Hash the complete ordered patch contract for compact provenance."""
+
+    encoded = json.dumps(
+        _patch_state(patches),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _apply_contributor_patches(runner: Runner, payload: dict[str, Any]) -> None:
     """Apply each exact patch once, or verify that it is already fully applied."""
 
-    for patch in _contributor_patches(payload):
-        destination = CHECKOUTS / patch.target
-        if runner.dry_run:
+    patches = _contributor_patches(payload)
+    if runner.dry_run:
+        for patch in patches:
             print(
                 f"# verify/apply {patch.name} to {patch.target} "
                 f"at {patch.applies_to_revision}"
             )
+        return
+    destination = CHECKOUTS / patches[0].target
+    if not destination.is_dir():
+        raise SetupError(f"contributor patch target is missing: {patches[0].target}")
+    symjit = payload["symjit"]
+    known_complete_trees: set[str] = set()
+    for key in ("patched_tree_sha256", "candidate_tree_sha256"):
+        digest = symjit.get(key)
+        if digest is None:
             continue
+        if not isinstance(digest, str) or _SHA256_PATTERN.fullmatch(digest) is None:
+            raise SetupError(f"contributor lock has an invalid SymJIT {key}")
+        known_complete_trees.add(digest)
+    if _source_tree_sha256(destination) in known_complete_trees:
+        return
+
+    for patch in patches:
         if not destination.is_dir():
             raise SetupError(f"contributor patch target is missing: {patch.target}")
         patch_environment = dict(os.environ)
@@ -622,10 +648,7 @@ def _apply_patch(runner: Runner, checkout: Path, patch: Path) -> None:
     environment["GIT_CEILING_DIRECTORIES"] = str(checkout.parent.resolve())
     command = ["git", "apply", "--no-index"]
     if runner.dry_run:
-        print(
-            f"$ {shlex.join([*command, str(patch)])}"
-            f"  # cwd={checkout}"
-        )
+        print(f"$ {shlex.join([*command, str(patch)])}  # cwd={checkout}")
         return
     check = subprocess.run(
         [*command, "--check", str(patch)],
@@ -1229,7 +1252,7 @@ def _write_state(
         "revision": str(symjit["candidate_revision"]),
         "version": str(symjit["candidate_version"]),
         "archive_sha256": str(symjit["archive_sha256"]),
-        "patch_sha256": patches[0].sha256,
+        "patch_sha256": _patch_closure_sha256(patches),
         "worktree_sha256": _source_tree_sha256(CHECKOUTS / "symjit"),
     }
     STATE.write_text(

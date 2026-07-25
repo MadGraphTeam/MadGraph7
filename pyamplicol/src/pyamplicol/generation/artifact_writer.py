@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import importlib.metadata
 import json
 import os
 import re
+import time
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
 from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
@@ -37,9 +40,15 @@ from .._internal.versions import (
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
     COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
     COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+    COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+    COMPILED_PLANE_DIRECT_APPLICATION_ABI,
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    EAGER_DIRECT_TABLE_BINDING_ABI,
+    EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
     EVALUATOR_RUNTIME_CAPABILITIES,
+    NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
     PROCESS_ARTIFACT_SCHEMA_VERSION,
     PYTHON_API_VERSION,
     RECURRENCE_BUILDER_INPUT_ABI,
@@ -113,6 +122,14 @@ _EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI = "pacbin-v1"
 EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 EAGER_RUNTIME_LAYOUT_ABI = "pyamplicol-eager-runtime-layout-v1"
 EAGER_PLAN_V3_RUNTIME_CAPABILITY = "rusticol.eager-runtime-layout.complex-f64.v1"
+_EAGER_PLAN_V3_RUNTIME_CAPABILITIES = tuple(
+    sorted(
+        (
+            EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+        )
+    )
+)
 EAGER_RUNTIME_CONTAINER_KIND = "pyamplicol-eager-runtime-container"
 EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
 EAGER_RUNTIME_STORAGE_ABI = "pacbin-v1"
@@ -675,11 +692,16 @@ def write_schema_v3_artifact(
                 requested_bytes=requested_bytes,
                 effective_bytes=effective_bytes,
             )
+        retain_recurrence_templates = (
+            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY
+            in required_runtime_capabilities
+        )
         eager_kernel_ids = _prepared_kernel_ids(
             output,
             existing,
             compiled_model=compiled_model,
             processes=processes,
+            retain_recurrence_templates=retain_recurrence_templates,
         )
         if eager_kernel_ids:
             if progress_callback is not None:
@@ -696,6 +718,11 @@ def write_schema_v3_artifact(
                 compiled_model,
                 kernel_ids=eager_kernel_ids,
                 evaluator_payloads=evaluator_payloads,
+                require_eager_direct=(
+                    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
+                    in required_runtime_capabilities
+                ),
+                retain_recurrence_templates=retain_recurrence_templates,
             )
         for process_index, process in enumerate(processes, start=1):
             if progress_callback is not None:
@@ -836,6 +863,8 @@ def _write_eager_kernel_pack(
     *,
     kernel_ids: frozenset[int],
     evaluator_payloads: _EvaluatorPayloadCollector,
+    require_eager_direct: bool,
+    retain_recurrence_templates: bool,
 ) -> None:
     bundle = compiled_model.prepared_bundle
     if bundle is None:
@@ -860,7 +889,44 @@ def _write_eager_kernel_pack(
     evaluator_payloads.discard_prefix(_EAGER_KERNEL_PAYLOAD_ROOT)
     pack_payload = bundle.kernel_pack.to_dict()
     pack_payload["eager_kernel_abi"] = EAGER_KERNEL_ABI
-    pack_payload["kernels"] = [kernel.to_dict() for kernel in selected]
+    if not retain_recurrence_templates:
+        # Process artifacts retain only the prepared kernels they execute.  A
+        # model-wide recurrence catalog references kernels outside that
+        # process-local inventory and therefore cannot remain a valid member
+        # of an eager-only kernel pack.  Eager exact execution uses the
+        # prepared kernel records and resolver manifest, not recurrence
+        # templates.
+        pack_payload["recurrence_template"] = None
+        pack_payload["recurrence_direct_template"] = None
+    direct_descriptors: dict[str, bytes] = {}
+    kernel_payloads: list[dict[str, object]] = []
+    for kernel in selected:
+        payload = kernel.to_dict()
+        if require_eager_direct:
+            manifest = _mapping(payload["f64_evaluator_manifest"])
+            if bundle.kernel_pack.backend == "jit":
+                direct_manifest, descriptor_path, descriptor = (
+                    _eager_direct_evaluator_manifest(
+                        bundle=bundle,
+                        kernel_id=kernel.kernel_id,
+                        input_complex_count=kernel.input_arity,
+                        output_complex_count=kernel.output_arity,
+                        manifest=manifest,
+                    )
+                )
+                direct_descriptors[descriptor_path] = descriptor
+            else:
+                direct_manifest = _eager_native_direct_evaluator_manifest(
+                    backend=bundle.kernel_pack.backend,
+                    bundle=bundle,
+                    kernel_id=kernel.kernel_id,
+                    input_complex_count=kernel.input_arity,
+                    output_complex_count=kernel.output_arity,
+                    manifest=manifest,
+                )
+            payload["f64_evaluator_manifest"] = direct_manifest
+        kernel_payloads.append(payload)
+    pack_payload["kernels"] = kernel_payloads
     pack_payload["kernel_variants"] = [
         variant.to_dict() for variant in selected_variants
     ]
@@ -868,12 +934,24 @@ def _write_eager_kernel_pack(
         bundle.kernel_pack.resolver_manifest,
         kernel_ids,
     )
+    from ..models.prepared import PreparedKernelPack
+
+    validated_pack_payload = dict(pack_payload)
+    validated_pack_payload.pop("eager_kernel_abi")
+    PreparedKernelPack.from_dict(validated_pack_payload)
     builder.add_json(
         _EAGER_KERNEL_PACK_PATH,
         pack_payload,
         role="evaluator-manifest",
         compact=True,
     )
+    for descriptor_path, descriptor in sorted(direct_descriptors.items()):
+        evaluator_payloads.add_bytes(
+            f"{_EAGER_KERNEL_PAYLOAD_ROOT}/{descriptor_path}",
+            descriptor,
+            process_id=None,
+            media_type="application/octet-stream",
+        )
     referenced_payloads = {
         path
         for record in (*selected, *selected_variants)
@@ -890,12 +968,169 @@ def _write_eager_kernel_pack(
                 )
 
 
+def _eager_direct_evaluator_manifest(
+    *,
+    bundle: object,
+    kernel_id: int,
+    input_complex_count: int,
+    output_complex_count: int,
+    manifest: Mapping[str, object],
+) -> tuple[dict[str, object], str, bytes]:
+    if manifest.get("kind") != "symjit-application-evaluator":
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} is not a SymJIT application"
+        )
+    application_path = manifest.get("application_path")
+    if not isinstance(application_path, str) or not application_path:
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} has no source application"
+        )
+    if manifest.get("application_abi") != SYMJIT_APPLICATION_ABI:
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} has an incompatible source ABI"
+        )
+    reader = getattr(bundle, "read_payload", None)
+    if not callable(reader):  # pragma: no cover - internal type invariant
+        raise TypeError("prepared model bundle cannot read evaluator payloads")
+    source = reader(application_path)
+    if not isinstance(source, bytes):  # pragma: no cover - bundle invariant
+        raise TypeError("prepared model bundle returned a non-byte evaluator payload")
+    started = time.perf_counter()
+    descriptor = _derive_eager_direct_descriptor(
+        source,
+        input_complex_count=input_complex_count,
+        output_complex_count=output_complex_count,
+    )
+    descriptor_s = time.perf_counter() - started
+    descriptor_path = f"kernels/{kernel_id}/eager-direct-table-descriptor-v1.bin"
+    result = _plain_mapping(manifest)
+    timing = _plain_mapping(_mapping(result.get("build_timing", {})))
+    timing["eager_direct_descriptor_s"] = descriptor_s
+    result["build_timing"] = timing
+    result["direct_table"] = {
+        "capability": EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        "source_application_abi": SYMJIT_APPLICATION_ABI,
+        "descriptor_abi": EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+        "binding_abi": EAGER_DIRECT_TABLE_BINDING_ABI,
+        "descriptor_path": descriptor_path,
+        "descriptor_size_bytes": len(descriptor),
+        "descriptor_sha256": hashlib.sha256(descriptor).hexdigest(),
+        "input_complex_count": input_complex_count,
+        "output_complex_count": output_complex_count,
+    }
+    return result, descriptor_path, descriptor
+
+
+def _eager_native_direct_evaluator_manifest(
+    *,
+    backend: str,
+    bundle: object,
+    kernel_id: int,
+    input_complex_count: int,
+    output_complex_count: int,
+    manifest: Mapping[str, object],
+) -> dict[str, object]:
+    del bundle
+    if backend not in {"cpp", "asm"}:
+        raise ValueError(f"unsupported eager native DirectTable backend {backend!r}")
+    if manifest.get("kind") != "compiled-complex-evaluator":
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} is not a native "
+            "compiled evaluator"
+        )
+    expected_capability = {
+        "cpp": SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+        "asm": SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+    }[backend]
+    if manifest.get("runtime_capability") != expected_capability:
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} native capability "
+            "does not match its prepared backend"
+        )
+    direct = _mapping(manifest.get("direct_table"))
+    from .._internal.versions import (
+        NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI,
+    )
+
+    expected = {
+        "capability": EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        "source_application_abi": (NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI),
+        "descriptor_abi": EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+        "binding_abi": EAGER_DIRECT_TABLE_BINDING_ABI,
+    }
+    for field, value in expected.items():
+        if direct.get(field) != value:
+            raise ValueError(
+                f"eager-direct-arena-v1 kernel {kernel_id} native "
+                f"DirectTable {field} is incompatible"
+            )
+    library_path = direct.get("library_path")
+    function_name = direct.get("function_name")
+    if (
+        not isinstance(library_path, str)
+        or not library_path
+        or library_path != manifest.get("library_path")
+        or not isinstance(function_name, str)
+        or not function_name
+    ):
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} native DirectTable "
+            "library binding is invalid"
+        )
+    if (
+        direct.get("input_complex_count") != input_complex_count
+        or direct.get("output_complex_count") != output_complex_count
+    ):
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} native DirectTable "
+            "width is incompatible"
+        )
+    return _plain_mapping(manifest)
+
+
+def _derive_eager_direct_descriptor(
+    source_application: bytes,
+    *,
+    input_complex_count: int,
+    output_complex_count: int,
+) -> bytes:
+    operation = _eager_direct_descriptor_operation()
+    descriptor = operation(
+        source_application,
+        input_complex_count,
+        output_complex_count,
+    )
+    if not isinstance(descriptor, bytes) or not descriptor:
+        raise RuntimeError("Rusticol returned an invalid eager DirectTable descriptor")
+    return descriptor
+
+
+@cache
+def _eager_direct_descriptor_operation() -> Callable[[bytes, int, int], bytes]:
+    try:
+        rusticol = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(rusticol)
+    except (ImportError, OSError, RuntimeError) as exc:
+        raise RuntimeError(
+            "eager-direct-arena-v1 descriptor generation requires the current "
+            "pyamplicol native extension"
+        ) from exc
+    operation = getattr(rusticol, "_eager_direct_descriptor_v1", None)
+    if not callable(operation):
+        raise RuntimeError(
+            "the current pyamplicol native extension does not expose "
+            "_eager_direct_descriptor_v1; rebuild it before generating artifacts"
+        )
+    return operation
+
+
 def _prepared_kernel_ids(
     output: Path,
     existing: ArtifactManifest | None,
     *,
     compiled_model: CompiledModel,
     processes: Sequence[ProcessArtifact],
+    retain_recurrence_templates: bool,
 ) -> frozenset[int]:
     has_prepared_process = any(
         _is_prepared_kernel_process(process) for process in processes
@@ -933,6 +1168,14 @@ def _prepared_kernel_ids(
         )
         if parameter_kernel_id is not None:
             kernel_ids.add(int(parameter_kernel_id))
+        if retain_recurrence_templates:
+            # The authenticated recurrence companions are model-wide rather
+            # than process-local.  Retaining them therefore requires their
+            # complete prepared-kernel inventory, including bindings that a
+            # particular process schedule does not happen to exercise.
+            kernel_ids.update(
+                kernel.kernel_id for kernel in bundle.kernel_pack.kernels
+            )
     return frozenset(kernel_ids)
 
 
@@ -945,6 +1188,7 @@ def _eager_prepared_pack_identity(
     existing_uses_eager = existing is not None and (
         bool(
             {
+                EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
                 EAGER_RUNTIME_CAPABILITY,
                 EAGER_PLAN_V3_RUNTIME_CAPABILITY,
                 RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
@@ -1284,7 +1528,7 @@ def _eager_plan_v3_execution_manifest(
         "Rust eager runtime payload size",
         minimum=1,
     )
-    capabilities = [EAGER_PLAN_V3_RUNTIME_CAPABILITY]
+    capabilities = list(_EAGER_PLAN_V3_RUNTIME_CAPABILITIES)
     plan = {
         "kind": EAGER_RUNTIME_KIND,
         "eager_plan_abi": EAGER_PLAN_V3_ABI,
@@ -1815,7 +2059,13 @@ def _prefix_evaluator_payload_paths(
     record: Mapping[str, object],
     prefix: str,
 ) -> dict[str, object]:
-    path_fields = {"application_path", "evaluator_state_path", "library_path"}
+    path_fields = {
+        "application_path",
+        "descriptor_path",
+        "evaluator_state_path",
+        "library_path",
+        "source_path",
+    }
 
     def visit(value: object, *, field: str | None = None) -> object:
         if field in path_fields and value is not None:
@@ -2212,7 +2462,33 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
         )
     )
     declared = set(_required_runtime_capabilities(result))
-    evaluator_capabilities = declared - {COMPILED_RUNTIME_SELECTORS_CAPABILITY}
+    direct_stages = [
+        stage.get("compiled_plane_arena") is not None
+        for stage in (*_sequence(result["stages"]), result["amplitude_stage"])
+    ]
+    has_direct_capability = COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY in declared
+    direct_evaluator_capabilities = {
+        SYMJIT_F64_RUNTIME_CAPABILITY,
+        SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+        SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+    }
+    if set(actual) & direct_evaluator_capabilities and not bool(
+        direct_stages and all(direct_stages)
+    ):
+        raise ValueError(
+            "compiled f64 artifacts require compiled-plane-arena-v1 metadata "
+            "for every fused stage"
+        )
+    if has_direct_capability != bool(direct_stages and all(direct_stages)):
+        raise ValueError(
+            "compiled plane-arena capability and fused-stage metadata disagree"
+        )
+    if any(direct_stages) and not all(direct_stages):
+        raise ValueError("compiled plane-arena metadata must cover every fused stage")
+    evaluator_capabilities = declared - {
+        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+        COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    }
     if set(actual) != evaluator_capabilities:
         raise ValueError(
             "stage evaluator runtime capabilities do not match evaluator payloads"
@@ -2221,7 +2497,7 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
 
 
 def _serialized_stage(record: Mapping[str, object]) -> dict[str, object]:
-    return {
+    result = {
         **_select(
             record,
             "stage_index",
@@ -2245,6 +2521,109 @@ def _serialized_stage(record: Mapping[str, object]) -> dict[str, object]:
         ),
         "evaluator": _evaluator(_mapping(record["evaluator"])),
     }
+    direct = record.get("compiled_plane_arena")
+    if direct is not None:
+        result["compiled_plane_arena"] = _compiled_plane_arena_stage(
+            _mapping(direct),
+            stage=result,
+        )
+    return result
+
+
+def _compiled_plane_arena_stage(
+    record: Mapping[str, object],
+    *,
+    stage: Mapping[str, object],
+) -> dict[str, object]:
+    result = {
+        **_select(
+            record,
+            "schema_version",
+            "kind",
+            "application_abi",
+            "source_application_abi",
+            "element_layout",
+            "output_operation",
+            "output_factor",
+            "input_output_aliasing",
+            "output_output_aliasing",
+        ),
+        "input_bindings": [
+            _select(
+                _mapping(item),
+                "parameter_index",
+                "kind",
+                "source_id",
+                "component",
+                "global_component",
+                "real_valued",
+            )
+            for item in _sequence(record["input_bindings"])
+        ],
+        "output_bindings": [
+            _select(
+                _mapping(item),
+                "output_index",
+                "arena",
+                "component",
+            )
+            for item in _sequence(record["output_bindings"])
+        ],
+        "leaves": [
+            _select(
+                _mapping(item),
+                "application_path",
+                "source_application_abi",
+                "optimization_level",
+                "input_len",
+                "output_len",
+                "input_indices",
+                "output_start",
+                "output_stop",
+            )
+            for item in _sequence(record["leaves"])
+        ],
+    }
+    symjit_contract = (
+        result["application_abi"] == COMPILED_PLANE_DIRECT_APPLICATION_ABI
+        and result["source_application_abi"] == SYMJIT_APPLICATION_ABI
+    )
+    native_contract = (
+        result["application_abi"] == NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+        and result["source_application_abi"] == NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+    )
+    if (
+        result["schema_version"] != 1
+        or result["kind"] != "compiled-plane-arena-stage"
+        or not (symjit_contract or native_contract)
+        or result["element_layout"] != "split-complex-component-major"
+        or result["output_operation"] != "overwrite"
+        or result["output_factor"] != "identity"
+        or result["input_output_aliasing"] != "forbidden"
+        or result["output_output_aliasing"] != "forbidden"
+    ):
+        raise ValueError("compiled plane-arena stage contract is incompatible")
+    if len(result["input_bindings"]) != int(stage["parameter_count"]):
+        raise ValueError("compiled plane-arena input binding count is invalid")
+    if len(result["output_bindings"]) != int(stage["output_length"]):
+        raise ValueError("compiled plane-arena output binding count is invalid")
+    if not result["leaves"]:
+        raise ValueError("compiled plane-arena stage has no fused leaves")
+    output_cursor = 0
+    for leaf in result["leaves"]:
+        leaf_map = _mapping(leaf)
+        input_indices = list(_sequence(leaf_map["input_indices"]))
+        if (
+            leaf_map["source_application_abi"] != result["source_application_abi"]
+            or len(input_indices) != int(leaf_map["input_len"])
+            or leaf_map["output_start"] != output_cursor
+            or leaf_map["output_stop"] != output_cursor + int(leaf_map["output_len"])
+        ):
+            raise ValueError("compiled plane-arena leaf bindings are invalid")
+        output_cursor = int(leaf_map["output_stop"])
+    if output_cursor != int(stage["output_length"]):
+        raise ValueError("compiled plane-arena leaves do not cover stage outputs")
+    return result
 
 
 def _model_parameter_evaluator(record: Mapping[str, object]) -> dict[str, object]:
@@ -2355,6 +2734,27 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
             SYMBOLICA_ASM_RUNTIME_CAPABILITY,
         }:
             raise ValueError("compiled evaluator has an invalid runtime capability")
+        direct = record.get("native_direct_application")
+        if direct is not None:
+            if result["runtime_capability"] not in {
+                SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+                SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+            }:
+                raise ValueError(
+                    "native DirectApplication metadata requires a compiled "
+                    "C++ or ASM evaluator"
+                )
+            direct_application = _native_compiled_direct_application(
+                _mapping(direct),
+                expected_function_name=str(result["function_name"]),
+                expected_output_count=int(result["output_len"]),
+            )
+            if result["library_path"] != direct_application["library_path"]:
+                raise ValueError(
+                    "compiled process DirectApplication must be the sole native "
+                    "library payload; dense/direct dual production is forbidden"
+                )
+            result["native_direct_application"] = direct_application
         return result
     if kind == "chunked-symbolica-evaluator":
         result = {
@@ -2378,6 +2778,96 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
             )
         return result
     raise ValueError(f"unsupported evaluator artifact kind {kind!r}")
+
+
+def _native_compiled_direct_application(
+    record: Mapping[str, object],
+    *,
+    expected_function_name: str,
+    expected_output_count: int,
+) -> dict[str, object]:
+    result = _select(
+        record,
+        "application_abi",
+        "function_name",
+        "source_path",
+        "library_path",
+        "target",
+        "evaluator_state_sha256",
+        "instruction_count",
+        "temporary_count",
+        "input_plane_count",
+        "scalar_input_count",
+        "output_plane_count",
+        "simd_lane_width",
+        "logical_stack_bytes",
+        "output_semantics",
+    )
+    if result["application_abi"] != NATIVE_COMPILED_DIRECT_APPLICATION_ABI:
+        raise ValueError("native DirectApplication has an incompatible ABI")
+    if result["function_name"] != expected_function_name:
+        raise ValueError(
+            "native DirectApplication function identity does not match its evaluator"
+        )
+    target = _mapping(result["target"])
+    triple = target.get("triple")
+    cpu_features = target.get("cpu_features")
+    if (
+        not isinstance(triple, str)
+        or triple not in _SUPPORTED_ARTIFACT_TARGETS
+        or isinstance(cpu_features, str | bytes)
+        or not isinstance(cpu_features, Sequence)
+    ):
+        raise ValueError("native DirectApplication target metadata is invalid")
+    features = [str(item) for item in cpu_features]
+    if features != sorted(set(features)) or any(not item for item in features):
+        raise ValueError(
+            "native DirectApplication CPU features must be sorted and unique"
+        )
+    result["target"] = {
+        "triple": triple,
+        "cpu_features": features,
+    }
+    digest = result["evaluator_state_sha256"]
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ValueError("native DirectApplication evaluator-state digest is invalid")
+    for name, minimum in (
+        ("instruction_count", 1),
+        ("temporary_count", 0),
+        ("input_plane_count", 1),
+        ("scalar_input_count", 0),
+        ("output_plane_count", 2),
+        ("logical_stack_bytes", 1),
+    ):
+        value = result[name]
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+            raise ValueError(
+                f"native DirectApplication {name.replace('_', ' ')} is invalid"
+            )
+    if result["output_plane_count"] != expected_output_count * 2:
+        raise ValueError(
+            "native DirectApplication output planes do not match evaluator outputs"
+        )
+    if result["simd_lane_width"] not in {2, 4}:
+        raise ValueError("native DirectApplication SIMD width is unsupported")
+    if result["logical_stack_bytes"] > 64 * 1024:
+        raise ValueError("native DirectApplication logical stack exceeds 64 KiB")
+    if result["output_semantics"] != "factor-free-overwrite":
+        raise ValueError("native DirectApplication output semantics are incompatible")
+    for name in ("source_path", "library_path"):
+        value = result[name]
+        if not isinstance(value, str):
+            raise ValueError(f"native DirectApplication {name} must be a string")
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(
+                f"native DirectApplication {name} must be artifact-relative"
+            )
+    return result
 
 
 def _dag_summary(record: Mapping[str, object]) -> dict[str, object]:
@@ -2781,9 +3271,12 @@ def _validate_append_compatibility(
 ) -> None:
     if existing is None:
         return
-    existing_uses_eager = EAGER_RUNTIME_CAPABILITY in _required_runtime_capabilities(
-        existing.runtime
-    ) or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
+    existing_capabilities = _required_runtime_capabilities(existing.runtime)
+    existing_uses_eager = (
+        EAGER_RUNTIME_CAPABILITY in existing_capabilities
+        or EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY in existing_capabilities
+        or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
+    )
     existing_identity = existing.extensions.get(_EAGER_PACK_IDENTITY_EXTENSION)
     if existing_uses_eager or existing_identity is not None:
         if not isinstance(existing_identity, Mapping):
@@ -3000,7 +3493,7 @@ def _process_runtime_capabilities(
     if isinstance(process, RecurrenceProcessArtifact):
         return _recurrence_process_runtime_capabilities(process)
     if isinstance(process, EagerPlanV3ProcessArtifact):
-        return (EAGER_PLAN_V3_RUNTIME_CAPABILITY,)
+        return _EAGER_PLAN_V3_RUNTIME_CAPABILITIES
     if isinstance(process, EagerProcessArtifact):
         return _eager_process_runtime_capabilities(process)
     return _compiled_process_runtime_capabilities(process)
@@ -3658,6 +4151,7 @@ def _deep_plain(value: Mapping[str, object]) -> dict[str, object]:
 
 
 __all__ = [
+    "EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY",
     "EAGER_PLAN_V3_ABI",
     "EAGER_PLAN_V3_RUNTIME_CAPABILITY",
     "EAGER_RUNTIME_CONTAINER_KIND",

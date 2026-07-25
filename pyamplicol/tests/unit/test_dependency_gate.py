@@ -122,7 +122,7 @@ def test_candidate_gate_uses_revisions_and_pinned_symjit_tree_fingerprint(
         {
             "version": contributor["symjit"]["candidate_version"],
             "archive_sha256": contributor["symjit"]["archive_sha256"],
-            "patch_sha256": patch_state[0]["sha256"],
+            "patch_sha256": module._patch_closure_sha256(patch_state),
             "worktree_sha256": contributor["symjit"]["candidate_tree_sha256"],
         }
     )
@@ -172,14 +172,36 @@ def test_candidate_patch_contract_rejects_tampered_patch(
     module = _module()
     contributor = copy.deepcopy(module._load_contributor_lock())
     dependencies = tmp_path / "dependencies"
-    patch = dependencies / contributor["patches"][0]["path"]
-    patch.parent.mkdir(parents=True)
-    patch.write_bytes(b"tampered patch\n")
+    for index, entry in enumerate(contributor["patches"]):
+        patch = dependencies / entry["path"]
+        patch.parent.mkdir(parents=True, exist_ok=True)
+        source = module.DEPENDENCIES_PATH / entry["path"]
+        patch.write_bytes(b"tampered patch\n" if index == 0 else source.read_bytes())
     monkeypatch.setattr(module, "DEPENDENCIES_PATH", dependencies)
 
     _, issues = module._candidate_patch_contract(contributor)
 
     assert [issue.code for issue in issues] == ["candidate-patch-digest"]
+
+
+def test_candidate_contributor_contract_pins_arena_abis_and_both_tree_states() -> None:
+    module = _module()
+    contributor = module._load_contributor_lock()
+
+    assert module._candidate_contributor_contract_issues(contributor) == []
+
+    wrong_abi = copy.deepcopy(contributor)
+    wrong_abi["abis"]["symjit_direct_table_binding"] = "wrong"
+    assert {
+        issue.code for issue in module._candidate_contributor_contract_issues(wrong_abi)
+    } == {"candidate-abi-contract"}
+
+    wrong_tree = copy.deepcopy(contributor)
+    wrong_tree["symjit"]["patched_tree_sha256"] = "wrong"
+    assert {
+        issue.code
+        for issue in module._candidate_contributor_contract_issues(wrong_tree)
+    } == {"candidate-source-tree"}
 
 
 def test_online_gate_checks_each_exact_published_dependency(

@@ -9,6 +9,12 @@ pub(super) struct RuntimeSourceState {
 }
 
 impl ExecutionRuntime {
+    pub(super) fn default_runtime_source_state(
+        source: &GenericSourceRecordManifest,
+    ) -> RusticolResult<GenericSourceStateIrManifest> {
+        default_source_state(source)
+    }
+
     pub(super) fn fill_sources_row_with_states<P>(
         sources: &[GenericSourceRecordManifest],
         source_states: &[RuntimeSourceState],

@@ -55,6 +55,7 @@ _CONTRACT_KINDS = frozenset(("vertex", "propagator", "closure", "model-parameter
 _PATH_FIELDS = frozenset(
     (
         "application_path",
+        "descriptor_path",
         "evaluator_state_path",
         "library_path",
         "payload_path",

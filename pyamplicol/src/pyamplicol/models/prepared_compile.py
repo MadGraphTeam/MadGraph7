@@ -8,6 +8,7 @@ import importlib.metadata
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 import warnings
@@ -19,6 +20,10 @@ from typing import cast
 
 from .._internal.physics.symbols import symbols
 from .._internal.versions import (
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    EAGER_DIRECT_TABLE_BINDING_ABI,
+    EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+    NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI,
     SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
     SYMBOLICA_SERIALIZATION_ABI,
@@ -27,6 +32,9 @@ from .._internal.versions import (
     verify_native_module,
 )
 from ..config import EvaluatorConfig
+from ..evaluators.native_eager_direct_cpp import (
+    render_native_eager_direct_table_cpp,
+)
 from ..evaluators.symbolica_compile import (
     _compile_symbolica_outputs,
     _symbolica_evaluator_kwargs,
@@ -62,6 +70,7 @@ from .prepared_catalog import (
 )
 from .prepared_target import (
     PreparedTargetError,
+    canonical_architecture,
     native_prepared_target,
     symjit_storage_v3_target,
 )
@@ -767,6 +776,17 @@ def _real_kernel_parameter_indices(
     )
 
 
+def _native_eager_simd_lane_width(target: Mapping[str, object]) -> int:
+    target_triple = str(target["target_triple"])
+    raw_features = target.get("cpu_features", ())
+    cpu_features = frozenset(str(feature) for feature in raw_features)
+    return (
+        4
+        if target_triple.startswith("x86_64") and "avx2" in cpu_features
+        else 2
+    )
+
+
 def _compile_native_split_real_kernel(
     kernel: PreparedKernelSpec,
     *,
@@ -815,7 +835,39 @@ def _compile_native_split_real_kernel(
         raise PreparedModelBundleError(
             f"prepared native kernel {kernel.kernel_id} cannot retain exact state"
         )
-    evaluator_state_path.write_bytes(save())
+    evaluator_state_bytes = save()
+    if not isinstance(evaluator_state_bytes, bytes) or not evaluator_state_bytes:
+        raise PreparedModelBundleError(
+            f"prepared native kernel {kernel.kernel_id} returned invalid exact state"
+        )
+    evaluator_state_path.write_bytes(evaluator_state_bytes)
+    try:
+        native_target = native_prepared_target(
+            include_cpu_features=settings.compiled_native
+        )
+    except PreparedTargetError:
+        # Low-level compiler tests intentionally exercise the native producer
+        # without a built Rust extension. Full prepared-pack publication still
+        # calls `_prepared_target` and therefore fails closed without exact
+        # Rusticol target introspection.
+        native_target = {
+            "target_triple": (
+                f"{canonical_architecture()}-{sys.platform}-compile-only"
+            ),
+            "cpu_features": [],
+        }
+    target_triple = str(native_target["target_triple"])
+    simd_lane_width = _native_eager_simd_lane_width(native_target)
+    eager_direct = render_native_eager_direct_table_cpp(
+        exact_evaluator,
+        kernel_id=kernel.kernel_id,
+        input_complex_count=kernel.input_arity,
+        output_complex_count=kernel.output_dimension,
+        target_triple=target_triple,
+        simd_lane_width=simd_lane_width,
+        real_parameter_indices=real_parameters,
+        evaluator_state_bytes=evaluator_state_bytes,
+    )
 
     split_parameters, split_outputs = _split_complex_kernel_contract(
         kernel.kernel_id,
@@ -839,8 +891,8 @@ def _compile_native_split_real_kernel(
     custom_header = _native_split_real_custom_header(
         kernel,
         raw_function_name=raw_function_name,
-        complex_function_name=function_name,
         direct_spec=direct_spec,
+        eager_direct_source=eager_direct.source,
         raw_parameters_const=settings.compiled_inline_asm != "none",
     )
     compile_started = time.perf_counter()
@@ -867,7 +919,11 @@ def _compile_native_split_real_kernel(
         "runtime_capability": runtime_capability,
         "backend": settings.backend,
         "number_type": "complex",
-        "function_name": function_name,
+        # The sole eager f64 entry is the DirectTable callable. The split-real
+        # symbol remains private implementation support for the separate
+        # recurrence direct callable when that lane is present; no legacy
+        # dense complex entry is published.
+        "function_name": eager_direct.function_name,
         "input_len": kernel.input_arity,
         "output_len": kernel.output_dimension,
         "settings": settings.to_json_dict(),
@@ -876,6 +932,26 @@ def _compile_native_split_real_kernel(
         "evaluator_state_path": str(evaluator_state_path),
         "build_timing": {
             "cxx_compile_s": compile_seconds,
+        },
+        "direct_table": {
+            "capability": EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            "source_application_abi": (
+                NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI
+            ),
+            "descriptor_abi": EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+            "binding_abi": EAGER_DIRECT_TABLE_BINDING_ABI,
+            "library_path": str(library_path),
+            "function_name": eager_direct.function_name,
+            "evaluator_state_sha256": (
+                eager_direct.evaluator_state_sha256
+            ),
+            "input_complex_count": eager_direct.input_complex_count,
+            "output_complex_count": eager_direct.output_complex_count,
+            "invocation_stride": eager_direct.invocation_stride,
+            "attachment_stride": eager_direct.attachment_stride,
+            "simd_lane_width": eager_direct.simd_lane_width,
+            "instruction_count": eager_direct.instruction_count,
+            "temporary_count": eager_direct.temporary_count,
         },
     }
 
@@ -1137,63 +1213,27 @@ def _native_split_real_custom_header(
     kernel: PreparedKernelSpec,
     *,
     raw_function_name: str,
-    complex_function_name: str,
     direct_spec: PreparedNativeDirectCallableSpecV1 | None,
+    eager_direct_source: str = "",
     raw_parameters_const: bool = False,
 ) -> str:
-    split_input_count = 2 * kernel.input_arity
-    split_output_count = 2 * kernel.output_dimension
     lines = [
-        "#include <complex>",
         "#include <cstddef>",
         "#include <cstdint>",
-        "",
-        f'extern "C" unsigned long {raw_function_name}_realf64_get_buffer_len();',
-        (
-            f'extern "C" void {raw_function_name}_realf64('
-            f"{'const ' if raw_parameters_const else ''}"
-            "double*, double*, double*);"
-        ),
-        "",
-        (
-            'extern "C" unsigned long '
-            f"{complex_function_name}_complexf64_get_buffer_len() {{"
-        ),
-        (
-            f"  const unsigned long split_values = {split_input_count}ul + "
-            f"{split_output_count}ul + {raw_function_name}_realf64_get_buffer_len();"
-        ),
-        "  return (split_values + 1ul) / 2ul;",
-        "}",
-        "",
-        (
-            f'extern "C" void {complex_function_name}_complexf64('
-            "std::complex<double>* params, std::complex<double>* buffer, "
-            "std::complex<double>* out) {"
-        ),
-        "  double* split_params = reinterpret_cast<double*>(buffer);",
-        f"  double* split_out = split_params + {split_input_count}u;",
-        f"  double* split_buffer = split_out + {split_output_count}u;",
     ]
-    for index in range(kernel.input_arity):
-        lines.extend(
-            (
-                f"  split_params[{2 * index}u] = params[{index}u].real();",
-                f"  split_params[{2 * index + 1}u] = params[{index}u].imag();",
-            )
-        )
-    lines.append(
-        f"  {raw_function_name}_realf64(split_params, split_buffer, split_out);"
-    )
-    for index in range(kernel.output_dimension):
-        lines.append(
-            f"  out[{index}u] = std::complex<double>("
-            f"split_out[{2 * index}u], split_out[{2 * index + 1}u]);"
-        )
-    lines.append("}")
     if direct_spec is not None:
         lines.extend(
             (
+                "",
+                (
+                    'extern "C" unsigned long '
+                    f"{raw_function_name}_realf64_get_buffer_len();"
+                ),
+                (
+                    f'extern "C" void {raw_function_name}_realf64('
+                    f"{'const ' if raw_parameters_const else ''}"
+                    "double*, double*, double*);"
+                ),
                 "",
                 _native_direct_arena_declarations(),
                 "",
@@ -1204,6 +1244,8 @@ def _native_split_real_custom_header(
                 ),
             )
         )
+    if eager_direct_source:
+        lines.extend(("", eager_direct_source))
     return "\n".join(lines)
 
 

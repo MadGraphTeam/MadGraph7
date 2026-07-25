@@ -39,6 +39,7 @@ def _compile_symbolica_outputs(
     label: str = "symbolica",
     progress_callback: ProgressCallback | None = None,
     output_partitions: Sequence[tuple[int, int]] = (),
+    native_direct_only: bool = False,
 ) -> Any:
     if not outputs:
         raise NativeEvaluationError("cannot build evaluator with zero outputs")
@@ -71,6 +72,7 @@ def _compile_symbolica_outputs(
                 unchunked_settings,
                 compiled_output_dir=chunk_output_dir,
             )
+
         def compile_chunk(
             chunk_index: int,
             start: int,
@@ -112,6 +114,7 @@ def _compile_symbolica_outputs(
                     label=f"{label}_chunk_{chunk_index}",
                     progress_callback=progress_callback,
                     output_partitions=(),
+                    native_direct_only=native_direct_only,
                 ),
                 chunk_input_indices,
             )
@@ -253,6 +256,7 @@ def _compile_symbolica_outputs(
             input_len=len(params),
             output_len=len(outputs),
             progress_callback=progress_callback,
+            native_direct_only=native_direct_only,
         )
         _set_evaluator_build_timing(
             adapter,
@@ -329,6 +333,7 @@ def _compile_symbolica_outputs(
         input_len=len(params),
         output_len=len(outputs),
         progress_callback=progress_callback,
+        native_direct_only=native_direct_only,
     )
     _set_evaluator_build_timing(
         adapter,
@@ -546,6 +551,7 @@ def _finalize_symbolica_evaluator(
     input_len: int,
     output_len: int,
     progress_callback: ProgressCallback | None = None,
+    native_direct_only: bool = False,
 ) -> Any:
     if settings.backend == "jit":
         _report_progress(
@@ -573,6 +579,7 @@ def _finalize_symbolica_evaluator(
             label,
             input_len=input_len,
             output_len=output_len,
+            compile_dense=not native_direct_only,
         )
     raise NativeEvaluationError(
         f"unsupported symbolica evaluator backend: {settings.backend}"

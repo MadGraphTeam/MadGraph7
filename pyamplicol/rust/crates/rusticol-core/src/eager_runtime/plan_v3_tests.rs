@@ -11,18 +11,18 @@ use crate::{
 };
 
 #[derive(Clone)]
-struct Fixture {
+pub(super) struct Fixture {
     kernels: Vec<EagerKernelSpec>,
     prepared_parameter_count: u32,
-    currents: Vec<EagerPlanCurrentRow>,
-    values: Vec<EagerPlanValueRow>,
-    momenta: Vec<EagerPlanMomentumRow>,
-    stages: Vec<EagerPlanStageRow>,
+    pub(super) currents: Vec<EagerPlanCurrentRow>,
+    pub(super) values: Vec<EagerPlanValueRow>,
+    pub(super) momenta: Vec<EagerPlanMomentumRow>,
+    pub(super) stages: Vec<EagerPlanStageRow>,
     couplings: Vec<EagerPlanCouplingRow>,
-    invocations: Vec<EagerPlanInvocationRow>,
-    attachments: Vec<EagerPlanAttachmentRow>,
-    finalizations: Vec<EagerPlanFinalizationRow>,
-    closures: Vec<EagerPlanClosureRow>,
+    pub(super) invocations: Vec<EagerPlanInvocationRow>,
+    pub(super) attachments: Vec<EagerPlanAttachmentRow>,
+    pub(super) finalizations: Vec<EagerPlanFinalizationRow>,
+    pub(super) closures: Vec<EagerPlanClosureRow>,
     direct_coefficients: Vec<EagerPlanDirectCoefficientRow>,
     selector_domains: Vec<EagerPlanSelectorDomainRow>,
     selector_memberships: Vec<u32>,
@@ -32,7 +32,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let exact_factors = [
             (1.0, 0.0),
             (2.0, 3.0),
@@ -232,7 +232,7 @@ impl Fixture {
         }
     }
 
-    fn sections(&self) -> EagerPlanV3Sections<'_> {
+    pub(super) fn sections(&self) -> EagerPlanV3Sections<'_> {
         EagerPlanV3Sections {
             kernels: &self.kernels,
             prepared_parameter_count: self.prepared_parameter_count,

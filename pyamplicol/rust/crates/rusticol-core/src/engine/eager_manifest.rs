@@ -186,6 +186,39 @@ pub(super) struct PreparedKernelManifest {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(super) struct EagerDirectTableManifest {
+    pub(super) capability: String,
+    pub(super) source_application_abi: String,
+    pub(super) descriptor_abi: String,
+    pub(super) binding_abi: String,
+    #[serde(default)]
+    pub(super) descriptor_path: Option<String>,
+    #[serde(default)]
+    pub(super) descriptor_size_bytes: Option<u64>,
+    #[serde(default)]
+    pub(super) descriptor_sha256: Option<String>,
+    #[serde(default)]
+    pub(super) library_path: Option<String>,
+    #[serde(default)]
+    pub(super) function_name: Option<String>,
+    #[serde(default)]
+    pub(super) evaluator_state_sha256: Option<String>,
+    #[serde(default)]
+    pub(super) invocation_stride: Option<u32>,
+    #[serde(default)]
+    pub(super) attachment_stride: Option<u32>,
+    #[serde(default)]
+    pub(super) simd_lane_width: Option<u32>,
+    #[serde(default)]
+    pub(super) instruction_count: Option<u32>,
+    #[serde(default)]
+    pub(super) temporary_count: Option<u32>,
+    pub(super) input_complex_count: u32,
+    pub(super) output_complex_count: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct PreparedKernelVariantManifest {
     pub(super) variant_id: String,
     pub(super) variant_abi: String,
@@ -1398,8 +1431,20 @@ impl PreparedKernelManifest {
             ))
         })?;
         let metadata_fields: &[&str] = match kind {
-            "symjit-application-evaluator" => &["backend", "label", "settings", "build_timing"],
-            "compiled-complex-evaluator" => &["backend", "settings", "source_path", "build_timing"],
+            "symjit-application-evaluator" => &[
+                "backend",
+                "label",
+                "settings",
+                "build_timing",
+                "direct_table",
+            ],
+            "compiled-complex-evaluator" => &[
+                "backend",
+                "settings",
+                "source_path",
+                "build_timing",
+                "direct_table",
+            ],
             other => {
                 return Err(RusticolError::compatibility(format!(
                     "prepared kernel {} has unsupported f64 evaluator kind {other:?}",
@@ -1425,17 +1470,148 @@ impl PreparedKernelManifest {
             RusticolError::artifact("prepared f64 evaluator manifest must be an object")
         })?;
         match object.get("kind").and_then(Value::as_str) {
-            Some("symjit-application-evaluator") => Ok(Vec::new()),
-            Some("compiled-complex-evaluator") => Ok(vec![required_nonempty_string(
-                object,
-                "source_path",
-                self.kernel_id,
-            )?]),
+            Some("symjit-application-evaluator") => {
+                let Some(direct) = object.get("direct_table") else {
+                    return Ok(Vec::new());
+                };
+                let direct = direct.as_object().ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "prepared kernel {} DirectTable metadata must be an object",
+                        self.kernel_id
+                    ))
+                })?;
+                if let Some(path) = direct.get("descriptor_path") {
+                    Ok(vec![path.as_str().ok_or_else(|| {
+                        RusticolError::artifact(format!(
+                            "prepared kernel {} DirectTable descriptor path must be text",
+                            self.kernel_id
+                        ))
+                    })?])
+                } else if let Some(path) = direct.get("library_path") {
+                    Ok(vec![path.as_str().ok_or_else(|| {
+                        RusticolError::artifact(format!(
+                            "prepared kernel {} DirectTable library path must be text",
+                            self.kernel_id
+                        ))
+                    })?])
+                } else {
+                    Err(RusticolError::artifact(format!(
+                        "prepared kernel {} DirectTable has no payload path",
+                        self.kernel_id
+                    )))
+                }
+            }
+            Some("compiled-complex-evaluator") => {
+                let direct = object.get("direct_table").and_then(Value::as_object);
+                let mut paths = vec![required_nonempty_string(
+                    object,
+                    "source_path",
+                    self.kernel_id,
+                )?];
+                if let Some(direct) = direct {
+                    paths.push(required_nonempty_string(
+                        direct,
+                        "library_path",
+                        self.kernel_id,
+                    )?);
+                }
+                Ok(paths)
+            }
             _ => Err(RusticolError::compatibility(format!(
                 "prepared kernel {} has an unsupported f64 evaluator kind",
                 self.kernel_id
             ))),
         }
+    }
+
+    pub(super) fn eager_direct_table_manifest(&self) -> RusticolResult<EagerDirectTableManifest> {
+        let object = self.f64_evaluator_manifest.as_object().ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "prepared kernel {} f64 evaluator manifest must be an object",
+                self.kernel_id
+            ))
+        })?;
+        let raw = object.get("direct_table").ok_or_else(|| {
+            RusticolError::compatibility(format!(
+                "prepared eager kernel {} predates {:?}; regenerate the artifact with the \
+                 current `pyamplicol generate`",
+                self.kernel_id,
+                crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            ))
+        })?;
+        let direct: EagerDirectTableManifest =
+            serde_json::from_value(raw.clone()).map_err(|error| {
+                RusticolError::serialization(format!(
+                    "prepared eager kernel {} has invalid DirectTable metadata: {error}",
+                    self.kernel_id
+                ))
+            })?;
+        if direct.capability != crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
+            || !matches!(
+                direct.source_application_abi.as_str(),
+                crate::eager_layout::EAGER_DIRECT_SOURCE_APPLICATION_ABI
+                    | crate::eager_layout::EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI
+            )
+            || direct.descriptor_abi != crate::eager_layout::EAGER_DIRECT_TABLE_DESCRIPTOR_ABI
+            || direct.binding_abi != crate::eager_layout::EAGER_DIRECT_TABLE_BINDING_ABI
+        {
+            return Err(RusticolError::compatibility(format!(
+                "prepared eager kernel {} has an unsupported DirectTable ABI contract",
+                self.kernel_id
+            )));
+        }
+        match direct.source_application_abi.as_str() {
+            crate::eager_layout::EAGER_DIRECT_SOURCE_APPLICATION_ABI => {
+                if direct.descriptor_path.as_deref().is_none_or(str::is_empty) {
+                    return Err(RusticolError::artifact(format!(
+                        "prepared eager kernel {} DirectTable descriptor path is empty",
+                        self.kernel_id
+                    )));
+                }
+                let size = direct.descriptor_size_bytes.unwrap_or(0);
+                if size == 0 || size > 64 * 1024 * 1024 {
+                    return Err(RusticolError::artifact(format!(
+                        "prepared eager kernel {} DirectTable descriptor size is outside canonical bounds",
+                        self.kernel_id
+                    )));
+                }
+                validate_sha256_text(
+                    direct.descriptor_sha256.as_deref().unwrap_or_default(),
+                    "eager DirectTable descriptor digest",
+                )?;
+            }
+            crate::eager_layout::EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI => {
+                if direct.library_path.as_deref().is_none_or(str::is_empty)
+                    || direct.function_name.as_deref().is_none_or(str::is_empty)
+                    || direct.invocation_stride.unwrap_or(0) == 0
+                    || direct.attachment_stride.unwrap_or(0) == 0
+                    || !matches!(direct.simd_lane_width, Some(2 | 4))
+                {
+                    return Err(RusticolError::artifact(format!(
+                        "prepared eager kernel {} native DirectTable metadata is incomplete",
+                        self.kernel_id
+                    )));
+                }
+                validate_sha256_text(
+                    direct.evaluator_state_sha256.as_deref().unwrap_or_default(),
+                    "eager native DirectTable evaluator-state digest",
+                )?;
+            }
+            _ => unreachable!("source ABI admitted above"),
+        }
+        if usize::try_from(direct.input_complex_count).ok() != Some(self.input_arity)
+            || direct.output_complex_count != self.output_arity
+        {
+            return Err(RusticolError::integrity(format!(
+                "prepared eager kernel {} DirectTable I/O ({}, {}) does not match ({}, {})",
+                self.kernel_id,
+                direct.input_complex_count,
+                direct.output_complex_count,
+                self.input_arity,
+                self.output_arity,
+            )));
+        }
+        Ok(direct)
     }
 
     fn validate_evaluator_metadata(&self, pack: &PreparedKernelPackManifest) -> RusticolResult<()> {
@@ -1551,6 +1727,9 @@ impl PreparedKernelManifest {
                         self.kernel_id, PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
                     )));
                 }
+                if object.contains_key("direct_table") {
+                    self.eager_direct_table_manifest()?;
+                }
             }
             "compiled-complex-evaluator" => {
                 if !matches!(pack.backend.as_str(), "asm" | "cpp") {
@@ -1560,6 +1739,15 @@ impl PreparedKernelManifest {
                     )));
                 }
                 required_nonempty_string(object, "source_path", self.kernel_id)?;
+                let direct = self.eager_direct_table_manifest()?;
+                if direct.source_application_abi
+                    != crate::eager_layout::EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI
+                {
+                    return Err(RusticolError::compatibility(format!(
+                        "prepared native kernel {} does not provide a native eager DirectTable",
+                        self.kernel_id
+                    )));
+                }
             }
             _ => unreachable!("runtime evaluator projection validated the kind"),
         }
@@ -1900,6 +2088,7 @@ fn validate_prepared_evaluator_keys(
             "batch_layout",
             "build_timing",
             "compiler_type",
+            "direct_table",
             "element_layout",
             "endianness",
             "evaluator_state_path",
@@ -1919,6 +2108,7 @@ fn validate_prepared_evaluator_keys(
         "compiled-complex-evaluator" => [
             "backend",
             "build_timing",
+            "direct_table",
             "evaluator_state_path",
             "function_name",
             "input_len",
@@ -1939,7 +2129,12 @@ fn validate_prepared_evaluator_keys(
     };
     let actual = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
     let expected = expected.iter().copied().collect::<BTreeSet<_>>();
-    if actual != expected {
+    let expected_without_direct = expected
+        .iter()
+        .copied()
+        .filter(|field| *field != "direct_table")
+        .collect::<BTreeSet<_>>();
+    if actual != expected && actual != expected_without_direct {
         return Err(RusticolError::artifact(format!(
             "prepared kernel {kernel_id} evaluator fields {actual:?} do not match {expected:?}"
         )));

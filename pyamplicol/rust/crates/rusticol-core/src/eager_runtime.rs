@@ -181,6 +181,7 @@ pub(crate) struct EagerExecutionProfile {
     pub(crate) reduction: Duration,
     pub(crate) copy_out: Duration,
     pub(crate) total: Duration,
+    pub(crate) backend_call_count: u64,
 }
 
 impl EagerExecutionProfile {
@@ -196,6 +197,30 @@ impl EagerExecutionProfile {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EagerScheduleAuditRow {
+    pub(crate) stage_index: Option<u32>,
+    pub(crate) role: &'static str,
+    pub(crate) kernel_id: Option<u32>,
+    pub(crate) call_count: usize,
+    pub(crate) row_count: usize,
+    pub(crate) destination_count: usize,
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod direct_execution_arena;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod direct_invocation_arena;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(crate) use direct_execution_arena::EagerDirectExecutionRuntime;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(crate) use direct_invocation_arena::{
+    EagerDirectPreparedApplication, EagerDirectPreparedKernel,
+};
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
+pub(crate) use direct_invocation_arena::{
+    run_retained_multistage_oracle, select_retained_multistage_candidate,
+};
 mod execute;
 mod plan;
 mod plan_v3;

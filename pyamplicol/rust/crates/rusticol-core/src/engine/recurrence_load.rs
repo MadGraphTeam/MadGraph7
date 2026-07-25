@@ -1180,9 +1180,17 @@ fn build_common_runtime(
         lc_topology_replay_materialized_sector_ids: BTreeSet::new(),
         lc_resolved_replay_plan: None,
         lc_resolved_replay_selection_cache: None,
+        lc_replay_flat_momenta_scratch: Vec::new(),
+        lc_replay_target_components_scratch: Vec::new(),
         helicity_recurrence: None,
         compiled_helicity_execution_plan: None,
         compiled_color_execution_plan: None,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        compiled_direct_runtime: None,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        compiled_direct_color_schedules: BTreeMap::new(),
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        compiled_direct_helicity_schedules: BTreeMap::new(),
         helicity_sum_runtime: None,
         helicity_selector_runtimes: Vec::new(),
         helicity_selector_runtime_schedule_modes: Vec::new(),

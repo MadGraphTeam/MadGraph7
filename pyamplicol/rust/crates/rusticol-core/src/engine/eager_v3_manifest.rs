@@ -7,9 +7,9 @@
 //! then returns the mapped reader to the compact runtime loader.
 
 use crate::eager_layout::{
-    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY,
-    EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA, EAGER_RUNTIME_LAYOUT_ABI,
-    EagerSectionHeader, EagerSectionKind,
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
+    EAGER_RUNTIME_CAPABILITY, EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA,
+    EAGER_RUNTIME_LAYOUT_ABI, EagerSectionHeader, EagerSectionKind,
 };
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
@@ -148,11 +148,11 @@ impl EagerV3ExecutionManifest {
                 outer.id
             )));
         }
-        validate_single_capability(
+        validate_direct_capabilities(
             &self.required_runtime_capabilities,
             "eager execution manifest",
         )?;
-        validate_single_capability(&outer.required_runtime_capabilities, "outer eager process")?;
+        validate_direct_capabilities(&outer.required_runtime_capabilities, "outer eager process")?;
         if self.eager_plan_abi != EAGER_PLAN_ABI {
             return Err(unsupported_abi("eager plan", &self.eager_plan_abi));
         }
@@ -217,7 +217,7 @@ impl EagerV3PlanSummary {
             ));
         }
         parse_sha256(&self.lowering_input_sha256, "eager lowering input")?;
-        validate_single_capability(&self.required_runtime_capabilities, "nested eager plan")?;
+        validate_direct_capabilities(&self.required_runtime_capabilities, "nested eager plan")?;
         self.runtime_container.validate()?;
         self.inspection_summary.validate(process_key)?;
         Ok(())
@@ -482,10 +482,25 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
             .any(|window| window == needle)
 }
 
-fn validate_single_capability(capabilities: &[String], context: &str) -> RusticolResult<()> {
-    if capabilities != [EAGER_RUNTIME_CAPABILITY] {
+fn validate_direct_capabilities(capabilities: &[String], context: &str) -> RusticolResult<()> {
+    if capabilities == [EAGER_RUNTIME_CAPABILITY] {
         return Err(RusticolError::compatibility(format!(
-            "{context} must require exactly {EAGER_RUNTIME_CAPABILITY:?}"
+            "{context} predates {EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY:?}; regenerate the eager \
+             artifact with the current `pyamplicol generate` before loading it"
+        )));
+    }
+    if capabilities
+        != [
+            EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            EAGER_RUNTIME_CAPABILITY,
+        ]
+    {
+        return Err(RusticolError::compatibility(format!(
+            "{context} must require exactly {:?}",
+            [
+                EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                EAGER_RUNTIME_CAPABILITY,
+            ]
         )));
     }
     Ok(())

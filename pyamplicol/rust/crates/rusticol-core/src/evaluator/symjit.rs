@@ -319,7 +319,9 @@ fn panic_detail(payload: Box<dyn Any + Send>) -> String {
     }
 }
 
-fn validate_manifest_metadata(metadata: &SymjitApplicationMetadata<'_>) -> RusticolResult<()> {
+pub(crate) fn validate_manifest_metadata(
+    metadata: &SymjitApplicationMetadata<'_>,
+) -> RusticolResult<()> {
     if metadata.runtime_capability != SYMJIT_APPLICATION_RUNTIME_CAPABILITY {
         return Err(RusticolError::unsupported_runtime_capability(
             metadata.runtime_capability,
@@ -979,6 +981,7 @@ mod tests {
                 library_path: "absent-cpp-library.so".to_string(),
                 evaluator_state_path: None,
                 number_type: "complex".to_string(),
+                native_direct_application: None,
             },
             EvaluatorManifest::CompiledComplex {
                 runtime_capability: SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY.to_string(),
@@ -988,6 +991,7 @@ mod tests {
                 library_path: "absent-asm-library.so".to_string(),
                 evaluator_state_path: None,
                 number_type: "complex".to_string(),
+                native_direct_application: None,
             },
         ];
 

@@ -7,9 +7,11 @@
 //! workspace, so non-overlapping liveness intervals may share component
 //! planes. This module is independent of model and process semantics.
 
-use std::collections::BTreeMap;
-
 use super::RecurrenceProgram;
+use crate::direct_arena::{
+    DirectArenaInterval as GenericDirectArenaInterval,
+    assign_direct_arena as assign_generic_direct_arena,
+};
 use crate::{RusticolError, RusticolResult};
 
 fn invalid(message: impl Into<String>) -> RusticolError {
@@ -172,13 +174,6 @@ impl DirectArenaLayout {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct ActiveRange {
-    last_use: u64,
-    component_base: u32,
-    component_count: u32,
-}
-
 /// Assign variable-width current intervals to reusable physical component ranges.
 ///
 /// Inputs must use dense semantic current IDs. The allocator processes
@@ -187,114 +182,34 @@ struct ActiveRange {
 /// smallest fitting free range with the lowest base as a deterministic tie
 /// breaker.
 pub fn assign_direct_arena(intervals: &[DirectArenaInterval]) -> RusticolResult<DirectArenaLayout> {
-    if intervals.is_empty() {
-        return Ok(DirectArenaLayout {
-            assignments: Box::new([]),
-            component_count: 0,
-            total_semantic_components: 0,
-            reused_semantic_components: 0,
-        });
-    }
-
-    let mut ordered = intervals.to_vec();
-    ordered.sort_by_key(|interval| (interval.first_use, interval.semantic_current_id));
-    let mut seen = vec![false; intervals.len()];
-    for interval in &ordered {
-        let id = interval.semantic_current_id as usize;
-        if id >= seen.len() || seen[id] {
-            return Err(invalid(
-                "direct-arena semantic current IDs must be dense and unique",
-            ));
-        }
-        seen[id] = true;
-        if interval.component_count == 0 || interval.first_use > interval.last_use {
-            return Err(invalid(format!(
-                "direct-arena current {} has invalid width or liveness",
-                interval.semantic_current_id
-            )));
-        }
-    }
-    if seen.contains(&false) {
-        return Err(invalid(
-            "direct-arena semantic current IDs must cover zero through count minus one",
-        ));
-    }
-
-    let mut assignments = vec![None; intervals.len()];
-    let mut active = Vec::<ActiveRange>::new();
-    let mut free = BTreeMap::<u32, u32>::new();
-    let mut arena_stop = 0u32;
-    let mut total_semantic_components = 0u64;
-
-    for interval in ordered {
-        let mut retained = Vec::with_capacity(active.len() + 1);
-        for range in active.drain(..) {
-            if range.last_use < interval.first_use {
-                insert_free_range(&mut free, range.component_base, range.component_count)?;
-            } else {
-                retained.push(range);
-            }
-        }
-        active = retained;
-
-        let (component_base, available_count) = free
-            .iter()
-            .filter(|(_, count)| **count >= interval.component_count)
-            .min_by_key(|(base, count)| (**count, **base))
-            .map(|(base, count)| (*base, *count))
-            .unwrap_or((arena_stop, 0));
-
-        if available_count == 0 {
-            arena_stop = arena_stop
-                .checked_add(interval.component_count)
-                .ok_or_else(|| invalid("direct-arena physical component count exceeds u32"))?;
-        } else {
-            free.remove(&component_base);
-            let remaining = available_count - interval.component_count;
-            if remaining != 0 {
-                free.insert(
-                    component_base
-                        .checked_add(interval.component_count)
-                        .ok_or_else(|| invalid("direct-arena free range overflows u32"))?,
-                    remaining,
-                );
-            }
-        }
-
-        let assignment = DirectArenaAssignment {
-            semantic_current_id: interval.semantic_current_id,
-            component_base,
-            component_count: interval.component_count,
-            first_use: interval.first_use,
-            last_use: interval.last_use,
-        };
-        assignments[interval.semantic_current_id as usize] = Some(assignment);
-        active.push(ActiveRange {
-            last_use: interval.last_use,
-            component_base,
-            component_count: interval.component_count,
-        });
-        total_semantic_components = total_semantic_components
-            .checked_add(u64::from(interval.component_count))
-            .ok_or_else(|| invalid("direct-arena semantic component count exceeds u64"))?;
-    }
-
-    let assignments = assignments
-        .into_iter()
-        .enumerate()
-        .map(|(id, assignment)| {
-            assignment.ok_or_else(|| {
-                invalid(format!(
-                    "direct-arena current {id} was not assigned a physical range"
-                ))
-            })
+    let generic_intervals = intervals
+        .iter()
+        .map(|interval| {
+            GenericDirectArenaInterval::new(
+                interval.semantic_current_id,
+                interval.first_use,
+                interval.last_use,
+                interval.component_count,
+            )
         })
         .collect::<RusticolResult<Vec<_>>>()?;
+    let generic_layout = assign_generic_direct_arena(&generic_intervals)?;
+    let assignments = generic_layout
+        .assignments()
+        .iter()
+        .map(|assignment| DirectArenaAssignment {
+            semantic_current_id: assignment.semantic_value_id,
+            component_base: assignment.component_base,
+            component_count: assignment.component_count,
+            first_use: assignment.first_use,
+            last_use: assignment.last_use,
+        })
+        .collect::<Vec<_>>();
     let layout = DirectArenaLayout {
         assignments: assignments.into_boxed_slice(),
-        component_count: arena_stop,
-        total_semantic_components,
-        reused_semantic_components: total_semantic_components - u64::from(arena_stop),
+        component_count: generic_layout.component_count(),
+        total_semantic_components: generic_layout.total_semantic_components(),
+        reused_semantic_components: generic_layout.reused_semantic_components(),
     };
     layout.validate()?;
     Ok(layout)
@@ -374,51 +289,6 @@ pub fn recurrence_direct_arena_layout(
         })
         .collect::<RusticolResult<Vec<_>>>()?;
     assign_direct_arena(&intervals)
-}
-
-fn insert_free_range(
-    free: &mut BTreeMap<u32, u32>,
-    mut component_base: u32,
-    mut component_count: u32,
-) -> RusticolResult<()> {
-    if component_count == 0 {
-        return Err(invalid("cannot release an empty direct-arena range"));
-    }
-
-    if let Some((&previous_base, &previous_count)) = free.range(..component_base).next_back() {
-        let previous_stop = previous_base
-            .checked_add(previous_count)
-            .ok_or_else(|| invalid("direct-arena free range overflows u32"))?;
-        if previous_stop > component_base {
-            return Err(invalid("released direct-arena ranges overlap"));
-        }
-        if previous_stop == component_base {
-            component_base = previous_base;
-            component_count = component_count
-                .checked_add(previous_count)
-                .ok_or_else(|| invalid("direct-arena merged range overflows u32"))?;
-            free.remove(&previous_base);
-        }
-    }
-
-    let component_stop = component_base
-        .checked_add(component_count)
-        .ok_or_else(|| invalid("direct-arena free range overflows u32"))?;
-    if let Some((&next_base, &next_count)) = free.range(component_base..).next() {
-        if component_stop > next_base {
-            return Err(invalid("released direct-arena ranges overlap"));
-        }
-        if component_stop == next_base {
-            component_count = component_count
-                .checked_add(next_count)
-                .ok_or_else(|| invalid("direct-arena merged range overflows u32"))?;
-            free.remove(&next_base);
-        }
-    }
-    if free.insert(component_base, component_count).is_some() {
-        return Err(invalid("released direct-arena range repeats its base"));
-    }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -33,6 +33,10 @@ fn attach_point_selector_profile(
 }
 
 fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    if runtime.compiled_direct_runtime.is_some() {
+        return true;
+    }
     runtime
         .stages
         .as_ref()
@@ -40,7 +44,8 @@ fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
         || runtime
             .amplitude_stage
             .as_ref()
-            .is_some_and(|stage| stage.evaluator.uses_simd_jit())
+            .and_then(|stage| stage.evaluator.as_ref())
+            .is_some_and(EvaluatorGroup::uses_simd_jit)
         || runtime
             .helicity_sum_runtime
             .as_deref()
@@ -53,6 +58,69 @@ fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
             .color_selector_runtimes
             .values()
             .any(|lane| execution_uses_simd_jit(lane))
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[derive(Clone, Copy, Debug, Default)]
+struct CompiledDirectProfileSnapshot {
+    engine_count: usize,
+    source_fill_bytes: u64,
+    momentum_fill_bytes: u64,
+    parameter_fill_bytes: u64,
+    amplitude_clear_bytes: u64,
+    backend_call_count: u64,
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn compiled_direct_profile_snapshot(
+    runtime: &ExecutionRuntime,
+) -> RusticolResult<CompiledDirectProfileSnapshot> {
+    let mut snapshot = CompiledDirectProfileSnapshot::default();
+    if let Some(direct) = runtime.compiled_direct_runtime.as_ref() {
+        let traffic = direct.traffic();
+        traffic.leaf.validate_direct()?;
+        if traffic.boundary_input_bytes
+            | traffic.boundary_current_output_bytes
+            | traffic.boundary_amplitude_output_bytes
+            != 0
+        {
+            return Err(RusticolError::integrity(
+                "production compiled Direct-Arena profile observed developer boundary traffic",
+            ));
+        }
+        snapshot.engine_count += 1;
+        snapshot.source_fill_bytes = traffic.source_fill_bytes;
+        snapshot.momentum_fill_bytes = traffic.momentum_fill_bytes;
+        snapshot.parameter_fill_bytes = traffic.parameter_fill_bytes;
+        snapshot.amplitude_clear_bytes = traffic.amplitude_clear_bytes;
+        snapshot.backend_call_count = traffic.leaf.calls;
+    }
+    let children = runtime
+        .helicity_sum_runtime
+        .iter()
+        .map(Box::as_ref)
+        .chain(runtime.helicity_selector_runtimes.iter().map(Box::as_ref))
+        .chain(runtime.color_selector_runtimes.values().map(Box::as_ref));
+    for child in children {
+        let child = compiled_direct_profile_snapshot(child)?;
+        snapshot.engine_count += child.engine_count;
+        snapshot.source_fill_bytes = snapshot
+            .source_fill_bytes
+            .saturating_add(child.source_fill_bytes);
+        snapshot.momentum_fill_bytes = snapshot
+            .momentum_fill_bytes
+            .saturating_add(child.momentum_fill_bytes);
+        snapshot.parameter_fill_bytes = snapshot
+            .parameter_fill_bytes
+            .saturating_add(child.parameter_fill_bytes);
+        snapshot.amplitude_clear_bytes = snapshot
+            .amplitude_clear_bytes
+            .saturating_add(child.amplitude_clear_bytes);
+        snapshot.backend_call_count = snapshot
+            .backend_call_count
+            .saturating_add(child.backend_call_count);
+    }
+    Ok(snapshot)
 }
 
 impl NativeRuntime {
@@ -745,8 +813,6 @@ impl NativeRuntime {
             helicity_ids.is_some() || helicity_by_point.is_some(),
             color_ids.is_some() || color_by_point.is_some(),
         )?;
-        let selected_helicities = selector_set(helicity_ids, "helicity")?;
-        let selected_colors = selector_set(color_ids, "color component")?;
         let physics = self.runtime.physics.clone().ok_or_else(|| {
             RusticolError::artifact(
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
@@ -755,13 +821,28 @@ impl NativeRuntime {
         let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
         let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
         let result = (|| {
+            if helicity_by_point.is_some() || color_by_point.is_some() {
+                selector_scratch.prepare_singletons(&physics);
+            }
+            let PointSelectorExecutionScratch {
+                planner,
+                gathered_batch,
+                partition_totals,
+                output_totals,
+                helicity_selector_sets,
+                color_selector_sets,
+                helicity_singletons,
+                color_singletons,
+            } = &mut selector_scratch;
+            let selected_helicities = helicity_selector_sets.resolve(helicity_ids, "helicity")?;
+            let selected_colors = color_selector_sets.resolve(color_ids, "color component")?;
             let batch = F64MomentumBatchView::from_contiguous_prevalidated(
                 momenta,
                 point_count,
                 self.runtime.external_count,
                 crossing_lookup.as_deref(),
             )?;
-            let plan = selector_scratch.planner.build(
+            let plan = planner.build(
                 point_count,
                 helicity_by_point,
                 color_by_point,
@@ -772,8 +853,8 @@ impl NativeRuntime {
                 if selected_helicities.is_some() || selected_colors.is_some() {
                     return self.run_selected_f64_batch_into(
                         batch,
-                        selected_helicities.as_ref(),
-                        selected_colors.as_ref(),
+                        selected_helicities,
+                        selected_colors,
                         output,
                     );
                 }
@@ -781,58 +862,51 @@ impl NativeRuntime {
             }
 
             self.record_resolved_warnings(helicity_ids, color_ids)?;
+            output_totals.resize(point_count, 0.0);
+            output_totals.fill(0.0);
             if let PointSelectorPlan::Homogeneous(key) = plan {
-                let point_helicities = key
-                    .helicity_index
-                    .map(|index| BTreeSet::from([physics.manifest.helicities[index].id.clone()]));
-                let point_colors = key.color_index.map(|index| {
-                    BTreeSet::from([physics.manifest.color_components[index].id().to_string()])
-                });
-                let effective_helicities =
-                    point_helicities.as_ref().or(selected_helicities.as_ref());
-                let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                return self.run_selected_f64_batch_into(
+                let point_helicities = key.helicity_index.map(|index| &helicity_singletons[index]);
+                let point_colors = key.color_index.map(|index| &color_singletons[index]);
+                let effective_helicities = point_helicities.or(selected_helicities);
+                let effective_colors = point_colors.or(selected_colors);
+                self.run_selected_f64_batch_into(
                     batch,
                     effective_helicities,
                     effective_colors,
-                    output,
-                );
+                    output_totals,
+                )?;
+                output.copy_from_slice(output_totals);
+                return Ok(());
             }
 
-            output.fill(0.0);
-            let partition_count = selector_scratch.planner.partitions().len();
+            let partition_count = planner.partitions().len();
             for partition_index in 0..partition_count {
-                let partition = selector_scratch.planner.partitions()[partition_index];
+                let partition = planner.partitions()[partition_index];
                 let point_helicities = partition
                     .key
                     .helicity_index
-                    .map(|index| BTreeSet::from([physics.manifest.helicities[index].id.clone()]));
-                let point_colors = partition.key.color_index.map(|index| {
-                    BTreeSet::from([physics.manifest.color_components[index].id().to_string()])
-                });
-                let effective_helicities =
-                    point_helicities.as_ref().or(selected_helicities.as_ref());
-                let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
+                    .map(|index| &helicity_singletons[index]);
+                let point_colors = partition
+                    .key
+                    .color_index
+                    .map(|index| &color_singletons[index]);
+                let effective_helicities = point_helicities.or(selected_helicities);
+                let effective_colors = point_colors.or(selected_colors);
                 match partition.rows {
                     PointSelectorRows::Contiguous { start, end } => {
                         self.run_selected_f64_batch_into(
                             batch.subview(start, end)?,
                             effective_helicities,
                             effective_colors,
-                            &mut output[start..end],
+                            &mut output_totals[start..end],
                         )?;
                     }
                     rows @ PointSelectorRows::Gathered { .. } => {
-                        let point_indices = selector_scratch.planner.gathered_rows(rows);
-                        let gathered_batch = fill_gathered_batch_from_view(
-                            &mut selector_scratch.gathered_batch,
-                            batch,
-                            point_indices,
-                        )?;
-                        selector_scratch
-                            .partition_totals
-                            .resize(partition.rows.len(), 0.0);
-                        selector_scratch.partition_totals.fill(0.0);
+                        let point_indices = planner.gathered_rows(rows);
+                        let gathered_batch =
+                            fill_gathered_batch_from_view(gathered_batch, batch, point_indices)?;
+                        partition_totals.resize(partition.rows.len(), 0.0);
+                        partition_totals.fill(0.0);
                         self.run_selected_f64_batch_into(
                             F64MomentumBatchView::from_nested(
                                 gathered_batch,
@@ -840,17 +914,18 @@ impl NativeRuntime {
                             )?,
                             effective_helicities,
                             effective_colors,
-                            &mut selector_scratch.partition_totals,
+                            partition_totals,
                         )?;
                         scatter_partition_totals(
-                            output,
-                            &selector_scratch.partition_totals,
+                            output_totals,
+                            partition_totals,
                             partition.rows,
-                            &selector_scratch.planner,
+                            planner,
                         );
                     }
                 }
             }
+            output.copy_from_slice(output_totals);
             Ok(())
         })();
         self.point_selector_scratch = selector_scratch;
@@ -867,15 +942,7 @@ impl NativeRuntime {
             NativeExecutionLane::Compiled => self.runtime.run_f64_into_unprofiled(batch, output),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Eager(runtime) => {
-                let nested = batch.materialize_nested();
-                let (values, _profile) = runtime.run_f64(&mut self.runtime, &nested)?;
-                if values.len() != output.len() {
-                    return Err(RusticolError::integrity(
-                        "eager evaluation returned an inconsistent output length",
-                    ));
-                }
-                output.copy_from_slice(&values);
-                Ok(())
+                runtime.run_f64_view_into_unprofiled(&mut self.runtime, batch, output)
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Recurrence(runtime) => {
@@ -899,16 +966,13 @@ impl NativeRuntime {
                 output,
             ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Eager(runtime) => {
-                let nested = batch.materialize_nested();
-                let (resolved, _profile) = runtime.run_resolved_f64(
-                    &mut self.runtime,
-                    &nested,
-                    selected_helicities,
-                    selected_colors,
-                )?;
-                write_resolved_f64_totals(&resolved, output)
-            }
+            NativeExecutionLane::Eager(runtime) => runtime.run_f64_view_selected_into_unprofiled(
+                &mut self.runtime,
+                batch,
+                selected_helicities,
+                selected_colors,
+                output,
+            ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Recurrence(runtime) => runtime.run_f64_view_into_unprofiled(
                 &mut self.runtime,
@@ -933,17 +997,12 @@ impl NativeRuntime {
                 selected_colors,
             ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Eager(runtime) => {
-                let nested = batch.materialize_nested();
-                runtime
-                    .run_resolved_f64(
-                        &mut self.runtime,
-                        &nested,
-                        selected_helicities,
-                        selected_colors,
-                    )
-                    .map(|(resolved, _profile)| resolved)
-            }
+            NativeExecutionLane::Eager(runtime) => runtime.run_resolved_f64_view_unprofiled(
+                &mut self.runtime,
+                batch,
+                selected_helicities,
+                selected_colors,
+            ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Recurrence(runtime) => {
                 let nested = batch.materialize_nested();
@@ -965,6 +1024,57 @@ impl NativeRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
     ) -> Result<(Vec<f64>, RuntimeProfile), RusticolError> {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if matches!(&self.execution_lane, NativeExecutionLane::Compiled) {
+            let before = compiled_direct_profile_snapshot(&self.runtime)?;
+            if before.engine_count != 0 {
+                let total_start = Instant::now();
+                let mut values = vec![0.0; batch.len()];
+                self.runtime.run_f64_selected_into_unprofiled(
+                    F64MomentumBatchView::from_nested(batch, self.runtime.external_count)?,
+                    selected_helicities,
+                    selected_colors,
+                    &mut values,
+                )?;
+                let total_s = total_start.elapsed().as_secs_f64();
+                let after = compiled_direct_profile_snapshot(&self.runtime)?;
+                let f64_bytes = std::mem::size_of::<f64>() as u64;
+                let complex_bytes = 2 * f64_bytes;
+                return Ok((
+                    values,
+                    RuntimeProfile {
+                        // The direct hot path is deliberately uninstrumented.
+                        // Until its three coarse phase clocks are added, keep
+                        // the complete measured envelope in orchestration so
+                        // top-level accounting remains exact rather than
+                        // manufacturing dense-stage timing fields.
+                        orchestration_s: total_s,
+                        total_s,
+                        source_component_count: after
+                            .source_fill_bytes
+                            .saturating_sub(before.source_fill_bytes)
+                            / complex_bytes,
+                        momentum_component_count: after
+                            .momentum_fill_bytes
+                            .saturating_sub(before.momentum_fill_bytes)
+                            / f64_bytes,
+                        model_parameter_component_count: after
+                            .parameter_fill_bytes
+                            .saturating_sub(before.parameter_fill_bytes)
+                            / complex_bytes,
+                        state_clear_component_count: after
+                            .amplitude_clear_bytes
+                            .saturating_sub(before.amplitude_clear_bytes)
+                            / complex_bytes,
+                        evaluator_backend_call_count: after
+                            .backend_call_count
+                            .saturating_sub(before.backend_call_count),
+                        total_materialized_value_count: batch.len() as u64,
+                        ..RuntimeProfile::default()
+                    },
+                ));
+            }
+        }
         match &mut self.execution_lane {
             NativeExecutionLane::Compiled => {
                 self.runtime
@@ -1064,7 +1174,30 @@ impl NativeRuntime {
         let total_start = Instant::now();
         let (batch, native_input_pack_elapsed, native_input_crossing_elapsed) =
             self.prepare_f64_batch_profile(momenta, point_count)?;
-        let (values, profile) = if helicity_ids.is_some() || color_ids.is_some() {
+        let compiled_direct_profile = {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            {
+                matches!(&self.execution_lane, NativeExecutionLane::Compiled)
+                    && compiled_direct_profile_snapshot(&self.runtime)?.engine_count != 0
+            }
+            #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+            {
+                false
+            }
+        };
+        let (values, profile) = if compiled_direct_profile {
+            if helicity_ids.is_some() || color_ids.is_some() {
+                self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
+                self.record_resolved_warnings(helicity_ids, color_ids)?;
+            }
+            let selected_helicities = selector_set(helicity_ids, "helicity")?;
+            let selected_colors = selector_set(color_ids, "color component")?;
+            self.run_selected_f64_batch_profile(
+                &batch,
+                selected_helicities.as_ref(),
+                selected_colors.as_ref(),
+            )?
+        } else if helicity_ids.is_some() || color_ids.is_some() {
             self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
             self.record_resolved_warnings(helicity_ids, color_ids)?;
             let selected_helicities = selector_set(helicity_ids, "helicity")?;
@@ -1424,8 +1557,6 @@ impl NativeRuntime {
     ) -> Result<NativeResolvedEvaluation, RusticolError> {
         self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         self.record_resolved_warnings(helicity_ids, color_ids)?;
-        let selected_helicities = selector_set(helicity_ids, "helicity")?;
-        let selected_colors = selector_set(color_ids, "color component")?;
         validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
         let physics = self.runtime.physics.clone().ok_or_else(|| {
             RusticolError::artifact(
@@ -1433,19 +1564,25 @@ impl NativeRuntime {
             )
         })?;
         let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
+        let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
         let result = (|| {
+            physics.validate_helicity_id_slice(helicity_ids)?;
+            physics.validate_color_id_slice(color_ids)?;
+            let selected_helicities = selector_scratch
+                .helicity_selector_sets
+                .resolve(helicity_ids, "helicity")?;
+            let selected_colors = selector_scratch
+                .color_selector_sets
+                .resolve(color_ids, "color component")?;
             let batch = F64MomentumBatchView::from_contiguous_prevalidated(
                 momenta,
                 point_count,
                 self.runtime.external_count,
                 crossing_lookup.as_deref(),
             )?;
-            self.run_resolved_f64_batch(
-                batch,
-                selected_helicities.as_ref(),
-                selected_colors.as_ref(),
-            )
+            self.run_resolved_f64_batch(batch, selected_helicities, selected_colors)
         })();
+        self.point_selector_scratch = selector_scratch;
         self.input_crossing_map = crossing_lookup;
         let resolved = result?;
         let helicity_ids = resolved

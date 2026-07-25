@@ -15,16 +15,30 @@ impl EvaluatorGroup {
     ) -> RusticolResult<Self> {
         ensure_evaluator_capabilities_supported(manifest)?;
         let (input_len, _) = manifest.io_len()?;
+        let leaf_layout = manifest.leaf_layout()?;
         let mut evaluators = Vec::new();
         let mut input_mappings = Vec::new();
-        flatten_evaluators_with_mappings(
-            manifest,
-            payloads,
-            None,
-            input_len,
-            &mut evaluators,
-            &mut input_mappings,
-        )?;
+        for leaf in &leaf_layout {
+            let before = evaluators.len();
+            flatten_evaluators_from_store(leaf.evaluator, payloads, &mut evaluators)?;
+            if evaluators.len() != before + 1 {
+                return Err(RusticolError::integrity(
+                    "canonical evaluator leaf layout did not load exactly one evaluator",
+                ));
+            }
+            let mapping = if leaf.input_indices.len() == input_len
+                && leaf
+                    .input_indices
+                    .iter()
+                    .enumerate()
+                    .all(|(expected, index)| expected == *index)
+            {
+                None
+            } else {
+                Some(leaf.input_indices.clone())
+            };
+            input_mappings.push(mapping);
+        }
         let input_mapping_spans = input_mappings
             .iter()
             .map(|mapping| {
@@ -34,7 +48,66 @@ impl EvaluatorGroup {
                     .unwrap_or_default()
             })
             .collect();
-        let output_len = evaluators.iter().map(|e| e.output_len).sum();
+        let output_len = leaf_layout.last().map_or(0, |leaf| leaf.output_range.end);
+        Ok(Self {
+            evaluators,
+            input_len,
+            input_mappings,
+            input_mapping_spans,
+            output_len,
+            chunk_parameter_scratch_f64: Vec::new(),
+            chunk_scratch_f64: Vec::new(),
+            chunk_parameter_scratch_aosoa_f64: Vec::new(),
+            chunk_scratch_aosoa_f64: Vec::new(),
+            chunk_input_mapping_scratch: Vec::new(),
+        })
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn load_exact_from_plane(
+        stage: &GenericSerializedStageEvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+    ) -> RusticolResult<Self> {
+        let manifest = &stage.evaluator;
+        let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled plane-arena exact evaluator has no serialized bindings",
+            )
+        })?;
+        let (input_len, _) = manifest.io_len()?;
+        let leaf_layout = manifest.leaf_layout()?;
+        if leaf_layout.len() != direct.leaves.len() {
+            return Err(RusticolError::integrity(
+                "compiled plane-arena exact leaf bindings are incomplete",
+            ));
+        }
+        let mut evaluators = Vec::new();
+        let mut input_mappings = Vec::new();
+        for (leaf, binding) in leaf_layout.iter().zip(&direct.leaves) {
+            flatten_exact_evaluators_from_store(leaf.evaluator, payloads, &mut evaluators)?;
+            let mapping = if binding.input_indices.len() == input_len
+                && binding
+                    .input_indices
+                    .iter()
+                    .enumerate()
+                    .all(|(expected, index)| expected == *index)
+            {
+                None
+            } else {
+                Some(binding.input_indices.clone())
+            };
+            input_mappings.push(mapping);
+        }
+        let input_mapping_spans = input_mappings
+            .iter()
+            .map(|mapping| {
+                mapping
+                    .as_deref()
+                    .map(contiguous_input_spans)
+                    .unwrap_or_default()
+            })
+            .collect();
+        let output_len = direct.leaves.last().map_or(0, |leaf| leaf.output_stop);
         Ok(Self {
             evaluators,
             input_len,
@@ -53,6 +126,8 @@ impl EvaluatorGroup {
         self.evaluators
             .iter()
             .any(|evaluator| match &evaluator.eval {
+                #[cfg(feature = "symbolica-runtime")]
+                F64Evaluator::ExactOnly => false,
                 #[cfg(feature = "f64-symjit")]
                 F64Evaluator::SymjitApplication(_) => true,
                 #[cfg(feature = "symbolica-runtime")]
@@ -1991,6 +2066,8 @@ impl LoadedEvaluator {
 
     fn simd_lane_width(&self) -> Option<usize> {
         match &self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => None,
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => eval.simd_lane_width(),
             #[cfg(feature = "f64-compiled")]
@@ -2020,6 +2097,8 @@ impl LoadedEvaluator {
         out: &mut [f64],
     ) -> RusticolResult<bool> {
         match &self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Ok(false),
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => {
                 eval.evaluate_aosoa_blocks(block_count, params, out)
@@ -2038,6 +2117,10 @@ impl LoadedEvaluator {
         out: &mut [Complex<f64>],
     ) -> RusticolResult<()> {
         match &mut self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Err(RusticolError::integrity(
+                "compiled plane-arena exact evaluator cannot execute f64",
+            )),
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => eval.evaluate_batch(batch_size, params, out),
             #[cfg(feature = "f64-compiled")]
@@ -2071,6 +2154,10 @@ impl LoadedEvaluator {
         out: &mut [Complex<f64>],
     ) -> RusticolResult<()> {
         match &mut self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Err(RusticolError::integrity(
+                "compiled plane-arena exact evaluator cannot execute f64",
+            )),
             #[cfg(feature = "f64-symjit")]
             F64Evaluator::SymjitApplication(eval) => {
                 eval.evaluate_batch_unpadded(batch_size, params, out)
@@ -2100,101 +2187,76 @@ impl LoadedEvaluator {
     }
 }
 
-fn flatten_evaluators_with_mappings(
+#[cfg(feature = "symbolica-runtime")]
+fn flatten_exact_evaluators_from_store(
     manifest: &EvaluatorManifest,
     payloads: &EvaluatorPayloadStore,
-    inherited_mapping: Option<&[usize]>,
-    root_input_len: usize,
     output: &mut Vec<LoadedEvaluator>,
-    input_mappings: &mut Vec<Option<Vec<usize>>>,
 ) -> RusticolResult<()> {
-    if let EvaluatorManifest::Chunked {
-        input_len,
-        chunk_input_indices,
-        chunks,
-        ..
-    } = manifest
-    {
-        manifest.io_len()?;
-        match (input_len, chunk_input_indices) {
-            (None, None) => {
-                for chunk in chunks {
-                    flatten_evaluators_with_mappings(
-                        chunk,
-                        payloads,
-                        inherited_mapping,
-                        root_input_len,
-                        output,
-                        input_mappings,
-                    )?;
-                }
+    match manifest {
+        EvaluatorManifest::SymjitApplication {
+            input_len,
+            output_len,
+            evaluator_state_path,
+            evaluator_state_runtime_capability,
+            ..
+        } => {
+            let state_path = evaluator_state_path.as_ref().ok_or_else(|| {
+                RusticolError::compatibility(
+                    "compiled plane-arena exact execution requires evaluator-state payloads",
+                )
+            })?;
+            if evaluator_state_runtime_capability.as_deref()
+                != Some(SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY)
+            {
+                return Err(RusticolError::compatibility(format!(
+                    "SymJIT evaluator state {state_path:?} does not declare capability {:?}",
+                    SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
+                )));
             }
-            (Some(_), Some(chunk_indices)) => {
-                for (chunk, indices) in chunks.iter().zip(chunk_indices) {
-                    let composed =
-                        compose_input_mapping(inherited_mapping, indices, root_input_len);
-                    flatten_evaluators_with_mappings(
-                        chunk,
-                        payloads,
-                        composed.as_deref(),
-                        root_input_len,
-                        output,
-                        input_mappings,
-                    )?;
-                }
+            output.push(LoadedEvaluator {
+                eval: F64Evaluator::ExactOnly,
+                exact_eval: None,
+                exact_eval_source: Some(payloads.source(state_path)?),
+                double_eval: None,
+                arb_eval: None,
+                input_len: *input_len,
+                output_len: *output_len,
+            });
+            Ok(())
+        }
+        EvaluatorManifest::CompiledComplex {
+            input_len,
+            output_len,
+            evaluator_state_path,
+            native_direct_application: Some(_),
+            ..
+        } => {
+            let state_path = evaluator_state_path.as_ref().ok_or_else(|| {
+                RusticolError::compatibility(
+                    "compiled plane-arena exact execution requires evaluator-state payloads",
+                )
+            })?;
+            output.push(LoadedEvaluator {
+                eval: F64Evaluator::ExactOnly,
+                exact_eval: None,
+                exact_eval_source: Some(payloads.source(state_path)?),
+                double_eval: None,
+                arb_eval: None,
+                input_len: *input_len,
+                output_len: *output_len,
+            });
+            Ok(())
+        }
+        EvaluatorManifest::Chunked { chunks, .. } => {
+            for chunk in chunks {
+                flatten_exact_evaluators_from_store(chunk, payloads, output)?;
             }
-            _ => unreachable!("chunk input metadata was validated above"),
+            Ok(())
         }
-        return Ok(());
-    }
-
-    let (leaf_input_len, _) = manifest.io_len()?;
-    let mapping = inherited_mapping.map(ToOwned::to_owned);
-    if let Some(indices) = mapping.as_ref()
-        && indices.len() != leaf_input_len
-    {
-        return Err(RusticolError::artifact(
-            "flattened evaluator input map does not match leaf input length",
-        ));
-    }
-    let normalized = mapping.and_then(|indices| {
-        if indices.len() == root_input_len
-            && indices
-                .iter()
-                .enumerate()
-                .all(|(expected, index)| expected == *index)
-        {
-            None
-        } else {
-            Some(indices)
-        }
-    });
-    flatten_evaluators_from_store(manifest, payloads, output)?;
-    input_mappings.push(normalized);
-    Ok(())
-}
-
-fn compose_input_mapping(
-    inherited_mapping: Option<&[usize]>,
-    child_indices: &[usize],
-    root_input_len: usize,
-) -> Option<Vec<usize>> {
-    let composed = match inherited_mapping {
-        Some(parent_indices) => child_indices
-            .iter()
-            .map(|index| parent_indices[*index])
-            .collect::<Vec<_>>(),
-        None => child_indices.to_vec(),
-    };
-    if composed.len() == root_input_len
-        && composed
-            .iter()
-            .enumerate()
-            .all(|(expected, index)| expected == *index)
-    {
-        None
-    } else {
-        Some(composed)
+        _ => Err(RusticolError::compatibility(
+            "compiled plane-arena exact execution requires direct leaves with evaluator state",
+        )),
     }
 }
 
@@ -2343,6 +2405,7 @@ pub(crate) fn flatten_evaluators_from_store(
             library_path,
             evaluator_state_path,
             number_type,
+            native_direct_application: _,
         } => {
             #[cfg(feature = "f64-compiled")]
             {

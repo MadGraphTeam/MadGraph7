@@ -10,6 +10,7 @@
 compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;
+pub mod direct_arena;
 pub mod eager_layout;
 mod eager_lowering_v3;
 mod eager_plan_v3_pacbin;
@@ -44,6 +45,8 @@ pub use eager_tables::{
     EagerClosureRow, EagerCouplingRow, EagerFinalizationRow, EagerInvocationRow,
     EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow, MISSING_U32,
 };
+#[cfg(feature = "f64-symjit")]
+pub use engine::eager_direct_descriptor_for_source_application_bytes;
 pub use engine::{
     NativeColorComponent, NativeDecimalEvaluation, NativeDecimalResolvedEvaluation,
     NativeEagerExactAttachment, NativeEagerExactClosure, NativeEagerExactCoupling,

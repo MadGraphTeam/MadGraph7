@@ -7,6 +7,7 @@ use super::*;
 pub(super) struct CompiledHelicitySelectorSchedule {
     pub(super) selector_domain_id: usize,
     pub(super) physical_helicity_index: usize,
+    selected_helicity_ids: BTreeSet<String>,
     pub(super) source_states: Vec<RuntimeSourceState>,
     pub(super) active_stage_chunk_indices: Vec<Vec<usize>>,
     pub(super) active_amplitude_chunk_indices: Vec<usize>,
@@ -19,7 +20,67 @@ pub(super) struct CompiledHelicityExecutionPlan {
     schedules_by_physical_helicity: Vec<Option<Arc<CompiledHelicitySelectorSchedule>>>,
 }
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn validate_direct_materialized_sector_selection(
+    color_schedules: &BTreeMap<i64, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
+    selected: Option<&BTreeSet<i64>>,
+) -> RusticolResult<()> {
+    let Some(selected) = selected else {
+        return Ok(());
+    };
+    if selected.is_empty() {
+        return Err(RusticolError::invalid_argument(
+            "compiled Direct-Arena materialized-sector selection cannot be empty",
+        ));
+    }
+    for sector_id in selected {
+        if !color_schedules.contains_key(sector_id) {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena has no cold-bound schedule for materialized sector {sector_id}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn evaluate_direct_helicity_schedule(
+    direct: &mut compiled_direct_prototype::CompiledDirectEnginePrototype,
+    schedules: &BTreeMap<usize, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
+    schedule: &CompiledHelicitySelectorSchedule,
+    execute_union: bool,
+    point_count: usize,
+) -> RusticolResult<()> {
+    if execute_union {
+        return direct.evaluate_all(point_count);
+    }
+    let direct_schedule = schedules.get(&schedule.selector_domain_id).ok_or_else(|| {
+        RusticolError::integrity(format!(
+            "compiled Direct-Arena has no cold-bound helicity schedule for selector domain {}",
+            schedule.selector_domain_id
+        ))
+    })?;
+    direct.evaluate_validated(point_count, direct_schedule)
+}
+
 impl ExecutionRuntime {
+    fn supports_materialized_helicity_totals(&self) -> bool {
+        let Some(amplitude) = self.amplitude_stage.as_ref() else {
+            return false;
+        };
+        if amplitude.color_contraction.is_none() {
+            return true;
+        }
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            self.compiled_direct_runtime.is_some()
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            false
+        }
+    }
+
     pub(super) fn initialize_compiled_helicity_execution_plan(
         &mut self,
         public_label_permutation: Option<&[usize]>,
@@ -99,6 +160,10 @@ impl ExecutionRuntime {
                 Some(Arc::new(CompiledHelicitySelectorSchedule {
                     selector_domain_id: schedule.selector_domain_id,
                     physical_helicity_index,
+                    selected_helicity_ids: BTreeSet::from([physics.manifest.helicities
+                        [physical_helicity_index]
+                        .id
+                        .clone()]),
                     source_states,
                     active_stage_chunk_indices: schedule.active_stage_chunk_indices.clone(),
                     active_amplitude_chunk_indices: schedule.active_amplitude_chunk_indices.clone(),
@@ -144,6 +209,24 @@ impl ExecutionRuntime {
             return Err(RusticolError::integrity(
                 "helicity recurrence schedules do not cover every physical helicity",
             ));
+        }
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            let mut direct_schedules = BTreeMap::new();
+            if let Some(direct) = self.compiled_direct_runtime.as_ref() {
+                for schedule in schedules_by_physical_helicity.iter().flatten() {
+                    if schedule.structural_zero
+                        || direct_schedules.contains_key(&schedule.selector_domain_id)
+                    {
+                        continue;
+                    }
+                    direct_schedules.insert(
+                        schedule.selector_domain_id,
+                        direct.bind_helicity_schedule(schedule.as_ref())?,
+                    );
+                }
+            }
+            self.compiled_direct_helicity_schedules = direct_schedules;
         }
         self.compiled_helicity_execution_plan = Some(CompiledHelicityExecutionPlan {
             schedules_by_physical_helicity,
@@ -225,24 +308,46 @@ impl ExecutionRuntime {
                 "helicity recurrence materialization requires resolved physics metadata",
             )
         })?;
-        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
-        let _color_indices = physics.selected_color_indices(selected_color_ids)?;
-        let [helicity_index] = helicity_indices.as_slice() else {
+        let Some(selected_helicity_ids) = selected_helicity_ids else {
             return Ok(false);
         };
+        if selected_helicity_ids.len() != 1 {
+            return Ok(false);
+        }
+        let selected_helicity_id = selected_helicity_ids
+            .iter()
+            .next()
+            .expect("singleton helicity selection checked");
+        let helicity_index = *physics
+            .helicity_index_by_id
+            .get(selected_helicity_id)
+            .ok_or_else(|| {
+                RusticolError::selector(format!(
+                    "unknown resolved helicity id {selected_helicity_id:?}"
+                ))
+            })?;
+        if let Some(selected_color_ids) = selected_color_ids {
+            for id in selected_color_ids {
+                if !physics.color_index_by_id.contains_key(id) {
+                    return Err(RusticolError::selector(format!(
+                        "unknown resolved color component id {id:?}"
+                    )));
+                }
+            }
+        }
         let schedule = self
             .compiled_helicity_execution_plan
             .as_ref()
             .and_then(|plan| {
                 plan.schedules_by_physical_helicity
-                    .get(*helicity_index)
+                    .get(helicity_index)
                     .and_then(Option::as_ref)
             })
             .cloned()
             .ok_or_else(|| {
                 RusticolError::integrity(format!(
                     "physical helicity {} has no compiled recurrence schedule",
-                    physics.manifest.helicities[*helicity_index].id
+                    physics.manifest.helicities[helicity_index].id
                 ))
             })?;
         output.fill(0.0);
@@ -284,11 +389,7 @@ impl ExecutionRuntime {
                 })?;
             match schedule_mode {
                 HelicitySelectorScheduleMode::ParentClosure => {
-                    if selector_runtime
-                        .amplitude_stage
-                        .as_ref()
-                        .is_none_or(|amplitude| amplitude.color_contraction.is_some())
-                    {
+                    if !selector_runtime.supports_materialized_helicity_totals() {
                         return Ok(false);
                     }
                     selector_runtime.run_f64_materialized_helicity_schedule_add_into_unprofiled(
@@ -296,13 +397,9 @@ impl ExecutionRuntime {
                     )?;
                 }
                 HelicitySelectorScheduleMode::NestedRuntime => {
-                    let selected_helicity = BTreeSet::from([physics.manifest.helicities
-                        [schedule.physical_helicity_index]
-                        .id
-                        .clone()]);
                     selector_runtime.run_f64_selected_into_unprofiled(
                         batch,
-                        Some(&selected_helicity),
+                        Some(&schedule.selected_helicity_ids),
                         selected_color_ids,
                         output,
                     )?;
@@ -311,11 +408,7 @@ impl ExecutionRuntime {
             return Ok(true);
         }
 
-        if self
-            .amplitude_stage
-            .as_ref()
-            .is_none_or(|amplitude| amplitude.color_contraction.is_some())
-        {
+        if !self.supports_materialized_helicity_totals() {
             return Ok(false);
         }
         self.run_f64_materialized_helicity_schedule_add_into_unprofiled(
@@ -468,6 +561,17 @@ impl ExecutionRuntime {
         schedule: &CompiledHelicitySelectorSchedule,
         execute_union: bool,
     ) -> RusticolResult<ResolvedValues<f64>> {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if self.compiled_direct_runtime.is_some() {
+            return self.run_f64_materialized_helicity_direct_resolved_unprofiled(
+                batch,
+                physics,
+                selected_color_ids,
+                selected_materialized_sector_ids,
+                schedule,
+                execute_union,
+            );
+        }
         self.evaluate_f64_materialized_helicity_schedule_unprofiled(
             batch,
             selected_materialized_sector_ids,
@@ -498,6 +602,18 @@ impl ExecutionRuntime {
         execute_union: bool,
         output: &mut [f64],
     ) -> RusticolResult<()> {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if self.compiled_direct_runtime.is_some() {
+            return self.run_f64_materialized_helicity_direct_add_into_unprofiled(
+                batch,
+                physics,
+                selected_color_ids,
+                selected_materialized_sector_ids,
+                schedule,
+                execute_union,
+                output,
+            );
+        }
         self.evaluate_f64_materialized_helicity_schedule_unprofiled(
             batch,
             selected_materialized_sector_ids,
@@ -516,6 +632,287 @@ impl ExecutionRuntime {
                 selected_color_ids,
                 output,
             )
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    #[allow(clippy::too_many_arguments)]
+    fn run_f64_materialized_helicity_direct_resolved_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        physics: &PhysicsRuntime,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
+        schedule: &CompiledHelicitySelectorSchedule,
+        execute_union: bool,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        let point_count = batch.point_count();
+        let mut values = vec![0.0; point_count * color_indices.len()];
+        let Self {
+            compiled_direct_runtime: Some(direct),
+            compiled_direct_color_schedules,
+            compiled_direct_helicity_schedules,
+            sources,
+            external_count,
+            particle_masses,
+            momentum_slots,
+            external_is_initial,
+            model_parameter_values_f64,
+            amplitude_stage: Some(amplitude),
+            normalization_factor,
+            ..
+        } = self
+        else {
+            return Err(RusticolError::integrity(
+                "compiled Direct-Arena helicity execution was selected without a complete runtime",
+            ));
+        };
+        validate_direct_materialized_sector_selection(
+            compiled_direct_color_schedules,
+            selected_materialized_sector_ids,
+        )?;
+        let tile_capacity = direct.tile_capacity();
+        let mut point_start = 0usize;
+        while point_start < point_count {
+            let point_stop = (point_start + tile_capacity).min(point_count);
+            direct.begin_tile_from_inputs(
+                batch.subview(point_start, point_stop)?,
+                sources,
+                Some(&schedule.source_states),
+                *external_count,
+                particle_masses,
+                momentum_slots,
+                external_is_initial,
+                model_parameter_values_f64,
+            )?;
+            evaluate_direct_helicity_schedule(
+                direct,
+                compiled_direct_helicity_schedules,
+                schedule,
+                execute_union,
+                point_stop - point_start,
+            )?;
+            let resolved = amplitude.reduce_planes_f64_for_materialized_helicity(
+                direct.amplitude_planes()?,
+                physics,
+                *normalization_factor,
+                schedule.physical_helicity_index,
+                &schedule.root_factors,
+                selected_color_ids,
+            )?;
+            if resolved.helicity_indices != [schedule.physical_helicity_index]
+                || resolved.color_indices != color_indices
+                || resolved.point_count != point_stop - point_start
+            {
+                return Err(RusticolError::integrity(
+                    "compiled Direct-Arena materialized-helicity reducer returned an inconsistent shape",
+                ));
+            }
+            for tile_point in 0..resolved.point_count {
+                let source = tile_point * color_indices.len();
+                let target = (point_start + tile_point) * color_indices.len();
+                values[target..target + color_indices.len()]
+                    .copy_from_slice(&resolved.values[source..source + color_indices.len()]);
+            }
+            point_start = point_stop;
+        }
+        Ok(ResolvedValues {
+            values,
+            point_count,
+            helicity_indices: vec![schedule.physical_helicity_index],
+            color_indices,
+        })
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    #[allow(clippy::too_many_arguments)]
+    fn run_f64_materialized_helicity_direct_add_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        physics: &PhysicsRuntime,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
+        schedule: &CompiledHelicitySelectorSchedule,
+        execute_union: bool,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let point_count = batch.point_count();
+        if output.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "materialized-helicity output has length {}, expected {point_count}",
+                output.len()
+            )));
+        }
+        let Self {
+            compiled_direct_runtime: Some(direct),
+            compiled_direct_color_schedules,
+            compiled_direct_helicity_schedules,
+            sources,
+            external_count,
+            particle_masses,
+            momentum_slots,
+            external_is_initial,
+            model_parameter_values_f64,
+            amplitude_stage: Some(amplitude),
+            normalization_factor,
+            ..
+        } = self
+        else {
+            return Err(RusticolError::integrity(
+                "compiled Direct-Arena helicity totals were selected without a complete runtime",
+            ));
+        };
+        validate_direct_materialized_sector_selection(
+            compiled_direct_color_schedules,
+            selected_materialized_sector_ids,
+        )?;
+        let tile_capacity = direct.tile_capacity();
+        let mut point_start = 0usize;
+        while point_start < point_count {
+            let point_stop = (point_start + tile_capacity).min(point_count);
+            direct.begin_tile_from_inputs(
+                batch.subview(point_start, point_stop)?,
+                sources,
+                Some(&schedule.source_states),
+                *external_count,
+                particle_masses,
+                momentum_slots,
+                external_is_initial,
+                model_parameter_values_f64,
+            )?;
+            evaluate_direct_helicity_schedule(
+                direct,
+                compiled_direct_helicity_schedules,
+                schedule,
+                execute_union,
+                point_stop - point_start,
+            )?;
+            amplitude.reduce_planes_f64_for_materialized_helicity_add_into(
+                direct.amplitude_planes()?,
+                physics,
+                *normalization_factor,
+                schedule.physical_helicity_index,
+                &schedule.root_factors,
+                selected_color_ids,
+                &mut output[point_start..point_stop],
+            )?;
+            point_start = point_stop;
+        }
+        Ok(())
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn run_f64_materialized_helicity_direct_routed_components_add_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        physics: &PhysicsRuntime,
+        selected_helicity_ids: &BTreeSet<String>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        selected_materialized_sector_ids: &BTreeSet<i64>,
+        replay_entry: &LcResolvedReplayEntry,
+        source_component_count: usize,
+        target_component_count: usize,
+        target_point_count: usize,
+        target_components: &mut [f64],
+    ) -> RusticolResult<()> {
+        if selected_helicity_ids.len() != 1 {
+            return Err(RusticolError::integrity(
+                "routed materialized-helicity execution requires one source helicity",
+            ));
+        }
+        let selected_helicity_id = selected_helicity_ids
+            .iter()
+            .next()
+            .expect("singleton source helicity checked");
+        let helicity_index = *physics
+            .helicity_index_by_id
+            .get(selected_helicity_id)
+            .ok_or_else(|| {
+                RusticolError::selector(format!(
+                    "unknown resolved helicity id {selected_helicity_id:?}"
+                ))
+            })?;
+        let schedule = self
+            .compiled_helicity_execution_plan
+            .as_ref()
+            .and_then(|plan| {
+                plan.schedules_by_physical_helicity
+                    .get(helicity_index)
+                    .and_then(Option::as_ref)
+            })
+            .cloned()
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "physical helicity {} has no compiled recurrence schedule",
+                    physics.manifest.helicities[helicity_index].id
+                ))
+            })?;
+        if schedule.structural_zero {
+            return Ok(());
+        }
+        let point_count = batch.point_count();
+        let Self {
+            compiled_direct_runtime: Some(direct),
+            compiled_direct_color_schedules,
+            compiled_direct_helicity_schedules,
+            sources,
+            external_count,
+            particle_masses,
+            momentum_slots,
+            external_is_initial,
+            model_parameter_values_f64,
+            amplitude_stage: Some(amplitude),
+            normalization_factor,
+            ..
+        } = self
+        else {
+            return Err(RusticolError::integrity(
+                "compiled Direct-Arena routed helicity execution was selected without a complete runtime",
+            ));
+        };
+        validate_direct_materialized_sector_selection(
+            compiled_direct_color_schedules,
+            Some(selected_materialized_sector_ids),
+        )?;
+        let tile_capacity = direct.tile_capacity();
+        let mut point_start = 0usize;
+        while point_start < point_count {
+            let point_stop = (point_start + tile_capacity).min(point_count);
+            direct.begin_tile_from_inputs(
+                batch.subview(point_start, point_stop)?,
+                sources,
+                Some(&schedule.source_states),
+                *external_count,
+                particle_masses,
+                momentum_slots,
+                external_is_initial,
+                model_parameter_values_f64,
+            )?;
+            evaluate_direct_helicity_schedule(
+                direct,
+                compiled_direct_helicity_schedules,
+                schedule.as_ref(),
+                false,
+                point_stop - point_start,
+            )?;
+            amplitude.reduce_planes_f64_for_materialized_helicity_routed_components_add_into(
+                direct.amplitude_planes()?,
+                physics,
+                *normalization_factor,
+                schedule.physical_helicity_index,
+                &schedule.root_factors,
+                selected_color_ids,
+                replay_entry,
+                source_component_count,
+                target_component_count,
+                target_point_count,
+                point_start,
+                target_components,
+            )?;
+            point_start = point_stop;
+        }
+        Ok(())
     }
 
     fn evaluate_f64_materialized_helicity_schedule_unprofiled(

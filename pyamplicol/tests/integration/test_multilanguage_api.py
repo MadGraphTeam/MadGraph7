@@ -48,6 +48,10 @@ _METADATA_KEYS = (
 _LANGUAGES = ("python", "c", "cpp", "fortran", "rust")
 _NATIVE_LANGUAGES = _LANGUAGES[1:]
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_EAGER_DIRECT_RUNTIME_CAPABILITIES = [
+    "eager-direct-arena-v1",
+    "rusticol.eager-runtime-layout.complex-f64.v1",
+]
 
 
 def _source_environment() -> dict[str, str]:
@@ -165,7 +169,7 @@ def _generation_config(
         or EvaluatorConfig(
             execution_mode=execution_mode,
             optimization=EvaluatorOptimizationConfig(cores=1),
-            jit=JITConfig(optimization_level=1),
+            jit=JITConfig(optimization_level=0 if execution_mode == "eager" else 3),
         ),
     )
 
@@ -616,14 +620,19 @@ def test_all_generated_clients_load_and_evaluate_the_same_eager_artifact(
     manifest = json.loads(
         (bundle.artifact / "artifact.json").read_text(encoding="utf-8")
     )
-    eager_capability = "rusticol.eager-dag.complex-f64.v1"
     assert manifest["default_process_id"] == bundle.process_ids[0]
-    assert manifest["runtime"]["required_runtime_capabilities"] == [eager_capability]
+    assert (
+        manifest["runtime"]["required_runtime_capabilities"]
+        == _EAGER_DIRECT_RUNTIME_CAPABILITIES
+    )
     for process_id in bundle.process_ids:
         process = next(
             item for item in manifest["processes"] if item["id"] == process_id
         )
-        assert process["required_runtime_capabilities"] == [eager_capability]
+        assert (
+            process["required_runtime_capabilities"]
+            == _EAGER_DIRECT_RUNTIME_CAPABILITIES
+        )
         execution = json.loads(
             (bundle.artifact / "processes" / process_id / "execution.json").read_text(
                 encoding="utf-8"
@@ -662,9 +671,19 @@ def test_all_generated_clients_support_native_eager_kernel_backends(
             (bundle.artifact / "artifact.json").read_text(encoding="utf-8")
         )
         assert manifest["extensions"]["eager_prepared_pack"]["backend"] == backend
-        _assert_language_payloads(
-            _all_languages(bundle, process=bundle.process_ids[0])
+        assert (
+            manifest["runtime"]["required_runtime_capabilities"]
+            == _EAGER_DIRECT_RUNTIME_CAPABILITIES
         )
+        for process_id in bundle.process_ids:
+            process = next(
+                item for item in manifest["processes"] if item["id"] == process_id
+            )
+            assert (
+                process["required_runtime_capabilities"]
+                == _EAGER_DIRECT_RUNTIME_CAPABILITIES
+            )
+        _assert_language_payloads(_all_languages(bundle, process=bundle.process_ids[0]))
 
 
 def test_mixed_lc_bundle_agrees_for_all_processes_and_parameter_updates(

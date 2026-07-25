@@ -264,10 +264,120 @@ impl PointSelectorPlanner {
 }
 
 #[derive(Default)]
+pub(super) struct SelectorSetCache {
+    entries: Vec<SelectorSetCacheEntry>,
+}
+
+struct SelectorSetCacheEntry {
+    ids: Vec<String>,
+    selected: BTreeSet<String>,
+}
+
+impl SelectorSetCache {
+    const MAX_ENTRIES: usize = 64;
+
+    pub(super) fn resolve(
+        &mut self,
+        ids: Option<&[String]>,
+        kind: &str,
+    ) -> RusticolResult<Option<&BTreeSet<String>>> {
+        let Some(ids) = ids else {
+            return Ok(None);
+        };
+        if ids.is_empty() {
+            return Err(RusticolError::selector(format!(
+                "resolved {kind} selection must not be empty"
+            )));
+        }
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|entry| entry.ids.as_slice() == ids)
+        {
+            return Ok(Some(&self.entries[index].selected));
+        }
+        let selected = ids.iter().cloned().collect::<BTreeSet<_>>();
+        if selected.len() != ids.len() {
+            return Err(RusticolError::selector(format!(
+                "resolved {kind} selection contains duplicate ids"
+            )));
+        }
+        if self.entries.len() == Self::MAX_ENTRIES {
+            self.entries.remove(0);
+        }
+        self.entries.push(SelectorSetCacheEntry {
+            ids: ids.to_vec(),
+            selected,
+        });
+        Ok(Some(
+            &self
+                .entries
+                .last()
+                .expect("selector cache entry was just appended")
+                .selected,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod selector_set_cache_tests {
+    use super::*;
+
+    #[test]
+    fn selector_set_cache_is_bounded_and_rejects_duplicates() {
+        let mut cache = SelectorSetCache::default();
+        for index in 0..=SelectorSetCache::MAX_ENTRIES {
+            let ids = vec![format!("id-{index}")];
+            cache.resolve(Some(&ids), "test").unwrap();
+        }
+        assert_eq!(cache.entries.len(), SelectorSetCache::MAX_ENTRIES);
+        assert_eq!(cache.entries[0].ids, vec!["id-1"]);
+
+        let duplicate = vec!["same".to_string(), "same".to_string()];
+        assert!(cache.resolve(Some(&duplicate), "test").is_err());
+        assert_eq!(cache.entries.len(), SelectorSetCache::MAX_ENTRIES);
+    }
+}
+
+#[derive(Default)]
 pub(super) struct PointSelectorExecutionScratch {
     pub(super) planner: PointSelectorPlanner,
     pub(super) gathered_batch: Vec<Vec<[f64; 4]>>,
     pub(super) partition_totals: Vec<f64>,
+    pub(super) output_totals: Vec<f64>,
+    pub(super) helicity_selector_sets: SelectorSetCache,
+    pub(super) color_selector_sets: SelectorSetCache,
+    pub(super) helicity_singletons: Vec<BTreeSet<String>>,
+    pub(super) color_singletons: Vec<BTreeSet<String>>,
+}
+
+impl PointSelectorExecutionScratch {
+    pub(super) fn prepare_singletons(&mut self, physics: &PhysicsRuntime) {
+        if self.helicity_singletons.len() != physics.manifest.helicities.len() {
+            self.helicity_singletons.clear();
+            self.helicity_singletons
+                .reserve(physics.manifest.helicities.len());
+            self.helicity_singletons.extend(
+                physics
+                    .manifest
+                    .helicities
+                    .iter()
+                    .map(|helicity| BTreeSet::from([helicity.id.clone()])),
+            );
+        }
+        if self.color_singletons.len() != physics.manifest.color_components.len() {
+            self.color_singletons.clear();
+            self.color_singletons
+                .reserve(physics.manifest.color_components.len());
+            self.color_singletons.extend(
+                physics
+                    .manifest
+                    .color_components
+                    .iter()
+                    .map(|color| BTreeSet::from([color.id().to_string()])),
+            );
+        }
+    }
 }
 
 pub(super) fn fill_gathered_batch<'a>(

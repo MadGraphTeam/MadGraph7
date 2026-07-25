@@ -72,6 +72,16 @@ _PATCH_KEYS = {
     "sha256",
     "applies_to_revision",
 }
+_CANDIDATE_ABIS = {
+    "symbolica_serialization": "symbolica-bincode2-v1",
+    "symjit_application": "symjit-application-storage-v3",
+    "symjit_direct_application": "symjit-direct-application-storage-v3",
+    "symjit_direct_application_legacy_recurrence": (
+        "symjit-direct-application-storage-v1"
+    ),
+    "symjit_direct_table_binding": "symjit-direct-table-binding-v2",
+    "symjit_direct_table_descriptor": "symjit-direct-table-descriptor-v1",
+}
 
 
 @dataclass(frozen=True)
@@ -532,16 +542,18 @@ def _candidate_patch_contract(
     """Return the canonical patch state after checking paths and digests."""
 
     raw_patches = contributor.get("patches")
-    if not isinstance(raw_patches, list) or len(raw_patches) != 1:
+    if not isinstance(raw_patches, list) or not raw_patches:
         return [], [
             GateIssue(
                 "candidate-patch-contract",
-                "contributor-lock.toml must list the one exact SymJIT patch",
+                "contributor-lock.toml must list at least one exact SymJIT patch",
             )
         ]
     dependency_root = DEPENDENCIES_PATH.resolve()
     expected: list[dict[str, str]] = []
     issues: list[GateIssue] = []
+    seen_names: set[str] = set()
+    seen_paths: set[str] = set()
     for index, entry in enumerate(raw_patches):
         if not isinstance(entry, dict) or set(entry) != _PATCH_KEYS:
             issues.append(
@@ -565,6 +577,16 @@ def _candidate_patch_contract(
         revision = canonical["applies_to_revision"]
         relative = canonical["path"]
         expected_sha256 = canonical["sha256"]
+        if name in seen_names or relative in seen_paths:
+            issues.append(
+                GateIssue(
+                    "candidate-patch-contract",
+                    f"contributor patch {index} repeats a name or path",
+                )
+            )
+            continue
+        seen_names.add(name)
+        seen_paths.add(relative)
         symjit = contributor.get("symjit")
         if (
             target != "symjit"
@@ -634,6 +656,48 @@ def _candidate_patch_contract(
         canonical["path"] = pure.as_posix()
         expected.append(canonical)
     return expected, issues
+
+
+def _candidate_contributor_contract_issues(
+    contributor: dict[str, Any],
+) -> list[GateIssue]:
+    issues: list[GateIssue] = []
+    if contributor.get("abis") != _CANDIDATE_ABIS:
+        issues.append(
+            GateIssue(
+                "candidate-abi-contract",
+                "contributor-lock.toml has unexpected candidate ABI identities",
+            )
+        )
+    symjit = contributor.get("symjit")
+    if not isinstance(symjit, dict):
+        return [
+            *issues,
+            GateIssue(
+                "candidate-source-tree",
+                "contributor-lock.toml has no SymJIT source contract",
+            ),
+        ]
+    for key in ("patched_tree_sha256", "candidate_tree_sha256"):
+        digest = symjit.get(key)
+        if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
+            issues.append(
+                GateIssue(
+                    "candidate-source-tree",
+                    f"contributor lock has no valid SymJIT {key}",
+                )
+            )
+    return issues
+
+
+def _patch_closure_sha256(patches: list[dict[str, str]]) -> str:
+    encoded = json.dumps(
+        patches,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _candidate_config_issues() -> list[GateIssue]:
@@ -713,6 +777,7 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
         local_crates=_CANDIDATE_LOCAL_CRATES,
         prefix="candidate",
     )
+    issues.extend(_candidate_contributor_contract_issues(contributor))
     if not isinstance(state, dict) or state.get("schema_version") != 1:
         issues.append(
             GateIssue("candidate-state-invalid", "installer state must use schema 1")
@@ -795,14 +860,14 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                                 "digest",
                             )
                         )
-                    if len(patch_state) == 1 and entry.get(
+                    if patch_state and entry.get(
                         "patch_sha256"
-                    ) != patch_state[0].get("sha256"):
+                    ) != _patch_closure_sha256(patch_state):
                         issues.append(
                             GateIssue(
                                 "candidate-source-patch",
                                 "installer SymJIT source entry has the wrong patch "
-                                "digest",
+                                "closure digest",
                             )
                         )
                     if checkout.is_dir():
