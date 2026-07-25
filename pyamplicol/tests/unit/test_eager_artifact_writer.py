@@ -426,6 +426,8 @@ def test_schema_v3_eager_artifact_owns_kernels_and_binary_plan(
         (output / "model/eager-kernel-pack.json").read_text(encoding="utf-8")
     )
     assert emitted_pack["eager_kernel_abi"] == "pyamplicol-eager-kernel-v1"
+    assert emitted_pack["recurrence_template"] is None
+    assert emitted_pack["recurrence_direct_template"] is None
     assert {kernel["kernel_id"] for kernel in emitted_pack["kernels"]} == set(
         tables.referenced_kernel_ids
     )

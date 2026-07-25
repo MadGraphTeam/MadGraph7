@@ -692,11 +692,16 @@ def write_schema_v3_artifact(
                 requested_bytes=requested_bytes,
                 effective_bytes=effective_bytes,
             )
+        retain_recurrence_templates = (
+            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY
+            in required_runtime_capabilities
+        )
         eager_kernel_ids = _prepared_kernel_ids(
             output,
             existing,
             compiled_model=compiled_model,
             processes=processes,
+            retain_recurrence_templates=retain_recurrence_templates,
         )
         if eager_kernel_ids:
             if progress_callback is not None:
@@ -717,6 +722,7 @@ def write_schema_v3_artifact(
                     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
                     in required_runtime_capabilities
                 ),
+                retain_recurrence_templates=retain_recurrence_templates,
             )
         for process_index, process in enumerate(processes, start=1):
             if progress_callback is not None:
@@ -858,6 +864,7 @@ def _write_eager_kernel_pack(
     kernel_ids: frozenset[int],
     evaluator_payloads: _EvaluatorPayloadCollector,
     require_eager_direct: bool,
+    retain_recurrence_templates: bool,
 ) -> None:
     bundle = compiled_model.prepared_bundle
     if bundle is None:
@@ -882,6 +889,15 @@ def _write_eager_kernel_pack(
     evaluator_payloads.discard_prefix(_EAGER_KERNEL_PAYLOAD_ROOT)
     pack_payload = bundle.kernel_pack.to_dict()
     pack_payload["eager_kernel_abi"] = EAGER_KERNEL_ABI
+    if not retain_recurrence_templates:
+        # Process artifacts retain only the prepared kernels they execute.  A
+        # model-wide recurrence catalog references kernels outside that
+        # process-local inventory and therefore cannot remain a valid member
+        # of an eager-only kernel pack.  Eager exact execution uses the
+        # prepared kernel records and resolver manifest, not recurrence
+        # templates.
+        pack_payload["recurrence_template"] = None
+        pack_payload["recurrence_direct_template"] = None
     direct_descriptors: dict[str, bytes] = {}
     kernel_payloads: list[dict[str, object]] = []
     for kernel in selected:
@@ -918,6 +934,11 @@ def _write_eager_kernel_pack(
         bundle.kernel_pack.resolver_manifest,
         kernel_ids,
     )
+    from ..models.prepared import PreparedKernelPack
+
+    validated_pack_payload = dict(pack_payload)
+    validated_pack_payload.pop("eager_kernel_abi")
+    PreparedKernelPack.from_dict(validated_pack_payload)
     builder.add_json(
         _EAGER_KERNEL_PACK_PATH,
         pack_payload,
@@ -1109,6 +1130,7 @@ def _prepared_kernel_ids(
     *,
     compiled_model: CompiledModel,
     processes: Sequence[ProcessArtifact],
+    retain_recurrence_templates: bool,
 ) -> frozenset[int]:
     has_prepared_process = any(
         _is_prepared_kernel_process(process) for process in processes
@@ -1146,6 +1168,14 @@ def _prepared_kernel_ids(
         )
         if parameter_kernel_id is not None:
             kernel_ids.add(int(parameter_kernel_id))
+        if retain_recurrence_templates:
+            # The authenticated recurrence companions are model-wide rather
+            # than process-local.  Retaining them therefore requires their
+            # complete prepared-kernel inventory, including bindings that a
+            # particular process schedule does not happen to exercise.
+            kernel_ids.update(
+                kernel.kernel_id for kernel in bundle.kernel_pack.kernels
+            )
     return frozenset(kernel_ids)
 
 
