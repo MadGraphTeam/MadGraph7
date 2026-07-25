@@ -20,6 +20,7 @@ import madgraph.various.lhe_parser as lhe_parser
 import madgraph .various.misc as misc
 import tempfile
 import os
+import re
 import shutil
 import math
 pjoin = os.path.join
@@ -29,6 +30,62 @@ import itertools
 
 class TestEvent(unittest.TestCase):
 
+    # a real MadEvent u u > u u event (ebeam = 6500 GeV) carrying its <mgrwt>
+    # block; used to check that the block can be reconstructed from the event.
+    mgrwt_event = """<event>
+ 4 1 +1.3649000e+06 0.2333376E+02  0.7546771E-02  0.1686156E+00
+          2   -1    0    0  502    0  0.00000000000E+00  0.00000000000E+00  0.14608470417E+03  0.14608470417E+03  0.00000000000E+00 0. -1.
+          2   -1    0    0  501    0 -0.00000000000E+00 -0.00000000000E+00 -0.37876093631E+01  0.37876093631E+01  0.00000000000E+00 0. -1.
+          2    1    1    2  501    0 -0.14853818370E+02 -0.17995227830E+02  0.80624445516E+02  0.83933100500E+02  0.00000000000E+00 0. -1.
+          2    1    1    2  502    0  0.14853818370E+02  0.17995227830E+02  0.61672649296E+02  0.65939213038E+02  0.00000000000E+00 0. -1.
+<mgrwt>
+<rscale>  2 0.23333755E+02</rscale>
+<asrwt>0</asrwt>
+<pdfrwt beam="1">  1        2 0.22474566E-01 0.23333755E+02</pdfrwt>
+<pdfrwt beam="2">  1        2 0.58270925E-03 0.23333755E+02</pdfrwt>
+<totfact> 0.65738256E+05</totfact>
+</mgrwt>
+</event>"""
+
+    def test_reconstruct_lo_weight(self):
+        """The LO reweighting info (<mgrwt>) can be reconstructed from the event
+        for a single-alpha_s process, matching what MadEvent writes."""
+
+        # reference: parse the real <mgrwt>
+        ref = lhe_parser.Event(self.mgrwt_event).parse_lo_weight()
+        self.assertEqual(ref['n_qcd'], 2)
+        self.assertEqual(ref['pdf_pdg_code1'], [2])
+
+        # same event with the <mgrwt> block removed -> reconstruct it
+        stripped = re.sub(r'<mgrwt>.*?</mgrwt>\n?', '',
+                          self.mgrwt_event, flags=re.DOTALL)
+        ev = lhe_parser.Event(stripped)
+        # without nqcd it stays unavailable (backward-compatible behaviour)
+        self.assertIsNone(ev.parse_lo_weight())
+
+        rec = lhe_parser.Event(stripped).parse_lo_weight(nqcd=2,
+                                                         ebeam=(6500., 6500.))
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec['n_qcd'], 2)
+        self.assertEqual(rec['pdf_pdg_code1'], [2])
+        self.assertEqual(rec['pdf_pdg_code2'], [2])
+        self.assertEqual(rec['n_pdfrw1'], 1)
+        self.assertEqual(rec['asrwt'], [])
+        # x, scale reconstructed from the event momenta match the written block
+        # up to the LHE write precision
+        self.assertAlmostEqual(rec['pdf_x1'][0], ref['pdf_x1'][0], places=6)
+        self.assertAlmostEqual(rec['pdf_x2'][0], ref['pdf_x2'][0], places=6)
+        self.assertAlmostEqual(rec['ren_scale'], ref['ren_scale'], places=3)
+        self.assertEqual(rec['pdf_q1'], [rec['ren_scale']])
+
+    def test_reconstruct_lo_weight_ew(self):
+        """A purely electroweak process (nqcd=0) reconstructs with no alpha_s
+        power, so scale/PDF systematics need only the kinematics."""
+        stripped = re.sub(r'<mgrwt>.*?</mgrwt>\n?', '',
+                          self.mgrwt_event, flags=re.DOTALL)
+        rec = lhe_parser.Event(stripped).parse_lo_weight(nqcd=0,
+                                                         ebeam=(6500., 6500.))
+        self.assertEqual(rec['n_qcd'], 0)
 
     def test_equiv_sequence(self):
         """ check the equiv_sequence: staticmethod"""

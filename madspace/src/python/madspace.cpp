@@ -1474,7 +1474,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<double, double, double, int>(),
             py::arg("cross_section") = 0.,
             py::arg("cross_section_error") = 0.,
-            py::arg("max-weight") = 0.,
+            py::arg("max_weight") = 0.,
             py::arg("process_id") = 0
         )
         .def_readwrite("cross_section", &LHEProcess::cross_section)
@@ -1590,21 +1590,19 @@ PYBIND11_MODULE(_madspace_py, m) {
                 nested_vector3<std::size_t>,
                 nested_vector2<std::size_t>,
                 nested_vector3<std::size_t>,
-                nested_vector3<std::tuple<int, int>>,
+                nested_vector2<std::tuple<int, int>>,
                 std::unordered_map<int, int>,
                 nested_vector2<double>,
-                nested_vector3<int>,
-                std::vector<std::size_t>>(),
+                nested_vector3<int>>(),
             py::arg("process_id") = 0,
             py::arg("topologies") = std::vector<Topology>{},
             py::arg("permutations") = nested_vector3<std::size_t>{},
             py::arg("diagram_indices") = nested_vector2<std::size_t>{},
             py::arg("diagram_color_indices") = nested_vector3<std::size_t>{},
-            py::arg("color_flows") = nested_vector3<std::tuple<int, int>>{},
+            py::arg("color_flows") = nested_vector2<std::tuple<int, int>>{},
             py::arg("pdg_color_types") = std::unordered_map<int, int>{},
             py::arg("helicities") = nested_vector2<double>{},
-            py::arg("pdg_ids") = nested_vector3<int>{},
-            py::arg("matrix_flavor_indices") = std::vector<std::size_t>{}
+            py::arg("pdg_ids") = nested_vector3<int>{}
         )
         .def_readwrite("process_id", &LHECompleter::SubprocArgs::process_id)
         .def_readwrite("topologies", &LHECompleter::SubprocArgs::topologies)
@@ -1616,17 +1614,17 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("color_flows", &LHECompleter::SubprocArgs::color_flows)
         .def_readwrite("pdg_color_types", &LHECompleter::SubprocArgs::pdg_color_types)
         .def_readwrite("helicities", &LHECompleter::SubprocArgs::helicities)
-        .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids)
-        .def_readwrite(
-            "matrix_flavor_indices", &LHECompleter::SubprocArgs::matrix_flavor_indices
-        );
+        .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids);
+    py::classh<std::mt19937>(m, "RandGen")
+        .def(py::init<>())
+        .def(py::init<std::mt19937::result_type>(), py::arg("seed"));
     py::classh<LHECompleter>(m, "LHECompleter")
         .def(
             py::init<const std::vector<LHECompleter::SubprocArgs>&, double>(),
             py::arg("subproc_args"),
             py::arg("bw_cutoff")
         )
-        /*.def(
+        .def(
             "complete_event_data",
             &LHECompleter::complete_event_data,
             py::arg("event"),
@@ -1634,8 +1632,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("diagram_index"),
             py::arg("color_index"),
             py::arg("flavor_index"),
-            py::arg("helicity_index")
-        )*/
+            py::arg("helicity_index"),
+            py::arg("rand_gen")
+        )
         .def("save", &LHECompleter::save, py::arg("file"))
         .def_static("load", &LHECompleter::load, py::arg("file"))
         .def_property_readonly("max_particle_count", &LHECompleter::max_particle_count);
@@ -1746,7 +1745,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             "combine_to_lhe",
             &EventGenerator::combine_to_lhe,
             py::arg("file_name"),
-            py::arg("lhe_completer")
+            py::arg("lhe_completer"),
+            py::arg("meta") = LHEMeta{}
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)

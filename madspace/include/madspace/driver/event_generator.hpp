@@ -15,6 +15,7 @@
 #include "madspace/driver/format.hpp"
 #include "madspace/driver/generator_data.hpp"
 #include "madspace/driver/io.hpp"
+#include "madspace/driver/lhe_output.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
 #include "madspace/phasespace.hpp"
 
@@ -40,7 +41,10 @@ public:
     void generate();
     void combine_to_compact_npy(const std::string& file_name);
     void combine_to_lhe_npy(const std::string& file_name, LHECompleter& lhe_completer);
-    void combine_to_lhe(const std::string& file_name, LHECompleter& lhe_completer);
+    void combine_to_lhe(
+        const std::string& file_name, LHECompleter& lhe_completer,
+        const LHEMeta& meta = {}
+    );
     GeneratorStatus status() const { return _status; }
     std::vector<GeneratorStatus> channel_status() const;
     std::vector<Histogram> histograms() const;

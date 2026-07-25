@@ -797,7 +797,7 @@ void EventGenerator::combine_to_lhe_npy(
 }
 
 void EventGenerator::combine_to_lhe(
-    const std::string& file_name, LHECompleter& lhe_completer
+    const std::string& file_name, LHECompleter& lhe_completer, const LHEMeta& meta
 ) {
     reset_start_time();
     std::uint64_t seed = _seed;
@@ -820,7 +820,7 @@ void EventGenerator::combine_to_lhe(
         buffers.push_back({{0, particle_count, layout}, {}});
         idle_buffers.push_back(i);
     }
-    LHEFileWriter event_file(file_name, LHEMeta{});
+    LHEFileWriter event_file(file_name, meta);
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     bool done = false;
