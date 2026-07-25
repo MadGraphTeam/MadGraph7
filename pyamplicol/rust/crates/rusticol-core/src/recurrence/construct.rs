@@ -473,6 +473,9 @@ struct PendingReflectionCertificate {
 }
 
 impl PendingReflectionCertificate {
+    // The pair constructor authenticates both orbit members and both color
+    // witnesses explicitly; retaining the parallel arguments makes swaps visible.
+    #[allow(clippy::too_many_arguments)]
     fn reciprocal_pair(
         id: u32,
         canonical_old_current_id: u32,
@@ -3350,6 +3353,9 @@ fn pairing_reconstruction_factor(_rule: Option<FermionPairingRuleRow>) -> ExactC
     ExactComplexRational::ONE
 }
 
+// Closure certification deliberately receives each authenticated catalog and
+// proof table separately so that no unchecked aggregate can cross this boundary.
+#[allow(clippy::too_many_arguments)]
 fn closure_reflection_certificate_id(
     sector: ProcessPhysicalLCSectorRow,
     closed: &[LCColorComponent],

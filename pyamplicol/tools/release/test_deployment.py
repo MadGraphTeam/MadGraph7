@@ -156,6 +156,7 @@ build_info_resource = package.joinpath("_build_info.json")
 if mode == "candidate":
     build_info = json.loads(build_info_resource.read_text(encoding="utf-8"))
     assert build_info["publishable"] is False
+    assert build_info["selftest_fixture_bootstrap"] is False
     assert build_info["version"] == version
 else:
     assert not build_info_resource.is_file()
@@ -249,11 +250,14 @@ fixture = importlib.resources.files("pyamplicol").joinpath(
 )
 expected = json.loads(fixture.joinpath("expected.json").read_text(encoding="utf-8"))
 artifact = fixture.joinpath(str(expected["artifact_path"]))
+manifest = json.loads(artifact.joinpath("artifact.json").read_text(encoding="utf-8"))
 runtime = Runtime.load(
     str(artifact),
     process=str(expected["process_id"]),
     mute_warnings=True,
 )
+assert runtime.artifact_id == manifest["artifact_id"]
+assert runtime.execution_mode == "compiled"
 total = tuple(complex(value) for value in runtime.evaluate(expected["momenta"]))
 resolved = runtime.evaluate_resolved(expected["momenta"])
 reduced = tuple(complex(value) for value in resolved.total())
@@ -333,6 +337,8 @@ for backend in (
         ]
     ]
     runtime = Runtime.load(artifact)
+    assert runtime.artifact_id == manifest["artifact_id"]
+    assert runtime.execution_mode == "compiled"
     total = runtime.evaluate(momenta)[0]
     resolved = runtime.evaluate_resolved(momenta)
     assert resolved.total()[0] == total
@@ -382,6 +388,8 @@ eager_execution = json.loads(
 assert eager_execution["kind"] == "pyamplicol-runtime-eager-execution"
 assert (eager_artifact / "model/eager-kernel-pack.json").is_file()
 eager_runtime = Runtime.load(eager_artifact)
+assert eager_runtime.artifact_id == eager_manifest["artifact_id"]
+assert eager_runtime.execution_mode == "eager"
 eager_total = eager_runtime.evaluate(momenta)[0]
 eager_resolved = eager_runtime.evaluate_resolved(momenta)
 eager_reduced = eager_resolved.total()[0]

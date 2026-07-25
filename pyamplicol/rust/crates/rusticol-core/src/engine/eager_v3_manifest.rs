@@ -15,7 +15,7 @@ use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
 use std::collections::BTreeSet;
-use std::fs;
+use std::fs::File;
 use std::path::Path;
 
 pub(super) const EAGER_EXECUTION_KIND: &str = "pyamplicol-runtime-eager-execution";
@@ -362,40 +362,19 @@ pub(super) fn parse_eager_v3_execution_manifest(
 
 /// Open, authenticate, and structurally preflight `eager-runtime.pacbin`.
 pub(super) fn open_eager_v3_runtime_container(
-    process_root: &Path,
+    container_file: File,
+    display_path: &Path,
     manifest: &EagerV3ExecutionManifest,
 ) -> RusticolResult<PacbinReader> {
     manifest.plan.runtime_container.validate()?;
     let container = &manifest.plan.runtime_container;
-    let path = process_root.join(&container.path);
-    let metadata = fs::symlink_metadata(&path).map_err(|error| {
-        RusticolError::artifact(format!(
-            "could not inspect eager runtime container {}: {error}",
-            path.display()
-        ))
-    })?;
-    if metadata.file_type().is_symlink() {
-        return Err(RusticolError::security(format!(
-            "eager runtime container must not be a symlink: {}",
-            path.display()
-        )));
-    }
-    if !metadata.file_type().is_file() {
-        return Err(RusticolError::artifact(format!(
-            "eager runtime container is not a regular file: {}",
-            path.display()
-        )));
-    }
-    if metadata.len() != container.size_bytes {
-        return Err(RusticolError::integrity(
-            "eager runtime container file size does not match execution manifest",
-        ));
-    }
     // A complete container digest authenticates every indexed member. Hashing
-    // and parsing use the same mapped storage to avoid a path-replacement race.
+    // and parsing use the exact checked file description supplied by the
+    // verified artifact, avoiding a path-replacement race.
     // PACBIN still validates its index, canonical layout, and boundaries.
     let expected_file_sha = parse_sha256(&container.sha256, "eager runtime container")?;
-    let reader = PacbinReader::open_with_sha256(&path, &expected_file_sha)?;
+    let reader =
+        PacbinReader::open_file_with_sha256(container_file, display_path, &expected_file_sha)?;
     let index = reader.index();
     let mapped_size = u64::try_from(reader.container_size())
         .map_err(|_| RusticolError::integrity("eager runtime PACBIN size exceeds u64"))?;

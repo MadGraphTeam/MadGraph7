@@ -536,6 +536,11 @@ def _compiled_plane_arena_leaves(
         source_application_abi = SYMJIT_APPLICATION_ABI
         application_abi = COMPILED_PLANE_DIRECT_APPLICATION_ABI
         optimization_level = _required_nonnegative_int(evaluator, "optimization_level")
+        direct_codegen_optimization_level = 3
+        if optimization_level not in {0, 1, 2, 3}:
+            raise ValueError(
+                "compiled SymJIT plane-arena optimization level must be 0, 1, 2, or 3"
+            )
     elif kind == "compiled-complex-evaluator":
         if evaluator.get("runtime_capability") not in {
             SYMBOLICA_CPP_RUNTIME_CAPABILITY,
@@ -553,6 +558,7 @@ def _compiled_plane_arena_leaves(
         application_path = direct.get("library_path")
         source_application_abi = application_abi
         optimization_level = 3
+        direct_codegen_optimization_level = 3
         if application_abi != NATIVE_COMPILED_DIRECT_APPLICATION_ABI:
             raise ValueError("compiled native leaf has an incompatible direct ABI")
     else:
@@ -567,8 +573,6 @@ def _compiled_plane_arena_leaves(
         or not application_path
     ):
         raise ValueError("compiled SymJIT leaf metadata is invalid")
-    if optimization_level != 3:
-        return None, output_start, None, None
     output_stop = output_start + output_len
     return (
         [
@@ -576,6 +580,9 @@ def _compiled_plane_arena_leaves(
                 "application_path": application_path,
                 "source_application_abi": source_application_abi,
                 "optimization_level": optimization_level,
+                "direct_codegen_optimization_level": (
+                    direct_codegen_optimization_level
+                ),
                 "input_len": input_len,
                 "output_len": output_len,
                 "input_indices": list(parent_inputs),
@@ -669,10 +676,11 @@ def _finalize_stage_evaluator_payload(
     requires_direct = bool(
         required_runtime_capabilities
         & {
+            SYMJIT_F64_RUNTIME_CAPABILITY,
             SYMBOLICA_CPP_RUNTIME_CAPABILITY,
             SYMBOLICA_ASM_RUNTIME_CAPABILITY,
         }
-    ) or bool(direct_stage_count)
+    )
     if requires_direct and direct_stage_count != stage_count:
         raise ValueError(
             "compiled f64 artifacts require compiled-plane-arena-v1 metadata "

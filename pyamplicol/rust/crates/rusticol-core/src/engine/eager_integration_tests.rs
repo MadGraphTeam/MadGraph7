@@ -9,6 +9,8 @@ use crate::{
 use serde_json::json;
 
 const TEST_SYMJIT_APPLICATION_ABI: &str = "symjit-application-storage-v3";
+const TEST_PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL: u64 = 2;
+const TEST_PREPARED_JIT_PORTABLE_TARGET: &str = "symjit-storage-v3-portable";
 
 fn symjit_manifest(application_path: &str, exact_state_path: &str, input_len: usize) -> Value {
     json!({
@@ -24,13 +26,15 @@ fn symjit_manifest(application_path: &str, exact_state_path: &str, input_len: us
         "batch_layout": "row-major",
         "compiler_type": "native",
         "translation_mode": "indirect",
-        "optimization_level": 3,
+        "optimization_level": TEST_PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
         "word_bits": 64,
         "endianness": "little",
         "required_defuns": [],
         "evaluator_state_path": exact_state_path,
         "evaluator_state_runtime_capability": SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
-        "settings": {"jit_optimization_level": 3},
+        "settings": {
+            "jit_optimization_level": TEST_PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
+        },
         "build_timing": {"jit_materialize_s": 0.0},
     })
 }
@@ -175,15 +179,17 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
     PreparedKernelPackManifest {
         eager_kernel_abi: EAGER_KERNEL_ABI.to_string(),
         backend: "jit".to_string(),
-        optimization_settings: json!({"jit_optimization_level": 3}),
+        optimization_settings: json!({
+            "jit_optimization_level": TEST_PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
+        }),
         producer: json!({"distribution": "pyamplicol", "version": "test"}),
         dependency_abis: json!({"symjit_application": TEST_SYMJIT_APPLICATION_ABI}),
         provenance: json!({"compiled_model_digest": "test"}),
         target: PreparedKernelTargetManifest {
-            portable: false,
+            portable: true,
             word_bits: 64,
             endianness: "little".to_string(),
-            target_triple: format!("symjit-storage-v3-{}", std::env::consts::ARCH),
+            target_triple: TEST_PREPARED_JIT_PORTABLE_TARGET.to_string(),
             cpu_features: Vec::new(),
         },
         resolver_manifest: json!({
@@ -204,7 +210,7 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
 }
 
 #[test]
-fn prepared_jit_pack_rejects_cross_architecture_before_loading_payloads() {
+fn prepared_jit_pack_rejects_nonportable_target_before_loading_payloads() {
     let mut pack = filtered_pack(vec![kernel(
         50,
         "closure",
@@ -216,12 +222,13 @@ fn prepared_jit_pack_rejects_cross_architecture_before_loading_payloads() {
     } else {
         "aarch64"
     };
+    pack.target.portable = false;
     pack.target.target_triple = format!("symjit-storage-v3-{other}");
 
     let error = pack
         .validate()
-        .expect_err("cross-architecture pack must fail");
-    assert!(error.to_string().contains("incompatible with host"));
+        .expect_err("nonportable prepared JIT pack must fail");
+    assert!(error.to_string().contains("expected portable target"));
 }
 
 fn compiled_pack(backend: &str, runtime_capability: &str) -> PreparedKernelPackManifest {
@@ -411,7 +418,7 @@ fn prepared_symjit_backend_executes_a_filtered_eager_plan() {
     let mut config = Config::new(CompilerType::Native, 0).expect("native SymJIT config");
     config.set_complex(true);
     config.set_symbolica(true);
-    config.set_opt_level(3);
+    config.set_opt_level(TEST_PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL as u8);
     config.set_simd(true);
     let mut compiler = Compiler::with_config(config);
     let instructions = r#"[[{"Add":[{"Out":0},[{"Param":0},{"Param":1}],0]}],1,[]]"#;

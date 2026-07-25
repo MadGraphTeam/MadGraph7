@@ -63,9 +63,7 @@ def measure_cell(
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
     cell = catalog.cell(cell_id)
-    baseline = (
-        None if baseline_json is None else load_measurement(baseline_json)
-    )
+    baseline = None if baseline_json is None else load_measurement(baseline_json)
     reused_artifact = (
         None
         if reused_measurement_json is None
@@ -102,7 +100,7 @@ def measure_cell(
     provenance = result.get("provenance")
     result["provenance"] = {
         **({} if not isinstance(provenance, Mapping) else dict(provenance)),
-        "report_source_revision": source_revision(repo_root),
+        "report_source_revision": source_revision(repo_root, require_clean=True),
     }
     return result
 

@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)] // Retained by the explicit packet-scheduler profiling oracle.
 pub(super) fn execute_stage_profiled<B: EagerKernelBackend>(
     stage: &EagerStagePlan,
     schedule: &StageSchedule,
@@ -227,6 +228,7 @@ pub(super) fn execute_stage_profiled<B: EagerKernelBackend>(
     Ok(())
 }
 
+#[allow(dead_code)] // Retained by the explicit packet-scheduler profiling oracle.
 pub(super) fn execute_closures_profiled<B: EagerKernelBackend>(
     rows: ClosureExecutionRows<'_>,
     packets: &[KernelPacket],
@@ -302,6 +304,7 @@ pub(super) fn execute_closures_profiled<B: EagerKernelBackend>(
     Ok(())
 }
 
+#[allow(dead_code)] // Shared only by the retained profiled packet-scheduler path.
 fn packet_slices(
     packet: &mut [EagerComplex64],
     input_len: usize,
@@ -320,6 +323,7 @@ fn packet_slices(
     Ok(active.split_at_mut(input_len))
 }
 
+#[allow(dead_code)] // Shared only by the retained profiled packet-scheduler path.
 fn copy_component_range(
     source: &[EagerComplex64],
     source_range: ComponentRange,

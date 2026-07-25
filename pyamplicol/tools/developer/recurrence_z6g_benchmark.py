@@ -1341,15 +1341,15 @@ def _load_compact_eager_reduction_groups(
 ) -> list[dict[str, object]]:
     try:
         from pyamplicol.runtime.eager_exact._plan_v3 import (
-            _load_eager_exact_sections_v1,
+            _load_eager_reduction_groups_v1,
         )
 
-        sections = _load_eager_exact_sections_v1(artifact, process_id)
+        groups = _load_eager_reduction_groups_v1(artifact, process_id)
     except Exception as error:
         raise HarnessError(
             f"could not authenticate compact eager reduction: {artifact}"
         ) from error
-    return [dict(group) for group in sections.reduction_groups]
+    return [dict(group) for group in groups]
 
 
 def _load_compact_recurrence_reduction(
@@ -2304,11 +2304,156 @@ def _require_reusable_artifact(
     return identity, sidecar
 
 
+def _artifact_identity_from_bound_semantics(
+    artifact: Path,
+    *,
+    tree: Mapping[str, object],
+    semantic_identity: Mapping[str, object],
+) -> dict[str, object]:
+    """Recover cheap identity fields after exact tree/sidecar authentication.
+
+    The initial artifact bind validates every manifest payload and reconstructs
+    the lane-local semantic identity.  Its sibling reuse sidecar content
+    addresses that semantic identity and the complete artifact tree.  Once both
+    byte identities have been pinned, later subprocesses can recover the
+    immutable semantic body without hydrating a multi-gigabyte native plan.
+    """
+
+    manifest_path = artifact / "artifact.json"
+    manifest = _json_object(manifest_path, label="artifact manifest")
+    processes = manifest.get("processes")
+    if not isinstance(processes, list) or len(processes) != 1:
+        raise HarnessError(f"benchmark artifact must contain one process: {artifact}")
+    process = processes[0]
+    if not isinstance(process, Mapping):
+        raise HarnessError(f"artifact process record is invalid: {artifact}")
+    expression = process.get("expression")
+    process_id = process.get("id")
+    color_accuracy = process.get("color_accuracy")
+    if not isinstance(expression, str) or not expression:
+        raise HarnessError(f"artifact process expression is invalid: {artifact}")
+    if not isinstance(process_id, str) or not process_id:
+        raise HarnessError(f"artifact process ID is invalid: {artifact}")
+    model_identity = _manifest_model_identity(manifest)
+    bound_model_identity = semantic_identity.get("manifest_model_identity")
+    if (
+        not isinstance(bound_model_identity, Mapping)
+        or dict(bound_model_identity) != model_identity
+    ):
+        raise HarnessError(
+            f"artifact semantic model identity disagrees with its manifest: {artifact}"
+        )
+    semantic_identity_sha256 = _canonical_sha256(semantic_identity)
+    return {
+        "path": str(artifact.resolve()),
+        "artifact_id": manifest.get("artifact_id"),
+        "manifest": _path_identity(manifest_path),
+        "tree": dict(tree),
+        "process_id": process_id,
+        "process_expression": expression,
+        "color_accuracy": color_accuracy,
+        "producer": manifest.get("producer"),
+        "model_identity": model_identity,
+        "semantic_identity": dict(semantic_identity),
+        "semantic_identity_sha256": semantic_identity_sha256,
+    }
+
+
+def _require_bound_reusable_artifact(
+    artifact: Path,
+    *,
+    expected_tree_sha256: str,
+    expected_semantic_identity_sha256: str,
+    expected_reuse_semantic_signature_sha256: str,
+    expected_sidecar_sha256: str,
+    expected_signature: Mapping[str, object] | None,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    """Rebind an already authenticated artifact through exact byte identities.
+
+    This is deliberately not the initial reuse path.  The caller must supply
+    digests retained from a prior full semantic bind.  We hash the complete
+    artifact tree and the sibling reuse sidecar again, validate the sidecar's
+    self-addressed semantic/generation payload, and only then recover the
+    semantic body stored in that sidecar.
+    """
+
+    expected_tree_sha256 = _required_sha256(
+        expected_tree_sha256,
+        label="expected bound artifact tree",
+    )
+    expected_semantic_identity_sha256 = _required_sha256(
+        expected_semantic_identity_sha256,
+        label="expected bound artifact semantic identity",
+    )
+    expected_reuse_semantic_signature_sha256 = _required_sha256(
+        expected_reuse_semantic_signature_sha256,
+        label="expected bound reuse semantic signature",
+    )
+    expected_sidecar_sha256 = _required_sha256(
+        expected_sidecar_sha256,
+        label="expected bound reuse sidecar",
+    )
+    sidecar_path = _reuse_signature_path(artifact)
+    sidecar_identity_before = _path_identity(sidecar_path)
+    if sidecar_identity_before.get("sha256") != expected_sidecar_sha256:
+        raise HarnessError(
+            f"artifact reuse sidecar changed after semantic binding: {artifact}"
+        )
+    sidecar_payload = _json_object(
+        sidecar_path,
+        label="artifact reuse signature",
+    )
+    raw_signature = sidecar_payload.get("semantic_signature")
+    semantic_identity = (
+        raw_signature.get("artifact_semantic_identity")
+        if isinstance(raw_signature, Mapping)
+        else None
+    )
+    if not isinstance(semantic_identity, Mapping):
+        raise HarnessError(
+            f"artifact reuse signature has no bound semantic identity: {sidecar_path}"
+        )
+    tree = _tree_identity(artifact)
+    if tree.get("sha256") != expected_tree_sha256:
+        raise HarnessError(f"artifact tree changed after semantic binding: {artifact}")
+    identity = _artifact_identity_from_bound_semantics(
+        artifact,
+        tree=tree,
+        semantic_identity=semantic_identity,
+    )
+    sidecar = _validated_reuse_signature(
+        artifact,
+        artifact_identity=identity,
+        expected_signature=expected_signature,
+    )
+    if identity.get("semantic_identity_sha256") != expected_semantic_identity_sha256:
+        raise HarnessError(
+            f"artifact semantic identity changed after semantic binding: {artifact}"
+        )
+    if (
+        sidecar.get("semantic_signature_sha256")
+        != expected_reuse_semantic_signature_sha256
+    ):
+        raise HarnessError(
+            f"artifact reuse semantics changed after semantic binding: {artifact}"
+        )
+    sidecar_identity_after = _path_identity(sidecar_path)
+    if (
+        sidecar_identity_after != sidecar_identity_before
+        or sidecar_identity_after.get("sha256") != expected_sidecar_sha256
+    ):
+        raise HarnessError(
+            f"artifact reuse sidecar drifted during semantic binding: {artifact}"
+        )
+    return identity, sidecar, sidecar_identity_after
+
+
 _PROFILE_EXPECTATION_FIELDS = (
     "source_identity_sha256",
     "runtime_provenance_sha256",
     "interpreter_sha256",
     "native_extension_sha256",
+    "artifact_id",
     "artifact_tree_sha256",
     "artifact_semantic_identity_sha256",
     "reuse_semantic_signature_sha256",
@@ -2349,6 +2494,10 @@ def _profile_identity_expectations(
         "native_extension_sha256": _required_sha256(
             native.get("sha256"),
             label="native extension identity",
+        ),
+        "artifact_id": _required_sha256(
+            artifact_identity.get("artifact_id"),
+            label="artifact manifest identity",
         ),
         "artifact_tree_sha256": _required_sha256(
             tree.get("sha256"),
@@ -2416,17 +2565,31 @@ def _profile_worker_expectations_from_arguments(
 def _verify_profile_worker_environment(
     arguments: argparse.Namespace,
 ) -> dict[str, object]:
-    """Recompute every timing identity inside the worker before loading."""
+    """Recompute every byte identity inside the worker before loading.
+
+    Native artifact semantics were fully authenticated by the driver before it
+    scheduled any timing worker.  The worker rebinds that semantic body through
+    the exact artifact-tree and reuse-sidecar digests supplied by the driver,
+    avoiding a redundant native-plan hydration before every timed load.
+    """
 
     expected = _profile_worker_expectations_from_arguments(arguments)
     source_identity = _git_source_identity()
     runtime_provenance = _runtime_provenance(source_identity)
     artifact = arguments.artifact.resolve(strict=True)
-    artifact_identity = _artifact_identity(artifact)
-    reuse_signature = _validated_reuse_signature(
-        artifact,
-        artifact_identity=artifact_identity,
-        expected_signature=None,
+    artifact_identity, reuse_signature, reuse_sidecar_identity = (
+        _require_bound_reusable_artifact(
+            artifact,
+            expected_tree_sha256=expected["artifact_tree_sha256"],
+            expected_semantic_identity_sha256=expected[
+                "artifact_semantic_identity_sha256"
+            ],
+            expected_reuse_semantic_signature_sha256=expected[
+                "reuse_semantic_signature_sha256"
+            ],
+            expected_sidecar_sha256=expected["reuse_sidecar_sha256"],
+            expected_signature=None,
+        )
     )
     interpreter = runtime_provenance.get("interpreter")
     native = runtime_provenance.get("native_extension")
@@ -2442,6 +2605,7 @@ def _verify_profile_worker_environment(
         "runtime_provenance_sha256": _canonical_sha256(runtime_provenance),
         "interpreter_sha256": interpreter.get("sha256"),
         "native_extension_sha256": native.get("sha256"),
+        "artifact_id": artifact_identity.get("artifact_id"),
         "artifact_tree_sha256": tree.get("sha256"),
         "artifact_semantic_identity_sha256": artifact_identity.get(
             "semantic_identity_sha256"
@@ -2449,9 +2613,7 @@ def _verify_profile_worker_environment(
         "reuse_semantic_signature_sha256": reuse_signature.get(
             "semantic_signature_sha256"
         ),
-        "reuse_sidecar_sha256": _path_identity(_reuse_signature_path(artifact)).get(
-            "sha256"
-        ),
+        "reuse_sidecar_sha256": reuse_sidecar_identity.get("sha256"),
     }
     _validate_profile_worker_expectations(expected, observed)
     effective_contract = _validate_artifact_contract(
@@ -2472,6 +2634,68 @@ def _verify_profile_worker_environment(
         ],
         "effective_contract": effective_contract,
     }
+
+
+def _loaded_runtime_artifact_verification(
+    runtime: object,
+    *,
+    expected_artifact_id: object,
+    phase: str,
+) -> dict[str, object]:
+    """Bind an in-memory runtime to the manifest identity it authenticated.
+
+    The native loader validates the manifest identity, the exact declared tree,
+    and every payload before it publishes the runtime.  Comparing that retained
+    identity closes the path replacement window between the worker's fast tree
+    rebind and ``Runtime.load`` without rehydrating the eager semantic plan.
+    """
+
+    expected = _required_sha256(
+        expected_artifact_id,
+        label="expected loaded artifact identity",
+    )
+    observed = _required_sha256(
+        getattr(runtime, "artifact_id", None),
+        label="native loaded artifact identity",
+    )
+    if observed != expected:
+        raise HarnessError(
+            "profile worker loaded a different artifact after its pre-load "
+            "identity check"
+        )
+    return {
+        "kind": "pyamplicol-loaded-runtime-artifact-verification",
+        "schema_version": 1,
+        "phase": phase,
+        "checked_at_utc": _utc_now(),
+        "expected_artifact_id": expected,
+        "loaded_artifact_id": observed,
+        "passes": True,
+    }
+
+
+def _validate_loaded_runtime_artifact_verification(
+    value: object,
+    *,
+    expected_artifact_id: object,
+    phase: str,
+) -> None:
+    expected = _required_sha256(
+        expected_artifact_id,
+        label="expected retained loaded artifact identity",
+    )
+    if not isinstance(value, Mapping):
+        raise HarnessError("loaded runtime artifact verification is missing")
+    if (
+        value.get("kind") != "pyamplicol-loaded-runtime-artifact-verification"
+        or not _is_exact_int(value.get("schema_version"), 1)
+        or value.get("phase") != phase
+        or not _is_utc_timestamp(value.get("checked_at_utc"))
+        or value.get("expected_artifact_id") != expected
+        or value.get("loaded_artifact_id") != expected
+        or value.get("passes") is not True
+    ):
+        raise HarnessError("loaded runtime artifact verification is invalid")
 
 
 def _artifact_phases(path: Path) -> dict[str, float]:
@@ -2943,6 +3167,12 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
                 f"rebuild pyAmpliCol with recurrence support: {error}"
             ) from error
         raise
+    loaded_artifact_before_timing = _loaded_runtime_artifact_verification(
+        runtime,
+        expected_artifact_id=pre_timing_verification["expected"]["artifact_id"],
+        phase="after-native-load-before-timing",
+    )
+    pre_timing_verification["loaded_runtime_artifact"] = loaded_artifact_before_timing
     cold_load_seconds = time.perf_counter() - load_started
     peak_after_load = _resource_peak()
     physics = runtime.physics
@@ -3110,11 +3340,18 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
         measurement["inner_native_wall_blocks"] = raw_blocks
         profiles.append(measurement)
 
+    loaded_artifact_after_timing = _loaded_runtime_artifact_verification(
+        runtime,
+        expected_artifact_id=pre_timing_verification["expected"]["artifact_id"],
+        phase="after-timing",
+    )
+
     return {
         "mode": arguments.mode,
         "schedule_index": arguments.schedule_index,
         "schedule_round": arguments.schedule_round,
         "pre_timing_verification": pre_timing_verification,
+        "post_timing_loaded_runtime_artifact": loaded_artifact_after_timing,
         "timing_configuration": {
             "minimum_internal_samples": arguments.minimum_samples,
             "warmup_runs": arguments.warmup_runs,
@@ -3425,26 +3662,83 @@ def _recheck_driver_state(
         ):
             raise HarnessError(f"driver artifact drift baseline is invalid for {mode}")
         artifact = Path(raw_artifact)
-        observed_identity, observed_reuse = _require_reusable_artifact(
-            artifact,
-            expected_signature=expected_generation,
+        expected_tree = expected_identity.get("tree")
+        if not isinstance(expected_tree, Mapping):
+            raise HarnessError(f"driver artifact tree baseline is invalid for {mode}")
+        expected_sidecar_sha = _required_sha256(
+            baseline.get("reuse_sidecar_sha256"),
+            label=f"{mode} reuse sidecar baseline",
         )
+        observed_identity, observed_reuse, observed_sidecar_identity = (
+            _require_bound_reusable_artifact(
+                artifact,
+                expected_tree_sha256=_required_sha256(
+                    expected_tree.get("sha256"),
+                    label=f"{mode} artifact tree baseline",
+                ),
+                expected_semantic_identity_sha256=_required_sha256(
+                    expected_identity.get("semantic_identity_sha256"),
+                    label=f"{mode} artifact semantic baseline",
+                ),
+                expected_reuse_semantic_signature_sha256=_required_sha256(
+                    expected_reuse.get("semantic_signature_sha256"),
+                    label=f"{mode} reuse semantic baseline",
+                ),
+                expected_sidecar_sha256=expected_sidecar_sha,
+                expected_signature=expected_generation,
+            )
+        )
+        observed_tree = observed_identity.get("tree")
+        if not isinstance(observed_tree, Mapping):
+            raise HarnessError(f"{mode} bound artifact tree is incomplete")
         _assert_identity_unchanged(
-            f"{mode} artifact identity",
-            expected_identity,
+            f"{mode} artifact tree",
+            expected_tree,
+            observed_tree,
+        )
+        expected_semantic = expected_identity.get("semantic_identity")
+        observed_semantic = observed_identity.get("semantic_identity")
+        if not isinstance(expected_semantic, Mapping) or not isinstance(
+            observed_semantic,
+            Mapping,
+        ):
+            raise HarnessError(f"{mode} artifact semantic baseline is incomplete")
+        _assert_identity_unchanged(
+            f"{mode} artifact semantic identity",
+            expected_semantic,
+            observed_semantic,
+        )
+        expected_bound_identity = {
+            str(key): value
+            for key, value in expected_identity.items()
+            if key != "payloads"
+        }
+        _assert_identity_unchanged(
+            f"{mode} bound artifact identity",
+            expected_bound_identity,
             observed_identity,
+        )
+        expected_payloads = expected_identity.get("payloads")
+        if not isinstance(expected_payloads, list):
+            raise HarnessError(
+                f"driver artifact payload baseline is invalid for {mode}"
+            )
+        observed_full_identity = {
+            **observed_identity,
+            "payloads": list(expected_payloads),
+        }
+        _assert_identity_unchanged(
+            f"{mode} reconstructed full artifact identity",
+            expected_identity,
+            observed_full_identity,
         )
         _assert_identity_unchanged(
             f"{mode} artifact reuse signature",
             expected_reuse,
             observed_reuse,
         )
-        expected_sidecar_sha = _required_sha256(
-            baseline.get("reuse_sidecar_sha256"),
-            label=f"{mode} reuse sidecar baseline",
-        )
         observed_sidecar_sha = _required_sha256(
-            _path_identity(_reuse_signature_path(artifact)).get("sha256"),
+            observed_sidecar_identity.get("sha256"),
             label=f"{mode} observed reuse sidecar",
         )
         if observed_sidecar_sha != expected_sidecar_sha:
@@ -3452,7 +3746,7 @@ def _recheck_driver_state(
                 f"{mode} artifact reuse sidecar drifted during a worker or long run"
             )
         observed_artifacts[mode] = {
-            "artifact_identity_sha256": _canonical_sha256(observed_identity),
+            "artifact_identity_sha256": _canonical_sha256(observed_full_identity),
             "reuse_signature_sha256": _canonical_sha256(observed_reuse),
             "reuse_sidecar_sha256": observed_sidecar_sha,
         }
@@ -4140,6 +4434,11 @@ def _profile_schedule_contract(
                         expected_identities,
                         observed_identities,
                     )
+                    _validate_loaded_runtime_artifact_verification(
+                        verification.get("loaded_runtime_artifact"),
+                        expected_artifact_id=expected_identities.get("artifact_id"),
+                        phase="after-native-load-before-timing",
+                    )
                 except HarnessError:
                     errors.append(
                         f"profile schedule entry {index} contains identity drift"
@@ -4260,6 +4559,7 @@ def _compact_profile_verification(
             "artifact_semantic_identity_sha256"
         ),
         "effective_contract": verification.get("effective_contract"),
+        "loaded_runtime_artifact": verification.get("loaded_runtime_artifact"),
     }
 
 
@@ -4514,6 +4814,9 @@ def _aggregate_profile_workers(
             "worker_invocation": worker.get("worker_invocation"),
             "worker_process_record": dict(worker_process_record),
             "pre_timing_verification": _compact_profile_verification(verification),
+            "post_timing_loaded_runtime_artifact": worker.get(
+                "post_timing_loaded_runtime_artifact"
+            ),
             "lane_contract_sha256": _canonical_sha256(contract),
             "timing_configuration": worker.get("timing_configuration"),
             "worker_measurement": dict(measurement),
@@ -4803,6 +5106,9 @@ def _profile_measurement_contract(
                 timing_configuration = sample.get("timing_configuration")
                 schedule_index = sample.get("schedule_index")
                 verification = sample.get("pre_timing_verification")
+                post_timing_loaded_artifact = sample.get(
+                    "post_timing_loaded_runtime_artifact"
+                )
                 sample_round = sample.get("round")
                 invocation = sample.get("worker_invocation")
                 worker_command = sample.get("worker_command")
@@ -4887,6 +5193,27 @@ def _profile_measurement_contract(
                             f"profile batch {batch_size} subprocess sample "
                             f"{sample_index} artifact identity is not bound"
                         )
+                    else:
+                        try:
+                            _validate_loaded_runtime_artifact_verification(
+                                verification.get("loaded_runtime_artifact"),
+                                expected_artifact_id=expected_identities.get(
+                                    "artifact_id"
+                                ),
+                                phase="after-native-load-before-timing",
+                            )
+                            _validate_loaded_runtime_artifact_verification(
+                                post_timing_loaded_artifact,
+                                expected_artifact_id=expected_identities.get(
+                                    "artifact_id"
+                                ),
+                                phase="after-timing",
+                            )
+                        except HarnessError:
+                            errors.append(
+                                f"profile batch {batch_size} subprocess sample "
+                                f"{sample_index} loaded artifact identity is not bound"
+                            )
                 if (
                     isinstance(internal_count, bool)
                     or not isinstance(internal_count, int)

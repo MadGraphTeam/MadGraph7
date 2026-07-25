@@ -652,14 +652,14 @@ impl AmplitudeRuntime {
             for entry in contraction.logical_entries() {
                 let left_start = entry.left_group_index * batch_size;
                 let right_start = entry.right_group_index * batch_size;
-                for point in 0..batch_size {
+                for (point, raw_sum) in raw_sums.iter_mut().enumerate() {
                     let left_re = scratch.direct_group_re[left_start + point];
                     let left_im = scratch.direct_group_im[left_start + point];
                     let right_re = scratch.direct_group_re[right_start + point];
                     let right_im = scratch.direct_group_im[right_start + point];
                     let product_re = left_re * right_re + left_im * right_im;
                     let product_im = left_im * right_re - left_re * right_im;
-                    raw_sums[point] += entry.symmetry_factor
+                    *raw_sum += entry.symmetry_factor
                         * (entry.weight_re * product_re - entry.weight_im * product_im);
                 }
             }
@@ -687,10 +687,10 @@ impl AmplitudeRuntime {
                 } else {
                     group.weight
                 };
-                for point in 0..batch_size {
+                for (point, raw_sum) in raw_sums.iter_mut().enumerate() {
                     let re = scratch.direct_group_re[point];
                     let im = scratch.direct_group_im[point];
-                    raw_sums[point] += weight * (re * re + im * im);
+                    *raw_sum += weight * (re * re + im * im);
                 }
             }
             return Ok(());
@@ -1509,8 +1509,8 @@ impl AmplitudeRuntime {
         output.fill(0.0);
         for target_index in 0..target_component_count {
             let target_start = target_index * batch_size;
-            for point in 0..batch_size {
-                output[point] += scratch.direct_target_components[target_start + point];
+            for (point, target) in output.iter_mut().enumerate() {
+                *target += scratch.direct_target_components[target_start + point];
             }
         }
         Ok(())
@@ -2189,16 +2189,15 @@ impl AmplitudeRuntime {
                     "colour contraction group count does not match coherent groups",
                 ));
             }
-            if let Some(ids) = selected_color_ids {
-                if ids.len() != 1
+            if let Some(ids) = selected_color_ids
+                && (ids.len() != 1
                     || !ids
                         .iter()
-                        .all(|id| physics.color_index_by_id.contains_key(id))
-                {
-                    return Err(RusticolError::selector(
-                        "materialized-helicity color selection does not match the contracted axis",
-                    ));
-                }
+                        .all(|id| physics.color_index_by_id.contains_key(id)))
+            {
+                return Err(RusticolError::selector(
+                    "materialized-helicity color selection does not match the contracted axis",
+                ));
             }
             let group_scalar_count =
                 contraction
@@ -2267,8 +2266,8 @@ impl AmplitudeRuntime {
                         * (entry.weight_re * product.re - entry.weight_im * product.im);
                 }
             }
-            for point in 0..batch_size {
-                output[point] += scratch.direct_totals[point];
+            for (target, total) in output.iter_mut().zip(&scratch.direct_totals) {
+                *target += *total;
             }
             return Ok(());
         }
@@ -2381,8 +2380,8 @@ impl AmplitudeRuntime {
         }
         for color_index in &scratch.color_indices {
             let color_start = *color_index * batch_size;
-            for point in 0..batch_size {
-                output[point] += scratch.direct_source_components[color_start + point];
+            for (point, target) in output.iter_mut().enumerate() {
+                *target += scratch.direct_source_components[color_start + point];
             }
         }
         Ok(())
@@ -2650,21 +2649,20 @@ impl AmplitudeRuntime {
                     "colour contraction group count does not match coherent groups",
                 ));
             }
-            if let Some(ids) = selected_color_ids {
-                if ids.len() != 1
+            if let Some(ids) = selected_color_ids
+                && (ids.len() != 1
                     || !ids
                         .iter()
-                        .all(|id| physics.color_index_by_id.contains_key(id))
-                {
-                    return Err(RusticolError::selector(
-                        "materialized-helicity color selection does not match the contracted axis",
-                    ));
-                }
+                        .all(|id| physics.color_index_by_id.contains_key(id)))
+            {
+                return Err(RusticolError::selector(
+                    "materialized-helicity color selection does not match the contracted axis",
+                ));
             }
             contraction
                 .group_scratch_f64
                 .resize(contraction.group_count, c64(0.0, 0.0));
-            for row in 0..batch_size {
+            for (row, target) in output.iter_mut().enumerate() {
                 for (group_index, group) in raw_sum_groups.iter().enumerate() {
                     let reduction =
                         physics
@@ -2703,7 +2701,7 @@ impl AmplitudeRuntime {
                         * entry.symmetry_factor
                         * (entry.weight_re * product.re - entry.weight_im * product.im);
                 }
-                output[row] += contribution;
+                *target += contribution;
             }
             return Ok(());
         }

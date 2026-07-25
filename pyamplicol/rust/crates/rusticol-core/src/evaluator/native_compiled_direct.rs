@@ -15,7 +15,9 @@
 
 use std::path::Path;
 use std::ptr;
+use std::sync::Arc;
 
+use crate::artifact::PinnedNativeLibrary;
 use crate::direct_arena::{
     AlignedF64Buffer, DirectArenaTrafficCounters, DirectArenaView, DirectFactorView,
     DirectMomentumView, DirectParameterView, validate_direct_views,
@@ -130,7 +132,7 @@ pub(crate) struct NativeCompiledDirectOutputBinding(pub NativeCompiledDirectAren
 
 /// Loaded native function plus its authenticated logical bindings.
 pub(crate) struct LoadedNativeCompiledDirectStage {
-    _library: libloading::Library,
+    _library: Arc<PinnedNativeLibrary>,
     evaluate: NativeCompiledDirectEvaluateFunction,
     descriptor_counts: NativeCompiledDirectDescriptorCounts,
     declared_lane_width: usize,
@@ -142,7 +144,7 @@ pub(crate) struct LoadedNativeCompiledDirectStage {
 
 /// Fixed descriptors borrowing persistent Direct-Arena allocations.
 pub(crate) struct BoundNativeCompiledDirectStage {
-    _library: libloading::Library,
+    _library: Arc<PinnedNativeLibrary>,
     evaluate: NativeCompiledDirectEvaluateFunction,
     inputs: Box<[NativeCompiledDirectInputPlaneV1]>,
     scalars: Box<[NativeCompiledDirectScalarV1]>,
@@ -160,7 +162,7 @@ pub(crate) struct BoundNativeCompiledDirectStage {
 impl LoadedNativeCompiledDirectStage {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn load(
-        path: impl AsRef<Path>,
+        library: Arc<PinnedNativeLibrary>,
         function_name: &str,
         application_abi: &str,
         input_bindings: Vec<NativeCompiledDirectPlaneBinding>,
@@ -181,15 +183,8 @@ impl LoadedNativeCompiledDirectStage {
         )?;
         validate_static_bindings(&input_bindings, &output_bindings)?;
 
-        let path = path.as_ref();
-        // Native process artifacts are already authenticated executable input.
-        // The library owner is retained beside all copied function pointers.
-        let library = unsafe { libloading::Library::new(path) }.map_err(|error| {
-            RusticolError::evaluation(format!(
-                "could not load native compiled DirectApplication library {}: {error}",
-                path.display()
-            ))
-        })?;
+        let display_path = library.display_path().to_path_buf().into_boxed_path();
+        let path = display_path.as_ref();
         let symbol_prefix = format!("{function_name}_direct_application_v1");
         let metadata_symbol = format!("{symbol_prefix}_metadata");
         let metadata_function = unsafe {
@@ -212,7 +207,7 @@ impl LoadedNativeCompiledDirectStage {
             input_bindings: input_bindings.into_boxed_slice(),
             scalar_bindings: scalar_bindings.into_boxed_slice(),
             output_bindings: output_bindings.into_boxed_slice(),
-            display_path: path.into(),
+            display_path,
         })
     }
 
@@ -851,7 +846,7 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
         parameter_im: &[f64; 1],
     ) -> RusticolResult<BoundNativeCompiledDirectStage> {
         let loaded = LoadedNativeCompiledDirectStage::load(
-            library,
+            PinnedNativeLibrary::from_test_path(library)?,
             function_name,
             NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
             input_bindings(),
@@ -982,8 +977,13 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
         let parameter_re = [0.375];
         let parameter_im = [-0.625];
 
-        let mut dense =
-            CompiledComplexF64Evaluator::load(&library, "rusticol_native_leaf", 3, 2).unwrap();
+        let mut dense = CompiledComplexF64Evaluator::load(
+            PinnedNativeLibrary::from_test_path(&library).unwrap(),
+            "rusticol_native_leaf",
+            3,
+            2,
+        )
+        .unwrap();
         let mut packed_inputs = vec![Complex::new(0.0, 0.0); POINT_COUNT * 3];
         let mut packed_outputs = vec![Complex::new(0.0, 0.0); POINT_COUNT * 2];
         {
@@ -1038,7 +1038,7 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
                 imaginary: false,
             });
         let alias_error = match LoadedNativeCompiledDirectStage::load(
-            &library,
+            PinnedNativeLibrary::from_test_path(&library).unwrap(),
             "rusticol_native_leaf",
             NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
             input_bindings(),
@@ -1187,8 +1187,13 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
             &parameter_im,
         )
         .unwrap();
-        let mut dense =
-            CompiledComplexF64Evaluator::load(&library, "rusticol_native_leaf", 3, 2).unwrap();
+        let mut dense = CompiledComplexF64Evaluator::load(
+            PinnedNativeLibrary::from_test_path(&library).unwrap(),
+            "rusticol_native_leaf",
+            3,
+            2,
+        )
+        .unwrap();
         let mut packed_inputs = vec![Complex::new(0.0, 0.0); POINT_COUNT * 3];
         let mut packed_outputs = vec![Complex::new(0.0, 0.0); POINT_COUNT * 2];
 

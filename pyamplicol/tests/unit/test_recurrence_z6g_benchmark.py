@@ -384,6 +384,15 @@ def _passing_schedule(
                 "color_accuracy": "lc",
                 "lc_flow_layout": lc_flow_layout,
             },
+            "loaded_runtime_artifact": {
+                "kind": "pyamplicol-loaded-runtime-artifact-verification",
+                "schema_version": 1,
+                "phase": "after-native-load-before-timing",
+                "checked_at_utc": "2026-07-24T00:00:00+00:00",
+                "expected_artifact_id": "a" * 64,
+                "loaded_artifact_id": "a" * 64,
+                "passes": True,
+            },
         }
         invocation = {
             "started_at_utc": "2026-07-24T00:00:00+00:00",
@@ -609,6 +618,15 @@ def _profile(
                 "worker_invocation": entry["worker_invocation"],
                 "worker_process_record": process_record,
                 "pre_timing_verification": verification,
+                "post_timing_loaded_runtime_artifact": {
+                    "kind": "pyamplicol-loaded-runtime-artifact-verification",
+                    "schema_version": 1,
+                    "phase": "after-timing",
+                    "checked_at_utc": "2026-07-24T00:00:01+00:00",
+                    "expected_artifact_id": "a" * 64,
+                    "loaded_artifact_id": "a" * 64,
+                    "passes": True,
+                },
                 "lane_contract_sha256": lane_contract_sha256,
                 "timing_configuration": {
                     "minimum_internal_samples": (benchmark.MIN_AUTHORITATIVE_SAMPLES),
@@ -2095,7 +2113,36 @@ def test_profile_worker_rejects_each_identity_mismatch(field: str) -> None:
         benchmark._validate_profile_worker_expectations(expected, observed)
 
 
-@pytest.mark.parametrize("drift", ("source", "runtime", "artifact"))
+def test_profile_worker_rejects_artifact_retarget_after_tree_rebind() -> None:
+    pinned_artifact_id = "a" * 64
+    replacement_runtime = SimpleNamespace(artifact_id="b" * 64)
+
+    with pytest.raises(
+        benchmark.HarnessError,
+        match="loaded a different artifact",
+    ):
+        benchmark._loaded_runtime_artifact_verification(
+            replacement_runtime,
+            expected_artifact_id=pinned_artifact_id,
+            phase="after-native-load-before-timing",
+        )
+
+    accepted = benchmark._loaded_runtime_artifact_verification(
+        SimpleNamespace(artifact_id=pinned_artifact_id),
+        expected_artifact_id=pinned_artifact_id,
+        phase="after-native-load-before-timing",
+    )
+    benchmark._validate_loaded_runtime_artifact_verification(
+        accepted,
+        expected_artifact_id=pinned_artifact_id,
+        phase="after-native-load-before-timing",
+    )
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ("source", "runtime", "artifact", "artifact-metadata"),
+)
 def test_driver_post_worker_recheck_rejects_identity_drift(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2103,7 +2150,30 @@ def test_driver_post_worker_recheck_rejects_identity_drift(
 ) -> None:
     source = {"revision": "a" * 40, "checkout": str(tmp_path)}
     runtime = {"native_extension": {"sha256": "b" * 64}}
-    artifact_identity = {"tree": {"sha256": "c" * 64}}
+    semantic_identity = {"kind": "test-semantic-identity"}
+    artifact_identity = {
+        "path": str((tmp_path / "artifact").resolve()),
+        "artifact_id": "1" * 64,
+        "manifest": {
+            "resolved_path": str((tmp_path / "artifact" / "artifact.json").resolve()),
+            "size_bytes": 1,
+            "sha256": "2" * 64,
+        },
+        "tree": {
+            "algorithm": "sha256-relative-path-size-content-v1",
+            "sha256": "c" * 64,
+            "file_count": 1,
+            "size_bytes": 1,
+        },
+        "payloads": [],
+        "process_id": "process-1",
+        "process_expression": "d d~ > z g",
+        "color_accuracy": "lc",
+        "producer": {"name": "test"},
+        "model_identity": {"name": "test-model"},
+        "semantic_identity": semantic_identity,
+        "semantic_identity_sha256": benchmark._canonical_sha256(semantic_identity),
+    }
     reuse_signature = {"semantic_signature_sha256": "d" * 64}
     observed_source = dict(source)
     observed_runtime = dict(runtime)
@@ -2113,7 +2183,14 @@ def test_driver_post_worker_recheck_rejects_identity_drift(
     elif drift == "runtime":
         observed_runtime = {"native_extension": {"sha256": "e" * 64}}
     else:
-        observed_artifact = {"tree": {"sha256": "e" * 64}}
+        observed_artifact = copy.deepcopy(artifact_identity)
+        if drift == "artifact":
+            observed_artifact["tree"]["sha256"] = "e" * 64
+        else:
+            observed_artifact["path"] = str(
+                (tmp_path / "retargeted-artifact").resolve()
+            )
+    observed_artifact.pop("payloads", None)
 
     monkeypatch.setattr(
         benchmark,
@@ -2127,13 +2204,12 @@ def test_driver_post_worker_recheck_rejects_identity_drift(
     )
     monkeypatch.setattr(
         benchmark,
-        "_require_reusable_artifact",
-        lambda *_args, **_kwargs: (observed_artifact, reuse_signature),
-    )
-    monkeypatch.setattr(
-        benchmark,
-        "_path_identity",
-        lambda _path: {"sha256": "f" * 64},
+        "_require_bound_reusable_artifact",
+        lambda *_args, **_kwargs: (
+            observed_artifact,
+            reuse_signature,
+            {"sha256": "f" * 64},
+        ),
     )
     baselines = {
         "compiled": {
@@ -2696,6 +2772,148 @@ def test_artifact_reuse_requires_exact_signature_and_tree(
         )
 
 
+def _bound_artifact_fixture(
+    tmp_path: Path,
+) -> tuple[
+    Path,
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    artifact = tmp_path / "artifact"
+    _write_fake_artifact(artifact)
+    signature = {"kind": "test-signature", "process": "d d~ > z g"}
+    identity = benchmark._artifact_identity(artifact)
+    benchmark._write_reuse_signature(
+        artifact,
+        signature=signature,
+        artifact_identity=identity,
+        generation_command=benchmark._command_identity(("python", "generate-artifact")),
+    )
+    sidecar_path = benchmark._reuse_signature_path(artifact)
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar_identity = benchmark._path_identity(sidecar_path)
+    return (
+        artifact,
+        signature,
+        identity,
+        {
+            "payload": sidecar,
+            "identity": sidecar_identity,
+        },
+    )
+
+
+def test_bound_artifact_recheck_skips_semantic_hydration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact, signature, identity, sidecar = _bound_artifact_fixture(tmp_path)
+
+    def reject_hydration(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("bound recheck must not hydrate artifact semantics")
+
+    monkeypatch.setattr(
+        benchmark,
+        "_artifact_semantic_identity",
+        reject_hydration,
+    )
+    monkeypatch.setattr(
+        benchmark,
+        "_artifact_identity",
+        reject_hydration,
+    )
+    for _ in range(3):
+        rebound, provenance, observed_sidecar = (
+            benchmark._require_bound_reusable_artifact(
+                artifact,
+                expected_tree_sha256=identity["tree"]["sha256"],
+                expected_semantic_identity_sha256=identity["semantic_identity_sha256"],
+                expected_reuse_semantic_signature_sha256=sidecar["payload"][
+                    "semantic_signature_sha256"
+                ],
+                expected_sidecar_sha256=sidecar["identity"]["sha256"],
+                expected_signature=signature,
+            )
+        )
+        assert rebound["tree"] == identity["tree"]
+        assert rebound["semantic_identity"] == identity["semantic_identity"]
+        assert provenance == sidecar["payload"]
+        assert observed_sidecar == sidecar["identity"]
+
+
+def test_bound_artifact_recheck_rejects_same_size_tree_mutation(
+    tmp_path: Path,
+) -> None:
+    artifact, signature, identity, sidecar = _bound_artifact_fixture(tmp_path)
+    payload = artifact / "payload.bin"
+    payload.write_bytes(b"payloae")
+    assert payload.stat().st_size == len(b"payload")
+
+    with pytest.raises(benchmark.HarnessError, match="tree changed"):
+        benchmark._require_bound_reusable_artifact(
+            artifact,
+            expected_tree_sha256=identity["tree"]["sha256"],
+            expected_semantic_identity_sha256=identity["semantic_identity_sha256"],
+            expected_reuse_semantic_signature_sha256=sidecar["payload"][
+                "semantic_signature_sha256"
+            ],
+            expected_sidecar_sha256=sidecar["identity"]["sha256"],
+            expected_signature=signature,
+        )
+
+
+def test_bound_artifact_recheck_rejects_readdressed_sidecar_mutation(
+    tmp_path: Path,
+) -> None:
+    artifact, signature, identity, sidecar = _bound_artifact_fixture(tmp_path)
+    sidecar_path = benchmark._reuse_signature_path(artifact)
+    forged = copy.deepcopy(sidecar["payload"])
+    semantic_signature = forged["semantic_signature"]
+    semantic_identity = semantic_signature["artifact_semantic_identity"]
+    semantic_identity["normalization"]["average_factor"] = 999
+    semantic_identity["normalization_sha256"] = benchmark._canonical_sha256(
+        semantic_identity["normalization"]
+    )
+    forged["artifact_semantic_identity_sha256"] = benchmark._canonical_sha256(
+        semantic_identity
+    )
+    forged["semantic_signature_sha256"] = benchmark._canonical_sha256(
+        semantic_signature
+    )
+    sidecar_path.write_text(json.dumps(forged, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(benchmark.HarnessError, match="sidecar changed"):
+        benchmark._require_bound_reusable_artifact(
+            artifact,
+            expected_tree_sha256=identity["tree"]["sha256"],
+            expected_semantic_identity_sha256=identity["semantic_identity_sha256"],
+            expected_reuse_semantic_signature_sha256=sidecar["payload"][
+                "semantic_signature_sha256"
+            ],
+            expected_sidecar_sha256=sidecar["identity"]["sha256"],
+            expected_signature=signature,
+        )
+
+
+def test_bound_artifact_recheck_rejects_generation_request_drift(
+    tmp_path: Path,
+) -> None:
+    artifact, _signature, identity, sidecar = _bound_artifact_fixture(tmp_path)
+
+    with pytest.raises(benchmark.HarnessError, match="generation request changed"):
+        benchmark._require_bound_reusable_artifact(
+            artifact,
+            expected_tree_sha256=identity["tree"]["sha256"],
+            expected_semantic_identity_sha256=identity["semantic_identity_sha256"],
+            expected_reuse_semantic_signature_sha256=sidecar["payload"][
+                "semantic_signature_sha256"
+            ],
+            expected_sidecar_sha256=sidecar["identity"]["sha256"],
+            expected_signature={"kind": "different-generation-request"},
+        )
+
+
 def test_artifact_reuse_rejects_missing_sidecar(tmp_path: Path) -> None:
     artifact = tmp_path / "artifact"
     _write_fake_artifact(artifact)
@@ -2843,6 +3061,7 @@ def test_profile_worker_evaluates_every_validation_point(
             "schema_version": benchmark.WORKER_VERIFICATION_SCHEMA,
             "artifact_semantic_identity": _artifact_semantic_identity(),
             "artifact_semantic_identity_sha256": "a" * 64,
+            "expected": {"artifact_id": "a" * 64},
         }
 
     monkeypatch.setattr(
@@ -2862,6 +3081,7 @@ def test_profile_worker_evaluates_every_validation_point(
             return self._values
 
     class FakeRuntime:
+        artifact_id = "a" * 64
         physics = SimpleNamespace(
             process="d d~ > z g",
             process_id="process-1",

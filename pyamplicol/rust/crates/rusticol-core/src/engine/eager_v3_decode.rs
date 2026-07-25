@@ -129,6 +129,22 @@ pub(super) struct DecodedEagerRuntimeV3 {
     pub(super) color_contraction_entry_count: u64,
 }
 
+/// Reduction-only owned form used to hydrate compact public physics metadata.
+///
+/// The enclosing PACBIN has already been authenticated in full. This view
+/// materializes only reduction rows, selector rows, and selector-referenced
+/// sequence values; all unrelated runtime tables and global sequence-catalog
+/// entries are limited to borrowed fixed-width validation.
+#[derive(Debug)]
+pub(super) struct DecodedEagerReductionGroupsV3 {
+    pub(super) helicity_selectors: Vec<EagerPlanHelicitySelectorRow>,
+    pub(super) color_selectors: Vec<EagerPlanColorSelectorRow>,
+    pub(super) reduction_groups: Vec<EagerPlanReductionGroupRow>,
+    pub(super) reduction_entries: Vec<EagerPlanReductionEntryRow>,
+    pub(super) helicity_sequences: BTreeMap<u32, Vec<i32>>,
+    pub(super) color_sequences: BTreeMap<u32, Vec<u32>>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DecodedEagerRuntimeOptions {
     pub(super) point_tile_size: usize,
@@ -186,6 +202,198 @@ struct RetainedPrimitiveSections<'a> {
     u64_values: DecodedSection<'a>,
     i32_values: DecodedSection<'a>,
     f64_values: DecodedSection<'a>,
+}
+
+#[derive(Clone, Copy)]
+struct CountedPlanSection {
+    path: &'static str,
+    kind: EagerSectionKind,
+    record_size: u32,
+}
+
+const COUNTED_PLAN_SECTIONS: [CountedPlanSection; 20] = [
+    CountedPlanSection {
+        path: "tables/currents.bin",
+        kind: EagerSectionKind::CurrentLayout,
+        record_size: EagerPlanCurrentRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/values.bin",
+        kind: EagerSectionKind::ValueLayout,
+        record_size: EagerPlanValueRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/momenta.bin",
+        kind: EagerSectionKind::MomentumLayout,
+        record_size: EagerPlanMomentumRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/sources.bin",
+        kind: EagerSectionKind::SourceFill,
+        record_size: EagerPlanSourceFillRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/parameters.bin",
+        kind: EagerSectionKind::ParameterLayout,
+        record_size: EagerPlanParameterRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/stages.bin",
+        kind: EagerSectionKind::Stages,
+        record_size: EagerPlanStageRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/couplings.bin",
+        kind: EagerSectionKind::Couplings,
+        record_size: EagerPlanCouplingRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/invocations.bin",
+        kind: EagerSectionKind::Invocations,
+        record_size: EagerPlanInvocationRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/attachments.bin",
+        kind: EagerSectionKind::Attachments,
+        record_size: EagerPlanAttachmentRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/finalizations.bin",
+        kind: EagerSectionKind::Finalizations,
+        record_size: EagerPlanFinalizationRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/closures.bin",
+        kind: EagerSectionKind::Closures,
+        record_size: EagerPlanClosureRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "tables/direct-coefficients.bin",
+        kind: EagerSectionKind::Closures,
+        record_size: DIRECT_COEFFICIENT_RECORD_SIZE,
+    },
+    CountedPlanSection {
+        path: "selectors/domains.bin",
+        kind: EagerSectionKind::SelectorDomains,
+        record_size: EagerPlanSelectorDomainRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "selectors/memberships.bin",
+        kind: EagerSectionKind::SelectorMemberships,
+        record_size: 4,
+    },
+    CountedPlanSection {
+        path: "selectors/helicities.bin",
+        kind: EagerSectionKind::SelectorDomains,
+        record_size: HELICITY_SELECTOR_RECORD_SIZE,
+    },
+    CountedPlanSection {
+        path: "selectors/colors.bin",
+        kind: EagerSectionKind::SelectorDomains,
+        record_size: COLOR_SELECTOR_RECORD_SIZE,
+    },
+    CountedPlanSection {
+        path: "reductions/groups.bin",
+        kind: EagerSectionKind::ReductionGroups,
+        record_size: EagerPlanReductionGroupRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "reductions/entries.bin",
+        kind: EagerSectionKind::ReductionEntries,
+        record_size: EagerPlanReductionEntryRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "catalogs/exact-factors.bin",
+        kind: EagerSectionKind::ExactFactors,
+        record_size: EagerPlanExactFactorRow::ENCODED_LEN,
+    },
+    CountedPlanSection {
+        path: "retained/tables.bin",
+        kind: EagerSectionKind::Metadata,
+        record_size: RETAINED_TABLE_RECORD_SIZE,
+    },
+];
+
+/// Decode only the authenticated rows required to hydrate native reduction
+/// groups. Runtime-sized DAG tables are never converted into Rust rows.
+pub(super) fn decode_eager_v3_reduction_groups(
+    reader: &PacbinReader,
+    manifest: &EagerV3ExecutionManifest,
+) -> RusticolResult<DecodedEagerReductionGroupsV3> {
+    let metadata = decode_metadata(reader)?;
+    let inspection = decode_inspection(reader)?;
+    let identity = decode_text_catalog(reader, "metadata/identity", EagerSectionKind::Metadata)?;
+    validate_identity(&identity, manifest)?;
+    validate_reduction_plan_metadata(reader, manifest, metadata, &inspection)?;
+
+    let helicity_selectors = decode_helicity_selectors(reader)?;
+    let color_selectors = decode_color_selectors(reader)?;
+    let reduction_groups = decode_reduction_groups(reader)?;
+    let reduction_entries = decode_reduction_entries(reader)?;
+    check_count(
+        "reduction-only helicity selector",
+        helicity_selectors.len(),
+        inspection[14],
+    )?;
+    check_count(
+        "reduction-only color selector",
+        color_selectors.len(),
+        inspection[15],
+    )?;
+    check_count(
+        "reduction-only reduction group",
+        reduction_groups.len(),
+        inspection[16],
+    )?;
+    check_count(
+        "reduction-only reduction entry",
+        reduction_entries.len(),
+        inspection[17],
+    )?;
+
+    let helicity_sequence_ids = helicity_selectors
+        .iter()
+        .flat_map(|row| [row.values_sequence_id, row.representative_sequence_id])
+        .collect::<BTreeSet<_>>();
+    let color_sequence_ids = color_selectors
+        .iter()
+        .flat_map(|row| [row.word_sequence_id, row.representative_word_sequence_id])
+        .collect::<BTreeSet<_>>();
+    let helicity_sequences = decode_referenced_sequences(
+        reader,
+        "catalogs/i32-sequences/ranges.bin",
+        "catalogs/i32-sequences/values.bin",
+        &helicity_sequence_ids,
+        "helicity i32 sequence",
+        |row| read_i32(row, 0),
+    )?;
+    let color_sequences = decode_referenced_sequences(
+        reader,
+        "catalogs/u32-sequences/ranges.bin",
+        "catalogs/u32-sequences/values.bin",
+        &color_sequence_ids,
+        "color u32 sequence",
+        |row| read_u32(row, 0),
+    )?;
+    validate_reduction_subset_semantics(
+        metadata,
+        inspection[18],
+        &helicity_selectors,
+        &color_selectors,
+        &reduction_groups,
+        &reduction_entries,
+        &helicity_sequences,
+        &color_sequences,
+    )?;
+
+    Ok(DecodedEagerReductionGroupsV3 {
+        helicity_selectors,
+        color_selectors,
+        reduction_groups,
+        reduction_entries,
+        helicity_sequences,
+        color_sequences,
+    })
 }
 
 /// Decode one already authenticated/preflighted eager plan-v3 container.
@@ -1406,6 +1614,289 @@ fn validate_declared_counts(
     Ok(())
 }
 
+fn validate_reduction_plan_metadata(
+    reader: &PacbinReader,
+    manifest: &EagerV3ExecutionManifest,
+    metadata: Metadata,
+    inspection: &[u64; 20],
+) -> RusticolResult<()> {
+    // The complete container was authenticated before this decoder was
+    // entered. Inspect the canonical shape/count header of every plan table
+    // without touching or allocating its payload rows.
+    for (index, expected) in COUNTED_PLAN_SECTIONS.iter().enumerate() {
+        let actual = section(reader, expected.path, expected.kind, expected.record_size)?.count;
+        if actual != inspection[index] {
+            return Err(integrity(format!(
+                "reduction-only plan section {:?} has {actual} rows, inspection field {index} declares {}",
+                expected.path, inspection[index]
+            )));
+        }
+    }
+
+    for (path, declared, context) in [
+        (
+            "catalogs/strings/ranges.bin",
+            metadata.string_count,
+            "string catalog",
+        ),
+        (
+            "catalogs/exact-ir/ranges.bin",
+            metadata.exact_ir_count,
+            "exact IR catalog",
+        ),
+        (
+            "catalogs/semantic-limitations/ranges.bin",
+            metadata.limitation_count,
+            "semantic limitation catalog",
+        ),
+        (
+            "retained/columns.bin",
+            metadata.retained_column_count,
+            "retained column catalog",
+        ),
+    ] {
+        let record_size = if path == "retained/columns.bin" {
+            RETAINED_COLUMN_RECORD_SIZE
+        } else {
+            EagerPlanCatalogRangeRow::ENCODED_LEN
+        };
+        let actual = section(reader, path, EagerSectionKind::Metadata, record_size)?.count;
+        if actual != declared {
+            return Err(integrity(format!(
+                "reduction-only {context} has {actual} rows, metadata declares {declared}"
+            )));
+        }
+    }
+
+    let metadata_counts = [
+        ("currents", metadata.current_count, inspection[0]),
+        ("values", metadata.value_count, inspection[1]),
+        ("momenta", metadata.momentum_count, inspection[2]),
+        ("sources", metadata.source_count, inspection[3]),
+        ("stages", metadata.stage_count, inspection[5]),
+        ("invocations", metadata.invocation_count, inspection[7]),
+        ("closures", metadata.closure_count, inspection[10]),
+        (
+            "direct coefficients",
+            metadata.direct_coefficient_count,
+            inspection[11],
+        ),
+        (
+            "helicity selectors",
+            metadata.helicity_selector_count,
+            inspection[14],
+        ),
+        (
+            "color selectors",
+            metadata.color_selector_count,
+            inspection[15],
+        ),
+        ("exact factors", metadata.exact_factor_count, inspection[18]),
+        (
+            "retained tables",
+            metadata.retained_table_count,
+            inspection[19],
+        ),
+    ];
+    for (context, declared, actual) in metadata_counts {
+        if declared != actual {
+            return Err(integrity(format!(
+                "reduction-only metadata {context} count {declared} disagrees with inspection count {actual}"
+            )));
+        }
+    }
+
+    let summary = &manifest.plan.inspection_summary;
+    let manifest_counts = [
+        summary.current_count,
+        summary.value_count,
+        summary.momentum_count,
+        summary.source_count,
+        summary.parameter_count,
+        summary.stage_count,
+        summary.coupling_count,
+        summary.invocation_count,
+        summary.attachment_count,
+        summary.finalization_count,
+        summary.closure_count,
+        summary.selector_domain_count,
+        summary.reduction_group_count,
+        summary.reduction_entry_count,
+        summary.retained_table_count,
+    ];
+    let inspection_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 17, 19];
+    for (manifest_count, index) in manifest_counts.into_iter().zip(inspection_indices) {
+        if manifest_count != inspection[index] {
+            return Err(integrity(format!(
+                "execution-manifest inspection count disagrees with PACBIN field {index}"
+            )));
+        }
+    }
+    if summary.current_component_count != metadata.current_component_count
+        || summary.value_component_count != metadata.value_component_count
+        || summary.momentum_component_count != metadata.momentum_component_count
+    {
+        return Err(integrity(
+            "execution-manifest component counts disagree with PACBIN metadata",
+        ));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_reduction_subset_semantics(
+    metadata: Metadata,
+    exact_factor_count: u64,
+    helicity_selectors: &[EagerPlanHelicitySelectorRow],
+    color_selectors: &[EagerPlanColorSelectorRow],
+    reduction_groups: &[EagerPlanReductionGroupRow],
+    reduction_entries: &[EagerPlanReductionEntryRow],
+    helicity_sequences: &BTreeMap<u32, Vec<i32>>,
+    color_sequences: &BTreeMap<u32, Vec<u32>>,
+) -> RusticolResult<()> {
+    validate_dense_ids(
+        helicity_selectors.iter().map(|row| row.selector_id),
+        "helicity selector",
+    )?;
+    for row in helicity_selectors {
+        required_projected_sequence(
+            helicity_sequences,
+            row.values_sequence_id,
+            "helicity values sequence",
+        )?;
+        required_projected_sequence(
+            helicity_sequences,
+            row.representative_sequence_id,
+            "helicity representative sequence",
+        )?;
+        required_declared_index(
+            row.coefficient_factor_id,
+            exact_factor_count,
+            "helicity coefficient factor",
+        )?;
+    }
+
+    validate_dense_ids(
+        color_selectors.iter().map(|row| row.selector_id),
+        "color selector",
+    )?;
+    for row in color_selectors {
+        required_projected_sequence(color_sequences, row.word_sequence_id, "color word sequence")?;
+        required_projected_sequence(
+            color_sequences,
+            row.representative_word_sequence_id,
+            "color representative sequence",
+        )?;
+        required_declared_index(
+            row.coefficient_factor_id,
+            exact_factor_count,
+            "color coefficient factor",
+        )?;
+    }
+
+    let known_groups = reduction_groups
+        .iter()
+        .map(|group| group.coherent_group_id)
+        .collect::<HashSet<_>>();
+    if known_groups.len() != reduction_groups.len() {
+        return Err(integrity("reduction groups repeat coherent-group IDs"));
+    }
+    let mut covered = Vec::new();
+    reserve(
+        &mut covered,
+        reduction_entries.len(),
+        "reduction entry coverage",
+    )?;
+    covered.resize(reduction_entries.len(), false);
+    for group in reduction_groups {
+        for (start, count, expected_kind, context) in [
+            (
+                group.amplitude_entry_start,
+                group.amplitude_entry_count,
+                EagerPlanReductionEntryKind::AmplitudeMember,
+                "amplitude reduction entries",
+            ),
+            (
+                group.selector_entry_start,
+                group.selector_entry_count,
+                EagerPlanReductionEntryKind::SelectorMember,
+                "selector reduction entries",
+            ),
+        ] {
+            let entries = checked_range(reduction_entries, start, count, context)?;
+            let start = usize_count(start, context)?;
+            for (offset, entry) in entries.iter().enumerate() {
+                if entry.kind != expected_kind || entry.owner_id != group.coherent_group_id {
+                    return Err(integrity(format!(
+                        "{context} have inconsistent tags/owners"
+                    )));
+                }
+                if entry.kind == EagerPlanReductionEntryKind::SelectorMember {
+                    required_index(
+                        entry.left_id,
+                        helicity_selectors.len(),
+                        "reduction helicity selector",
+                    )?;
+                    required_index(
+                        entry.right_id,
+                        color_selectors.len(),
+                        "reduction color selector",
+                    )?;
+                }
+                covered[start + offset] = true;
+            }
+        }
+        required_declared_index(
+            group.helicity_weight_factor_id,
+            exact_factor_count,
+            "reduction helicity weight",
+        )?;
+        required_declared_index(
+            group.all_sector_weight_factor_id,
+            exact_factor_count,
+            "reduction all-sector weight",
+        )?;
+    }
+
+    let contraction = checked_range(
+        reduction_entries,
+        metadata.color_contraction_entry_start,
+        metadata.color_contraction_entry_count,
+        "color contraction entries",
+    )?;
+    let contraction_start = usize_count(
+        metadata.color_contraction_entry_start,
+        "color contraction entry start",
+    )?;
+    for (offset, entry) in contraction.iter().enumerate() {
+        if entry.kind != EagerPlanReductionEntryKind::ColorContraction {
+            return Err(integrity(
+                "color contraction range contains another entry kind",
+            ));
+        }
+        covered[contraction_start + offset] = true;
+        if !known_groups.contains(&entry.left_id) || !known_groups.contains(&entry.right_id) {
+            return Err(integrity(
+                "color contraction references an unknown coherent group",
+            ));
+        }
+        required_declared_index(
+            entry.factor_id,
+            exact_factor_count,
+            "color contraction factor",
+        )?;
+        optional_declared_index(
+            entry.auxiliary_factor_id,
+            exact_factor_count,
+            "color contraction symmetry factor",
+        )?;
+    }
+    if covered.iter().any(|covered| !covered) {
+        return Err(integrity("reduction entry catalog contains unowned rows"));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn validate_semantics(
     metadata: Metadata,
@@ -2012,6 +2503,109 @@ struct DecodedSection<'a> {
     payload: &'a [u8],
 }
 
+fn decode_referenced_sequences<T>(
+    reader: &PacbinReader,
+    ranges_path: &str,
+    values_path: &str,
+    referenced_ids: &BTreeSet<u32>,
+    context: &str,
+    decode: impl FnMut(&[u8]) -> RusticolResult<T>,
+) -> RusticolResult<BTreeMap<u32, Vec<T>>> {
+    let ranges = section(
+        reader,
+        ranges_path,
+        EagerSectionKind::Metadata,
+        EagerPlanCatalogRangeRow::ENCODED_LEN,
+    )?;
+    let values = section(reader, values_path, EagerSectionKind::Metadata, 4)?;
+    project_referenced_sequences(&ranges, &values, referenced_ids, context, decode)
+}
+
+/// Validate the complete borrowed range catalog, then own only the values
+/// reachable from `referenced_ids`.
+fn project_referenced_sequences<T>(
+    ranges: &DecodedSection<'_>,
+    values: &DecodedSection<'_>,
+    referenced_ids: &BTreeSet<u32>,
+    context: &str,
+    mut decode: impl FnMut(&[u8]) -> RusticolResult<T>,
+) -> RusticolResult<BTreeMap<u32, Vec<T>>> {
+    let range_width = usize::try_from(EagerPlanCatalogRangeRow::ENCODED_LEN)
+        .map_err(|_| RusticolError::artifact(format!("{context} range width exceeds usize")))?;
+    let value_width = 4_usize;
+    let range_count = usize_count(ranges.count, context)?;
+    if ranges.payload.chunks_exact(range_width).len() != range_count {
+        return Err(integrity(format!(
+            "{context} range row count changed unexpectedly"
+        )));
+    }
+
+    // Authentication covers every byte before this point. This streaming pass
+    // additionally checks that even unreferenced ranges have canonical,
+    // gap-free coverage without allocating their rows.
+    let mut cursor = 0_u64;
+    for row in ranges.payload.chunks_exact(range_width) {
+        let start = read_u64(row, 0)?;
+        let count = read_u64(row, 8)?;
+        if start != cursor {
+            return Err(integrity(format!("{context} ranges are not contiguous")));
+        }
+        cursor = checked_add(start, count, context)?;
+    }
+    if cursor != values.count {
+        return Err(integrity(format!(
+            "{context} ranges do not cover their value catalog"
+        )));
+    }
+
+    let mut projected = BTreeMap::new();
+    for &sequence_id in referenced_ids {
+        required_declared_index(sequence_id, ranges.count, context)?;
+        let sequence_index = usize::try_from(sequence_id)
+            .map_err(|_| RusticolError::artifact(format!("{context} ID exceeds usize")))?;
+        let range_start = sequence_index
+            .checked_mul(range_width)
+            .ok_or_else(|| RusticolError::artifact(format!("{context} range offset overflows")))?;
+        let range_stop = range_start
+            .checked_add(range_width)
+            .ok_or_else(|| RusticolError::artifact(format!("{context} range offset overflows")))?;
+        let range = ranges.payload.get(range_start..range_stop).ok_or_else(|| {
+            integrity(format!(
+                "{context} {sequence_id} range row is out of bounds"
+            ))
+        })?;
+        let start = usize_count(read_u64(range, 0)?, context)?;
+        let count = usize_count(read_u64(range, 8)?, context)?;
+        let stop = start
+            .checked_add(count)
+            .ok_or_else(|| RusticolError::artifact(format!("{context} range exceeds usize")))?;
+        let byte_start = start
+            .checked_mul(value_width)
+            .ok_or_else(|| RusticolError::artifact(format!("{context} byte range overflows")))?;
+        let byte_stop = stop
+            .checked_mul(value_width)
+            .ok_or_else(|| RusticolError::artifact(format!("{context} byte range overflows")))?;
+        let encoded = values.payload.get(byte_start..byte_stop).ok_or_else(|| {
+            integrity(format!(
+                "{context} {sequence_id} value range is out of bounds"
+            ))
+        })?;
+
+        let mut sequence = Vec::new();
+        reserve(&mut sequence, count, context)?;
+        for row in encoded.chunks_exact(value_width) {
+            sequence.push(decode(row)?);
+        }
+        if sequence.len() != count {
+            return Err(integrity(format!(
+                "{context} {sequence_id} decoded length changed unexpectedly"
+            )));
+        }
+        projected.insert(sequence_id, sequence);
+    }
+    Ok(projected)
+}
+
 fn section<'a>(
     reader: &'a PacbinReader,
     path: &str,
@@ -2165,9 +2759,37 @@ fn required_index(id: u32, length: usize, context: &str) -> RusticolResult<usize
     Ok(index)
 }
 
+fn required_declared_index(id: u32, length: u64, context: &str) -> RusticolResult<()> {
+    if u64::from(id) >= length {
+        return Err(integrity(format!(
+            "{context} {id} is outside a catalog of length {length}"
+        )));
+    }
+    Ok(())
+}
+
+fn required_projected_sequence<'a, T>(
+    sequences: &'a BTreeMap<u32, Vec<T>>,
+    id: u32,
+    context: &str,
+) -> RusticolResult<&'a [T]> {
+    sequences.get(&id).map(Vec::as_slice).ok_or_else(|| {
+        integrity(format!(
+            "{context} {id} is absent from the referenced catalog projection"
+        ))
+    })
+}
+
 fn optional_index(id: u32, length: usize, context: &str) -> RusticolResult<()> {
     if id != MISSING_U32 {
         required_index(id, length, context)?;
+    }
+    Ok(())
+}
+
+fn optional_declared_index(id: u32, length: u64, context: &str) -> RusticolResult<()> {
+    if id != MISSING_U32 {
+        required_declared_index(id, length, context)?;
     }
     Ok(())
 }
@@ -2229,4 +2851,227 @@ fn reserve<T>(values: &mut Vec<T>, count: usize, context: &str) -> RusticolResul
 
 fn integrity(message: impl Into<String>) -> RusticolError {
     RusticolError::integrity(message.into())
+}
+
+#[cfg(test)]
+mod reduction_subset_tests {
+    use super::*;
+
+    fn metadata() -> Metadata {
+        Metadata {
+            retained_column_count: 0,
+            current_component_count: 0,
+            value_component_count: 0,
+            momentum_component_count: 0,
+            color_contraction_entry_start: 2,
+            color_contraction_entry_count: 1,
+            string_count: 0,
+            exact_ir_count: 0,
+            limitation_count: 0,
+            retained_table_count: 0,
+            current_count: 0,
+            value_count: 0,
+            momentum_count: 0,
+            source_count: 0,
+            stage_count: 0,
+            invocation_count: 0,
+            closure_count: 0,
+            direct_coefficient_count: 0,
+            helicity_selector_count: 1,
+            color_selector_count: 1,
+            exact_factor_count: 2,
+        }
+    }
+
+    fn color_selectors() -> Vec<EagerPlanColorSelectorRow> {
+        vec![EagerPlanColorSelectorRow {
+            selector_id: 0,
+            word_sequence_id: 0,
+            representative_word_sequence_id: 0,
+            coefficient_factor_id: 0,
+            computed: 1,
+        }]
+    }
+
+    fn helicity_selectors() -> Vec<EagerPlanHelicitySelectorRow> {
+        vec![EagerPlanHelicitySelectorRow {
+            selector_id: 0,
+            values_sequence_id: 0,
+            representative_sequence_id: 0,
+            coefficient_factor_id: 0,
+            computed: 1,
+            structural_zero: 0,
+        }]
+    }
+
+    fn groups() -> Vec<EagerPlanReductionGroupRow> {
+        vec![EagerPlanReductionGroupRow {
+            coherent_group_id: 7,
+            amplitude_entry_start: 0,
+            amplitude_entry_count: 1,
+            selector_entry_start: 1,
+            selector_entry_count: 1,
+            helicity_weight_factor_id: 0,
+            all_sector_weight_factor_id: 1,
+        }]
+    }
+
+    fn entries() -> Vec<EagerPlanReductionEntryRow> {
+        vec![
+            EagerPlanReductionEntryRow {
+                kind: EagerPlanReductionEntryKind::AmplitudeMember,
+                owner_id: 7,
+                left_id: 0,
+                right_id: MISSING_U32,
+                factor_id: MISSING_U32,
+                auxiliary_factor_id: MISSING_U32,
+            },
+            EagerPlanReductionEntryRow {
+                kind: EagerPlanReductionEntryKind::SelectorMember,
+                owner_id: 7,
+                left_id: 0,
+                right_id: 0,
+                factor_id: MISSING_U32,
+                auxiliary_factor_id: MISSING_U32,
+            },
+            EagerPlanReductionEntryRow {
+                kind: EagerPlanReductionEntryKind::ColorContraction,
+                owner_id: MISSING_U32,
+                left_id: 7,
+                right_id: 7,
+                factor_id: 1,
+                auxiliary_factor_id: MISSING_U32,
+            },
+        ]
+    }
+
+    fn validate(entries: &[EagerPlanReductionEntryRow]) -> RusticolResult<()> {
+        validate_reduction_subset_semantics(
+            metadata(),
+            2,
+            &helicity_selectors(),
+            &color_selectors(),
+            &groups(),
+            entries,
+            &BTreeMap::from([(0, vec![1, -1, 1])]),
+            &BTreeMap::from([(0, vec![1, 2])]),
+        )
+    }
+
+    #[test]
+    fn bounded_reduction_semantics_accept_canonical_partition() {
+        validate(&entries()).expect("canonical reduction subset");
+    }
+
+    #[test]
+    fn bounded_reduction_semantics_reject_corrupt_selector_and_coverage() {
+        let mut wrong_owner = entries();
+        wrong_owner[1].owner_id = 8;
+        assert!(
+            validate(&wrong_owner)
+                .unwrap_err()
+                .to_string()
+                .contains("inconsistent tags/owners")
+        );
+
+        let mut wrong_color = entries();
+        wrong_color[1].right_id = 1;
+        assert!(
+            validate(&wrong_color)
+                .unwrap_err()
+                .to_string()
+                .contains("reduction color selector")
+        );
+
+        let mut unowned = entries();
+        unowned.push(EagerPlanReductionEntryRow {
+            kind: EagerPlanReductionEntryKind::AmplitudeMember,
+            owner_id: 7,
+            left_id: 1,
+            right_id: MISSING_U32,
+            factor_id: MISSING_U32,
+            auxiliary_factor_id: MISSING_U32,
+        });
+        assert!(
+            validate(&unowned)
+                .unwrap_err()
+                .to_string()
+                .contains("unowned rows")
+        );
+    }
+
+    #[test]
+    fn large_irrelevant_catalog_projects_only_referenced_values() {
+        use std::cell::Cell;
+
+        let catalog_size = 250_000_u32;
+        let mut range_bytes = Vec::with_capacity(catalog_size as usize * 16);
+        let mut value_bytes = Vec::with_capacity(catalog_size as usize * 4);
+        for id in 0..catalog_size {
+            range_bytes.extend_from_slice(&u64::from(id).to_le_bytes());
+            range_bytes.extend_from_slice(&1_u64.to_le_bytes());
+            value_bytes.extend_from_slice(&id.to_le_bytes());
+        }
+        let ranges = DecodedSection {
+            count: u64::from(catalog_size),
+            payload: &range_bytes,
+        };
+        let values = DecodedSection {
+            count: u64::from(catalog_size),
+            payload: &value_bytes,
+        };
+        let last = catalog_size - 3;
+        let referenced = BTreeSet::from([7, last]);
+        let decoded_value_count = Cell::new(0_usize);
+
+        let projected = project_referenced_sequences(
+            &ranges,
+            &values,
+            &referenced,
+            "bounded test sequence",
+            |row| {
+                decoded_value_count.set(decoded_value_count.get() + 1);
+                read_u32(row, 0)
+            },
+        )
+        .expect("project referenced catalog");
+
+        assert_eq!(projected.len(), 2);
+        assert_eq!(projected.values().map(Vec::len).sum::<usize>(), 2);
+        assert_eq!(decoded_value_count.get(), 2);
+        assert_eq!(projected[&7], [7]);
+        assert_eq!(projected[&last], [last]);
+    }
+
+    #[test]
+    fn referenced_projection_validates_unreferenced_range_rows() {
+        let mut range_bytes = Vec::new();
+        for (start, count) in [(0_u64, 1_u64), (9, 1), (2, 1)] {
+            range_bytes.extend_from_slice(&start.to_le_bytes());
+            range_bytes.extend_from_slice(&count.to_le_bytes());
+        }
+        let value_bytes = [0_u32, 1, 2]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        let ranges = DecodedSection {
+            count: 3,
+            payload: &range_bytes,
+        };
+        let values = DecodedSection {
+            count: 3,
+            payload: &value_bytes,
+        };
+
+        let error = project_referenced_sequences(
+            &ranges,
+            &values,
+            &BTreeSet::from([0]),
+            "authenticated sequence",
+            |row| read_u32(row, 0),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("ranges are not contiguous"));
+    }
 }

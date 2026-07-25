@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,30 @@ from tools.performance_report.service import ReportPaths, ReportService
 def _service(tmp_path: Path) -> ReportService:
     repo = tmp_path / "repo"
     (repo / "docs/results").mkdir(parents=True)
-    return ReportService(ReportPaths.from_repo(repo))
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "report-tests@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Report Tests"),
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("# report fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "README.md"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "commit", "-q", "-m", "Initialize fixture"),
+        cwd=repo,
+        check=True,
+    )
+    return ReportService(
+        ReportPaths.from_repo(
+            repo,
+            artifact_root=tmp_path / "artifacts",
+        )
+    )
 
 
 def test_reset_publishes_only_canonical_na_caches_and_sixteen_tables(
@@ -54,11 +78,9 @@ def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None
             "selector_contract": None,
             "validation": {"status": "ok"},
             "resources": {},
-                "provenance": {
-                    "report_source_revision": source_revision(
-                        service.paths.repo_root
-                    )
-                },
+            "provenance": {
+                "report_source_revision": source_revision(service.paths.repo_root)
+            },
         }
     )
     service.store.new_attempt(cell.cell_id, ArtifactPolicy.REGENERATE).publish(

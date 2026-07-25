@@ -29,6 +29,7 @@ from pyamplicol.runtime.eager_exact._contracts import (
 )
 
 EAGER_EXACT_SECTIONS_ABI = "pyamplicol-eager-exact-sections-v1"
+EAGER_REDUCTION_GROUPS_ABI = "pyamplicol-eager-reduction-groups-v1"
 EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 EAGER_RUNTIME_LAYOUT_ABI = "pyamplicol-eager-runtime-layout-v1"
 EAGER_PLAN_V3_RUNTIME_CAPABILITY = "rusticol.eager-runtime-layout.complex-f64.v1"
@@ -39,13 +40,19 @@ _EAGER_PLAN_V3_RUNTIME_CAPABILITIES = sorted(
     )
 )
 _NATIVE_BINDING_NAME = "_load_eager_exact_sections_v1"
+_NATIVE_REDUCTION_BINDING_NAME = "_load_eager_reduction_groups_v1"
 
 
 class _NativeExactSectionsBinding(Protocol):
     def __call__(self, artifact_root: str, process_id: str, /) -> object: ...
 
 
+class _NativeReductionGroupsBinding(Protocol):
+    def __call__(self, artifact_root: str, process_id: str, /) -> object: ...
+
+
 _NativeExactSectionsLoader = Callable[[Path, str], object]
+_NativeReductionGroupsLoader = Callable[[Path, str], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +84,36 @@ def _load_eager_exact_sections_v1(
     return _parse_exact_sections(raw, process_id)
 
 
+def _load_eager_reduction_groups_v1(
+    artifact_root: Path,
+    process_id: str,
+    *,
+    loader: _NativeReductionGroupsLoader | None = None,
+) -> tuple[Mapping[str, object], ...]:
+    raw = (loader or _native_reduction_groups_loader)(artifact_root, process_id)
+    root = _mapping(raw, "compact eager reduction groups")
+    if root.get("abi") != EAGER_REDUCTION_GROUPS_ABI:
+        raise CompatibilityError(
+            f"unsupported compact eager reduction-groups ABI {root.get('abi')!r}"
+        )
+    if root.get("runtime_layout_abi") != EAGER_RUNTIME_LAYOUT_ABI:
+        raise CompatibilityError(
+            "unsupported compact eager reduction runtime-layout ABI "
+            f"{root.get('runtime_layout_abi')!r}"
+        )
+    if root.get("process_id") != process_id:
+        raise ArtifactError("compact eager reduction groups select the wrong process")
+    return tuple(
+        _mapping(value, f"compact eager reduction group {index}")
+        for index, value in enumerate(
+            _sequence(
+                root.get("reduction_groups"),
+                "compact eager reduction groups",
+            )
+        )
+    )
+
+
 def _native_exact_sections_loader(artifact_root: Path, process_id: str) -> object:
     try:
         module = importlib.import_module("pyamplicol._rusticol")
@@ -99,6 +136,32 @@ def _native_exact_sections_loader(artifact_root: Path, process_id: str) -> objec
     except Exception as exc:
         raise ArtifactError(
             f"could not load compact exact sections for process {process_id!r}: {exc}"
+        ) from exc
+
+
+def _native_reduction_groups_loader(artifact_root: Path, process_id: str) -> object:
+    try:
+        module = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(module)
+    except ImportError as exc:
+        raise CompatibilityError(
+            "compact eager reduction loading requires pyamplicol._rusticol"
+        ) from exc
+    candidate = getattr(module, _NATIVE_REDUCTION_BINDING_NAME, None)
+    if not callable(candidate):
+        raise CompatibilityError(
+            "compact eager reduction loading requires the private native binding "
+            f"{_NATIVE_REDUCTION_BINDING_NAME}"
+        )
+    binding = cast(_NativeReductionGroupsBinding, candidate)
+    try:
+        return binding(os.fspath(artifact_root), process_id)
+    except (ArtifactError, CompatibilityError):
+        raise
+    except Exception as exc:
+        raise ArtifactError(
+            f"could not load compact eager reduction groups for process "
+            f"{process_id!r}: {exc}"
         ) from exc
 
 

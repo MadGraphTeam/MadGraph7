@@ -11,6 +11,7 @@
 // This bounded milestone is intentionally not wired into the eager scheduler yet.
 #![allow(dead_code)]
 
+use crate::artifact::PinnedNativeLibrary;
 use crate::direct_arena::{DirectArenaView, DirectArenaWorkspace};
 use crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY;
 pub(crate) use crate::eager_layout::{
@@ -26,6 +27,7 @@ use std::os::raw::c_char;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::ptr;
+use std::sync::Arc;
 use symjit::{
     Application, Config, DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT,
     DIRECT_STATUS_INVALID_CONTEXT, DIRECT_STATUS_OK, Defuns, DirectPlane, DirectScalar,
@@ -406,7 +408,7 @@ const NATIVE_EAGER_DIRECT_TABLE_REQUIRED_FLAGS: u32 = 0x1f;
 
 #[cfg(feature = "f64-compiled")]
 struct LoadedNativeEagerDirectTable {
-    _library: libloading::Library,
+    _library: Arc<PinnedNativeLibrary>,
     call: NativeEagerDirectTableCall,
     metadata: DirectTableApplicationMetadata,
 }
@@ -492,7 +494,7 @@ impl LoadedSymjitEagerDirectTable {
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn load_native_application(
-        library_path: &Path,
+        library: Arc<PinnedNativeLibrary>,
         function_name: &str,
         display_path: PathBuf,
         source_application_abi: &str,
@@ -527,7 +529,7 @@ impl LoadedSymjitEagerDirectTable {
         #[cfg(not(feature = "f64-compiled"))]
         {
             let _ = (
-                library_path,
+                library,
                 function_name,
                 metadata,
                 expected_target_triple,
@@ -540,12 +542,7 @@ impl LoadedSymjitEagerDirectTable {
         }
         #[cfg(feature = "f64-compiled")]
         {
-            let library = unsafe { libloading::Library::new(library_path) }.map_err(|error| {
-                RusticolError::evaluation(format!(
-                    "could not load native eager DirectTable library {}: {error}",
-                    library_path.display()
-                ))
-            })?;
+            let library_path = library.display_path();
             let metadata_symbol_name = format!("{function_name}_metadata_v1");
             let metadata_call = unsafe {
                 library

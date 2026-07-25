@@ -53,29 +53,12 @@ fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> Rusti
                 })
         })
     });
-    let all_explicit_row_major_non_o3 = all_stages.iter().all(|stage| {
-        stage.evaluator.leaf_layout().is_ok_and(|leaves| {
-            !leaves.is_empty()
-                && leaves.iter().all(|leaf| {
-                    matches!(
-                        leaf.evaluator,
-                        EvaluatorManifest::SymjitApplication {
-                            optimization_level,
-                            ..
-                        } if *optimization_level != 3
-                    )
-                })
-        })
-    });
     let direct_count = all_stages
         .iter()
         .filter(|stage| stage.compiled_plane_arena.is_some())
         .count();
 
     if !declared_execution && !declared_stage && direct_count == 0 {
-        if all_explicit_row_major_non_o3 {
-            return Ok(false);
-        }
         if compiled_direct_developer_oracle_enabled() {
             return Ok(false);
         }
@@ -268,53 +251,70 @@ fn validate_compiled_plane_arena_stage(
         ));
     }
     for (canonical, binding) in canonical_leaves.iter().zip(&direct.leaves) {
-        let (application_path, application_abi, input_len, output_len, optimization_level) =
-            match canonical.evaluator {
-                EvaluatorManifest::SymjitApplication {
-                    application_path,
-                    application_abi,
-                    input_len,
-                    output_len,
-                    optimization_level,
-                    ..
-                } => (
-                    application_path.as_str(),
-                    application_abi.as_str(),
+        let (
+            application_path,
+            application_abi,
+            input_len,
+            output_len,
+            optimization_level,
+            supported_optimization_level,
+        ) = match canonical.evaluator {
+            EvaluatorManifest::SymjitApplication {
+                application_path,
+                application_abi,
+                input_len,
+                output_len,
+                optimization_level,
+                ..
+            } => (
+                application_path.as_str(),
+                application_abi.as_str(),
+                *input_len,
+                *output_len,
+                *optimization_level,
+                *optimization_level <= 3,
+            ),
+            EvaluatorManifest::CompiledComplex {
+                function_name,
+                input_len,
+                output_len,
+                native_direct_application: Some(application),
+                ..
+            } => {
+                application.validate(function_name, *input_len, *output_len)?;
+                (
+                    application.library_path.as_str(),
+                    application.application_abi.as_str(),
                     *input_len,
                     *output_len,
-                    *optimization_level,
-                ),
-                EvaluatorManifest::CompiledComplex {
-                    function_name,
-                    input_len,
-                    output_len,
-                    native_direct_application: Some(application),
-                    ..
-                } => {
-                    application.validate(function_name, *input_len, *output_len)?;
-                    (
-                        application.library_path.as_str(),
-                        application.application_abi.as_str(),
-                        *input_len,
-                        *output_len,
-                        3,
-                    )
-                }
-                _ => {
-                    return Err(RusticolError::integrity(
-                        "compiled plane-arena stage contains a leaf without a direct application",
-                    ));
-                }
-            };
-        if optimization_level != 3 || binding.optimization_level != 3 {
+                    3,
+                    true,
+                )
+            }
+            _ => {
+                return Err(RusticolError::integrity(
+                    "compiled plane-arena stage contains a leaf without a direct application",
+                ));
+            }
+        };
+        if !supported_optimization_level {
             return Err(RusticolError::compatibility(
-                "compiled-plane-arena-v1 requires optimization level 3; regenerate the artifact",
+                "compiled-plane-arena-v1 supports compiled JIT optimization levels 0 through 3",
+            ));
+        }
+        if binding.optimization_level != optimization_level {
+            return Err(RusticolError::integrity(
+                "compiled plane-arena leaf optimization level disagrees with its source payload",
+            ));
+        }
+        if binding.direct_codegen_optimization_level != 3 {
+            return Err(RusticolError::compatibility(
+                "compiled plane-arena leaf requires authenticated O3 direct code generation",
             ));
         }
         if binding.application_path != application_path
             || binding.source_application_abi != application_abi
             || binding.source_application_abi != direct.source_application_abi
-            || binding.optimization_level != optimization_level
             || binding.input_len != input_len
             || binding.output_len != output_len
             || binding.input_indices != canonical.input_indices
@@ -3906,7 +3906,7 @@ mod compiled_plane_arena_contract_tests {
         })
     }
 
-    fn arena_manifest() -> ExecutionManifest {
+    fn arena_manifest_at(optimization_level: u8) -> ExecutionManifest {
         let mut value = crate::artifact::tests::minimal_execution_manifest(
             "p0",
             "a b > c",
@@ -3916,6 +3916,7 @@ mod compiled_plane_arena_contract_tests {
         let stage = &mut value["compiled"]["stage_evaluators"]["amplitude_stage"];
         stage["parameter_layout"] = json!("stage-local-value-momentum");
         stage["input_components"] = Value::Array((0..14).map(source_binding).collect());
+        stage["evaluator"]["optimization_level"] = json!(optimization_level);
         stage["compiled_plane_arena"] = json!({
             "schema_version": 1,
             "kind": "compiled-plane-arena-stage",
@@ -3935,7 +3936,8 @@ mod compiled_plane_arena_contract_tests {
             "leaves": [{
                 "application_path": "evaluators/direct.symjit",
                 "source_application_abi": COMPILED_PLANE_SOURCE_APPLICATION_ABI,
-                "optimization_level": 3,
+                "optimization_level": optimization_level,
+                "direct_codegen_optimization_level": 3,
                 "input_len": 14,
                 "output_len": 1,
                 "input_indices": (0..14).collect::<Vec<_>>(),
@@ -3954,6 +3956,10 @@ mod compiled_plane_arena_contract_tests {
             SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
         ]);
         serde_json::from_value(value).expect("deserialize compiled plane-arena fixture")
+    }
+
+    fn arena_manifest() -> ExecutionManifest {
+        arena_manifest_at(3)
     }
 
     #[test]
@@ -3976,7 +3982,7 @@ mod compiled_plane_arena_contract_tests {
     }
 
     #[test]
-    fn explicit_non_o3_compiled_f64_uses_the_row_major_runtime() {
+    fn pre_arena_non_o3_compiled_f64_fails_closed() {
         let mut value = crate::artifact::tests::minimal_execution_manifest(
             "p0",
             "a b > c",
@@ -3988,15 +3994,20 @@ mod compiled_plane_arena_contract_tests {
         let manifest =
             serde_json::from_value(value).expect("deserialize row-major compiled fixture");
 
-        assert!(!validate_compiled_plane_arena_contract(&manifest).unwrap());
+        let error = validate_compiled_plane_arena_contract(&manifest)
+            .expect_err("pre-arena non-O3 compiled f64 must fail closed");
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(error.to_string().contains("compiled-plane-arena-v1"));
     }
 
     #[test]
-    fn complete_plane_contract_is_supported_and_exact() {
-        let manifest = arena_manifest();
+    fn complete_plane_contract_supports_jit_o0_through_o3() {
+        for optimization_level in 0..=3 {
+            let manifest = arena_manifest_at(optimization_level);
 
-        assert!(validate_compiled_plane_arena_contract(&manifest).unwrap());
-        ensure_execution_capabilities_supported(&manifest).unwrap();
+            assert!(validate_compiled_plane_arena_contract(&manifest).unwrap());
+            ensure_execution_capabilities_supported(&manifest).unwrap();
+        }
         assert!(
             supported_runtime_capabilities().contains(&COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY)
         );
@@ -4033,7 +4044,23 @@ mod compiled_plane_arena_contract_tests {
     }
 
     #[test]
-    fn plane_contract_rejects_non_o3_before_payload_loading() {
+    fn plane_contract_authenticates_leaf_optimization_level() {
+        let mut manifest = arena_manifest_at(1);
+        let stage = &mut manifest
+            .compiled
+            .stage_evaluators
+            .as_mut()
+            .unwrap()
+            .amplitude_stage;
+        stage.compiled_plane_arena.as_mut().unwrap().leaves[0].optimization_level = 2;
+
+        let error = validate_compiled_plane_arena_contract(&manifest).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+        assert!(error.to_string().contains("optimization level disagrees"));
+    }
+
+    #[test]
+    fn plane_contract_rejects_unknown_jit_optimization_level() {
         let mut manifest = arena_manifest();
         let stage = &mut manifest
             .compiled
@@ -4047,16 +4074,12 @@ mod compiled_plane_arena_contract_tests {
         else {
             panic!("compiled plane fixture must use one SymJIT evaluator");
         };
-        *optimization_level = 2;
-        stage.compiled_plane_arena.as_mut().unwrap().leaves[0].optimization_level = 2;
+        *optimization_level = 4;
+        stage.compiled_plane_arena.as_mut().unwrap().leaves[0].optimization_level = 4;
 
         let error = validate_compiled_plane_arena_contract(&manifest).unwrap_err();
         assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
-        assert!(
-            error
-                .to_string()
-                .contains("requires compiled JIT optimization level 3")
-        );
+        assert!(error.to_string().contains("levels 0 through 3"));
     }
 }
 

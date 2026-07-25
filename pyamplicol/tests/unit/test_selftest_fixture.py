@@ -5,6 +5,8 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
+from copy import deepcopy
 from pathlib import Path
 from types import ModuleType
 
@@ -13,6 +15,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "tools/release/prepare_selftest_fixture.py"
 FIXTURE = ROOT / "src/pyamplicol/assets/selftest/portable-64le"
+ARENA_CAPABILITY = "compiled-plane-arena-v1"
+SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
+DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v3"
+SYMJIT_CAPABILITY = "symjit.application.complex-f64.v1"
 
 
 def _module() -> ModuleType:
@@ -21,6 +27,147 @@ def _module() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _portable_stage(
+    *,
+    amplitude: bool,
+    optimization_level: int = 2,
+) -> dict[str, object]:
+    application_path = (
+        "evaluators/amplitude.symjit" if amplitude else "evaluators/current.symjit"
+    )
+    arena = "amplitude" if amplitude else "current"
+    output_component = 0 if amplitude else 2
+    evaluator = {
+        "kind": "symjit-application-evaluator",
+        "runtime_capability": SYMJIT_CAPABILITY,
+        "application_abi": SOURCE_APPLICATION_ABI,
+        "application_path": application_path,
+        "compiler_type": "native",
+        "translation_mode": "indirect",
+        "optimization_level": optimization_level,
+        "element_layout": "complex-f64",
+        "batch_layout": "row-major",
+        "input_len": 1,
+        "output_len": 1,
+    }
+    input_component = {
+        "parameter_index": 0,
+        "kind": "value",
+        "source_id": 0,
+        "component": 0,
+        "global_component": 0,
+        "real_valued": False,
+    }
+    output_slot = {
+        "output_start": 0,
+        "output_stop": 1,
+        "component_start": output_component,
+        "component_stop": output_component + 1,
+    }
+    return {
+        "stage_kind": "amplitude-roots" if amplitude else "current-combine",
+        "parameter_layout": "stage-local-value-momentum",
+        "parameter_count": 1,
+        "output_length": 1,
+        "input_components": [input_component],
+        "output_slots": [output_slot],
+        "evaluator": evaluator,
+        "compiled_plane_arena": {
+            "schema_version": 1,
+            "kind": "compiled-plane-arena-stage",
+            "application_abi": DIRECT_APPLICATION_ABI,
+            "source_application_abi": SOURCE_APPLICATION_ABI,
+            "element_layout": "split-complex-component-major",
+            "output_operation": "overwrite",
+            "output_factor": "identity",
+            "input_output_aliasing": "forbidden",
+            "output_output_aliasing": "forbidden",
+            "input_bindings": [input_component],
+            "output_bindings": [
+                {
+                    "output_index": 0,
+                    "arena": arena,
+                    "component": output_component,
+                }
+            ],
+            "leaves": [
+                {
+                    "application_path": application_path,
+                    "source_application_abi": SOURCE_APPLICATION_ABI,
+                    "optimization_level": optimization_level,
+                    "direct_codegen_optimization_level": 3,
+                    "input_len": 1,
+                    "output_len": 1,
+                    "input_indices": [0],
+                    "output_start": 0,
+                    "output_stop": 1,
+                }
+            ],
+        },
+    }
+
+
+def _portable_execution(
+    *,
+    optimization_level: int = 2,
+) -> dict[str, object]:
+    return {
+        "required_runtime_capabilities": [
+            ARENA_CAPABILITY,
+            SYMJIT_CAPABILITY,
+        ],
+        "compiled": {
+            "kind": "generic-dag-stage-blueprint",
+            "stage_evaluators": {
+                "kind": "generic-dag-stage-evaluator-artifacts",
+                "required_runtime_capabilities": [
+                    ARENA_CAPABILITY,
+                    SYMJIT_CAPABILITY,
+                ],
+                "stage_count": 2,
+                "stages": [
+                    _portable_stage(
+                        amplitude=False,
+                        optimization_level=optimization_level,
+                    )
+                ],
+                "amplitude_stage": _portable_stage(
+                    amplitude=True,
+                    optimization_level=optimization_level,
+                ),
+            },
+        },
+    }
+
+
+def _portable_artifact_manifest() -> dict[str, object]:
+    capabilities = [ARENA_CAPABILITY, SYMJIT_CAPABILITY]
+    return {
+        "runtime": {"required_runtime_capabilities": list(capabilities)},
+        "processes": [
+            {"required_runtime_capabilities": list(capabilities)},
+        ],
+    }
+
+
+def _write_portable_execution(
+    tmp_path: Path,
+    execution: dict[str, object],
+) -> dict[str, object]:
+    relative = Path("processes/example/execution.json")
+    execution_path = tmp_path / relative
+    execution_path.parent.mkdir(parents=True)
+    execution_path.write_text(json.dumps(execution), encoding="utf-8")
+    return {
+        "payloads": [
+            {
+                "role": "evaluator-manifest",
+                "path": relative.as_posix(),
+            }
+        ]
+    }
 
 
 def test_resolved_reduction_accepts_floating_point_roundoff() -> None:
@@ -111,6 +258,20 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
     content = dict(manifest)
     claimed = content.pop("artifact_id")
     assert claimed == hashlib.sha256(module._canonical_json(content)).hexdigest()
+    assert (
+        module.validate_portable_artifact_capabilities(
+            manifest,
+            context="tracked portable self-test artifact",
+        )
+        > 0
+    )
+    assert (
+        module._validate_portable_evaluator_configuration(
+            FIXTURE / "artifact",
+            manifest,
+        )
+        > 0
+    )
 
 
 @pytest.mark.parametrize("optimization_level", (0, 1, 3))
@@ -119,31 +280,10 @@ def test_portable_fixture_rejects_nonportable_optimization_level(
     optimization_level: int,
 ) -> None:
     module = _module()
-    execution_path = tmp_path / "processes" / "example" / "execution.json"
-    execution_path.parent.mkdir(parents=True)
-    execution_path.write_text(
-        json.dumps(
-            {
-                "compiled": {
-                    "evaluator": {
-                        "kind": "symjit-application-evaluator",
-                        "compiler_type": "native",
-                        "translation_mode": "indirect",
-                        "optimization_level": optimization_level,
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
+    manifest = _write_portable_execution(
+        tmp_path,
+        _portable_execution(optimization_level=optimization_level),
     )
-    manifest = {
-        "payloads": [
-            {
-                "role": "evaluator-manifest",
-                "path": "processes/example/execution.json",
-            }
-        ]
-    }
 
     with pytest.raises(RuntimeError, match="optimization level 2"):
         module._validate_portable_evaluator_configuration(tmp_path, manifest)
@@ -151,33 +291,135 @@ def test_portable_fixture_rejects_nonportable_optimization_level(
 
 def test_portable_fixture_accepts_portable_o2_mir(tmp_path: Path) -> None:
     module = _module()
-    execution_path = tmp_path / "processes" / "example" / "execution.json"
-    execution_path.parent.mkdir(parents=True)
-    execution_path.write_text(
-        json.dumps(
-            {
-                "compiled": {
-                    "evaluator": {
-                        "kind": "symjit-application-evaluator",
-                        "compiler_type": "native",
-                        "translation_mode": "indirect",
-                        "optimization_level": 2,
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    manifest = {
-        "payloads": [
-            {
-                "role": "evaluator-manifest",
-                "path": "processes/example/execution.json",
-            }
-        ]
-    }
+    manifest = _write_portable_execution(tmp_path, _portable_execution())
 
     assert module._validate_portable_evaluator_configuration(tmp_path, manifest) == 2
+
+
+@pytest.mark.parametrize("capability_owner", ("execution", "stage_evaluators"))
+@pytest.mark.parametrize(
+    "capability",
+    (ARENA_CAPABILITY, SYMJIT_CAPABILITY),
+)
+def test_portable_fixture_requires_compiled_runtime_capabilities(
+    tmp_path: Path,
+    capability_owner: str,
+    capability: str,
+) -> None:
+    module = _module()
+    execution = _portable_execution()
+    if capability_owner == "execution":
+        capabilities = execution["required_runtime_capabilities"]
+    else:
+        capabilities = execution["compiled"]["stage_evaluators"][
+            "required_runtime_capabilities"
+        ]
+    capabilities.remove(capability)
+    manifest = _write_portable_execution(tmp_path, execution)
+
+    with pytest.raises(RuntimeError, match=rf"must require {re.escape(capability)}"):
+        module._validate_portable_evaluator_configuration(tmp_path, manifest)
+
+
+@pytest.mark.parametrize("capability_owner", ("artifact_runtime", "process"))
+@pytest.mark.parametrize(
+    "capability",
+    (ARENA_CAPABILITY, SYMJIT_CAPABILITY),
+)
+def test_portable_fixture_requires_outer_runtime_capabilities(
+    capability_owner: str,
+    capability: str,
+) -> None:
+    module = _module()
+    manifest = _portable_artifact_manifest()
+    owner = (
+        manifest["runtime"]
+        if capability_owner == "artifact_runtime"
+        else manifest["processes"][0]
+    )
+    owner["required_runtime_capabilities"].remove(capability)
+
+    with pytest.raises(RuntimeError, match=rf"must require {re.escape(capability)}"):
+        module.validate_portable_artifact_capabilities(
+            manifest,
+            context="portable artifact",
+        )
+
+
+@pytest.mark.parametrize("stage_kind", ("current", "amplitude"))
+def test_portable_fixture_requires_every_arena_stage_descriptor(
+    tmp_path: Path,
+    stage_kind: str,
+) -> None:
+    module = _module()
+    execution = _portable_execution()
+    stage_set = execution["compiled"]["stage_evaluators"]
+    stage = (
+        stage_set["stages"][0]
+        if stage_kind == "current"
+        else stage_set["amplitude_stage"]
+    )
+    del stage["compiled_plane_arena"]
+    manifest = _write_portable_execution(tmp_path, execution)
+
+    with pytest.raises(RuntimeError, match="complete compiled_plane_arena"):
+        module._validate_portable_evaluator_configuration(tmp_path, manifest)
+
+
+def test_portable_fixture_rejects_incomplete_arena_bindings(tmp_path: Path) -> None:
+    module = _module()
+    execution = _portable_execution()
+    descriptor = execution["compiled"]["stage_evaluators"]["stages"][0][
+        "compiled_plane_arena"
+    ]
+    descriptor["input_bindings"] = []
+    manifest = _write_portable_execution(tmp_path, execution)
+
+    with pytest.raises(RuntimeError, match="input bindings are incomplete"):
+        module._validate_portable_evaluator_configuration(tmp_path, manifest)
+
+
+def test_portable_fixture_requires_o3_arena_direct_codegen(tmp_path: Path) -> None:
+    module = _module()
+    execution = _portable_execution()
+    descriptor = execution["compiled"]["stage_evaluators"]["amplitude_stage"][
+        "compiled_plane_arena"
+    ]
+    descriptor["leaves"][0]["direct_codegen_optimization_level"] = 2
+    manifest = _write_portable_execution(tmp_path, execution)
+
+    with pytest.raises(RuntimeError, match=r"direct codegen.*optimization level 3"):
+        module._validate_portable_evaluator_configuration(tmp_path, manifest)
+
+
+def test_portable_fixture_binds_arena_leaf_to_o2_source(tmp_path: Path) -> None:
+    module = _module()
+    execution = _portable_execution()
+    descriptor = execution["compiled"]["stage_evaluators"]["stages"][0][
+        "compiled_plane_arena"
+    ]
+    descriptor["leaves"][0]["application_path"] = "evaluators/drift.symjit"
+    manifest = _write_portable_execution(tmp_path, execution)
+
+    with pytest.raises(RuntimeError, match="does not bind its SymJIT source"):
+        module._validate_portable_evaluator_configuration(tmp_path, manifest)
+
+
+def test_portable_fixture_validates_nested_selector_executions(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    execution = _portable_execution()
+    nested = deepcopy(execution)
+    descriptor = nested["compiled"]["stage_evaluators"]["amplitude_stage"][
+        "compiled_plane_arena"
+    ]
+    descriptor["leaves"][0]["direct_codegen_optimization_level"] = 1
+    execution["helicity_sum_execution"] = nested
+    manifest = _write_portable_execution(tmp_path, execution)
+
+    with pytest.raises(RuntimeError, match=r"direct codegen.*optimization level 3"):
+        module._validate_portable_evaluator_configuration(tmp_path, manifest)
 
 
 def test_compiled_model_version_normalization_refreshes_payload(

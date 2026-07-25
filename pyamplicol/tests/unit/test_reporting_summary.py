@@ -122,6 +122,11 @@ def _benchmark_result() -> BenchmarkResult:
         amplitude_evaluator_output_gather_components_per_point=10.0,
         amplitude_output_remap_components_per_point=8.0,
         evaluator_backend_calls_per_call=12.0,
+        compiled_direct_arena_engines_per_call=2.0,
+        compiled_direct_arena_calls_per_call=12.0,
+        compiled_direct_arena_boundary_input_bytes_per_call=0.0,
+        compiled_direct_arena_boundary_current_output_bytes_per_call=0.0,
+        compiled_direct_arena_boundary_amplitude_output_bytes_per_call=0.0,
         recurrence_schedule_executions_per_call=1.0,
         recurrence_contribution_calls_per_call=7.0,
         recurrence_contribution_rows_per_call=126.0,
@@ -223,6 +228,12 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "stage leaf copy" in rendered
     assert "240 components" in rendered
     assert "per runtime call" in rendered
+    assert "compiled Direct-Arena" in rendered
+    assert "Arena engines" in rendered
+    assert "2 engines" in rendered
+    assert "Arena calls" in rendered
+    assert "boundary current output" in rendered
+    assert "boundary amplitude output" in rendered
     assert "observed scratch reallocations" in rendered
     assert "paired passes: unprofiled headline" in rendered
     assert "identical batch and repetition count" in rendered
@@ -356,6 +367,16 @@ def test_benchmark_profile_counters_remain_machine_readable() -> None:
     assert counters["normalization"] == ("mean_per_profiled_point_or_runtime_call_v1")
     assert counters["stage_leaf_input_copy_components_per_point"] == 240.0
     assert counters["evaluator_backend_calls_per_call"] == 12.0
+    assert counters["compiled_direct_arena_engines_per_call"] == 2.0
+    assert counters["compiled_direct_arena_calls_per_call"] == 12.0
+    assert counters["compiled_direct_arena_boundary_input_bytes_per_call"] == 0.0
+    assert (
+        counters["compiled_direct_arena_boundary_current_output_bytes_per_call"] == 0.0
+    )
+    assert (
+        counters["compiled_direct_arena_boundary_amplitude_output_bytes_per_call"]
+        == 0.0
+    )
     assert (
         payload["timing_breakdown"]["stage_backend_call_time"]["mean_seconds_per_point"]
         == 0.5e-6

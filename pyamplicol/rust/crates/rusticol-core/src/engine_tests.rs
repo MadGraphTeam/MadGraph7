@@ -822,6 +822,7 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
     execution.physics = Some(Arc::new(alias_physics));
     let runtime = NativeRuntime {
         root: PathBuf::new(),
+        artifact_id: "0".repeat(64),
         runtime: execution,
         execution_lane: NativeExecutionLane::Compiled,
         process: alias.expression,
@@ -3132,6 +3133,7 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
         execution.physics = Some(Arc::new(physics));
         let mut runtime = NativeRuntime {
             root: PathBuf::new(),
+            artifact_id: "0".repeat(64),
             runtime: execution,
             execution_lane: NativeExecutionLane::Compiled,
             process: "x x > y".to_string(),
@@ -3383,6 +3385,7 @@ fn zero_native_runtime() -> NativeRuntime {
     execution.amplitude_stage = Some(amplitude);
     NativeRuntime {
         root: PathBuf::new(),
+        artifact_id: "0".repeat(64),
         runtime: execution,
         execution_lane: NativeExecutionLane::Compiled,
         process: "x x > y".to_string(),

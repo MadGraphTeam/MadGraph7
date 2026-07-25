@@ -50,6 +50,12 @@ This development-only series targets released SymJIT 2.21.1 at revision
    unchanged; this admits authenticated prepared kernels with more than 128
    complex outputs, including the complete UFO-SM eager catalog.
 
+5. `0005-compiled-direct-arena-all-jit-levels.patch` must be applied after
+   `0004`. It lets identity-overwrite compiled Direct-Arena applications retain
+   and authenticate ordinary SymJIT source applications at O0, O1, O2, or O3.
+   Every accepted source is still lowered to the established factor-free O3
+   direct callable. Exact-factor recurrence applications remain strictly O2.
+
 The ordinary `symjit-application-storage-v3` ABI and non-Direct-Arena
 evaluation paths are unchanged. The local contributor build still applies its
 existing manifest rewrite separately; that mechanical `cdylib` to `rlib`

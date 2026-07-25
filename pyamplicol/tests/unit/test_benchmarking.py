@@ -260,6 +260,37 @@ class _TimedRuntimeWithRepeatedProfile(_TimedRuntimeWithNativeWall):
         }
 
 
+class _TimedRuntimeWithCompiledDirectArenaRepeatedProfile(
+    _TimedRuntimeWithRepeatedProfile
+):
+    def profile_repeated(
+        self,
+        momenta: object,
+        repetitions: int,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        assert kwargs["helicities"] is None
+        assert kwargs["color_flows"] is None
+        assert kwargs["precision"] == 16
+        assert kwargs["include_values"] is False
+        self.repeated_profile_calls += 1
+        points = len(momenta) * repetitions  # type: ignore[arg-type]
+        return {
+            "execution_mode": "compiled",
+            "points": points,
+            "wall_time_s": points * 6.0e-6,
+            "orchestration_time_s": points * 3.5e-6,
+            "stage_evaluator_call_time_s": 0.0,
+            "amplitude_evaluator_call_time_s": 0.0,
+            "evaluator_backend_call_count": repetitions * 3,
+            "compiled_direct_arena_engine_count": repetitions * 2,
+            "compiled_direct_arena_call_count": repetitions * 3,
+            "compiled_direct_arena_boundary_input_bytes": 0,
+            "compiled_direct_arena_boundary_current_output_bytes": 0,
+            "compiled_direct_arena_boundary_amplitude_output_bytes": 0,
+        }
+
+
 class _TimedRuntimeWithRecurrenceRepeatedProfile(_TimedRuntimeWithRepeatedProfile):
     def profile_repeated(
         self,
@@ -618,6 +649,59 @@ def test_repeated_native_profile_is_paired_with_unprofiled_headline_samples(
     )
     assert result.environment["profile_attribution_point_count"] == (
         result.evaluated_point_count
+    )
+
+
+def test_compiled_direct_arena_uses_fused_orchestration_attribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithCompiledDirectArenaRepeatedProfile(clock)
+    runtime.repeated_profile_calls = 0
+    runtime.native_wall_calls = 0
+    config = BenchmarkConfig(
+        target_runtime=0.1,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=4,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.evaluator_time_per_point == pytest.approx(3.5e-6)
+    assert result.environment["evaluator_time_source"] == (
+        "runtime_profile_core_compiled_direct_arena_orchestration_time"
+    )
+    assert result.environment["compiled_direct_arena_active"] is True
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    assert breakdown.execution_mode == "compiled"
+    assert breakdown.orchestration_time is not None
+    assert breakdown.orchestration_time.mean_seconds_per_point == pytest.approx(3.5e-6)
+    assert breakdown.stage_evaluator_call_time is not None
+    assert breakdown.stage_evaluator_call_time.mean_seconds_per_point == 0.0
+    assert breakdown.amplitude_evaluator_call_time is not None
+    assert breakdown.amplitude_evaluator_call_time.mean_seconds_per_point == 0.0
+    counters = breakdown.counters
+    assert counters is not None
+    assert counters.evaluator_backend_calls_per_call == pytest.approx(3.0)
+    assert counters.compiled_direct_arena_engines_per_call == pytest.approx(2.0)
+    assert counters.compiled_direct_arena_calls_per_call == pytest.approx(3.0)
+    assert (
+        counters.compiled_direct_arena_boundary_input_bytes_per_call
+        == pytest.approx(0.0)
+    )
+    assert (
+        counters.compiled_direct_arena_boundary_current_output_bytes_per_call
+        == pytest.approx(0.0)
+    )
+    assert (
+        counters.compiled_direct_arena_boundary_amplitude_output_bytes_per_call
+        == pytest.approx(0.0)
     )
 
 
@@ -1026,6 +1110,103 @@ def test_profile_counter_contract_rejects_ambiguous_repeated_totals() -> None:
                 "stage_input_copy_component_count": 1.5,
             },
             fallback_points=2,
+        )
+
+
+def test_compiled_direct_arena_counters_must_be_jointly_available() -> None:
+    with pytest.raises(EvaluationError, match="must be jointly available"):
+        benchmark_module._native_profile_sample(
+            {
+                "execution_mode": "compiled",
+                "points": 1,
+                "wall_time_s": 2.0e-6,
+                "orchestration_time_s": 1.0e-6,
+                "stage_evaluator_call_time_s": 0.0,
+                "amplitude_evaluator_call_time_s": 0.0,
+                "evaluator_backend_call_count": 1,
+                "compiled_direct_arena_engine_count": 1,
+            },
+            fallback_points=1,
+        )
+
+
+@pytest.mark.parametrize(
+    "boundary_counter",
+    (
+        "compiled_direct_arena_boundary_input_bytes",
+        "compiled_direct_arena_boundary_current_output_bytes",
+        "compiled_direct_arena_boundary_amplitude_output_bytes",
+    ),
+)
+def test_compiled_direct_arena_rejects_boundary_traffic(
+    boundary_counter: str,
+) -> None:
+    profile = {
+        "execution_mode": "compiled",
+        "points": 1,
+        "wall_time_s": 2.0e-6,
+        "orchestration_time_s": 1.0e-6,
+        "stage_evaluator_call_time_s": 0.0,
+        "amplitude_evaluator_call_time_s": 0.0,
+        "evaluator_backend_call_count": 1,
+        "compiled_direct_arena_engine_count": 1,
+        "compiled_direct_arena_call_count": 1,
+        "compiled_direct_arena_boundary_input_bytes": 0,
+        "compiled_direct_arena_boundary_current_output_bytes": 0,
+        "compiled_direct_arena_boundary_amplitude_output_bytes": 0,
+    }
+    profile[boundary_counter] = 16
+
+    with pytest.raises(EvaluationError, match="forbidden boundary traffic"):
+        benchmark_module._native_profile_sample(profile, fallback_points=1)
+
+
+def test_compiled_direct_arena_calls_must_cover_backend_calls() -> None:
+    with pytest.raises(EvaluationError, match="cover every evaluator backend call"):
+        benchmark_module._native_profile_sample(
+            {
+                "execution_mode": "compiled",
+                "points": 1,
+                "wall_time_s": 2.0e-6,
+                "orchestration_time_s": 1.0e-6,
+                "stage_evaluator_call_time_s": 0.0,
+                "amplitude_evaluator_call_time_s": 0.0,
+                "evaluator_backend_call_count": 2,
+                "compiled_direct_arena_engine_count": 1,
+                "compiled_direct_arena_call_count": 1,
+                "compiled_direct_arena_boundary_input_bytes": 0,
+                "compiled_direct_arena_boundary_current_output_bytes": 0,
+                "compiled_direct_arena_boundary_amplitude_output_bytes": 0,
+            },
+            fallback_points=1,
+        )
+
+
+def test_compiled_direct_arena_requires_fused_orchestration_timing() -> None:
+    with pytest.raises(EvaluationError, match="orchestration timing is unavailable"):
+        benchmark_module._native_profile_sample(
+            {
+                "execution_mode": "compiled",
+                "points": 1,
+                "wall_time_s": 2.0e-6,
+                "stage_evaluator_call_time_s": 0.0,
+                "amplitude_evaluator_call_time_s": 0.0,
+                "evaluator_backend_call_count": 1,
+                "compiled_direct_arena_engine_count": 1,
+                "compiled_direct_arena_call_count": 1,
+                "compiled_direct_arena_boundary_input_bytes": 0,
+                "compiled_direct_arena_boundary_current_output_bytes": 0,
+                "compiled_direct_arena_boundary_amplitude_output_bytes": 0,
+            },
+            fallback_points=1,
+        )
+
+
+def test_compiled_direct_arena_public_counters_reject_negative_values() -> None:
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        BenchmarkProfileCounters(
+            sample_count=1,
+            compiled_direct_arena_calls_per_call=-1.0,
         )
 
 

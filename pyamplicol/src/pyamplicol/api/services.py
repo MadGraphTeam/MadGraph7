@@ -19,7 +19,7 @@ from pyamplicol.config import (
 )
 from pyamplicol.reporting import ProgressSink
 
-from .errors import DependencyError, EvaluationError, GenerationError
+from .errors import ArtifactError, DependencyError, EvaluationError, GenerationError
 from .protocols import (
     BenchmarkBackend,
     BenchmarkFactory,
@@ -209,9 +209,7 @@ def _point_selector_ids(
         elif isinstance(value, expected_type):
             identifiers.append(value.id)
         else:
-            raise TypeError(
-                f"{name} selectors must be IDs or {expected_type.__name__}"
-            )
+            raise TypeError(f"{name} selectors must be IDs or {expected_type.__name__}")
     return tuple(identifiers) or None
 
 
@@ -224,8 +222,7 @@ def _accepts_keyword_arguments(operation: object, *names: str) -> bool:
         return False
     declared = {parameter.name for parameter in parameters}
     accepts_arbitrary = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
     )
     return accepts_arbitrary or all(name in declared for name in names)
 
@@ -303,9 +300,7 @@ class Generator:
         if mode == "error" and destination.exists():
             raise FileExistsError(f"artifact already exists: {destination}")
         if mode == "append" and not destination.is_dir():
-            raise FileNotFoundError(
-                f"cannot append to missing artifact: {destination}"
-            )
+            raise FileNotFoundError(f"cannot append to missing artifact: {destination}")
         self._resolve_generation_resources()
         result = self._implementation().generate(
             process_set, destination, model=model, mode=mode
@@ -358,6 +353,38 @@ class Runtime:
             raise EvaluationError("runtime backend returned invalid process physics")
         return result
 
+    @property
+    def artifact_id(self) -> str:
+        """Identity of the artifact manifest authenticated by the native loader."""
+
+        try:
+            value = getattr(self._backend, "artifact_id", None)
+        except ArtifactError as error:
+            raise EvaluationError(
+                "runtime backend does not expose an authenticated artifact identity"
+            ) from error
+        if (
+            not isinstance(value, str)
+            or len(value) != 64
+            or value != value.lower()
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise EvaluationError(
+                "runtime backend does not expose an authenticated artifact identity"
+            )
+        return value
+
+    @property
+    def execution_mode(self) -> Literal["compiled", "eager", "recurrence"]:
+        """Native execution lane authenticated while loading the artifact."""
+
+        value = getattr(self._backend, "execution_mode", None)
+        if value not in {"compiled", "eager", "recurrence"}:
+            raise EvaluationError(
+                "runtime backend does not expose a valid execution mode"
+            )
+        return cast(Literal["compiled", "eager", "recurrence"], value)
+
     def evaluate(
         self,
         momenta: Momenta,
@@ -396,9 +423,7 @@ class Runtime:
             name="per-point color-flow",
         )
         if helicity_ids is not None and point_helicity_ids is not None:
-            raise ValueError(
-                "helicities and helicity_by_point are mutually exclusive"
-            )
+            raise ValueError("helicities and helicity_by_point are mutually exclusive")
         if color_ids is not None and point_color_ids is not None:
             raise ValueError(
                 "color_flows and color_flow_by_point are mutually exclusive"

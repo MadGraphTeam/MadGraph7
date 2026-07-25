@@ -21,6 +21,7 @@ python3 docs/result_tables.py reset --compile
 python3 docs/result_tables.py render --compile
 python3 docs/result_tables.py recover --compile
 python3 docs/result_tables.py populate --dry-run --missing-only
+python3 docs/result_tables.py final-audit --expected-source-revision "$(git rev-parse HEAD)"
 ```
 
 `reset` reconstructs all canonical N/A caches. `render` preserves validated

@@ -16,8 +16,6 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::Deref;
 #[cfg(unix)]
-use std::os::fd::AsRawFd;
-#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
@@ -239,8 +237,10 @@ impl PacbinIndex {
 
 /// An authenticated, indexed `pacbin-v1` container.
 ///
-/// Files are mapped read-only on Unix so large evaluator packs remain outside
-/// the Rust heap. Containers constructed from bytes retain owned storage.
+/// Files are copied into an anonymous read-only mapping on Unix so large
+/// evaluator packs remain outside the Rust heap without retaining a mutable
+/// relationship to the source file. Containers constructed from bytes retain
+/// owned storage.
 #[derive(Debug)]
 pub struct PacbinReader {
     bytes: PacbinStorage,
@@ -282,40 +282,97 @@ impl std::fmt::Debug for ReadOnlyMmap {
 
 #[cfg(unix)]
 impl ReadOnlyMmap {
-    fn map(file: &File, path: &Path, length: usize) -> RusticolResult<Self> {
+    fn snapshot(source: &mut File, path: &Path, length: usize) -> RusticolResult<(Self, [u8; 32])> {
         if length == 0 {
             return Err(RusticolError::artifact(format!(
                 "cannot map empty pacbin container {}",
                 path.display()
             )));
         }
-        // SAFETY: the file descriptor remains valid for the duration of mmap,
-        // the non-zero length was obtained from file metadata, and the mapping
-        // is private/read-only. The mapping itself owns no borrowed File state.
-        let pointer = unsafe {
+        // Anonymous memory is the only portable Unix backing store that never
+        // exposes a writable pathname or file descriptor. A temporary file,
+        // even after unlink, can still be mutated through a descriptor opened
+        // during its named lifetime. Copying directly into anonymous pages
+        // also ensures that the digest and parser consume one retained image.
+        let raw_pointer = unsafe {
             libc::mmap(
                 std::ptr::null_mut(),
                 length,
-                libc::PROT_READ,
-                libc::MAP_PRIVATE,
-                file.as_raw_fd(),
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANON,
+                -1,
                 0,
             )
         };
-        if pointer == libc::MAP_FAILED {
+        if raw_pointer == libc::MAP_FAILED {
             return Err(RusticolError::artifact(format!(
-                "could not memory-map pacbin container {}: {}",
+                "could not allocate the {length}-byte anonymous immutable snapshot required for \
+                 pacbin container {}: {}. Ensure the process has at least {length} bytes of \
+                 available virtual memory and RAM or swap",
                 path.display(),
                 std::io::Error::last_os_error()
             )));
         }
-        let pointer = NonNull::new(pointer.cast::<u8>()).ok_or_else(|| {
+        let Some(pointer) = NonNull::new(raw_pointer.cast::<u8>()) else {
+            // SAFETY: this pointer/length pair came from mmap above and has
+            // not otherwise been retained.
+            unsafe {
+                libc::munmap(raw_pointer, length);
+            }
+            return Err(RusticolError::artifact(format!(
+                "anonymous memory-mapping returned a null pointer for pacbin container {}",
+                path.display()
+            )));
+        };
+        let snapshot = Self { pointer, length };
+
+        source.seek(SeekFrom::Start(0)).map_err(|error| {
             RusticolError::artifact(format!(
-                "memory-mapping pacbin container {} returned a null pointer",
+                "could not rewind pacbin container {}: {error}",
                 path.display()
             ))
         })?;
-        Ok(Self { pointer, length })
+        // SAFETY: `snapshot` exclusively owns a writable anonymous mapping of
+        // exactly `length` bytes until `mprotect` below.
+        let destination =
+            unsafe { std::slice::from_raw_parts_mut(snapshot.pointer.as_ptr(), snapshot.length) };
+        for chunk in destination.chunks_mut(PACBIN_DEFAULT_CHUNK_SIZE) {
+            source.read_exact(chunk).map_err(|error| {
+                RusticolError::artifact(format!(
+                    "could not snapshot pacbin container {} into anonymous memory: {error}",
+                    path.display()
+                ))
+            })?;
+        }
+        let mut trailing = [0_u8; 1];
+        let trailing_count = source.read(&mut trailing).map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not finish snapshotting pacbin container {}: {error}",
+                path.display()
+            ))
+        })?;
+        if trailing_count != 0 {
+            return Err(RusticolError::artifact(format!(
+                "pacbin container {} grew while being snapshotted",
+                path.display()
+            )));
+        }
+
+        // Seal before authentication. No retained mutable reference exists,
+        // and mprotect removes write permission from the mapping itself. The
+        // SHA-256 digest and all parsing therefore address the same immutable
+        // bytes.
+        let protection_result =
+            unsafe { libc::mprotect(snapshot.pointer.as_ptr().cast(), length, libc::PROT_READ) };
+        if protection_result != 0 {
+            return Err(RusticolError::artifact(format!(
+                "could not make the anonymous pacbin snapshot for {} read-only: {}",
+                path.display(),
+                std::io::Error::last_os_error()
+            )));
+        }
+        let digest = Sha256::digest(&*snapshot).into();
+        Ok((snapshot, digest))
     }
 }
 
@@ -352,27 +409,35 @@ impl PacbinReader {
         Self::open_with_payload_verification(path, true)
     }
 
-    /// Open a container whose enclosing artifact payload digest was already
-    /// authenticated. Structural and index validation remain mandatory, while
-    /// duplicate per-member hashing is skipped.
-    pub(crate) fn open_trusted(path: impl AsRef<Path>) -> RusticolResult<Self> {
-        Self::open_with_payload_verification(path, false)
-    }
-
     /// Open and authenticate the exact mapped bytes against an enclosing
     /// manifest digest. Hashing and parsing share one storage object, so a
     /// path replacement cannot substitute a different container between them.
+    #[cfg(test)]
     pub(crate) fn open_with_sha256(
         path: impl AsRef<Path>,
         expected_sha256: &[u8; 32],
     ) -> RusticolResult<Self> {
         let path = path.as_ref();
-        let storage = Self::open_storage(path)?;
-        let actual: [u8; 32] = Sha256::digest(storage.as_ref()).into();
+        let file = File::open(path).map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not open pacbin container {}: {error}",
+                path.display()
+            ))
+        })?;
+        Self::open_file_with_sha256(file, path, expected_sha256)
+    }
+
+    /// Authenticate and snapshot an already-open, metadata-checked container.
+    pub(crate) fn open_file_with_sha256(
+        file: File,
+        display_path: &Path,
+        expected_sha256: &[u8; 32],
+    ) -> RusticolResult<Self> {
+        let (storage, actual) = Self::open_file_storage(file, display_path)?;
         if &actual != expected_sha256 {
             return Err(RusticolError::integrity(format!(
                 "pacbin container {} payload digest mismatch",
-                path.display()
+                display_path.display()
             )));
         }
         Self::from_storage(storage, false)
@@ -383,17 +448,17 @@ impl PacbinReader {
         verify_payloads: bool,
     ) -> RusticolResult<Self> {
         let path = path.as_ref();
-        let storage = Self::open_storage(path)?;
-        Self::from_storage(storage, verify_payloads)
-    }
-
-    fn open_storage(path: &Path) -> RusticolResult<PacbinStorage> {
         let file = File::open(path).map_err(|error| {
             RusticolError::artifact(format!(
                 "could not open pacbin container {}: {error}",
                 path.display()
             ))
         })?;
+        let (storage, _) = Self::open_file_storage(file, path)?;
+        Self::from_storage(storage, verify_payloads)
+    }
+
+    fn open_file_storage(mut file: File, path: &Path) -> RusticolResult<(PacbinStorage, [u8; 32])> {
         let expected_length = file
             .metadata()
             .map_err(|error| {
@@ -410,9 +475,11 @@ impl PacbinReader {
             ))
         })?;
         #[cfg(unix)]
-        let storage = PacbinStorage::Mapped(ReadOnlyMmap::map(&file, path, capacity)?);
+        let (storage, digest) = ReadOnlyMmap::snapshot(&mut file, path, capacity)?;
+        #[cfg(unix)]
+        let storage = PacbinStorage::Mapped(storage);
         #[cfg(not(unix))]
-        let storage = {
+        let (storage, digest) = {
             let read_limit = expected_length.checked_add(1).ok_or_else(|| {
                 RusticolError::artifact(format!(
                     "pacbin container {} exceeds the supported file size",
@@ -441,9 +508,10 @@ impl PacbinReader {
                     bytes.len()
                 )));
             }
-            PacbinStorage::Owned(bytes.into_boxed_slice())
+            let digest = Sha256::digest(&bytes).into();
+            (PacbinStorage::Owned(bytes.into_boxed_slice()), digest)
         };
-        Ok(storage)
+        Ok((storage, digest))
     }
 
     /// Own and fully authenticate already-read container bytes.

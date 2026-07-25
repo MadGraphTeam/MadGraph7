@@ -505,10 +505,8 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             RusticolError::integrity("direct recurrence row-group range overflows usize")
         })?;
         let handle = executors.require(descriptor.direct_executor_id, descriptor.role)?;
-        if PROFILE {
-            if let Some(traffic) = traffic.as_deref_mut() {
-                traffic.record_call(descriptor.row_count, point_count);
-            }
+        if PROFILE && let Some(traffic) = traffic.as_deref_mut() {
+            traffic.record_call(descriptor.row_count, point_count);
         }
         let started = PROFILE.then(Instant::now);
         let status = unsafe {

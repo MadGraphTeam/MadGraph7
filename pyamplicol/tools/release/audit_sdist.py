@@ -106,6 +106,7 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "tools/release/build_release_artifacts.py",
         "tools/release/check_dependencies.py",
         "tools/release/install_wheel.py",
+        "tools/release/prepare_selftest_fixture.py",
         "tools/release/publish_dry_run.py",
         "tools/release/run_cargo.py",
         "tools/release/test_deployment.py",

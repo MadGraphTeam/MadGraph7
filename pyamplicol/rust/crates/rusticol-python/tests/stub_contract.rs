@@ -36,6 +36,9 @@ fn stub_covers_the_exported_binding_surface() {
 
 #[test]
 fn f64_precision_and_typed_metadata_are_exercised_by_a_consumer() {
+    assert!(BINDING.contains("fn artifact_id(&self) -> &str"));
+    assert!(STUB.contains("def artifact_id(self) -> str"));
+    assert!(CONSUMER.contains("assert_type(runtime.artifact_id, str)"));
     assert!(BINDING.contains("color_flows=None, precision=16"));
     assert!(STUB.contains("precision: Literal[16] = 16"));
     assert!(BINDING.contains("only precision=16"));

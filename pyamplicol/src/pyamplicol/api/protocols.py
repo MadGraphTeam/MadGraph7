@@ -51,6 +51,15 @@ class GeneratorBackend(Protocol):
 
 @runtime_checkable
 class RuntimeBackend(Protocol):
+    """Minimum structural runtime contract.
+
+    Authenticated ``artifact_id`` and ``execution_mode`` are facade capabilities
+    rather than protocol requirements so existing injected third-party backends
+    remain structurally compatible. Built-in backends expose both, and
+    :class:`pyamplicol.Runtime` fails closed when either identity is requested
+    but unavailable.
+    """
+
     @property
     def physics(self) -> ProcessPhysics: ...
 

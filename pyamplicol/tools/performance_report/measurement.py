@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -18,10 +20,12 @@ from .runner import (
     RunnerError,
     RunnerSettings,
     SelectorContract,
+    _real_nonnegative,
     generate_artifact,
     pointwise_validation,
     profile_runtime,
     provenance_payload,
+    runtime_identity_payload,
     runtime_validation_points,
     validate_artifact_contract,
 )
@@ -38,7 +42,51 @@ def shared_validation_points(process: str) -> object:
     )
 
 
-def source_revision(repo_root: Path) -> str:
+_GIT_REVISION = re.compile(r"[0-9a-f]{40}")
+
+
+def _generated_report_path(path: str) -> bool:
+    """Whether a dirty path is a publication output, never executable source."""
+
+    normalized = path.replace("\\", "/")
+    if normalized.startswith("docs/results/.coordination/"):
+        return True
+    candidate = Path(normalized)
+    if candidate.parent.as_posix() == "docs/results" and candidate.suffix in {
+        ".json",
+        ".lock",
+    }:
+        return True
+    name = candidate.name
+    return (
+        candidate.parent.as_posix() == "docs"
+        and name.startswith("result_")
+        and name.endswith("_table.tex")
+    ) or normalized == "docs/pyAmpliCol.pdf"
+
+
+def _porcelain_paths(payload: bytes) -> tuple[str, ...]:
+    records = payload.split(b"\0")
+    paths: list[str] = []
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if not record:
+            continue
+        if len(record) < 4 or record[2:3] != b" ":
+            raise RunnerError("git returned malformed worktree status")
+        status = record[:2]
+        paths.append(os.fsdecode(record[3:]))
+        if b"R" in status or b"C" in status:
+            if index >= len(records) or not records[index]:
+                raise RunnerError("git returned malformed rename status")
+            paths.append(os.fsdecode(records[index]))
+            index += 1
+    return tuple(paths)
+
+
+def source_revision(repo_root: Path, *, require_clean: bool = False) -> str:
     completed = subprocess.run(
         ("git", "rev-parse", "HEAD"),
         cwd=repo_root,
@@ -48,7 +96,34 @@ def source_revision(repo_root: Path) -> str:
         timeout=10,
     )
     revision = completed.stdout.strip()
-    return revision if completed.returncode == 0 and revision else "unknown"
+    if completed.returncode != 0 or _GIT_REVISION.fullmatch(revision) is None:
+        if require_clean:
+            raise RunnerError("report checkout has no exact Git source revision")
+        return "unknown"
+    if not require_clean:
+        return revision
+    status = subprocess.run(
+        ("git", "status", "--porcelain=v1", "-z", "--untracked-files=all"),
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        timeout=30,
+    )
+    if status.returncode != 0:
+        raise RunnerError("could not verify the report source worktree")
+    dirty_source = tuple(
+        path
+        for path in _porcelain_paths(status.stdout)
+        if not _generated_report_path(path)
+    )
+    if dirty_source:
+        preview = ", ".join(repr(path) for path in dirty_source[:8])
+        suffix = "" if len(dirty_source) <= 8 else ", ..."
+        raise RunnerError(
+            "report source worktree contains changes outside generated report "
+            f"outputs: {preview}{suffix}"
+        )
+    return revision
 
 
 def file_digest(path: Path) -> str:
@@ -138,6 +213,85 @@ def _pointwise_tolerance(cell: CellSpec) -> float:
     return RELATIVE_TOLERANCE
 
 
+def _stable_runtime_identity(
+    identity: Mapping[str, object],
+) -> dict[str, object]:
+    """Remove only the growing loaded-module observation inventory."""
+
+    stable = dict(identity)
+    raw_policy = stable.get("loaded_module_origin_policy")
+    if isinstance(raw_policy, Mapping):
+        policy = dict(raw_policy)
+        for field in (
+            "observed_module_count",
+            "observations",
+            "observations_sha256",
+        ):
+            policy.pop(field, None)
+        stable["loaded_module_origin_policy"] = policy
+    return stable
+
+
+def _runtime_identity_digest(identity: Mapping[str, object]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            identity,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    ).hexdigest()
+
+
+def _validate_runtime_identity_postflight(
+    initial: Mapping[str, object],
+    postflight: Mapping[str, object],
+) -> None:
+    if _stable_runtime_identity(initial) != _stable_runtime_identity(postflight):
+        raise RunnerError(
+            "candidate runtime identity changed during report measurement"
+        )
+    initial_policy = initial.get("loaded_module_origin_policy")
+    postflight_policy = postflight.get("loaded_module_origin_policy")
+    if not isinstance(initial_policy, Mapping) or not isinstance(
+        postflight_policy,
+        Mapping,
+    ):
+        raise RunnerError("report runtime has no loaded-module origin evidence")
+    initial_observations = initial_policy.get("observations")
+    postflight_observations = postflight_policy.get("observations")
+    if not isinstance(initial_observations, list) or not isinstance(
+        postflight_observations,
+        list,
+    ):
+        raise RunnerError("report runtime loaded-module evidence is incomplete")
+    postflight_keys = {
+        json.dumps(
+            observation,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        for observation in postflight_observations
+    }
+    if any(
+        json.dumps(
+            observation,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        not in postflight_keys
+        for observation in initial_observations
+    ):
+        raise RunnerError(
+            "report runtime lost an authenticated loaded-module origin"
+        )
+
+
 def _load_runtime(artifact_path: Path, process_id: str) -> object:
     from pyamplicol.api import Runtime
 
@@ -176,10 +330,18 @@ def measure_pyamplicol_cell(
     )
     validate_artifact_contract(cell, generated.path)
     runtime = _load_runtime(generated.path, generated.process_id)
+    revision = source_revision(repo_root, require_clean=True)
+    runtime_identity = runtime_identity_payload(
+        cell,
+        runtime,
+        generated.path,
+        generated.process_id,
+        expected_source_revision=revision,
+    )
+    runtime_identity_sha256 = _runtime_identity_digest(runtime_identity)
     points = (
         runtime_validation_points(runtime)
-        if cell.measurement.model
-        in {ModelKey.SCALAR_CONTACT, ModelKey.SCALAR_GRAVITY}
+        if cell.measurement.model in {ModelKey.SCALAR_CONTACT, ModelKey.SCALAR_GRAVITY}
         else shared_validation_points(cell.process)
     )
     contract = (
@@ -208,10 +370,10 @@ def measure_pyamplicol_cell(
         high_precision = runtime.evaluate(points, precision=32)
         if not high_precision:
             raise RunnerError("high-precision scalar evaluation returned no values")
-        high_precision_value = float(complex(high_precision[0]).real)
+        high_precision_value = _real_nonnegative(high_precision[0])
         validation["high_precision"] = pointwise_validation(
             float(profile["matrix_element"]),
-            abs(high_precision_value),
+            high_precision_value,
         )
     baseline_value = _baseline_matrix_element(baseline)
     if baseline_value is not None:
@@ -233,6 +395,30 @@ def measure_pyamplicol_cell(
     status = str(profile["status"])
     if ResultStatus.VALIDATION_FAILED.value in statuses:
         status = ResultStatus.VALIDATION_FAILED.value
+    runtime_identity_postflight = runtime_identity_payload(
+        cell,
+        runtime,
+        generated.path,
+        generated.process_id,
+        expected_source_revision=revision,
+    )
+    _validate_runtime_identity_postflight(
+        runtime_identity,
+        runtime_identity_postflight,
+    )
+    runtime_identity_stable_sha256 = _runtime_identity_digest(
+        _stable_runtime_identity(runtime_identity)
+    )
+    runtime_identity_postflight_stable_sha256 = _runtime_identity_digest(
+        _stable_runtime_identity(runtime_identity_postflight)
+    )
+    postflight_origin_policy = runtime_identity_postflight.get(
+        "loaded_module_origin_policy"
+    )
+    if not isinstance(postflight_origin_policy, Mapping):
+        raise RunnerError(
+            "report runtime postflight has no loaded-module origin evidence"
+        )
 
     measurement = empty_measurement()
     measurement.update(profile)
@@ -250,12 +436,24 @@ def measure_pyamplicol_cell(
             "resources": None,
             "provenance": {
                 **provenance_payload(),
-                "source_revision": source_revision(repo_root),
+                "source_revision": revision,
                 "requested_config": dict(generated.requested_config),
                 "effective_config": dict(generated.effective_config),
                 "model_preparation_seconds": generated.model_preparation_seconds,
                 "model_preparation_reused": generated.model_preparation_reused,
                 "generation_timer_excludes_model_preparation": True,
+                "runtime_identity": runtime_identity,
+                "runtime_identity_sha256": runtime_identity_sha256,
+                "runtime_identity_stable_sha256": (
+                    runtime_identity_stable_sha256
+                ),
+                "runtime_identity_postflight_stable_sha256": (
+                    runtime_identity_postflight_stable_sha256
+                ),
+                "runtime_identity_postflight_loaded_module_origin_policy": dict(
+                    postflight_origin_policy
+                ),
+                "runtime_identity_postflight_match": True,
             },
             "failure": None,
         }
@@ -284,9 +482,7 @@ def failure_measurement(
             "resources": None if resources is None else dict(resources),
             "failure": {
                 "kind": (
-                    type(error).__name__
-                    if isinstance(error, BaseException)
-                    else None
+                    type(error).__name__ if isinstance(error, BaseException) else None
                 ),
                 "message": message,
             },

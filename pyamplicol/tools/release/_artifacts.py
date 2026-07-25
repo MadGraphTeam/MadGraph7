@@ -56,6 +56,10 @@ from audit_sdist import (
     REQUIRED_SDIST_MEMBERS,
     prepared_model_asset_members,
 )
+from prepare_selftest_fixture import (
+    validate_portable_artifact_capabilities,
+    validate_portable_execution_manifest,
+)
 
 MAX_WHEEL_BYTES = 95_000_000
 EXPECTED_DISTRIBUTION = "pyamplicol"
@@ -1010,6 +1014,15 @@ def _validate_selftest_fixture(
     runtime = manifest.get("runtime")
     if not isinstance(producer, dict) or not isinstance(runtime, dict):
         raise ArtifactError("wheel self-test producer/runtime metadata is invalid")
+    try:
+        validate_portable_artifact_capabilities(
+            manifest,
+            context="wheel self-test artifact manifest",
+        )
+    except RuntimeError as error:
+        raise ArtifactError(
+            f"wheel self-test Arena artifact contract is invalid: {error}"
+        ) from error
     target = producer.get("target")
     if (
         producer.get("version") != version
@@ -1116,6 +1129,7 @@ def _validate_selftest_fixture(
         raise ArtifactError("wheel self-test artifact has no payload inventory")
     declared: set[str] = set()
     direct_symjit = 0
+    execution_manifests: list[tuple[str, str]] = []
     artifact_prefix = f"{prefix}/artifact/"
     for index, payload in enumerate(payloads):
         if not isinstance(payload, dict):
@@ -1146,6 +1160,10 @@ def _validate_selftest_fixture(
             )
         if payload.get("media_type") == "application/vnd.symjit.application":
             direct_symjit += 1
+        if payload.get("role") == "evaluator-manifest" and relative.endswith(
+            "/execution.json"
+        ):
+            execution_manifests.append((relative, member))
     container = manifest.get("extensions", {}).get("evaluator_payload_container")
     if container is not None:
         direct_symjit += _validate_selftest_evaluator_container(
@@ -1168,6 +1186,21 @@ def _validate_selftest_fixture(
         )
     if direct_symjit == 0:
         raise ArtifactError("wheel self-test artifact has no direct SymJIT application")
+    if not execution_manifests:
+        raise ArtifactError(
+            "wheel self-test artifact has no compiled execution manifest"
+        )
+    for relative, member in execution_manifests:
+        execution = _json_object(entries, member)
+        try:
+            validate_portable_execution_manifest(
+                execution,
+                context=f"wheel self-test execution manifest {relative}",
+            )
+        except RuntimeError as error:
+            raise ArtifactError(
+                f"wheel self-test Arena execution contract is invalid: {error}"
+            ) from error
 
 
 @lru_cache(maxsize=1)
@@ -1626,6 +1659,10 @@ def audit_wheel(
         if candidate_info != ["pyamplicol/_build_info.json"]:
             raise ArtifactError("candidate wheel must contain one _build_info.json")
         build_info = _json_object(entries, candidate_info[0])
+        if build_info.get("selftest_fixture_bootstrap") is not False:
+            raise ArtifactError(
+                "candidate self-test fixture bootstrap wheels are not deployable"
+            )
         if (
             build_info.get("publishable") is not False
             or build_info.get("version") != version

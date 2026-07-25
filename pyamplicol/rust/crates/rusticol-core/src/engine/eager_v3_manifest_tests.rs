@@ -6,7 +6,7 @@ use crate::eager_layout::{
     EAGER_RUNTIME_CAPABILITY, EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA,
     EAGER_RUNTIME_LAYOUT_ABI, EAGER_SECTION_HEADER_SIZE, EagerSectionHeader, EagerSectionKind,
 };
-use crate::pacbin::{PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
+use crate::pacbin::{PacbinReader, PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolErrorKind};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -47,6 +47,30 @@ impl Drop for Fixture {
     }
 }
 
+fn open_fixture_runtime_container(
+    root: &Path,
+    manifest: &EagerV3ExecutionManifest,
+) -> crate::RusticolResult<PacbinReader> {
+    let path = root.join(EAGER_RUNTIME_CONTAINER_PATH);
+    #[cfg(unix)]
+    let file = {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            .open(&path)
+    };
+    #[cfg(not(unix))]
+    let file = fs::File::open(&path);
+    let file = file.map_err(|error| {
+        crate::RusticolError::security(format!(
+            "could not open eager runtime container {}: {error}",
+            path.display()
+        ))
+    })?;
+    open_eager_v3_runtime_container(file, &path, manifest)
+}
+
 #[derive(Clone)]
 struct ContainerMetadata {
     size_bytes: u64,
@@ -60,7 +84,22 @@ struct ContainerMetadata {
 fn valid_manifest_and_container_preflight() {
     let fixture = Fixture::new();
     let manifest = fixture.parse().unwrap();
-    let reader = open_eager_v3_runtime_container(&fixture.root, &manifest).unwrap();
+    let reader = open_fixture_runtime_container(&fixture.root, &manifest).unwrap();
+    assert_eq!(reader.members().len(), EXPECTED_EAGER_MEMBERS.len());
+}
+
+#[cfg(unix)]
+#[test]
+fn opened_runtime_container_does_not_reopen_a_replaced_path() {
+    let fixture = Fixture::new();
+    let manifest = fixture.parse().unwrap();
+    let path = fixture.root.join(EAGER_RUNTIME_CONTAINER_PATH);
+    let displaced = fixture.root.join("authenticated-runtime.pacbin");
+    let file = fs::File::open(&path).unwrap();
+    fs::rename(&path, &displaced).unwrap();
+    fs::write(&path, b"replacement bytes").unwrap();
+
+    let reader = open_eager_v3_runtime_container(file, &path, &manifest).unwrap();
     assert_eq!(reader.members().len(), EXPECTED_EAGER_MEMBERS.len());
 }
 
@@ -232,7 +271,7 @@ fn symlinked_runtime_container_is_rejected() {
     let target = fixture.root.join("target.pacbin");
     fs::rename(&path, &target).unwrap();
     symlink(&target, &path).unwrap();
-    let error = open_eager_v3_runtime_container(&fixture.root, &manifest).unwrap_err();
+    let error = open_fixture_runtime_container(&fixture.root, &manifest).unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::Security);
 }
 
@@ -241,7 +280,7 @@ fn payload_digest_mismatch_is_rejected_before_container_use() {
     let mut fixture = Fixture::new();
     fixture.manifest["plan"]["runtime_container"]["sha256"] = json!("0".repeat(64));
     let manifest = fixture.parse().unwrap();
-    let error = open_eager_v3_runtime_container(&fixture.root, &manifest).unwrap_err();
+    let error = open_fixture_runtime_container(&fixture.root, &manifest).unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::Integrity);
     assert!(error.to_string().contains("payload digest mismatch"));
 }
@@ -255,7 +294,7 @@ fn index_and_unpacked_metadata_must_match_container() {
         let mut fixture = Fixture::new();
         fixture.manifest["plan"]["runtime_container"][field] = value;
         let manifest = fixture.parse().unwrap();
-        let error = open_eager_v3_runtime_container(&fixture.root, &manifest).unwrap_err();
+        let error = open_fixture_runtime_container(&fixture.root, &manifest).unwrap_err();
         assert_eq!(error.kind(), RusticolErrorKind::Integrity, "{field}");
     }
 
@@ -266,7 +305,7 @@ fn index_and_unpacked_metadata_must_match_container() {
     fixture.manifest["plan"]["runtime_container"]["size_bytes"] = json!(declared + 1);
     let manifest = fixture.parse().unwrap();
     assert_eq!(
-        open_eager_v3_runtime_container(&fixture.root, &manifest)
+        open_fixture_runtime_container(&fixture.root, &manifest)
             .unwrap_err()
             .kind(),
         RusticolErrorKind::Integrity
@@ -283,7 +322,7 @@ fn incorrect_section_kind_is_rejected() {
     );
     fixture.manifest = manifest_value(&fixture.outer, &metadata);
     let manifest = fixture.parse().unwrap();
-    let error = open_eager_v3_runtime_container(&fixture.root, &manifest).unwrap_err();
+    let error = open_fixture_runtime_container(&fixture.root, &manifest).unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::Integrity);
     assert!(error.to_string().contains("section kind"));
 }
@@ -298,7 +337,7 @@ fn unexpected_member_path_is_rejected() {
     );
     fixture.manifest = manifest_value(&fixture.outer, &metadata);
     let manifest = fixture.parse().unwrap();
-    let error = open_eager_v3_runtime_container(&fixture.root, &manifest).unwrap_err();
+    let error = open_fixture_runtime_container(&fixture.root, &manifest).unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::Security);
     assert!(error.to_string().contains("unexpected"));
 }
@@ -316,7 +355,7 @@ fn incorrect_member_kind_is_rejected() {
     );
     fixture.manifest = manifest_value(&fixture.outer, &metadata);
     let manifest = fixture.parse().unwrap();
-    let error = open_eager_v3_runtime_container(&fixture.root, &manifest).unwrap_err();
+    let error = open_fixture_runtime_container(&fixture.root, &manifest).unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::Integrity);
     assert!(error.to_string().contains("has kind"));
 }

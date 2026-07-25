@@ -58,6 +58,19 @@ def _parser() -> argparse.ArgumentParser:
                 help="compile pyAmpliCol.pdf after publishing tables",
             )
 
+    final_audit = subparsers.add_parser(
+        "final-audit",
+        help="run the exact-SHA numerical, artifact, and PDF publication gate",
+    )
+    final_audit.add_argument("--expected-source-revision", required=True)
+    final_audit.add_argument("--max-n-final", type=int, default=4)
+    final_audit.add_argument("--expected-cell-count", type=int, default=742)
+    final_audit.add_argument(
+        "--structural-only",
+        action="store_true",
+        help="authenticate records and artifacts without numerical replay",
+    )
+
     worker = subparsers.add_parser("_worker", help=argparse.SUPPRESS)
     worker.add_argument("--cell-id", required=True)
     worker.add_argument("--attempt-root", type=Path, required=True)
@@ -270,6 +283,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "audit":
         print(json.dumps(service.audit(), sort_keys=True))
         return 0
+    if args.command == "final-audit":
+        from .final_audit import audit_final_report
+
+        result = audit_final_report(
+            repo_root,
+            expected_source_revision=args.expected_source_revision,
+            max_n_final=args.max_n_final,
+            expected_cell_count=args.expected_cell_count,
+            replay=not args.structural_only,
+        )
+        print(json.dumps(result, allow_nan=False, sort_keys=True))
+        return 0 if result["final_gate_complete"] is True else 2
     if args.command == "populate":
         try:
             requested = select_cells(_selection(args))
@@ -299,7 +324,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             requested,
             store=service.store,
             settings=settings,
-            expected_revision=source_revision(repo_root),
+            expected_revision=source_revision(repo_root, require_clean=True),
         )
         if args.dry_run:
             print(

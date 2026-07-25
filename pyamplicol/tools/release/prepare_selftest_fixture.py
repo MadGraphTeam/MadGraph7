@@ -20,6 +20,11 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = ROOT / "src" / "pyamplicol" / "assets" / "selftest"
 PORTABLE_TEMPLATE = "portable-64le"
 PORTABLE_OPTIMIZATION_LEVEL = 2
+PORTABLE_DIRECT_CODEGEN_OPTIMIZATION_LEVEL = 3
+COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY = "compiled-plane-arena-v1"
+COMPILED_PLANE_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v3"
+SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
+SYMJIT_F64_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
 COMPATIBLE_TARGETS = (
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -128,6 +133,510 @@ def _walk_evaluator_manifests(value: object) -> Sequence[dict[str, Any]]:
     return found
 
 
+def _walk_compiled_execution_manifests(
+    value: object,
+) -> Sequence[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        compiled = value.get("compiled")
+        if (
+            isinstance(compiled, dict)
+            and compiled.get("kind") == "generic-dag-stage-blueprint"
+        ):
+            found.append(value)
+        for child in value.values():
+            found.extend(_walk_compiled_execution_manifests(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.extend(_walk_compiled_execution_manifests(child))
+    return found
+
+
+def _portable_nonnegative_int(
+    record: Mapping[str, object],
+    name: str,
+    *,
+    context: str,
+) -> int:
+    value = record.get(name)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeError(f"{context} has an invalid {name.replace('_', ' ')}")
+    return value
+
+
+def _portable_sequence(value: object, *, context: str) -> Sequence[object]:
+    if not isinstance(value, list):
+        raise RuntimeError(f"{context} must be a list")
+    return value
+
+
+def _validate_portable_capability_owner(
+    owner: Mapping[str, object],
+    *,
+    context: str,
+) -> None:
+    capabilities = _portable_sequence(
+        owner.get("required_runtime_capabilities"),
+        context=f"{context} runtime capabilities",
+    )
+    if any(
+        not isinstance(capability, str) or not capability for capability in capabilities
+    ) or len(capabilities) != len(set(capabilities)):
+        raise RuntimeError(f"{context} runtime capabilities are invalid")
+    for capability in (
+        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+        SYMJIT_F64_RUNTIME_CAPABILITY,
+    ):
+        if capability not in capabilities:
+            raise RuntimeError(f"{context} must require {capability}")
+
+
+def validate_portable_artifact_capabilities(
+    manifest: Mapping[str, object],
+    *,
+    context: str,
+) -> int:
+    """Require Arena and SymJIT capabilities at artifact and process scope."""
+
+    runtime = manifest.get("runtime")
+    if not isinstance(runtime, Mapping):
+        raise RuntimeError(f"{context} has no artifact runtime contract")
+    _validate_portable_capability_owner(
+        runtime,
+        context=f"{context} artifact runtime",
+    )
+
+    processes = _portable_sequence(
+        manifest.get("processes"),
+        context=f"{context} processes",
+    )
+    if not processes:
+        raise RuntimeError(f"{context} has no processes")
+    for process_index, process in enumerate(processes):
+        if not isinstance(process, Mapping):
+            raise RuntimeError(f"{context} process {process_index} is invalid")
+        _validate_portable_capability_owner(
+            process,
+            context=f"{context} process {process_index}",
+        )
+    return len(processes)
+
+
+def _validate_portable_symjit_source(
+    evaluator: Mapping[str, object],
+) -> None:
+    if (
+        evaluator.get("compiler_type") != "native"
+        or evaluator.get("translation_mode") != "indirect"
+    ):
+        raise RuntimeError(
+            "portable self-test requires native indirect SymJIT evaluators"
+        )
+    if evaluator.get("optimization_level") != PORTABLE_OPTIMIZATION_LEVEL:
+        raise RuntimeError(
+            "portable self-test source must use SymJIT optimization level "
+            f"{PORTABLE_OPTIMIZATION_LEVEL}; other optimization levels "
+            "may contain source-architecture register allocation"
+        )
+
+
+def _portable_arena_source_leaves(
+    evaluator: Mapping[str, object],
+    parent_inputs: tuple[int, ...],
+    output_start: int,
+    *,
+    context: str,
+) -> tuple[list[dict[str, object]], int]:
+    kind = evaluator.get("kind")
+    if kind == "chunked-symbolica-evaluator":
+        input_len = evaluator.get("input_len")
+        if input_len is not None and input_len != len(parent_inputs):
+            raise RuntimeError(f"{context} chunk input width is inconsistent")
+        chunks = _portable_sequence(
+            evaluator.get("chunks"),
+            context=f"{context} chunks",
+        )
+        if not chunks:
+            raise RuntimeError(f"{context} has no evaluator leaves")
+        raw_maps = evaluator.get("chunk_input_indices")
+        if raw_maps is None:
+            input_maps = [parent_inputs] * len(chunks)
+        else:
+            maps = _portable_sequence(
+                raw_maps,
+                context=f"{context} chunk input maps",
+            )
+            if len(maps) != len(chunks):
+                raise RuntimeError(f"{context} chunk input maps are incomplete")
+            input_maps: list[tuple[int, ...]] = []
+            for raw_map in maps:
+                indices = _portable_sequence(
+                    raw_map,
+                    context=f"{context} chunk input map",
+                )
+                mapped: list[int] = []
+                for raw_index in indices:
+                    if (
+                        isinstance(raw_index, bool)
+                        or not isinstance(raw_index, int)
+                        or not 0 <= raw_index < len(parent_inputs)
+                    ):
+                        raise RuntimeError(
+                            f"{context} chunk input map references an absent input"
+                        )
+                    mapped.append(parent_inputs[raw_index])
+                input_maps.append(tuple(mapped))
+
+        result: list[dict[str, object]] = []
+        cursor = output_start
+        for chunk_index, (raw_chunk, mapped) in enumerate(
+            zip(chunks, input_maps, strict=True)
+        ):
+            if not isinstance(raw_chunk, Mapping):
+                raise RuntimeError(f"{context} evaluator child is invalid")
+            child, cursor = _portable_arena_source_leaves(
+                raw_chunk,
+                mapped,
+                cursor,
+                context=f"{context} chunk {chunk_index}",
+            )
+            result.extend(child)
+        return result, cursor
+
+    if kind != "symjit-application-evaluator":
+        raise RuntimeError(f"{context} is not an all-SymJIT compiled Plane-Arena stage")
+    _validate_portable_symjit_source(evaluator)
+    if (
+        evaluator.get("runtime_capability") != SYMJIT_F64_RUNTIME_CAPABILITY
+        or evaluator.get("application_abi") != SYMJIT_APPLICATION_ABI
+        or evaluator.get("element_layout") != "complex-f64"
+        or evaluator.get("batch_layout") != "row-major"
+    ):
+        raise RuntimeError(f"{context} has an incompatible SymJIT source ABI")
+    application_path = evaluator.get("application_path")
+    if not isinstance(application_path, str) or not application_path:
+        raise RuntimeError(f"{context} has no SymJIT application path")
+    input_len = _portable_nonnegative_int(evaluator, "input_len", context=context)
+    output_len = _portable_nonnegative_int(evaluator, "output_len", context=context)
+    if input_len != len(parent_inputs) or output_len == 0:
+        raise RuntimeError(f"{context} has inconsistent evaluator dimensions")
+    output_stop = output_start + output_len
+    return (
+        [
+            {
+                "application_path": application_path,
+                "source_application_abi": SYMJIT_APPLICATION_ABI,
+                "optimization_level": PORTABLE_OPTIMIZATION_LEVEL,
+                "direct_codegen_optimization_level": (
+                    PORTABLE_DIRECT_CODEGEN_OPTIMIZATION_LEVEL
+                ),
+                "input_len": input_len,
+                "output_len": output_len,
+                "input_indices": list(parent_inputs),
+                "output_start": output_start,
+                "output_stop": output_stop,
+            }
+        ],
+        output_stop,
+    )
+
+
+def _portable_stage_input_bindings(
+    stage: Mapping[str, object],
+    parameter_count: int,
+    *,
+    context: str,
+) -> list[dict[str, object]]:
+    inputs = _portable_sequence(
+        stage.get("input_components"),
+        context=f"{context} input components",
+    )
+    expected: list[dict[str, object] | None] = [None] * parameter_count
+    for raw_input in inputs:
+        if not isinstance(raw_input, Mapping):
+            raise RuntimeError(f"{context} input component is invalid")
+        parameter_index = _portable_nonnegative_int(
+            raw_input,
+            "parameter_index",
+            context=f"{context} input component",
+        )
+        if (
+            parameter_index >= parameter_count
+            or expected[parameter_index] is not None
+            or raw_input.get("kind") not in {"value", "momentum", "model_parameter"}
+            or not isinstance(raw_input.get("real_valued"), bool)
+        ):
+            raise RuntimeError(f"{context} input components are inconsistent")
+        binding = {
+            "parameter_index": parameter_index,
+            "kind": raw_input["kind"],
+            "source_id": _portable_nonnegative_int(
+                raw_input,
+                "source_id",
+                context=f"{context} input component",
+            ),
+            "component": _portable_nonnegative_int(
+                raw_input,
+                "component",
+                context=f"{context} input component",
+            ),
+            "global_component": _portable_nonnegative_int(
+                raw_input,
+                "global_component",
+                context=f"{context} input component",
+            ),
+            "real_valued": raw_input["real_valued"],
+        }
+        expected[parameter_index] = binding
+    if any(binding is None for binding in expected):
+        raise RuntimeError(f"{context} input components are incomplete")
+    return [binding for binding in expected if binding is not None]
+
+
+def _portable_stage_output_bindings(
+    stage: Mapping[str, object],
+    output_length: int,
+    *,
+    arena: str,
+    context: str,
+) -> list[dict[str, object]]:
+    slots = _portable_sequence(
+        stage.get("output_slots"),
+        context=f"{context} output slots",
+    )
+    expected: list[dict[str, object] | None] = [None] * output_length
+    seen_components: set[int] = set()
+    for raw_slot in slots:
+        if not isinstance(raw_slot, Mapping):
+            raise RuntimeError(f"{context} output slot is invalid")
+        output_start = _portable_nonnegative_int(
+            raw_slot,
+            "output_start",
+            context=f"{context} output slot",
+        )
+        output_stop = _portable_nonnegative_int(
+            raw_slot,
+            "output_stop",
+            context=f"{context} output slot",
+        )
+        component_start = _portable_nonnegative_int(
+            raw_slot,
+            "component_start",
+            context=f"{context} output slot",
+        )
+        component_stop = _portable_nonnegative_int(
+            raw_slot,
+            "component_stop",
+            context=f"{context} output slot",
+        )
+        if (
+            output_stop < output_start
+            or output_stop > output_length
+            or component_stop - component_start != output_stop - output_start
+        ):
+            raise RuntimeError(f"{context} output slot range is inconsistent")
+        for offset in range(output_stop - output_start):
+            output_index = output_start + offset
+            component = component_start + offset
+            if expected[output_index] is not None or component in seen_components:
+                raise RuntimeError(f"{context} output slots alias")
+            expected[output_index] = {
+                "output_index": output_index,
+                "arena": arena,
+                "component": component,
+            }
+            seen_components.add(component)
+    if any(binding is None for binding in expected):
+        raise RuntimeError(f"{context} output slots are incomplete")
+    return [binding for binding in expected if binding is not None]
+
+
+def _validate_portable_arena_stage(
+    stage: Mapping[str, object],
+    *,
+    arena: str,
+    context: str,
+) -> None:
+    if stage.get("parameter_layout") != "stage-local-value-momentum":
+        raise RuntimeError(f"{context} does not use stage-local parameters")
+    parameter_count = _portable_nonnegative_int(
+        stage,
+        "parameter_count",
+        context=context,
+    )
+    output_length = _portable_nonnegative_int(
+        stage,
+        "output_length",
+        context=context,
+    )
+    if output_length == 0:
+        raise RuntimeError(f"{context} has no outputs")
+    evaluator = stage.get("evaluator")
+    if not isinstance(evaluator, Mapping):
+        raise RuntimeError(f"{context} has no compiled evaluator")
+    descriptor = stage.get("compiled_plane_arena")
+    if not isinstance(descriptor, Mapping):
+        raise RuntimeError(
+            f"{context} requires a complete compiled_plane_arena descriptor"
+        )
+
+    contract = {
+        "schema_version": 1,
+        "kind": "compiled-plane-arena-stage",
+        "application_abi": COMPILED_PLANE_DIRECT_APPLICATION_ABI,
+        "source_application_abi": SYMJIT_APPLICATION_ABI,
+        "element_layout": "split-complex-component-major",
+        "output_operation": "overwrite",
+        "output_factor": "identity",
+        "input_output_aliasing": "forbidden",
+        "output_output_aliasing": "forbidden",
+    }
+    if any(descriptor.get(name) != value for name, value in contract.items()):
+        raise RuntimeError(f"{context} compiled_plane_arena contract is incompatible")
+
+    expected_inputs = _portable_stage_input_bindings(
+        stage,
+        parameter_count,
+        context=context,
+    )
+    input_bindings = _portable_sequence(
+        descriptor.get("input_bindings"),
+        context=f"{context} compiled_plane_arena input bindings",
+    )
+    if list(input_bindings) != expected_inputs:
+        raise RuntimeError(
+            f"{context} compiled_plane_arena input bindings are incomplete"
+        )
+
+    expected_outputs = _portable_stage_output_bindings(
+        stage,
+        output_length,
+        arena=arena,
+        context=context,
+    )
+    output_bindings = _portable_sequence(
+        descriptor.get("output_bindings"),
+        context=f"{context} compiled_plane_arena output bindings",
+    )
+    if list(output_bindings) != expected_outputs:
+        raise RuntimeError(
+            f"{context} compiled_plane_arena output bindings are incomplete"
+        )
+
+    expected_leaves, output_stop = _portable_arena_source_leaves(
+        evaluator,
+        tuple(range(parameter_count)),
+        0,
+        context=f"{context} evaluator",
+    )
+    if output_stop != output_length:
+        raise RuntimeError(f"{context} evaluator leaves do not cover its outputs")
+    leaves = _portable_sequence(
+        descriptor.get("leaves"),
+        context=f"{context} compiled_plane_arena leaves",
+    )
+    if len(leaves) != len(expected_leaves):
+        raise RuntimeError(f"{context} compiled_plane_arena leaves are incomplete")
+    for leaf_index, (raw_leaf, expected_leaf) in enumerate(
+        zip(leaves, expected_leaves, strict=True)
+    ):
+        if not isinstance(raw_leaf, Mapping):
+            raise RuntimeError(
+                f"{context} compiled_plane_arena leaf {leaf_index} is invalid"
+            )
+        if (
+            raw_leaf.get("direct_codegen_optimization_level")
+            != PORTABLE_DIRECT_CODEGEN_OPTIMIZATION_LEVEL
+        ):
+            raise RuntimeError(
+                f"{context} compiled_plane_arena direct codegen must use "
+                f"optimization level {PORTABLE_DIRECT_CODEGEN_OPTIMIZATION_LEVEL}"
+            )
+        if any(raw_leaf.get(name) != value for name, value in expected_leaf.items()):
+            raise RuntimeError(
+                f"{context} compiled_plane_arena leaf {leaf_index} "
+                "does not bind its SymJIT source"
+            )
+
+
+def _validate_portable_compiled_execution(
+    execution: Mapping[str, object],
+    *,
+    context: str,
+) -> None:
+    _validate_portable_capability_owner(execution, context=context)
+    compiled = execution.get("compiled")
+    if not isinstance(compiled, Mapping):
+        raise RuntimeError(f"{context} has no compiled DAG")
+    stage_set = compiled.get("stage_evaluators")
+    if not isinstance(stage_set, Mapping):
+        raise RuntimeError(f"{context} has no compiled DAG stage evaluators")
+    if stage_set.get("kind") != "generic-dag-stage-evaluator-artifacts":
+        raise RuntimeError(f"{context} stage evaluator contract is invalid")
+    _validate_portable_capability_owner(
+        stage_set,
+        context=f"{context} stage evaluators",
+    )
+    stages = _portable_sequence(
+        stage_set.get("stages"),
+        context=f"{context} stages",
+    )
+    stage_count = _portable_nonnegative_int(
+        stage_set,
+        "stage_count",
+        context=f"{context} stage evaluator set",
+    )
+    if stage_count != len(stages) + 1:
+        raise RuntimeError(f"{context} stage evaluator set is incomplete")
+    for stage_index, stage in enumerate(stages):
+        if not isinstance(stage, Mapping):
+            raise RuntimeError(f"{context} stage {stage_index} is invalid")
+        _validate_portable_arena_stage(
+            stage,
+            arena="current",
+            context=f"{context} stage {stage_index}",
+        )
+    amplitude_stage = stage_set.get("amplitude_stage")
+    if not isinstance(amplitude_stage, Mapping):
+        raise RuntimeError(f"{context} amplitude stage is absent")
+    _validate_portable_arena_stage(
+        amplitude_stage,
+        arena="amplitude",
+        context=f"{context} amplitude stage",
+    )
+
+
+def validate_portable_execution_manifest(
+    execution: Mapping[str, object],
+    *,
+    context: str,
+) -> int:
+    """Validate one root compiled execution and every nested selector execution.
+
+    This is the shared release-facing contract used while preparing, staging,
+    and auditing the installed self-test fixture. It deliberately validates the
+    portable O2 SymJIT source together with the complete O3 Direct-Arena
+    descriptor rather than treating either representation as sufficient alone.
+    """
+
+    evaluator_count = 0
+    for evaluator in _walk_evaluator_manifests(execution):
+        evaluator_count += 1
+        _validate_portable_symjit_source(evaluator)
+    if evaluator_count == 0:
+        raise RuntimeError(f"{context} has no SymJIT evaluator manifests")
+
+    compiled_executions = _walk_compiled_execution_manifests(execution)
+    if not compiled_executions or compiled_executions[0] is not execution:
+        raise RuntimeError(f"{context} has no root compiled DAG")
+    for execution_index, compiled_execution in enumerate(compiled_executions):
+        _validate_portable_compiled_execution(
+            compiled_execution,
+            context=f"{context} compiled execution {execution_index}",
+        )
+    return evaluator_count
+
+
 def _validate_portable_evaluator_configuration(
     artifact: Path,
     manifest: Mapping[str, object],
@@ -149,21 +658,12 @@ def _validate_portable_evaluator_configuration(
         if not isinstance(relative, str):
             raise RuntimeError("self-test evaluator manifest has no path")
         execution = json.loads((artifact / relative).read_text(encoding="utf-8"))
-        for evaluator in _walk_evaluator_manifests(execution):
-            evaluator_count += 1
-            if (
-                evaluator.get("compiler_type") != "native"
-                or evaluator.get("translation_mode") != "indirect"
-            ):
-                raise RuntimeError(
-                    "portable self-test requires native indirect SymJIT evaluators"
-                )
-            if evaluator.get("optimization_level") != PORTABLE_OPTIMIZATION_LEVEL:
-                raise RuntimeError(
-                    "portable self-test source must use SymJIT optimization level "
-                    f"{PORTABLE_OPTIMIZATION_LEVEL}; other optimization levels "
-                    "may contain source-architecture register allocation"
-                )
+        if not isinstance(execution, dict):
+            raise RuntimeError("self-test evaluator manifest must be an object")
+        evaluator_count += validate_portable_execution_manifest(
+            execution,
+            context=f"portable self-test evaluator manifest {relative}",
+        )
     if evaluator_count == 0:
         raise RuntimeError("self-test artifact has no SymJIT evaluator manifests")
     return PORTABLE_OPTIMIZATION_LEVEL
@@ -275,9 +775,7 @@ def _strip_packed_symbolica_fallbacks(
         index = write_pacbin_atomic(container_path, retained)
 
     extension["member_count"] = len(index.members)
-    extension["unpacked_size_bytes"] = sum(
-        member.length for member in index.members
-    )
+    extension["unpacked_size_bytes"] = sum(member.length for member in index.members)
     extension["index_sha256"] = index.index_sha256
 
     payloads = manifest.get("payloads")
@@ -452,6 +950,10 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
             raise RuntimeError(
                 "self-test artifact target differs from the active runtime"
             )
+        validate_portable_artifact_capabilities(
+            manifest,
+            context="portable self-test artifact",
+        )
         portable_optimization_level = _validate_portable_evaluator_configuration(
             artifact,
             manifest,

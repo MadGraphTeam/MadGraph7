@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
 
 import pytest
 
 from tools.performance_report.cache import (
     build_reset_caches,
+    digest_json,
     empty_measurement,
     validate_cache,
     validate_measurement,
@@ -86,15 +88,8 @@ def test_lc_cells_have_two_runtime_workloads_and_contracted_cells_have_one() -> 
 
 
 def test_n_le_four_new_matrix_smoke_has_384_logical_process_cells() -> None:
-    cells = [
-        cell
-        for cell in REPORT_CATALOG.matrix_cells()
-        if cell.n_final <= 4
-    ]
-    logical = {
-        (cell.dataset_id, cell.process_key, cell.n_final)
-        for cell in cells
-    }
+    cells = [cell for cell in REPORT_CATALOG.matrix_cells() if cell.n_final <= 4]
+    logical = {(cell.dataset_id, cell.process_key, cell.n_final) for cell in cells}
 
     assert len(logical) == 384
     assert len(cells) == 512
@@ -106,13 +101,16 @@ def test_z_catalog_adds_recurrence_and_corrects_eager_label() -> None:
     assert variants["eager_jit_o2"].label == "eager-DAG JIT O2"
     assert variants["recurrence_jit_o2"].label == "recurrence JIT O2"
     assert variants["recurrence_jit_o2"].jit_optimization_level == 2
-    assert len(
-        [
-            cell
-            for cell in REPORT_CATALOG.z_cells()
-            if cell.variant == "recurrence_jit_o2" and cell.n_final <= 4
-        ]
-    ) == 16
+    assert (
+        len(
+            [
+                cell
+                for cell in REPORT_CATALOG.z_cells()
+                if cell.variant == "recurrence_jit_o2" and cell.n_final <= 4
+            ]
+        )
+        == 16
+    )
 
 
 def test_scalar_ladders_are_canonical_resettable_cells() -> None:
@@ -171,8 +169,7 @@ def test_equivalent_cells_require_exact_generation_semantics() -> None:
 
     assert equivalents
     assert all(
-        candidate.cell_id != selected_recurrence.cell_id
-        for candidate in equivalents
+        candidate.cell_id != selected_recurrence.cell_id for candidate in equivalents
     )
     assert all(
         (
@@ -191,10 +188,9 @@ def test_equivalent_cells_require_exact_generation_semantics() -> None:
         )
         for candidate in equivalents
     )
-    assert {
-        (candidate.dataset_id, candidate.variant)
-        for candidate in equivalents
-    } == {("z_builtin_sm", "recurrence_jit_o2")}
+    assert {(candidate.dataset_id, candidate.variant) for candidate in equivalents} == {
+        ("z_builtin_sm", "recurrence_jit_o2")
+    }
 
     same_process_cells = [
         cell
@@ -227,14 +223,12 @@ def test_equivalent_cells_cover_matching_compiled_backend_but_never_amplicol() -
     )
     equivalents = REPORT_CATALOG.equivalent_cells(compiled)
 
-    assert {
-        (candidate.dataset_id, candidate.variant)
-        for candidate in equivalents
-    } == {("z_builtin_sm", "jit_o3")}
+    assert {(candidate.dataset_id, candidate.variant) for candidate in equivalents} == {
+        ("z_builtin_sm", "jit_o3")
+    }
     assert all(candidate.measurement.backend == "jit" for candidate in equivalents)
     assert all(
-        candidate.measurement.jit_optimization_level == 3
-        for candidate in equivalents
+        candidate.measurement.jit_optimization_level == 3 for candidate in equivalents
     )
 
     reference = next(
@@ -253,15 +247,12 @@ def test_reset_caches_are_canonical_and_cover_every_measurement_cell() -> None:
     for cell in REPORT_CATALOG.measurement_cells():
         cells_by_dataset.setdefault(cell.dataset_id, []).append(cell)
 
-    assert set(caches) == {
-        f"{dataset_id}.json" for dataset_id in cells_by_dataset
-    }
+    assert set(caches) == {f"{dataset_id}.json" for dataset_id in cells_by_dataset}
     for name, payload in caches.items():
         dataset_id = name.removesuffix(".json")
         validate_cache(payload, expected_cells=cells_by_dataset[dataset_id])
         assert all(
-            entry["measurement"] == empty_measurement()
-            for entry in payload["entries"]
+            entry["measurement"] == empty_measurement() for entry in payload["entries"]
         )
 
 
@@ -291,4 +282,130 @@ def test_successful_measurement_requires_successful_validation() -> None:
     )
 
     with pytest.raises(ValueError, match="successful validation"):
+        validate_measurement(measurement)
+
+
+def _candidate_measurement_with_runtime_postflight() -> dict[str, object]:
+    observations = [
+        {
+            "module": "pyamplicol",
+            "kind": "package-member",
+            "root_index": 0,
+            "path": "__init__.py",
+            "size": 10,
+            "sha256": "1" * 64,
+        }
+    ]
+    policy = {
+        "kind": "pyamplicol-loaded-module-origin-policy-v1",
+        "all_loaded_origins_authenticated": True,
+        "native_image_origin_bound": True,
+        "loaded_bytecode_eligible": False,
+        "observed_module_count": len(observations),
+        "observations": observations,
+        "observations_sha256": digest_json(observations),
+    }
+    identity = {
+        "kind": "pyamplicol-report-runtime-identity-v1",
+        "loaded_module_origin_policy": policy,
+    }
+    stable_identity = deepcopy(identity)
+    stable_policy = stable_identity["loaded_module_origin_policy"]
+    assert isinstance(stable_policy, dict)
+    for field in (
+        "observed_module_count",
+        "observations",
+        "observations_sha256",
+    ):
+        stable_policy.pop(field)
+    stable_digest = digest_json(stable_identity)
+    measurement = empty_measurement()
+    measurement.update(
+        {
+            "status": ResultStatus.OK.value,
+            "generation_seconds": 1.0,
+            "wall_seconds_per_point": 1.0e-6,
+            "execution_seconds_per_point": 8.0e-7,
+            "matrix_element": 1.0,
+            "sample_count": 5,
+            "artifact": {},
+            "validation": {"status": ResultStatus.OK.value},
+            "resources": {},
+            "provenance": {
+                "runtime_identity": identity,
+                "runtime_identity_sha256": digest_json(identity),
+                "runtime_identity_stable_sha256": stable_digest,
+                "runtime_identity_postflight_stable_sha256": stable_digest,
+                "runtime_identity_postflight_loaded_module_origin_policy": deepcopy(
+                    policy
+                ),
+                "runtime_identity_postflight_match": True,
+            },
+        }
+    )
+    return measurement
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        (
+            "runtime_identity",
+            None,
+            "requires runtime_identity",
+        ),
+        (
+            "runtime_identity_stable_sha256",
+            "0" * 64,
+            "runtime_identity_stable_sha256",
+        ),
+        (
+            "runtime_identity_postflight_stable_sha256",
+            "0" * 64,
+            "postflight stable SHA-256",
+        ),
+        (
+            "runtime_identity_postflight_loaded_module_origin_policy",
+            {},
+            "loaded-origin evidence",
+        ),
+        (
+            "runtime_identity_postflight_match",
+            False,
+            "runtime_identity_postflight_match",
+        ),
+    ],
+)
+def test_successful_candidate_measurement_requires_runtime_postflight(
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    measurement = _candidate_measurement_with_runtime_postflight()
+    validate_measurement(measurement)
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    provenance[field] = value
+    with pytest.raises(ValueError, match=match):
+        validate_measurement(measurement)
+
+
+def test_candidate_runtime_postflight_cannot_lose_initial_origin() -> None:
+    measurement = _candidate_measurement_with_runtime_postflight()
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    postflight = provenance["runtime_identity_postflight_loaded_module_origin_policy"]
+    assert isinstance(postflight, dict)
+    observations = postflight["observations"]
+    assert isinstance(observations, list)
+    observations[0] = {
+        "module": "pyamplicol.replaced",
+        "kind": "package-member",
+        "root_index": 0,
+        "path": "replaced.py",
+        "size": 10,
+        "sha256": "2" * 64,
+    }
+    postflight["observations_sha256"] = digest_json(observations)
+    with pytest.raises(ValueError, match="lost a loaded-module origin"):
         validate_measurement(measurement)

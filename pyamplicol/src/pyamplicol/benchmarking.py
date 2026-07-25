@@ -49,6 +49,13 @@ _LC_ALL_FLOW_PROFILE_RECOMMENDATION = (
     "--lc-flow-layout all-flow-union for the optimized "
     "all-flows/single-helicity workload"
 )
+_COMPILED_DIRECT_ARENA_COUNTER_KEYS = (
+    "compiled_direct_arena_engine_count",
+    "compiled_direct_arena_call_count",
+    "compiled_direct_arena_boundary_input_bytes",
+    "compiled_direct_arena_boundary_current_output_bytes",
+    "compiled_direct_arena_boundary_amplitude_output_bytes",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +72,7 @@ class _Calibration:
 @dataclass(frozen=True, slots=True)
 class _NativeProfileSample:
     execution_mode: str | None
+    compiled_direct_arena_active: bool
     wall_time: float | None
     native_input_pack_time: float | None
     native_input_crossing_time: float | None
@@ -146,6 +154,11 @@ class _NativeProfileCounterSample:
     final_output_copy_values_per_point: float | None
     native_input_container_allocations_per_call: float | None
     evaluator_backend_calls_per_call: float | None
+    compiled_direct_arena_engines_per_call: float | None
+    compiled_direct_arena_calls_per_call: float | None
+    compiled_direct_arena_boundary_input_bytes_per_call: float | None
+    compiled_direct_arena_boundary_current_output_bytes_per_call: float | None
+    compiled_direct_arena_boundary_amplitude_output_bytes_per_call: float | None
     recurrence_momentum_scalar_values_per_point: float | None
     recurrence_schedule_executions_per_call: float | None
     recurrence_replay_schedule_executions_per_call: float | None
@@ -398,6 +411,13 @@ class BenchmarkBackend:
                             evaluator_samples.append(
                                 native_sample.recurrence_schedule_time
                             )
+                        elif native_sample.compiled_direct_arena_active:
+                            if native_sample.orchestration_time is None:
+                                raise EvaluationError(
+                                    "native compiled Direct-Arena orchestration "
+                                    "timing is unavailable"
+                                )
+                            evaluator_samples.append(native_sample.orchestration_time)
                         else:
                             evaluator_samples.append(
                                 native_sample.stage_evaluator_call_time
@@ -490,6 +510,18 @@ class BenchmarkBackend:
                 ),
             }
         else:
+            assert native_profile_samples is not None
+            compiled_direct_arena_states = {
+                sample.compiled_direct_arena_active for sample in native_profile_samples
+            }
+            if len(compiled_direct_arena_states) > 1:
+                raise EvaluationError(
+                    "native compiled Direct-Arena activity changed between samples"
+                )
+            compiled_direct_arena_active = next(
+                iter(compiled_direct_arena_states),
+                False,
+            )
             (
                 evaluator_time_per_point,
                 evaluator_deviation,
@@ -501,13 +533,15 @@ class BenchmarkBackend:
                 evaluator_error,
                 evaluator_relative,
             )
-            assert native_profile_samples is not None
             timing_breakdown = _timing_breakdown(native_profile_samples)
-            evaluator_time_source = (
-                "runtime_profile_core_recurrence_schedule_time"
-                if timing_breakdown.execution_mode == "recurrence"
-                else "runtime_profile_core_evaluator_call_time"
-            )
+            if timing_breakdown.execution_mode == "recurrence":
+                evaluator_time_source = "runtime_profile_core_recurrence_schedule_time"
+            elif compiled_direct_arena_active:
+                evaluator_time_source = (
+                    "runtime_profile_core_compiled_direct_arena_orchestration_time"
+                )
+            else:
+                evaluator_time_source = "runtime_profile_core_evaluator_call_time"
             native_profile_repetitions = (
                 calibration.repetitions_per_sample
                 if repeated_profiler is not None
@@ -523,6 +557,7 @@ class BenchmarkBackend:
                 "wall_time_source": wall_time_source,
                 "wall_time_sample_pass": wall_sample_pass,
                 "evaluator_time_source": evaluator_time_source,
+                "compiled_direct_arena_active": compiled_direct_arena_active,
                 "evaluator_time_sample_pass": (
                     "runtime.profile_repeated"
                     if repeated_profiler is not None
@@ -960,6 +995,24 @@ def _native_profile_counters(
     points: int,
     repetitions: int,
 ) -> _NativeProfileCounterSample | None:
+    arena_counter_presence = tuple(
+        key in profile for key in _COMPILED_DIRECT_ARENA_COUNTER_KEYS
+    )
+    if any(arena_counter_presence) and not all(arena_counter_presence):
+        missing = tuple(
+            key
+            for key, present in zip(
+                _COMPILED_DIRECT_ARENA_COUNTER_KEYS,
+                arena_counter_presence,
+                strict=True,
+            )
+            if not present
+        )
+        raise EvaluationError(
+            "native compiled Direct-Arena profile counters must be jointly "
+            f"available; missing {missing!r}"
+        )
+
     def per_point(key: str) -> float | None:
         return _profile_count_or_none(profile, key, denominator=points)
 
@@ -1016,6 +1069,21 @@ def _native_profile_counters(
             "native_input_container_allocation_count"
         ),
         evaluator_backend_calls_per_call=per_call("evaluator_backend_call_count"),
+        compiled_direct_arena_engines_per_call=per_call(
+            "compiled_direct_arena_engine_count"
+        ),
+        compiled_direct_arena_calls_per_call=per_call(
+            "compiled_direct_arena_call_count"
+        ),
+        compiled_direct_arena_boundary_input_bytes_per_call=per_call(
+            "compiled_direct_arena_boundary_input_bytes"
+        ),
+        compiled_direct_arena_boundary_current_output_bytes_per_call=per_call(
+            "compiled_direct_arena_boundary_current_output_bytes"
+        ),
+        compiled_direct_arena_boundary_amplitude_output_bytes_per_call=per_call(
+            "compiled_direct_arena_boundary_amplitude_output_bytes"
+        ),
         recurrence_momentum_scalar_values_per_point=per_point(
             "recurrence_momentum_scalar_value_count"
         ),
@@ -1057,6 +1125,42 @@ def _native_profile_counters(
     )
     if not any(getattr(counters, field.name) is not None for field in fields(counters)):
         return None
+    arena_engines = counters.compiled_direct_arena_engines_per_call
+    if arena_engines is not None:
+        arena_calls = counters.compiled_direct_arena_calls_per_call
+        assert arena_calls is not None
+        boundary_counters = (
+            (
+                "compiled_direct_arena_boundary_input_bytes",
+                counters.compiled_direct_arena_boundary_input_bytes_per_call,
+            ),
+            (
+                "compiled_direct_arena_boundary_current_output_bytes",
+                counters.compiled_direct_arena_boundary_current_output_bytes_per_call,
+            ),
+            (
+                "compiled_direct_arena_boundary_amplitude_output_bytes",
+                counters.compiled_direct_arena_boundary_amplitude_output_bytes_per_call,
+            ),
+        )
+        for name, value in boundary_counters:
+            assert value is not None
+            if value != 0.0:
+                raise EvaluationError(
+                    "native compiled Direct-Arena profile observed forbidden "
+                    f"boundary traffic: {name}={value:g} bytes/runtime call"
+                )
+        if (arena_engines > 0.0) != (arena_calls > 0.0):
+            raise EvaluationError(
+                "native compiled Direct-Arena engine and call counters disagree"
+            )
+        if arena_engines > 0.0:
+            evaluator_calls = counters.evaluator_backend_calls_per_call
+            if evaluator_calls is None or evaluator_calls != arena_calls:
+                raise EvaluationError(
+                    "native compiled Direct-Arena calls do not cover every "
+                    "evaluator backend call"
+                )
     return counters
 
 
@@ -1185,6 +1289,15 @@ def _native_profile_sample(
         profile,
         stage_vectors_present_but_empty=stage_vectors_present_but_empty,
     )
+    compiled_direct_arena_active = bool(
+        counters is not None
+        and counters.compiled_direct_arena_engines_per_call is not None
+        and counters.compiled_direct_arena_engines_per_call > 0.0
+    )
+    if compiled_direct_arena_active and execution_mode != "compiled":
+        raise EvaluationError(
+            "native compiled Direct-Arena counters require compiled execution mode"
+        )
 
     stage_input_pack_total = (
         sum(stage_input_pack)
@@ -1245,6 +1358,10 @@ def _native_profile_sample(
     native_input_pack_time = normalized("native_input_pack_time_s")
     native_input_crossing_time = normalized("native_input_crossing_time_s")
     orchestration_time = normalized("orchestration_time_s")
+    if compiled_direct_arena_active and orchestration_time is None:
+        raise EvaluationError(
+            "native compiled Direct-Arena orchestration timing is unavailable"
+        )
     state_prepare_time = normalized("state_prepare_time_s")
     state_clear_time = normalized("state_clear_time_s")
     source_fill_time = normalized("source_fill_time_s")
@@ -1444,6 +1561,7 @@ def _native_profile_sample(
 
     return _NativeProfileSample(
         execution_mode=execution_mode,
+        compiled_direct_arena_active=compiled_direct_arena_active,
         wall_time=wall_time,
         native_input_pack_time=native_input_pack_time,
         native_input_crossing_time=native_input_crossing_time,
@@ -1506,9 +1624,7 @@ def _native_profile_sample(
         recurrence_contribution_kernel_time=recurrence_contribution_kernel_time,
         recurrence_finalization_time=recurrence_finalization_time,
         recurrence_closure_time=recurrence_closure_time,
-        recurrence_replay_output_mapping_time=(
-            recurrence_replay_output_mapping_time
-        ),
+        recurrence_replay_output_mapping_time=(recurrence_replay_output_mapping_time),
         counters=counters,
     )
 
@@ -1619,6 +1735,21 @@ def _profile_counter_summary(
             "native_input_container_allocations_per_call"
         ),
         evaluator_backend_calls_per_call=mean("evaluator_backend_calls_per_call"),
+        compiled_direct_arena_engines_per_call=mean(
+            "compiled_direct_arena_engines_per_call"
+        ),
+        compiled_direct_arena_calls_per_call=mean(
+            "compiled_direct_arena_calls_per_call"
+        ),
+        compiled_direct_arena_boundary_input_bytes_per_call=mean(
+            "compiled_direct_arena_boundary_input_bytes_per_call"
+        ),
+        compiled_direct_arena_boundary_current_output_bytes_per_call=mean(
+            "compiled_direct_arena_boundary_current_output_bytes_per_call"
+        ),
+        compiled_direct_arena_boundary_amplitude_output_bytes_per_call=mean(
+            "compiled_direct_arena_boundary_amplitude_output_bytes_per_call"
+        ),
         recurrence_momentum_scalar_values_per_point=mean(
             "recurrence_momentum_scalar_values_per_point"
         ),
@@ -1774,9 +1905,7 @@ def _timing_breakdown(
             [sample.stage_leaf_input_pack_time for sample in samples]
         ),
         stage_evaluator_call_time=(
-            None
-            if execution_mode in {"eager", "recurrence"}
-            else evaluator_call_time
+            None if execution_mode in {"eager", "recurrence"} else evaluator_call_time
         ),
         stage_backend_call_time=_component_timing(
             [sample.stage_backend_call_time for sample in samples]

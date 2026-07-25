@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -121,6 +122,7 @@ _PORTABLE_SELFTEST_TARGETS = frozenset(
         "x86_64-unknown-linux-gnu",
     }
 )
+_SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT = "build-current-candidate-site-v1"
 _CANDIDATE_SOURCES = {
     "gammaloop",
     "symbolica",
@@ -176,6 +178,8 @@ _INJECTION_ENVIRONMENT_NAMES = {
     "PYAMPLICOL_BUILD_OVERLAY",
     "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256",
     "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP",
+    "PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP",
+    "PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT",
     "PYAMPLICOL_SDK_STAGING",
     "PYTHONHOME",
     "PYTHONPATH",
@@ -208,6 +212,38 @@ def _prepared_model_bootstrap(mode: str) -> bool:
     return value == "1"
 
 
+def _selftest_fixture_bootstrap(
+    mode: str,
+    *,
+    explicit_context: bool = False,
+) -> bool:
+    """Authorize the one-time candidate used to regenerate the self-test fixture."""
+
+    value = os.environ.get("PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP", "0")
+    context = os.environ.get("PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT")
+    if value not in {"0", "1"}:
+        raise RuntimeError(
+            "PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP must be either '0' or '1'"
+        )
+    if value == "0":
+        if context is not None:
+            raise RuntimeError(
+                "self-test fixture bootstrap context requires the bootstrap flag"
+            )
+        return False
+    if mode != "candidate":
+        raise RuntimeError(
+            "self-test fixture bootstrap is restricted to non-publishable "
+            "candidate builds"
+        )
+    if not explicit_context or context != _SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT:
+        raise RuntimeError(
+            "self-test fixture bootstrap is restricted to the explicit "
+            "build-current-candidate-site context"
+        )
+    return True
+
+
 def _strip_prepared_model_payloads(overlay: Path) -> None:
     """Remove stale bundles from a candidate wheel used only to create replacements."""
 
@@ -226,6 +262,54 @@ def _strip_prepared_model_payloads(overlay: Path) -> None:
                 f"prepared-model bootstrap found an unexpected asset: {path.name}"
             )
         path.unlink()
+
+
+def _mark_selftest_fixture_bootstrap(overlay: Path) -> None:
+    """Mark an exact candidate as regeneration-only and remove its stale fixture."""
+
+    path = overlay / "src" / "pyamplicol" / "_build_info.json"
+    try:
+        build_info = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            "self-test fixture bootstrap has no candidate build marker"
+        ) from error
+    if (
+        not isinstance(build_info, dict)
+        or build_info.get("schema_version") != 1
+        or build_info.get("publishable") is not False
+        or build_info.get("selftest_fixture_bootstrap") is not False
+    ):
+        raise RuntimeError(
+            "self-test fixture bootstrap requires an ordinary non-publishable "
+            "candidate marker"
+        )
+    source_revision = build_info.get("source_revision")
+    if (
+        not isinstance(source_revision, str)
+        or re.fullmatch(r"[0-9a-f]{40}", source_revision) is None
+    ):
+        raise RuntimeError(
+            "self-test fixture bootstrap requires an exact clean source revision"
+        )
+    build_info["selftest_fixture_bootstrap"] = True
+    path.write_text(
+        json.dumps(build_info, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+
+    fixture_root = overlay / "src" / "pyamplicol" / "assets" / "selftest"
+    if not fixture_root.is_dir() or fixture_root.is_symlink():
+        raise RuntimeError(
+            "self-test fixture bootstrap input has no safe fixture directory"
+        )
+    entries = tuple(fixture_root.iterdir())
+    template = fixture_root / _PORTABLE_SELFTEST_TEMPLATE
+    if entries != (template,) or not template.is_dir() or template.is_symlink():
+        raise RuntimeError(
+            "self-test fixture bootstrap input has an unexpected fixture inventory"
+        )
+    shutil.rmtree(template)
 
 
 def _build_mode() -> str:
@@ -453,6 +537,84 @@ def _stage_runtime_resources(overlay: Path) -> None:
         shutil.copy2(source, target)
 
 
+def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
+    """Load the dependency-free release contract from the source being built."""
+
+    source = source_root / "tools" / "release" / "prepare_selftest_fixture.py"
+    spec = importlib.util.spec_from_file_location(
+        "_pyamplicol_portable_selftest_contract",
+        source,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load the portable self-test contract")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    artifact_validator = getattr(
+        module,
+        "validate_portable_artifact_capabilities",
+        None,
+    )
+    execution_validator = getattr(
+        module,
+        "validate_portable_execution_manifest",
+        None,
+    )
+    if not callable(artifact_validator) or not callable(execution_validator):
+        raise RuntimeError("portable self-test contract has incomplete validators")
+    return artifact_validator, execution_validator
+
+
+def _validate_portable_selftest_executions(
+    fixture: Path,
+    manifest: Mapping[str, object],
+    *,
+    source_root: Path,
+) -> None:
+    """Fail the build before staging a legacy or partial compiled fixture."""
+
+    validate_artifact, validate_execution = _portable_selftest_validators(source_root)
+    validate_artifact(
+        manifest,
+        context="portable self-test artifact manifest",
+    )
+
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list):
+        raise RuntimeError("portable self-test payload inventory is invalid")
+    execution_payloads = [
+        payload
+        for payload in payloads
+        if isinstance(payload, dict)
+        and payload.get("role") == "evaluator-manifest"
+        and str(payload.get("path", "")).endswith("/execution.json")
+    ]
+    if not execution_payloads:
+        raise RuntimeError("portable self-test has no compiled execution manifest")
+
+    for payload in execution_payloads:
+        relative = payload.get("path")
+        if not isinstance(relative, str):
+            raise RuntimeError("portable self-test execution manifest has no path")
+        path = Path(relative)
+        if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+            raise RuntimeError("portable self-test execution-manifest path is unsafe")
+        execution_path = fixture / "artifact" / path
+        try:
+            execution = json.loads(execution_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"portable self-test execution manifest is invalid: {relative}"
+            ) from error
+        if not isinstance(execution, dict):
+            raise RuntimeError(
+                f"portable self-test execution manifest is invalid: {relative}"
+            )
+        validate_execution(
+            execution,
+            context=f"portable self-test execution manifest {relative}",
+        )
+
+
 def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     """Materialize the portable MIR fixture for the wheel's Rust target."""
 
@@ -521,6 +683,11 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
         payloads = manifest["payloads"]
         if not isinstance(payloads, list):
             raise RuntimeError("portable self-test payload inventory is invalid")
+        _validate_portable_selftest_executions(
+            selected,
+            manifest,
+            source_root=overlay,
+        )
         evaluator_targets = 0
         for payload in payloads:
             if not isinstance(payload, dict):
@@ -821,6 +988,7 @@ def _mark_candidate(
                 "publishable": False,
                 "candidate_fingerprint": digest,
                 "native_build_inputs_sha256": native_build_inputs_sha256,
+                "selftest_fixture_bootstrap": False,
                 "source_checkout": str(ROOT.resolve()),
                 "source_revision": source_revision,
                 "version": python_version,
@@ -1129,6 +1297,10 @@ def _from_overlay(
     with _delegating():
         mode = _build_mode()
         prepared_model_bootstrap = _prepared_model_bootstrap(mode)
+        # A raw environment escape is never sufficient for a PEP 517 build.
+        # Only the dedicated local regeneration helper supplies the explicit
+        # context accepted by this gate.
+        _selftest_fixture_bootstrap(mode)
         _check_dependencies(mode)
         with _overlay(mode) as (overlay, target_dir):
             environment = {

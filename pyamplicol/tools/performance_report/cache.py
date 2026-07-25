@@ -15,6 +15,22 @@ from .models import CellSpec, ResultStatus
 
 CACHE_SCHEMA_VERSION = 3
 REPORT_VERSION = "0.2.0"
+_LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
+    {
+        "observed_module_count",
+        "observations",
+        "observations_sha256",
+    }
+)
+_RUNTIME_POSTFLIGHT_FIELDS = frozenset(
+    {
+        "runtime_identity_sha256",
+        "runtime_identity_stable_sha256",
+        "runtime_identity_postflight_stable_sha256",
+        "runtime_identity_postflight_loaded_module_origin_policy",
+        "runtime_identity_postflight_match",
+    }
+)
 
 
 def _canonical_json(value: object) -> bytes:
@@ -28,6 +44,100 @@ def _canonical_json(value: object) -> bytes:
 
 def digest_json(value: object) -> str:
     return hashlib.sha256(_canonical_json(value)).hexdigest()
+
+
+def _stable_runtime_identity(identity: Mapping[str, object]) -> dict[str, object]:
+    stable = dict(identity)
+    raw_policy = stable.get("loaded_module_origin_policy")
+    if isinstance(raw_policy, Mapping):
+        stable["loaded_module_origin_policy"] = {
+            field: value
+            for field, value in raw_policy.items()
+            if field not in _LOADED_ORIGIN_OBSERVATION_FIELDS
+        }
+    return stable
+
+
+def _loaded_origin_policy(
+    value: object,
+    name: str,
+) -> tuple[Mapping[str, object], list[object]]:
+    policy = _required_mapping(value, name)
+    observations = policy.get("observations")
+    count = policy.get("observed_module_count")
+    if (
+        policy.get("kind") != "pyamplicol-loaded-module-origin-policy-v1"
+        or policy.get("all_loaded_origins_authenticated") is not True
+        or policy.get("native_image_origin_bound") is not True
+        or policy.get("loaded_bytecode_eligible") is not False
+        or isinstance(count, bool)
+        or not isinstance(count, int)
+        or count < 1
+        or not isinstance(observations, list)
+        or len(observations) != count
+        or policy.get("observations_sha256") != digest_json(observations)
+    ):
+        raise ValueError(f"{name} is not authenticated loaded-origin evidence")
+    return policy, observations
+
+
+def _validate_runtime_identity_postflight(
+    provenance: Mapping[str, object],
+    validation: Mapping[str, object],
+) -> None:
+    """Require the initial/post-evaluation runtime identity binding."""
+
+    raw_identity = provenance.get("runtime_identity")
+    if raw_identity is None:
+        if (
+            provenance.get("method") == "original-amplicol-generated-library"
+            or validation.get("method") == "independent-original-amplicol-oracle"
+            or (
+                "source_revision" not in provenance
+                and not (_RUNTIME_POSTFLIGHT_FIELDS & provenance.keys())
+            )
+        ):
+            return
+        raise ValueError("successful pyAmpliCol measurement requires runtime_identity")
+    identity = _required_mapping(raw_identity, "provenance.runtime_identity")
+    if provenance.get("runtime_identity_sha256") != digest_json(identity):
+        raise ValueError("provenance.runtime_identity_sha256 does not match")
+    stable_digest = digest_json(_stable_runtime_identity(identity))
+    if provenance.get("runtime_identity_stable_sha256") != stable_digest:
+        raise ValueError("provenance.runtime_identity_stable_sha256 does not match")
+    if provenance.get("runtime_identity_postflight_stable_sha256") != stable_digest:
+        raise ValueError(
+            "provenance.runtime_identity postflight stable SHA-256 differs"
+        )
+    if provenance.get("runtime_identity_postflight_match") is not True:
+        raise ValueError("provenance.runtime_identity_postflight_match must be true")
+
+    initial_policy, initial_observations = _loaded_origin_policy(
+        identity.get("loaded_module_origin_policy"),
+        "provenance.runtime_identity.loaded_module_origin_policy",
+    )
+    postflight_policy, postflight_observations = _loaded_origin_policy(
+        provenance.get("runtime_identity_postflight_loaded_module_origin_policy"),
+        ("provenance.runtime_identity_postflight_loaded_module_origin_policy"),
+    )
+    stable_initial_policy = {
+        field: value
+        for field, value in initial_policy.items()
+        if field not in _LOADED_ORIGIN_OBSERVATION_FIELDS
+    }
+    stable_postflight_policy = {
+        field: value
+        for field, value in postflight_policy.items()
+        if field not in _LOADED_ORIGIN_OBSERVATION_FIELDS
+    }
+    if stable_postflight_policy != stable_initial_policy:
+        raise ValueError("provenance runtime postflight origin policy changed")
+    postflight_keys = {_canonical_json(record) for record in postflight_observations}
+    if any(
+        _canonical_json(record) not in postflight_keys
+        for record in initial_observations
+    ):
+        raise ValueError("provenance runtime postflight lost a loaded-module origin")
 
 
 def empty_measurement() -> dict[str, object]:
@@ -173,6 +283,10 @@ def validate_measurement(value: object) -> None:
         validation = _required_mapping(measurement["validation"], "validation")
         if validation.get("status") != ResultStatus.OK.value:
             raise ValueError("successful measurement requires successful validation")
+        provenance = _required_mapping(
+            measurement["provenance"], "measurement.provenance"
+        )
+        _validate_runtime_identity_postflight(provenance, validation)
         if measurement["failure"] is not None:
             raise ValueError("successful measurement cannot contain failure metadata")
     elif measurement["failure"] is None:

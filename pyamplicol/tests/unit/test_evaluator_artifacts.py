@@ -303,7 +303,7 @@ def test_artifact_writer_preserves_direct_symjit_contract(tmp_path: Path) -> Non
     assert serialized["runtime_capability"] == SYMJIT_F64_RUNTIME_CAPABILITY
 
 
-def test_stage_manifest_accepts_row_major_jit_payload_without_direct_arena(
+def test_stage_manifest_rejects_jit_payload_without_direct_arena(
     tmp_path: Path,
 ) -> None:
     generated = _jit_adapter().artifact_manifest(tmp_path)
@@ -344,11 +344,8 @@ def test_stage_manifest_accepts_row_major_jit_payload_without_direct_arena(
         "amplitude_stage": amplitude_stage,
     }
 
-    serialized = _stage_evaluator_set(stage_set)
-    assert serialized["required_runtime_capabilities"] == [
-        SYMJIT_F64_RUNTIME_CAPABILITY
-    ]
-    assert "compiled_plane_arena" not in serialized["amplitude_stage"]
+    with pytest.raises(ValueError, match="compiled f64 artifacts require"):
+        _stage_evaluator_set(stage_set)
 
 
 def test_symjit_application_abi_matches_contributor_contract() -> None:

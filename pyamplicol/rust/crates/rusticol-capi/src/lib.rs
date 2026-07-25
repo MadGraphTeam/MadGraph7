@@ -537,7 +537,7 @@ pub unsafe extern "C" fn rusticol_runtime_external_count(
     })
 }
 
-/// Copies the runtime execution mode (`compiled` or `eager`).
+/// Copies the runtime execution mode (`compiled`, `eager`, or `recurrence`).
 ///
 /// # Safety
 ///
@@ -1304,6 +1304,8 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Vec<String>>(json).unwrap(),
             vec![
+                "compiled-plane-arena-v1".to_string(),
+                "eager-direct-arena-v1".to_string(),
                 "rusticol.compiled.color-contraction-walsh-c2k.v1".to_string(),
                 "rusticol.compiled.color-contraction-walsh.v1".to_string(),
                 "rusticol.compiled.color-topology-lanes.v1".to_string(),
@@ -1314,6 +1316,9 @@ mod tests {
                 "rusticol.eager-dag.complex-f64.v1".to_string(),
                 "rusticol.eager-dag.lc-topology-replay.v1".to_string(),
                 "rusticol.eager-runtime-layout.complex-f64.v1".to_string(),
+                "rusticol.recurrence-color.contracted.v1".to_string(),
+                "rusticol.recurrence-color.lc.v1".to_string(),
+                "rusticol.recurrence-direct-arena.complex-f64.v1".to_string(),
                 "symbolica.compiled-asm.complex-f64.v1".to_string(),
                 "symbolica.compiled-cpp.complex-f64.v1".to_string(),
                 "symjit.application.complex-f64.v1".to_string(),
