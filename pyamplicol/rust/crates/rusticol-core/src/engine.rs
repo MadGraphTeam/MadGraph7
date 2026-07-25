@@ -2497,6 +2497,14 @@ struct ExecutionRuntime {
     helicity_recurrence: Option<HelicityRecurrenceRuntime>,
     compiled_helicity_execution_plan: Option<CompiledHelicityExecutionPlan>,
     compiled_color_execution_plan: Option<CompiledColorExecutionPlan>,
+    #[cfg(feature = "f64-symjit")]
+    compiled_direct_runtime: Option<compiled_direct_prototype::CompiledDirectEnginePrototype>,
+    #[cfg(feature = "f64-symjit")]
+    compiled_direct_color_schedules:
+        BTreeMap<i64, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
+    #[cfg(feature = "f64-symjit")]
+    compiled_direct_helicity_schedules:
+        BTreeMap<usize, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
     helicity_sum_runtime: Option<Box<ExecutionRuntime>>,
     // Lane runtimes are large recursive owners; boxing keeps their addresses stable and avoids
     // moving them when this selector index grows.

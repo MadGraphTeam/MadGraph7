@@ -2,6 +2,23 @@
 
 use super::*;
 
+#[cfg(feature = "f64-symjit")]
+fn compiled_direct_developer_oracle_enabled() -> bool {
+    // Legacy SymJIT application payloads are lowered in memory only for the
+    // retained-artifact dual-run oracle. Production activation waits for the
+    // generated compiled-plane capability and a locality-positive end-to-end
+    // reducer/layout. Keeping this test-only also prevents silently changing
+    // the execution of existing compiled artifacts.
+    #[cfg(test)]
+    {
+        std::env::var_os("RUSTICOL_TEST_ENABLE_COMPILED_DIRECT").is_some()
+    }
+    #[cfg(not(test))]
+    {
+        false
+    }
+}
+
 pub(super) fn build_lc_topology_replay_mappings(
     replay: Option<&LcTopologyReplayManifest>,
 ) -> RusticolResult<(LcTopologyReplayMappings, Vec<f64>)> {
@@ -2855,6 +2872,12 @@ impl ExecutionRuntime {
             helicity_recurrence,
             compiled_helicity_execution_plan: None,
             compiled_color_execution_plan,
+            #[cfg(feature = "f64-symjit")]
+            compiled_direct_runtime: None,
+            #[cfg(feature = "f64-symjit")]
+            compiled_direct_color_schedules: BTreeMap::new(),
+            #[cfg(feature = "f64-symjit")]
+            compiled_direct_helicity_schedules: BTreeMap::new(),
             helicity_sum_runtime,
             helicity_selector_runtimes,
             helicity_selector_runtime_schedule_modes,
@@ -2967,6 +2990,31 @@ impl ExecutionRuntime {
                 &stage_evaluators.amplitude_stage,
                 payloads,
             )?);
+            #[cfg(feature = "f64-symjit")]
+            if compiled_direct_developer_oracle_enabled()
+                && compiled_direct_prototype::compiled_direct_symjit_supported(&stage_evaluators)?
+            {
+                let direct =
+                    compiled_direct_prototype::CompiledDirectEnginePrototype::load_production(
+                        &stage_evaluators.stages,
+                        &stage_evaluators.amplitude_stage,
+                        payloads,
+                        &runtime.sources,
+                        runtime.value_parameter_count,
+                        runtime.momentum_parameter_count,
+                        runtime.model_parameter_values_f64.len(),
+                        stage_evaluators.amplitude_stage.output_length,
+                    )?;
+                let mut color_schedules = BTreeMap::new();
+                if let Some(color_plan) = runtime.compiled_color_execution_plan.as_ref() {
+                    for (sector_id, schedule) in &color_plan.schedules_by_materialized_sector {
+                        color_schedules
+                            .insert(*sector_id, direct.bind_color_schedule(schedule.as_ref())?);
+                    }
+                }
+                runtime.compiled_direct_color_schedules = color_schedules;
+                runtime.compiled_direct_runtime = Some(direct);
+            }
         }
         Ok(runtime)
     }

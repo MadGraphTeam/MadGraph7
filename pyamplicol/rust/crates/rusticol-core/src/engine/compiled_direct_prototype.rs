@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Developer-only end-to-end compiled Direct-Arena engine prototype.
+//! Production compiled Direct-Arena execution.
 //!
-//! The production compiled lane remains unchanged. This module consumes the
-//! existing stage/chunk manifests, lowers each already-fused SymJIT O3 leaf to
-//! DirectApplication v3 at load time, and executes the unchanged leaf schedule
-//! against persistent component-major planes. There is deliberately one
-//! physical current plane per global value component in this first prototype:
-//! that preserves the current schedule and parent locality while removing all
-//! per-leaf gather and scatter traffic.
+//! This module consumes the existing stage/chunk manifests, lowers each
+//! already-fused SymJIT O3 leaf to DirectApplication v3 at load time, and
+//! executes the unchanged leaf schedule against persistent component-major
+//! planes. There is deliberately one physical current plane per global value
+//! component: that preserves fused-stage order and parent locality while
+//! removing per-leaf gather and scatter traffic.
 
 #![allow(dead_code)]
 
@@ -20,15 +19,46 @@ use super::evaluator::symjit_compiled_direct::{
     CompiledDirectPlaneBinding, CompiledDirectScalarBinding, CompiledDirectSourceInputBinding,
     LoadedSymjitCompiledDirectStage,
 };
+use super::evaluator::{SymjitApplicationMetadata, validate_manifest_metadata};
+use super::sources::RuntimeSourceState;
 use super::*;
 use crate::direct_arena::{
-    AlignedF64Buffer, DirectAmplitudePlanes, DirectArenaTrafficCounters, DirectArenaWorkspace,
-    DirectMomentumView, DirectParameterView,
+    AlignedF64Buffer, DirectAmplitudePlanes, DirectArenaAllocationCounters,
+    DirectArenaTrafficCounters, DirectArenaWorkspace, DirectMomentumView, DirectParameterView,
+    deterministic_point_tile_size,
 };
+
+const COMPILED_DIRECT_MAX_TILE_POINTS: u32 = 1024;
+const COMPILED_DIRECT_WORKSPACE_BYTES: usize = 256 * 1024 * 1024;
+const COMPILED_DIRECT_CACHE_TARGET_BYTES: usize = 4 * 1024 * 1024;
+
+fn compiled_direct_cache_target_bytes() -> usize {
+    #[cfg(test)]
+    if let Some(value) = std::env::var_os("RUSTICOL_TEST_COMPILED_DIRECT_CACHE_TARGET_BYTES") {
+        let value = value
+            .to_str()
+            .expect("compiled Direct test cache target must be UTF-8");
+        if value == "hard-budget" {
+            return usize::MAX;
+        }
+        return value
+            .parse()
+            .expect("compiled Direct test cache target must be bytes or hard-budget");
+    }
+    COMPILED_DIRECT_CACHE_TARGET_BYTES
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct CompiledDirectPrototypeTraffic {
-    /// One-time caller row-major to arena boundary traffic.
+    /// Direct source-wavefunction writes into canonical current planes.
+    pub(crate) source_fill_bytes: u64,
+    /// Direct crossed-momentum writes into canonical momentum planes.
+    pub(crate) momentum_fill_bytes: u64,
+    /// Point-independent model-scalar writes.
+    pub(crate) parameter_fill_bytes: u64,
+    /// Stale-safety clears of amplitude planes not overwritten by a schedule.
+    pub(crate) amplitude_clear_bytes: u64,
+    /// Developer-oracle row-major to arena boundary traffic.
     pub(crate) boundary_input_bytes: u64,
     /// Explicit developer-only current extraction traffic.
     pub(crate) boundary_current_output_bytes: u64,
@@ -43,6 +73,7 @@ pub(crate) struct CompiledDirectPrototypeTraffic {
 struct DirectLeafPlan {
     input_current_components: Box<[usize]>,
     output_current_components: Box<[usize]>,
+    output_amplitude_components: Box<[usize]>,
 }
 
 struct LoadedStage {
@@ -78,6 +109,7 @@ impl DirectStagePlan for BoundStage {
 pub(crate) struct CompiledDirectValidatedSchedule {
     active_stage_leaves: Box<[Box<[usize]>]>,
     active_amplitude_leaves: Box<[usize]>,
+    inactive_amplitude_components: Box<[usize]>,
 }
 
 /// Persistent prototype executor for one compiled schedule.
@@ -95,11 +127,15 @@ pub(crate) struct CompiledDirectEnginePrototype {
     parameter_im: Box<AlignedF64Buffer>,
     zero_plane: Box<AlignedF64Buffer>,
     full_schedule: CompiledDirectValidatedSchedule,
+    source_components: Box<[usize]>,
+    default_source_states: Box<[GenericSourceStateIrManifest]>,
+    source_wavefunction_scratch: Vec<Complex<f64>>,
     value_component_count: usize,
     momentum_component_count: usize,
     model_parameter_count: usize,
     amplitude_component_count: usize,
     traffic: CompiledDirectPrototypeTraffic,
+    allocation_counters: DirectArenaAllocationCounters,
 }
 
 impl CompiledDirectEnginePrototype {
@@ -108,6 +144,8 @@ impl CompiledDirectEnginePrototype {
         stages: &[GenericSerializedStageEvaluatorManifest],
         amplitude: &GenericSerializedStageEvaluatorManifest,
         payloads: &EvaluatorPayloadStore,
+        source_components: &[usize],
+        source_scratch_len: usize,
         value_component_count: usize,
         momentum_component_count: usize,
         model_parameter_count: usize,
@@ -124,6 +162,24 @@ impl CompiledDirectEnginePrototype {
                 "compiled Direct-Arena momentum component count must be a multiple of four",
             ));
         }
+        if source_components.is_empty() || source_scratch_len == 0 {
+            return Err(RusticolError::integrity(
+                "compiled Direct-Arena requires canonical source-component ownership",
+            ));
+        }
+        let mut previous_source = None;
+        for &component in source_components {
+            if component >= value_component_count
+                || previous_source.is_some_and(|previous| previous >= component)
+            {
+                return Err(RusticolError::integrity(
+                    "compiled Direct-Arena source components are not sorted, unique, and in bounds",
+                ));
+            }
+            previous_source = Some(component);
+        }
+        let structural_zero_components =
+            canonical_structural_zero_components(stages, source_components, value_component_count)?;
         let loaded_stages = stages
             .iter()
             .map(|stage| {
@@ -134,6 +190,7 @@ impl CompiledDirectEnginePrototype {
                     value_component_count,
                     momentum_component_count,
                     amplitude_component_count,
+                    &structural_zero_components,
                 )
             })
             .collect::<RusticolResult<Vec<_>>>()?;
@@ -144,6 +201,7 @@ impl CompiledDirectEnginePrototype {
             value_component_count,
             momentum_component_count,
             amplitude_component_count,
+            &structural_zero_components,
         )?;
 
         let mut arena = Box::new(DirectArenaWorkspace::new(
@@ -186,6 +244,8 @@ impl CompiledDirectEnginePrototype {
             &loaded_stages,
             &loaded_amplitude,
             value_component_count,
+            source_components,
+            amplitude_component_count,
             &full_stage_leaves,
             &full_amplitude_leaves,
         )?;
@@ -236,6 +296,25 @@ impl CompiledDirectEnginePrototype {
             .map(bind_stage)
             .collect::<RusticolResult<Vec<_>>>()?;
         let amplitude = bind_stage(loaded_amplitude)?;
+        let allocation_counters = [
+            arena.allocation_counters(),
+            momenta.allocation_counters(),
+            parameter_re.allocation_counters(),
+            parameter_im.allocation_counters(),
+            zero_plane.allocation_counters(),
+            DirectArenaAllocationCounters {
+                allocation_requests: 1,
+                requested_bytes: u64::try_from(
+                    source_scratch_len.saturating_mul(std::mem::size_of::<Complex<f64>>()),
+                )
+                .unwrap_or(u64::MAX),
+            },
+        ]
+        .into_iter()
+        .try_fold(
+            DirectArenaAllocationCounters::default(),
+            |total, counters| total.checked_add(counters),
+        )?;
 
         Ok(Self {
             stages,
@@ -246,16 +325,259 @@ impl CompiledDirectEnginePrototype {
             parameter_im,
             zero_plane,
             full_schedule,
+            source_components: source_components.to_vec().into_boxed_slice(),
+            default_source_states: Box::new([]),
+            source_wavefunction_scratch: vec![c64(0.0, 0.0); source_scratch_len],
             value_component_count,
             momentum_component_count,
             model_parameter_count,
             amplitude_component_count,
             traffic: CompiledDirectPrototypeTraffic::default(),
+            allocation_counters,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn load_production(
+        stages: &[GenericSerializedStageEvaluatorManifest],
+        amplitude: &GenericSerializedStageEvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+        sources: &[GenericSourceRecordManifest],
+        value_component_count: usize,
+        momentum_component_count: usize,
+        model_parameter_count: usize,
+        amplitude_component_count: usize,
+    ) -> RusticolResult<Self> {
+        let (source_components, source_scratch_len) =
+            canonical_source_layout(sources, value_component_count)?;
+        let scalar_values_per_point = value_component_count
+            .checked_mul(2)
+            .and_then(|value| value.checked_add(momentum_component_count))
+            .and_then(|value| {
+                amplitude_component_count
+                    .checked_mul(2)
+                    .and_then(|amplitudes| value.checked_add(amplitudes))
+            })
+            .ok_or_else(|| {
+                RusticolError::integrity("compiled Direct-Arena per-point shape overflows")
+            })?;
+        let tile_capacity = deterministic_point_tile_size(
+            COMPILED_DIRECT_MAX_TILE_POINTS,
+            COMPILED_DIRECT_WORKSPACE_BYTES,
+            compiled_direct_cache_target_bytes(),
+            scalar_values_per_point,
+        )?;
+        let mut direct = Self::load(
+            stages,
+            amplitude,
+            payloads,
+            &source_components,
+            source_scratch_len,
+            value_component_count,
+            momentum_component_count,
+            model_parameter_count,
+            amplitude_component_count,
+            tile_capacity,
+        )?;
+        direct.default_source_states = sources
+            .iter()
+            .map(ExecutionRuntime::default_runtime_source_state)
+            .collect::<RusticolResult<Vec<_>>>()?
+            .into_boxed_slice();
+        Ok(direct)
     }
 
     pub(crate) const fn traffic(&self) -> CompiledDirectPrototypeTraffic {
         self.traffic
+    }
+
+    pub(crate) const fn allocation_counters(&self) -> DirectArenaAllocationCounters {
+        self.allocation_counters
+    }
+
+    pub(crate) const fn tile_capacity(&self) -> usize {
+        self.arena.tile_capacity() as usize
+    }
+
+    /// Fill one active tile directly from the public borrowed momentum view
+    /// and immutable runtime metadata. No point-major global state exists.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn begin_tile_from_inputs(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        sources: &[GenericSourceRecordManifest],
+        source_states: Option<&[RuntimeSourceState]>,
+        external_count: usize,
+        particle_masses: &BTreeMap<i32, f64>,
+        momentum_slots: &[GenericMomentumSlotManifest],
+        external_is_initial: &[bool],
+        model_parameter_values: &[f64],
+    ) -> RusticolResult<()> {
+        let point_count = batch.point_count();
+        if point_count == 0 || point_count > self.tile_capacity() {
+            return Err(RusticolError::invalid_argument(format!(
+                "compiled Direct-Arena input tile has {point_count} points, expected 1..={}",
+                self.tile_capacity()
+            )));
+        }
+        if batch.external_count() != external_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "compiled Direct-Arena input has {} external legs, expected {external_count}",
+                batch.external_count()
+            )));
+        }
+        if let Some(states) = source_states
+            && states.len() != sources.len()
+        {
+            return Err(RusticolError::invalid_argument(format!(
+                "compiled Direct-Arena source-state count {} does not match source count {}",
+                states.len(),
+                sources.len()
+            )));
+        }
+        if source_states.is_none() && self.default_source_states.len() != sources.len() {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena default source-state count {} does not match source count {}",
+                self.default_source_states.len(),
+                sources.len()
+            )));
+        }
+        if model_parameter_values.len() != self.model_parameter_count {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena model-scalar count {} does not match {}",
+                model_parameter_values.len(),
+                self.model_parameter_count
+            )));
+        }
+
+        self.arena
+            .begin_tile(u32::try_from(point_count).map_err(|_| {
+                RusticolError::invalid_argument("compiled Direct-Arena point count exceeds u32")
+            })?)?;
+        let stride = self.arena.point_stride() as usize;
+        {
+            let (current_re, current_im, _, _) = self.arena.split_slices_mut();
+            let scratch = &mut self.source_wavefunction_scratch;
+            for (source_index, source) in sources.iter().enumerate() {
+                for point_index in 0..point_count {
+                    let point = batch.point(point_index);
+                    let start = source.value_slot.component_start;
+                    let stop = source.value_slot.component_stop;
+                    let dimension = stop.checked_sub(start).ok_or_else(|| {
+                        RusticolError::integrity(
+                            "compiled Direct-Arena source component range underflows",
+                        )
+                    })?;
+                    if dimension == 0
+                        || stop > self.value_component_count
+                        || dimension > scratch.len()
+                    {
+                        return Err(RusticolError::integrity(format!(
+                            "compiled Direct-Arena source {} has an invalid component range",
+                            source.source_id
+                        )));
+                    }
+                    let output = &mut scratch[..dimension];
+                    if let Some(runtime_state) = source_states.map(|states| &states[source_index]) {
+                        if runtime_state.factor == c64(0.0, 0.0) {
+                            output.fill(c64(0.0, 0.0));
+                        } else {
+                            ExecutionRuntime::write_source_wavefunction_with_state(
+                                source,
+                                &runtime_state.state,
+                                external_count,
+                                particle_masses,
+                                &point,
+                                output,
+                            )?;
+                            if runtime_state.factor != c64(1.0, 0.0) {
+                                for value in output.iter_mut() {
+                                    *value *= runtime_state.factor;
+                                }
+                            }
+                        }
+                    } else {
+                        ExecutionRuntime::write_source_wavefunction_with_state(
+                            source,
+                            &self.default_source_states[source_index],
+                            external_count,
+                            particle_masses,
+                            &point,
+                            output,
+                        )?;
+                    }
+                    for (offset, value) in output.iter().copied().enumerate() {
+                        let target = (start + offset) * stride + point_index;
+                        current_re[target] = value.re;
+                        current_im[target] = value.im;
+                    }
+                }
+            }
+        }
+
+        let momenta = self.momenta.as_mut_slice();
+        for slot in momentum_slots {
+            if slot.component_stop.checked_sub(slot.component_start) != Some(4)
+                || slot.component_stop > self.momentum_component_count
+            {
+                return Err(RusticolError::integrity(format!(
+                    "compiled Direct-Arena momentum slot {} has an invalid component range",
+                    slot.momentum_slot_id
+                )));
+            }
+            for point_index in 0..point_count {
+                let point = batch.point(point_index);
+                let mut momentum = [0.0; 4];
+                for label in &slot.external_labels {
+                    let external_index = label.checked_sub(1).ok_or_else(|| {
+                        RusticolError::integrity(
+                            "compiled Direct-Arena momentum labels are one-based",
+                        )
+                    })?;
+                    let point_momentum = point.momentum(external_index).ok_or_else(|| {
+                        RusticolError::integrity(format!(
+                            "compiled Direct-Arena momentum slot {} references absent external leg {}",
+                            slot.momentum_slot_id, label
+                        ))
+                    })?;
+                    let sign = if *external_is_initial.get(external_index).ok_or_else(|| {
+                        RusticolError::integrity(
+                            "compiled Direct-Arena external-side metadata is incomplete",
+                        )
+                    })? {
+                        -1.0
+                    } else {
+                        1.0
+                    };
+                    for (target, value) in momentum.iter_mut().zip(point_momentum) {
+                        *target += sign * value;
+                    }
+                }
+                for (offset, value) in momentum.into_iter().enumerate() {
+                    momenta[(slot.component_start + offset) * stride + point_index] = value;
+                }
+            }
+        }
+        for (index, value) in model_parameter_values.iter().copied().enumerate() {
+            self.parameter_re.as_mut_slice()[index] = value;
+            self.parameter_im.as_mut_slice()[index] = 0.0;
+        }
+
+        self.traffic.source_fill_bytes = self.traffic.source_fill_bytes.saturating_add(
+            point_count
+                .saturating_mul(self.source_components.len())
+                .saturating_mul(2 * std::mem::size_of::<f64>()) as u64,
+        );
+        self.traffic.momentum_fill_bytes = self.traffic.momentum_fill_bytes.saturating_add(
+            point_count
+                .saturating_mul(self.momentum_component_count)
+                .saturating_mul(std::mem::size_of::<f64>()) as u64,
+        );
+        self.traffic.parameter_fill_bytes = self.traffic.parameter_fill_bytes.saturating_add(
+            self.model_parameter_count
+                .saturating_mul(2 * std::mem::size_of::<f64>()) as u64,
+        );
+        Ok(())
     }
 
     /// Transpose the outer row-major state once at the engine boundary.
@@ -371,6 +693,8 @@ impl CompiledDirectEnginePrototype {
             &self.stages,
             &self.amplitude,
             self.value_component_count,
+            &self.source_components,
+            self.amplitude_component_count,
             &schedule.active_stage_chunk_indices,
             &schedule.active_amplitude_chunk_indices,
         )
@@ -380,12 +704,14 @@ impl CompiledDirectEnginePrototype {
     /// concrete direct plan.
     pub(crate) fn bind_helicity_schedule(
         &self,
-        schedule: &HelicityMaterializedSelectorScheduleRuntime,
+        schedule: &CompiledHelicitySelectorSchedule,
     ) -> RusticolResult<CompiledDirectValidatedSchedule> {
         validate_schedule(
             &self.stages,
             &self.amplitude,
             self.value_component_count,
+            &self.source_components,
+            self.amplitude_component_count,
             &schedule.active_stage_chunk_indices,
             &schedule.active_amplitude_chunk_indices,
         )
@@ -397,6 +723,7 @@ impl CompiledDirectEnginePrototype {
         point_count: usize,
         schedule: &CompiledDirectValidatedSchedule,
     ) -> RusticolResult<()> {
+        self.clear_inactive_amplitude_components(schedule)?;
         evaluate_validated_schedule(
             &self.stages,
             &self.amplitude,
@@ -404,6 +731,38 @@ impl CompiledDirectEnginePrototype {
             point_count_u32(point_count, self.arena.active_point_count())?,
             &mut self.traffic.leaf,
         )
+    }
+
+    fn clear_inactive_amplitude_components(
+        &mut self,
+        schedule: &CompiledDirectValidatedSchedule,
+    ) -> RusticolResult<()> {
+        let mut cursor = 0;
+        while cursor < schedule.inactive_amplitude_components.len() {
+            let start = schedule.inactive_amplitude_components[cursor];
+            let mut stop = start + 1;
+            cursor += 1;
+            while cursor < schedule.inactive_amplitude_components.len()
+                && schedule.inactive_amplitude_components[cursor] == stop
+            {
+                stop += 1;
+                cursor += 1;
+            }
+            self.arena.clear_amplitude_active(
+                u32::try_from(start).map_err(|_| {
+                    RusticolError::integrity("compiled amplitude clear start exceeds u32")
+                })?,
+                u32::try_from(stop - start).map_err(|_| {
+                    RusticolError::integrity("compiled amplitude clear length exceeds u32")
+                })?,
+            )?;
+            self.traffic.amplitude_clear_bytes = self.traffic.amplitude_clear_bytes.saturating_add(
+                (stop - start)
+                    .saturating_mul(self.arena.active_point_count() as usize)
+                    .saturating_mul(2 * std::mem::size_of::<f64>()) as u64,
+            );
+        }
+        Ok(())
     }
 
     pub(crate) fn copy_current_to_state(
@@ -478,6 +837,113 @@ impl CompiledDirectEnginePrototype {
     }
 }
 
+pub(crate) fn compiled_direct_symjit_supported(
+    evaluators: &GenericStageEvaluatorArtifactsManifest,
+) -> RusticolResult<bool> {
+    for stage in evaluators
+        .stages
+        .iter()
+        .chain(std::iter::once(&evaluators.amplitude_stage))
+    {
+        for leaf in stage.evaluator.leaf_layout()? {
+            if !matches!(leaf.evaluator, EvaluatorManifest::SymjitApplication { .. }) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn canonical_source_layout(
+    sources: &[GenericSourceRecordManifest],
+    value_component_count: usize,
+) -> RusticolResult<(Vec<usize>, usize)> {
+    if sources.is_empty() {
+        return Err(RusticolError::integrity(
+            "compiled Direct-Arena runtime schema has no sources",
+        ));
+    }
+    let mut source_components = Vec::new();
+    let mut max_dimension = 0usize;
+    for (source_index, source) in sources.iter().enumerate() {
+        if source.source_id != source_index
+            || source.value_slot.current_id != source.current_id
+            || source.value_slot.component_start != source.current_component_start
+            || source.value_slot.component_stop != source.current_component_stop
+        {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena source {source_index} does not preserve canonical current ownership"
+            )));
+        }
+        let start = source.value_slot.component_start;
+        let stop = source.value_slot.component_stop;
+        let dimension = stop
+            .checked_sub(start)
+            .filter(|value| *value != 0)
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "compiled Direct-Arena source {source_index} has an empty or reversed range"
+                ))
+            })?;
+        if stop > value_component_count || dimension != source.dimension {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena source {source_index} exceeds canonical current storage"
+            )));
+        }
+        source_components.extend(start..stop);
+        max_dimension = max_dimension.max(dimension);
+    }
+    if source_components
+        .windows(2)
+        .any(|window| window[0] >= window[1])
+    {
+        return Err(RusticolError::integrity(
+            "compiled Direct-Arena source component ownership overlaps or is unordered",
+        ));
+    }
+    Ok((source_components, max_dimension))
+}
+
+fn canonical_structural_zero_components(
+    stages: &[GenericSerializedStageEvaluatorManifest],
+    source_components: &[usize],
+    value_component_count: usize,
+) -> RusticolResult<BTreeSet<usize>> {
+    let sources = source_components.iter().copied().collect::<BTreeSet<_>>();
+    let mut produced = BTreeSet::new();
+    for stage in stages {
+        for slot in &stage.output_slots {
+            let output_len = slot
+                .output_stop
+                .checked_sub(slot.output_start)
+                .ok_or_else(|| {
+                    RusticolError::integrity("compiled Direct-Arena output slot range underflows")
+                })?;
+            if slot.component_stop.checked_sub(slot.component_start) != Some(output_len)
+                || slot.component_stop > value_component_count
+            {
+                return Err(RusticolError::integrity(format!(
+                    "compiled Direct-Arena stage {:?} has an invalid canonical output range",
+                    stage.evaluator_label
+                )));
+            }
+            for component in slot.component_start..slot.component_stop {
+                if sources.contains(&component) {
+                    return Err(RusticolError::integrity(format!(
+                        "compiled Direct-Arena stage {:?} writes canonical source component \
+                         {component}",
+                        stage.evaluator_label
+                    )));
+                }
+                produced.insert(component);
+            }
+        }
+    }
+    Ok((0..value_component_count)
+        .filter(|component| !sources.contains(component) && !produced.contains(component))
+        .collect())
+}
+
 fn point_count_u32(point_count: usize, active: u32) -> RusticolResult<u32> {
     let point_count = u32::try_from(point_count)
         .map_err(|_| RusticolError::invalid_argument("compiled point count exceeds u32"))?;
@@ -506,6 +972,8 @@ fn validate_schedule<S: DirectStagePlan>(
     stages: &[S],
     amplitude: &S,
     value_component_count: usize,
+    source_components: &[usize],
+    amplitude_component_count: usize,
     active_stage_leaves: &[Vec<usize>],
     active_amplitude_leaves: &[usize],
 ) -> RusticolResult<CompiledDirectValidatedSchedule> {
@@ -527,9 +995,21 @@ fn validate_schedule<S: DirectStagePlan>(
             }
         }
     }
-    let mut available = (0..value_component_count)
-        .filter(|component| !produced.contains(component))
-        .collect::<BTreeSet<_>>();
+    let declared_sources = source_components.iter().copied().collect::<BTreeSet<_>>();
+    if declared_sources.len() != source_components.len()
+        || declared_sources
+            .iter()
+            .any(|component| *component >= value_component_count || produced.contains(component))
+    {
+        return Err(RusticolError::integrity(
+            "compiled Direct-Arena source ownership aliases or exceeds produced current storage",
+        ));
+    }
+    // Value storage is a stable global numbering space and can contain
+    // components omitted by closure pruning. Such holes are neither sources
+    // nor produced values. They are valid only while no selected leaf reads
+    // them; the ordered prerequisite checks below enforce that invariant.
+    let mut available = declared_sources;
     let mut validated_stages = Vec::with_capacity(stages.len());
     for (stage_index, (stage, selected)) in stages.iter().zip(active_stage_leaves).enumerate() {
         validate_sorted_leaf_indices(
@@ -562,6 +1042,7 @@ fn validate_schedule<S: DirectStagePlan>(
         amplitude.leaf_plans().len(),
         "compiled Direct-Arena amplitude schedule",
     )?;
+    let mut selected_amplitudes = BTreeSet::new();
     for &leaf_index in active_amplitude_leaves {
         let leaf = &amplitude.leaf_plans()[leaf_index];
         let missing = leaf
@@ -576,10 +1057,24 @@ fn validate_schedule<S: DirectStagePlan>(
                  current components {missing:?}"
             )));
         }
+        selected_amplitudes.extend(leaf.output_amplitude_components.iter().copied());
     }
+    if selected_amplitudes
+        .iter()
+        .any(|component| *component >= amplitude_component_count)
+    {
+        return Err(RusticolError::integrity(
+            "compiled Direct-Arena amplitude schedule exceeds canonical output planes",
+        ));
+    }
+    let inactive_amplitude_components = (0..amplitude_component_count)
+        .filter(|component| !selected_amplitudes.contains(component))
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
     Ok(CompiledDirectValidatedSchedule {
         active_stage_leaves: validated_stages.into_boxed_slice(),
         active_amplitude_leaves: active_amplitude_leaves.to_vec().into_boxed_slice(),
+        inactive_amplitude_components,
     })
 }
 
@@ -632,6 +1127,7 @@ fn load_stage(
     value_component_count: usize,
     momentum_component_count: usize,
     amplitude_component_count: usize,
+    structural_zero_components: &BTreeSet<usize>,
 ) -> RusticolResult<LoadedStage> {
     if stage.parameter_layout != "stage-local-value-momentum"
         || stage.input_components.len() != stage.parameter_count
@@ -733,11 +1229,18 @@ fn load_stage(
     let mut output_cursor = 0usize;
     for leaf in leaf_layout {
         let EvaluatorManifest::SymjitApplication {
+            runtime_capability,
             application_path,
             application_abi,
             input_len,
             output_len,
+            element_layout,
+            batch_layout,
+            compiler_type,
+            translation_mode,
             optimization_level,
+            word_bits,
+            endianness,
             required_defuns,
             ..
         } = leaf.evaluator
@@ -747,7 +1250,21 @@ fn load_stage(
                 stage.evaluator_label
             )));
         };
-        if *optimization_level != 3 || !required_defuns.is_empty() {
+        validate_manifest_metadata(&SymjitApplicationMetadata {
+            runtime_capability,
+            application_abi,
+            input_len: *input_len,
+            output_len: *output_len,
+            element_layout,
+            batch_layout,
+            compiler_type,
+            translation_mode,
+            optimization_level: *optimization_level,
+            word_bits: *word_bits,
+            endianness,
+            required_defuns,
+        })?;
+        if *optimization_level != 3 {
             return Err(RusticolError::compatibility(format!(
                 "compiled Direct-Arena stage {:?} requires self-contained O3 leaves",
                 stage.evaluator_label
@@ -786,12 +1303,15 @@ fn load_stage(
                     )
                 })?;
             if component.kind == "value" {
-                input_currents.insert(component.global_component);
+                if !structural_zero_components.contains(&component.global_component) {
+                    input_currents.insert(component.global_component);
+                }
             }
             append_component_bindings(
                 component,
                 value_component_count,
                 momentum_component_count,
+                structural_zero_components,
                 &mut source_inputs,
                 &mut plane_bindings,
                 &mut scalar_bindings,
@@ -840,6 +1360,15 @@ fn load_stage(
                     .collect::<Vec<_>>()
                     .into_boxed_slice()
             },
+            output_amplitude_components: if is_amplitude {
+                output_components[output_cursor..output_stop]
+                    .iter()
+                    .map(|value| value.expect("output coverage validated"))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice()
+            } else {
+                Box::new([])
+            },
         });
         output_cursor = output_stop;
     }
@@ -859,6 +1388,7 @@ fn append_component_bindings(
     component: &GenericStageInputComponentManifest,
     value_component_count: usize,
     momentum_component_count: usize,
+    structural_zero_components: &BTreeSet<usize>,
     source_inputs: &mut Vec<CompiledDirectSourceInputBinding>,
     planes: &mut Vec<CompiledDirectPlaneBinding>,
     scalars: &mut Vec<CompiledDirectScalarBinding>,
@@ -894,6 +1424,11 @@ fn append_component_bindings(
                 return Err(RusticolError::integrity(
                     "compiled Direct-Arena value input is outside current planes",
                 ));
+            }
+            if structural_zero_components.contains(&component.global_component) {
+                push_plane(source_inputs, planes, CompiledDirectPlaneBinding::Zero)?;
+                push_plane(source_inputs, planes, CompiledDirectPlaneBinding::Zero)?;
+                return Ok(());
             }
             let current = |imaginary| {
                 CompiledDirectPlaneBinding::Arena(CompiledDirectArenaPlane::Current {
@@ -1118,6 +1653,98 @@ mod tests {
         );
     }
 
+    fn assert_close_real(actual: f64, expected: f64, context: &str) {
+        let tolerance = 1.0e-15 + 1.0e-12 * actual.abs().max(expected.abs());
+        assert!(
+            (actual - expected).abs() <= tolerance,
+            "{context}: actual={actual:.17e} expected={expected:.17e} tolerance={tolerance:.17e}"
+        );
+    }
+
+    fn disable_compiled_direct_recursive(runtime: &mut ExecutionRuntime) {
+        runtime.compiled_direct_runtime = None;
+        runtime.compiled_direct_color_schedules.clear();
+        runtime.compiled_direct_helicity_schedules.clear();
+        if let Some(sum_runtime) = runtime.helicity_sum_runtime.as_deref_mut() {
+            disable_compiled_direct_recursive(sum_runtime);
+        }
+        for selector_runtime in &mut runtime.helicity_selector_runtimes {
+            disable_compiled_direct_recursive(selector_runtime);
+        }
+        for selector_runtime in runtime.color_selector_runtimes.values_mut() {
+            disable_compiled_direct_recursive(selector_runtime);
+        }
+    }
+
+    fn compiled_direct_runtime_summary(runtime: &ExecutionRuntime) -> (usize, u64, u64, usize) {
+        let (mut engine_count, mut requested_bytes, mut hot_calls, mut minimum_tile_capacity) =
+            (0usize, 0u64, 0u64, usize::MAX);
+        if let Some(direct) = runtime.compiled_direct_runtime.as_ref() {
+            engine_count += 1;
+            requested_bytes =
+                requested_bytes.saturating_add(direct.allocation_counters().requested_bytes);
+            hot_calls = hot_calls.saturating_add(direct.traffic().leaf.calls);
+            minimum_tile_capacity = minimum_tile_capacity.min(direct.tile_capacity());
+            direct
+                .traffic()
+                .leaf
+                .validate_direct()
+                .expect("production compiled leaf traffic remains direct");
+            assert_eq!(direct.traffic().boundary_input_bytes, 0);
+            assert_eq!(direct.traffic().boundary_current_output_bytes, 0);
+            assert_eq!(direct.traffic().boundary_amplitude_output_bytes, 0);
+        }
+        let children = runtime
+            .helicity_sum_runtime
+            .iter()
+            .map(Box::as_ref)
+            .chain(runtime.helicity_selector_runtimes.iter().map(Box::as_ref))
+            .chain(runtime.color_selector_runtimes.values().map(Box::as_ref));
+        for child in children {
+            let (child_engines, child_bytes, child_calls, child_tile) =
+                compiled_direct_runtime_summary(child);
+            engine_count += child_engines;
+            requested_bytes = requested_bytes.saturating_add(child_bytes);
+            hot_calls = hot_calls.saturating_add(child_calls);
+            minimum_tile_capacity = minimum_tile_capacity.min(child_tile);
+        }
+        (
+            engine_count,
+            requested_bytes,
+            hot_calls,
+            minimum_tile_capacity,
+        )
+    }
+
+    fn retained_validation_point(runtime: &NativeRuntime) -> Vec<f64> {
+        let path = runtime
+            .root()
+            .join("processes")
+            .join(&runtime.metadata().representative_process_key)
+            .join("validation-momenta.json");
+        let validation: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).expect("read retained validation momenta"))
+                .expect("parse retained validation momenta");
+        validation["points"][0]
+            .as_array()
+            .expect("one retained validation point")
+            .iter()
+            .flat_map(|leg| {
+                leg["momentum"]
+                    .as_array()
+                    .expect("four retained momentum components")
+                    .iter()
+                    .map(|value| {
+                        value
+                            .as_str()
+                            .expect("decimal retained momentum string")
+                            .parse::<f64>()
+                            .expect("retained f64 momentum")
+                    })
+            })
+            .collect()
+    }
+
     #[test]
     fn manifest_driven_engine_matches_row_major_compiled_stages_at_all_tail_boundaries() {
         const VALUE_COMPONENTS: usize = 4;
@@ -1201,6 +1828,8 @@ mod tests {
             std::slice::from_ref(&stage),
             &amplitude,
             &payloads,
+            &[0],
+            1,
             VALUE_COMPONENTS,
             MOMENTUM_COMPONENTS,
             MODEL_PARAMETERS,
@@ -1404,10 +2033,17 @@ mod tests {
             &payloads,
         )
         .expect("load retained row-major amplitude stage");
+        let (source_components, source_scratch_len) = canonical_source_layout(
+            &execution.runtime_schema.source_fill.sources,
+            value_component_count,
+        )
+        .expect("derive retained canonical sources");
         let mut direct = CompiledDirectEnginePrototype::load(
             &stages.stages,
             &stages.amplitude_stage,
             &payloads,
+            &source_components,
+            source_scratch_len,
             value_component_count,
             momentum_component_count,
             model_parameter_count,
@@ -1569,5 +2205,433 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn retained_compiled_o3_artifact_native_runtime_direct_matches_legacy_contract() {
+        let Some(root) = std::env::var_os("RUSTICOL_COMPILED_DIRECT_ARTIFACT") else {
+            return;
+        };
+        let root = PathBuf::from(root);
+        let mut direct = NativeRuntime::load(&root, None, None)
+            .expect("load retained production Direct runtime");
+        let mut legacy =
+            NativeRuntime::load(&root, None, None).expect("load retained legacy oracle runtime");
+        disable_compiled_direct_recursive(&mut legacy.runtime);
+
+        let (engine_count, requested_bytes, _, minimum_tile_capacity) =
+            compiled_direct_runtime_summary(&direct.runtime);
+        assert!(engine_count > 0, "retained runtime has one Direct engine");
+        assert!(requested_bytes > 0, "retained Direct arenas own storage");
+        assert!(
+            minimum_tile_capacity > 0,
+            "retained Direct engines have a nonzero tile"
+        );
+        eprintln!(
+            "retained-compiled-direct-production engines={engine_count} \
+             requested_bytes={requested_bytes} minimum_tile_capacity={minimum_tile_capacity}"
+        );
+
+        let point = retained_validation_point(&direct);
+        for point_count in [1usize, 7, 127, 128, 129, 1023, 1024, 1025] {
+            let momenta = point.repeat(point_count);
+            let mut direct_values = vec![f64::NAN; point_count];
+            let mut legacy_values = vec![f64::NAN; point_count];
+            direct
+                .evaluate_f64_into(&momenta, point_count, &mut direct_values)
+                .expect("evaluate retained production Direct totals");
+            legacy
+                .evaluate_f64_into(&momenta, point_count, &mut legacy_values)
+                .expect("evaluate retained legacy totals");
+            for (point_index, (direct_value, legacy_value)) in direct_values
+                .iter()
+                .copied()
+                .zip(legacy_values.iter().copied())
+                .enumerate()
+            {
+                assert_close_real(
+                    direct_value,
+                    legacy_value,
+                    &format!("unselected total point={point_index} count={point_count}"),
+                );
+            }
+        }
+
+        let helicities = direct.helicities().expect("retained helicity metadata");
+        let computed_helicities = helicities
+            .iter()
+            .filter(|helicity| helicity.computed && !helicity.structural_zero)
+            .collect::<Vec<_>>();
+        assert!(
+            !computed_helicities.is_empty(),
+            "retained artifact has one nonzero computed helicity"
+        );
+        let selected_helicity = computed_helicities[0].id.clone();
+        let colors = direct.color_components().expect("retained color metadata");
+        assert!(!colors.is_empty(), "retained artifact has one color");
+        let selected_color = colors[0].id.clone();
+
+        let selector_points = 129usize;
+        let selector_momenta = point.repeat(selector_points);
+        let mut selector_cases = vec![(
+            "all-flows-single-helicity",
+            Some(std::slice::from_ref(&selected_helicity)),
+            None,
+        )];
+        if direct.metadata().color_accuracy == "lc" {
+            selector_cases.push((
+                "single-flow-helicity-sum",
+                None,
+                Some(std::slice::from_ref(&selected_color)),
+            ));
+        }
+        for (label, selected_helicities, selected_colors) in selector_cases {
+            let direct_values = direct
+                .evaluate_f64_with_selectors(
+                    &selector_momenta,
+                    selector_points,
+                    selected_helicities,
+                    selected_colors,
+                    None,
+                    None,
+                )
+                .expect("evaluate retained Direct global selector");
+            let legacy_values = legacy
+                .evaluate_f64_with_selectors(
+                    &selector_momenta,
+                    selector_points,
+                    selected_helicities,
+                    selected_colors,
+                    None,
+                    None,
+                )
+                .expect("evaluate retained legacy global selector");
+            let resolved = direct
+                .evaluate_resolved_f64(
+                    &selector_momenta,
+                    selector_points,
+                    selected_helicities,
+                    selected_colors,
+                )
+                .expect("resolve retained Direct global selector");
+            let resolved_totals = resolved.totals();
+            for point_index in 0..selector_points {
+                assert_close_real(
+                    direct_values[point_index],
+                    legacy_values[point_index],
+                    &format!("{label} direct/legacy point={point_index}"),
+                );
+                assert_close_real(
+                    direct_values[point_index],
+                    resolved_totals[point_index],
+                    &format!("{label} total/resolved point={point_index}"),
+                );
+            }
+        }
+
+        if direct.metadata().color_accuracy == "lc"
+            && computed_helicities.len() >= 2
+            && colors.len() >= 2
+        {
+            let point_count = 129usize;
+            let momenta = point.repeat(point_count);
+            let helicity_by_point = (0..point_count)
+                .map(|point_index| {
+                    computed_helicities[point_index % 2]
+                        .index
+                        .try_into()
+                        .expect("physical helicity index fits u32")
+                })
+                .collect::<Vec<u32>>();
+            let color_by_point = (0..point_count)
+                .map(|point_index| {
+                    colors[point_index % 2]
+                        .index
+                        .try_into()
+                        .expect("physical color index fits u32")
+                })
+                .collect::<Vec<u32>>();
+            let direct_values = direct
+                .evaluate_f64_with_selectors(
+                    &momenta,
+                    point_count,
+                    None,
+                    None,
+                    Some(&helicity_by_point),
+                    Some(&color_by_point),
+                )
+                .expect("evaluate retained Direct per-point selectors");
+            let legacy_values = legacy
+                .evaluate_f64_with_selectors(
+                    &momenta,
+                    point_count,
+                    None,
+                    None,
+                    Some(&helicity_by_point),
+                    Some(&color_by_point),
+                )
+                .expect("evaluate retained legacy per-point selectors");
+            for (point_index, (direct_value, legacy_value)) in direct_values
+                .iter()
+                .copied()
+                .zip(legacy_values.iter().copied())
+                .enumerate()
+            {
+                assert_close_real(
+                    direct_value,
+                    legacy_value,
+                    &format!("per-point selector point={point_index}"),
+                );
+            }
+        }
+
+        let parameters = direct
+            .model_parameters()
+            .expect("retained model parameter metadata");
+        if let Some(parameter) = parameters.iter().find(|parameter| parameter.mutable) {
+            let changed_real = if parameter.default == 0.0 {
+                0.125
+            } else {
+                parameter.default * 1.01
+            };
+            direct
+                .set_model_parameter(&parameter.name, changed_real, parameter.default_imaginary)
+                .expect("update retained Direct parameter");
+            legacy
+                .set_model_parameter(&parameter.name, changed_real, parameter.default_imaginary)
+                .expect("update retained legacy parameter");
+            let direct_changed = direct
+                .evaluate_f64(&point, 1)
+                .expect("evaluate retained Direct changed parameter");
+            let legacy_changed = legacy
+                .evaluate_f64(&point, 1)
+                .expect("evaluate retained legacy changed parameter");
+            assert_close_real(
+                direct_changed[0],
+                legacy_changed[0],
+                "changed model parameter",
+            );
+            direct
+                .set_model_parameter(
+                    &parameter.name,
+                    parameter.default,
+                    parameter.default_imaginary,
+                )
+                .expect("restore retained Direct parameter");
+            legacy
+                .set_model_parameter(
+                    &parameter.name,
+                    parameter.default,
+                    parameter.default_imaginary,
+                )
+                .expect("restore retained legacy parameter");
+        }
+
+        if !cfg!(debug_assertions) {
+            let mut workloads = vec![
+                ("all-components", None, None),
+                (
+                    "all-flows-single-helicity",
+                    Some(vec![selected_helicity.clone()]),
+                    None,
+                ),
+            ];
+            if direct.metadata().color_accuracy == "lc" {
+                workloads.push((
+                    "single-flow-helicity-sum",
+                    None,
+                    Some(vec![selected_color.clone()]),
+                ));
+            }
+            for point_count in [128usize, 1024] {
+                let momenta = point.repeat(point_count);
+                let repeats = if point_count == 128 { 32 } else { 8 };
+                for (label, helicities, colors) in &workloads {
+                    let mut direct_output = vec![f64::NAN; point_count];
+                    let mut legacy_output = vec![f64::NAN; point_count];
+                    direct
+                        .evaluate_f64_into_with_selectors(
+                            &momenta,
+                            point_count,
+                            helicities.as_deref(),
+                            colors.as_deref(),
+                            None,
+                            None,
+                            &mut direct_output,
+                        )
+                        .expect("warm retained Direct timing workload");
+                    legacy
+                        .evaluate_f64_into_with_selectors(
+                            &momenta,
+                            point_count,
+                            helicities.as_deref(),
+                            colors.as_deref(),
+                            None,
+                            None,
+                            &mut legacy_output,
+                        )
+                        .expect("warm retained legacy timing workload");
+                    let mut direct_samples = [0u128; 7];
+                    let mut legacy_samples = [0u128; 7];
+                    for sample in 0usize..7 {
+                        let mut time_direct = || {
+                            let start = Instant::now();
+                            for _ in 0..repeats {
+                                direct
+                                    .evaluate_f64_into_with_selectors(
+                                        &momenta,
+                                        point_count,
+                                        helicities.as_deref(),
+                                        colors.as_deref(),
+                                        None,
+                                        None,
+                                        &mut direct_output,
+                                    )
+                                    .expect("time retained Direct workload");
+                            }
+                            start.elapsed().as_nanos() / repeats
+                        };
+                        let mut time_legacy = || {
+                            let start = Instant::now();
+                            for _ in 0..repeats {
+                                legacy
+                                    .evaluate_f64_into_with_selectors(
+                                        &momenta,
+                                        point_count,
+                                        helicities.as_deref(),
+                                        colors.as_deref(),
+                                        None,
+                                        None,
+                                        &mut legacy_output,
+                                    )
+                                    .expect("time retained legacy workload");
+                            }
+                            start.elapsed().as_nanos() / repeats
+                        };
+                        if sample.is_multiple_of(2) {
+                            direct_samples[sample] = time_direct();
+                            legacy_samples[sample] = time_legacy();
+                        } else {
+                            legacy_samples[sample] = time_legacy();
+                            direct_samples[sample] = time_direct();
+                        }
+                        std::hint::black_box((&direct_output, &legacy_output));
+                    }
+                    direct_samples.sort_unstable();
+                    legacy_samples.sort_unstable();
+                    let direct_median = direct_samples[3];
+                    let legacy_median = legacy_samples[3];
+                    eprintln!(
+                        "retained-compiled-direct-wall color_accuracy={} workload={label} \
+                         points={point_count} samples=7 repeats={repeats} \
+                         direct_samples_ns={direct_samples:?} \
+                         legacy_samples_ns={legacy_samples:?} \
+                         direct_median_ns={direct_median} legacy_median_ns={legacy_median} \
+                         direct_ns_per_point={:.3} legacy_ns_per_point={:.3} speedup={:.6}",
+                        direct.metadata().color_accuracy,
+                        direct_median as f64 / point_count as f64,
+                        legacy_median as f64 / point_count as f64,
+                        legacy_median as f64 / direct_median as f64,
+                    );
+                }
+            }
+        }
+
+        let allocation_points = 128usize;
+        let allocation_momenta = point.repeat(allocation_points);
+        let mut allocation_output = vec![f64::NAN; allocation_points];
+        direct
+            .evaluate_f64_into(
+                &allocation_momenta,
+                allocation_points,
+                &mut allocation_output,
+            )
+            .expect("warm retained Direct evaluate-into");
+        let (result, allocations, allocated_bytes) = count_test_allocations(|| {
+            direct.evaluate_f64_into(
+                &allocation_momenta,
+                allocation_points,
+                &mut allocation_output,
+            )
+        });
+        result.expect("repeat retained Direct evaluate-into");
+        eprintln!(
+            "retained-compiled-direct-public-allocation allocations={allocations} \
+             allocated_bytes={allocated_bytes}"
+        );
+
+        let allocation_batch = F64MomentumBatchView::from_contiguous_prevalidated(
+            &allocation_momenta,
+            allocation_points,
+            direct.runtime.external_count,
+            direct.input_crossing_map.as_deref(),
+        )
+        .expect("borrow retained allocation batch");
+        direct
+            .runtime
+            .run_f64_selected_into_unprofiled(allocation_batch, None, None, &mut allocation_output)
+            .expect("warm retained Direct runtime");
+        let (result, runtime_allocations, runtime_allocated_bytes) = count_test_allocations(|| {
+            direct.runtime.run_f64_selected_into_unprofiled(
+                allocation_batch,
+                None,
+                None,
+                &mut allocation_output,
+            )
+        });
+        result.expect("repeat retained Direct runtime");
+        eprintln!(
+            "retained-compiled-direct-runtime-allocation allocations={runtime_allocations} \
+             allocated_bytes={runtime_allocated_bytes}"
+        );
+
+        let selected_colors = BTreeSet::from([selected_color]);
+        let selected_helicities = BTreeSet::from([selected_helicity]);
+        let (allocation_helicities, allocation_colors, allocation_label) =
+            if direct.metadata().color_accuracy == "lc" {
+                (None, Some(&selected_colors), "selected-flow")
+            } else {
+                (Some(&selected_helicities), None, "selected-helicity")
+            };
+        direct
+            .runtime
+            .run_f64_selected_into_unprofiled(
+                allocation_batch,
+                allocation_helicities,
+                allocation_colors,
+                &mut allocation_output,
+            )
+            .expect("warm retained Direct selected runtime");
+        let (result, selected_allocations, selected_allocated_bytes) =
+            count_test_allocations(|| {
+                direct.runtime.run_f64_selected_into_unprofiled(
+                    allocation_batch,
+                    allocation_helicities,
+                    allocation_colors,
+                    &mut allocation_output,
+                )
+            });
+        result.expect("repeat retained Direct selected runtime");
+        eprintln!(
+            "retained-compiled-direct-{allocation_label}-allocation \
+             allocations={selected_allocations} allocated_bytes={selected_allocated_bytes}"
+        );
+        assert_eq!(
+            selected_allocations, 0,
+            "warmed selected Direct arena execution allocated"
+        );
+        assert_eq!(
+            selected_allocated_bytes, 0,
+            "warmed selected Direct arena execution allocated bytes"
+        );
+
+        let (engine_count, requested_bytes, hot_calls, minimum_tile_capacity) =
+            compiled_direct_runtime_summary(&direct.runtime);
+        assert!(hot_calls > 0, "retained production Direct leaves executed");
+        eprintln!(
+            "retained-compiled-direct-production-final engines={engine_count} \
+             requested_bytes={requested_bytes} hot_calls={hot_calls} \
+             minimum_tile_capacity={minimum_tile_capacity}"
+        );
     }
 }

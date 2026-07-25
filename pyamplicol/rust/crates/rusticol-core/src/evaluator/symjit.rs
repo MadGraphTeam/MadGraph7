@@ -319,7 +319,9 @@ fn panic_detail(payload: Box<dyn Any + Send>) -> String {
     }
 }
 
-fn validate_manifest_metadata(metadata: &SymjitApplicationMetadata<'_>) -> RusticolResult<()> {
+pub(crate) fn validate_manifest_metadata(
+    metadata: &SymjitApplicationMetadata<'_>,
+) -> RusticolResult<()> {
     if metadata.runtime_capability != SYMJIT_APPLICATION_RUNTIME_CAPABILITY {
         return Err(RusticolError::unsupported_runtime_capability(
             metadata.runtime_capability,

@@ -2,6 +2,47 @@
 
 use super::*;
 
+#[cfg(feature = "f64-symjit")]
+fn evaluate_direct_color_schedule(
+    direct: &mut compiled_direct_prototype::CompiledDirectEnginePrototype,
+    schedules: &BTreeMap<i64, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
+    selected_color_sector_ids: Option<&BTreeSet<i64>>,
+    point_count: usize,
+) -> RusticolResult<()> {
+    let Some(selected) = selected_color_sector_ids else {
+        return direct.evaluate_all(point_count);
+    };
+    if selected.is_empty() {
+        return Err(RusticolError::invalid_argument(
+            "compiled Direct-Arena color selection cannot be empty",
+        ));
+    }
+    if selected.len() == 1 {
+        let sector_id = *selected
+            .iter()
+            .next()
+            .expect("singleton color selection checked");
+        let schedule = schedules.get(&sector_id).ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "compiled Direct-Arena has no cold-bound schedule for materialized sector {sector_id}"
+            ))
+        })?;
+        return direct.evaluate_validated(point_count, schedule);
+    }
+    for sector_id in selected {
+        if !schedules.contains_key(sector_id) {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena has no cold-bound schedule for materialized sector {sector_id}"
+            )));
+        }
+    }
+    // A multi-sector union is uncommon and has no exponential subset cache.
+    // Executing the full authenticated schedule preserves semantics without a
+    // hot-path allocation; the reducer still selects exactly the requested
+    // materialized sectors.
+    direct.evaluate_all(point_count)
+}
+
 impl ExecutionRuntime {
     pub(super) fn set_lc_sector_selector(&mut self, sector_id: Option<i64>) -> Option<f64> {
         let index = *self
@@ -168,6 +209,16 @@ impl ExecutionRuntime {
                 selected_color_ids,
             );
         }
+        #[cfg(feature = "f64-symjit")]
+        if self.compiled_direct_runtime.is_some() {
+            return self.run_f64_materialized_selected_direct_resolved_unprofiled(
+                batch,
+                &physics,
+                selected_helicity_ids,
+                selected_color_ids,
+                None,
+            );
+        }
         self.run_f64_materialized_selected_for_resolved_unprofiled(batch, None)?;
         self.amplitude_stage
             .as_mut()
@@ -252,20 +303,48 @@ impl ExecutionRuntime {
                         Some(&source_group.color_ids),
                     )?
                 } else {
-                    self.run_f64_materialized_selected_for_resolved_unprofiled(
-                        evaluation_view,
-                        Some(&materialized_sector_ids),
-                    )?;
-                    self.amplitude_stage
-                        .as_mut()
-                        .expect("generic amplitude stage checked")
-                        .reduce_scratch_f64_resolved(
-                            evaluation_view.point_count(),
+                    #[cfg(feature = "f64-symjit")]
+                    if self.compiled_direct_runtime.is_some() {
+                        self.run_f64_materialized_selected_direct_resolved_unprofiled(
+                            evaluation_view,
                             &physics,
-                            self.normalization_factor,
                             Some(&source_group.helicity_ids),
                             Some(&source_group.color_ids),
+                            Some(&materialized_sector_ids),
                         )?
+                    } else {
+                        self.run_f64_materialized_selected_for_resolved_unprofiled(
+                            evaluation_view,
+                            Some(&materialized_sector_ids),
+                        )?;
+                        self.amplitude_stage
+                            .as_mut()
+                            .expect("generic amplitude stage checked")
+                            .reduce_scratch_f64_resolved(
+                                evaluation_view.point_count(),
+                                &physics,
+                                self.normalization_factor,
+                                Some(&source_group.helicity_ids),
+                                Some(&source_group.color_ids),
+                            )?
+                    }
+                    #[cfg(not(feature = "f64-symjit"))]
+                    {
+                        self.run_f64_materialized_selected_for_resolved_unprofiled(
+                            evaluation_view,
+                            Some(&materialized_sector_ids),
+                        )?;
+                        self.amplitude_stage
+                            .as_mut()
+                            .expect("generic amplitude stage checked")
+                            .reduce_scratch_f64_resolved(
+                                evaluation_view.point_count(),
+                                &physics,
+                                self.normalization_factor,
+                                Some(&source_group.helicity_ids),
+                                Some(&source_group.color_ids),
+                            )?
+                    }
                 };
                 accumulate_selected_lc_replay_resolved_f64(
                     &mut full_values,
@@ -436,6 +515,19 @@ impl ExecutionRuntime {
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
             )
         })?;
+        #[cfg(feature = "f64-symjit")]
+        if self.compiled_direct_runtime.is_some() {
+            return self.run_f64_routed_materialized_direct_into_unprofiled(
+                batch,
+                &physics,
+                selected_helicity_ids,
+                selected_color_ids,
+                replay_entry,
+                source_component_count,
+                target_component_count,
+                output,
+            );
+        }
         self.run_f64_materialized_selected_for_resolved_unprofiled(batch, None)?;
         self.amplitude_stage
             .as_mut()
@@ -482,6 +574,14 @@ impl ExecutionRuntime {
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
         output: &mut [f64],
     ) -> RusticolResult<()> {
+        #[cfg(feature = "f64-symjit")]
+        if self.compiled_direct_runtime.is_some() {
+            return self.run_f64_materialized_selected_direct_into_unprofiled(
+                batch,
+                selected_color_sector_ids,
+                output,
+            );
+        }
         let n_points = batch.point_count();
         if output.len() != n_points {
             return Err(RusticolError::invalid_argument(format!(
@@ -496,6 +596,232 @@ impl ExecutionRuntime {
             .reduce_scratch_f64_into_selected_slice(n_points, output, selected_color_sector_ids)?;
         for value in output {
             *value *= self.normalization_factor;
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "f64-symjit")]
+    fn run_f64_materialized_selected_direct_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let point_count = batch.point_count();
+        if output.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {point_count}",
+                output.len()
+            )));
+        }
+        let Self {
+            compiled_direct_runtime: Some(direct),
+            compiled_direct_color_schedules,
+            sources,
+            external_count,
+            particle_masses,
+            momentum_slots,
+            external_is_initial,
+            model_parameter_values_f64,
+            amplitude_stage: Some(amplitude),
+            normalization_factor,
+            ..
+        } = self
+        else {
+            return Err(RusticolError::integrity(
+                "compiled Direct-Arena execution was selected without a complete runtime",
+            ));
+        };
+        let tile_capacity = direct.tile_capacity();
+        let mut point_start = 0usize;
+        while point_start < point_count {
+            let point_stop = (point_start + tile_capacity).min(point_count);
+            let tile = batch.subview(point_start, point_stop)?;
+            direct.begin_tile_from_inputs(
+                tile,
+                sources,
+                None,
+                *external_count,
+                particle_masses,
+                momentum_slots,
+                external_is_initial,
+                model_parameter_values_f64,
+            )?;
+            evaluate_direct_color_schedule(
+                direct,
+                compiled_direct_color_schedules,
+                selected_color_sector_ids,
+                point_stop - point_start,
+            )?;
+            let planes = direct.amplitude_planes()?;
+            amplitude.reduce_planes_f64_into_selected_slice(
+                planes,
+                &mut output[point_start..point_stop],
+                selected_color_sector_ids,
+            )?;
+            if *normalization_factor != 1.0 {
+                for value in &mut output[point_start..point_stop] {
+                    *value *= *normalization_factor;
+                }
+            }
+            point_start = point_stop;
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "f64-symjit")]
+    #[allow(clippy::too_many_arguments)]
+    fn run_f64_materialized_selected_direct_resolved_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        physics: &PhysicsRuntime,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        let point_count = batch.point_count();
+        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        let component_count = helicity_indices
+            .len()
+            .checked_mul(color_indices.len())
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        let mut values = vec![0.0; point_count * component_count];
+        let Self {
+            compiled_direct_runtime: Some(direct),
+            compiled_direct_color_schedules,
+            sources,
+            external_count,
+            particle_masses,
+            momentum_slots,
+            external_is_initial,
+            model_parameter_values_f64,
+            amplitude_stage: Some(amplitude),
+            normalization_factor,
+            ..
+        } = self
+        else {
+            return Err(RusticolError::integrity(
+                "compiled Direct-Arena resolved execution was selected without a complete runtime",
+            ));
+        };
+        let tile_capacity = direct.tile_capacity();
+        let mut point_start = 0usize;
+        while point_start < point_count {
+            let point_stop = (point_start + tile_capacity).min(point_count);
+            let tile = batch.subview(point_start, point_stop)?;
+            direct.begin_tile_from_inputs(
+                tile,
+                sources,
+                None,
+                *external_count,
+                particle_masses,
+                momentum_slots,
+                external_is_initial,
+                model_parameter_values_f64,
+            )?;
+            evaluate_direct_color_schedule(
+                direct,
+                compiled_direct_color_schedules,
+                selected_color_sector_ids,
+                point_stop - point_start,
+            )?;
+            let resolved = amplitude.reduce_planes_f64_resolved(
+                direct.amplitude_planes()?,
+                physics,
+                *normalization_factor,
+                selected_helicity_ids,
+                selected_color_ids,
+            )?;
+            if resolved.helicity_indices != helicity_indices
+                || resolved.color_indices != color_indices
+                || resolved.point_count != point_stop - point_start
+            {
+                return Err(RusticolError::integrity(
+                    "compiled Direct-Arena reducer returned an inconsistent resolved shape",
+                ));
+            }
+            for tile_point in 0..resolved.point_count {
+                let source = tile_point * component_count;
+                let target = (point_start + tile_point) * component_count;
+                values[target..target + component_count]
+                    .copy_from_slice(&resolved.values[source..source + component_count]);
+            }
+            point_start = point_stop;
+        }
+        Ok(ResolvedValues {
+            values,
+            point_count,
+            helicity_indices,
+            color_indices,
+        })
+    }
+
+    #[cfg(feature = "f64-symjit")]
+    #[allow(clippy::too_many_arguments)]
+    fn run_f64_routed_materialized_direct_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        physics: &PhysicsRuntime,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        replay_entry: &LcResolvedReplayEntry,
+        source_component_count: usize,
+        target_component_count: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let point_count = batch.point_count();
+        if output.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "routed evaluation output has length {}, expected {point_count}",
+                output.len()
+            )));
+        }
+        let Self {
+            compiled_direct_runtime: Some(direct),
+            sources,
+            external_count,
+            particle_masses,
+            momentum_slots,
+            external_is_initial,
+            model_parameter_values_f64,
+            amplitude_stage: Some(amplitude),
+            normalization_factor,
+            ..
+        } = self
+        else {
+            return Err(RusticolError::integrity(
+                "compiled Direct-Arena routed execution was selected without a complete runtime",
+            ));
+        };
+        let tile_capacity = direct.tile_capacity();
+        let mut point_start = 0usize;
+        while point_start < point_count {
+            let point_stop = (point_start + tile_capacity).min(point_count);
+            let tile = batch.subview(point_start, point_stop)?;
+            direct.begin_tile_from_inputs(
+                tile,
+                sources,
+                None,
+                *external_count,
+                particle_masses,
+                momentum_slots,
+                external_is_initial,
+                model_parameter_values_f64,
+            )?;
+            direct.evaluate_all(point_stop - point_start)?;
+            amplitude.reduce_planes_f64_routed_totals_into(
+                direct.amplitude_planes()?,
+                physics,
+                *normalization_factor,
+                selected_helicity_ids,
+                selected_color_ids,
+                replay_entry,
+                source_component_count,
+                target_component_count,
+                &mut output[point_start..point_stop],
+            )?;
+            point_start = point_stop;
         }
         Ok(())
     }

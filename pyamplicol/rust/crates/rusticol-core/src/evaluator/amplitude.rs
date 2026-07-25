@@ -1638,7 +1638,7 @@ impl AmplitudeRuntime {
             self.output_length,
             &self.raw_sum_groups,
             self.has_coherent_groups,
-            self.color_contraction.is_some(),
+            &mut self.color_contraction,
             &mut self.resolved_source_row_scratch_f64,
             &mut self.routed_reduction_scratch,
         )
@@ -1677,7 +1677,7 @@ impl AmplitudeRuntime {
             self.output_length,
             &self.raw_sum_groups,
             self.has_coherent_groups,
-            self.color_contraction.is_some(),
+            &mut self.color_contraction,
             &mut self.resolved_source_row_scratch_f64,
             &mut self.routed_reduction_scratch,
         )
@@ -1696,7 +1696,7 @@ impl AmplitudeRuntime {
         output_length: usize,
         raw_sum_groups: &[RawSumGroup],
         has_coherent_groups: bool,
-        has_color_contraction: bool,
+        color_contraction: &mut Option<ColorContractionRuntime>,
         resolved_source_row_scratch_f64: &mut Vec<f64>,
         scratch: &mut RoutedReductionScratch,
     ) -> RusticolResult<()> {
@@ -1713,16 +1713,6 @@ impl AmplitudeRuntime {
                 output_length
             )));
         }
-        if has_color_contraction {
-            return Err(RusticolError::invalid_argument(
-                "direct materialized-helicity totals require diagonal LC color",
-            ));
-        }
-        if !has_coherent_groups {
-            return Err(RusticolError::invalid_argument(
-                "materialized helicity reduction requires coherent amplitude-group metadata",
-            ));
-        }
         let helicity = physics
             .manifest
             .helicities
@@ -1732,6 +1722,80 @@ impl AmplitudeRuntime {
                     "runtime helicity index {helicity_index} is out of range"
                 ))
             })?;
+        if let Some(contraction) = color_contraction.as_mut() {
+            if !physics.has_contracted_color_axis() || physics.manifest.color_components.len() != 1
+            {
+                return Err(RusticolError::invalid_argument(
+                    "materialized-helicity color contraction requires one contracted color component",
+                ));
+            }
+            if raw_sum_groups.len() != contraction.group_count {
+                return Err(RusticolError::invalid_argument(
+                    "colour contraction group count does not match coherent groups",
+                ));
+            }
+            if let Some(ids) = selected_color_ids {
+                if ids.len() != 1
+                    || !ids
+                        .iter()
+                        .all(|id| physics.color_index_by_id.contains_key(id))
+                {
+                    return Err(RusticolError::selector(
+                        "materialized-helicity color selection does not match the contracted axis",
+                    ));
+                }
+            }
+            contraction
+                .group_scratch_f64
+                .resize(contraction.group_count, c64(0.0, 0.0));
+            for row in 0..batch_size {
+                for (group_index, group) in raw_sum_groups.iter().enumerate() {
+                    let reduction =
+                        physics
+                            .reduction_by_group_id
+                            .get(&group.id)
+                            .ok_or_else(|| {
+                                RusticolError::invalid_argument(format!(
+                                    "resolved metadata is missing coherent group {}",
+                                    group.id
+                                ))
+                            })?;
+                    let active = reduction
+                        .physical_helicity_ids
+                        .iter()
+                        .any(|id| id == &helicity.id)
+                        && group
+                            .indices
+                            .iter()
+                            .any(|index| root_factors[*index].is_some());
+                    let mut sum = c64(0.0, 0.0);
+                    if active {
+                        for index in &group.indices {
+                            if let Some(factor) = root_factors[*index] {
+                                sum += amplitudes.value(row, *index, output_length) * factor;
+                            }
+                        }
+                    }
+                    contraction.group_scratch_f64[group_index] = sum;
+                }
+                let mut contribution = 0.0;
+                for entry in contraction.logical_entries() {
+                    let left = contraction.group_scratch_f64[entry.left_group_index];
+                    let right = contraction.group_scratch_f64[entry.right_group_index];
+                    let product = left * right.conj();
+                    contribution += normalization_factor
+                        * entry.symmetry_factor
+                        * (entry.weight_re * product.re - entry.weight_im * product.im);
+                }
+                output[row] += contribution;
+            }
+            return Ok(());
+        }
+        if !has_coherent_groups {
+            return Err(RusticolError::invalid_argument(
+                "materialized helicity reduction requires coherent amplitude-group metadata",
+            ));
+        }
         let color_count = physics.manifest.color_components.len();
         physics.selected_color_indices_into(selected_color_ids, &mut scratch.color_indices)?;
 
