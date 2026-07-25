@@ -23,6 +23,7 @@ from tools.performance_report.final_audit import (
     FinalAuditError,
     _active_runtime_snapshot,
     _artifact_reference,
+    _audit_below_resolution_execution_timing,
     _audit_compiled_execution,
     _audit_eager_execution,
     _audit_measurement,
@@ -1539,6 +1540,96 @@ def test_candidate_measurement_requires_positive_finite_execution_time(
             expected_source_revision=_REVISION,
             expected_legacy_revision=_LEGACY_REVISION,
             active_runtime=_active_runtime(),
+        )
+
+
+def _below_resolution_execution_timing() -> dict[str, object]:
+    return {
+        "abi": "pyamplicol-report-execution-timing-v1",
+        "status": "below_timer_resolution",
+        "ratio_eligible": False,
+        "raw_seconds_per_point": 0.0,
+        "source": ("runtime_profile_core_compiled_direct_arena_orchestration_time"),
+        "compiled_direct_arena_active": True,
+        "sample_count": 5,
+        "native_profile_points_per_sample": 128,
+        "sample_contract": "paired_unprofiled_headline_profiled_attribution_v1",
+    }
+
+
+def test_final_audit_accepts_only_authenticated_compiled_o3_timer_zero() -> None:
+    provenance = {"execution_timing": _below_resolution_execution_timing()}
+    _audit_below_resolution_execution_timing(
+        _cell(ExecutionMode.COMPILED, optimization_level=3),
+        provenance,
+        measurement_sample_count=5,
+        context="candidate",
+    )
+
+    for cell in (
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        _cell(ExecutionMode.EAGER, optimization_level=2),
+        _cell(ExecutionMode.COMPILED, optimization_level=1),
+        _cell(ExecutionMode.COMPILED, backend="cpp", optimization_level=None),
+    ):
+        with pytest.raises(FinalAuditError, match="only for compiled JIT O3"):
+            _audit_below_resolution_execution_timing(
+                cell,
+                provenance,
+                measurement_sample_count=5,
+                context="candidate",
+            )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("abi", "wrong"),
+        ("status", "measured"),
+        ("ratio_eligible", True),
+        ("raw_seconds_per_point", 1.0e-30),
+        ("raw_seconds_per_point", float("nan")),
+        ("source", "runtime_profile_core_evaluator_call_time"),
+        ("compiled_direct_arena_active", False),
+        ("sample_count", 4),
+        ("sample_count", True),
+        ("native_profile_points_per_sample", 0),
+        ("native_profile_points_per_sample", None),
+        ("sample_contract", "separate_native_profile_diagnostic_v1"),
+    ),
+)
+def test_final_audit_rejects_tampered_below_resolution_timing(
+    field: str,
+    value: object,
+) -> None:
+    timing = _below_resolution_execution_timing()
+    timing[field] = value
+    with pytest.raises(FinalAuditError, match="below-resolution record"):
+        _audit_below_resolution_execution_timing(
+            _cell(ExecutionMode.COMPILED, optimization_level=3),
+            {"execution_timing": timing},
+            measurement_sample_count=5,
+            context="candidate",
+        )
+
+
+def test_final_audit_binds_below_resolution_timing_shape_and_sample_count() -> None:
+    timing = _below_resolution_execution_timing()
+    timing["unexpected"] = True
+    with pytest.raises(FinalAuditError, match="fields do not match"):
+        _audit_below_resolution_execution_timing(
+            _cell(ExecutionMode.COMPILED, optimization_level=3),
+            {"execution_timing": timing},
+            measurement_sample_count=5,
+            context="candidate",
+        )
+
+    with pytest.raises(FinalAuditError, match="below-resolution record"):
+        _audit_below_resolution_execution_timing(
+            _cell(ExecutionMode.COMPILED, optimization_level=3),
+            {"execution_timing": _below_resolution_execution_timing()},
+            measurement_sample_count=6,
+            context="candidate",
         )
 
 
