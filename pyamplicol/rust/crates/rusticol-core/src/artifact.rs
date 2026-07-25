@@ -1586,6 +1586,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::CompiledPlaneArenaV1,
         RuntimeCapability::CompiledRuntimeSelectorsV1,
         RuntimeCapability::EagerDagComplexF64V1,
+        RuntimeCapability::EagerDirectArenaV1,
         RuntimeCapability::EagerRuntimeLayoutComplexF64V1,
         RuntimeCapability::EagerLcTopologyReplayComplexF64V1,
         RuntimeCapability::RecurrenceRuntimeComplexF64V1,

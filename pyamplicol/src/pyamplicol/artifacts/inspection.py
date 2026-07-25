@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from pyamplicol._internal.versions import (
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
     RECURRENCE_BUILDER_INPUT_ABI,
     RECURRENCE_COLOR_RUNTIME_CAPABILITY,
     RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
@@ -37,6 +38,7 @@ _RECURRENCE_COLOR_CONTRACTION_CODEC_ABI = (
 _EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 _EAGER_RUNTIME_CAPABILITIES = frozenset(
     {
+        EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         "rusticol.eager-dag.complex-f64.v1",
         "rusticol.eager-runtime-layout.complex-f64.v1",
     }

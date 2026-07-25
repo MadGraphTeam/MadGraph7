@@ -45,6 +45,8 @@ pub use eager_tables::{
     EagerClosureRow, EagerCouplingRow, EagerFinalizationRow, EagerInvocationRow,
     EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow, MISSING_U32,
 };
+#[cfg(feature = "f64-symjit")]
+pub use engine::eager_direct_descriptor_for_source_application_bytes;
 pub use engine::{
     NativeColorComponent, NativeDecimalEvaluation, NativeDecimalResolvedEvaluation,
     NativeEagerExactAttachment, NativeEagerExactClosure, NativeEagerExactCoupling,

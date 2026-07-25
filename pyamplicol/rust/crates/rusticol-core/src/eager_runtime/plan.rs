@@ -384,6 +384,10 @@ impl EagerExecutionPlan {
     pub fn has_selector_domains(&self) -> bool {
         self.selector_domains.is_some()
     }
+
+    pub(crate) fn selector_group_ids(&self) -> Option<&[u32]> {
+        Some(&self.selector_domains.as_ref()?.group_ids)
+    }
 }
 
 fn decode_selector_payloads(

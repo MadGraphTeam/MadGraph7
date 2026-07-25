@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import importlib.metadata
 import json
 import os
 import re
+import time
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
 from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
@@ -40,6 +43,9 @@ from .._internal.versions import (
     COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
     COMPILED_PLANE_DIRECT_APPLICATION_ABI,
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    EAGER_DIRECT_TABLE_BINDING_ABI,
+    EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
     EVALUATOR_RUNTIME_CAPABILITIES,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
@@ -116,6 +122,14 @@ _EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI = "pacbin-v1"
 EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 EAGER_RUNTIME_LAYOUT_ABI = "pyamplicol-eager-runtime-layout-v1"
 EAGER_PLAN_V3_RUNTIME_CAPABILITY = "rusticol.eager-runtime-layout.complex-f64.v1"
+_EAGER_PLAN_V3_RUNTIME_CAPABILITIES = tuple(
+    sorted(
+        (
+            EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+        )
+    )
+)
 EAGER_RUNTIME_CONTAINER_KIND = "pyamplicol-eager-runtime-container"
 EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
 EAGER_RUNTIME_STORAGE_ABI = "pacbin-v1"
@@ -699,6 +713,10 @@ def write_schema_v3_artifact(
                 compiled_model,
                 kernel_ids=eager_kernel_ids,
                 evaluator_payloads=evaluator_payloads,
+                require_eager_direct=any(
+                    isinstance(process, EagerPlanV3ProcessArtifact)
+                    for process in processes
+                ),
             )
         for process_index, process in enumerate(processes, start=1):
             if progress_callback is not None:
@@ -839,6 +857,7 @@ def _write_eager_kernel_pack(
     *,
     kernel_ids: frozenset[int],
     evaluator_payloads: _EvaluatorPayloadCollector,
+    require_eager_direct: bool,
 ) -> None:
     bundle = compiled_model.prepared_bundle
     if bundle is None:
@@ -853,6 +872,11 @@ def _write_eager_kernel_pack(
     if {kernel.kernel_id for kernel in selected} != set(kernel_ids):
         missing = sorted(set(kernel_ids) - {kernel.kernel_id for kernel in selected})
         raise ValueError(f"prepared model omits referenced eager kernels {missing}")
+    if require_eager_direct and bundle.kernel_pack.backend != "jit":
+        raise ValueError(
+            "eager-direct-arena-v1 currently requires a JIT prepared model; "
+            "regenerate with evaluator.backend = 'jit'"
+        )
     selected_variants = tuple(
         variant
         for variant in bundle.kernel_pack.kernel_variants
@@ -863,7 +887,25 @@ def _write_eager_kernel_pack(
     evaluator_payloads.discard_prefix(_EAGER_KERNEL_PAYLOAD_ROOT)
     pack_payload = bundle.kernel_pack.to_dict()
     pack_payload["eager_kernel_abi"] = EAGER_KERNEL_ABI
-    pack_payload["kernels"] = [kernel.to_dict() for kernel in selected]
+    direct_descriptors: dict[str, bytes] = {}
+    kernel_payloads: list[dict[str, object]] = []
+    for kernel in selected:
+        payload = kernel.to_dict()
+        if require_eager_direct:
+            manifest = _mapping(payload["f64_evaluator_manifest"])
+            direct_manifest, descriptor_path, descriptor = (
+                _eager_direct_evaluator_manifest(
+                    bundle=bundle,
+                    kernel_id=kernel.kernel_id,
+                    input_complex_count=kernel.input_arity,
+                    output_complex_count=kernel.output_arity,
+                    manifest=manifest,
+                )
+            )
+            payload["f64_evaluator_manifest"] = direct_manifest
+            direct_descriptors[descriptor_path] = descriptor
+        kernel_payloads.append(payload)
+    pack_payload["kernels"] = kernel_payloads
     pack_payload["kernel_variants"] = [
         variant.to_dict() for variant in selected_variants
     ]
@@ -877,6 +919,13 @@ def _write_eager_kernel_pack(
         role="evaluator-manifest",
         compact=True,
     )
+    for descriptor_path, descriptor in sorted(direct_descriptors.items()):
+        evaluator_payloads.add_bytes(
+            f"{_EAGER_KERNEL_PAYLOAD_ROOT}/{descriptor_path}",
+            descriptor,
+            process_id=None,
+            media_type="application/octet-stream",
+        )
     referenced_payloads = {
         path
         for record in (*selected, *selected_variants)
@@ -891,6 +940,99 @@ def _write_eager_kernel_pack(
                     process_id=None,
                     media_type=_media_type(Path(member_path)),
                 )
+
+
+def _eager_direct_evaluator_manifest(
+    *,
+    bundle: object,
+    kernel_id: int,
+    input_complex_count: int,
+    output_complex_count: int,
+    manifest: Mapping[str, object],
+) -> tuple[dict[str, object], str, bytes]:
+    if manifest.get("kind") != "symjit-application-evaluator":
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} is not a SymJIT application"
+        )
+    application_path = manifest.get("application_path")
+    if not isinstance(application_path, str) or not application_path:
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} has no source application"
+        )
+    if manifest.get("application_abi") != SYMJIT_APPLICATION_ABI:
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} has an incompatible source ABI"
+        )
+    reader = getattr(bundle, "read_payload", None)
+    if not callable(reader):  # pragma: no cover - internal type invariant
+        raise TypeError("prepared model bundle cannot read evaluator payloads")
+    source = reader(application_path)
+    if not isinstance(source, bytes):  # pragma: no cover - bundle invariant
+        raise TypeError("prepared model bundle returned a non-byte evaluator payload")
+    started = time.perf_counter()
+    descriptor = _derive_eager_direct_descriptor(
+        source,
+        input_complex_count=input_complex_count,
+        output_complex_count=output_complex_count,
+    )
+    descriptor_s = time.perf_counter() - started
+    descriptor_path = (
+        f"kernels/{kernel_id}/eager-direct-table-descriptor-v1.bin"
+    )
+    result = _plain_mapping(manifest)
+    timing = _plain_mapping(_mapping(result.get("build_timing", {})))
+    timing["eager_direct_descriptor_s"] = descriptor_s
+    result["build_timing"] = timing
+    result["direct_table"] = {
+        "capability": EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        "source_application_abi": SYMJIT_APPLICATION_ABI,
+        "descriptor_abi": EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+        "binding_abi": EAGER_DIRECT_TABLE_BINDING_ABI,
+        "descriptor_path": descriptor_path,
+        "descriptor_size_bytes": len(descriptor),
+        "descriptor_sha256": hashlib.sha256(descriptor).hexdigest(),
+        "input_complex_count": input_complex_count,
+        "output_complex_count": output_complex_count,
+    }
+    return result, descriptor_path, descriptor
+
+
+def _derive_eager_direct_descriptor(
+    source_application: bytes,
+    *,
+    input_complex_count: int,
+    output_complex_count: int,
+) -> bytes:
+    operation = _eager_direct_descriptor_operation()
+    descriptor = operation(
+        source_application,
+        input_complex_count,
+        output_complex_count,
+    )
+    if not isinstance(descriptor, bytes) or not descriptor:
+        raise RuntimeError(
+            "Rusticol returned an invalid eager DirectTable descriptor"
+        )
+    return descriptor
+
+
+@cache
+def _eager_direct_descriptor_operation() -> Callable[[bytes, int, int], bytes]:
+    try:
+        rusticol = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(rusticol)
+    except (ImportError, OSError, RuntimeError) as exc:
+        raise RuntimeError(
+            "eager-direct-arena-v1 descriptor generation requires the current "
+            "pyamplicol native extension"
+        ) from exc
+    operation = getattr(rusticol, "_eager_direct_descriptor_v1", None)
+    if not callable(operation):
+        raise RuntimeError(
+            "the current pyamplicol native extension does not expose "
+            "_eager_direct_descriptor_v1; rebuild it before generating artifacts"
+        )
+    return operation
 
 
 def _prepared_kernel_ids(
@@ -948,6 +1090,7 @@ def _eager_prepared_pack_identity(
     existing_uses_eager = existing is not None and (
         bool(
             {
+                EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
                 EAGER_RUNTIME_CAPABILITY,
                 EAGER_PLAN_V3_RUNTIME_CAPABILITY,
                 RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
@@ -1287,7 +1430,7 @@ def _eager_plan_v3_execution_manifest(
         "Rust eager runtime payload size",
         minimum=1,
     )
-    capabilities = [EAGER_PLAN_V3_RUNTIME_CAPABILITY]
+    capabilities = list(_EAGER_PLAN_V3_RUNTIME_CAPABILITIES)
     plan = {
         "kind": EAGER_RUNTIME_KIND,
         "eager_plan_abi": EAGER_PLAN_V3_ABI,
@@ -1820,6 +1963,7 @@ def _prefix_evaluator_payload_paths(
 ) -> dict[str, object]:
     path_fields = {
         "application_path",
+        "descriptor_path",
         "evaluator_state_path",
         "library_path",
         "source_path",
@@ -3012,9 +3156,12 @@ def _validate_append_compatibility(
 ) -> None:
     if existing is None:
         return
-    existing_uses_eager = EAGER_RUNTIME_CAPABILITY in _required_runtime_capabilities(
-        existing.runtime
-    ) or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
+    existing_capabilities = _required_runtime_capabilities(existing.runtime)
+    existing_uses_eager = (
+        EAGER_RUNTIME_CAPABILITY in existing_capabilities
+        or EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY in existing_capabilities
+        or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
+    )
     existing_identity = existing.extensions.get(_EAGER_PACK_IDENTITY_EXTENSION)
     if existing_uses_eager or existing_identity is not None:
         if not isinstance(existing_identity, Mapping):
@@ -3231,7 +3378,7 @@ def _process_runtime_capabilities(
     if isinstance(process, RecurrenceProcessArtifact):
         return _recurrence_process_runtime_capabilities(process)
     if isinstance(process, EagerPlanV3ProcessArtifact):
-        return (EAGER_PLAN_V3_RUNTIME_CAPABILITY,)
+        return _EAGER_PLAN_V3_RUNTIME_CAPABILITIES
     if isinstance(process, EagerProcessArtifact):
         return _eager_process_runtime_capabilities(process)
     return _compiled_process_runtime_capabilities(process)
@@ -3889,6 +4036,7 @@ def _deep_plain(value: Mapping[str, object]) -> dict[str, object]:
 
 
 __all__ = [
+    "EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY",
     "EAGER_PLAN_V3_ABI",
     "EAGER_PLAN_V3_RUNTIME_CAPABILITY",
     "EAGER_RUNTIME_CONTAINER_KIND",

@@ -10,7 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from pyamplicol._internal.versions import verify_native_module
+from pyamplicol._internal.versions import (
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    verify_native_module,
+)
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
 from pyamplicol.runtime.eager_exact._contracts import (
     _complex_pair,
@@ -29,6 +32,12 @@ EAGER_EXACT_SECTIONS_ABI = "pyamplicol-eager-exact-sections-v1"
 EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 EAGER_RUNTIME_LAYOUT_ABI = "pyamplicol-eager-runtime-layout-v1"
 EAGER_PLAN_V3_RUNTIME_CAPABILITY = "rusticol.eager-runtime-layout.complex-f64.v1"
+_EAGER_PLAN_V3_RUNTIME_CAPABILITIES = sorted(
+    (
+        EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+    )
+)
 _NATIVE_BINDING_NAME = "_load_eager_exact_sections_v1"
 
 
@@ -362,7 +371,7 @@ def _validate_plan_v3_execution_header(execution: Mapping[str, object]) -> None:
         raise CompatibilityError("outer and compact eager plan contracts do not match")
     if execution.get("key") is None:
         raise ArtifactError("compact eager execution has no process key")
-    expected = [EAGER_PLAN_V3_RUNTIME_CAPABILITY]
+    expected = _EAGER_PLAN_V3_RUNTIME_CAPABILITIES
     if execution.get("required_runtime_capabilities") != expected:
         raise CompatibilityError(
             "unsupported compact eager runtime capability contract"

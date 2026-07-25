@@ -2,10 +2,13 @@
 
 use super::*;
 use crate::{
-    EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerExecutionPlan,
-    EagerFinalizationRow, EagerInvocationRow, EagerPlanPayloads, EagerSelectorDomainIdRow,
-    EagerSelectorDomainRow, EagerSelectorGroupRow, EagerSelectorPayloads,
-    EagerSelectorStagePayload, EagerStagePayload,
+    EagerAttachmentRow, EagerClosureRow, EagerCouplingRow, EagerFinalizationRow,
+    EagerInvocationRow, EagerSelectorDomainIdRow, EagerSelectorDomainRow, EagerSelectorGroupRow,
+};
+#[cfg(test)]
+use crate::{
+    EagerExecutionPlan, EagerPlanPayloads, EagerSelectorPayloads, EagerSelectorStagePayload,
+    EagerStagePayload,
 };
 
 pub(super) fn validate_eager_payload_references(
@@ -28,6 +31,7 @@ pub(super) fn validate_eager_payload_references(
     Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn load_eager_native_runtime(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,

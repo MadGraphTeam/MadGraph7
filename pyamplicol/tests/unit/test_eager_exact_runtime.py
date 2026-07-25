@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from pyamplicol._internal.versions import EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.artifacts import ArtifactBuilder
 from pyamplicol.generation.eager_lowering import EAGER_RUNTIME_KIND
@@ -557,7 +558,12 @@ def _build_artifact(
     capabilities = [EAGER_RUNTIME_CAPABILITY]
     compact_sections: dict[str, object] | None = None
     if compact_v3:
-        capabilities = [EAGER_PLAN_V3_RUNTIME_CAPABILITY]
+        capabilities = sorted(
+            (
+                EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+            )
+        )
         execution = {
             "schema_version": 3,
             "kind": EAGER_RUNTIME_KIND,

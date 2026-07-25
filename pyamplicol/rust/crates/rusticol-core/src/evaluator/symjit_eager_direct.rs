@@ -12,6 +12,11 @@
 #![allow(dead_code)]
 
 use crate::direct_arena::{DirectArenaView, DirectArenaWorkspace};
+use crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY;
+pub(crate) use crate::eager_layout::{
+    EAGER_DIRECT_SOURCE_APPLICATION_ABI, EAGER_DIRECT_TABLE_BINDING_ABI,
+    EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+};
 use crate::{RusticolError, RusticolResult};
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -19,17 +24,13 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use symjit::{
     Application, Config, DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT,
-    DIRECT_STATUS_INVALID_CONTEXT, DIRECT_STATUS_OK, DIRECT_TABLE_BINDING_ABI,
-    DIRECT_TABLE_DESCRIPTOR_ABI, Defuns, DirectPlane, DirectScalar, DirectTableApplication,
-    DirectTableApplicationMetadata, DirectTableAttachmentLayout, DirectTableCallViewV1,
-    DirectTableCallable, DirectTableInvocationLayout, DirectTableParameterBinding, Storage,
+    DIRECT_STATUS_INVALID_CONTEXT, DIRECT_STATUS_OK, Defuns, DirectPlane, DirectScalar,
+    DirectTableApplication, DirectTableApplicationMetadata, DirectTableAttachmentLayout,
+    DirectTableCallViewV1, DirectTableCallable, DirectTableInvocationLayout,
+    DirectTableParameterBinding, Storage,
 };
 
-pub(crate) const EAGER_DIRECT_ARENA_CAPABILITY: &str = "eager-direct-arena-v1";
-pub(crate) const EAGER_DIRECT_TABLE_BINDING_ABI: &str = DIRECT_TABLE_BINDING_ABI;
-pub(crate) const EAGER_DIRECT_TABLE_DESCRIPTOR_ABI: &str = DIRECT_TABLE_DESCRIPTOR_ABI;
-
-pub(crate) const EAGER_DIRECT_SOURCE_APPLICATION_ABI: &str = "symjit-application-storage-v3";
+pub(crate) const EAGER_DIRECT_ARENA_CAPABILITY: &str = EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY;
 
 /// Build the fixed-width row descriptor used by eager invocation/fanout
 /// Direct-Arena calls.

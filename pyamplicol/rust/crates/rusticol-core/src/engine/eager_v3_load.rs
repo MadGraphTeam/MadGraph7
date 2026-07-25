@@ -13,6 +13,8 @@ use crate::{
 };
 use serde::Deserialize;
 use serde_json::json;
+#[cfg(feature = "f64-symjit")]
+use sha2::{Digest, Sha256};
 
 const NATIVE_REDUCTION_GROUPS_EXTENSION_KEY: &str = "native_reduction_groups";
 const NATIVE_REDUCTION_GROUPS_KIND: &str = "pyamplicol-eager-plan-v3-reduction-groups";
@@ -140,54 +142,82 @@ pub(super) fn load_eager_v3_native_runtime(
         point_tile_size: decoded.runtime_options.point_tile_size,
         workspace_bytes: decoded.runtime_options.workspace_bytes,
     };
-    #[cfg(feature = "f64-symjit")]
-    let direct = load_eager_v3_direct_scheduler(
-        &pack.manifest,
-        &kernel_payloads,
-        &decoded,
-        sections,
-        runtime_options,
-    )?;
-    let plan = crate::EagerExecutionPlan::from_plan_v3_sections(sections)?;
-    let scheduler = crate::EagerExecutionRuntime::new(plan, runtime_options)?;
-    let backend = PreparedEvaluatorBackend::load_from_store(&pack.manifest, &kernel_payloads)?;
-    let (raw_sum_groups, color_contraction) = reduction_runtime(&decoded, manifest)?;
-    if let Some(selector_group_ids) = scheduler.selector_group_ids() {
-        let known_group_ids = raw_sum_groups
-            .iter()
-            .map(|group| {
-                u32::try_from(group.id).map_err(|_| {
-                    RusticolError::integrity(format!(
-                        "eager coherent group {} does not fit the selector-domain ABI",
-                        group.id
-                    ))
-                })
-            })
-            .collect::<RusticolResult<BTreeSet<_>>>()?;
-        if let Some(unknown) = selector_group_ids
-            .iter()
-            .find(|group_id| !known_group_ids.contains(group_id))
-        {
-            return Err(RusticolError::integrity(format!(
-                "eager selector domains reference unknown coherent group {unknown}"
-            )));
-        }
+    #[cfg(not(feature = "f64-symjit"))]
+    {
+        let _ = (sections, runtime_options, parameter_projection);
+        return Err(RusticolError::compatibility(
+            "this artifact requires eager-direct-arena-v1, which is unavailable without the \
+             f64-symjit feature; use a Direct-Arena-capable runtime",
+        ));
     }
-    let lane = EagerNativeRuntime::new(
-        scheduler,
-        backend,
-        pack.manifest.backend,
-        parameter_projection,
-        raw_sum_groups,
-        color_contraction,
-    );
     #[cfg(feature = "f64-symjit")]
-    let lane = if let Some((direct, mode)) = direct {
-        lane.with_direct_scheduler(direct, mode)
-    } else {
-        lane
-    };
-    Ok(LoadedEagerV3Runtime { common, lane })
+    {
+        let direct = load_eager_v3_direct_scheduler(
+            &pack.manifest,
+            &kernel_payloads,
+            &decoded,
+            sections,
+            runtime_options,
+        )?;
+        let (raw_sum_groups, color_contraction) = reduction_runtime(&decoded, manifest)?;
+        if let Some(selector_group_ids) = direct.plan().selector_group_ids() {
+            let known_group_ids = raw_sum_groups
+                .iter()
+                .map(|group| {
+                    u32::try_from(group.id).map_err(|_| {
+                        RusticolError::integrity(format!(
+                            "eager coherent group {} does not fit the selector-domain ABI",
+                            group.id
+                        ))
+                    })
+                })
+                .collect::<RusticolResult<BTreeSet<_>>>()?;
+            if let Some(unknown) = selector_group_ids
+                .iter()
+                .find(|group_id| !known_group_ids.contains(group_id))
+            {
+                return Err(RusticolError::integrity(format!(
+                    "eager selector domains reference unknown coherent group {unknown}"
+                )));
+            }
+        }
+        #[cfg(not(test))]
+        let lane = EagerNativeRuntime::new_direct(
+            direct,
+            pack.manifest.backend,
+            parameter_projection,
+            raw_sum_groups,
+            color_contraction,
+        );
+        #[cfg(test)]
+        let lane = {
+            let mode = super::eager_lane::EagerDirectValidationMode::from_environment()?;
+            if mode == super::eager_lane::EagerDirectValidationMode::Direct {
+                EagerNativeRuntime::new_direct(
+                    direct,
+                    pack.manifest.backend,
+                    parameter_projection,
+                    raw_sum_groups,
+                    color_contraction,
+                )
+            } else {
+                let plan = crate::EagerExecutionPlan::from_plan_v3_sections(sections)?;
+                let scheduler = crate::EagerExecutionRuntime::new(plan, runtime_options)?;
+                let backend =
+                    PreparedEvaluatorBackend::load_from_store(&pack.manifest, &kernel_payloads)?;
+                EagerNativeRuntime::new(
+                    scheduler,
+                    backend,
+                    pack.manifest.backend,
+                    parameter_projection,
+                    raw_sum_groups,
+                    color_contraction,
+                )
+                .with_direct_validation(direct, mode)
+            }
+        };
+        Ok(LoadedEagerV3Runtime { common, lane })
+    }
 }
 
 #[cfg(feature = "f64-symjit")]
@@ -197,26 +227,11 @@ fn load_eager_v3_direct_scheduler(
     decoded: &DecodedEagerRuntimeV3,
     sections: EagerPlanV3Sections<'_>,
     options: EagerRuntimeOptions,
-) -> RusticolResult<
-    Option<(
-        crate::eager_runtime::EagerDirectExecutionRuntime,
-        super::eager_lane::EagerDirectValidationMode,
-    )>,
-> {
-    let mode = super::eager_lane::EagerDirectValidationMode::from_environment()?;
-    if mode == super::eager_lane::EagerDirectValidationMode::Disabled {
-        return Ok(None);
-    }
-    if !cfg!(target_arch = "aarch64") {
-        return Err(RusticolError::compatibility(
-            "eager-direct-arena-v1 developer validation currently has an authenticated \
-             table-aware callable only on AArch64; regenerate after x86-64 support lands",
-        ));
-    }
+) -> RusticolResult<crate::eager_runtime::EagerDirectExecutionRuntime> {
     if pack.backend != "jit" {
         return Err(RusticolError::compatibility(format!(
-            "eager-direct-arena-v1 developer validation requires the SymJIT prepared backend, \
-             found {:?}; no packet fallback is permitted",
+            "eager-direct-arena-v1 requires the SymJIT prepared backend, found {:?}; no packet \
+             fallback is permitted",
             pack.backend
         )));
     }
@@ -243,6 +258,7 @@ fn load_eager_v3_direct_scheduler(
                     kernel.kernel_id
                 ))
             })?;
+        let direct = manifest.eager_direct_table_manifest()?;
         let application_path = manifest
             .f64_evaluator_manifest
             .get("application_path")
@@ -256,13 +272,32 @@ fn load_eager_v3_direct_scheduler(
         let source = payloads.source(application_path)?;
         let source_bytes = source.read()?.into_owned();
         let display_path = PathBuf::from(source.display_name());
-        let descriptor =
-            super::symjit_eager_direct::eager_direct_descriptor_for_source_application_bytes(
-                &source_bytes,
-                count_u32_for_direct(kernel.inputs.len(), "kernel input width")?,
-                kernel.output_component_count,
-                &display_path,
-            )?;
+        let descriptor_source = payloads.source(&direct.descriptor_path)?;
+        let descriptor = descriptor_source.read()?.into_owned();
+        if u64::try_from(descriptor.len()).ok() != Some(direct.descriptor_size_bytes) {
+            return Err(RusticolError::integrity(format!(
+                "eager DirectTable descriptor for kernel {} has size {}, expected {}",
+                kernel.kernel_id,
+                descriptor.len(),
+                direct.descriptor_size_bytes,
+            )));
+        }
+        let actual_descriptor_sha = format!("{:x}", Sha256::digest(&descriptor));
+        if actual_descriptor_sha != direct.descriptor_sha256 {
+            return Err(RusticolError::integrity(format!(
+                "eager DirectTable descriptor digest mismatch for kernel {}",
+                kernel.kernel_id
+            )));
+        }
+        if direct.input_complex_count
+            != count_u32_for_direct(kernel.inputs.len(), "kernel input width")?
+            || direct.output_complex_count != kernel.output_component_count
+        {
+            return Err(RusticolError::integrity(format!(
+                "eager DirectTable descriptor binding width mismatch for kernel {}",
+                kernel.kernel_id
+            )));
+        }
         owned.push(OwnedPrepared {
             kernel_id: kernel.kernel_id,
             role: kernel.role,
@@ -285,12 +320,9 @@ fn load_eager_v3_direct_scheduler(
             display_path: kernel.display_path.clone(),
         })
         .collect::<Vec<_>>();
-    Ok(Some((
-        crate::eager_runtime::EagerDirectExecutionRuntime::from_plan_v3_sections(
-            sections, &prepared, options,
-        )?,
-        mode,
-    )))
+    crate::eager_runtime::EagerDirectExecutionRuntime::from_plan_v3_sections(
+        sections, &prepared, options,
+    )
 }
 
 #[cfg(feature = "f64-symjit")]

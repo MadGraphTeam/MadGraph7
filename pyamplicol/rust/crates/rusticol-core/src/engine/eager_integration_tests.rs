@@ -92,6 +92,68 @@ fn kernel(
     }
 }
 
+fn add_direct_table_manifest(kernel: &mut PreparedKernelManifest) {
+    kernel
+        .f64_evaluator_manifest
+        .as_object_mut()
+        .expect("test evaluator object")
+        .insert(
+            "direct_table".to_string(),
+            json!({
+                "capability": crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                "source_application_abi":
+                    crate::eager_layout::EAGER_DIRECT_SOURCE_APPLICATION_ABI,
+                "descriptor_abi": crate::eager_layout::EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
+                "binding_abi": crate::eager_layout::EAGER_DIRECT_TABLE_BINDING_ABI,
+                "descriptor_path": format!(
+                    "kernels/{}/eager-direct-table-descriptor-v1.bin",
+                    kernel.kernel_id
+                ),
+                "descriptor_size_bytes": 128,
+                "descriptor_sha256": "a".repeat(64),
+                "input_complex_count": kernel.input_arity,
+                "output_complex_count": kernel.output_arity,
+            }),
+        );
+}
+
+#[test]
+fn eager_direct_table_manifest_is_explicit_and_fail_closed() {
+    let mut prepared = kernel(
+        50,
+        "closure",
+        vec![input("left-current", 0)],
+        "kernels/50/application.symjit",
+    );
+    let missing = prepared
+        .eager_direct_table_manifest()
+        .expect_err("pre-arena kernel must fail");
+    assert!(missing.to_string().contains("regenerate"));
+
+    add_direct_table_manifest(&mut prepared);
+    let direct = prepared
+        .eager_direct_table_manifest()
+        .expect("valid direct table metadata");
+    assert_eq!(direct.input_complex_count, 1);
+    assert_eq!(direct.output_complex_count, 1);
+    assert_eq!(direct.descriptor_size_bytes, 128);
+
+    for (field, value) in [
+        ("capability", json!("wrong-capability")),
+        ("descriptor_abi", json!("wrong-descriptor-abi")),
+        ("binding_abi", json!("wrong-binding-abi")),
+        ("descriptor_sha256", json!("A".repeat(64))),
+        ("input_complex_count", json!(2)),
+    ] {
+        let mut malformed = prepared.clone();
+        malformed.f64_evaluator_manifest["direct_table"][field] = value;
+        assert!(
+            malformed.eager_direct_table_manifest().is_err(),
+            "malformed DirectTable field {field} must fail"
+        );
+    }
+}
+
 fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackManifest {
     PreparedKernelPackManifest {
         eager_kernel_abi: EAGER_KERNEL_ABI.to_string(),
@@ -833,10 +895,7 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
         );
     }
 
-    if matches!(
-        std::env::var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION").as_deref(),
-        Ok("direct" | "dual")
-    ) {
+    {
         for tail in [1_usize, 7, 63, 64, 65, 127, 128, 129, 1023, 1024, 1025] {
             let tail_momenta = momenta.repeat(tail);
             let tail_values = runtime

@@ -167,6 +167,8 @@ pub const SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY: &str = "symbolica.compiled-
 pub const SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY: &str = "symbolica.compiled-asm.complex-f64.v1";
 pub const EAGER_DAG_RUNTIME_CAPABILITY: &str = crate::EAGER_RUNTIME_CAPABILITY;
 pub const EAGER_RUNTIME_LAYOUT_CAPABILITY: &str = crate::eager_layout::EAGER_RUNTIME_CAPABILITY;
+pub const EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY: &str =
+    crate::eager_layout::EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY;
 pub const EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY: &str =
     crate::EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY;
 pub const RECURRENCE_RUNTIME_CAPABILITY: &str = crate::recurrence::RECURRENCE_RUNTIME_CAPABILITY;
@@ -213,6 +215,21 @@ pub fn preflight_prepared_kernel_pack(
     PreparedEvaluatorBackend::preflight_all(&pack, payload_root)
 }
 
+#[cfg(feature = "f64-symjit")]
+pub fn eager_direct_descriptor_for_source_application_bytes(
+    source_bytes: &[u8],
+    input_complex_count: u32,
+    output_complex_count: u32,
+    display_path: &Path,
+) -> RusticolResult<Vec<u8>> {
+    evaluator::symjit_eager_direct::eager_direct_descriptor_for_source_application_bytes(
+        source_bytes,
+        input_complex_count,
+        output_complex_count,
+        display_path,
+    )
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCapability {
@@ -225,6 +242,7 @@ pub enum RuntimeCapability {
     CompiledPlaneArenaV1,
     CompiledRuntimeSelectorsV1,
     EagerDagComplexF64V1,
+    EagerDirectArenaV1,
     EagerRuntimeLayoutComplexF64V1,
     EagerLcTopologyReplayComplexF64V1,
     RecurrenceRuntimeComplexF64V1,
@@ -252,6 +270,7 @@ impl RuntimeCapability {
             Self::CompiledPlaneArenaV1 => COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
             Self::CompiledRuntimeSelectorsV1 => COMPILED_RUNTIME_SELECTORS_CAPABILITY,
             Self::EagerDagComplexF64V1 => EAGER_DAG_RUNTIME_CAPABILITY,
+            Self::EagerDirectArenaV1 => EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
             Self::EagerRuntimeLayoutComplexF64V1 => EAGER_RUNTIME_LAYOUT_CAPABILITY,
             Self::EagerLcTopologyReplayComplexF64V1 => EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
             Self::RecurrenceRuntimeComplexF64V1 => RECURRENCE_RUNTIME_CAPABILITY,
@@ -287,6 +306,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_DAG_RUNTIME_CAPABILITY,
+        #[cfg(feature = "f64-symjit")]
+        EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_RUNTIME_LAYOUT_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

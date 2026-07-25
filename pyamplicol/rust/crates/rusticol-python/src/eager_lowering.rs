@@ -7,8 +7,9 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList};
 use rusticol_core::eager_layout::{
-    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY,
-    EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA, EAGER_RUNTIME_LAYOUT_ABI,
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
+    EAGER_RUNTIME_CAPABILITY, EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA,
+    EAGER_RUNTIME_LAYOUT_ABI,
 };
 use rusticol_core::{
     EAGER_LOWERING_V1_TABLE_NAMES, EagerBitsetColumns, EagerCoherentGroupColumns,
@@ -522,7 +523,13 @@ fn result_mapping(
     result.set_item("runtime_layout_abi", EAGER_RUNTIME_LAYOUT_ABI)?;
     result.set_item(
         "required_runtime_capabilities",
-        PyList::new(py, [EAGER_RUNTIME_CAPABILITY])?,
+        PyList::new(
+            py,
+            [
+                EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                EAGER_RUNTIME_CAPABILITY,
+            ],
+        )?,
     )?;
     let container = PyDict::new(py);
     container.set_item("kind", EAGER_RUNTIME_CONTAINER_KIND)?;
