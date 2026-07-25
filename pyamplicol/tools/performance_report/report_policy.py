@@ -16,6 +16,7 @@ from .timing import below_resolution_record
 Measurement = Mapping[str, object]
 _FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
 _MINIMUM_TARGET_FRACTION = 0.95
+_MINIMUM_TIMED_SAMPLES = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,12 +95,12 @@ def timing_policy_issues(
     if (
         isinstance(sample_count, bool)
         or not isinstance(sample_count, int)
-        or sample_count < 2
+        or sample_count < _MINIMUM_TIMED_SAMPLES
     ):
         issues.append(
             ReportPolicyIssue(
                 "sample_count",
-                "at least two timed samples are required",
+                f"at least {_MINIMUM_TIMED_SAMPLES} timed samples are required",
             )
         )
     for field in (
@@ -173,13 +174,32 @@ def timing_policy_issues(
             or not isinstance(completed, int)
             or isinstance(planned, bool)
             or not isinstance(planned, int)
-            or completed < 2
+            or completed < _MINIMUM_TIMED_SAMPLES
             or completed != planned
     ):
         issues.append(
             ReportPolicyIssue(
                 "provenance.runtime_profile.completed_sample_count",
                 "all planned timing blocks must complete",
+            )
+        )
+    chunk_count = evidence.get("chunk_count")
+    if chunk_count is not None and (
+        isinstance(chunk_count, bool)
+        or not isinstance(chunk_count, int)
+        or chunk_count < _MINIMUM_TIMED_SAMPLES
+    ):
+        issues.append(
+            ReportPolicyIssue(
+                "provenance.runtime_profile.chunk_count",
+                f"at least {_MINIMUM_TIMED_SAMPLES} timed chunks are required",
+            )
+        )
+    if completed is None and chunk_count is None:
+        issues.append(
+            ReportPolicyIssue(
+                "provenance.runtime_profile.sample_count",
+                "timed sample or chunk completion evidence is required",
             )
         )
     return tuple(issues)

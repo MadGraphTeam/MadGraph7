@@ -23,6 +23,7 @@ from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import source_revision
 from .publication import portable_publication_value
 from .render import render_all_tables
+from .report_policy import publication_measurement_policy_issues
 
 
 class ReportServiceError(RuntimeError):
@@ -298,11 +299,43 @@ class ReportService:
             "statuses": dict(sorted(statuses.items())),
         }
 
+    def validate_publication_policy(
+        self,
+        caches: Mapping[str, Mapping[str, object]],
+    ) -> None:
+        """Reject successful measurements that are not publication-grade."""
+
+        issues: list[str] = []
+        for payload in caches.values():
+            entries = payload.get("entries")
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, Mapping):
+                    continue
+                measurement = entry.get("measurement")
+                if not isinstance(measurement, Mapping):
+                    continue
+                for issue in publication_measurement_policy_issues(measurement):
+                    issues.append(
+                        f"{entry.get('cell_id', '<unknown>')}: "
+                        f"{issue.field}: {issue.detail}"
+                    )
+        if issues:
+            displayed = "; ".join(issues[:12])
+            if len(issues) > 12:
+                displayed += f"; ... ({len(issues)} issues total)"
+            raise ReportServiceError(
+                "checked-in measurements violate publication policy: "
+                + displayed
+            )
+
     def audit(self) -> dict[str, object]:
         """Validate cache coverage and exact checked-in render correspondence."""
 
         result = self.validate()
         caches = self.load_caches()
+        self.validate_publication_policy(caches)
         rendered = render_all_tables(caches, catalog=self.catalog)
         expected_cache_files = {
             *caches,

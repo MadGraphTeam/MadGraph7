@@ -12,7 +12,12 @@ from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import source_revision
 from tools.performance_report.models import ArtifactPolicy
 from tools.performance_report.publication import publication_absolute_paths
-from tools.performance_report.service import ReportPaths, ReportService
+from tools.performance_report.render import render_all_tables
+from tools.performance_report.service import (
+    ReportPaths,
+    ReportService,
+    ReportServiceError,
+)
 
 
 def _service(tmp_path: Path) -> ReportService:
@@ -151,3 +156,39 @@ def test_failed_snapshot_publication_restores_previous_files(
 
     assert table.read_bytes() == old_table
     assert cache.read_bytes() == old_cache
+
+
+def test_audit_rejects_nonpublication_timing_and_source_evidence(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    caches = service.reset_payloads()
+    payload = caches["scalar_contact.json"]
+    entry = payload["entries"][0]
+    measurement = empty_measurement()
+    measurement.update(
+        {
+            "status": "ok",
+            "generation_seconds": 1.0,
+            "wall_seconds_per_point": 2.0e-6,
+            "execution_seconds_per_point": 1.0e-6,
+            "matrix_element": 3.0,
+            "sample_count": 5,
+            "standard_error_seconds_per_point": 1.0e-9,
+            "relative_standard_error": 1.0e-3,
+            "artifact": {},
+            "selector_contract": None,
+            "validation": {"status": "ok"},
+            "resources": {},
+            "provenance": {},
+            "failure": None,
+        }
+    )
+    entry["measurement"] = measurement
+    service._snapshot_files(
+        caches,
+        render_all_tables(caches, catalog=service.catalog),
+    )
+
+    with pytest.raises(ReportServiceError, match="publication policy"):
+        service.audit()

@@ -106,6 +106,19 @@ def test_requested_and_achieved_runtime_are_both_enforced() -> None:
     assert "provenance.runtime_profile.target_runtime_achieved" in fields
 
 
+def test_five_timed_samples_are_required() -> None:
+    measurement = _measurement()
+    measurement["sample_count"] = 4
+    runtime = measurement["provenance"]["runtime_profile"]
+    runtime["completed_sample_count"] = 4
+    runtime["planned_sample_count"] = 4
+
+    fields = {issue.field for issue in timing_policy_issues(measurement)}
+
+    assert "sample_count" in fields
+    assert "provenance.runtime_profile.completed_sample_count" in fields
+
+
 def test_zero_execution_requires_explicit_resolution_bound() -> None:
     measurement = _measurement()
     measurement["execution_seconds_per_point"] = None
