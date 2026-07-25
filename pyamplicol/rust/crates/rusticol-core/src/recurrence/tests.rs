@@ -47,6 +47,22 @@ fn abi_constants_are_frozen() {
 }
 
 #[test]
+fn dynamic_union_spin_sentinel_is_rejected_as_concrete_input() {
+    for context in [
+        "process source spin",
+        "template source spin",
+        "quantum input spin",
+        "quantum result spin",
+    ] {
+        assert!(validate_concrete_spin_state(-1, context).is_ok());
+        let error = validate_concrete_spin_state(DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS, context)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("reserved dynamic-union source-spin sentinel"));
+    }
+}
+
+#[test]
 fn exact_rationals_parse_reduce_and_canonicalize_zero() {
     let value = ExactRational::parse_parts("-42", "56").unwrap();
     assert_eq!(value.numerator(), -3);

@@ -21,6 +21,7 @@ from typing import ClassVar, Literal, TypeAlias
 RECURRENCE_TEMPLATE_ABI = "pyamplicol-recurrence-template-v1"
 RECURRENCE_TEMPLATE_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
 RECURRENCE_TEMPLATE_EXACT_SCALAR_ABI = "pyamplicol-exact-complex-rational-v1"
+_DYNAMIC_UNION_SOURCE_SPIN_STATE = -(1 << 31)
 
 ParameterKind: TypeAlias = Literal["external", "derived", "constant"]
 ParameterValueType: TypeAlias = Literal["real", "complex"]
@@ -248,6 +249,27 @@ def _require_int_tuple(
     result = tuple(items)
     if nonempty and not result:
         raise RecurrenceTemplateError(f"{name} must not be empty")
+    return result
+
+
+def _require_concrete_spin_state(name: str, value: object) -> int:
+    result = _require_int(name, value)
+    if result == _DYNAMIC_UNION_SOURCE_SPIN_STATE:
+        raise RecurrenceTemplateError(
+            f"{name} uses the reserved dynamic-union sentinel"
+        )
+    return result
+
+
+def _require_concrete_spin_states(
+    name: str,
+    value: object,
+) -> tuple[int, ...]:
+    result = _require_int_tuple(name, value)
+    if _DYNAMIC_UNION_SOURCE_SPIN_STATE in result:
+        raise RecurrenceTemplateError(
+            f"{name} uses the reserved dynamic-union sentinel"
+        )
     return result
 
 
@@ -807,7 +829,7 @@ class SourceTemplateV1(_SemanticRecord):
                 f"unsupported source wavefunction family {self.wavefunction_family!r}"
             )
         _require_int("source helicity", self.helicity)
-        _require_int("source spin_state", self.spin_state)
+        _require_concrete_spin_state("source spin_state", self.spin_state)
         _require_flavour_flow("source flavour flow", self.flavour_flow)
         _require_quantum_number_flow(
             "source quantum-number flow", self.quantum_number_flow
@@ -872,7 +894,10 @@ class QuantumFlowTemplateV1(_SemanticRecord):
             self.input_state_template_ids,
             nonempty=True,
         )
-        _require_int_tuple("quantum-flow spin states", self.input_spin_states)
+        _require_concrete_spin_states(
+            "quantum-flow spin states",
+            self.input_spin_states,
+        )
         flavour_flows = _require_tuple(
             "quantum-flow flavour flows", self.input_flavour_flows
         )
@@ -914,7 +939,10 @@ class QuantumFlowTemplateV1(_SemanticRecord):
             )
         _validate_coupling_orders(self.coupling_orders)
         _require_nonempty("quantum-flow result state", self.result_state_template_id)
-        _require_int("quantum-flow result spin state", self.result_spin_state)
+        _require_concrete_spin_state(
+            "quantum-flow result spin state",
+            self.result_spin_state,
+        )
         _require_flavour_flow(
             "quantum-flow result flavour flow", self.result_flavour_flow
         )

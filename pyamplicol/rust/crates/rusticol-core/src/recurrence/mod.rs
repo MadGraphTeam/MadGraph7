@@ -103,6 +103,19 @@ pub const RECURRENCE_CONTRACTED_COLOR_CAPABILITY: &str = "rusticol.recurrence-co
 /// The builder input always consists of explicitly little-endian columns.
 pub const RECURRENCE_INPUT_ENDIANNESS: &str = "little";
 
+/// Internal all-flow source marker; authenticated model/process inputs must
+/// never carry this value as an ordinary concrete spin state.
+pub(super) const DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS: i32 = i32::MIN;
+
+fn validate_concrete_spin_state(value: i32, context: &str) -> crate::RusticolResult<()> {
+    if value == DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS {
+        return Err(crate::RusticolError::invalid_argument(format!(
+            "{context} uses the reserved dynamic-union source-spin sentinel"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod direct_backend_tests;
 #[cfg(test)]

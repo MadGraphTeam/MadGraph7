@@ -24,6 +24,7 @@ from .recurrence_fermion_pairing import FermionPairingCatalogV1
 RECURRENCE_BUILDER_INPUT_ABI: Final = "pyamplicol-recurrence-builder-input-v2"
 RECURRENCE_BUILDER_INPUT_SCHEMA_VERSION: Final = 1
 MISSING_U32: Final = (1 << 32) - 1
+_DYNAMIC_UNION_SOURCE_SPIN_STATE: Final = -(1 << 31)
 
 RecurrenceLCFlowLayout = Literal[
     "topology-replay",
@@ -115,7 +116,7 @@ class RecurrenceSourceStateV1:
         _checked_u32(self.state_index, "source-state index")
         _checked_i32(self.public_helicity, "public source helicity")
         _checked_i32(self.chirality, "source chirality")
-        _checked_i32(self.spin_state, "source spin state")
+        _checked_concrete_spin_state(self.spin_state, "source spin state")
         _checked_u32(
             self.current_state_template_id,
             "source current-state template ID",
@@ -2619,6 +2620,15 @@ def _checked_i32(value: int, context: str) -> int:
     ):
         raise RecurrenceColumnarInputError(f"{context} does not fit i32: {value!r}")
     return value
+
+
+def _checked_concrete_spin_state(value: int, context: str) -> int:
+    result = _checked_i32(value, context)
+    if result == _DYNAMIC_UNION_SOURCE_SPIN_STATE:
+        raise RecurrenceColumnarInputError(
+            f"{context} uses the reserved dynamic-union sentinel"
+        )
+    return result
 
 
 def _hash_text(digest: Any, value: str) -> None:

@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{
     CheckedTableRange, ExactComplexRational, LCColorComponentKind, LCColorComponentRole,
     LCColorSourceSeed, LCColorSourceSeedOperation, RECURRENCE_TEMPLATE_ABI, SemanticDigest,
-    validate_packed_ranges, validate_u32_references,
+    validate_concrete_spin_state, validate_packed_ranges, validate_u32_references,
 };
 use crate::{RusticolError, RusticolResult};
 
@@ -1479,6 +1479,7 @@ impl<'a> RecurrenceTemplateInputView<'a> {
             self.sources.iter().map(|row| row.template_string_id),
         )?;
         for row in self.sources {
+            validate_concrete_spin_state(row.spin_state, "source template spin state")?;
             register_template(
                 template_kinds,
                 row.template_string_id,
@@ -1858,6 +1859,10 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 "quantum-flow input states",
             )?;
             let spins = i32_sequence(self, row.input_spin_sequence_id, "quantum-flow spins")?;
+            for spin in spins {
+                validate_concrete_spin_state(*spin, "quantum-flow input spin state")?;
+            }
+            validate_concrete_spin_state(row.result_spin_state, "quantum-flow result spin state")?;
             let flavour_ids = u32_sequence(
                 self,
                 row.input_flavour_sequence_id,

@@ -617,6 +617,11 @@ def test_exact_factor_requires_canonical_reduced_fractions() -> None:
 def test_checked_integer_bounds_reject_overflow_and_negative_masks() -> None:
     with pytest.raises(RecurrenceColumnarInputError, match="does not fit u32"):
         RecurrenceSourceStateV1(1 << 32, -1, 0, -1, 0, 0)
+    with pytest.raises(
+        RecurrenceColumnarInputError,
+        match="reserved dynamic-union sentinel",
+    ):
+        RecurrenceSourceStateV1(0, -1, 0, -(1 << 31), 0, 0)
     with pytest.raises(RecurrenceColumnarInputError, match="must be nonnegative"):
         replace(_logical_input().external_legs[0], momentum_mask=-1)
     with pytest.raises(RecurrenceColumnarInputError, match="does not fit u64"):

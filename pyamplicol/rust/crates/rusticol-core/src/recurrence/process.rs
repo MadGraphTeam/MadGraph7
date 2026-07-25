@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{
     CheckedTableRange, ExactComplexRational, MultiwordMaskCatalogView,
     RECURRENCE_BUILDER_INPUT_ABI, RecurrenceStrategy, SemanticDigest, checked_u32_len,
-    validate_packed_ranges, validate_u32_references,
+    validate_concrete_spin_state, validate_packed_ranges, validate_u32_references,
 };
 use crate::{RusticolError, RusticolResult};
 
@@ -2226,6 +2226,10 @@ impl<'a> RecurrenceProcessInputView<'a> {
                         state.source_template_id
                     )));
                 }
+                validate_concrete_spin_state(
+                    state.spin_state,
+                    &format!("source-state row {row_index} spin state"),
+                )?;
                 if !matches!(state.momentum_sign, -1 | 1) {
                     return Err(invalid(format!(
                         "source-state row {row_index} momentum sign must be -1 or 1"

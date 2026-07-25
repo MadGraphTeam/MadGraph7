@@ -22,14 +22,14 @@ use super::{
     AuthenticatedRecurrenceBuilderInput, CanonicalMomentumLinearForm, CheckedTableRange,
     ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
     ClosureProofMetadataV2, ContributionKey, CurrentCoreKey, CurrentHelicityIdentity,
-    CurrentSourceBinding, DynamicLCColorState, DynamicLCColorStateId, DynamicLCColorStateInterner,
-    ExactComplexRational, ExactRational, LCColorComponent, LCColorComponentKind,
-    LCColorComponentOperation, LCColorComponentRole, LCColorParentPort, LCColorPortWiring,
-    LCColorSourceSeed, LCColorSourceSeedOperation, LCColorTransitionWitness, LCColorWitnessTermId,
-    MomentumTerm, RecurrenceAmplitudeDestination, RecurrenceClosureTerm, RecurrenceContribution,
-    RecurrenceCurrent, RecurrenceFinalization, RecurrenceNodeKind, RecurrenceProgram,
-    RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy,
-    ReflectionCertificateV1, SemanticDigest, SourceStateAssignment,
+    CurrentSourceBinding, DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS, DynamicLCColorState,
+    DynamicLCColorStateId, DynamicLCColorStateInterner, ExactComplexRational, ExactRational,
+    LCColorComponent, LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole,
+    LCColorParentPort, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
+    LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm, RecurrenceAmplitudeDestination,
+    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
+    RecurrenceNodeKind, RecurrenceProgram, RecurrenceReplayTarget, RecurrenceResolvedHelicity,
+    RecurrenceStrategy, ReflectionCertificateV1, SemanticDigest, SourceStateAssignment,
     ThreeLineTraversalCertificateV1, ThreeLineTraversalKindV1, closure_component_factor_digest_v2,
     closure_selector_domain_digest_v2,
 };
@@ -1306,12 +1306,10 @@ struct StructuralTransition {
     result: StructuralState,
 }
 
-const UNION_DYNAMIC_SOURCE_SPIN_STATE_CLASS: i32 = i32::MIN;
-
 fn structural_state_matches(required: StructuralState, actual: StructuralState) -> bool {
     required.state_template_id == actual.state_template_id
         && (required.spin_state_class == actual.spin_state_class
-            || actual.spin_state_class == UNION_DYNAMIC_SOURCE_SPIN_STATE_CLASS)
+            || actual.spin_state_class == DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS)
 }
 
 fn structural_parent_states_match(
@@ -2223,6 +2221,12 @@ fn union_spin_state_class(contract_id: u32, result_spins: &BTreeSet<i32>) -> Rus
             contract_id
         )));
     }
+    if result_spins.contains(&DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS) {
+        return Err(invalid(format!(
+            "runtime-helicity contract {} contains the reserved dynamic source-spin sentinel",
+            contract_id
+        )));
+    }
     Ok(if result_spins.len() == 1 {
         *result_spins.iter().next().expect("checked nonempty")
     } else {
@@ -2230,7 +2234,7 @@ fn union_spin_state_class(contract_id: u32, result_spins: &BTreeSet<i32>) -> Rus
         // Its selected chiral embedding is populated at execution time, so a
         // static source spin class would incorrectly discard the other
         // certified branch during recurrence construction.
-        UNION_DYNAMIC_SOURCE_SPIN_STATE_CLASS
+        DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS
     })
 }
 
@@ -4723,7 +4727,7 @@ fn quantum_parent_spin_matches(required_spin: i32, parent: &CurrentCoreKey) -> b
     required_spin == parent.spin_state_class()
         || (parent.node_kind() == RecurrenceNodeKind::Source
             && parent.helicity_identity().strategy() == RecurrenceStrategy::AllFlowUnion
-            && parent.spin_state_class() == UNION_DYNAMIC_SOURCE_SPIN_STATE_CLASS)
+            && parent.spin_state_class() == DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS)
 }
 
 fn quantum_flow_result_flavour(
@@ -5496,11 +5500,15 @@ mod tests {
     fn all_flow_union_source_spin_class_is_dynamic_for_chiral_variants() {
         assert_eq!(
             union_spin_state_class(25, &BTreeSet::from([-1, 1])).unwrap(),
-            UNION_DYNAMIC_SOURCE_SPIN_STATE_CLASS
+            DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS
         );
         assert_eq!(
             union_spin_state_class(25, &BTreeSet::from([-1])).unwrap(),
             -1
+        );
+        assert!(
+            union_spin_state_class(25, &BTreeSet::from([DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS]),)
+                .is_err()
         );
 
         let mut colors = DynamicLCColorStateInterner::default();
@@ -5518,7 +5526,7 @@ mod tests {
                 coefficient: 1,
             }])
             .unwrap(),
-            CurrentHelicityIdentity::all_flow_union(UNION_DYNAMIC_SOURCE_SPIN_STATE_CLASS),
+            CurrentHelicityIdentity::all_flow_union(DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS),
             vec![0],
             0,
             vec![],
@@ -5532,7 +5540,7 @@ mod tests {
         assert!(structural_parent_states_match(
             [StructuralState::new(17, -1), StructuralState::new(19, 0),],
             [
-                StructuralState::new(17, UNION_DYNAMIC_SOURCE_SPIN_STATE_CLASS),
+                StructuralState::new(17, DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS),
                 StructuralState::new(19, 0),
             ],
         ));
