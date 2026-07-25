@@ -9969,6 +9969,58 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     grouping_criteria = self._curr_exporter.grouped_mode
                     if grouping_criteria == 'gpu':
                         grouping_criteria = 'madevent'
+
+                    # merge_crossing='record' skipped generating the crossed
+                    # subprocesses so the standalone output collapses to one
+                    # directory per base. The grouped (madevent) backends need
+                    # them back as integration units -- each crossing is its own
+                    # partonic channel with its own PDF/phase-space -- so expand
+                    # the recorded metadata into crossed amplitudes here, reusing
+                    # the base's diagrams via cross_amplitude (no diagram
+                    # regeneration). The normal grouping + crossing routing then
+                    # handles them exactly as an unmerged (merge_crossing=False)
+                    # generation would.
+                    if any(amp.get('crossed_processes') for amp in non_dc_amps):
+                        if self.options['group_subprocesses'] == 'Auto':
+                            collect_mirror = True
+                        else:
+                            collect_mirror = self.options['group_subprocesses']
+
+                        def _fastproc(amp):
+                            return tuple(l.get('id') for l in
+                                         amp.get('process').get('legs'))
+
+                        # Read the recorded crossings before clearing them.
+                        originals = [(amp, amp.get('crossed_processes'))
+                                     for amp in non_dc_amps]
+                        expanded = diagram_generation.AmplitudeList()
+                        seen = {}   # fast_proc -> amplitude, for mirror folding
+                        for amp, _crossed in originals:
+                            amp.set('crossed_processes', [])
+                            expanded.append(amp)
+                            seen[_fastproc(amp)] = amp
+                        # Record mode stores a crossing and its beam-swap as two
+                        # separate entries (neither is in the amplitude list when
+                        # the other is met, so the generator's mirror check never
+                        # fires); fold the beam-swap back into has_mirror_process
+                        # here, exactly as generate_matrix_elements would.
+                        for amp, crossed in originals:
+                            for (proc, base_perm, cross_perm) in crossed:
+                                xamp = diagram_generation.MultiProcess.\
+                                    cross_amplitude(amp, proc, base_perm,
+                                                    cross_perm)
+                                xamp.set('crossed_processes', [])
+                                fp = _fastproc(xamp)
+                                mirror = (fp[1], fp[0]) + fp[2:]
+                                if collect_mirror and mirror in seen and \
+                                        proc.get_ninitial() == 2:
+                                    seen[mirror].set('has_mirror_process', True)
+                                    continue
+                                xamp.set('has_mirror_process', False)
+                                expanded.append(xamp)
+                                seen[fp] = xamp
+                        non_dc_amps = expanded
+
                     if non_dc_amps:
                         subproc_groups.extend(\
                           group_subprocs.SubProcessGroup.group_amplitudes(\
