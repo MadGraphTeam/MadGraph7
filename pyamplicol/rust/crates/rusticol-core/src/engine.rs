@@ -2721,6 +2721,8 @@ struct ExecutionRuntime {
     lc_resolved_replay_plan: Option<Arc<LcResolvedReplayPlan>>,
     lc_resolved_replay_selection_cache:
         Option<(LcResolvedReplaySelectionKey, Arc<LcResolvedReplaySelection>)>,
+    lc_replay_flat_momenta_scratch: Vec<f64>,
+    lc_replay_target_components_scratch: Vec<f64>,
     #[allow(dead_code)] // Loaded now and consumed by the subsequent selector-execution milestone.
     helicity_recurrence: Option<HelicityRecurrenceRuntime>,
     compiled_helicity_execution_plan: Option<CompiledHelicityExecutionPlan>,

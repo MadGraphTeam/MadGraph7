@@ -688,6 +688,17 @@ impl ExecutionRuntime {
         {
             return Ok(Arc::clone(selection));
         }
+        if let Some((cached_key, selection)) = &self.lc_resolved_replay_selection_cache
+            && selected_color_ids.is_none()
+            && cached_key.color_indices.is_none()
+            && let Some(helicity_ids) = selected_helicity_ids
+            && helicity_ids.len() == 1
+            && let Some(helicity_id) = helicity_ids.iter().next()
+            && let Some(helicity_index) = physics.helicity_index_by_id.get(helicity_id)
+            && cached_key.helicity_indices.as_deref() == Some(std::slice::from_ref(helicity_index))
+        {
+            return Ok(Arc::clone(selection));
+        }
         let key =
             physics.lc_resolved_replay_selection_key(selected_helicity_ids, selected_color_ids)?;
         if let Some((cached_key, selection)) = &self.lc_resolved_replay_selection_cache

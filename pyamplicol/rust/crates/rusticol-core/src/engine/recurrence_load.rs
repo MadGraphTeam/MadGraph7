@@ -1180,6 +1180,8 @@ fn build_common_runtime(
         lc_topology_replay_materialized_sector_ids: BTreeSet::new(),
         lc_resolved_replay_plan: None,
         lc_resolved_replay_selection_cache: None,
+        lc_replay_flat_momenta_scratch: Vec::new(),
+        lc_replay_target_components_scratch: Vec::new(),
         helicity_recurrence: None,
         compiled_helicity_execution_plan: None,
         compiled_color_execution_plan: None,

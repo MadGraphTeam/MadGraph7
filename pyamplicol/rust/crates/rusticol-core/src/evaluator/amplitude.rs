@@ -1516,6 +1516,188 @@ impl AmplitudeRuntime {
         Ok(())
     }
 
+    /// Add one plane-native topology-replay mapping to persistent point-major
+    /// target components.
+    ///
+    /// Mappings are accumulated in caller order, while the final public fold
+    /// remains H-major/C-minor. This is the allocation-free multi-mapping
+    /// counterpart of `reduce_planes_f64_routed_totals_into`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn reduce_planes_f64_routed_components_add_into(
+        &mut self,
+        amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        replay_entry: &LcResolvedReplayEntry,
+        source_component_count: usize,
+        target_component_count: usize,
+        target_point_count: usize,
+        target_point_start: usize,
+        target_components: &mut [f64],
+    ) -> RusticolResult<()> {
+        let plane_count = usize::try_from(amplitudes.component_count()?)
+            .map_err(|_| RusticolError::invalid_argument("amplitude plane count exceeds usize"))?;
+        if plane_count != self.output_length {
+            return Err(RusticolError::invalid_argument(format!(
+                "direct amplitude plane count is {plane_count}, expected {}",
+                self.output_length
+            )));
+        }
+        let batch_size = amplitudes.point_count() as usize;
+        let expected_target_len = target_point_count
+            .checked_mul(target_component_count)
+            .ok_or_else(|| RusticolError::invalid_argument("routed target shape overflows"))?;
+        if target_components.len() != expected_target_len
+            || target_point_start
+                .checked_add(batch_size)
+                .is_none_or(|stop| stop > target_point_count)
+        {
+            return Err(RusticolError::invalid_argument(
+                "routed target components have an inconsistent shape",
+            ));
+        }
+        if self.color_contraction.is_some() {
+            return Err(RusticolError::invalid_argument(
+                "LC topology replay does not support contracted color reduction",
+            ));
+        }
+        if !self.has_coherent_groups {
+            return Err(RusticolError::invalid_argument(
+                "resolved evaluation requires coherent amplitude-group metadata",
+            ));
+        }
+
+        let scratch = &mut self.routed_reduction_scratch;
+        let helicity_count = physics.manifest.helicities.len();
+        let color_count = physics.manifest.color_components.len();
+        physics
+            .selected_helicity_indices_into(selected_helicity_ids, &mut scratch.helicity_indices)?;
+        physics.selected_color_indices_into(selected_color_ids, &mut scratch.color_indices)?;
+        let selected_color_count = scratch.color_indices.len();
+        let expected_source_component_count = scratch
+            .helicity_indices
+            .len()
+            .checked_mul(selected_color_count)
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        if source_component_count != expected_source_component_count {
+            return Err(RusticolError::integrity(format!(
+                "topology replay source has {source_component_count} components, expected {expected_source_component_count}"
+            )));
+        }
+        for route in &replay_entry.routes {
+            if route.source_index >= source_component_count
+                || route.target_index >= target_component_count
+            {
+                return Err(RusticolError::integrity(
+                    "LC topology replay selected route is out of bounds",
+                ));
+            }
+        }
+
+        scratch.helicity_positions.clear();
+        scratch.helicity_positions.resize(helicity_count, None);
+        for (position, index) in scratch.helicity_indices.iter().copied().enumerate() {
+            scratch.helicity_positions[index] = Some(position);
+        }
+        scratch.color_positions.clear();
+        scratch.color_positions.resize(color_count, None);
+        for (position, index) in scratch.color_indices.iter().copied().enumerate() {
+            scratch.color_positions[index] = Some(position);
+        }
+        scratch.selected_member_weights.clear();
+        scratch.selected_member_weight_ranges.clear();
+        for group in &self.raw_sum_groups {
+            let reduction = physics
+                .reduction_by_group_id
+                .get(&group.id)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "resolved metadata is missing coherent group {}",
+                        group.id
+                    ))
+                })?;
+            physics.normalized_member_weights_into(reduction, &mut scratch.raw_member_weights)?;
+            let start = scratch.selected_member_weights.len();
+            for (helicity_index, color_index, weight) in scratch.raw_member_weights.iter().copied()
+            {
+                let (Some(helicity_position), Some(color_position)) = (
+                    scratch.helicity_positions[helicity_index],
+                    scratch.color_positions[color_index],
+                ) else {
+                    continue;
+                };
+                scratch
+                    .selected_member_weights
+                    .push((helicity_position, color_position, weight));
+            }
+            scratch
+                .selected_member_weight_ranges
+                .push(start..scratch.selected_member_weights.len());
+        }
+
+        let source_scalar_count =
+            source_component_count
+                .checked_mul(batch_size)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("routed source scratch shape overflows usize")
+                })?;
+        scratch.direct_group_re.resize(batch_size, 0.0);
+        scratch.direct_group_im.resize(batch_size, 0.0);
+        scratch.direct_totals.resize(batch_size, 0.0);
+        scratch
+            .direct_source_components
+            .resize(source_scalar_count, 0.0);
+        scratch.direct_source_components.fill(0.0);
+
+        for (group, member_weight_range) in self
+            .raw_sum_groups
+            .iter()
+            .zip(&scratch.selected_member_weight_ranges)
+        {
+            if member_weight_range.is_empty() {
+                continue;
+            }
+            scratch.direct_group_re.fill(0.0);
+            scratch.direct_group_im.fill(0.0);
+            for index in &group.indices {
+                let (plane_re, plane_im) = amplitudes.plane_unchecked(*index);
+                for point in 0..batch_size {
+                    scratch.direct_group_re[point] += plane_re[point];
+                    scratch.direct_group_im[point] += plane_im[point];
+                }
+            }
+            for point in 0..batch_size {
+                let re = scratch.direct_group_re[point];
+                let im = scratch.direct_group_im[point];
+                scratch.direct_totals[point] =
+                    normalization_factor * group.all_sector_weight * (re * re + im * im);
+            }
+            for (helicity_position, color_position, weight) in
+                &scratch.selected_member_weights[member_weight_range.clone()]
+            {
+                let component = *helicity_position * selected_color_count + *color_position;
+                let source_start = component * batch_size;
+                for point in 0..batch_size {
+                    scratch.direct_source_components[source_start + point] +=
+                        scratch.direct_totals[point] * *weight;
+                }
+            }
+        }
+
+        for route in &replay_entry.routes {
+            let source_start = route.source_index * batch_size;
+            for point in 0..batch_size {
+                let target =
+                    (target_point_start + point) * target_component_count + route.target_index;
+                target_components[target] +=
+                    route.weight * scratch.direct_source_components[source_start + point];
+            }
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn reduce_amplitude_samples_f64_routed_totals_into<S: AmplitudeSamples>(
         amplitudes: S,
@@ -2201,6 +2383,217 @@ impl AmplitudeRuntime {
             let color_start = *color_index * batch_size;
             for point in 0..batch_size {
                 output[point] += scratch.direct_source_components[color_start + point];
+            }
+        }
+        Ok(())
+    }
+
+    /// Route one materialized-helicity tile into persistent public replay
+    /// components without constructing a resolved colour tensor.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn reduce_planes_f64_for_materialized_helicity_routed_components_add_into(
+        &mut self,
+        amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        helicity_index: usize,
+        root_factors: &[Option<Complex<f64>>],
+        selected_color_ids: Option<&BTreeSet<String>>,
+        replay_entry: &LcResolvedReplayEntry,
+        source_component_count: usize,
+        target_component_count: usize,
+        target_point_count: usize,
+        target_point_start: usize,
+        target_components: &mut [f64],
+    ) -> RusticolResult<()> {
+        let plane_count = usize::try_from(amplitudes.component_count()?)
+            .map_err(|_| RusticolError::invalid_argument("amplitude plane count exceeds usize"))?;
+        if plane_count != self.output_length {
+            return Err(RusticolError::invalid_argument(format!(
+                "direct amplitude plane count is {plane_count}, expected {}",
+                self.output_length
+            )));
+        }
+        if root_factors.len() != self.output_length {
+            return Err(RusticolError::integrity(format!(
+                "helicity recurrence route table has {} roots, expected {}",
+                root_factors.len(),
+                self.output_length
+            )));
+        }
+        if self.color_contraction.is_some() {
+            return Err(RusticolError::invalid_argument(
+                "LC topology replay does not support contracted color reduction",
+            ));
+        }
+        if !self.has_coherent_groups {
+            return Err(RusticolError::invalid_argument(
+                "materialized helicity reduction requires coherent amplitude-group metadata",
+            ));
+        }
+        let helicity = physics
+            .manifest
+            .helicities
+            .get(helicity_index)
+            .ok_or_else(|| {
+                RusticolError::selector(format!(
+                    "runtime helicity index {helicity_index} is out of range"
+                ))
+            })?;
+        let batch_size = amplitudes.point_count() as usize;
+        let expected_target_len = target_point_count
+            .checked_mul(target_component_count)
+            .ok_or_else(|| RusticolError::invalid_argument("routed target shape overflows"))?;
+        if target_components.len() != expected_target_len
+            || target_point_start
+                .checked_add(batch_size)
+                .is_none_or(|stop| stop > target_point_count)
+        {
+            return Err(RusticolError::invalid_argument(
+                "routed target components have an inconsistent shape",
+            ));
+        }
+
+        let scratch = &mut self.routed_reduction_scratch;
+        let color_count = physics.manifest.color_components.len();
+        physics.selected_color_indices_into(selected_color_ids, &mut scratch.color_indices)?;
+        if source_component_count != scratch.color_indices.len() {
+            return Err(RusticolError::integrity(format!(
+                "topology replay materialized-helicity source has {source_component_count} components, expected {}",
+                scratch.color_indices.len()
+            )));
+        }
+        for route in &replay_entry.routes {
+            if route.source_index >= source_component_count
+                || route.target_index >= target_component_count
+            {
+                return Err(RusticolError::integrity(
+                    "LC topology replay selected route is out of bounds",
+                ));
+            }
+        }
+        scratch.color_positions.clear();
+        scratch.color_positions.resize(color_count, None);
+        for (position, index) in scratch.color_indices.iter().copied().enumerate() {
+            scratch.color_positions[index] = Some(position);
+        }
+
+        scratch.selected_member_weights.clear();
+        scratch.selected_member_weight_ranges.clear();
+        for group in &self.raw_sum_groups {
+            let start = scratch.selected_member_weights.len();
+            let reduction = physics
+                .reduction_by_group_id
+                .get(&group.id)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "resolved metadata is missing coherent group {}",
+                        group.id
+                    ))
+                })?;
+            if !reduction
+                .physical_helicity_ids
+                .iter()
+                .any(|id| id == &helicity.id)
+                || !group
+                    .indices
+                    .iter()
+                    .any(|index| root_factors[*index].is_some())
+            {
+                scratch.selected_member_weight_ranges.push(start..start);
+                continue;
+            }
+            scratch.raw_member_weights.clear();
+            let mut total_color_weight = 0.0;
+            for id in &reduction.physical_color_ids {
+                let index = *physics.color_index_by_id.get(id).ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "resolved reduction group {} references unknown color {id:?}",
+                        group.id
+                    ))
+                })?;
+                let weight = physics.manifest.color_components[index].coefficient();
+                total_color_weight += weight;
+                scratch.raw_member_weights.push((0, index, weight));
+            }
+            if !total_color_weight.is_finite() || total_color_weight <= 0.0 {
+                return Err(RusticolError::artifact(format!(
+                    "resolved reduction group {} has no positive color weight",
+                    group.id
+                )));
+            }
+            for (_, color_index, weight) in scratch.raw_member_weights.iter().copied() {
+                if let Some(color_position) = scratch.color_positions[color_index] {
+                    scratch.selected_member_weights.push((
+                        0,
+                        color_position,
+                        weight / total_color_weight,
+                    ));
+                }
+            }
+            scratch
+                .selected_member_weight_ranges
+                .push(start..scratch.selected_member_weights.len());
+        }
+
+        let source_scalar_count =
+            source_component_count
+                .checked_mul(batch_size)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("routed source scratch shape overflows usize")
+                })?;
+        scratch.direct_group_re.resize(batch_size, 0.0);
+        scratch.direct_group_im.resize(batch_size, 0.0);
+        scratch.direct_totals.resize(batch_size, 0.0);
+        scratch
+            .direct_source_components
+            .resize(source_scalar_count, 0.0);
+        scratch.direct_source_components.fill(0.0);
+        for (group, color_weight_range) in self
+            .raw_sum_groups
+            .iter()
+            .zip(&scratch.selected_member_weight_ranges)
+        {
+            if color_weight_range.is_empty() {
+                continue;
+            }
+            scratch.direct_group_re.fill(0.0);
+            scratch.direct_group_im.fill(0.0);
+            for index in &group.indices {
+                let Some(factor) = root_factors[*index] else {
+                    continue;
+                };
+                let (plane_re, plane_im) = amplitudes.plane_unchecked(*index);
+                for point in 0..batch_size {
+                    let value = c64(plane_re[point], plane_im[point]) * factor;
+                    scratch.direct_group_re[point] += value.re;
+                    scratch.direct_group_im[point] += value.im;
+                }
+            }
+            for point in 0..batch_size {
+                let re = scratch.direct_group_re[point];
+                let im = scratch.direct_group_im[point];
+                scratch.direct_totals[point] =
+                    normalization_factor * group.all_sector_weight * (re * re + im * im);
+            }
+            for (_, color_position, weight) in
+                &scratch.selected_member_weights[color_weight_range.clone()]
+            {
+                let source_start = *color_position * batch_size;
+                for point in 0..batch_size {
+                    scratch.direct_source_components[source_start + point] +=
+                        scratch.direct_totals[point] * *weight;
+                }
+            }
+        }
+
+        for route in &replay_entry.routes {
+            let source_start = route.source_index * batch_size;
+            for point in 0..batch_size {
+                let target =
+                    (target_point_start + point) * target_component_count + route.target_index;
+                target_components[target] +=
+                    route.weight * scratch.direct_source_components[source_start + point];
             }
         }
         Ok(())

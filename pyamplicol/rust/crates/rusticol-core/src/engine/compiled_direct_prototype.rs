@@ -2334,7 +2334,7 @@ mod tests {
         );
 
         let point = retained_validation_point(&direct);
-        for point_count in [1usize, 7, 127, 128, 129, 1023, 1024, 1025] {
+        for point_count in [1usize, 7, 63, 64, 65, 127, 128, 129, 1023, 1024, 1025] {
             let momenta = point.repeat(point_count);
             let mut direct_values = vec![f64::NAN; point_count];
             let mut legacy_values = vec![f64::NAN; point_count];
@@ -2370,7 +2370,13 @@ mod tests {
         let selected_helicity = computed_helicities[0].id.clone();
         let colors = direct.color_components().expect("retained color metadata");
         assert!(!colors.is_empty(), "retained artifact has one color");
-        let selected_color = colors[0].id.clone();
+        // Prefer a non-representative physical flow so the test exercises a
+        // real topology-label permutation rather than only the identity map.
+        let selected_color = colors
+            .last()
+            .expect("retained artifact has one color")
+            .id
+            .clone();
 
         let selector_points = 129usize;
         let selector_momenta = point.repeat(selector_points);
@@ -2426,6 +2432,55 @@ mod tests {
                     direct_values[point_index],
                     resolved_totals[point_index],
                     &format!("{label} total/resolved point={point_index}"),
+                );
+            }
+        }
+
+        let selector_batch = F64MomentumBatchView::from_contiguous_prevalidated(
+            &selector_momenta,
+            selector_points,
+            direct.runtime.external_count,
+            direct.input_crossing_map.as_deref(),
+        )
+        .expect("borrow retained selector batch");
+        for (label, selected_helicities, selected_colors) in [
+            ("all-components", None, None),
+            (
+                "all-flows-single-helicity",
+                Some(BTreeSet::from([selected_helicity.clone()])),
+                None,
+            ),
+        ] {
+            let mut candidate_values = vec![f64::NAN; selector_points];
+            let mut oracle_values = vec![f64::NAN; selector_points];
+            direct
+                .runtime
+                .run_f64_selected_into_unprofiled(
+                    selector_batch,
+                    selected_helicities.as_ref(),
+                    selected_colors.as_ref(),
+                    &mut candidate_values,
+                )
+                .expect("evaluate allocation-free replay candidate");
+            direct
+                .runtime
+                .run_f64_selected_into_resolved_replay_oracle(
+                    selector_batch,
+                    selected_helicities.as_ref(),
+                    selected_colors.as_ref(),
+                    &mut oracle_values,
+                )
+                .expect("evaluate resolved replay oracle");
+            for (point_index, (candidate_value, oracle_value)) in candidate_values
+                .iter()
+                .copied()
+                .zip(oracle_values.iter().copied())
+                .enumerate()
+            {
+                assert_close_real(
+                    candidate_value,
+                    oracle_value,
+                    &format!("{label} replay candidate/oracle point={point_index}"),
                 );
             }
         }
@@ -2638,6 +2693,132 @@ mod tests {
             }
         }
 
+        if !cfg!(debug_assertions)
+            && std::env::var_os("RUSTICOL_TEST_BENCHMARK_COMPILED_REPLAY_TOTALS").is_some()
+            && direct.metadata().color_accuracy == "lc"
+        {
+            let selected_helicity_set = BTreeSet::from([selected_helicity.clone()]);
+            for point_count in [128usize, 1024] {
+                let momenta = point.repeat(point_count);
+                let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                    &momenta,
+                    point_count,
+                    direct.runtime.external_count,
+                    direct.input_crossing_map.as_deref(),
+                )
+                .expect("borrow retained replay timing batch");
+                let repeats = if point_count == 128 { 64 } else { 8 };
+                for (label, helicities) in [
+                    ("all-components", None),
+                    ("all-flows-single-helicity", Some(&selected_helicity_set)),
+                ] {
+                    let mut candidate_output = vec![f64::NAN; point_count];
+                    let mut oracle_output = vec![f64::NAN; point_count];
+                    direct
+                        .runtime
+                        .run_f64_selected_into_unprofiled(
+                            batch,
+                            helicities,
+                            None,
+                            &mut candidate_output,
+                        )
+                        .expect("warm allocation-free replay candidate");
+                    direct
+                        .runtime
+                        .run_f64_selected_into_resolved_replay_oracle(
+                            batch,
+                            helicities,
+                            None,
+                            &mut oracle_output,
+                        )
+                        .expect("warm resolved replay oracle");
+                    let mut candidate_samples = [0u128; 7];
+                    let mut oracle_samples = [0u128; 7];
+                    for sample in 0usize..7 {
+                        if sample.is_multiple_of(2) {
+                            let start = Instant::now();
+                            for _ in 0..repeats {
+                                direct
+                                    .runtime
+                                    .run_f64_selected_into_unprofiled(
+                                        batch,
+                                        helicities,
+                                        None,
+                                        &mut candidate_output,
+                                    )
+                                    .expect("time allocation-free replay candidate");
+                            }
+                            candidate_samples[sample] = start.elapsed().as_nanos() / repeats;
+                            let start = Instant::now();
+                            for _ in 0..repeats {
+                                direct
+                                    .runtime
+                                    .run_f64_selected_into_resolved_replay_oracle(
+                                        batch,
+                                        helicities,
+                                        None,
+                                        &mut oracle_output,
+                                    )
+                                    .expect("time resolved replay oracle");
+                            }
+                            oracle_samples[sample] = start.elapsed().as_nanos() / repeats;
+                        } else {
+                            let start = Instant::now();
+                            for _ in 0..repeats {
+                                direct
+                                    .runtime
+                                    .run_f64_selected_into_resolved_replay_oracle(
+                                        batch,
+                                        helicities,
+                                        None,
+                                        &mut oracle_output,
+                                    )
+                                    .expect("time resolved replay oracle");
+                            }
+                            oracle_samples[sample] = start.elapsed().as_nanos() / repeats;
+                            let start = Instant::now();
+                            for _ in 0..repeats {
+                                direct
+                                    .runtime
+                                    .run_f64_selected_into_unprofiled(
+                                        batch,
+                                        helicities,
+                                        None,
+                                        &mut candidate_output,
+                                    )
+                                    .expect("time allocation-free replay candidate");
+                            }
+                            candidate_samples[sample] = start.elapsed().as_nanos() / repeats;
+                        }
+                        std::hint::black_box((&candidate_output, &oracle_output));
+                    }
+                    candidate_samples.sort_unstable();
+                    oracle_samples.sort_unstable();
+                    let candidate_median = candidate_samples[3];
+                    let oracle_median = oracle_samples[3];
+                    let mut candidate_deviations =
+                        candidate_samples.map(|value| value.abs_diff(candidate_median));
+                    let mut oracle_deviations =
+                        oracle_samples.map(|value| value.abs_diff(oracle_median));
+                    candidate_deviations.sort_unstable();
+                    oracle_deviations.sort_unstable();
+                    eprintln!(
+                        "retained-compiled-replay-wall workload={label} points={point_count} \
+                         samples=7 repeats={repeats} candidate_samples_ns={candidate_samples:?} \
+                         oracle_samples_ns={oracle_samples:?} \
+                         candidate_median_ns={candidate_median} \
+                         candidate_mad_ns={} oracle_median_ns={oracle_median} oracle_mad_ns={} \
+                         candidate_ns_per_point={:.3} oracle_ns_per_point={:.3} speedup={:.6}",
+                        candidate_deviations[3],
+                        oracle_deviations[3],
+                        candidate_median as f64 / point_count as f64,
+                        oracle_median as f64 / point_count as f64,
+                        oracle_median as f64 / candidate_median as f64,
+                    );
+                }
+            }
+        }
+
         let allocation_points = 128usize;
         let allocation_momenta = point.repeat(allocation_points);
         let mut allocation_output = vec![f64::NAN; allocation_points];
@@ -2659,6 +2840,14 @@ mod tests {
         eprintln!(
             "retained-compiled-direct-public-allocation allocations={allocations} \
              allocated_bytes={allocated_bytes}"
+        );
+        assert_eq!(
+            allocations, 0,
+            "warmed public compiled Direct evaluation allocated"
+        );
+        assert_eq!(
+            allocated_bytes, 0,
+            "warmed public compiled Direct evaluation allocated bytes"
         );
 
         let allocation_batch = F64MomentumBatchView::from_contiguous_prevalidated(
@@ -2685,46 +2874,54 @@ mod tests {
             "retained-compiled-direct-runtime-allocation allocations={runtime_allocations} \
              allocated_bytes={runtime_allocated_bytes}"
         );
+        assert_eq!(
+            runtime_allocations, 0,
+            "warmed compiled Direct runtime allocated"
+        );
+        assert_eq!(
+            runtime_allocated_bytes, 0,
+            "warmed compiled Direct runtime allocated bytes"
+        );
 
         let selected_colors = BTreeSet::from([selected_color]);
         let selected_helicities = BTreeSet::from([selected_helicity]);
-        let (allocation_helicities, allocation_colors, allocation_label) =
-            if direct.metadata().color_accuracy == "lc" {
-                (None, Some(&selected_colors), "selected-flow")
-            } else {
-                (Some(&selected_helicities), None, "selected-helicity")
-            };
-        direct
-            .runtime
-            .run_f64_selected_into_unprofiled(
-                allocation_batch,
-                allocation_helicities,
-                allocation_colors,
-                &mut allocation_output,
-            )
-            .expect("warm retained Direct selected runtime");
-        let (result, selected_allocations, selected_allocated_bytes) =
-            count_test_allocations(|| {
-                direct.runtime.run_f64_selected_into_unprofiled(
+        let mut allocation_cases = vec![("selected-helicity", Some(&selected_helicities), None)];
+        if direct.metadata().color_accuracy == "lc" {
+            allocation_cases.push(("selected-flow", None, Some(&selected_colors)));
+        }
+        for (allocation_label, allocation_helicities, allocation_colors) in allocation_cases {
+            direct
+                .runtime
+                .run_f64_selected_into_unprofiled(
                     allocation_batch,
                     allocation_helicities,
                     allocation_colors,
                     &mut allocation_output,
                 )
-            });
-        result.expect("repeat retained Direct selected runtime");
-        eprintln!(
-            "retained-compiled-direct-{allocation_label}-allocation \
-             allocations={selected_allocations} allocated_bytes={selected_allocated_bytes}"
-        );
-        assert_eq!(
-            selected_allocations, 0,
-            "warmed selected Direct arena execution allocated"
-        );
-        assert_eq!(
-            selected_allocated_bytes, 0,
-            "warmed selected Direct arena execution allocated bytes"
-        );
+                .expect("warm retained Direct selected runtime");
+            let (result, selected_allocations, selected_allocated_bytes) =
+                count_test_allocations(|| {
+                    direct.runtime.run_f64_selected_into_unprofiled(
+                        allocation_batch,
+                        allocation_helicities,
+                        allocation_colors,
+                        &mut allocation_output,
+                    )
+                });
+            result.expect("repeat retained Direct selected runtime");
+            eprintln!(
+                "retained-compiled-direct-{allocation_label}-allocation \
+                 allocations={selected_allocations} allocated_bytes={selected_allocated_bytes}"
+            );
+            assert_eq!(
+                selected_allocations, 0,
+                "warmed selected Direct arena execution allocated"
+            );
+            assert_eq!(
+                selected_allocated_bytes, 0,
+                "warmed selected Direct arena execution allocated bytes"
+            );
+        }
 
         let (engine_count, requested_bytes, hot_calls, minimum_tile_capacity) =
             compiled_direct_runtime_summary(&direct.runtime);
@@ -2734,5 +2931,122 @@ mod tests {
              requested_bytes={requested_bytes} hot_calls={hot_calls} \
              minimum_tile_capacity={minimum_tile_capacity}"
         );
+    }
+
+    #[test]
+    fn retained_compiled_replay_totals_quick_contract() {
+        let Some(root) = std::env::var_os("RUSTICOL_TEST_COMPILED_REPLAY_QUICK_ARTIFACT") else {
+            return;
+        };
+        let mut runtime =
+            NativeRuntime::load(PathBuf::from(root), None, None).expect("load replay artifact");
+        assert_eq!(
+            runtime.metadata().color_accuracy,
+            "lc",
+            "quick replay contract requires LC"
+        );
+        let point = retained_validation_point(&runtime);
+        let helicities = runtime.helicities().expect("retained helicity metadata");
+        let selected_helicity = helicities
+            .iter()
+            .find(|helicity| helicity.computed && !helicity.structural_zero)
+            .expect("retained artifact has a nonzero computed helicity")
+            .id
+            .clone();
+        let colors = runtime.color_components().expect("retained color metadata");
+        let selected_color = colors
+            .last()
+            .expect("retained artifact has one physical color")
+            .id
+            .clone();
+        let selected_helicities = BTreeSet::from([selected_helicity]);
+        let selected_colors = BTreeSet::from([selected_color]);
+
+        let parity_points = 7usize;
+        let parity_momenta = point.repeat(parity_points);
+        let parity_batch = F64MomentumBatchView::from_contiguous_prevalidated(
+            &parity_momenta,
+            parity_points,
+            runtime.runtime.external_count,
+            runtime.input_crossing_map.as_deref(),
+        )
+        .expect("borrow replay parity batch");
+        for (label, helicities, colors) in [
+            ("all-components", None, None),
+            (
+                "all-flows-single-helicity",
+                Some(&selected_helicities),
+                None,
+            ),
+            ("single-flow-helicity-sum", None, Some(&selected_colors)),
+        ] {
+            let mut candidate = vec![f64::NAN; parity_points];
+            let mut oracle = vec![f64::NAN; parity_points];
+            runtime
+                .runtime
+                .run_f64_selected_into_unprofiled(parity_batch, helicities, colors, &mut candidate)
+                .expect("evaluate allocation-free replay candidate");
+            runtime
+                .runtime
+                .run_f64_selected_into_resolved_replay_oracle(
+                    parity_batch,
+                    helicities,
+                    colors,
+                    &mut oracle,
+                )
+                .expect("evaluate resolved replay oracle");
+            for (point_index, (candidate, oracle)) in
+                candidate.iter().copied().zip(oracle).enumerate()
+            {
+                assert_close_real(
+                    candidate,
+                    oracle,
+                    &format!("{label} quick replay point={point_index}"),
+                );
+            }
+        }
+
+        let allocation_points = 128usize;
+        let allocation_momenta = point.repeat(allocation_points);
+        let allocation_batch = F64MomentumBatchView::from_contiguous_prevalidated(
+            &allocation_momenta,
+            allocation_points,
+            runtime.runtime.external_count,
+            runtime.input_crossing_map.as_deref(),
+        )
+        .expect("borrow replay allocation batch");
+        let mut output = vec![f64::NAN; allocation_points];
+        for (label, helicities, colors) in [
+            ("all-components", None, None),
+            (
+                "all-flows-single-helicity",
+                Some(&selected_helicities),
+                None,
+            ),
+            ("single-flow-helicity-sum", None, Some(&selected_colors)),
+        ] {
+            runtime
+                .runtime
+                .run_f64_selected_into_unprofiled(allocation_batch, helicities, colors, &mut output)
+                .expect("warm replay allocation workload");
+            let (result, allocations, allocated_bytes) = count_test_allocations(|| {
+                runtime.runtime.run_f64_selected_into_unprofiled(
+                    allocation_batch,
+                    helicities,
+                    colors,
+                    &mut output,
+                )
+            });
+            result.expect("repeat replay allocation workload");
+            eprintln!(
+                "retained-compiled-replay-quick-allocation workload={label} \
+                 allocations={allocations} allocated_bytes={allocated_bytes}"
+            );
+            assert_eq!(allocations, 0, "warmed replay workload {label} allocated");
+            assert_eq!(
+                allocated_bytes, 0,
+                "warmed replay workload {label} allocated bytes"
+            );
+        }
     }
 }

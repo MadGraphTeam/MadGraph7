@@ -3120,6 +3120,8 @@ impl ExecutionRuntime {
                 .materialized_sector_ids,
             lc_resolved_replay_plan: None,
             lc_resolved_replay_selection_cache: None,
+            lc_replay_flat_momenta_scratch: Vec::new(),
+            lc_replay_target_components_scratch: Vec::new(),
             helicity_recurrence,
             compiled_helicity_execution_plan: None,
             compiled_color_execution_plan,

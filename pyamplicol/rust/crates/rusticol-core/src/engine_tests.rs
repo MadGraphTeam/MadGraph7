@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: 0BSD
 
+use super::evaluation::accumulate_selected_lc_replay_resolved_f64;
 use super::physics::certifies_lc_direct_total_source;
 use super::*;
 use serde_json::json;
@@ -1378,6 +1379,110 @@ fn plane_native_lc_resolved_routes_preserve_row_major_order() {
     assert_eq!(plane_native, row_major);
 }
 
+#[test]
+fn plane_native_lc_routed_components_match_resolved_multi_mapping_accumulation() {
+    const POINT_COUNT: usize = 65;
+    const TARGET_COMPONENT_COUNT: usize = 3;
+    let physics = test_physics_runtime("lc");
+    let mapping_outputs = [
+        (0..POINT_COUNT)
+            .map(|point| c64(point as f64 * 0.03125 - 1.0, point as f64 * -0.015625 + 0.5))
+            .collect::<Vec<_>>(),
+        (0..POINT_COUNT)
+            .map(|point| {
+                c64(
+                    point as f64 * -0.0625 + 2.0,
+                    point as f64 * 0.0078125 - 0.25,
+                )
+            })
+            .collect::<Vec<_>>(),
+    ];
+    let replay_entries = [
+        LcResolvedReplayEntry {
+            routes: vec![
+                LcResolvedReplayRoute {
+                    source_index: 0,
+                    target_index: 2,
+                    weight: 1.25,
+                },
+                LcResolvedReplayRoute {
+                    source_index: 3,
+                    target_index: 0,
+                    weight: -0.5,
+                },
+            ],
+        },
+        LcResolvedReplayEntry {
+            routes: vec![
+                LcResolvedReplayRoute {
+                    source_index: 1,
+                    target_index: 1,
+                    weight: 0.75,
+                },
+                LcResolvedReplayRoute {
+                    source_index: 4,
+                    target_index: 2,
+                    weight: 2.0,
+                },
+            ],
+        },
+    ];
+    let mut amplitude = test_amplitude_runtime(mapping_outputs[0].clone(), None);
+    amplitude.output_length = 1;
+    amplitude.raw_sum_weights = vec![1.0];
+    amplitude.raw_sum_all_sector_weights = vec![1.0];
+    amplitude.raw_sum_color_sector_ids = vec![None];
+    amplitude.raw_sum_groups[0].indices = vec![0];
+    let mut expected = vec![0.0; POINT_COUNT * TARGET_COMPONENT_COUNT];
+    let mut candidate = vec![0.0; POINT_COUNT * TARGET_COMPONENT_COUNT];
+
+    for (outputs, replay_entry) in mapping_outputs.iter().zip(&replay_entries) {
+        let materialized = with_plane_native_amplitudes(outputs, POINT_COUNT, 1, |planes| {
+            amplitude
+                .reduce_planes_f64_resolved(planes, &physics, 1.75, None, None)
+                .unwrap()
+        });
+        accumulate_selected_lc_replay_resolved_f64(
+            &mut expected,
+            POINT_COUNT,
+            &materialized,
+            std::slice::from_ref(replay_entry),
+            6,
+            TARGET_COMPONENT_COUNT,
+        )
+        .unwrap();
+        for (start, stop) in [(0usize, 32usize), (32, POINT_COUNT)] {
+            with_plane_native_amplitudes(&outputs[start..stop], stop - start, 1, |planes| {
+                amplitude
+                    .reduce_planes_f64_routed_components_add_into(
+                        planes,
+                        &physics,
+                        1.75,
+                        None,
+                        None,
+                        replay_entry,
+                        6,
+                        TARGET_COMPONENT_COUNT,
+                        POINT_COUNT,
+                        start,
+                        &mut candidate,
+                    )
+                    .unwrap()
+            });
+        }
+    }
+    assert_eq!(candidate, expected);
+    let candidate_totals = candidate
+        .chunks_exact(TARGET_COMPONENT_COUNT)
+        .map(|components| components.iter().sum::<f64>())
+        .collect::<Vec<_>>();
+    let expected_totals = expected
+        .chunks_exact(TARGET_COMPONENT_COUNT)
+        .map(|components| components.iter().sum::<f64>())
+        .collect::<Vec<_>>();
+    assert_eq!(candidate_totals, expected_totals);
+}
+
 #[cfg(not(feature = "f64-symjit"))]
 #[test]
 fn warmed_plane_native_selected_lc_routes_allocate_zero() {
@@ -1440,6 +1545,49 @@ fn warmed_plane_native_selected_lc_routes_allocate_zero() {
     assert_eq!(
         allocated_bytes, 0,
         "warmed selected LC routed reduction allocated bytes"
+    );
+
+    let mut target_components = [0.0];
+    amplitude
+        .reduce_planes_f64_routed_components_add_into(
+            planes,
+            &physics,
+            4.0,
+            Some(&helicities),
+            Some(&colors),
+            &replay,
+            1,
+            1,
+            1,
+            0,
+            &mut target_components,
+        )
+        .unwrap();
+    target_components.fill(0.0);
+    let (result, allocation_count, allocated_bytes) =
+        super::evaluator::native_direct::tests::count_allocations(|| {
+            amplitude.reduce_planes_f64_routed_components_add_into(
+                planes,
+                &physics,
+                4.0,
+                Some(&helicities),
+                Some(&colors),
+                &replay,
+                1,
+                1,
+                1,
+                0,
+                &mut target_components,
+            )
+        });
+    result.unwrap();
+    assert_eq!(
+        allocation_count, 0,
+        "warmed persistent selected LC routed reduction allocated"
+    );
+    assert_eq!(
+        allocated_bytes, 0,
+        "warmed persistent selected LC routed reduction allocated bytes"
     );
 }
 
@@ -1639,6 +1787,95 @@ fn plane_native_materialized_helicity_resolved_and_add_into_match_lc_odd_tail() 
     }
 }
 
+#[test]
+fn plane_native_materialized_helicity_routed_components_match_resolved_accumulation() {
+    const POINT_COUNT: usize = 65;
+    const OUTPUT_COUNT: usize = 2;
+    const TARGET_COMPONENT_COUNT: usize = 3;
+    let physics = test_physics_runtime("lc");
+    let outputs = (0..POINT_COUNT)
+        .flat_map(|point| {
+            (0..OUTPUT_COUNT).map(move |output| {
+                c64(
+                    (point * 7 + output * 3) as f64 * 0.03125 - 1.5,
+                    (point * 5 + output * 11) as f64 * -0.015625 + 0.25,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let root_factors = [Some(c64(0.75, -0.25)), Some(c64(-0.5, 0.125))];
+    let replay = LcResolvedReplayEntry {
+        routes: vec![
+            LcResolvedReplayRoute {
+                source_index: 0,
+                target_index: 2,
+                weight: 1.5,
+            },
+            LcResolvedReplayRoute {
+                source_index: 1,
+                target_index: 0,
+                weight: -0.25,
+            },
+        ],
+    };
+    let mut amplitude = test_amplitude_runtime(outputs.clone(), None);
+    amplitude.output_length = OUTPUT_COUNT;
+    amplitude.raw_sum_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_all_sector_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_color_sector_ids = vec![None; OUTPUT_COUNT];
+    amplitude.raw_sum_groups[0].indices = vec![0, 1];
+    let materialized =
+        with_plane_native_amplitudes(&outputs, POINT_COUNT, OUTPUT_COUNT, |planes| {
+            amplitude
+                .reduce_planes_f64_for_materialized_helicity(
+                    planes,
+                    &physics,
+                    1.25,
+                    0,
+                    &root_factors,
+                    None,
+                )
+                .unwrap()
+        });
+    let mut expected = vec![0.0; POINT_COUNT * TARGET_COMPONENT_COUNT];
+    accumulate_selected_lc_replay_resolved_f64(
+        &mut expected,
+        POINT_COUNT,
+        &materialized,
+        std::slice::from_ref(&replay),
+        2,
+        TARGET_COMPONENT_COUNT,
+    )
+    .unwrap();
+    let mut candidate = vec![0.0; POINT_COUNT * TARGET_COMPONENT_COUNT];
+    for (start, stop) in [(0usize, 32usize), (32, POINT_COUNT)] {
+        with_plane_native_amplitudes(
+            &outputs[start * OUTPUT_COUNT..stop * OUTPUT_COUNT],
+            stop - start,
+            OUTPUT_COUNT,
+            |planes| {
+                amplitude
+                    .reduce_planes_f64_for_materialized_helicity_routed_components_add_into(
+                        planes,
+                        &physics,
+                        1.25,
+                        0,
+                        &root_factors,
+                        None,
+                        &replay,
+                        2,
+                        TARGET_COMPONENT_COUNT,
+                        POINT_COUNT,
+                        start,
+                        &mut candidate,
+                    )
+                    .unwrap()
+            },
+        );
+    }
+    assert_eq!(candidate, expected);
+}
+
 #[cfg(not(feature = "f64-symjit"))]
 #[test]
 fn warmed_plane_native_materialized_helicity_add_into_allocates_zero() {
@@ -1720,6 +1957,58 @@ fn warmed_plane_native_materialized_helicity_add_into_allocates_zero() {
     assert_eq!(
         allocated_bytes, 0,
         "warmed materialized-helicity plane accumulator allocated bytes"
+    );
+
+    let replay = LcResolvedReplayEntry {
+        routes: vec![LcResolvedReplayRoute {
+            source_index: 0,
+            target_index: 0,
+            weight: 1.0,
+        }],
+    };
+    let mut target_components = vec![0.0; POINT_COUNT];
+    amplitude
+        .reduce_planes_f64_for_materialized_helicity_routed_components_add_into(
+            planes,
+            &physics,
+            1.25,
+            0,
+            &root_factors,
+            Some(&selected_colors),
+            &replay,
+            1,
+            1,
+            POINT_COUNT,
+            0,
+            &mut target_components,
+        )
+        .unwrap();
+    target_components.fill(0.0);
+    let (result, allocation_count, allocated_bytes) =
+        super::evaluator::native_direct::tests::count_allocations(|| {
+            amplitude.reduce_planes_f64_for_materialized_helicity_routed_components_add_into(
+                planes,
+                &physics,
+                1.25,
+                0,
+                &root_factors,
+                Some(&selected_colors),
+                &replay,
+                1,
+                1,
+                POINT_COUNT,
+                0,
+                &mut target_components,
+            )
+        });
+    result.unwrap();
+    assert_eq!(
+        allocation_count, 0,
+        "warmed persistent materialized-helicity route allocated"
+    );
+    assert_eq!(
+        allocated_bytes, 0,
+        "warmed persistent materialized-helicity route allocated bytes"
     );
 }
 
@@ -2895,6 +3184,8 @@ fn empty_generic_runtime() -> ExecutionRuntime {
         lc_topology_replay_materialized_sector_ids: BTreeSet::new(),
         lc_resolved_replay_plan: None,
         lc_resolved_replay_selection_cache: None,
+        lc_replay_flat_momenta_scratch: Vec::new(),
+        lc_replay_target_components_scratch: Vec::new(),
         helicity_recurrence: None,
         compiled_helicity_execution_plan: None,
         compiled_color_execution_plan: None,
