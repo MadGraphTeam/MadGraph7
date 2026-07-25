@@ -60,6 +60,16 @@ measurement grid:
 
 ```bash
 python3 docs/result_tables.py init-profile macbook_M3 --reset-measurements
+git add docs/performance_reports/macbook_M3
+git commit -m "Initialize macbook_M3 performance report"
+git push origin HEAD
+```
+
+That pushed commit is the measured-source checkpoint. From a clean checkout of
+that exact commit, run the project's clean build and native-install gate, then
+populate and audit:
+
+```bash
 python3 docs/performance_reports/macbook_M3/result_tables.py populate \
   --n-final 1..4 --missing-only --artifact-policy regenerate \
   --workers 1 --cell-cores 1 --refresh-pdf end
@@ -71,11 +81,22 @@ Create an independent cluster workspace from the same publication sources but
 with empty measurement caches:
 
 ```bash
+git pull --ff-only origin main
 python3 docs/result_tables.py init-profile cluster_EPYC \
   --source-profile macbook_M3 --reset-measurements
+git add docs/performance_reports/cluster_EPYC
+git commit -m "Initialize cluster_EPYC performance report"
+git push origin HEAD
+```
+
+Again, clean-build and install that exact pushed checkpoint before measuring:
+
+```bash
 python3 docs/performance_reports/cluster_EPYC/result_tables.py populate \
   --n-final 1..4 --missing-only --artifact-policy regenerate \
   --workers 1 --cell-cores 1 --refresh-pdf end
+python3 docs/performance_reports/cluster_EPYC/result_tables.py render --compile
+python3 docs/performance_reports/cluster_EPYC/result_tables.py audit
 ```
 
 The copied `result_tables.py` detects its enclosing profile automatically.
@@ -83,8 +104,9 @@ Every coordinator and child worker uses that profile's raw caches, artifact
 store, and locks, preventing one machine's measurements from being mixed with
 another's. Use `export-profile PROFILE DESTINATION` for a publication-only
 filesystem copy. Exports deliberately omit evaluator artifacts and local
-campaign state. The exported folder can rebuild its checked-in tables and PDF
-without a pyAmpliCol checkout:
+campaign state, rerender the copied caches, and rebuild a fresh PDF. The
+exported folder can subsequently rebuild its PDF from the checked-in TeX and
+generated tables without a pyAmpliCol checkout:
 
 ```bash
 cd DESTINATION
@@ -92,7 +114,11 @@ python3 build_pdf.py
 ```
 
 Generating new measurements still requires a matching pyAmpliCol source
-checkout and native runtime.
+checkout and native runtime. After audit and visual review, the report-only
+descendant commit may contain only the profile's raw JSON caches, generated
+table and validation-summary TeX, and reviewed PDF; do not change profile
+prose, entry points, manifests, or evaluator source between the checkpoint and
+publication commits.
 
 ## Data Contract
 

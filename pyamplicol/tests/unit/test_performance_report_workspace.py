@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.performance_report import workspace as workspace_module
+from tools.performance_report.artifacts import LockTimeoutError
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.service import (
     ReportPaths,
@@ -136,19 +138,38 @@ def test_new_cluster_profile_resets_measurements_and_drops_source_pdf(
     assert manifest["measurement_state"] == "reset"
 
 
-def test_export_profile_contains_only_publication_workspace(
+def test_export_profile_contains_only_fresh_publication_workspace(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
     _seed_template(repo)
     profile = initialize_profile(repo, "macbook_M3")
-    (profile / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    stale_pdf = b"%PDF-1.4\n% stale source PDF\n%%EOF\n"
+    fresh_pdf = b"%PDF-1.4\n% fresh exported PDF\n%%EOF\n"
+    (profile / "pyAmpliCol.pdf").write_bytes(stale_pdf)
     local_state = (
         repo
         / ".artifacts/performance-report/macbook_M3/cells/private/worker.log"
     )
     local_state.parent.mkdir(parents=True)
     local_state.write_text("private\n", encoding="ascii")
+    compiled: list[Path] = []
+
+    def fake_compile(report_dir: Path) -> Path:
+        compiled.append(report_dir)
+        output = report_dir / "pyAmpliCol.pdf"
+        output.write_bytes(fresh_pdf)
+        (report_dir / "pyAmpliCol.log").write_text(
+            "clean\n",
+            encoding="ascii",
+        )
+        return output
+
+    monkeypatch.setattr(
+        "tools.performance_report.workspace.compile_report",
+        fake_compile,
+    )
 
     exported = export_profile(
         repo,
@@ -158,8 +179,94 @@ def test_export_profile_contains_only_publication_workspace(
 
     assert (exported / "pyAmpliCol.tex").is_file()
     assert (exported / "pyAmpliCol.pdf").is_file()
+    assert (exported / "pyAmpliCol.pdf").read_bytes() == fresh_pdf
+    assert (profile / "pyAmpliCol.pdf").read_bytes() == stale_pdf
+    assert len(compiled) == 1
     assert (exported / STANDALONE_BUILDER).is_file()
     assert (exported / WORKSPACE_MANIFEST).is_file()
     assert not (exported / ".artifacts").exists()
     assert not tuple(exported.rglob("*.lock"))
     assert not tuple(exported.rglob("*.log"))
+
+
+def test_export_profile_can_omit_pdf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _seed_template(repo)
+    initialize_profile(repo, "macbook_M3")
+
+    def unexpected_compile(_report_dir: Path) -> Path:
+        raise AssertionError("PDF compilation must be disabled")
+
+    monkeypatch.setattr(
+        "tools.performance_report.workspace.compile_report",
+        unexpected_compile,
+    )
+    exported = export_profile(
+        repo,
+        "macbook_M3",
+        tmp_path / "exports/macbook_M3",
+        include_pdf=False,
+    )
+
+    assert not (exported / "pyAmpliCol.pdf").exists()
+
+
+def test_export_holds_source_writer_lock_while_copying(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _seed_template(repo)
+    initialize_profile(repo, "macbook_M3")
+    competing = ReportService(
+        ReportPaths.from_repo(repo, profile="macbook_M3")
+    )
+    original_copy = workspace_module._copy_publication_members
+    observed_lock = False
+
+    def checking_copy(source: Path, destination: Path) -> None:
+        nonlocal observed_lock
+        with (
+            pytest.raises(LockTimeoutError),
+            competing.store.named_lock("report-writer", timeout=0.0),
+        ):
+            pass
+        observed_lock = True
+        original_copy(source, destination)
+
+    monkeypatch.setattr(
+        workspace_module,
+        "_copy_publication_members",
+        checking_copy,
+    )
+    export_profile(
+        repo,
+        "macbook_M3",
+        tmp_path / "exports/macbook_M3",
+        include_pdf=False,
+    )
+
+    assert observed_lock
+
+
+def test_reset_profile_rejects_preexisting_local_artifact_state(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _seed_template(repo)
+    stale = repo / ".artifacts/performance-report/macbook_M3/cells/stale"
+    stale.mkdir(parents=True)
+    (stale / "current.json").write_text("{}\n", encoding="ascii")
+
+    with pytest.raises(
+        ReportWorkspaceError,
+        match="artifact root already contains local state",
+    ):
+        initialize_profile(
+            repo,
+            "macbook_M3",
+            reset_measurements=True,
+        )

@@ -19,6 +19,7 @@ from .source_identity import (
     ReportSourceIdentityError,
     inspect_report_source,
 )
+from .standalone_build import compile_report
 
 WORKSPACE_SCHEMA = "pyamplicol-performance-report-workspace-v1"
 WORKSPACE_MANIFEST = "report-workspace.json"
@@ -62,8 +63,6 @@ def _source_docs_dir(
 def _copy_publication_members(
     source: Path,
     destination: Path,
-    *,
-    include_pdf: bool,
 ) -> None:
     required = (source / "pyAmpliCol.tex", source / "result_tables.py")
     missing = [path.name for path in required if not path.is_file()]
@@ -91,11 +90,6 @@ def _copy_publication_members(
         if not path.is_file() or path.is_symlink():
             raise ReportWorkspaceError(f"unsafe result-cache member: {path}")
         shutil.copy2(path, output_results / path.name)
-
-    pdf = source / "pyAmpliCol.pdf"
-    if include_pdf and pdf.is_file() and not pdf.is_symlink():
-        shutil.copy2(pdf, destination / pdf.name)
-
 
 def _install_standalone_builder(destination: Path) -> None:
     source = Path(__file__).with_name("standalone_build.py")
@@ -147,8 +141,11 @@ python3 docs/performance_reports/{profile}/result_tables.py render --compile
 python3 docs/performance_reports/{profile}/result_tables.py audit
 ```
 
-Populate all measurements through four final-state particles with the standard
-five-second timing policy using:
+Before measuring a new profile, commit and push this complete initialized
+workspace as the measured-source checkpoint, then perform the project's clean
+build and native-install gate for that exact commit. Only from that clean,
+exact-source checkout should you populate measurements through four
+final-state particles with the standard five-second timing policy:
 
 ```bash
 python3 docs/performance_reports/{profile}/result_tables.py populate \\
@@ -158,9 +155,11 @@ python3 docs/performance_reports/{profile}/result_tables.py populate \\
 
 The copied entry point selects this profile automatically. It still requires a
 pyAmpliCol source checkout and installed native extension because measurements
-exercise the public runtime APIs. Commit the JSON caches, generated table TeX,
-reviewed report sources, workspace manifest, and reviewed PDF. Never add
-`.artifacts/`, worker attempts, logs, locks, or coordination state.
+exercise the public runtime APIs. After the final audit and visual review,
+commit only the raw JSON caches, generated table and validation-summary TeX,
+and reviewed PDF as the report-only descendant of the measured-source
+checkpoint. Never add `.artifacts/`, worker attempts, logs, locks,
+coordination state, or LaTeX auxiliary files.
 """
 
 
@@ -360,14 +359,21 @@ def initialize_profile(
         / uuid.uuid4().hex
     )
     try:
-        _copy_publication_members(
-            source,
-            staging,
-            include_pdf=False,
-        )
-        _install_standalone_builder(staging)
         source_paths = ReportPaths.from_repo(root, profile=source_profile)
+        source_service = ReportService(source_paths)
+        with source_service.store.named_lock("report-writer"):
+            source_service.audit()
+            _copy_publication_members(source, staging)
+        _install_standalone_builder(staging)
         target_paths = ReportPaths.from_repo(root, profile=validated)
+        if reset_measurements and (
+            target_paths.artifact_root.exists()
+            and any(target_paths.artifact_root.iterdir())
+        ):
+            raise ReportWorkspaceError(
+                "reset profile artifact root already contains local state: "
+                f"{target_paths.artifact_root}"
+            )
         paths = ReportPaths.from_repo(
             root,
             docs_dir=staging,
@@ -415,7 +421,12 @@ def initialize_profile(
     return target
 
 
-def _validate_workspace(repo_root: Path, profile: str) -> Path:
+def _validate_workspace(
+    repo_root: Path,
+    profile: str,
+    *,
+    service: ReportService | None = None,
+) -> Path:
     root = repo_root.expanduser().resolve(strict=False)
     path = profile_docs_dir(root, profile)
     manifest_path = path / WORKSPACE_MANIFEST
@@ -433,7 +444,10 @@ def _validate_workspace(repo_root: Path, profile: str) -> Path:
         raise ReportWorkspaceError(
             f"workspace manifest does not identify profile {profile!r}"
         )
-    ReportService(ReportPaths.from_repo(root, profile=profile)).audit()
+    active = service or ReportService(
+        ReportPaths.from_repo(root, profile=profile)
+    )
+    active.audit()
     return path
 
 
@@ -448,7 +462,8 @@ def export_profile(
 
     root = repo_root.expanduser().resolve(strict=False)
     validated = validate_profile_name(profile)
-    source = _validate_workspace(root, validated)
+    profile_paths = ReportPaths.from_repo(root, profile=validated)
+    source_service = ReportService(profile_paths)
     target = destination.expanduser().resolve(strict=False)
     if target.exists():
         raise ReportWorkspaceError(f"export destination already exists: {target}")
@@ -461,9 +476,16 @@ def export_profile(
         / uuid.uuid4().hex
     )
     try:
-        _copy_publication_members(source, staging, include_pdf=include_pdf)
+        with source_service.store.named_lock("report-writer"):
+            source = _validate_workspace(
+                root,
+                validated,
+                service=source_service,
+            )
+            _copy_publication_members(source, staging)
+            for name in ("README.md", WORKSPACE_MANIFEST):
+                shutil.copy2(source / name, staging / name)
         _install_standalone_builder(staging)
-        profile_paths = ReportPaths.from_repo(root, profile=validated)
         service = ReportService(
             ReportPaths.from_repo(
                 root,
@@ -475,8 +497,22 @@ def export_profile(
         service.publish(reset=False, merge_artifacts=False)
         service.audit()
         _assert_portable_results(staging)
-        for name in ("README.md", WORKSPACE_MANIFEST):
-            shutil.copy2(source / name, staging / name)
+        if include_pdf:
+            compile_report(staging)
+            for suffix in (
+                ".aux",
+                ".bbl",
+                ".bcf",
+                ".blg",
+                ".fdb_latexmk",
+                ".fls",
+                ".log",
+                ".out",
+                ".run.xml",
+                ".synctex.gz",
+                ".toc",
+            ):
+                (staging / f"pyAmpliCol{suffix}").unlink(missing_ok=True)
         staging.replace(target)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
