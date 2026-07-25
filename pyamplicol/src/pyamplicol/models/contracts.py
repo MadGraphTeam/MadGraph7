@@ -88,7 +88,10 @@ def _constant_quantum_number_expression(
         parsed = _sym.E(expression)
     except Exception as exc:
         raise ValueError(f"{context} is not a valid Symbolica expression") from exc
-    if parsed.get_all_symbols(False):
+    # Symbolica may expose built-in constants such as pi or the Euler constant
+    # through get_all_symbols(), so use its semantic constant predicate rather
+    # than treating every reported symbol as a free model variable.
+    if not parsed.is_constant():
         raise ValueError(f"{context} must be symbol-free")
     if not parsed.is_real():
         raise ValueError(f"{context} must be real")
