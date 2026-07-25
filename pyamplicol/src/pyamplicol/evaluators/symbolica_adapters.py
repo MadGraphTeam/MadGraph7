@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from itertools import pairwise
 from pathlib import Path
@@ -297,6 +297,7 @@ class _CompiledComplexEvaluatorAdapter:
             **compile_kwargs,
         )
         self.build_timing["cxx_compile_s"] = time.perf_counter() - compile_started
+        self.native_direct_application = None
 
     def evaluate_complex(self, parameter_rows: Any) -> Any:
         return self._evaluate_complex_prepared(
@@ -344,6 +345,7 @@ class _CompiledComplexEvaluatorAdapter:
             else _artifact_path_from_manifest(str(state_path), artifact_dir)
         )
         instance.build_timing = {}
+        instance.native_direct_application = None
         if instance.number_type != "complex":
             raise NativeEvaluationError(
                 f"unsupported compiled evaluator number type: {instance.number_type!r}"
@@ -355,6 +357,76 @@ class _CompiledComplexEvaluatorAdapter:
             instance.output_len,
         )
         return instance
+
+    def compile_native_direct_application_prototype(
+        self,
+        parameter_kinds: Sequence[object],
+        *,
+        target_triple: str,
+        cpu_features: Sequence[str] = (),
+        simd_lane_width: int = 2,
+        output_dir: Path | None = None,
+    ) -> Any:
+        """Emit this real compiled leaf directly against persistent planes.
+
+        This cold-path method is the integration seam for the risk-first C++
+        producer prototype.  Stage lowering must supply semantic storage kinds;
+        guessing model scalars from evaluator arity is intentionally forbidden.
+        The returned library is direct-only.  It is not published by the
+        production artifact manifest yet.
+        """
+
+        from .native_direct_cpp import (
+            NativeDirectCppParameterKind,
+            NativeDirectCppSpec,
+            compile_native_direct_cpp,
+            compiler_from_symbolica_settings,
+        )
+
+        if self._source_evaluator is None:
+            raise NativeEvaluationError(
+                "native DirectApplication production requires the retained "
+                "Symbolica evaluator state; regenerate this compiled leaf"
+            )
+        if self.runtime_capability != SYMBOLICA_CPP_RUNTIME_CAPABILITY:
+            raise NativeEvaluationError(
+                "native DirectApplication C++ production cannot wrap an ASM "
+                "or non-C++ compiled evaluator"
+            )
+        try:
+            kinds = tuple(
+                NativeDirectCppParameterKind(kind) for kind in parameter_kinds
+            )
+        except (TypeError, ValueError) as error:
+            raise NativeEvaluationError(
+                "native DirectApplication stage parameter kinds are invalid"
+            ) from error
+        if len(kinds) != self.input_len:
+            raise NativeEvaluationError(
+                "native DirectApplication stage parameter kinds do not match "
+                "the evaluator input width"
+            )
+        features = tuple(str(feature) for feature in cpu_features)
+        destination = self.source_path.parent if output_dir is None else output_dir
+        spec = NativeDirectCppSpec(
+            function_name=self.function_name,
+            parameter_kinds=kinds,
+            output_count=self.output_len,
+            target_triple=target_triple,
+            cpu_features=features,
+            simd_lane_width=simd_lane_width,
+        )
+        compiler = compiler_from_symbolica_settings(self.settings)
+        result = compile_native_direct_cpp(
+            self._source_evaluator,
+            spec=spec,
+            compiler=compiler,
+            output_source_path=destination / f"{self.function_name}.direct.cpp",
+            output_library_path=destination / f"lib{self.function_name}.direct",
+        )
+        self.native_direct_application = result
+        self.build_timing["native_direct_cpp_compile_s"] = result.compile_seconds
+        return result
 
     def artifact_manifest(self, artifact_dir: Path) -> dict[str, Any]:
         return {
@@ -522,9 +594,7 @@ class _ChunkedSymbolicaEvaluator:
             gather_started = time.perf_counter()
             chunk_rows = self._chunk_parameter_rows(prepared_rows, indices)
             gather_s += time.perf_counter() - gather_started
-            output, profile = _evaluate_prepared_complex_profiled(
-                evaluator, chunk_rows
-            )
+            output, profile = _evaluate_prepared_complex_profiled(evaluator, chunk_rows)
             outputs.append(output)
             profiles.append(profile)
         return tuple(outputs), (
