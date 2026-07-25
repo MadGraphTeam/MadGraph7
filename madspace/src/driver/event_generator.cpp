@@ -1142,6 +1142,7 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
     std::ofstream f(status_tmp_file);
     nlohmann::json j{
         {"status", status},
+        {"seed", _seed},
         {"process", _status},
         {"channels", channel_status()},
         {"run_times", _timing_data},
