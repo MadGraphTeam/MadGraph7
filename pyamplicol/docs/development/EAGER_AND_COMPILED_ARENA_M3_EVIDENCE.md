@@ -24,10 +24,13 @@ metadata is not rewritten to pretend that this candidate is verified.
 
 The retained real fixture is
 `.agent-work/artifacts/ddbar_z3g_compiled_o3`, artifact SHA-256
-`7c0afee1...` and PACBIN SHA-256 `78712035...`. The prototype lowers the
-canonical recursive manifest leaf layout directly to arena bindings, owns one
-shared aligned zero plane, validates selector coverage and producer closure,
-and preserves the compressed-O3 fused application.
+`7c0afee1b0910660946823c6438b146646591cabff6292753c0932bcb628e004`
+and PACBIN SHA-256
+`78712035590491005ea4259f9e6e9313e3f15ffde7bc4c5b79b0756a44dfc703`.
+The prototype lowers the canonical recursive manifest leaf layout directly to
+arena bindings, owns one shared aligned zero plane, validates selector
+coverage and producer closure, and preserves the compressed-O3 fused
+application.
 
 For one real selected-LC late leaf over 129 points, seven interleaved samples
 of 200 repetitions gave:
@@ -111,4 +114,3 @@ add-into path allocated zero times.
   emitters where those public backend configurations remain supported.
 - Complete malformed-artifact, native-language API, packaging, x86-64, and
   final release-policy evidence.
-
