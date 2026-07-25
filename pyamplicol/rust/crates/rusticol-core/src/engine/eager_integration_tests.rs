@@ -833,6 +833,51 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
         );
     }
 
+    if matches!(
+        std::env::var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION").as_deref(),
+        Ok("direct" | "dual")
+    ) {
+        for tail in [1_usize, 7, 127, 128, 129, 1023, 1024, 1025] {
+            let tail_momenta = momenta.repeat(tail);
+            let tail_values = runtime
+                .evaluate_f64(&tail_momenta, tail)
+                .expect("evaluate required eager Direct-Arena tail");
+            for value in tail_values {
+                assert_close_f64(value, values[0], "eager Direct-Arena repeated-point tail");
+            }
+        }
+
+        for tail in [129_usize, 1025] {
+            let tail_momenta = momenta.repeat(tail);
+            let helicity_by_point = (0..tail)
+                .map(|point| (point % helicity_count.min(2)) as u32)
+                .collect::<Vec<_>>();
+            let color_by_point =
+                (runtime.metadata().color_accuracy == "lc").then(|| vec![0_u32; tail]);
+            let selected_tail = runtime
+                .evaluate_f64_with_selectors(
+                    &tail_momenta,
+                    tail,
+                    None,
+                    None,
+                    Some(&helicity_by_point),
+                    color_by_point.as_deref(),
+                )
+                .expect("evaluate required eager Direct-Arena selector tail");
+            for (point, value) in selected_tail.into_iter().enumerate() {
+                let expected_index = helicity_by_point[point] as usize * color_count;
+                let expected = if color_by_point.is_some() {
+                    resolved.values[expected_index]
+                } else {
+                    resolved.values[expected_index..expected_index + color_count]
+                        .iter()
+                        .sum()
+                };
+                assert_close_f64(value, expected, "eager Direct-Arena selector tail");
+            }
+        }
+    }
+
     if let Some(compiled_root) = std::env::var_os("RUSTICOL_COMPILED_ARTIFACT") {
         let mut compiled = NativeRuntime::load(PathBuf::from(compiled_root), None, None)
             .expect("load matching compiled artifact");
@@ -971,6 +1016,185 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
             .expect("eager parameter state after failed update"),
         before_failed_update
     );
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+#[ignore = "local interleaved retained-artifact A/B timing evidence"]
+fn benchmark_generated_eager_direct_arena_against_legacy_when_fixture_is_supplied() {
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    let Some(root) = std::env::var_os("RUSTICOL_EAGER_ARTIFACT") else {
+        return;
+    };
+    let previous_mode = std::env::var_os("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION");
+    // SAFETY: this ignored diagnostic is run by exact name with one test
+    // thread. Both runtimes consume the environment only during construction.
+    unsafe {
+        std::env::remove_var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION");
+    }
+    let mut legacy =
+        NativeRuntime::load(PathBuf::from(&root), None, None).expect("load legacy eager runtime");
+    // SAFETY: see the single-threaded diagnostic invariant above.
+    unsafe {
+        std::env::set_var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION", "direct");
+    }
+    let mut direct =
+        NativeRuntime::load(PathBuf::from(root), None, None).expect("load direct eager runtime");
+    // SAFETY: restore the process environment before any measurement begins.
+    unsafe {
+        if let Some(previous) = previous_mode {
+            std::env::set_var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION", previous);
+        } else {
+            std::env::remove_var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION");
+        }
+    }
+
+    let validation_path = direct
+        .root()
+        .join("processes")
+        .join(&direct.metadata().representative_process_key)
+        .join("validation-momenta.json");
+    let validation: Value =
+        serde_json::from_slice(&fs::read(&validation_path).expect("read eager validation momenta"))
+            .expect("parse eager validation momenta");
+    let one_point = validation["points"][0]
+        .as_array()
+        .expect("one eager validation point")
+        .iter()
+        .flat_map(|leg| {
+            leg["momentum"]
+                .as_array()
+                .expect("four momentum components")
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .expect("decimal momentum string")
+                        .parse::<f64>()
+                        .expect("f64 validation momentum")
+                })
+        })
+        .collect::<Vec<_>>();
+
+    for (point_count, repetitions) in [(128_usize, 50_usize), (1024, 8)] {
+        let momenta = one_point.repeat(point_count);
+        let mut legacy_output = vec![0.0; point_count];
+        let mut direct_output = vec![0.0; point_count];
+        for _ in 0..3 {
+            legacy
+                .evaluate_f64_into(&momenta, point_count, &mut legacy_output)
+                .expect("warm legacy eager runtime");
+            direct
+                .evaluate_f64_into(&momenta, point_count, &mut direct_output)
+                .expect("warm direct eager runtime");
+        }
+        for (legacy_value, direct_value) in legacy_output.iter().zip(&direct_output) {
+            assert_close_f64(*legacy_value, *direct_value, "eager retained A/B parity");
+        }
+
+        let mut legacy_us = Vec::with_capacity(7);
+        let mut direct_us = Vec::with_capacity(7);
+        for sample in 0_usize..7 {
+            let measure_legacy = |runtime: &mut NativeRuntime, output: &mut [f64]| {
+                let started = Instant::now();
+                for _ in 0..repetitions {
+                    runtime
+                        .evaluate_f64_into(&momenta, point_count, output)
+                        .expect("measure legacy eager runtime");
+                    black_box(&*output);
+                }
+                started.elapsed().as_secs_f64() * 1.0e6 / (repetitions * point_count) as f64
+            };
+            let measure_direct = |runtime: &mut NativeRuntime, output: &mut [f64]| {
+                let started = Instant::now();
+                for _ in 0..repetitions {
+                    runtime
+                        .evaluate_f64_into(&momenta, point_count, output)
+                        .expect("measure direct eager runtime");
+                    black_box(&*output);
+                }
+                started.elapsed().as_secs_f64() * 1.0e6 / (repetitions * point_count) as f64
+            };
+            if sample.is_multiple_of(2) {
+                legacy_us.push(measure_legacy(&mut legacy, &mut legacy_output));
+                direct_us.push(measure_direct(&mut direct, &mut direct_output));
+            } else {
+                direct_us.push(measure_direct(&mut direct, &mut direct_output));
+                legacy_us.push(measure_legacy(&mut legacy, &mut legacy_output));
+            }
+        }
+        let (legacy_median, legacy_mad) = median_mad_f64(&mut legacy_us);
+        let (direct_median, direct_mad) = median_mad_f64(&mut direct_us);
+        eprintln!(
+            "eager_retained_direct_ab point_count={point_count} repetitions={repetitions} \
+             samples=7 legacy_us_per_point={legacy_median:.9} legacy_mad={legacy_mad:.9} \
+             direct_us_per_point={direct_median:.9} direct_mad={direct_mad:.9} \
+             speedup={:.6}",
+            legacy_median / direct_median
+        );
+        let legacy_profile = legacy
+            .evaluate_f64_profile(&momenta, point_count, None, None)
+            .expect("profile legacy eager runtime")
+            .profile;
+        let direct_profile = direct
+            .evaluate_f64_profile(&momenta, point_count, None, None)
+            .expect("profile direct eager runtime")
+            .profile;
+        let us_per_point = |seconds: f64| seconds * 1.0e6 / point_count as f64;
+        eprintln!(
+            "eager_retained_direct_profile point_count={point_count} \
+             legacy_total_us_per_point={:.9} legacy_source_us_per_point={:.9} \
+             legacy_momentum_us_per_point={:.9} legacy_initialize_us_per_point={:.9} \
+             legacy_gather_us_per_point={:.9} legacy_kernel_us_per_point={:.9} \
+             legacy_copy_us_per_point={:.9} legacy_finalization_us_per_point={:.9} \
+             legacy_closure_us_per_point={:.9} legacy_reduction_us_per_point={:.9} \
+             legacy_copy_out_us_per_point={:.9} legacy_backend_calls={} \
+             direct_total_us_per_point={:.9} direct_source_us_per_point={:.9} \
+             direct_momentum_us_per_point={:.9} direct_initialize_us_per_point={:.9} \
+             direct_gather_us_per_point={:.9} direct_kernel_us_per_point={:.9} \
+             direct_copy_us_per_point={:.9} direct_finalization_us_per_point={:.9} \
+             direct_closure_us_per_point={:.9} direct_reduction_us_per_point={:.9} \
+             direct_copy_out_us_per_point={:.9} direct_backend_calls={}",
+            us_per_point(legacy_profile.total_s),
+            us_per_point(legacy_profile.source_fill_s),
+            us_per_point(legacy_profile.momentum_input_setup_s),
+            us_per_point(legacy_profile.eager_initialize_s),
+            us_per_point(legacy_profile.eager_gather_s),
+            us_per_point(legacy_profile.eager_kernel_call_s),
+            us_per_point(legacy_profile.eager_invocation_scatter_s),
+            us_per_point(legacy_profile.eager_finalization_s),
+            us_per_point(legacy_profile.eager_closure_s),
+            us_per_point(legacy_profile.eager_reduction_s),
+            us_per_point(legacy_profile.eager_copy_out_s),
+            legacy_profile.evaluator_backend_call_count,
+            us_per_point(direct_profile.total_s),
+            us_per_point(direct_profile.source_fill_s),
+            us_per_point(direct_profile.momentum_input_setup_s),
+            us_per_point(direct_profile.eager_initialize_s),
+            us_per_point(direct_profile.eager_gather_s),
+            us_per_point(direct_profile.eager_kernel_call_s),
+            us_per_point(direct_profile.eager_invocation_scatter_s),
+            us_per_point(direct_profile.eager_finalization_s),
+            us_per_point(direct_profile.eager_closure_s),
+            us_per_point(direct_profile.eager_reduction_s),
+            us_per_point(direct_profile.eager_copy_out_s),
+            direct_profile.evaluator_backend_call_count,
+        );
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+fn median_mad_f64(values: &mut [f64]) -> (f64, f64) {
+    values.sort_by(f64::total_cmp);
+    let median = values[values.len() / 2];
+    let mut deviations = values
+        .iter()
+        .map(|value| (value - median).abs())
+        .collect::<Vec<_>>();
+    deviations.sort_by(f64::total_cmp);
+    (median, deviations[deviations.len() / 2])
 }
 
 fn assert_close_f64(left: f64, right: f64, context: &str) {

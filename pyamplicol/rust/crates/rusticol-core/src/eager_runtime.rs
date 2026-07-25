@@ -181,6 +181,7 @@ pub(crate) struct EagerExecutionProfile {
     pub(crate) reduction: Duration,
     pub(crate) copy_out: Duration,
     pub(crate) total: Duration,
+    pub(crate) backend_call_count: u64,
 }
 
 impl EagerExecutionProfile {
@@ -197,10 +198,16 @@ impl EagerExecutionProfile {
 }
 
 #[cfg(feature = "f64-symjit")]
+mod direct_execution_arena;
+#[cfg(feature = "f64-symjit")]
 mod direct_invocation_arena;
+#[cfg(feature = "f64-symjit")]
+pub(crate) use direct_execution_arena::EagerDirectExecutionRuntime;
+#[cfg(feature = "f64-symjit")]
+pub(crate) use direct_invocation_arena::EagerDirectPreparedKernel;
 #[cfg(all(test, feature = "f64-symjit"))]
 pub(crate) use direct_invocation_arena::{
-    EagerDirectPreparedKernel, run_retained_multistage_oracle, select_retained_multistage_candidate,
+    run_retained_multistage_oracle, select_retained_multistage_candidate,
 };
 mod execute;
 mod plan;

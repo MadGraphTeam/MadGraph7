@@ -105,6 +105,46 @@ pub(crate) fn eager_direct_table_metadata(
     })
 }
 
+/// Derive and bind the portable table descriptor for one authenticated eager
+/// source application. This is a cold developer-cutover helper; the resulting
+/// descriptor and lowered callable are retained for all warmed evaluations.
+pub(crate) fn eager_direct_descriptor_for_source_application_bytes(
+    source_bytes: &[u8],
+    input_complex_count: u32,
+    output_complex_count: u32,
+    display_path: &Path,
+) -> RusticolResult<Vec<u8>> {
+    let mut config = Config::default();
+    config.set_defuns(Defuns::new());
+    let mut input = source_bytes;
+    let source = guard_symjit_panic(
+        || Application::load(&mut input, &config),
+        display_path,
+        "load prepared source for descriptor derivation",
+    )?
+    .map_err(|error| {
+        RusticolError::compatibility(format!(
+            "could not load eager Direct-Arena source {} for descriptor derivation: {error}",
+            display_path.display()
+        ))
+    })?;
+    if !input.is_empty() {
+        return Err(RusticolError::integrity(format!(
+            "eager Direct-Arena source {} has {} trailing bytes",
+            display_path.display(),
+            input.len()
+        )));
+    }
+    eager_direct_table_metadata(input_complex_count, output_complex_count)?
+        .encode_descriptor(&source)
+        .map_err(|error| {
+            RusticolError::integrity(format!(
+                "could not derive eager Direct-Arena descriptor for {}: {error}",
+                display_path.display()
+            ))
+        })
+}
+
 /// One persistent SymJIT plane-catalog entry backed by the eager arena.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum EagerDirectArenaPlaneBinding {
@@ -247,6 +287,15 @@ impl EagerDirectTableWorkspace {
     ) -> RusticolResult<()> {
         self.arena
             .clear_current_active(component_base, component_count)
+    }
+
+    pub(crate) fn clear_amplitude_active(
+        &mut self,
+        component_base: u32,
+        component_count: u32,
+    ) -> RusticolResult<()> {
+        self.arena
+            .clear_amplitude_active(component_base, component_count)
     }
 
     pub(crate) fn scalar_values_mut(&mut self) -> &mut [f64] {

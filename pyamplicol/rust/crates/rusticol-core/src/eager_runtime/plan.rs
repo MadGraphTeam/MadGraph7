@@ -66,6 +66,18 @@ impl ComponentLayout {
             RusticolError::artifact(format!("{context} references unknown slot {id}"))
         })
     }
+
+    pub(super) fn id_for_range(&self, range: ComponentRange, context: &str) -> RusticolResult<u32> {
+        self.slots
+            .iter()
+            .position(|candidate| *candidate == range)
+            .and_then(|id| u32::try_from(id).ok())
+            .ok_or_else(|| {
+                RusticolError::internal(format!(
+                    "{context} has no matching semantic component range"
+                ))
+            })
+    }
 }
 
 #[derive(Clone, Debug)]

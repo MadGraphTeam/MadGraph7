@@ -17,7 +17,7 @@ use crate::{
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum AccumulationFactor {
+pub(super) enum AccumulationFactor {
     One,
     NegativeOne,
     ImaginaryUnit,
@@ -29,7 +29,7 @@ enum AccumulationFactor {
 
 impl AccumulationFactor {
     #[inline]
-    fn from_parts(real: f64, imag: f64) -> Self {
+    pub(super) fn from_parts(real: f64, imag: f64) -> Self {
         match (real, imag) {
             (1.0, 0.0) => Self::One,
             (-1.0, 0.0) => Self::NegativeOne,
@@ -42,7 +42,7 @@ impl AccumulationFactor {
     }
 
     #[inline(always)]
-    fn accumulate(self, target: &mut EagerComplex64, value: EagerComplex64) {
+    pub(super) fn accumulate(self, target: &mut EagerComplex64, value: EagerComplex64) {
         match self {
             Self::One => *target += value,
             Self::NegativeOne => *target -= value,
@@ -67,7 +67,7 @@ impl AccumulationFactor {
     }
 
     #[inline(always)]
-    fn assign(self, target: &mut EagerComplex64, value: EagerComplex64) {
+    pub(super) fn assign(self, target: &mut EagerComplex64, value: EagerComplex64) {
         *target = match self {
             Self::One => value,
             Self::NegativeOne => -value,

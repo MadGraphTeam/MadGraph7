@@ -114,7 +114,7 @@ pub(super) fn load_eager_v3_native_runtime(
 
     let prepared_parameter_count = u32::try_from(parameter_projection.parameter_count)
         .map_err(|_| RusticolError::artifact("prepared parameter count exceeds u32"))?;
-    let plan = crate::EagerExecutionPlan::from_plan_v3_sections(EagerPlanV3Sections {
+    let sections = EagerPlanV3Sections {
         kernels: &decoded.kernel_specs,
         prepared_parameter_count,
         currents: &decoded.currents,
@@ -135,14 +135,21 @@ pub(super) fn load_eager_v3_native_runtime(
         exact_factors: &decoded.exact_factors,
         color_contraction_entry_start: decoded.color_contraction_entry_start,
         color_contraction_entry_count: decoded.color_contraction_entry_count,
-    })?;
-    let scheduler = crate::EagerExecutionRuntime::new(
-        plan,
-        EagerRuntimeOptions {
-            point_tile_size: decoded.runtime_options.point_tile_size,
-            workspace_bytes: decoded.runtime_options.workspace_bytes,
-        },
+    };
+    let runtime_options = EagerRuntimeOptions {
+        point_tile_size: decoded.runtime_options.point_tile_size,
+        workspace_bytes: decoded.runtime_options.workspace_bytes,
+    };
+    #[cfg(feature = "f64-symjit")]
+    let direct = load_eager_v3_direct_scheduler(
+        &pack.manifest,
+        &kernel_payloads,
+        &decoded,
+        sections,
+        runtime_options,
     )?;
+    let plan = crate::EagerExecutionPlan::from_plan_v3_sections(sections)?;
+    let scheduler = crate::EagerExecutionRuntime::new(plan, runtime_options)?;
     let backend = PreparedEvaluatorBackend::load_from_store(&pack.manifest, &kernel_payloads)?;
     let (raw_sum_groups, color_contraction) = reduction_runtime(&decoded, manifest)?;
     if let Some(selector_group_ids) = scheduler.selector_group_ids() {
@@ -166,17 +173,130 @@ pub(super) fn load_eager_v3_native_runtime(
             )));
         }
     }
-    Ok(LoadedEagerV3Runtime {
-        common,
-        lane: EagerNativeRuntime::new(
-            scheduler,
-            backend,
-            pack.manifest.backend,
-            parameter_projection,
-            raw_sum_groups,
-            color_contraction,
-        ),
-    })
+    let lane = EagerNativeRuntime::new(
+        scheduler,
+        backend,
+        pack.manifest.backend,
+        parameter_projection,
+        raw_sum_groups,
+        color_contraction,
+    );
+    #[cfg(feature = "f64-symjit")]
+    let lane = if let Some((direct, mode)) = direct {
+        lane.with_direct_scheduler(direct, mode)
+    } else {
+        lane
+    };
+    Ok(LoadedEagerV3Runtime { common, lane })
+}
+
+#[cfg(feature = "f64-symjit")]
+fn load_eager_v3_direct_scheduler(
+    pack: &PreparedKernelPackManifest,
+    payloads: &EvaluatorPayloadStore,
+    decoded: &DecodedEagerRuntimeV3,
+    sections: EagerPlanV3Sections<'_>,
+    options: EagerRuntimeOptions,
+) -> RusticolResult<
+    Option<(
+        crate::eager_runtime::EagerDirectExecutionRuntime,
+        super::eager_lane::EagerDirectValidationMode,
+    )>,
+> {
+    let mode = super::eager_lane::EagerDirectValidationMode::from_environment()?;
+    if mode == super::eager_lane::EagerDirectValidationMode::Disabled {
+        return Ok(None);
+    }
+    if !cfg!(target_arch = "aarch64") {
+        return Err(RusticolError::compatibility(
+            "eager-direct-arena-v1 developer validation currently has an authenticated \
+             table-aware callable only on AArch64; regenerate after x86-64 support lands",
+        ));
+    }
+    if pack.backend != "jit" {
+        return Err(RusticolError::compatibility(format!(
+            "eager-direct-arena-v1 developer validation requires the SymJIT prepared backend, \
+             found {:?}; no packet fallback is permitted",
+            pack.backend
+        )));
+    }
+
+    struct OwnedPrepared {
+        kernel_id: u32,
+        role: crate::EagerKernelRole,
+        inputs: Vec<crate::EagerKernelInput>,
+        output_component_count: u32,
+        source: Vec<u8>,
+        descriptor: Vec<u8>,
+        display_path: PathBuf,
+    }
+
+    let mut owned = Vec::with_capacity(decoded.kernel_specs.len());
+    for kernel in &decoded.kernel_specs {
+        let manifest = pack
+            .kernels
+            .iter()
+            .find(|candidate| candidate.kernel_id == kernel.kernel_id)
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "eager Direct-Arena kernel {} has no prepared manifest",
+                    kernel.kernel_id
+                ))
+            })?;
+        let application_path = manifest
+            .f64_evaluator_manifest
+            .get("application_path")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                RusticolError::compatibility(format!(
+                    "eager Direct-Arena kernel {} has no SymJIT source application",
+                    kernel.kernel_id
+                ))
+            })?;
+        let source = payloads.source(application_path)?;
+        let source_bytes = source.read()?.into_owned();
+        let display_path = PathBuf::from(source.display_name());
+        let descriptor =
+            super::symjit_eager_direct::eager_direct_descriptor_for_source_application_bytes(
+                &source_bytes,
+                count_u32_for_direct(kernel.inputs.len(), "kernel input width")?,
+                kernel.output_component_count,
+                &display_path,
+            )?;
+        owned.push(OwnedPrepared {
+            kernel_id: kernel.kernel_id,
+            role: kernel.role,
+            inputs: kernel.inputs.clone(),
+            output_component_count: kernel.output_component_count,
+            source: source_bytes,
+            descriptor,
+            display_path,
+        });
+    }
+    let prepared = owned
+        .iter()
+        .map(|kernel| crate::eager_runtime::EagerDirectPreparedKernel {
+            kernel_id: kernel.kernel_id,
+            role: kernel.role,
+            inputs: &kernel.inputs,
+            output_component_count: kernel.output_component_count,
+            source_application: &kernel.source,
+            descriptor: &kernel.descriptor,
+            display_path: kernel.display_path.clone(),
+        })
+        .collect::<Vec<_>>();
+    Ok(Some((
+        crate::eager_runtime::EagerDirectExecutionRuntime::from_plan_v3_sections(
+            sections, &prepared, options,
+        )?,
+        mode,
+    )))
+}
+
+#[cfg(feature = "f64-symjit")]
+fn count_u32_for_direct(value: usize, label: &str) -> RusticolResult<u32> {
+    u32::try_from(value)
+        .map_err(|_| RusticolError::invalid_argument(format!("eager direct {label} exceeds u32")))
 }
 
 pub(super) fn load_eager_v3_exact_sections(

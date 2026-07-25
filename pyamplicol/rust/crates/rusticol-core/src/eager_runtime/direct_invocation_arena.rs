@@ -57,7 +57,7 @@ struct FactorSpec {
 }
 
 #[derive(Clone, Copy)]
-struct SemanticCatalog {
+pub(super) struct SemanticCatalog {
     value_start: u32,
     current_start: u32,
     momentum_start: u32,
@@ -68,7 +68,7 @@ struct SemanticCatalog {
 }
 
 impl SemanticCatalog {
-    fn new(sections: EagerPlanV3Sections<'_>) -> RusticolResult<Self> {
+    pub(super) fn new(sections: EagerPlanV3Sections<'_>) -> RusticolResult<Self> {
         let value_count = count_u32(sections.values.len(), "value slots")?;
         let current_count = count_u32(sections.currents.len(), "currents")?;
         let momentum_count = count_u32(sections.momenta.len(), "momentum slots")?;
@@ -102,15 +102,15 @@ impl SemanticCatalog {
         })
     }
 
-    fn value(self, id: u32) -> RusticolResult<u32> {
+    pub(super) fn value(self, id: u32) -> RusticolResult<u32> {
         checked_semantic(self.value_start, id, self.current_start, "value")
     }
 
-    fn current(self, id: u32) -> RusticolResult<u32> {
+    pub(super) fn current(self, id: u32) -> RusticolResult<u32> {
         checked_semantic(self.current_start, id, self.momentum_start, "current")
     }
 
-    fn momentum(self, id: u32) -> RusticolResult<u32> {
+    pub(super) fn momentum(self, id: u32) -> RusticolResult<u32> {
         checked_semantic(
             self.momentum_start,
             id,
@@ -119,7 +119,7 @@ impl SemanticCatalog {
         )
     }
 
-    fn coupling_real(self, id: u32) -> RusticolResult<u32> {
+    pub(super) fn coupling_real(self, id: u32) -> RusticolResult<u32> {
         checked_semantic(
             self.coupling_real_start,
             id,
@@ -128,7 +128,7 @@ impl SemanticCatalog {
         )
     }
 
-    fn coupling_imag(self, id: u32) -> RusticolResult<u32> {
+    pub(super) fn coupling_imag(self, id: u32) -> RusticolResult<u32> {
         checked_semantic(
             self.coupling_imag_start,
             id,
@@ -137,7 +137,7 @@ impl SemanticCatalog {
         )
     }
 
-    fn parameter(self, id: u32) -> RusticolResult<u32> {
+    pub(super) fn parameter(self, id: u32) -> RusticolResult<u32> {
         checked_semantic(self.parameter_start, id, self.semantic_count, "parameter")
     }
 }
@@ -210,7 +210,7 @@ impl EagerDirectInvocationPrototype {
     ) -> RusticolResult<Self> {
         validate_active_groups(&plan, active_groups)?;
         let catalog = SemanticCatalog::new(sections)?;
-        let layout = derive_event_layout(sections, catalog)?;
+        let layout = derive_event_layout(sections, catalog, &plan)?;
         let value_ranges = (0..sections.values.len())
             .map(|id| plan.values.get(id as u32, "eager direct value"))
             .collect::<RusticolResult<Vec<_>>>()?
@@ -1343,9 +1343,10 @@ fn median_mad(values: &mut [f64]) -> (f64, f64) {
     (median, deviations[deviations.len() / 2])
 }
 
-fn derive_event_layout(
+pub(super) fn derive_event_layout(
     sections: EagerPlanV3Sections<'_>,
     catalog: SemanticCatalog,
+    plan: &EagerExecutionPlan,
 ) -> RusticolResult<DirectArenaLayout> {
     let count = catalog.semantic_count as usize;
     let mut widths = vec![1_u32; count];
@@ -1392,20 +1393,13 @@ fn derive_event_layout(
         define_semantic(&mut first, &mut last, catalog.parameter(parameter)?, 0)?;
     }
 
-    let kernels = sections
-        .kernels
-        .iter()
-        .map(|kernel| (kernel.kernel_id, kernel))
-        .collect::<BTreeMap<_, _>>();
     let mut event = 1_u64;
-    for stage in sections.stages {
-        let invocations = row_range(
-            sections.invocations,
-            stage.invocation_start,
-            stage.invocation_count,
-            "invocations",
-        )?;
-        for row in invocations {
+    for stage in &plan.stages {
+        // The validated plan has already applied the stable equal-kernel sort
+        // used by both packet and Direct-Arena execution. Liveness must follow
+        // this execution order rather than the producer table order.
+        for invocation in &stage.invocations {
+            let row = invocation.row;
             use_semantic(
                 &first,
                 &mut last,
@@ -1443,22 +1437,17 @@ fn derive_event_layout(
                 event,
             )?;
             touch_kernel_parameters(
-                kernels.get(&row.kernel_id).copied(),
+                plan.kernels.get(&row.kernel_id),
                 catalog,
                 &first,
                 &mut last,
                 event,
             )?;
-            for attachment in row_range(
-                sections.attachments,
-                row.attachment_start,
-                row.attachment_count,
-                "attachments",
-            )? {
+            for attachment in &stage.attachments[invocation.attachment_range.clone()] {
                 define_or_use_semantic(
                     &mut first,
                     &mut last,
-                    catalog.current(attachment.result_current_id)?,
+                    catalog.current(attachment.row.result_current_id)?,
                     event,
                 )?;
             }
@@ -1466,12 +1455,23 @@ fn derive_event_layout(
                 .checked_add(1)
                 .ok_or_else(|| invalid("eager direct event index overflows"))?;
         }
-        for row in row_range(
-            sections.finalizations,
-            stage.finalization_start,
-            stage.finalization_count,
-            "finalizations",
-        )? {
+
+        // Packet execution performs every unpropagated copy before any
+        // propagated finalization call. Sharing current/value planes therefore
+        // requires distinct events in precisely that order.
+        for copy in &stage.finalization_copies {
+            let current_id = stage_current_id_for_layout(stage, copy.current)?;
+            let value_id = plan
+                .values
+                .id_for_range(copy.unpropagated, "eager direct finalization copy")?;
+            use_semantic(&first, &mut last, catalog.current(current_id)?, event)?;
+            define_semantic(&mut first, &mut last, catalog.value(value_id)?, event)?;
+            event = event
+                .checked_add(1)
+                .ok_or_else(|| invalid("eager direct event index overflows"))?;
+        }
+        for item in &stage.finalizations {
+            let row = item.row;
             use_semantic(&first, &mut last, catalog.current(row.current_id)?, event)?;
             use_semantic(
                 &first,
@@ -1479,13 +1479,15 @@ fn derive_event_layout(
                 catalog.momentum(row.momentum_slot_id)?,
                 event,
             )?;
-            for value in [row.unpropagated_value_slot_id, row.propagated_value_slot_id] {
-                if value != MISSING_U32 {
-                    define_semantic(&mut first, &mut last, catalog.value(value)?, event)?;
-                }
-            }
+            let propagated = item.propagated.ok_or_else(|| {
+                RusticolError::internal("eager direct finalization lost propagated output")
+            })?;
+            let value_id = plan
+                .values
+                .id_for_range(propagated, "eager direct propagated finalization")?;
+            define_semantic(&mut first, &mut last, catalog.value(value_id)?, event)?;
             touch_kernel_parameters(
-                kernels.get(&row.kernel_id).copied(),
+                plan.kernels.get(&row.kernel_id),
                 catalog,
                 &first,
                 &mut last,
@@ -1496,7 +1498,8 @@ fn derive_event_layout(
                 .ok_or_else(|| invalid("eager direct event index overflows"))?;
         }
     }
-    for row in sections.closures {
+    for closure in &plan.closures {
+        let row = closure.row;
         use_semantic(
             &first,
             &mut last,
@@ -1524,10 +1527,27 @@ fn derive_event_layout(
             )?;
         }
         touch_kernel_parameters(
-            kernels.get(&row.kernel_id).copied(),
+            plan.kernels.get(&row.kernel_id),
             catalog,
             &first,
             &mut last,
+            event,
+        )?;
+        event = event
+            .checked_add(1)
+            .ok_or_else(|| invalid("eager direct event index overflows"))?;
+    }
+    for closure in &plan.direct_closures {
+        use_semantic(
+            &first,
+            &mut last,
+            catalog.value(closure.row.left_value_slot_id)?,
+            event,
+        )?;
+        use_semantic(
+            &first,
+            &mut last,
+            catalog.value(closure.row.right_value_slot_id)?,
             event,
         )?;
         event = event
@@ -1550,6 +1570,23 @@ fn derive_event_layout(
         })
         .collect::<RusticolResult<Vec<_>>>()?;
     assign_direct_arena(&intervals)
+}
+
+fn stage_current_id_for_layout(
+    stage: &super::plan::EagerStagePlan,
+    range: ComponentRange,
+) -> RusticolResult<u32> {
+    stage
+        .finalizations
+        .iter()
+        .find_map(|item| (item.current == range).then_some(item.row.current_id))
+        .or_else(|| {
+            stage
+                .attachments
+                .iter()
+                .find_map(|item| (item.current == range).then_some(item.row.result_current_id))
+        })
+        .ok_or_else(|| RusticolError::internal("eager direct liveness lost a stage current"))
 }
 
 fn touch_kernel_parameters(
@@ -1652,7 +1689,7 @@ fn encode_attachment_destinations(
     Ok(())
 }
 
-fn row_active(
+pub(super) fn row_active(
     plan: &EagerExecutionPlan,
     domain: Option<u32>,
     active_groups: Option<&[u32]>,
@@ -1684,7 +1721,7 @@ fn retained_attachment_operation(written_currents: &mut BTreeSet<u32>, current_i
     u32::from(!written_currents.insert(current_id))
 }
 
-fn validate_active_groups(
+pub(super) fn validate_active_groups(
     plan: &EagerExecutionPlan,
     active_groups: Option<&[u32]>,
 ) -> RusticolResult<()> {
@@ -1712,7 +1749,7 @@ fn validate_active_groups(
     Ok(())
 }
 
-fn validate_callable_identity(
+pub(super) fn validate_callable_identity(
     kernel: &EagerKernelSpec,
     prepared: &EagerDirectPreparedKernel<'_>,
 ) -> RusticolResult<()> {
@@ -1735,7 +1772,7 @@ fn validate_callable_identity(
     Ok(())
 }
 
-fn assigned_component(
+pub(super) fn assigned_component(
     layout: &DirectArenaLayout,
     semantic: u32,
     component: u32,
@@ -1756,7 +1793,10 @@ fn assigned_component(
         .ok_or_else(|| invalid("eager direct component assignment overflows"))
 }
 
-fn resolve_coupling(row: crate::EagerCouplingRow, parameters: &[EagerComplex64]) -> EagerComplex64 {
+pub(super) fn resolve_coupling(
+    row: crate::EagerCouplingRow,
+    parameters: &[EagerComplex64],
+) -> EagerComplex64 {
     let real = if row.real_parameter_id == MISSING_U32 {
         row.constant_real
     } else {
@@ -1835,7 +1875,7 @@ fn checked_semantic(start: u32, id: u32, stop: u32, label: &str) -> RusticolResu
         .ok_or_else(|| invalid(format!("eager direct {label} id {id} is out of bounds")))
 }
 
-fn validate_component_buffer(
+pub(super) fn validate_component_buffer(
     label: &str,
     actual: usize,
     components: usize,
@@ -1864,15 +1904,15 @@ fn row_range<'a, T>(rows: &'a [T], start: u64, count: u64, label: &str) -> Rusti
         .ok_or_else(|| invalid(format!("eager direct {label} range is out of bounds")))
 }
 
-fn count_u32(value: usize, label: &str) -> RusticolResult<u32> {
+pub(super) fn count_u32(value: usize, label: &str) -> RusticolResult<u32> {
     u32::try_from(value).map_err(|_| invalid(format!("eager direct {label} count exceeds u32")))
 }
 
-fn push_u32(output: &mut Vec<u8>, value: u32) {
+pub(super) fn push_u32(output: &mut Vec<u8>, value: u32) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
-fn invalid(message: impl Into<String>) -> RusticolError {
+pub(super) fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
 }
 
