@@ -160,14 +160,24 @@ void op_matmul(
 
     device.sync_barrier();
     device.submit([=]() mutable {
-        char transa = 'N', transb = 'T';
-        int m = batch_size, n = dims_out, k = dims_in;
-        double alpha = 1., beta = 1.;
-        int lda = batch_size, ldb = dims_out, ldc = batch_size;
         double* a = static_cast<double*>(input.data());
         double* b = static_cast<double*>(weight.data());
         double* c = static_cast<double*>(output.data());
-        dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+        // char transa = 'N', transb = 'T';
+        // int m = batch_size, n = dims_out, k = dims_in;
+        // double alpha = 1., beta = 1.;
+        // int lda = batch_size, ldb = dims_out, ldc = batch_size;
+        // dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c,
+        // &ldc); naive single-threaded replacement for the dgemm_ call above
+        for (std::size_t i = 0; i < batch_size; ++i) {
+            for (std::size_t p = 0; p < dims_out; ++p) {
+                double sum = 0.;
+                for (std::size_t j = 0; j < dims_in; ++j) {
+                    sum += a[i + j * batch_size] * b[j * dims_out + p];
+                }
+                c[i + p * batch_size] += sum;
+            }
+        }
     });
 }
 
@@ -210,42 +220,67 @@ void backward_op_matmul(
 
     // compute input_grad += output_grad * weight
     device.submit([=]() mutable {
-        char transa = 'N', transb = 'N';
-        int m = batch_size, n = dims_in, k = dims_out;
-        double alpha = 1., beta = 1.;
-        int lda = batch_size, ldb = dims_out, ldc = batch_size;
         double* a = static_cast<double*>(output_grad.data());
-        ;
         double* b = static_cast<double*>(weight.data());
         double* c = static_cast<double*>(input_grad.data());
-        ;
-        dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+        // char transa = 'N', transb = 'N';
+        // int m = batch_size, n = dims_in, k = dims_out;
+        // double alpha = 1., beta = 1.;
+        // int lda = batch_size, ldb = dims_out, ldc = batch_size;
+        // dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c,
+        // &ldc); naive single-threaded replacement for the dgemm_ call above
+        for (std::size_t i = 0; i < batch_size; ++i) {
+            for (std::size_t q = 0; q < dims_in; ++q) {
+                double sum = 0.;
+                for (std::size_t j = 0; j < dims_out; ++j) {
+                    sum += a[i + j * batch_size] * b[q * dims_out + j];
+                }
+                c[i + q * batch_size] += sum;
+            }
+        }
     });
 
     // compute weight_grad += output_grad.T * input
     device.submit([=]() mutable {
-        char transa = 'T', transb = 'N';
-        int m = dims_out, n = dims_in, k = batch_size;
-        double alpha = 1., beta = 1.;
-        int lda = batch_size, ldb = batch_size, ldc = dims_out;
         double* a = static_cast<double*>(output_grad.data());
         double* b = static_cast<double*>(input.data());
         double* c = static_cast<double*>(weight_grad.data());
-        dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+        // char transa = 'T', transb = 'N';
+        // int m = dims_out, n = dims_in, k = batch_size;
+        // double alpha = 1., beta = 1.;
+        // int lda = batch_size, ldb = batch_size, ldc = dims_out;
+        // dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c,
+        // &ldc); naive single-threaded replacement for the dgemm_ call above
+        for (std::size_t q = 0; q < dims_in; ++q) {
+            for (std::size_t j = 0; j < dims_out; ++j) {
+                double sum = 0.;
+                for (std::size_t i = 0; i < batch_size; ++i) {
+                    sum += a[i + j * batch_size] * b[i + q * batch_size];
+                }
+                c[q * dims_out + j] += sum;
+            }
+        }
     });
 
     // compute bias_grad += sum_i output_grad_ij
     device.submit([=]() mutable {
-        // TODO: we should probably do this differently...
-        std::vector<double> ones(batch_size, 1.);
-        char trans = 'T';
-        int m = batch_size, n = dims_out;
-        double alpha = 1., beta = 1.;
-        int lda = batch_size, incx = 1, incy = 1;
         double* a = static_cast<double*>(output_grad.data());
-        double* x = ones.data();
         double* y = static_cast<double*>(bias_grad.data());
-        dgemv_(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy);
+        // char trans = 'T';
+        // int m = batch_size, n = dims_out;
+        // double alpha = 1., beta = 1.;
+        // int lda = batch_size, incx = 1, incy = 1;
+        // std::vector<double> ones(batch_size, 1.);
+        // double* x = ones.data();
+        // dgemv_(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy);
+        // naive single-threaded replacement for the dgemv_ call above
+        for (std::size_t j = 0; j < dims_out; ++j) {
+            double sum = 0.;
+            for (std::size_t i = 0; i < batch_size; ++i) {
+                sum += a[i + j * batch_size];
+            }
+            y[j] += sum;
+        }
     });
 }
 
