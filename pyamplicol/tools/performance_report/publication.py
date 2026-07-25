@@ -41,12 +41,17 @@ _LOCATOR_POINTERS = (
     ("provenance", "worker_environment", "DYLD_LIBRARY_PATH"),
     ("provenance", "commands", "*", "cwd"),
     # Legacy command records are diagnostic, not authenticated evidence.  Their
-    # executable and first operand are the only schema positions that currently
-    # carry absolute launch paths (Python/process_list.py or a generated tree).
+    # executable, first operand, and the all-flow probe's process/momenta file
+    # operands are the only schema positions that carry absolute launch paths.
     ("provenance", "commands", "*", "args", 0),
     ("provenance", "commands", "*", "args", 1),
+    ("provenance", "commands", "*", "args", 5),
+    ("provenance", "commands", "*", "args", 6),
     ("provenance", "commands", "*", "environment", "LD_LIBRARY_PATH"),
     ("provenance", "commands", "*", "environment", "DYLD_LIBRARY_PATH"),
+    ("provenance", "runtime_profile", "measurement", "args", 0),
+    ("provenance", "runtime_profile", "measurement", "args", 5),
+    ("provenance", "runtime_profile", "measurement", "args", 6),
     ("provenance", "runtime_profile", "measurement", "cwd"),
     (
         "provenance",
@@ -61,6 +66,33 @@ _LOCATOR_POINTERS = (
         "measurement",
         "environment",
         "DYLD_LIBRARY_PATH",
+    ),
+    (
+        "provenance",
+        "runtime_profile",
+        "measurement",
+        "chunks",
+        "*",
+        "args",
+        0,
+    ),
+    (
+        "provenance",
+        "runtime_profile",
+        "measurement",
+        "chunks",
+        "*",
+        "args",
+        5,
+    ),
+    (
+        "provenance",
+        "runtime_profile",
+        "measurement",
+        "chunks",
+        "*",
+        "args",
+        6,
     ),
     ("provenance", "runtime_profile", "measurement", "chunks", "*", "cwd"),
     (
@@ -81,6 +113,9 @@ _LOCATOR_POINTERS = (
         "environment",
         "DYLD_LIBRARY_PATH",
     ),
+    ("provenance", "runtime_profile", "warmup", "args", 0),
+    ("provenance", "runtime_profile", "warmup", "args", 5),
+    ("provenance", "runtime_profile", "warmup", "args", 6),
     ("provenance", "runtime_profile", "warmup", "cwd"),
     (
         "provenance",

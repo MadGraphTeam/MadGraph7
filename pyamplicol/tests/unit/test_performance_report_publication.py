@@ -188,6 +188,16 @@ def test_projection_is_idempotent_for_a_complete_legacy_locator_shape(
     tmp_path: Path,
 ) -> None:
     paths = _paths(tmp_path)
+    probe_args = [
+        str(paths.repo_root / "dependencies/legacy/amplicol_color_probe"),
+        "100000",
+        "1",
+        "1",
+        "lc",
+        "/private/tmp/pac-example/processes.txt",
+        "/private/tmp/pac-example/momenta.dat",
+        "-1",
+    ]
     command = {
         "args": [
             str(paths.repo_root / ".venv/bin/python"),
@@ -199,7 +209,7 @@ def test_projection_is_idempotent_for_a_complete_legacy_locator_shape(
         },
     }
     profile_command = {
-        "args": ["./amplicol_library_benchmark", "100"],
+        "args": probe_args,
         "cwd": str(paths.artifact_root / "cells/example/artifact"),
         "environment": dict(command["environment"]),
     }
@@ -210,7 +220,7 @@ def test_projection_is_idempotent_for_a_complete_legacy_locator_shape(
         },
         "provenance": {
             "repository": str(paths.repo_root / "dependencies/legacy"),
-            "commands": [command],
+            "commands": [command, profile_command],
             "runtime_profile": {
                 "measurement": {
                     **profile_command,
@@ -234,6 +244,42 @@ def test_projection_is_idempotent_for_a_complete_legacy_locator_shape(
     assert once["provenance"]["worker_environment"]["LD_LIBRARY_PATH"] == (  # type: ignore[index]
         "${LOCAL_PATH_REDACTED}"
     )
+    profile = once["provenance"]["runtime_profile"]  # type: ignore[index]
+    assert profile["measurement"]["args"][5:] == [  # type: ignore[index]
+        "${LOCAL_PATH_REDACTED}",
+        "${LOCAL_PATH_REDACTED}",
+        "-1",
+    ]
+    assert profile["measurement"]["chunks"][0]["args"][5:] == [  # type: ignore[index]
+        "${LOCAL_PATH_REDACTED}",
+        "${LOCAL_PATH_REDACTED}",
+        "-1",
+    ]
+
+
+def test_unknown_legacy_argument_position_fails_closed(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+
+    with pytest.raises(
+        PublicationPortabilityError,
+        match=r"/provenance/commands/0/args/2",
+    ):
+        portable_publication_value(
+            {
+                "provenance": {
+                    "commands": [
+                        {
+                            "args": [
+                                "probe",
+                                "ordinary-operand",
+                                "/private/tmp/not-a-schema-locator",
+                            ]
+                        }
+                    ]
+                }
+            },
+            paths,
+        )
 
 
 @pytest.mark.parametrize(
