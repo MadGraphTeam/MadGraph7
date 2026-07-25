@@ -1236,12 +1236,40 @@ def test_ufo_sm_full_neutral_current_recurrence_executes_prepared_mass_slot(
         compiled_artifact,
         model=ufo_sm_recurrence_jit_o2_model,
     )
+    runtimes = (
+        Runtime.load(recurrence_artifact),
+        Runtime.load(compiled_artifact),
+    )
+    for runtime in runtimes:
+        electron_mass = next(
+            parameter
+            for parameter in runtime.physics.model_parameters
+            if parameter.name == "Me"
+        )
+        assert electron_mass.kind == "derived"
+        assert electron_mass.mutable is False
+        assert electron_mass.default_real == 0.0
+        assert electron_mass.default_imaginary == 0.0
+
+    execution_path = next((recurrence_artifact / "processes").glob("*/execution.json"))
+    execution = json.loads(execution_path.read_text(encoding="utf-8"))
+    electron_mass_projection = next(
+        row
+        for row in execution["runtime_metadata"]["parameter_projection"]
+        if row["runtime_name"] == "Me"
+    )
+    prepared_parameter_id = electron_mass_projection["prepared_parameter_id"]
+    assert prepared_parameter_id is not None
+    assert execution["runtime_metadata"]["prepared_parameter_defaults"][
+        prepared_parameter_id
+    ] == [0.0, 0.0]
+
     _assert_contracted_color_artifacts_match(
         recurrence_artifact,
         compiled_artifact,
         _NEUTRAL_CURRENT_PROCESS,
         "full",
-        parameter_update=("Me", 1.0),
+        parameter_update=("aEWM1", 128.0),
     )
 
 

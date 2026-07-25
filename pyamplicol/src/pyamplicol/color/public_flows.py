@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 
+from .plan_types import LCColorSector
+
 
 def amplicol_legacy_two_line_public_word(
     construction_word: Sequence[int],
@@ -62,4 +64,29 @@ def amplicol_legacy_two_line_public_word(
     return (outgoing[0], outgoing[1], incoming[0], incoming[1])
 
 
-__all__ = ["amplicol_legacy_two_line_public_word"]
+def amplicol_legacy_two_line_sector_public_word(
+    sector: LCColorSector,
+    initial_labels: Collection[int],
+) -> tuple[int, ...]:
+    """Return the authenticated public spelling of one LC sector word."""
+
+    construction_word = tuple(sector.word_labels or sector.color_words[0])
+    return amplicol_legacy_two_line_public_word(
+        construction_word,
+        tuple(
+            (
+                line.fundamental_label,
+                line.antifundamental_label,
+                line.adjoint_labels,
+                line.singlet_labels,
+            )
+            for line in sector.open_color_lines
+        ),
+        initial_labels,
+    )
+
+
+__all__ = [
+    "amplicol_legacy_two_line_public_word",
+    "amplicol_legacy_two_line_sector_public_word",
+]

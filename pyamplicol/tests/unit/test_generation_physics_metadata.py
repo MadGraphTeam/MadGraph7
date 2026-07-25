@@ -31,6 +31,34 @@ def test_public_lc_color_ids_are_physical_and_sector_independent() -> None:
     assert _color_id((2, 4, 1)) == "flow:2,4,1"
 
 
+@pytest.mark.parametrize(
+    ("color_accuracy", "expected_ids"),
+    (
+        ("lc", ("flow:2,1,3,4", "flow:3,1,2,4")),
+        ("nlc", ("color:contracted",)),
+        ("full", ("color:contracted",)),
+    ),
+)
+def test_crossed_two_line_public_flow_is_lc_only(
+    color_accuracy: str,
+    expected_ids: tuple[str, ...],
+) -> None:
+    model = BuiltinSMModel()
+    dag = compile_generic_dag(
+        build_process_ir("d d~ > t t~", color_accuracy=color_accuracy),
+        model=model,
+    )
+
+    physics = build_resolved_physics_from_dag(dag, model)
+
+    assert tuple(item["id"] for item in physics["color_components"]) == expected_ids
+    assert {
+        color_id
+        for group in physics["reduction"]["groups"]
+        for color_id in group["physical_color_ids"]
+    } == set(expected_ids)
+
+
 @pytest.mark.parametrize("color_accuracy", ["lc", "full"])
 def test_bounded_public_physics_matches_expanded_schema_without_building_it(
     color_accuracy: str,
