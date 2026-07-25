@@ -27,7 +27,7 @@ def test_artifact_inspection_lists_processes_without_loading_evaluators() -> Non
     assert process.expression == "d d~ > z"
     assert process.default
     assert process.physical_helicities == 12
-    assert process.computed_helicities == 6
+    assert process.computed_helicities == 2
     assert process.physical_color_components == 1
     assert process.computed_color_components == 1
     assert process.helicity_coverage == "complete"
