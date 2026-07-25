@@ -3683,7 +3683,7 @@ mod model_parameters;
 use model_parameters::*;
 
 mod evaluation;
-use evaluation::{resolved_f64_totals, write_resolved_f64_totals};
+use evaluation::resolved_f64_totals;
 #[cfg(feature = "f64-symjit")]
 mod compiled_direct_prototype;
 mod helicity_lane;

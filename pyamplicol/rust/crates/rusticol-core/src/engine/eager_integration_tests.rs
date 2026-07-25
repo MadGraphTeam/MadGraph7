@@ -1079,6 +1079,149 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
 
 #[cfg(feature = "f64-symjit")]
 #[test]
+fn generated_eager_native_into_is_warmed_allocation_free_when_fixture_is_supplied() {
+    let Some(root) = std::env::var_os("RUSTICOL_EAGER_ARTIFACT") else {
+        return;
+    };
+    let mut runtime = NativeRuntime::load(PathBuf::from(root), None, None)
+        .expect("load generated eager allocation fixture");
+    let validation_path = runtime
+        .root()
+        .join("processes")
+        .join(&runtime.metadata().representative_process_key)
+        .join("validation-momenta.json");
+    let validation: Value =
+        serde_json::from_slice(&fs::read(&validation_path).expect("read eager validation momenta"))
+            .expect("parse eager validation momenta");
+    let point = validation["points"][0]
+        .as_array()
+        .expect("one eager validation point")
+        .iter()
+        .flat_map(|leg| {
+            leg["momentum"]
+                .as_array()
+                .expect("four momentum components")
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .expect("decimal momentum string")
+                        .parse::<f64>()
+                        .expect("f64 validation momentum")
+                })
+        })
+        .collect::<Vec<_>>();
+    let point_count = 129usize;
+    let momenta = point.repeat(point_count);
+    let mut output = vec![-1.0; point_count];
+
+    runtime
+        .evaluate_f64_into(&momenta, point_count, &mut output)
+        .expect("warm eager borrowed-input totals");
+    let (result, allocations, bytes) =
+        count_allocations(|| runtime.evaluate_f64_into(&momenta, point_count, &mut output));
+    result.expect("repeat eager borrowed-input totals");
+    assert_eq!(
+        (allocations, bytes),
+        (0, 0),
+        "warmed eager borrowed-input totals allocated"
+    );
+
+    let selected_helicity = runtime
+        .helicities()
+        .expect("eager helicity metadata")
+        .into_iter()
+        .find(|helicity| helicity.computed)
+        .expect("one computed eager helicity")
+        .id;
+    let selected_helicities = [selected_helicity];
+    let selected_colors = (runtime.metadata().color_accuracy == "lc").then(|| {
+        [runtime
+            .color_ids()
+            .expect("eager color metadata")
+            .into_iter()
+            .next()
+            .expect("one eager color")]
+    });
+    runtime
+        .evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            Some(&selected_helicities),
+            selected_colors.as_ref().map(|ids| ids.as_slice()),
+            None,
+            None,
+            &mut output,
+        )
+        .expect("warm eager global selectors");
+    let (result, allocations, bytes) = count_allocations(|| {
+        runtime.evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            Some(&selected_helicities),
+            selected_colors.as_ref().map(|ids| ids.as_slice()),
+            None,
+            None,
+            &mut output,
+        )
+    });
+    result.expect("repeat eager global selectors");
+    assert_eq!(
+        (allocations, bytes),
+        (0, 0),
+        "warmed eager global selectors allocated"
+    );
+
+    let helicity_count = runtime
+        .helicities()
+        .expect("eager helicity metadata")
+        .len()
+        .min(2);
+    let helicity_by_point = (0..point_count)
+        .map(|point| (point % helicity_count) as u32)
+        .collect::<Vec<_>>();
+    let color_by_point =
+        (runtime.metadata().color_accuracy == "lc").then(|| vec![0_u32; point_count]);
+    runtime
+        .evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            None,
+            None,
+            Some(&helicity_by_point),
+            color_by_point.as_deref(),
+            &mut output,
+        )
+        .expect("warm eager alternating selectors");
+    let (result, allocations, bytes) = count_allocations(|| {
+        runtime.evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            None,
+            None,
+            Some(&helicity_by_point),
+            color_by_point.as_deref(),
+            &mut output,
+        )
+    });
+    result.expect("repeat eager alternating selectors");
+    assert_eq!(
+        (allocations, bytes),
+        (0, 0),
+        "warmed eager alternating selectors allocated"
+    );
+
+    let mut sentinel = [37.0_f64, 41.0];
+    assert!(
+        runtime
+            .evaluate_f64_into(&momenta, point_count, &mut sentinel)
+            .is_err()
+    );
+    assert_eq!(sentinel, [37.0, 41.0]);
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
 #[ignore = "local interleaved retained-artifact A/B timing evidence"]
 fn benchmark_generated_eager_direct_arena_against_legacy_when_fixture_is_supplied() {
     use std::hint::black_box;

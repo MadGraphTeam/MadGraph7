@@ -131,7 +131,24 @@ impl PhysicsRuntime {
         &self,
         group: &crate::ReductionGroup,
     ) -> RusticolResult<Vec<(usize, f64)>> {
-        let mut weights = Vec::with_capacity(group.physical_helicity_ids.len());
+        let mut weights = Vec::new();
+        self.normalized_helicity_weights_into(group, &mut weights)?;
+        Ok(weights)
+    }
+
+    pub(super) fn normalized_helicity_weights_into(
+        &self,
+        group: &crate::ReductionGroup,
+        weights: &mut Vec<(usize, f64)>,
+    ) -> RusticolResult<()> {
+        weights.clear();
+        weights
+            .try_reserve(group.physical_helicity_ids.len())
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "could not reserve normalized helicity weights: {error}"
+                ))
+            })?;
         let mut total = 0.0;
         for id in &group.physical_helicity_ids {
             let index = self.helicity_index_by_id[id];
@@ -145,10 +162,10 @@ impl PhysicsRuntime {
                 group.id
             )));
         }
-        for (_, weight) in &mut weights {
+        for (_, weight) in weights.iter_mut() {
             *weight /= total;
         }
-        Ok(weights)
+        Ok(())
     }
 
     pub(super) fn normalized_member_weights(

@@ -245,6 +245,61 @@ impl EagerDirectExecutionRuntime {
         self.workspace_bytes
     }
 
+    /// Execute and reduce directly from arena amplitude planes without
+    /// materializing the amplitude matrix in caller memory.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_totals_into(
+        &mut self,
+        point_count: usize,
+        initial_values: &[EagerComplex64],
+        momenta: &[f64],
+        model_parameters: &[EagerComplex64],
+        reduced: &mut [f64],
+    ) -> RusticolResult<()> {
+        validate_io(
+            &self.plan,
+            point_count,
+            initial_values,
+            momenta,
+            model_parameters,
+            None,
+            Some(reduced),
+        )?;
+        let tile_capacity = self.effective_point_tile_size();
+        let mut tile_start = 0usize;
+        while tile_start < point_count {
+            let tile_points = tile_capacity.min(point_count - tile_start);
+            execute_contiguous_tile(
+                &self.plan,
+                self.catalog,
+                &self.layout,
+                &mut self.workspace,
+                &self.initial_value_slots,
+                &self.value_ranges,
+                &self.momentum_ranges,
+                &self.full_schedule,
+                &mut self.reduction_groups,
+                point_count,
+                tile_start,
+                tile_points,
+                initial_values,
+                momenta,
+                model_parameters,
+            )?;
+            reduce_full_tile(
+                &self.plan,
+                &self.workspace,
+                &mut self.reduction_groups,
+                &mut self.reduced_tile,
+                tile_points,
+            );
+            reduced[tile_start..tile_start + tile_points]
+                .copy_from_slice(&self.reduced_tile[..tile_points]);
+            tile_start += tile_points;
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_into(
         &mut self,
@@ -2477,6 +2532,10 @@ mod tests {
                     &mut reduced,
                 )
                 .expect("evaluate eager whole-plan tail");
+            let mut totals_only = vec![-2.0; points];
+            direct
+                .evaluate_totals_into(points, &values, &momenta, &[], &mut totals_only)
+                .expect("evaluate eager totals-only tail");
             for point in 0..points {
                 let (expected_amplitude, expected_reduced) = expected(&values, points, point);
                 assert_close(
@@ -2490,6 +2549,11 @@ mod tests {
                     "amplitude imaginary",
                 );
                 assert_close(reduced[point], expected_reduced, "reduced total");
+                assert_eq!(
+                    totals_only[point].to_bits(),
+                    reduced[point].to_bits(),
+                    "totals-only reduction order drifted at point {point}"
+                );
             }
         }
 
@@ -2600,6 +2664,19 @@ mod tests {
             (allocations, bytes),
             (0, 0),
             "warmed whole-plan execution allocated"
+        );
+
+        direct
+            .evaluate_totals_into(points, &values, &momenta, &[], &mut reduced)
+            .expect("warm totals-only execution");
+        let (result, allocations, bytes) = count_allocations(|| {
+            direct.evaluate_totals_into(points, &values, &momenta, &[], &mut reduced)
+        });
+        result.expect("repeat totals-only execution");
+        assert_eq!(
+            (allocations, bytes),
+            (0, 0),
+            "warmed totals-only execution allocated"
         );
 
         direct
