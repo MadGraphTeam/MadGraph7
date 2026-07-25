@@ -36,6 +36,14 @@ This development-only series targets released SymJIT 2.21.1 at revision
    accepted recurrence artifacts: it validates the already-lowered exact-factor
    O2 application and cannot rewrite it as v3. V2 remains unsupported.
 
+3. `0003-x86-direct-table.patch` must be applied after `0002`. It adds native
+   x86-64 execution for `DirectTableApplication`: scalar head/tail kernels and
+   an AVX4 middle kernel execute the table row/point loops inline, load split
+   arena planes directly, and scale/fan out multiple destinations without a
+   dense-row wrapper. The patch also makes the table code-generation envelope
+   architecture-neutral while retaining the accepted AArch64 implementation
+   and strict prepared-O3 parity tests.
+
 The ordinary `symjit-application-storage-v3` ABI and non-Direct-Arena
 evaluation paths are unchanged. The local contributor build still applies its
 existing manifest rewrite separately; that mechanical `cdylib` to `rlib`

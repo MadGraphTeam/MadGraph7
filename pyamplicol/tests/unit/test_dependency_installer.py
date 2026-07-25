@@ -74,6 +74,7 @@ def test_symjit_patch_set_is_revision_digest_and_tree_pinned() -> None:
     assert [patch.name for patch in patches] == [
         "symjit-aarch64-compression-and-direct-arena",
         "symjit-eager-and-compiled-direct-arena",
+        "symjit-x86-direct-table",
     ]
     assert all(patch.target == "symjit" for patch in patches)
     assert all(
