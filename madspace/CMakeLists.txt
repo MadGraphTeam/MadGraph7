@@ -136,6 +136,7 @@ if(ENABLE_OPENBLAS)
             -DBUILD_TESTING=OFF
             -DBUILD_WITHOUT_CBLAS=ON
             -DUSE_THREAD=OFF
+            -DUSE_LOCKING=ON
             -DCMAKE_POSITION_INDEPENDENT_CODE=1
         INSTALL_BYPRODUCTS <INSTALL_DIR>/lib/${openblas_libname}
     )
