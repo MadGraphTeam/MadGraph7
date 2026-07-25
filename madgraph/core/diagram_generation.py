@@ -444,6 +444,13 @@ class Amplitude(base_objects.PhysicsObject):
         # has_mirror_process is True if the same process but with the
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
+        # Crossed subprocesses folded into this amplitude and NOT generated on
+        # their own (merge_crossing='record'): each entry is
+        # (crossed Process, base_permutation, crossed_permutation), enough for
+        # the exporter to reach the crossed process through this amplitude's
+        # crossing-aware SMATRIX (see MultiProcess.cross_amplitude for the same
+        # permutation pair). Empty in the historical modes.
+        self['crossed_processes'] = []
 
     def __init__(self, argument=None):
         """Allow initialization with Process"""
@@ -470,6 +477,9 @@ class Amplitude(base_objects.PhysicsObject):
         if name == 'has_mirror_process':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid boolean" % str(value))
+        if name == 'crossed_processes':
+            if not isinstance(value, list):
+                raise self.PhysicsObjectError("%s is not a valid list" % str(value))
         return True
 
     def get(self, name):
@@ -487,7 +497,8 @@ class Amplitude(base_objects.PhysicsObject):
     def get_sorted_keys(self):
         """Return diagram property names as a nicely sorted list."""
 
-        return ['process', 'diagrams', 'has_mirror_process']
+        return ['process', 'diagrams', 'has_mirror_process',
+                'crossed_processes']
 
     def get_number_of_diagrams(self):
         """Returns number of diagrams for this amplitude"""
@@ -1944,6 +1955,20 @@ class MultiProcess(base_objects.PhysicsObject):
                             non_permuted_procs.append(fast_proc)
                             logger.info("Crossed process found for %s, reuse diagrams." % \
                                         process.base_string())
+                        elif merge_crossing == 'record':
+                            # Found crossing - do NOT generate a separate
+                            # amplitude, but record the crossed process on the
+                            # base so the exporter can still reach it through the
+                            # base's crossing-aware SMATRIX (its partonic
+                            # contribution is not lost, unlike merge_crossing=True).
+                            amplitudes[crossed_index].get('crossed_processes')\
+                                .append((process, permutations[crossed_index],
+                                         permutation))
+                            logger.info("Crossed process %s recorded on %s "
+                                        "(not generated)." %
+                                        (process.base_string(),
+                                         amplitudes[crossed_index].get('process')
+                                         .base_string()))
                         else:
                             logger.info("Crossed process found for %s, do not generate diagrams." % \
                                         process.base_string())

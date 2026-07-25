@@ -53,7 +53,8 @@ class AmplitudeTest(unittest.TestCase):
     def setUp(self):
 
         self.mydict = {'diagrams':self.mydiaglist, 'process':self.myprocess,
-                       'has_mirror_process': False}
+                       'has_mirror_process': False,
+                       'crossed_processes': []}
 
         self.myamplitude = diagram_generation.Amplitude(self.mydict)
 
@@ -124,7 +125,8 @@ class AmplitudeTest(unittest.TestCase):
         goal = "{\n"
         goal = goal + "    \'process\': %s,\n" % repr(self.myprocess)
         goal = goal + "    \'diagrams\': %s,\n" % repr(self.mydiaglist)
-        goal = goal + "    \'has_mirror_process\': False\n}"
+        goal = goal + "    \'has_mirror_process\': False,\n"
+        goal = goal + "    \'crossed_processes\': []\n}"
 
         self.assertEqual(goal, str(self.myamplitude))
 

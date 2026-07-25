@@ -3984,6 +3984,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # has_mirror_process is True if the same process but with the
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
+        # Crossed subprocesses folded into this ME and NOT generated on their
+        # own (merge_crossing='record'); carried over from the base amplitude so
+        # the exporter can reach them through this ME's crossing-aware SMATRIX.
+        # Each entry is (crossed Process, base_permutation, crossed_permutation).
+        self['crossed_processes'] = []
         self['allowed_flavors'] = [] # list of all allowed flavors for the process
         self['allowed_flavors_with_iden'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
         self['allowed_flavors_with_iden_sign'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
@@ -4023,6 +4028,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         if name == 'has_mirror_process':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid boolean" % str(value))
+        if name == 'crossed_processes':
+            if not isinstance(value, list):
+                raise self.PhysicsObjectError("%s is not a valid list" % str(value))
         return True
 
     def get_sorted_keys(self):
@@ -4030,7 +4038,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return ['processes', 'identical_particle_factor',
                 'diagrams', 'color_basis', 'color_matrix',
-                'base_amplitude', 'has_mirror_process']
+                'base_amplitude', 'has_mirror_process',
+                'crossed_processes']
 
     # Enhanced get function
     def get(self, name):
@@ -4055,6 +4064,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 self.get('processes').append(amplitude.get('process'))
                 self.set('has_mirror_process',
                          amplitude.get('has_mirror_process'))
+                if amplitude.get('crossed_processes'):
+                    self.set('crossed_processes',
+                             list(amplitude.get('crossed_processes')))
                 self.generate_helas_diagrams(amplitude, optimization, decay_ids)
                 self.calculate_fermionfactors()
                 self.calculate_identical_particle_factor()
