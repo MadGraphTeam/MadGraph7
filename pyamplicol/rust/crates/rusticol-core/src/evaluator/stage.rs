@@ -552,6 +552,7 @@ mod tests {
             library_path: library_name.clone(),
             evaluator_state_path: None,
             number_type: "complex".to_string(),
+            native_direct_application: None,
         };
         let evaluator = EvaluatorGroup::load(
             &EvaluatorManifest::Chunked {

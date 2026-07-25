@@ -4654,6 +4654,7 @@ mod helicity_recurrence_contract_tests {
             library_path: "test.so".to_string(),
             evaluator_state_path: None,
             number_type: "complex-f64".to_string(),
+            native_direct_application: None,
         };
         let stage = GenericSerializedStageEvaluatorManifest {
             stage_index: 1,
@@ -4740,6 +4741,7 @@ mod helicity_recurrence_contract_tests {
                 library_path: "test.so".to_string(),
                 evaluator_state_path: None,
                 number_type: "complex-f64".to_string(),
+                native_direct_application: None,
             }
         }
         fn chunked(output_lengths: &[usize]) -> EvaluatorManifest {

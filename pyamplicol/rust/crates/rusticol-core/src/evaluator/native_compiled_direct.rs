@@ -627,11 +627,14 @@ mod tests {
     use super::*;
     use crate::RusticolErrorKind;
     use crate::direct_arena::{DirectArenaWorkspace, DirectMomentumView};
+    #[cfg(not(feature = "symbolica-runtime"))]
     use num_complex::Complex;
     use std::fs;
     use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Instant, SystemTime, UNIX_EPOCH};
+    #[cfg(feature = "symbolica-runtime")]
+    use symbolica::prelude::Complex;
 
     const POINT_COUNT: usize = 129;
     const REQUIRED_FLAGS: u32 = NATIVE_COMPILED_DIRECT_REQUIRED_FLAGS;

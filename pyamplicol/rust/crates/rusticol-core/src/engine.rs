@@ -1573,6 +1573,161 @@ struct GenericValueSlotRefManifest {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct NativeCompiledDirectTargetManifest {
+    triple: String,
+    cpu_features: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NativeCompiledDirectApplicationManifest {
+    application_abi: String,
+    function_name: String,
+    source_path: String,
+    library_path: String,
+    target: NativeCompiledDirectTargetManifest,
+    evaluator_state_sha256: String,
+    instruction_count: u32,
+    temporary_count: u32,
+    input_plane_count: u32,
+    scalar_input_count: u32,
+    output_plane_count: u32,
+    simd_lane_width: u32,
+    logical_stack_bytes: u32,
+    output_semantics: String,
+}
+
+impl NativeCompiledDirectApplicationManifest {
+    fn validate(
+        &self,
+        expected_function_name: &str,
+        input_len: usize,
+        output_len: usize,
+    ) -> RusticolResult<()> {
+        const APPLICATION_ABI: &str = "pyamplicol-native-compiled-direct-application-v1";
+        const OUTPUT_SEMANTICS: &str = "factor-free-overwrite";
+        const MAXIMUM_LOGICAL_STACK_BYTES: u32 = 64 * 1024;
+
+        if self.application_abi != APPLICATION_ABI {
+            return Err(RusticolError::compatibility(format!(
+                "native compiled DirectApplication declares ABI {:?}, expected {APPLICATION_ABI:?}",
+                self.application_abi
+            )));
+        }
+        if self.function_name != expected_function_name {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication function identity does not match its evaluator",
+            ));
+        }
+        if self.source_path.is_empty()
+            || self.library_path.is_empty()
+            || self.source_path == self.library_path
+            || self.target.triple.is_empty()
+            || self.target.triple.contains('\0')
+        {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication paths or target are invalid",
+            ));
+        }
+        if self
+            .target
+            .cpu_features
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+            || self
+                .target
+                .cpu_features
+                .iter()
+                .any(|feature| feature.is_empty() || feature.contains('\0'))
+        {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication CPU features are not sorted and unique",
+            ));
+        }
+        if self.evaluator_state_sha256.len() != 64
+            || !self
+                .evaluator_state_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication evaluator-state digest is invalid",
+            ));
+        }
+        if self.instruction_count == 0
+            || self.input_plane_count == 0
+            || !matches!(self.simd_lane_width, 2 | 4)
+            || self.logical_stack_bytes == 0
+            || self.logical_stack_bytes > MAXIMUM_LOGICAL_STACK_BYTES
+            || self.output_semantics != OUTPUT_SEMANTICS
+        {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication execution shape is invalid",
+            ));
+        }
+
+        let expected_output_planes = u32::try_from(output_len.checked_mul(2).ok_or_else(|| {
+            RusticolError::integrity("native compiled DirectApplication output shape overflows")
+        })?)
+        .map_err(|_| {
+            RusticolError::integrity("native compiled DirectApplication output shape exceeds u32")
+        })?;
+        if self.output_plane_count != expected_output_planes {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication output planes do not match its evaluator",
+            ));
+        }
+
+        let descriptor_count = self
+            .input_plane_count
+            .checked_add(self.scalar_input_count)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "native compiled DirectApplication input descriptor count overflows",
+                )
+            })?;
+        let minimum_descriptors = u32::try_from(input_len).map_err(|_| {
+            RusticolError::integrity(
+                "native compiled DirectApplication logical input count exceeds u32",
+            )
+        })?;
+        let maximum_descriptors = minimum_descriptors.checked_mul(2).ok_or_else(|| {
+            RusticolError::integrity(
+                "native compiled DirectApplication maximum descriptor count overflows",
+            )
+        })?;
+        if descriptor_count < minimum_descriptors || descriptor_count > maximum_descriptors {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication descriptors do not cover evaluator inputs",
+            ));
+        }
+
+        let expected_stack_bytes = self
+            .temporary_count
+            .checked_add(u32::try_from(output_len).map_err(|_| {
+                RusticolError::integrity(
+                    "native compiled DirectApplication output count exceeds u32",
+                )
+            })?)
+            .and_then(|count| count.checked_mul(2))
+            .and_then(|count| count.checked_mul(std::mem::size_of::<f64>() as u32))
+            .and_then(|bytes| bytes.checked_mul(self.simd_lane_width))
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "native compiled DirectApplication logical stack shape overflows",
+                )
+            })?;
+        if self.logical_stack_bytes != expected_stack_bytes {
+            return Err(RusticolError::integrity(
+                "native compiled DirectApplication logical stack metadata is inconsistent",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "kind")]
 enum EvaluatorManifest {
     #[serde(rename = "symjit-application-evaluator")]
@@ -1609,6 +1764,8 @@ enum EvaluatorManifest {
         library_path: String,
         evaluator_state_path: Option<String>,
         number_type: String,
+        #[serde(default)]
+        native_direct_application: Option<NativeCompiledDirectApplicationManifest>,
     },
     #[serde(rename = "chunked-symbolica-evaluator")]
     Chunked {
@@ -1645,12 +1802,22 @@ impl EvaluatorManifest {
                 input_len,
                 output_len,
                 ..
-            }
-            | Self::CompiledComplex {
+            } => Ok((*input_len, *output_len)),
+            Self::CompiledComplex {
+                function_name,
                 input_len,
                 output_len,
                 ..
-            } => Ok((*input_len, *output_len)),
+            } => {
+                if let Self::CompiledComplex {
+                    native_direct_application: Some(application),
+                    ..
+                } = self
+                {
+                    application.validate(function_name, *input_len, *output_len)?;
+                }
+                Ok((*input_len, *output_len))
+            }
             Self::Chunked {
                 input_len,
                 chunk_input_indices,

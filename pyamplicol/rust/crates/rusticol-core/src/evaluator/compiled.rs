@@ -229,6 +229,7 @@ extern "C" void rusticol_test_complexf64(
                 library_path: library_name.clone(),
                 evaluator_state_path: Some("unused-symbolica-state.bin".to_string()),
                 number_type: "complex".to_string(),
+                native_direct_application: None,
             };
             let mut group = EvaluatorGroup::load(&manifest, &directory).unwrap();
             let output = group

@@ -981,6 +981,7 @@ mod tests {
                 library_path: "absent-cpp-library.so".to_string(),
                 evaluator_state_path: None,
                 number_type: "complex".to_string(),
+                native_direct_application: None,
             },
             EvaluatorManifest::CompiledComplex {
                 runtime_capability: SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY.to_string(),
@@ -990,6 +991,7 @@ mod tests {
                 library_path: "absent-asm-library.so".to_string(),
                 evaluator_state_path: None,
                 number_type: "complex".to_string(),
+                native_direct_application: None,
             },
         ];
 

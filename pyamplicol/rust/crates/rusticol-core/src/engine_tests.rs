@@ -4,6 +4,64 @@ use super::physics::certifies_lc_direct_total_source;
 use super::*;
 use serde_json::json;
 
+fn native_compiled_direct_application() -> NativeCompiledDirectApplicationManifest {
+    NativeCompiledDirectApplicationManifest {
+        application_abi: "pyamplicol-native-compiled-direct-application-v1".to_string(),
+        function_name: "direct_leaf".to_string(),
+        source_path: "compiled/direct_leaf.cpp".to_string(),
+        library_path: "compiled/libdirect_leaf".to_string(),
+        target: NativeCompiledDirectTargetManifest {
+            triple: "aarch64-apple-darwin".to_string(),
+            cpu_features: vec!["neon".to_string()],
+        },
+        evaluator_state_sha256: "a".repeat(64),
+        instruction_count: 17,
+        temporary_count: 3,
+        input_plane_count: 4,
+        scalar_input_count: 1,
+        output_plane_count: 4,
+        simd_lane_width: 2,
+        logical_stack_bytes: 160,
+        output_semantics: "factor-free-overwrite".to_string(),
+    }
+}
+
+#[test]
+fn native_compiled_direct_application_manifest_validates_shape() {
+    let manifest = EvaluatorManifest::CompiledComplex {
+        runtime_capability: "symbolica.compiled-cpp.complex-f64.v1".to_string(),
+        function_name: "direct_leaf".to_string(),
+        input_len: 3,
+        output_len: 2,
+        library_path: "compiled/liblegacy_leaf".to_string(),
+        evaluator_state_path: Some("compiled/direct_leaf.evaluator.bin".to_string()),
+        number_type: "complex".to_string(),
+        native_direct_application: Some(native_compiled_direct_application()),
+    };
+
+    assert_eq!(manifest.io_len().unwrap(), (3, 2));
+}
+
+#[test]
+fn native_compiled_direct_application_manifest_rejects_inconsistent_stack() {
+    let mut application = native_compiled_direct_application();
+    application.logical_stack_bytes += 32;
+    let manifest = EvaluatorManifest::CompiledComplex {
+        runtime_capability: "symbolica.compiled-cpp.complex-f64.v1".to_string(),
+        function_name: "direct_leaf".to_string(),
+        input_len: 3,
+        output_len: 2,
+        library_path: "compiled/liblegacy_leaf".to_string(),
+        evaluator_state_path: Some("compiled/direct_leaf.evaluator.bin".to_string()),
+        number_type: "complex".to_string(),
+        native_direct_application: Some(application),
+    };
+
+    let error = manifest.io_len().unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("logical stack metadata"));
+}
+
 fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
     let contracted = color_accuracy != "lc";
     let color_components = if contracted {

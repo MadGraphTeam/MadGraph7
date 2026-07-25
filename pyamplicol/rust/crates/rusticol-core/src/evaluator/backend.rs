@@ -2259,6 +2259,7 @@ pub(crate) fn flatten_evaluators_from_store(
             library_path,
             evaluator_state_path,
             number_type,
+            native_direct_application: _,
         } => {
             #[cfg(feature = "f64-compiled")]
             {
