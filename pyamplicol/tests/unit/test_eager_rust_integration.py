@@ -441,6 +441,11 @@ def test_eager_direct_descriptor_is_serialized_into_kernel_metadata(
     }
 
 
+def test_model_parameter_kernel_stays_on_the_ordinary_evaluator_path() -> None:
+    assert not artifact_writer._requires_eager_direct_table("model-parameter")
+    assert artifact_writer._requires_eager_direct_table("vertex")
+
+
 def test_eager_direct_descriptor_rejects_non_symjit_source() -> None:
     class Bundle:
         @staticmethod
