@@ -32,6 +32,7 @@ from ._plan_v2 import (
     _Finalization,
     _ReplayTarget,
     _ResolvedHelicity,
+    _Source,
     _SourceDispatchVariant,
 )
 
@@ -208,11 +209,11 @@ def _execute_schedule(
                         f"{group.executor_id}"
                     )
             for source_row_id in range(start, stop):
-                row = sections.sources[source_row_id]
+                source_row = sections.sources[source_row_id]
                 if selected_source_variants is None:
                     _execute_source(
                         plan,
-                        row,
+                        source_row,
                         momenta,
                         prepared_parameters,
                         arena,
@@ -222,7 +223,7 @@ def _execute_schedule(
                 if variant is not None:
                     _execute_union_source(
                         plan,
-                        row,
+                        source_row,
                         variant,
                         momenta,
                         prepared_parameters,
@@ -239,11 +240,11 @@ def _execute_schedule(
             if initialized_contribution_stage != group.stage:
                 _clear_stage(plan, arena, group.stage)
                 initialized_contribution_stage = group.stage
-            for row in sections.contributions[start:stop]:
+            for contribution_row in sections.contributions[start:stop]:
                 _execute_prepared_row(
                     plan,
                     executor,
-                    row,
+                    contribution_row,
                     momenta,
                     prepared_parameters,
                     arena,
@@ -251,11 +252,11 @@ def _execute_schedule(
                     precision,
                 )
         elif group.role == _ROLE_FINALIZATION:
-            for row in sections.finalizations[start:stop]:
+            for finalization_row in sections.finalizations[start:stop]:
                 _execute_finalization(
                     plan,
                     executor,
-                    row,
+                    finalization_row,
                     momenta,
                     prepared_parameters,
                     arena,
@@ -263,11 +264,11 @@ def _execute_schedule(
                     precision,
                 )
         elif group.role == _ROLE_CLOSURE:
-            for row in sections.closures[start:stop]:
+            for closure_row in sections.closures[start:stop]:
                 if executor.runtime_template is not None:
                     _execute_intrinsic_closure(
                         plan,
-                        row,
+                        closure_row,
                         arena,
                         amplitudes,
                     )
@@ -275,7 +276,7 @@ def _execute_schedule(
                     _execute_prepared_row(
                         plan,
                         executor,
-                        row,
+                        closure_row,
                         momenta,
                         prepared_parameters,
                         arena,
@@ -331,7 +332,7 @@ def _clear_stage(
 
 def _execute_source(
     plan: _RecurrenceExactPlan,
-    row: object,
+    row: _Source,
     momenta: Sequence[Sequence[Decimal]],
     prepared_parameters: Sequence[_ComplexDecimal],
     arena: list[_ComplexDecimal],
@@ -373,7 +374,7 @@ def _execute_source(
 
 def _execute_union_source(
     plan: _RecurrenceExactPlan,
-    source: object,
+    source: _Source,
     variant: _SourceDispatchVariant,
     momenta: Sequence[Sequence[Decimal]],
     prepared_parameters: Sequence[_ComplexDecimal],
@@ -569,11 +570,11 @@ def _execute_prepared_row(
     outputs = kernel.evaluate(inputs, precision)
     factor = _factor(plan, row.exact_factor_id)
     scaled = tuple(_complex_mul(value, factor) for value in outputs)
-    if executor.role == "contribution":
+    if executor.role == "contribution" and isinstance(row, _Contribution):
         _write(arena, row.destination_base, scaled, replace=False)
-    elif executor.role == "finalization":
+    elif executor.role == "finalization" and isinstance(row, _Finalization):
         _write(arena, row.component_base, scaled, replace=True)
-    elif executor.role == "closure":
+    elif executor.role == "closure" and isinstance(row, _Closure):
         if len(scaled) != executor.destination_component_count:
             raise ArtifactError("recurrence closure output width is inconsistent")
         _write(
@@ -733,7 +734,7 @@ def _momentum_form_id(
 
 def _execute_intrinsic_closure(
     plan: _RecurrenceExactPlan,
-    row: object,
+    row: _Closure,
     arena: Sequence[_ComplexDecimal],
     amplitudes: list[_ComplexDecimal],
 ) -> None:

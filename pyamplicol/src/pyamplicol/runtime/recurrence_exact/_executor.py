@@ -534,13 +534,13 @@ class RecurrenceExactExecutor:
             if result[physics_index] is not None:
                 raise ArtifactError("all-flow-union repeats a public helicity")
             result[physics_index] = descriptor
-        for index, (record, descriptor) in enumerate(
+        for index, (record, resolved_descriptor) in enumerate(
             zip(helicity_records, result, strict=True)
         ):
             if (
                 record.get("computed") is True
                 and record.get("structural_zero") is not True
-                and descriptor is None
+                and resolved_descriptor is None
             ):
                 raise ArtifactError(f"all-flow-union omits computed helicity {index}")
         return tuple(result)
