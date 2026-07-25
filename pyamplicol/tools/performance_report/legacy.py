@@ -405,6 +405,20 @@ class _ProfileChunk:
     probe: object | None
 
 
+def _profile_rate_uncertainty(
+    chunks: Sequence[_ProfileChunk],
+) -> tuple[float, float]:
+    if len(chunks) < 2:
+        return 0.0, 0.0
+    rates = tuple(chunk.seconds / chunk.points for chunk in chunks)
+    mean_rate = statistics.fmean(rates)
+    standard_error = statistics.stdev(rates) / math.sqrt(len(rates))
+    relative_standard_error = (
+        standard_error / mean_rate if mean_rate > 0.0 else 0.0
+    )
+    return standard_error, relative_standard_error
+
+
 @dataclass(frozen=True, slots=True)
 class _ProcessContext:
     process_file: Path
@@ -1162,7 +1176,16 @@ class LegacyMeasurementAdapter:
             target_complete = (
                 measured_seconds >= settings.target_runtime_seconds
             )
-            if minimum_complete and target_complete:
+            standard_error, relative_standard_error = (
+                _profile_rate_uncertainty(chunks)
+            )
+            uncertainty_complete = (
+                math.isfinite(standard_error)
+                and standard_error > 0.0
+                and math.isfinite(relative_standard_error)
+                and relative_standard_error > 0.0
+            )
+            if minimum_complete and target_complete and uncertainty_complete:
                 break
             remaining = max(
                 settings.target_runtime_seconds - measured_seconds,
@@ -1180,8 +1203,8 @@ class LegacyMeasurementAdapter:
             )
         else:
             raise LegacyAdapterError(
-                "legacy timing did not reach its target and minimum sample "
-                "count within "
+                "legacy timing did not reach its target, minimum sample "
+                "count, and positive measured uncertainty within "
                 f"{settings.maximum_profile_chunks} bounded chunks"
             )
 
@@ -1191,11 +1214,8 @@ class LegacyMeasurementAdapter:
             raise LegacyAdapterError(
                 "legacy timing completed without reaching its target runtime"
             )
-        rates = tuple(chunk.seconds / chunk.points for chunk in chunks)
-        mean_rate = statistics.fmean(rates)
-        standard_error = statistics.stdev(rates) / math.sqrt(len(rates))
-        relative_standard_error = (
-            standard_error / mean_rate if mean_rate > 0.0 else 0.0
+        standard_error, relative_standard_error = _profile_rate_uncertainty(
+            chunks
         )
         representative = chunks[0]
         final = chunks[-1]

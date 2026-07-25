@@ -11,6 +11,7 @@ from tools.performance_report.cache import validate_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.legacy import (
     CommandResult,
+    LegacyAdapterError,
     LegacyMeasurementAdapter,
     LegacySettings,
     TimingRow,
@@ -104,6 +105,7 @@ class FakeApi:
 class FakeExecutor:
     def __init__(self) -> None:
         self.commands: list[tuple[str, ...]] = []
+        self.profile_calls = 0
 
     def run(
         self,
@@ -131,7 +133,19 @@ class FakeExecutor:
         )
         if is_profile:
             points = int(rendered[1])
-        evaluation = points * 0.001
+            rate_factors = (
+                1.0,
+                0.99999,
+                1.00001,
+                1.0,
+                1.000005,
+                0.999995,
+            )
+            factor = rate_factors[self.profile_calls % len(rate_factors)]
+            self.profile_calls += 1
+        else:
+            factor = 1.0
+        evaluation = points * 0.001 * factor
         output = (
             "Timing summary\n"
             "generation setup 2.5\n"
@@ -223,7 +237,7 @@ def test_adaptive_profile_points_are_bounded() -> None:
     ) == 1_000
 
 
-def test_profile_repeats_bounded_chunks_until_target_is_measured(
+def test_profile_rejects_exactly_identical_bounded_chunk_rates(
     tmp_path: Path,
 ) -> None:
     adapter, _api, _executor = _adapter()
@@ -247,26 +261,24 @@ def test_profile_repeats_bounded_chunks_until_target_is_measured(
             None,
         )
 
-    profile = adapter._profile(
-        invoke,
-        settings=LegacySettings(
-            target_runtime_seconds=0.005,
-            warmup_points=10,
-            minimum_points=10,
-            maximum_points=100,
-            maximum_profile_chunks=8,
-            repository=tmp_path,
-        ),
-        timing_labels=("amplitude evaluation",),
-    )
+    with pytest.raises(
+        LegacyAdapterError,
+        match="positive measured uncertainty",
+    ):
+        adapter._profile(
+            invoke,
+            settings=LegacySettings(
+                target_runtime_seconds=0.005,
+                warmup_points=10,
+                minimum_points=10,
+                maximum_points=100,
+                maximum_profile_chunks=8,
+                repository=tmp_path,
+            ),
+            timing_labels=("amplitude evaluation",),
+        )
 
-    assert calls == [10, 100, 100, 100, 100, 100]
-    assert profile.points == 500
-    assert profile.seconds == pytest.approx(0.005)
-    assert profile.record["target_runtime_achieved"] is True
-    assert profile.record["achieved_runtime_seconds"] == pytest.approx(0.005)
-    assert profile.record["chunk_count"] == 5
-    assert profile.standard_error_seconds_per_point == pytest.approx(0.0)
+    assert calls == [10, 100, 100, 100, 100, 100, 10, 10, 10]
 
 
 def test_profile_rejects_a_bound_below_five_timed_chunks(
