@@ -41,6 +41,8 @@ requires:
 - selected-total versus resolved-sum closure;
 - pairwise component-level parity across compiled, eager, and recurrence,
   including identical resolved flow/helicity axes;
+- compiled runtime no greater than 1.15 times recurrence for both LC layouts
+  at batches 128 and 1024, independently for built-in SM and UFO-SM;
 - matching source, runtime, host, sample, momenta, normalization, physical-axis,
   selector, logical reduction, and applicable execution-schedule identities.
 
@@ -65,6 +67,34 @@ diagnostic lower bounds and are rejected here.
 Built-in and UFO captures must agree pointwise at `rtol=1e-12`,
 `atol=1e-15` for each layout. The two layouts are different workloads, so their
 values are not cross-compared with each other.
+
+## Compiled-versus-recurrence runtime ceiling
+
+The 15% ceiling is an acceptance condition, not a report-only comparison. For
+each built-in/UFO model, each `topology-replay`/`all-flow-union` layout, and
+each required batch 128/1024, the combiner requires:
+
+```text
+compiled subprocess median seconds/point
+    <= 1.15 * recurrence subprocess median seconds/point
+```
+
+The boundary is inclusive. Batch 1 remains required raw evidence but is not a
+cell in this throughput ceiling.
+
+The combiner does not trust stored aggregate timing fields. It first
+recomputes each lane's median and raw MAD from the retained positive
+per-subprocess seconds-per-point samples, checks the retained sample count,
+median, MAD, and native timing boundary, and only then computes the ratio.
+The accepted decision retains all eight model/layout/batch results under
+`validation.compiled_recurrence_runtime_ceiling`, including both recomputed
+medians, raw MADs, sample counts, the ratio, and the policy limit. The complete
+raw samples remain under `timings`.
+
+If any one ratio exceeds 1.15, the whole six-input decision is rejected with
+exit code 2. As with every other rejection, `validation`, `timings`, and
+`comparisons` are all null, so no partial headline comparison can be mistaken
+for accepted evidence.
 
 ## Request schema
 
@@ -279,8 +309,9 @@ Exit code 0 means the emitted decision is accepted. Exit code 2 means rejected;
 the decision still has a canonical `content_sha256` and a non-empty `errors`
 list. An accepted decision retains every raw median/MAD and reports explicit
 pyAmpliCol/AmpliCol ratios for each model, lane, and batch, with both timing
-boundaries attached. A rejected decision never contains partial headline
-comparisons.
+boundaries attached. It also records the eight mandatory compiled/recurrence
+ceiling cells described above. A rejected decision never contains partial
+headline comparisons.
 
 ## Frozen accepted-base inputs
 

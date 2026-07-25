@@ -42,6 +42,9 @@ PER_LAYOUT_M0_SCHEMA = 4
 
 MODES = ("compiled", "eager", "recurrence")
 BATCHES = (1, 128, 1024)
+COMPILED_RECURRENCE_BATCHES = (128, 1024)
+MAX_COMPILED_OVER_RECURRENCE = 1.15
+COMPILED_RECURRENCE_STATISTIC = "ratio-of-recomputed-subprocess-medians-v1"
 LAYOUTS = ("topology-replay", "all-flow-union")
 MODELS = ("built-in-sm", "ufo-sm")
 MIN_SAMPLES = 7
@@ -2186,6 +2189,7 @@ def _cross_validate(
         == captures[("ufo-sm", "topology-replay")].model_common_sha256
     ):
         _die("built-in and UFO captures unexpectedly share one model identity")
+    compiled_recurrence = _compiled_recurrence_acceptance(captures)
 
     selected = amplicol[AMPLICOL_SELECTED_ROLE]
     union_evidence = amplicol[AMPLICOL_UNION_ROLE]
@@ -2298,6 +2302,7 @@ def _cross_validate(
         "amplicol_all_flow_parity": True,
         "relative_tolerance": RTOL,
         "absolute_tolerance": ATOL,
+        "compiled_recurrence_runtime_ceiling": compiled_recurrence,
     }
 
 
@@ -2307,6 +2312,120 @@ def _input_identity(loaded: LoadedJson) -> dict[str, Any]:
         "size_bytes": loaded.ref.size_bytes,
         "raw_sha256": loaded.ref.sha256,
         "canonical_payload_sha256": loaded.canonical_sha256,
+    }
+
+
+def _compiled_recurrence_measurement(
+    timings: Mapping[str, Any],
+    *,
+    mode: str,
+    batch: int,
+    label: str,
+) -> dict[str, Any]:
+    """Recompute one ceiling-gate measurement from its retained raw samples."""
+
+    mode_timings = _require_mapping(timings.get(mode), f"{label}.{mode}")
+    measurement = _require_mapping(
+        mode_timings.get(str(batch)),
+        f"{label}.{mode}.batch-{batch}",
+    )
+    samples = _require_list(
+        measurement.get("raw_seconds_per_point"),
+        f"{label}.{mode}.batch-{batch}.raw_seconds_per_point",
+    )
+    values: list[float] = []
+    for index, sample in enumerate(samples):
+        if not _is_number(sample) or float(sample) <= 0.0:
+            _die(
+                f"{label}.{mode}.batch-{batch} raw sample {index} "
+                "must be a finite positive number"
+            )
+        values.append(float(sample))
+    sample_count = _require_int(
+        measurement.get("sample_count"),
+        f"{label}.{mode}.batch-{batch}.sample_count",
+        minimum=MIN_SAMPLES,
+    )
+    if sample_count != len(values):
+        _die(f"{label}.{mode}.batch-{batch} raw sample count is inconsistent")
+    median = statistics.median(values)
+    mad = statistics.median(abs(value - median) for value in values)
+    if measurement.get("median_seconds_per_point") != median:
+        _die(f"{label}.{mode}.batch-{batch} retained median is stale")
+    if measurement.get("mad_seconds_per_point") != mad:
+        _die(f"{label}.{mode}.batch-{batch} retained MAD is stale")
+    if measurement.get("timing_boundary") != "runtime_core_repeated_wall_time":
+        _die(f"{label}.{mode}.batch-{batch} timing boundary is invalid")
+    return {
+        "sample_count": sample_count,
+        "median_seconds_per_point": median,
+        "mad_seconds_per_point": mad,
+    }
+
+
+def _compiled_recurrence_acceptance(
+    captures: Mapping[tuple[str, str], Capture],
+) -> dict[str, Any]:
+    """Require compiled qq_Z6g to stay within 15% of recurrence."""
+
+    cells: dict[str, Any] = {}
+    for model in MODELS:
+        model_cells: dict[str, Any] = {}
+        for layout in LAYOUTS:
+            label = f"{model}/{layout}"
+            capture = captures.get((model, layout))
+            if capture is None:
+                _die(f"{label} capture is absent from the recurrence ceiling gate")
+            batch_cells: dict[str, Any] = {}
+            for batch in COMPILED_RECURRENCE_BATCHES:
+                compiled = _compiled_recurrence_measurement(
+                    capture.timings,
+                    mode="compiled",
+                    batch=batch,
+                    label=label,
+                )
+                recurrence = _compiled_recurrence_measurement(
+                    capture.timings,
+                    mode="recurrence",
+                    batch=batch,
+                    label=label,
+                )
+                compiled_median = compiled["median_seconds_per_point"]
+                recurrence_median = recurrence["median_seconds_per_point"]
+                assert isinstance(compiled_median, float)
+                assert isinstance(recurrence_median, float)
+                ratio = compiled_median / recurrence_median
+                passes = (
+                    compiled_median <= recurrence_median * MAX_COMPILED_OVER_RECURRENCE
+                )
+                if not passes:
+                    _die(
+                        f"{label} compiled qq_Z6g exceeds the recurrence ceiling "
+                        f"at batch {batch}: {ratio:.17g} > "
+                        f"{MAX_COMPILED_OVER_RECURRENCE:.17g} "
+                        f"(compiled median={compiled_median:.17g}, "
+                        f"compiled raw MAD="
+                        f"{compiled['mad_seconds_per_point']:.17g}, "
+                        f"recurrence median={recurrence_median:.17g}, "
+                        f"recurrence raw MAD="
+                        f"{recurrence['mad_seconds_per_point']:.17g})"
+                    )
+                batch_cells[str(batch)] = {
+                    "statistic": COMPILED_RECURRENCE_STATISTIC,
+                    "compiled": compiled,
+                    "recurrence": recurrence,
+                    "compiled_over_recurrence": ratio,
+                    "maximum_compiled_over_recurrence": (MAX_COMPILED_OVER_RECURRENCE),
+                    "passes": True,
+                }
+            model_cells[layout] = batch_cells
+        cells[model] = model_cells
+    return {
+        "statistic": COMPILED_RECURRENCE_STATISTIC,
+        "required_batches": list(COMPILED_RECURRENCE_BATCHES),
+        "maximum_compiled_over_recurrence": MAX_COMPILED_OVER_RECURRENCE,
+        "cells": cells,
+        "passes": True,
     }
 
 
@@ -2397,6 +2516,9 @@ def _accepted_manifest(
             "timing_statistics": "subprocess-median-and-raw-mad-v1",
             "relative_tolerance": RTOL,
             "absolute_tolerance": ATOL,
+            "compiled_recurrence_statistic": COMPILED_RECURRENCE_STATISTIC,
+            "compiled_recurrence_required_batches": list(COMPILED_RECURRENCE_BATCHES),
+            "maximum_compiled_over_recurrence": MAX_COMPILED_OVER_RECURRENCE,
         },
         "request_identity": _input_identity(request_loaded),
         "common_contract": {
@@ -2453,6 +2575,9 @@ def _rejected_manifest(
             "minimum_interleaved_subprocess_samples": MIN_SAMPLES,
             "jit_optimization_level": 3,
             "generation_specialized_axes_allowed": False,
+            "compiled_recurrence_statistic": COMPILED_RECURRENCE_STATISTIC,
+            "compiled_recurrence_required_batches": list(COMPILED_RECURRENCE_BATCHES),
+            "maximum_compiled_over_recurrence": MAX_COMPILED_OVER_RECURRENCE,
         },
         "request_identity": {
             "path": str(request_path.resolve(strict=False)),
