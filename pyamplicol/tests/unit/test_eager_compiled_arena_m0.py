@@ -951,6 +951,12 @@ def test_cli_accepts_the_content_addressed_positive_fixture(
             id="incomplete-capture",
         ),
         pytest.param(
+            lambda corpus: corpus["captures"][
+                ("built-in-sm", "topology-replay")
+            ].__setitem__("schema_version", 5),
+            id="obsolete-schema-5-capture",
+        ),
+        pytest.param(
             lambda corpus: corpus["captures"][("built-in-sm", "topology-replay")][
                 "configuration"
             ].__setitem__("jit_optimization_level", 2),

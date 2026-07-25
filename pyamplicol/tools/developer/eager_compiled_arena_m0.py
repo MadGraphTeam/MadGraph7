@@ -3,7 +3,7 @@
 """Fail-closed Milestone-0 evidence combiner for the arena migration.
 
 This program does not run benchmarks and cannot turn a diagnostic capture into
-authoritative evidence.  It revalidates four schema-5 pyAmpliCol captures and
+authoritative evidence.  It revalidates four schema-6 pyAmpliCol captures and
 two independently captured AmpliCol raw-evidence manifests, then emits one
 content-addressed accepted or rejected record.
 """
@@ -34,11 +34,11 @@ OUTPUT_KIND = "pyamplicol-eager-compiled-arena-m0-acceptance"
 OUTPUT_SCHEMA = 1
 
 CAPTURE_KIND = "pyamplicol-recurrence-z6g-benchmark"
-CAPTURE_SCHEMA = 5
+CAPTURE_SCHEMA = 6
 CAPTURE_ACCEPTANCE_KIND = "pyamplicol-three-lane-layout-capture"
-CAPTURE_ACCEPTANCE_SCHEMA = 3
+CAPTURE_ACCEPTANCE_SCHEMA = 4
 PER_LAYOUT_M0_KIND = "pyamplicol-milestone-0-evidence-manifest"
-PER_LAYOUT_M0_SCHEMA = 3
+PER_LAYOUT_M0_SCHEMA = 4
 
 MODES = ("compiled", "eager", "recurrence")
 BATCHES = (1, 128, 1024)
@@ -179,7 +179,7 @@ class LoadedJson:
 
 @dataclass(frozen=True)
 class Capture:
-    """Validated schema-5 capture and extracted cross-capture contracts."""
+    """Validated schema-6 capture and extracted cross-capture contracts."""
 
     model: str
     layout: str
@@ -394,12 +394,12 @@ def _load_benchmark_module() -> ModuleType:
         path,
     )
     if spec is None or spec.loader is None:
-        _die(f"cannot load schema-5 validator from {path}")
+        _die(f"cannot load schema-6 validator from {path}")
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
     except Exception as error:
-        raise EvidenceError(f"cannot load schema-5 validator: {error}") from error
+        raise EvidenceError(f"cannot load schema-6 validator: {error}") from error
     return module
 
 
@@ -698,7 +698,7 @@ def _revalidation_arguments(configuration: Mapping[str, Any]) -> SimpleNamespace
     )
 
 
-def _revalidate_schema5(
+def _revalidate_schema6(
     loaded: LoadedJson,
     *,
     model: str,
@@ -707,8 +707,11 @@ def _revalidate_schema5(
 ) -> None:
     payload = loaded.payload
     _require_exact_keys(payload, _CAPTURE_ROOT_KEYS, f"{model}/{layout} capture")
-    if payload.get("kind") != CAPTURE_KIND or payload.get("schema_version") != 5:
-        _die(f"{model}/{layout} is not an exact schema-5 capture")
+    if (
+        payload.get("kind") != CAPTURE_KIND
+        or payload.get("schema_version") != CAPTURE_SCHEMA
+    ):
+        _die(f"{model}/{layout} is not an exact schema-6 capture")
     if payload.get("complete") is not True or payload.get("passes") is not True:
         _die(f"{model}/{layout} root is incomplete or non-passing")
     configuration = _require_mapping(
@@ -735,7 +738,7 @@ def _revalidate_schema5(
         )
     except Exception as error:
         raise EvidenceError(
-            f"{model}/{layout} raw schema-5 evidence failed revalidation: {error}"
+            f"{model}/{layout} raw schema-6 evidence failed revalidation: {error}"
         ) from error
     if payload.get("validation_summary") != recomputed_summary:
         _die(f"{model}/{layout} stored validation summary is stale or forged")
@@ -1129,7 +1132,7 @@ def _validate_capture(
     benchmark: ModuleType,
 ) -> Capture:
     label = f"{model}/{layout}"
-    _revalidate_schema5(loaded, model=model, layout=layout, benchmark=benchmark)
+    _revalidate_schema6(loaded, model=model, layout=layout, benchmark=benchmark)
     payload = loaded.payload
     configuration = _require_mapping(payload["configuration"], f"{label}.configuration")
     expected_workload = (

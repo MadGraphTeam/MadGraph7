@@ -15,10 +15,10 @@ only one measurement subprocess and is not sufficient for this gate.
 
 One request combines exactly six distinct JSON files:
 
-1. built-in SM, topology replay, schema-5 Z+6g capture;
-2. built-in SM, all-flow union, schema-5 Z+6g capture;
-3. equivalent UFO-SM, topology replay, schema-5 Z+6g capture;
-4. equivalent UFO-SM, all-flow union, schema-5 Z+6g capture;
+1. built-in SM, topology replay, schema-6 Z+6g capture;
+2. built-in SM, all-flow union, schema-6 Z+6g capture;
+3. equivalent UFO-SM, topology replay, schema-6 Z+6g capture;
+4. equivalent UFO-SM, all-flow union, schema-6 Z+6g capture;
 5. fresh AmpliCol selected-flow/helicity-sum raw evidence;
 6. fresh AmpliCol all-flow/single-helicity raw evidence.
 
@@ -147,7 +147,7 @@ Runtime provenance is hashed after removing location-only `path`,
 `resolved_path`, `checkout`, and `working_directory` fields. All versions,
 sizes, build inputs, dependency identities, and content hashes remain in that
 semantic identity. The generation-model identity uses the same path stripping.
-Host identity is the exact schema-5 host object.
+Host identity is the exact schema-6 host object.
 
 ## AmpliCol raw-evidence schema
 

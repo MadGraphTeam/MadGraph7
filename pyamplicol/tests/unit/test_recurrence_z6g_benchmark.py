@@ -244,13 +244,58 @@ def _artifact_semantic_identity(
             }
         ],
     }
+    execution_color_axis = benchmark._ordered_physical_axis(
+        color_entries,
+        label="color-flow",
+        require_structural_zero=False,
+    )
+    execution_helicity_axis = benchmark._ordered_physical_axis(
+        helicity_entries,
+        label="helicity",
+        require_structural_zero=True,
+    )
+    color_axis = benchmark._logical_physical_axis(
+        execution_color_axis,
+        require_structural_zero=False,
+    )
+    helicity_axis = benchmark._logical_physical_axis(
+        execution_helicity_axis,
+        require_structural_zero=True,
+    )
+    logical_reduction = benchmark._logical_reduction_ordering_identity(
+        reduction_ordering["kind"],
+        color_axis=color_axis,
+        helicity_axis=helicity_axis,
+        artifact=Path("<test-profile>"),
+    )
+    execution_reduction = benchmark._reduction_ordering_identity(
+        {
+            "kind": reduction_ordering["kind"],
+            "groups": reduction_ordering["ordered_groups"],
+        },
+        color_axis=execution_color_axis,
+        helicity_axis=execution_helicity_axis,
+        artifact=Path("<test-profile>"),
+    )
+    execution_reduction_identity = {
+        "kind": "expanded-json-reduction-v1",
+        "reduction_kind": reduction_ordering["kind"],
+        "group_count": len(reduction_ordering["ordered_groups"]),
+        "computed_physical_color_count": sum(
+            entry["computed"] is True for entry in color_entries
+        ),
+        "live_physical_helicity_count": sum(
+            entry["structural_zero"] is False for entry in helicity_entries
+        ),
+        "materialized_ordering_sha256": execution_reduction["ordering_sha256"],
+    }
     execution_ordering = {
         "runtime_process_contract": {"id": "process-1"},
         "manifest_payload_order": [{"path": "plan.bin", "role": "runtime"}],
     }
     return {
         "kind": "pyamplicol-benchmark-artifact-semantic-identity",
-        "schema_version": 2,
+        "schema_version": benchmark.ARTIFACT_SEMANTIC_IDENTITY_SCHEMA,
         "coverage": {
             "color": ("complete" if complete and not color_specialized else "selected"),
             "helicities": (
@@ -260,20 +305,8 @@ def _artifact_semantic_identity(
                 complete and not color_specialized and not helicity_specialized
             ),
         },
-        "physical_color_flows": {
-            "count": len(color_ids),
-            "ordered_ids": color_ids,
-            "ordered_ids_sha256": benchmark._canonical_sha256(color_ids),
-            "ordered_entries": color_entries,
-            "ordered_entries_sha256": benchmark._canonical_sha256(color_entries),
-        },
-        "physical_helicities": {
-            "count": len(helicity_ids),
-            "ordered_ids": helicity_ids,
-            "ordered_ids_sha256": benchmark._canonical_sha256(helicity_ids),
-            "ordered_entries": helicity_entries,
-            "ordered_entries_sha256": benchmark._canonical_sha256(helicity_entries),
-        },
+        "physical_color_flows": color_axis,
+        "physical_helicities": helicity_axis,
         "normalization": normalization,
         "normalization_sha256": benchmark._canonical_sha256(normalization),
         "manifest_model_identity": model_identity,
@@ -283,14 +316,14 @@ def _artifact_semantic_identity(
         ),
         "runtime_selectors": runtime_selectors,
         "runtime_selectors_sha256": benchmark._canonical_sha256(runtime_selectors),
-        "reduction_ordering": reduction_ordering,
-        "reduction_ordering_sha256": benchmark._canonical_sha256(reduction_ordering),
-        "reduction_coverage": {
-            "complete": True,
-            "expected_physical_pair_count": 2,
-            "observed_physical_pair_count": 2,
-            "errors": [],
-        },
+        "reduction_ordering": logical_reduction["ordering"],
+        "reduction_ordering_sha256": logical_reduction["ordering_sha256"],
+        "reduction_coverage": logical_reduction["coverage"],
+        "execution_reduction_identity": execution_reduction_identity,
+        "execution_reduction_identity_sha256": benchmark._canonical_sha256(
+            execution_reduction_identity
+        ),
+        "execution_reduction_coverage": execution_reduction["coverage"],
         "execution_schedule_ordering": execution_ordering,
         "execution_schedule_ordering_sha256": benchmark._canonical_sha256(
             execution_ordering
@@ -932,7 +965,7 @@ def test_complete_three_lane_capture_can_pass_but_m0_remains_fail_closed() -> No
     )
     assert capture["complete"]
     assert capture["passes"]
-    assert capture["schema_version"] == 3
+    assert capture["schema_version"] == benchmark.CAPTURE_ACCEPTANCE_SCHEMA
     assert schedule["schema_version"] == 2
 
     manifest = benchmark._milestone0_acceptance_manifest(arguments, capture)
@@ -1008,10 +1041,28 @@ def test_profile_semantic_identity_digest_is_required() -> None:
     )
     contract = benchmark._profile_artifact_semantic_contract(profiles)
     assert contract["passes"] is False
+    assert contract["lanes_match"] is False
     assert any("not content-addressed" in error for error in contract["errors"])
 
 
-def test_physics_relevant_axis_coefficient_is_cross_compared() -> None:
+def test_physical_axis_value_is_cross_compared() -> None:
+    profiles = _passing_profiles()
+    eager_profile = profiles["eager"]
+    eager_identity = eager_profile["artifact_semantic_identity"]
+    eager_axis = eager_identity["physical_helicities"]
+    eager_entries = copy.deepcopy(eager_axis["ordered_entries"])
+    eager_entries[1]["values"][0] = -7
+    eager_axis["ordered_entries"] = eager_entries
+    eager_axis["ordered_entries_sha256"] = benchmark._canonical_sha256(eager_entries)
+    eager_profile["artifact_semantic_identity_sha256"] = benchmark._canonical_sha256(
+        eager_identity
+    )
+    contract = benchmark._profile_artifact_semantic_contract(profiles)
+    assert contract["passes"] is False
+    assert contract["lanes_match"] is False
+
+
+def test_physical_axis_coefficient_is_cross_compared() -> None:
     profiles = _passing_profiles()
     eager_profile = profiles["eager"]
     eager_identity = eager_profile["artifact_semantic_identity"]
@@ -1023,7 +1074,9 @@ def test_physics_relevant_axis_coefficient_is_cross_compared() -> None:
     eager_profile["artifact_semantic_identity_sha256"] = benchmark._canonical_sha256(
         eager_identity
     )
+
     contract = benchmark._profile_artifact_semantic_contract(profiles)
+
     assert contract["passes"] is False
     assert contract["lanes_match"] is False
 
@@ -1241,7 +1294,7 @@ def test_reduction_order_mismatch_is_ineligible() -> None:
     profiles = _passing_profiles(schedule)
     eager_identity = profiles["eager"]["artifact_semantic_identity"]
     eager_reduction = copy.deepcopy(eager_identity["reduction_ordering"])
-    eager_reduction["ordered_groups"][0]["physical_helicity_ids"].reverse()
+    eager_reduction["pair_order_abi"] = "color-major-helicity-minor-v1"
     eager_identity["reduction_ordering"] = eager_reduction
     eager_identity["reduction_ordering_sha256"] = benchmark._canonical_sha256(
         eager_reduction
@@ -1263,28 +1316,53 @@ def test_reduction_order_mismatch_is_ineligible() -> None:
 
 def test_reduction_members_must_map_to_the_group_representative() -> None:
     identity = _artifact_semantic_identity()
-    helicity_axis = copy.deepcopy(identity["physical_helicities"])
-    assert isinstance(helicity_axis, dict)
-    helicity_entries = helicity_axis["ordered_entries"]
-    assert isinstance(helicity_entries, list)
-    assert isinstance(helicity_entries[1], dict)
+    logical_helicities = identity["physical_helicities"]["ordered_entries"]
+    logical_colors = identity["physical_color_flows"]["ordered_entries"]
+    helicity_entries = [
+        {
+            **entry,
+            "representative_id": logical_helicities[0]["id"],
+            "computed": index == 0,
+            "coefficient": 1.0,
+        }
+        for index, entry in enumerate(logical_helicities)
+    ]
     helicity_entries[1]["computed"] = True
     helicity_entries[1]["representative_id"] = "h:+1,-1"
-    helicity_axis["ordered_entries_sha256"] = benchmark._canonical_sha256(
-        helicity_entries
+    helicity_axis = benchmark._ordered_physical_axis(
+        helicity_entries,
+        label="helicity",
+        require_structural_zero=True,
     )
-    reduction = identity["reduction_ordering"]
-    color_axis = identity["physical_color_flows"]
-    assert isinstance(reduction, dict)
-    assert isinstance(color_axis, dict)
+    color_axis = benchmark._ordered_physical_axis(
+        [
+            {
+                **entry,
+                "representative_id": entry["id"],
+                "computed": True,
+                "coefficient": 1.0,
+            }
+            for entry in logical_colors
+        ],
+        label="color-flow",
+        require_structural_zero=False,
+    )
     with pytest.raises(
         benchmark.HarnessError,
         match="not closed over physical axes",
     ):
         benchmark._reduction_ordering_identity(
             {
-                "kind": reduction["kind"],
-                "groups": reduction["ordered_groups"],
+                "kind": "lc-diagonal",
+                "groups": [
+                    {
+                        "id": "reduction:0",
+                        "physical_color_ids": ["flow:2,1"],
+                        "physical_helicity_ids": ["h:-1,+1", "h:+1,-1"],
+                        "representative_color_id": "flow:2,1",
+                        "representative_helicity_id": "h:-1,+1",
+                    }
+                ],
             },
             color_axis=color_axis,
             helicity_axis=helicity_axis,
@@ -1308,7 +1386,16 @@ def test_helicity_axis_rejects_invalid_mapping_states(
 ) -> None:
     helicity_axis = _artifact_semantic_identity()["physical_helicities"]
     assert isinstance(helicity_axis, dict)
-    entries = copy.deepcopy(helicity_axis["ordered_entries"])
+    logical_entries = copy.deepcopy(helicity_axis["ordered_entries"])
+    entries = [
+        {
+            **entry,
+            "representative_id": logical_entries[0]["id"],
+            "computed": index == 0,
+            "coefficient": 1.0,
+        }
+        for index, entry in enumerate(logical_entries)
+    ]
     assert isinstance(entries, list)
     assert isinstance(entries[1], dict)
     entries[1].update(
@@ -1330,17 +1417,17 @@ def test_helicity_axis_rejects_invalid_mapping_states(
         )
 
 
-def test_reduction_coverage_is_recomputed_from_physical_axes() -> None:
+def test_execution_reduction_coverage_is_required() -> None:
     arguments = _arguments()
     schedule = _passing_schedule()
     profiles = _passing_profiles(schedule)
     eager_identity = profiles["eager"]["artifact_semantic_identity"]
-    eager_reduction = copy.deepcopy(eager_identity["reduction_ordering"])
-    eager_reduction["ordered_groups"][0]["physical_helicity_ids"].pop()
-    eager_identity["reduction_ordering"] = eager_reduction
-    eager_identity["reduction_ordering_sha256"] = benchmark._canonical_sha256(
-        eager_reduction
-    )
+    eager_identity["execution_reduction_coverage"] = {
+        "complete": False,
+        "expected_physical_pair_count": 2,
+        "observed_physical_pair_count": 1,
+        "errors": ["missing one execution pair"],
+    }
     profiles["eager"]["artifact_semantic_identity_sha256"] = (
         benchmark._canonical_sha256(eager_identity)
     )
@@ -1357,6 +1444,48 @@ def test_reduction_coverage_is_recomputed_from_physical_axes() -> None:
         for error in capture["artifact_semantic_contract"]["errors"]
     )
     assert capture["authoritative_eligible"] is False
+
+
+def test_execution_reduction_summary_is_revalidated() -> None:
+    profiles = _passing_profiles()
+    eager_profile = profiles["eager"]
+    eager_identity = eager_profile["artifact_semantic_identity"]
+    eager_identity["execution_reduction_identity"] = {
+        "kind": "forged-reduction",
+    }
+    eager_identity["execution_reduction_identity_sha256"] = benchmark._canonical_sha256(
+        eager_identity["execution_reduction_identity"]
+    )
+    eager_profile["artifact_semantic_identity_sha256"] = benchmark._canonical_sha256(
+        eager_identity
+    )
+
+    contract = benchmark._profile_artifact_semantic_contract(profiles)
+
+    assert contract["passes"] is False
+    assert any(
+        "model/selector/reduction semantic identity is invalid" in error
+        for error in contract["errors"]
+    )
+
+
+def test_complete_execution_reduction_coverage_rejects_impossible_counts() -> None:
+    profiles = _passing_profiles()
+    eager_profile = profiles["eager"]
+    eager_identity = eager_profile["artifact_semantic_identity"]
+    eager_identity["execution_reduction_coverage"] = {
+        "complete": True,
+        "expected_physical_pair_count": 1,
+        "observed_physical_pair_count": 1,
+        "errors": [],
+    }
+    eager_profile["artifact_semantic_identity_sha256"] = benchmark._canonical_sha256(
+        eager_identity
+    )
+
+    contract = benchmark._profile_artifact_semantic_contract(profiles)
+
+    assert contract["passes"] is False
 
 
 def test_capture_rejects_missing_or_interrupted_timing_measurements() -> None:
@@ -2195,6 +2324,337 @@ def _write_fake_artifact(path: Path) -> None:
     )
 
 
+def test_logical_axis_projection_ignores_execution_representatives() -> None:
+    physical = [
+        {
+            "index": 0,
+            "id": "flow:2,1",
+            "kind": "lc-flow",
+            "word": [2, 1],
+            "coefficient": 1.0,
+        },
+        {
+            "index": 1,
+            "id": "flow:1,2",
+            "kind": "lc-flow",
+            "word": [1, 2],
+            "coefficient": 1.0,
+        },
+    ]
+    quotient = [
+        {
+            **entry,
+            "computed": index == 0,
+            "representative_id": physical[0]["id"],
+        }
+        for index, entry in enumerate(physical)
+    ]
+    materialized = [
+        {
+            **entry,
+            "computed": True,
+            "representative_id": entry["id"],
+        }
+        for entry in physical
+    ]
+
+    quotient_axis = benchmark._logical_physical_axis(
+        benchmark._ordered_physical_axis(
+            quotient,
+            label="color-flow",
+            require_structural_zero=False,
+        ),
+        require_structural_zero=False,
+    )
+    materialized_axis = benchmark._logical_physical_axis(
+        benchmark._ordered_physical_axis(
+            materialized,
+            label="color-flow",
+            require_structural_zero=False,
+        ),
+        require_structural_zero=False,
+    )
+
+    assert quotient_axis == materialized_axis
+    assert all(
+        "computed" not in entry and "representative_id" not in entry
+        for entry in quotient_axis["ordered_entries"]
+    )
+
+
+@pytest.mark.parametrize(
+    "descriptor_key",
+    ("native_reduction_groups", "recurrence_runtime_reduction"),
+)
+def test_expanded_reduction_rejects_reserved_native_descriptor_presence(
+    tmp_path: Path,
+    descriptor_key: str,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_fake_artifact(artifact)
+    manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    process = manifest["processes"][0]
+    physics_path = artifact / process["physics_path"]
+    physics = json.loads(physics_path.read_text(encoding="utf-8"))
+    physics["extensions"][descriptor_key] = None
+    physics_path.write_text(json.dumps(physics, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(
+        benchmark.HarnessError,
+        match="expanded reduction duplicates a native descriptor",
+    ):
+        benchmark._artifact_semantic_identity(artifact, manifest, process)
+
+
+@pytest.mark.parametrize(
+    ("descriptor_key", "descriptor", "error"),
+    [
+        (
+            "native_reduction_groups",
+            {
+                "kind": "pyamplicol-eager-plan-v3-reduction-groups",
+                "schema_version": 1,
+                "storage_abi": "pacbin-v1",
+                "runtime_layout_abi": "pyamplicol-eager-runtime-layout-v1",
+                "container_path": "eager-runtime.pacbin",
+                "group_member": "reductions/groups.bin",
+                "entry_member": "reductions/entries.bin",
+                "group_count": 1,
+            },
+            "could not authenticate compact eager reduction",
+        ),
+        (
+            "recurrence_runtime_reduction",
+            {
+                "kind": "pyamplicol-recurrence-native-reduction-v2",
+                "runtime_layout_abi": "pyamplicol-recurrence-runtime-layout-v2",
+                "container_path": "recurrence-runtime.pacbin",
+                "plan_member_path": "schedule/recurrence-direct-schedule-v2.bin",
+            },
+            "could not authenticate compact recurrence reduction",
+        ),
+    ],
+)
+def test_compact_reduction_missing_native_payload_fails_closed(
+    tmp_path: Path,
+    descriptor_key: str,
+    descriptor: dict[str, object],
+    error: str,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_fake_artifact(artifact)
+    manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    process = manifest["processes"][0]
+    physics_path = artifact / process["physics_path"]
+    physics = json.loads(physics_path.read_text(encoding="utf-8"))
+    physics["reduction"]["groups"] = []
+    physics["extensions"][descriptor_key] = descriptor
+    physics_path.write_text(json.dumps(physics, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(benchmark.HarnessError, match=error):
+        benchmark._artifact_semantic_identity(artifact, manifest, process)
+
+
+def test_compact_eager_reduction_is_authenticated_and_logically_complete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_fake_artifact(artifact)
+    manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    process = manifest["processes"][0]
+    physics_path = artifact / process["physics_path"]
+    physics = json.loads(physics_path.read_text(encoding="utf-8"))
+    groups = physics["reduction"]["groups"]
+    physics["reduction"]["groups"] = []
+    physics["extensions"]["native_reduction_groups"] = {
+        "kind": "pyamplicol-eager-plan-v3-reduction-groups",
+        "schema_version": 1,
+        "storage_abi": "pacbin-v1",
+        "runtime_layout_abi": "pyamplicol-eager-runtime-layout-v1",
+        "container_path": "eager-runtime.pacbin",
+        "group_member": "reductions/groups.bin",
+        "entry_member": "reductions/entries.bin",
+        "group_count": 1,
+    }
+    physics_path.write_text(json.dumps(physics, sort_keys=True), encoding="utf-8")
+    monkeypatch.setattr(
+        benchmark,
+        "_load_compact_eager_reduction_groups",
+        lambda _artifact, _process_id: groups,
+    )
+
+    identity = benchmark._artifact_semantic_identity(artifact, manifest, process)
+
+    assert identity["reduction_coverage"]["complete"] is True
+    assert identity["execution_reduction_coverage"]["complete"] is True
+    assert identity["execution_reduction_identity"]["kind"] == (
+        "eager-plan-v3-pacbin-reduction-v1"
+    )
+
+    physics["extensions"]["native_reduction_groups"]["group_count"] = 0
+    physics_path.write_text(json.dumps(physics, sort_keys=True), encoding="utf-8")
+    with pytest.raises(
+        benchmark.HarnessError,
+        match="compact eager reduction descriptor is invalid",
+    ):
+        benchmark._artifact_semantic_identity(artifact, manifest, process)
+
+
+def test_compact_recurrence_reduction_binds_complete_public_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_fake_artifact(artifact)
+    manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    process = manifest["processes"][0]
+    physics_path = artifact / process["physics_path"]
+    physics = json.loads(physics_path.read_text(encoding="utf-8"))
+    physics["reduction"]["groups"] = []
+    physics["extensions"]["recurrence_runtime_reduction"] = {
+        "kind": "pyamplicol-recurrence-native-reduction-v2",
+        "runtime_layout_abi": "pyamplicol-recurrence-runtime-layout-v2",
+        "container_path": "recurrence-runtime.pacbin",
+        "plan_member_path": "schedule/recurrence-direct-schedule-v2.bin",
+    }
+    physics_path.write_text(json.dumps(physics, sort_keys=True), encoding="utf-8")
+    sections = SimpleNamespace(
+        strategy="topology-replay",
+        semantic_digest="a" * 64,
+        runtime_layout_digest="b" * 64,
+        public_flow_ids=(0,),
+        resolved_helicities=(
+            SimpleNamespace(public_helicity_start=0, public_helicity_count=2),
+            SimpleNamespace(public_helicity_start=2, public_helicity_count=2),
+        ),
+        public_helicities=(-1, 1, 1, -1),
+        replay_targets=(SimpleNamespace(public_flow_id=0),),
+        amplitude_destination_count=2,
+        replay_helicity_map=(0, 1),
+        amplitude_destinations=(
+            SimpleNamespace(target_sector_id=0, target_helicity_id=0),
+            SimpleNamespace(target_sector_id=0, target_helicity_id=1),
+        ),
+    )
+    monkeypatch.setattr(
+        benchmark,
+        "_load_compact_recurrence_reduction",
+        lambda _artifact, _process_id: sections,
+    )
+
+    identity = benchmark._artifact_semantic_identity(artifact, manifest, process)
+
+    assert identity["reduction_coverage"] == {
+        "complete": True,
+        "expected_physical_pair_count": 2,
+        "observed_physical_pair_count": 2,
+        "errors": [],
+    }
+    assert identity["execution_reduction_identity"]["kind"] == (
+        "recurrence-plan-v2-pacbin-reduction-v1"
+    )
+
+    sections.replay_helicity_map = (0,)
+    with pytest.raises(
+        benchmark.HarnessError,
+        match="compact recurrence reduction coverage is incomplete",
+    ):
+        benchmark._artifact_semantic_identity(artifact, manifest, process)
+
+
+def test_compact_recurrence_union_accepts_folded_public_flow_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_fake_artifact(artifact)
+    manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    process = manifest["processes"][0]
+    physics_path = artifact / process["physics_path"]
+    physics = json.loads(physics_path.read_text(encoding="utf-8"))
+    physics["color_components"].append(
+        {
+            "index": 1,
+            "id": "flow:1,2",
+            "kind": "lc-flow",
+            "word": [1, 2],
+            "representative_id": "flow:1,2",
+            "computed": True,
+            "coefficient": 1.0,
+        }
+    )
+    physics["reduction"]["groups"] = []
+    physics["extensions"]["recurrence_runtime_reduction"] = {
+        "kind": "pyamplicol-recurrence-native-reduction-v2",
+        "runtime_layout_abi": "pyamplicol-recurrence-runtime-layout-v2",
+        "container_path": "recurrence-runtime.pacbin",
+        "plan_member_path": "schedule/recurrence-direct-schedule-v2.bin",
+    }
+    physics_path.write_text(json.dumps(physics, sort_keys=True), encoding="utf-8")
+    sections = SimpleNamespace(
+        strategy="all-flow-union",
+        semantic_digest="a" * 64,
+        runtime_layout_digest="b" * 64,
+        public_flow_ids=(0, 0),
+        resolved_helicities=(
+            SimpleNamespace(public_helicity_start=0, public_helicity_count=2),
+            SimpleNamespace(public_helicity_start=2, public_helicity_count=2),
+        ),
+        public_helicities=(-1, 1, 1, -1),
+        replay_targets=(),
+        amplitude_destination_count=1,
+        replay_helicity_map=(),
+        amplitude_destinations=(
+            SimpleNamespace(target_sector_id=0, target_helicity_id=(2**32 - 1)),
+        ),
+    )
+    monkeypatch.setattr(
+        benchmark,
+        "_load_compact_recurrence_reduction",
+        lambda _artifact, _process_id: sections,
+    )
+
+    identity = benchmark._artifact_semantic_identity(artifact, manifest, process)
+    execution = identity["execution_reduction_identity"]
+
+    assert identity["execution_reduction_coverage"] == {
+        "complete": True,
+        "expected_physical_pair_count": 4,
+        "observed_physical_pair_count": 4,
+        "errors": [],
+    }
+    assert execution["public_flow_binding_count"] == 2
+    assert execution["construction_sector_count"] == 1
+    assert execution["amplitude_destination_count"] == 1
+    benchmark._validate_execution_reduction_summary(
+        execution,
+        identity["execution_reduction_coverage"],
+        logical_reduction=identity["reduction_ordering"],
+        artifact=artifact,
+    )
+
+    forged_execution = copy.deepcopy(execution)
+    forged_execution["replay_helicity_map_sha256"] = "f" * 64
+    with pytest.raises(
+        benchmark.HarnessError,
+        match="compact recurrence execution reduction summary is invalid",
+    ):
+        benchmark._validate_execution_reduction_summary(
+            forged_execution,
+            identity["execution_reduction_coverage"],
+            logical_reduction=identity["reduction_ordering"],
+            artifact=artifact,
+        )
+
+    sections.public_flow_ids = (0,)
+    with pytest.raises(
+        benchmark.HarnessError,
+        match="compact recurrence reduction coverage is incomplete",
+    ):
+        benchmark._artifact_semantic_identity(artifact, manifest, process)
+
+
 def test_artifact_reuse_requires_exact_signature_and_tree(
     tmp_path: Path,
 ) -> None:
@@ -2278,7 +2738,11 @@ def test_artifact_semantics_bind_axes_normalization_and_reduction_order(
     changed = benchmark._artifact_semantic_identity(artifact, manifest, process)
     assert changed["normalization_sha256"] != original["normalization_sha256"]
     assert (
-        changed["reduction_ordering_sha256"] != (original["reduction_ordering_sha256"])
+        changed["reduction_ordering_sha256"] == (original["reduction_ordering_sha256"])
+    )
+    assert (
+        changed["execution_reduction_identity_sha256"]
+        != original["execution_reduction_identity_sha256"]
     )
 
     physics["helicities"].reverse()
