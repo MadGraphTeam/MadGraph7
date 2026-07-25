@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tempfile
 from collections import Counter
@@ -20,11 +21,26 @@ from .cache import (
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import source_revision
+from .publication import portable_publication_value
 from .render import render_all_tables
 
 
 class ReportServiceError(RuntimeError):
     """Raised when cache or table publication cannot be completed."""
+
+
+_PROFILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+
+
+def validate_profile_name(value: str) -> str:
+    """Return a filesystem-safe, human-readable report profile identifier."""
+
+    if _PROFILE_RE.fullmatch(value) is None or ".." in value:
+        raise ValueError(
+            "report profile must contain 1-64 letters, digits, dots, "
+            "underscores, or hyphens; it cannot contain '..'"
+        )
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,18 +56,39 @@ class ReportPaths:
         cls,
         repo_root: Path,
         *,
+        profile: str | None = None,
+        docs_dir: Path | None = None,
         artifact_root: Path | None = None,
         coordination_root: Path | None = None,
     ) -> ReportPaths:
         root = repo_root.expanduser().resolve(strict=False)
-        docs = root / "docs"
+        if profile is not None:
+            profile = validate_profile_name(profile)
+        if profile is not None and docs_dir is not None:
+            raise ValueError("profile and docs_dir are mutually exclusive")
+        docs = (
+            root / "docs"
+            if profile is None
+            else root / "docs" / "performance_reports" / profile
+        )
+        if docs_dir is not None:
+            docs = docs_dir.expanduser().resolve(strict=False)
+        default_artifacts = root / ".artifacts/performance-report"
+        if profile is not None:
+            default_artifacts /= profile
         artifacts = (
-            root / ".artifacts/performance-report"
+            default_artifacts
             if artifact_root is None
             else artifact_root.expanduser().resolve(strict=False)
         )
         coordination = (
-            docs / "results/.coordination"
+            (
+                docs / "results/.coordination"
+                if profile is None
+                else root
+                / ".artifacts/performance-report-coordination"
+                / profile
+            )
             if coordination_root is None
             else coordination_root.expanduser().resolve(strict=False)
         )
@@ -165,6 +202,11 @@ class ReportService:
         caches: Mapping[str, Mapping[str, object]],
         tables: Mapping[str, str],
     ) -> tuple[Path, ...]:
+        portable_caches = {
+            name: portable_publication_value(payload, self.paths)
+            for name, payload in caches.items()
+        }
+        self.validate_payloads(portable_caches)  # type: ignore[arg-type]
         self.paths.results_dir.mkdir(parents=True, exist_ok=True)
         staging = Path(
             tempfile.mkdtemp(
@@ -181,7 +223,7 @@ class ReportService:
             backup_root.mkdir()
             schema_path = staged_results / "report-cache.schema.json"
             schema_path.write_bytes(_canonical_bytes(schema_document()))
-            for name, payload in caches.items():
+            for name, payload in portable_caches.items():
                 (staged_results / name).write_bytes(_canonical_bytes(payload))
             for name, content in tables.items():
                 (staging / name).write_text(content, encoding="ascii")
@@ -289,9 +331,6 @@ class ReportService:
         return {
             **result,
             "cache_render_match": True,
-            "artifact_current_count": len(
-                self.store.recover_current_records()
-            ),
         }
 
 
@@ -299,4 +338,5 @@ __all__ = [
     "ReportPaths",
     "ReportService",
     "ReportServiceError",
+    "validate_profile_name",
 ]

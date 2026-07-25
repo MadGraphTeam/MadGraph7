@@ -198,6 +198,7 @@ def measure_pyamplicol_cell(
         benchmark_config=_resolution_benchmark_config(generated.effective_config),
         selector_contract=contract,
     )
+    benchmark_evidence = profile.pop("benchmark_evidence")
     validation: dict[str, object] = {
         "resolved_sum": profile.pop("resolved_sum_validation"),
     }
@@ -256,6 +257,7 @@ def measure_pyamplicol_cell(
                 "model_preparation_seconds": generated.model_preparation_seconds,
                 "model_preparation_reused": generated.model_preparation_reused,
                 "generation_timer_excludes_model_preparation": True,
+                "runtime_profile": benchmark_evidence,
             },
             "failure": None,
         }

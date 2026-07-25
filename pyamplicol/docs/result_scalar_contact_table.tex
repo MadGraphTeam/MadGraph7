@@ -5,17 +5,19 @@
 \providecommand{\matrixratio}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}
 \providecommand{\matrixratiopair}[4]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}
 \providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}
+\providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}
 \providecommand{\matrixnaratio}[1]{\matrixpunct{(}\matrixna{#1}\matrixpunct{)}}
 \providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}
+\providecommand{\matrixncabsolute}[1]{\textcolor{ReportBlue}{\texttt{C }}#1\matrixpunct{; }\matrixstatus{ReportMuted}{n.c.}}
 \providecommand{\matrixcelllc}[6]{\begingroup\matrixentryfont\begin{tabular}[t]{@{}l@{\hspace{0.035in}}l@{\hspace{0.035in}}l@{}}#1&#2&#3\\#4&#5&#6\end{tabular}\endgroup}
 \providecommand{\matrixcellcontracted}[4]{\begingroup\matrixentryfont\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}#1&#2\\#3&#4\end{tabular}\endgroup}
 \subsection{Scalar-contact ladder}
 \begingroup
 \scriptsize
-\setlength{\tabcolsep}{3.2pt}
+\setlength{\tabcolsep}{2.2pt}
 \renewcommand{\arraystretch}{1.10}
 \begin{center}
-\begin{tabular}{@{}L{1.08in}L{0.82in}L{0.82in}L{0.82in}L{0.82in}L{0.82in}L{0.82in}L{0.82in}@{}}
+\begin{tabular}{@{}L{1.00in}L{0.72in}L{0.72in}L{0.72in}L{0.72in}L{0.72in}L{0.72in}L{0.72in}@{}}
 \toprule
 \multicolumn{8}{c}{\texttt{scalar\_0 scalar\_0 > n*scalar\_0}} \\
 \textbf{metric} & \textbf{\texttt{n=2}} & \textbf{\texttt{n=3}} & \textbf{\texttt{n=4}} & \textbf{\texttt{n=5}} & \textbf{\texttt{n=6}} & \textbf{\texttt{n=7}} & \textbf{\texttt{n=8}} \\

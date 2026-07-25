@@ -15,6 +15,9 @@
 \usepackage{siunitx}
 \usepackage[table]{xcolor}
 
+\DeclareMathSizes{5}{5}{5}{5}
+\DeclareMathSizes{6.2}{6.2}{5}{5}
+
 \definecolor{ReportInk}{HTML}{17212B}
 \definecolor{ReportBlue}{HTML}{145A86}
 \definecolor{ReportGreen}{HTML}{287A58}
@@ -57,9 +60,16 @@
 \newcommand{\ReportStatus}[1]{\textcolor{ReportMuted}{\textsc{#1}}}
 \newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
 \newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
-\newcommand{\ReportMatrixLegend}{\ReportTableNote{The table heading names the baseline and candidate. LC reports topology-replay selected-flow/helicity-sum and all-flow-union all-flows/single-helicity measurements separately. NLC and full colour report one contracted workload. Parenthesized values are candidate/baseline ratios.}}
-\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload block reports its own process generation in seconds and Rusticol-core wall and native execution-submetric runtime in microseconds per point: topology replay for selected-flow/helicity-sum, and all-flow union for all-flows/single-helicity. Compiled rows use JIT O1/O3 or the labelled scalar backend; eager-DAG and recurrence rows use portable JIT O2 prepared models. Parenthesized multipliers compare each pyAmpliCol row with original AmpliCol.}}
+\newcommand{\ReportMatrixLegend}{\ReportTableNote{The table heading names the baseline and candidate. LC reports the selected-flow, summed-helicity workload and the all-flow, selected-helicity workload separately. NLC and full colour report one contracted workload. Parenthesized values are candidate-to-baseline ratios.}}
+\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload reports process-generation time in seconds and native wall time and execution time in microseconds per phase-space point. Compiled rows use the labelled JIT, ASM, or C++ backend; eager and recurrence rows use portable JIT O2 prepared models. Parenthesized runtime values and selected-flow generation values compare each pyAmpliCol row with the corresponding AmpliCol reference workload. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}}
 \newcommand{\ReportLandscapeFooter}{}
+\newcommand{\ReportProfileName}{unscoped}
+\newcommand{\ReportPlatformSummary}{platform metadata unavailable}
+\newcommand{\ReportToolchainSummary}{toolchain metadata unavailable}
+\newcommand{\ReportEditionStatement}{This source build is an unmeasured
+  template; a published edition supplies architecture-specific environment
+  metadata.}
+\InputIfFileExists{report_environment.tex}{}{}
 
 \lstset{
   basicstyle=\ttfamily\small,
@@ -75,18 +85,20 @@
 \title{\vspace{-1.4cm}\textbf{pyAmpliCol 0.1.0}\\[0.35em]
   \Large Methodology and Performance Report}
 \author{Rikkert Frederix \and Valentin Hirschi \and Timea Vitos}
-\date{Release 0.1.0}
+\date{Release 0.1.0\\[0.25em]\small Measurement profile:
+  \texttt{\ReportProfileName}}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-This report defines the public theory, validation, and performance methodology
-for \PAC{}, release 0.1.0. It defines the canonical process coverage for the
-built-in Standard Model, the same physics loaded as a UFO/JSON Standard Model
-(UFO-SM), a scalar contact model, and a scalar-gravity model. Its tables present
-reproducible measurements tied to an effective configuration, execution
-environment, generated artifact, and independent-reference provenance.
+This report presents the physics coverage, numerical validation, and
+performance of \PAC{} 0.1.0. We compare compiled, eager, and recurrence
+evaluation for the built-in Standard Model and for the same model imported from
+UFO/JSON, together with scalar-contact and scalar-gravity benchmarks. Every
+reported timing is associated with a documented software revision, hardware
+profile, numerical configuration, and a validation reference appropriate to
+the corresponding data set.
 \end{abstract}
 
 \begingroup
@@ -98,33 +110,30 @@ environment, generated artifact, and independent-reference provenance.
 
 \section{Scope}
 
-\PAC{} generates tree-level scattering-amplitude artifacts and evaluates them
-through the Rusticol runtime. The Python layer resolves models and processes.
-Compiled mode lowers a shared-current directed acyclic graph (DAG) into
-process-specific evaluators. Eager mode lowers the same proven physics graph
-into invocation tables over a prepared model-kernel pack. Recurrence mode
-constructs compact current, contribution, and closure schedules without
-materializing a generic process DAG. All three routes write versioned process
-artifacts and preserve the same public physics contract for summed and
-resolved evaluation from Python, C11, C++17, Fortran 2008, and Rust 2021
-clients.
+\PAC{} generates and evaluates tree-level scattering amplitudes. Compiled mode
+specializes a shared-current directed acyclic graph (DAG) to a process. Eager
+mode evaluates the same graph with reusable model kernels. Recurrence mode
+constructs a compact current schedule directly. The three modes implement the
+same physics normalization, colour treatment, helicity sums, and resolved
+observables. The original \AC{} program and its event-generation setting are
+described in Ref.~\cite{FrederixVitos2026}.
 
 The report has three purposes:
 \begin{enumerate}
-  \item specify the observables and conditions required for a publishable
+  \item define the observables and conditions required for a reproducible
         benchmark;
   \item preserve a stable matrix of representative process families and colour
         approximations; and
-  \item separate measured data from prose by rendering every result table from
-        validated measurement records.
+  \item present performance only after numerical agreement has been verified.
 \end{enumerate}
 
-An \ReportNA{} entry means that the current result set has no recorded measurement
-for that slot. It is neither a zero, a failure, nor a value carried over from
-another implementation. Diagnostic status labels, when present, identify a
-recorded campaign stop rather than a physics value. A cell marked
-\ReportStatus{skip} records a deliberately held high-multiplicity measurement
-whose estimated or observed resource profile falls outside the campaign envelope.
+In a complete architecture edition, an \ReportNA{} entry denotes a
+process/multiplicity combination outside the declared measurement scope or one
+to which the observable does not apply. Completion requires every applicable
+cell with at most four final-state legs to be numerical. A measurement that
+does not pass numerical validation is labelled explicitly and never replaced
+by a timing value. No value is copied, interpolated, or estimated from a
+neighbouring cell.
 
 \section{Current Recursion and Model Lowering}
 
@@ -147,12 +156,14 @@ chirality or spin state, flavour and charge flow, colour state, momentum mask,
 and any auxiliary-current kind. Contributions with the same complete identity
 share one node. A topological sweep therefore evaluates each retained current
 once per phase-space point and reuses it in all dependent amplitudes.
+This is a Berends--Giele-type construction~\cite{BerendsGiele1988}.
 
-External UFO or serialized JSON sources are compiled to the same canonical
-model representation as the process generator consumes. Particle metadata,
-interactions, coupling orders, Lorentz tensors, colour tensors, propagators,
-and runtime parameters come from that representation. UFO directories contain
-trusted executable Python; serialized JSON is the portable data-only source.
+The Universal FeynRules Output (UFO) format describes particles, parameters,
+interactions, Lorentz tensors, colour tensors, and propagators
+in a model-independent form~\cite{UFO2012,UFO2023}. \PAC{} normalizes a trusted
+UFO Python module, or its own serialized JSON representation of that model, to
+the same canonical representation used by process generation. The UFO module
+is executable Python; the corresponding serialized JSON form is data-only.
 
 Optimizations on the external-model path are proof-gated rather than selected
 by particle names or PDG values. Exact normalized colour and Lorentz
@@ -166,10 +177,10 @@ additional exact kernel-equivalence certificate proves that reuse.
 
 \subsection{Contact terms and spin two}
 
-A vertex with valence above three is lowered to a deterministic tree of
-non-propagating auxiliary currents. The construction inserts the original
+A supported vertex with valence above three is lowered to a deterministic tree
+of non-propagating auxiliary currents. The construction inserts the original
 coupling once and introduces no pole. Direct contraction of the original
-contact tensor is the validation oracle for the scalar-contact ladder.
+contact tensor is the validation reference for the scalar-contact ladder.
 
 The scalar-gravity ladder exercises rank-two external states and
 momentum-dependent interactions. For a massless graviton, the helicity-two
@@ -186,8 +197,8 @@ agreement between ordinary and higher-precision evaluation.
 The process matrices use three colour contracts:
 \begin{center}
 \begin{tabular}{@{}L{0.45in}L{5.85in}@{}}
-\textbf{LC} & Leading-colour ordered amplitudes with physical colour-flow selectors. \\
-\textbf{NLC} & The leading term plus the first retained $1/N_c^2$-suppressed contribution. \\
+\textbf{LC} & Leading-colour ordered amplitudes with physical colour-flow selectors~\cite{Maltoni2002}. \\
+\textbf{NLC} & Every colour-metric entry whose leading power is at most two below the leading power of the complete basis. \\
 \textbf{Full} & The complete supported sparse colour metric for the generated amplitude basis. \\
 \end{tabular}
 \end{center}
@@ -202,9 +213,7 @@ tensors as
   \label{eq:nlc-entry-gate}
 \end{equation}
 and let \(P\) be the leading power of the complete colour basis.  The sparse
-NLC metric used by
-\texttt{build\_color\_}\allowbreak\texttt{contraction\_plan()} in
-\path{src/pyamplicol/color/contraction.py} is
+NLC metric is
 \begin{equation}
   C^{\mathrm{NLC}}_{ab}=
   \begin{cases}
@@ -229,116 +238,79 @@ off-diagonal overlaps are
 \end{tabular}
 \end{center}
 
-The implementation in
-\path{src/pyamplicol/color/contraction_factors.py} carries these powers as
-exact rational coefficients.  The upper-triangular runtime plan applies a
-separate factor of two to off-diagonal interference terms; that storage
-factor must not be confused with the colour coefficient in
-Eq.~\eqref{eq:nlc-exact-coefficient}.
+The powers and coefficients are retained exactly.  When only the
+upper-triangular part of the colour metric is stored, off-diagonal interference
+terms receive the usual factor of two; this factor is not part of the colour
+coefficient in Eq.~\eqref{eq:nlc-exact-coefficient}.
 
-The optimized \texttt{Runtime.evaluate()} path returns one summed matrix
-element per point.\par
-The resolved method \texttt{Runtime.}\allowbreak\texttt{evaluate\_resolved()} exposes LC values with
-axes \texttt{(point, helicity, flow)}. NLC and full-colour artifacts expose one
-already contracted colour component per helicity. Summing all non-point axes
-must reproduce the optimized total. Public selectors use physical helicity and
-flow identifiers; graph-local colour-sector identifiers are not report inputs.
+The summed observable returns one matrix element per point.  Leading-colour
+resolved values have axes \texttt{(point, helicity, flow)}; NLC and full-colour
+values have one contracted colour component per helicity. Summing all
+non-point axes must reproduce the directly evaluated total. Selectors refer to
+physical helicities and flows.
 
-All language bindings load the same process manifest and evaluator payloads.
-Cross-language agreement therefore validates the runtime interfaces and data
-layout. A separately generated reference is required for an independent
-physics comparison.
+All public interfaces use the same numerical core. Cross-interface agreement
+therefore checks data conventions, while a separately generated value is
+required for an independent physics comparison.
 
-The default JIT artifact embeds a self-contained SymJIT application for f64
-evaluation. Rusticol executes that payload through the separate MIT-licensed
-SymJIT runtime without importing Symbolica or consulting its runtime license
-state. Compiled ASM and C++ f64 payloads are likewise loaded directly by the
-native core. Python evaluation above f64 precision uses the retained Symbolica
-evaluator state and therefore requires Symbolica at runtime.
+The JIT backend stores a portable SymJIT application for binary64 evaluation;
+the receiving host creates code appropriate for its processor. ASM and C++
+payloads are target-specific. Evaluation above binary64 precision uses the
+retained symbolic evaluator state.
 
 \section{Benchmark Methodology}
 
 \subsection{Configuration contract}
 
 Each measurement begins from an immutable resolved configuration. Unless a
-table variant says otherwise, the report contract uses evaluator batch size
-128, output chunk size 512, stage-local parameter layout, ten Horner
-iterations, backend-default common-pair elimination, a twenty-second benchmark
-target, two warmup runs, and at least five timed samples. Compiled process
-matrices request JIT O3. Eager-DAG and recurrence matrices use portable JIT O2
-prepared models. Explicitly labelled comparison rows in the dedicated \(Z\)
-ladder may select JIT O1, JIT O3, ASM O3, or C++ O3 instead. Requested and
-effective configurations are retained separately so backend or resource
-adjustments remain visible.
+table states otherwise, measurements use a batch size of 128, two warmup runs,
+at least five timed samples, a five-second sampling target, and one CPU core.
+Compiled process matrices use JIT O3; eager and recurrence matrices use
+portable JIT O2 prepared models. Explicitly labelled rows in the dedicated
+\(Z\) ladder use JIT O1, JIT O3, ASM O3, or C++ O3. Backend-specific
+optimization settings are retained with the measurement record.
 
-Generation time is wall time for one explicit \texttt{Generator.generate()}
-operation starting from the resolved model input required by the selected
-execution mode and ending with a committed, loadable process artifact. It
-includes process expansion, mode-specific process lowering,
-validation-point preparation, artifact publication, and API-bundle emission.
-Compiled mode additionally includes process-specific evaluator construction
-and backend compilation. Eager mode includes DAG extraction, invocation-plan
-lowering, and runtime-container serialization. Recurrence mode includes compact
-schedule construction and serialization. Resolving or preparing a reusable
-built-in or UFO/JSON model bundle occurs before the process-generation timer and
-is recorded separately as model-level provenance. Existing artifacts may be
-profiled, but their generation slot remains \ReportNA{} unless a matching
-generation measurement is available.
+Generation time begins with the resolved model input required by an execution
+mode and ends with a validated, loadable process representation. Compiled mode
+includes process-specific evaluator construction and backend compilation.
+Eager and recurrence modes include construction and serialization of their
+respective numerical schedules. Preparation of a reusable built-in or UFO/JSON
+model bundle occurs before this timer and is therefore excluded from the
+process-generation values in the tables.
 
-Runtime measurements use \texttt{BenchmarkRunner} and the summed
-\texttt{Runtime.evaluate()} observable. The reported wall time begins inside
-Rusticol after caller-language array conversion and covers repeated ordinary
-core evaluations, including source preparation, numerical execution, output
-assignment, selector work, and reduction. The secondary native execution
-submetric is mode-specific: generated stage and amplitude evaluation for
-compiled mode, invocation-table execution for eager mode, and compact
-recurrence-schedule execution for recurrence mode. Python/NumPy packing and
-language-binding conversion are excluded from both reported quantities. A
-measurement records sample count, time per point, uncertainty, effective
-settings, software revision, artifact identity, hardware, and execution
-environment. Comparisons are valid only for the same process, colour accuracy,
-parameters, phase-space ensemble, precision, selectors, and normalization.
+Runtime measurements use the summed matrix element. The reported native wall
+time starts after caller-language array conversion and includes source
+construction, numerical evaluation, selector handling, and final reduction.
+The narrower execution submetric contains the mode-specific numerical schedule.
+Caller-language packing is excluded from both quantities. Comparisons use the
+same process, colour accuracy, parameters, phase-space point, precision,
+selectors, and normalization.
 
 \subsection{Benchmark platform}
 
-The populated measurements in this report were produced on the cluster host
-\texttt{itphlies.clan} from the Nix developer shell, not from a scheduler-visible
-batch partition in the reporting environment.  The node reports Linux
-\texttt{6.12.63} on NixOS \texttt{26.05}, \texttt{x86\_64}, glibc \texttt{2.42}.
-The processor is a dual-socket AMD EPYC 9754 system (Genoa/Zen~4): 256 physical
-cores are visible across eight NUMA nodes, with 384 logical CPUs online in this
-session.  The advertised instruction-set families include SSE through SSE4.2,
-FMA, AVX, AVX2, AVX-512 foundation/vector, VNNI/BF16, AES/SHA, BMI1/2, ADX,
-VAES, and carry-less multiplication.  Installed memory reported by the kernel
-is \texttt{1188419660 kB} (\(\simeq 1.11\) TiB), with no configured swap.
-
-All report measurements use the repository's developer installation through
-\texttt{.venv/bin/python} inside \texttt{nix develop}.  The recorded toolchain
-is Python \texttt{3.11.15} with NumPy \texttt{2.4.2},
-Rust \texttt{1.89.0}, Cargo \texttt{1.89.0}, GCC/G++/GNU Fortran
-\texttt{15.2.0}, and pdfTeX \texttt{3.141592653-2.6-1.40.27} from TeX Live
-2025.  Unless a cell's manifest states otherwise, generation and evaluation use
-one core and runtime sampling targets twenty seconds.  Resource ceilings and
-timeouts are retained in each measurement record; a limit reached is rendered
-as a status rather than a timing value.  Collection concurrency and scheduler
-queue time are not part of a cell's workload.  Wall times are native Rusticol
-repeated-core timings after caller-language momentum packing, and model
-compilation is recorded separately from process-generation time.
+\ReportEditionStatement Its hardware, operating system, and processor summary
+is \ReportPlatformSummary. The
+measurement profile is \texttt{\ReportProfileName}; its recorded software
+environment is \ReportToolchainSummary. Measurements from different
+processor architectures are published as separate editions and are never
+combined in a summary ratio. Unless a table states otherwise, generation and
+evaluation use one CPU core and a five-second sampling target.
 
 \subsection{Numerical validation}
 
-The matrix element and its independent reference are evaluated at the same
-deterministic points with the same parameter card. Shared-core language checks
-use relative tolerance $10^{-12}$ and absolute tolerance $10^{-15}$.
-Independent reference comparisons use relative tolerance $10^{-8}$, with
-higher precision used to diagnose unstable points. A populated result must
-also satisfy the resolved-sum identity and preserve expected structural zeros.
+For each Standard-Model process, all compared execution modes and the original
+\AC{} reference are evaluated at the same deterministic phase-space point with
+the same parameter card. Cross-mode comparisons use relative tolerance
+$10^{-12}$ and absolute tolerance $10^{-15}$; comparisons with the independent
+\AC{} result use relative tolerance $10^{-8}$. Scalar-model ladders instead
+compare binary64 evaluation with higher precision and, where applicable,
+direct contact-tensor contraction. Every result must reproduce its resolved
+sum and preserve expected structural zeros.
 
-No timing is accepted as a numerical validation result. Conversely, a valid
-matrix element does not populate generation or runtime fields without a
-matching timing run. A result enters the report only after its record is
-internally consistent and its pointwise comparison has the status required by
-the table.
+Timing and numerical validation are separate requirements: a timing is
+reported only when the corresponding matrix element passes all validation
+checks, and numerical agreement alone does not substitute for a measured
+generation or runtime value.
 
 \clearpage
 \begin{landscape}
@@ -359,15 +331,12 @@ and optimization level explicitly; all other workload settings follow the
 benchmark contract above.
 
 The eager and recurrence rows start from the corresponding portable JIT O2
-prepared model.  Each creates two complete process artifacts: topology replay
-for selected-flow/helicity-sum and all-flow union for
-all-flows/single-helicity.  Each workload block reports its own process
-generation time and applies its flow or helicity selector at runtime.
-Prepared-model creation is excluded from both process-generation entries and
-retained as separate provenance.  Every displayed Z-ladder ratio continues to
-use original \AC{} as its denominator; shared-core pointwise checks additionally
-compare the pyAmpliCol modes with the matching validated recurrence or compiled
-result at the stricter tolerance.
+prepared model. Each layout retains complete flow and helicity coverage; the
+selected-flow workload sums helicities, while the all-flow workload selects one
+helicity at runtime. Prepared-model creation is excluded from process-generation
+time. Every displayed \(Z\)-ladder ratio uses the matching original \AC{}
+workload as its denominator, while the \PAC{} modes are also checked against
+one another at the stricter cross-mode tolerance.
 
 Runtime comparisons between these backends also include their
 vectorization strategy. The SymJIT application evaluates a batch with SIMD
@@ -387,21 +356,16 @@ The report labels source particles in process order. The selected leading-colour
 reference order for the selected-flow timing is therefore \((2,4,1,3)\): the
 colour line enters through \(\bar d\), traverses the gluon, and exits through
 \(d\), while the colour-singlet \(Z\) remains in the public ordering only to
-keep source labels unambiguous. Internally, the colour-sector match is the
-coloured word \((2,4,1)\).
+keep source labels unambiguous. The corresponding coloured word is
+\((2,4,1)\).
 
-\PAC{} builds a shared-current DAG for the selected process. Source nodes carry
-particle, momentum, helicity, flavour, and colour-flow labels; composite nodes
-are keyed by the full current identity and the external-label mask. When two
-diagrams need the same current, the DAG contains one node and downstream
-amplitude roots reuse its value. Both LC report artifacts retain all physical
-flows and helicities. The topology-replay artifact selects \((2,4,1)\) at
-runtime and sums source helicities; the all-flow-union artifact selects one
-source-helicity assignment at runtime and sums every LC flow. Each generated
-artifact serializes its own stages and evaluator payloads; Rusticol loads it,
-executes \texttt{Runtime.evaluate()} inside the native core, and
-\texttt{BenchmarkRunner} records both the native repeated wall time and the sum
-of evaluator-call timings.
+\PAC{} builds a shared-current representation for the selected process. Source
+nodes carry particle, momentum, helicity, flavour, and colour-flow labels;
+composite nodes are identified by their complete quantum state. The
+selected-flow workload uses the traversal \((2,4,1)\) and sums helicities; the
+all-flow workload sums every LC flow for one selected helicity. Both layouts
+retain complete physical coverage and are validated against the same reference
+point before timing.
 
 \clearpage
 \input{result_z_builtin_sm_table.tex}
@@ -415,18 +379,19 @@ of evaluator-call timings.
 
 \section{Colour-Singlet Model Ladders}
 
-The scalar-contact ladder retains $n=2,\ldots,8$ final scalars. It tests generic
-high-valence contact decomposition, identical-particle normalization, and
-source parity without Standard-Model-specific kernels. The scalar-gravity
-ladder retains $n=2,\ldots,4$ final gravitons and exercises spin-two
-wavefunctions, tensor propagators, and momentum-dependent vertices. Since all
-external particles in these fixtures are colour singlets, LC, NLC, and full
-colour reduce to the same unit colour contraction.
+Both colour-singlet ladders use compiled JIT O3 evaluation and the full-colour
+contract. The scalar-contact ladder retains $n=2,\ldots,8$ final scalars and
+tests generic high-valence contact decomposition, identical-particle
+normalization, and source parity without Standard-Model-specific kernels. The
+scalar-gravity ladder retains $n=2,\ldots,4$ final gravitons and exercises
+spin-two wavefunctions, tensor propagators, and momentum-dependent vertices.
+Because every external particle in these fixtures is a colour singlet, LC,
+NLC, and full colour reduce to the same unit colour contraction.
 
 For these ladders, the relative-difference row is
-\(|M_{\mathrm{f64}}-M_{\mathrm{hp}}|/\max(|M_{\mathrm{hp}}|,10^{-300})\),
-where \(M_{\mathrm{hp}}\) is the same point re-evaluated through the
-higher-precision diagnostic path. It is a numerical stability check, not a
+\(\bigl||\mathcal M|^2_{\mathrm{f64}}-|\mathcal M|^2_{\mathrm{hp}}\bigr|
+/\max(|\mathcal M|^2_{\mathrm{hp}},10^{-300})\), where the high-precision value
+uses the same phase-space point. It is a numerical stability check, not a
 performance ratio.
 
 \input{result_scalar_contact_table.tex}
@@ -434,15 +399,14 @@ performance ratio.
 
 \section{Interpretation}
 
-This report establishes coverage, methodology, and the measured result
-set. Performance comparisons are meaningful only for a reviewed baseline
-produced from the same effective configuration on named hardware. Readers
-should treat every \ReportNA{} entry as unavailable and should not interpolate,
-copy, or estimate a value from neighbouring multiplicities or model profiles.
-
-The retained measurement records under \texttt{docs/results/} are authoritative
-for table completeness and provenance. The TeX inputs and this PDF are their
-publication presentation.
+Performance comparisons are meaningful only for a baseline measured with the
+same observables, parameters, selectors, and hardware profile. The result
+tables therefore present validated, architecture-local comparisons; they do
+not combine measurements from different machines. An \ReportNA{} entry is
+outside this edition's measured scope or not applicable and must not be
+interpreted as zero. Numerical agreement, timing uncertainty, and source
+identity remain part of the published result set even when a compact table
+shows only the central timing.
 
 \clearpage
 \input{section_zgg_example.tex}
@@ -454,5 +418,45 @@ publication presentation.
 \input{section_eager_execution.tex}
 \clearpage
 \input{section_ufo_support.tex}
+
+\clearpage
+\begin{thebibliography}{9}
+
+\bibitem{BerendsGiele1988}
+F.~A. Berends and W.~T. Giele,
+\emph{Recursive Calculations for Processes with \(n\) Gluons},
+Nucl.\ Phys.\ B \textbf{306} (1988) 759--808,
+doi:10.1016/0550-3213(88)90442-7.
+
+\bibitem{Maltoni2002}
+F.~Maltoni, K.~Paul, T.~Stelzer, and S.~Willenbrock,
+\emph{Color-flow decomposition of QCD amplitudes},
+Phys.\ Rev.\ D \textbf{67} (2003) 014026,
+doi:10.1103/PhysRevD.67.014026,
+arXiv:hep-ph/0209271.
+
+\bibitem{UFO2012}
+C.~Degrande, C.~Duhr, B.~Fuks, D.~Grellscheid, O.~Mattelaer, and T.~Reiter,
+\emph{UFO---The Universal FeynRules Output},
+Comput.\ Phys.\ Commun.\ \textbf{183} (2012) 1201--1214,
+doi:10.1016/j.cpc.2012.01.022,
+arXiv:1108.2040.
+
+\bibitem{UFO2023}
+L.~Darm\'e et al.,
+\emph{UFO 2.0---The Universal Feynman Output format},
+Eur.\ Phys.\ J.\ C \textbf{83} (2023) 631,
+doi:10.1140/epjc/s10052-023-11780-9,
+arXiv:2304.09883.
+
+\bibitem{FrederixVitos2026}
+R.~Frederix and T.~Vitos,
+\emph{Event generation with exponential scaling in multiplicity using
+AmpliCol},
+JHEP \textbf{04} (2026) 192,
+doi:10.1007/JHEP04(2026)192,
+arXiv:2601.19483.
+
+\end{thebibliography}
 
 \end{document}

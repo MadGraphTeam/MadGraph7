@@ -15,6 +15,7 @@ import math
 import os
 import platform
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -36,7 +37,9 @@ from .runner import (
 
 DEFAULT_WARMUP_POINTS = 100
 DEFAULT_MIN_POINTS = 100
-DEFAULT_MAX_POINTS = 100_000
+DEFAULT_MAX_POINTS = 10_000_000
+DEFAULT_MIN_PROFILE_CHUNKS = 5
+DEFAULT_MAX_PROFILE_CHUNKS = 512
 MAX_OPEN_QUARK_LINES = 3
 
 
@@ -50,6 +53,8 @@ class LegacySettings:
     warmup_points: int = DEFAULT_WARMUP_POINTS
     minimum_points: int = DEFAULT_MIN_POINTS
     maximum_points: int = DEFAULT_MAX_POINTS
+    minimum_profile_chunks: int = DEFAULT_MIN_PROFILE_CHUNKS
+    maximum_profile_chunks: int = DEFAULT_MAX_PROFILE_CHUNKS
     jobs: int = 1
     repository: Path | None = None
 
@@ -62,6 +67,16 @@ class LegacySettings:
             raise ValueError("minimum_points must be positive")
         if self.maximum_points < self.minimum_points:
             raise ValueError("maximum_points must not be below minimum_points")
+        if self.minimum_profile_chunks < DEFAULT_MIN_PROFILE_CHUNKS:
+            raise ValueError(
+                "minimum_profile_chunks must be at least "
+                f"{DEFAULT_MIN_PROFILE_CHUNKS}"
+            )
+        if self.maximum_profile_chunks < self.minimum_profile_chunks:
+            raise ValueError(
+                "maximum_profile_chunks must not be below "
+                "minimum_profile_chunks"
+            )
         if self.jobs < 1:
             raise ValueError("jobs must be positive")
 
@@ -377,6 +392,17 @@ class ProfileResult:
     record: Mapping[str, object]
     probe: object | None
     warmup_record: Mapping[str, object]
+    standard_error_seconds_per_point: float
+    relative_standard_error: float
+
+
+@dataclass(frozen=True, slots=True)
+class _ProfileChunk:
+    points: int
+    seconds: float
+    rows: tuple[TimingRow, ...]
+    result: CommandResult
+    probe: object | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -680,6 +706,8 @@ class LegacyMeasurementAdapter:
             "warmup_points": settings.warmup_points,
             "minimum_points": settings.minimum_points,
             "maximum_points": settings.maximum_points,
+            "minimum_profile_chunks": settings.minimum_profile_chunks,
+            "maximum_profile_chunks": settings.maximum_profile_chunks,
             "generation_timing_is_workload_specific": True,
         }
         result["failure"] = None
@@ -1088,34 +1116,114 @@ class LegacyMeasurementAdapter:
         settings: LegacySettings,
         timing_labels: Sequence[str],
     ) -> ProfileResult:
-        warmup_result, warmup_rows, warmup_probe = invoke(settings.warmup_points)
+        warmup_result, warmup_rows, _warmup_probe = invoke(
+            settings.warmup_points
+        )
         warmup_seconds = _timing_seconds(warmup_rows, *timing_labels)
-        if warmup_seconds is None:
+        if warmup_seconds is None or warmup_seconds <= 0.0:
             warmup_seconds = warmup_result.elapsed_seconds
+        chunks: list[_ProfileChunk] = []
+        phase = "measurement_chunks"
         points = adaptive_profile_points(
             warmup_seconds,
-            target_runtime_seconds=settings.target_runtime_seconds,
+            target_runtime_seconds=(
+                settings.target_runtime_seconds
+                / settings.minimum_profile_chunks
+            ),
             warmup_points=settings.warmup_points,
             minimum_points=settings.minimum_points,
             maximum_points=settings.maximum_points,
         )
-        if points <= settings.warmup_points:
-            result, rows, probe = warmup_result, warmup_rows, warmup_probe
-            points = settings.warmup_points
-            phase = "warmup_reused_as_measurement"
-        else:
+        measured_seconds = 0.0
+        for _index in range(settings.maximum_profile_chunks):
             result, rows, probe = invoke(points)
-            phase = "measurement"
-        seconds = _timing_seconds(rows, *timing_labels)
-        if seconds is None:
-            seconds = result.elapsed_seconds
+            seconds = _timing_seconds(rows, *timing_labels)
+            if seconds is None or seconds <= 0.0:
+                seconds = result.elapsed_seconds
+            if not math.isfinite(seconds) or seconds <= 0.0:
+                raise LegacyAdapterError(
+                    "legacy timing chunk did not report a positive duration"
+                )
+            chunks.append(
+                _ProfileChunk(
+                    points,
+                    seconds,
+                    tuple(rows),
+                    result,
+                    probe,
+                )
+            )
+            measured_seconds = math.fsum(
+                chunk.seconds for chunk in chunks
+            )
+            minimum_complete = (
+                len(chunks) >= settings.minimum_profile_chunks
+            )
+            target_complete = (
+                measured_seconds >= settings.target_runtime_seconds
+            )
+            if minimum_complete and target_complete:
+                break
+            remaining = max(
+                settings.target_runtime_seconds - measured_seconds,
+                0.0,
+            )
+            remaining_minimum_chunks = max(
+                settings.minimum_profile_chunks - len(chunks),
+                1,
+            )
+            next_chunk_target = remaining / remaining_minimum_chunks
+            estimated = math.ceil(next_chunk_target * points / seconds)
+            points = max(
+                settings.minimum_points,
+                min(settings.maximum_points, int(estimated)),
+            )
+        else:
+            raise LegacyAdapterError(
+                "legacy timing did not reach its target and minimum sample "
+                "count within "
+                f"{settings.maximum_profile_chunks} bounded chunks"
+            )
+
+        points = sum(chunk.points for chunk in chunks)
+        seconds = math.fsum(chunk.seconds for chunk in chunks)
+        if seconds < settings.target_runtime_seconds:
+            raise LegacyAdapterError(
+                "legacy timing completed without reaching its target runtime"
+            )
+        rates = tuple(chunk.seconds / chunk.points for chunk in chunks)
+        mean_rate = statistics.fmean(rates)
+        standard_error = statistics.stdev(rates) / math.sqrt(len(rates))
+        relative_standard_error = (
+            standard_error / mean_rate if mean_rate > 0.0 else 0.0
+        )
+        representative = chunks[0]
+        final = chunks[-1]
         return ProfileResult(
             points=points,
             seconds=seconds,
-            rows=tuple(rows),
-            record={**result.as_record(), "profile_phase": phase},
-            probe=probe,
+            rows=representative.rows,
+            record={
+                **final.result.as_record(),
+                "profile_phase": phase,
+                "target_runtime_seconds": settings.target_runtime_seconds,
+                "achieved_runtime_seconds": seconds,
+                "target_runtime_achieved": True,
+                "chunk_count": len(chunks),
+                "total_points": points,
+                "chunks": [
+                    {
+                        **chunk.result.as_record(),
+                        "points": chunk.points,
+                        "profile_seconds": chunk.seconds,
+                    }
+                    for chunk in chunks
+                ],
+            },
+            probe=final.probe,
             warmup_record=warmup_result.as_record(),
+            standard_error_seconds_per_point=standard_error,
+            relative_standard_error=relative_standard_error,
         )
 
     def _invoke_command(
@@ -1191,8 +1299,10 @@ class LegacyMeasurementAdapter:
                 "execution_seconds_per_point": profile.seconds / profile.points,
                 "matrix_element": abs(float(matrix_element)),
                 "sample_count": profile.points,
-                "standard_error_seconds_per_point": 0.0,
-                "relative_standard_error": 0.0,
+                "standard_error_seconds_per_point": (
+                    profile.standard_error_seconds_per_point
+                ),
+                "relative_standard_error": profile.relative_standard_error,
                 "provenance": {
                     "generation_source": generation_source,
                     "runtime_profile": {

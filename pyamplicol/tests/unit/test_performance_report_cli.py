@@ -25,6 +25,13 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     assert worker.target_runtime == 5.0
 
 
+def test_report_profile_is_a_global_architecture_scope() -> None:
+    parsed = _parser().parse_args(
+        ("--report-profile", "macbook_M3", "populate")
+    )
+    assert parsed.report_profile == "macbook_M3"
+
+
 def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:
     repo = tmp_path / "repo"
     (repo / "docs/results").mkdir(parents=True)
@@ -35,7 +42,7 @@ def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:
 
     assert main(("--repo-root", str(repo), "validate")) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["table_count"] == 16
+    assert payload["table_count"] == 17
     assert payload["cache_count"] > 12
 
     assert main(("--repo-root", str(repo), "audit")) == 0

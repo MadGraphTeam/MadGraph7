@@ -2,115 +2,67 @@
 \section{Prepared-Model Eager DAG Execution}
 \label{sec:eager-execution}
 
-\PAC{} provides two execution contracts.  The default \emph{compiled} mode
-turns a complete process stage into one or more process-specific evaluator
-applications.  The opt-in \emph{eager} mode compiles the model-local vertex,
-current-finalization, closure, and parameter kernels once, then represents a
-process by compact invocation tables.  Rusticol interprets those tables in its
-numeric core.  The modes use the same physical DAG, normalization, colour
-reduction, selectors, and public APIs, but deliberately place the compilation
-boundary at different levels:
+This section compares the compiled and eager realizations of the shared-current
+DAG; recurrence execution is described by the general recursion in
+Sec.~\ref{sec:zgg-example}.  Compiled mode combines many current relations into
+process-specific stage evaluators.  Eager mode prepares model-local kernels
+once and represents each process by an invocation schedule.  They use the same
+physical graph, normalization, colour contraction, and resolved observables.
 
 \begin{center}
 \small
-\begin{tabular}{L{0.17\textwidth}L{0.36\textwidth}L{0.36\textwidth}}
+\begin{tabular}{L{0.18\textwidth}L{0.35\textwidth}L{0.35\textwidth}}
 \toprule
  & \textbf{Compiled mode} & \textbf{Eager mode} \\
 \midrule
-Compiled unit
-  & A process-stage expression containing many current recurrences
-  & One canonical model-local kernel evaluation class \\
-Process generation
-  & Builds and compiles process-specific stage applications
-  & Rust lowers proven DAG columns to invocation, finalization, closure, reduction,
-    and selector tables \\
-Runtime scheduling
-  & Calls a small number of wide process-stage applications
-  & Gathers packets, calls reusable kernels, scatters contributions, and finalizes currents \\
-Coverage contract
-  & Complete artifacts support runtime selectors; selected-coverage artifacts may specialize
-  & The same complete-coverage and selected-coverage contracts \\
-Default
-  & Yes
-  & No; selected with \texttt{execution\_mode = "eager"} \\
+Numerical unit
+  & Multi-output expression specialized to one process stage
+  & Reusable model kernel applied by a process schedule \\
+Process preparation
+  & Builds and compiles process-specific stage evaluators
+  & Maps the proven DAG to reusable model kernels and a process schedule \\
+Runtime work
+  & Calls a small number of wide stage evaluators
+  & Applies reusable kernels and combines the resulting currents \\
+Expected trade-off
+  & More preparation for greater process-wide fusion
+  & Faster process preparation with additional scheduling work \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Eager execution is not a replacement for compiled execution.  It is a second
-lane for applications where rapid process generation, reusable model kernels,
-or runtime selector flexibility matters more than maximal process-wide kernel
-fusion.  No eager branch is present in the compiled lane's inner loop, and the
-compiled artifact contract remains unchanged.
+\subsection{Prepared model and process schedule}
 
-\subsection{Prepared model and process plan}
-
-A prepared model bundle separates model work from process work.  Schematically,
-the bundle is
+A prepared model separates model-level algebra from process-level graph
+construction.  Schematically,
 \begin{equation}
   \mathcal{B}_{M,b,o,t}
   = \left(
       \mathcal{I}_{M},\;
-      \mathcal{E}_{M},\;
       \{K_\kappa^{(b,o,t)}\}_{\kappa\in\mathcal{K}_M},\;
       \mathcal{P}_{M}
     \right),
   \label{eq:eager-prepared-model}
 \end{equation}
-where \(\mathcal{I}_{M}\) is the portable compiled-model IR,
-\(\mathcal{E}_{M}\) retains exact expressions, \(K_\kappa\) is one prepared
-kernel for canonical evaluation class \(\kappa\), and \(\mathcal{P}_{M}\)
-contains ABI and provenance metadata.  The labels \(b,o,t\) identify backend,
-optimization settings, and target contract.  A bundle contains exactly one
-prepared JIT, C++, or ASM backend pack.
+where \(\mathcal I_M\) defines the model, \(K_\kappa\) are numerical kernels for
+its canonical interaction classes, and \(\mathcal P_M\) records the numerical
+and target conventions.  The labels \(b,o,t\) identify the backend,
+optimization, and target architecture.
 
-Eager process generation keeps symbolic and numerical responsibilities
-separate.  Python performs the Symbolica algebra, physics proofs,
-prepared-kernel resolution, and extraction of the proven \texttt{GenericDAG}.
-It then fills fixed-width columnar arrays for currents, interactions, roots,
-kernel references, permutations, aliases, selector proofs, and reductions.
-Rust validates those columns and lowers them directly to
-\begin{equation}
-  \mathcal{Q}_{P}
-  = \left(
-      \{\mathsf{Inv}_s,\mathsf{Att}_s,\mathsf{Fin}_s\}_{s=1}^{S},\;
-      \mathsf{Close},\;\mathsf{Reduce},\;\mathsf{Select}
-    \right).
-  \label{eq:eager-process-plan}
-\end{equation}
-Here \(\mathsf{Inv}_s\) identifies kernel calls in recursion stage \(s\),
-\(\mathsf{Att}_s\) maps their outputs to current components,
-\(\mathsf{Fin}_s\) applies the current's finalization or propagator once,
-\(\mathsf{Close}\) builds amplitudes, and \(\mathsf{Reduce}\) performs the
-physical colour/helicity contraction.  \(\mathsf{Select}\) stores dependency
-domains for runtime selectors.  The Rust lowering assigns slots, interns
-selector domains, groups invocations, schedules attachments and finalizations,
-constructs closures and coherent reductions, validates the resulting plan, and
-writes the indexed binary runtime layout.  It does not return expanded Python
-row objects or construct a large JSON runtime schema.
+For a process \(P\), the eager schedule records the graph dependencies, the
+kernel associated with each interaction, the current transformations, and the
+final colour and helicity reductions. It also retains the dependencies needed
+for resolved helicity and colour-flow selections.
 
-No backend evaluator is built or compiled during this process step.  Invocation
-rows refer to kernels already present in \(\mathcal{B}\), and the referenced
-prepared applications are copied into the standalone process artifact.  The
-cost of preparing \(\mathcal{B}\) is therefore a separate model-level quantity,
-not part of eager process-generation time.
-
-Prepared kernels are derived from the same verified oriented-kernel catalog
-used by the model-generic UFO lowering.  The built-in Standard Model emits that
-same catalog, while its explicitly Standard-Model-specific physics remains
-under \path{src/pyamplicol/models/builtin/}.  Couplings, colour coefficients,
-exchange signs, input permutations, and proof factors are invocation metadata,
-not distinct compiled applications.  Existing proof-gated auxiliary-current
-decompositions continue to reduce supported higher-point interactions to the
-same local kernel classes described here and in the UFO-support section below.
+Because the numerical kernels are already part of \(\mathcal B\), eager
+process generation does not compile a new evaluator for every process.  Model
+preparation occurs before the process-generation timer and is not included in
+the process-generation values reported here.
 
 \subsection{Stage execution}
 
-Let \(V_{c\alpha p}\) be component \(\alpha\) of current slot \(c\) at phase-space
-point \(p\).  An invocation row \(r\) stores a kernel identifier \(\kappa(r)\),
-input slots and component permutations, momentum slots, coupling references,
-an exact factor \(w_r\), and an output attachment.  For one stage, Rusticol
-first forms unpropagated current components
+Let \(V_{c\alpha p}\) denote component \(\alpha\) of current \(c\) at
+phase-space point \(p\).  For one stage, unpropagated components are
 \begin{equation}
   U_{c\alpha p}^{(s)} =
   \sum_{r\in\mathcal{R}_s(c,\alpha)}
@@ -120,23 +72,22 @@ first forms unpropagated current components
       \left(
         G_r(V_{\cdot\cdot p}),\;q_r(p),\;\theta
       \right)
-    \right]_{\alpha(r)} .
+    \right]_{\alpha(r)} ,
   \label{eq:eager-invocation-sum}
 \end{equation}
-The gather map \(G_r\) is fixed by the invocation table.  Contributions are
-accumulated before current finalization, so a current with momentum \(Q_c\) is
-materialized exactly once:
+where \(G_r\) gathers the required current components and momenta, \(w_r\) is
+an exact factor, and \(\theta\) denotes model parameters.  Contributions are
+accumulated before finalization:
 \begin{equation}
   V_{c\beta p}^{(s)} =
   \left[F_{\phi(c)}\left(U_{c\cdot p}^{(s)},Q_c(p),\theta\right)\right]_\beta .
   \label{eq:eager-finalization}
 \end{equation}
-The finalization class \(\phi(c)\) may be an identity, a propagator, or another
-model-proved current transformation.  This ordering prevents a propagator from
-being applied once per contributing vertex and preserves the compiled-mode
-normalization convention.
+The map \(F_{\phi(c)}\) is an identity, propagator, or another model-defined
+current transformation.  Applying it once per current preserves the
+normalization convention of compiled mode.
 
-After the last recursion stage, closure rows produce amplitude components,
+After the last stage, closure relations produce amplitude components,
 \begin{equation}
   A_{h\gamma p}
   = \sum_{r\in\mathcal{C}(h,\gamma)}
@@ -145,194 +96,41 @@ After the last recursion stage, closure rows produce amplitude components,
       \left(G_r^{\mathrm{cl}}(V_{\cdot\cdot p}),q_r(p),\theta\right),
   \label{eq:eager-closure}
 \end{equation}
-and the existing LC or contracted-colour reduction computes the requested
-total or resolved observable.  In a contracted basis this has the schematic
-form
+and the standard colour/helicity reduction gives the requested observable.  In
+a contracted colour basis,
 \begin{equation}
   \mathcal{M}_p =
   \mathcal{N}\sum_h\sum_{\gamma,\delta}
   A_{h\gamma p}\,C_{\gamma\delta}\,A^*_{h\delta p},
   \label{eq:eager-reduction}
 \end{equation}
-with the same colour matrix \(C\), symmetry factors, initial-state average,
-and coupling normalization as compiled mode.
+with the same colour matrix, symmetry factors, initial-state average, and
+coupling normalization as the other execution modes.
 
-The Rust implementation is deliberately separate from compiled execution.
-Plan loading and validation are in
-\path{rust/crates/rusticol-core/src/eager_runtime/plan.rs}; the allocation-free
-numeric loop is in \path{eager_runtime/execute.rs}; runtime ownership and
-workspace reuse are in \path{eager_runtime/runtime.rs}.  The artifact-facing
-integration is isolated under \path{rusticol-core/src/engine/eager_*.rs}.
+\subsection{Batched evaluation and selectors}
 
-\subsection{Packetization, tiling, and allocation discipline}
+Compatible kernel applications are batched across phase-space points so that
+the point dimension can be vectorized. Large input batches may be partitioned,
+but this changes neither the graph nor the numerical result.
 
-Rusticol does not call a backend once per DAG edge.  Invocation rows are
-packetized by kernel class and compatible mapping.  For a tile of \(T\) points,
-the innermost layout keeps points contiguous,
-\begin{equation}
-  X[\text{argument}][\text{invocation}][\text{point}],
-  \label{eq:eager-packet-layout}
-\end{equation}
-so a SymJIT application can auto-vectorize across points.  C++ and ASM packs
-receive the same batched packet but remain scalar across rows; no SIMD claim is
-made for those backends.
+A helicity or flow selection retains the complete dependency closure of the
+requested amplitudes. A complete leading-colour process therefore supports a
+selected flow with summed helicities, a selected helicity with all flows, or
+any retained subset without changing its physics content. The two corresponding
+graph layouts are described in Sec.~\ref{sec:lc-flow-layouts}.
 
-Current storage is component-major with points contiguous.  Gather buffers,
-kernel outputs, current storage, selector masks, closure storage, and reduction
-workspace are allocated at load or selector change and then reused.  After
-warm-up, \texttt{evaluate\_into} performs no heap allocation in the Rust numeric
-core.  Large batches are tiled using
-\begin{equation}
-  T_{\mathrm{eff}} = \min\!\left(
-    T_{\mathrm{requested}},
-    \left\lfloor\frac{W_{\mathrm{limit}}}{W_{\mathrm{per\ point}}}\right\rfloor
-  \right),
-  \label{eq:eager-workspace-tile}
-\end{equation}
-subject to a minimum valid packet.  The public defaults are a requested tile
-size of 1024 points and a 256 MiB workspace.  This keeps memory bounded for
-arbitrarily large Monte-Carlo batches without placing Python or NumPy packing
-inside the reported Rusticol wall time.
+\subsection{Precision, portability, and interpretation}
 
-Eager profiling separates initialization, gather, kernel calls, invocation
-scatter, finalization, finalization scatter, closure, reduction, and copy-out.
-Those markers are returned by \texttt{pyamplicol profile} and the same native
-runtime profile used by Python, C11, C++17, Fortran 2008, and Rust 2021 clients.
-The report's eager \texttt{eval} field is the inclusive eager execution lane,
-not kernel-call time alone; the detailed profile separates its constituent
-phases.
+A standalone eager process contains the numerical kernels and schedule needed
+for evaluation.  Portable JIT state is compiled for the receiving processor at
+load time; target-native ASM and C++ payloads remain architecture-specific.
+The exact symbolic representation is retained for higher-precision evaluation.
 
-\subsection{Runtime selectors and complete LC coverage}
-
-For a selector \(\sigma\), eager lowering stores a dependency domain
-\(D(x)\) for each invocation, attachment, finalization, and closure row \(x\).
-The active schedule is
-\begin{equation}
-  \mathcal{Q}_{P}(\sigma)
-  = \{x\in\mathcal{Q}_{P}:D(x)\cap\sigma\neq\varnothing\},
-  \label{eq:eager-selector-closure}
-\end{equation}
-including all transitive current dependencies.  Masks and packet schedules are
-rebuilt only when a selector changes, not at every phase-space point.
-
-This distinction is important for LC timing.  Every \emph{complete} eager LC
-artifact contains each physical flow and generated helicity component.  A
-caller may select any one flow for a helicity sum, one helicity for all flows,
-or any supported subset at runtime.  The flow identifier, for example
-\texttt{flow:3,1,2,5,6,7,4}, is therefore a runtime choice rather than a flow
-hard-wired during process generation.  A deliberately selected-coverage eager
-artifact remains limited to the components that were generated.
-
-Compiled mode exposes the same complete-coverage runtime contract.  Coverage
-does not, however, prescribe one execution graph.  As described in
-Sec.~\ref{sec:lc-flow-layouts}, both execution modes provide topology-replay
-and all-flow-union layouts.  The report uses topology replay for
-single-flow/helicity-sum and the all-flow union for
-all-flows/single-helicity, with separate process-generation times.  Either
-artifact can choose any retained flow or helicity without regeneration.
-Deliberately specialized artifacts remain useful as optimization baselines,
-but are not the reusable report workloads.
-
-\subsection{Artifact, precision, and portability contracts}
-
-An eager process artifact is standalone.  It copies each referenced prepared
-kernel exactly once under the artifact root and never depends on the original
-prepared-model path.  Fixed-width little-endian tables use 32-bit identifiers
-and 64-bit offsets/counts.  Plan-v3 artifacts use runtime kind
-\texttt{pyamplicol-runtime-eager-execution}, capability
-\texttt{rusticol.eager-runtime-layout.complex-f64.v1}, and four complementary
-records:
-\begin{itemize}
-  \item a small \path{execution.json} summary containing identity, ABI,
-        provenance, counts, digests, options, and inspection statistics;
-  \item a compact \path{physics.json} containing public process axes, coverage,
-        selector metadata, parameters, normalization, and proof summaries;
-  \item \path{processes/<id>/eager-runtime.pacbin}, containing the
-        process-local invocation, slot, selector, closure, reduction, and proof
-        tables; and
-  \item the artifact-root \path{evaluators.pacbin}, containing indexed prepared
-        evaluators and their exact states.
-\end{itemize}
-
-High-cardinality runtime data is not duplicated in JSON.  Rusticol
-authenticates the artifact and PACBIN indices, memory-maps the containers, and
-decodes the eager layout into a validated owned execution plan.  Normal
-\texttt{inspect} operations use the summary metadata rather than scanning every
-table.  The loader rejects malformed offsets, unknown kernel identifiers,
-incompatible ABIs, and target mismatches before entering native evaluation.
-
-This representation reduces Python object construction, JSON serialization,
-filesystem entry count, artifact footprint, peak generation memory, and cold
-load work.  It does not change the eager numerical schedule: topology replay,
-LC all-flow union, NLC/full contraction, aliases, structural zeros, and global
-or per-point selectors retain their existing semantics.  Both LC layouts use
-the same Rust lowering and compact container contract.  Exact Python execution
-reads the same indexed plan and evaluator states.  Target-native C++ and ASM
-libraries remain separate payloads.
-
-Plan-v3 is the eager artifact compatibility boundary.  Earlier eager artifacts
-use an expanded runtime representation and must be regenerated; the loader
-identifies that capability before opening the old high-cardinality payload and
-reports the required regeneration.  This requirement is limited to eager
-artifacts and does not change compiled artifacts or prepared-model bundles.
-
-JIT packs store SymJIT application state rather than final machine code.  The
-portable SymJIT storage v3 contract is available at optimization level 2, and
-the receiving host rebuilds executable code for its CPU.  Wheels therefore
-carry the built-in-SM \texttt{built-in-sm-jit-o2} prepared pack.  pyAmpliCol
-forces O2 when preparing JIT kernels, including when another level was
-requested.  This does not change process-local compiled DAG evaluators, whose
-independent configuration may use O3.  Prepared C++ and ASM packs remain
-target-native.
-
-Symbolica is required during eager generation and for non-f64 exact execution.
-After generation, saved JIT applications support Symbolica-free f64 execution,
-including multicore use.  Exact expressions remain in the artifact, and
-\path{src/pyamplicol/runtime/eager_exact/} executes the same plan for
-double-double and arbitrary precision.  Thus the execution-mode choice does
-not change the public precision contract.
-
-\subsection{Performance interpretation and scaling}
-
-Eager process-generation timing begins with an already prepared model bundle
-and ends with an authenticated, loadable process artifact.  It includes Python
-proof/DAG extraction, transfer-column construction, Rust plan lowering, compact
-container writing, and post-build validation.  Prepared-model creation is
-reported separately.  Useful comparisons therefore report process generation,
-prepared-model creation, artifact size, peak resident memory, authenticated
-cold load, and first-use break-even as distinct quantities.
-
-Rust table lowering and high-cardinality serialization handle the part of
-eager generation that grows with the process DAG.  Compact PACBIN storage also
-avoids materializing equivalent expanded Python and JSON objects.
-The resulting benefit depends on current count, selector-domain complexity,
-colour contraction, and proof metadata; it is not represented by one universal
-speedup.  Published process and $Z$-ladder tables provide the measured values
-under the benchmark contract defined in the main methodology section.
-
-For runtime, eager mode avoids process-specific backend compilation but pays
-explicit gather, scatter, finalization, and reusable-kernel dispatch.  SymJIT
-amortizes those costs over point batches through internal SIMD.  Selector
-measurements distinguish homogeneous, already grouped, alternating, and random
-per-point selections because regrouping and SIMD occupancy can change the wall
-time without changing the matrix element.  A separately specialized compiled
-stage can remain faster for some selectors; fusing entire recurrence regions
-would instead reproduce the compiled mode's process-specific applications.
-
-\subsection{Choosing the mode}
-
-Use compiled mode when process generation is affordable and the target
-workload benefits from process-wide specialization.  Use eager mode when many
-processes share one model, when generation time dominates, or when one artifact
-must support changing LC flow/helicity selections.  The common built-in-SM JIT
-O2 prepared-kernel path needs only
-
-\begin{lstlisting}[language=bash]
-pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_eager \
-  --model built-in-sm --execution-mode eager --color-accuracy nlc
-\end{lstlisting}
-
-External models and C++/ASM backends first require an explicit
-\texttt{pyamplicol model compile} prepared bundle.  Missing or mismatched packs
-fail before DAG construction with the exact preparation command; eager
-generation never silently compiles a backend pack.
+Eager generation time starts from a prepared model and ends with a validated,
+loadable process; prepared-model creation is outside this timing boundary. At
+runtime, eager mode avoids process-specific backend compilation but performs
+explicit scheduling and reusable-kernel dispatch.
+Compiled mode can be faster when process-wide fusion dominates, whereas eager
+mode can reduce preparation cost when many processes share one model.  The
+tables quantify this trade-off under identical physics and validation
+conditions rather than assuming a universal ranking.

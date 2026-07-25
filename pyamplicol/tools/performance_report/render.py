@@ -20,6 +20,11 @@ from .models import (
     Workload,
     ZVariant,
 )
+from .timing import below_resolution_record
+from .validation_summary import (
+    SUMMARY_TABLE_NAME,
+    render_validation_summary,
+)
 
 Measurement = Mapping[str, object]
 CachePayload = Mapping[str, object]
@@ -250,6 +255,18 @@ def _time(value: object, *, microseconds: bool = False) -> str:
     return rf"\texttt{{{_compact(number)}}}"
 
 
+def _below_resolution_time(
+    measurement: Measurement,
+    field: str,
+    *,
+    microseconds: bool = False,
+) -> str | None:
+    record = below_resolution_record(measurement, field)
+    if record is None:
+        return None
+    return r"\matrixstatus{ReportMuted}{below res.}"
+
+
 def _status(measurement: Measurement) -> str:
     status = str(measurement.get("status", ResultStatus.NOT_AVAILABLE.value))
     labels = {
@@ -274,6 +291,13 @@ def _ok(measurement: Measurement) -> bool:
 def _metric(measurement: Measurement, field: str, *, microseconds: bool = False) -> str:
     if not _ok(measurement):
         return _status(measurement)
+    below = _below_resolution_time(
+        measurement,
+        field,
+        microseconds=microseconds,
+    )
+    if below is not None:
+        return below
     return _time(measurement.get(field), microseconds=microseconds)
 
 
@@ -283,6 +307,11 @@ def _ratio_value(
     field: str,
 ) -> float | None:
     if not (_ok(candidate) and _ok(baseline)):
+        return None
+    if (
+        below_resolution_record(candidate, field) is not None
+        or below_resolution_record(baseline, field) is not None
+    ):
         return None
     numerator = candidate.get(field)
     denominator = baseline.get(field)
@@ -304,6 +333,11 @@ def _ratio(candidate: Measurement, baseline: Measurement, field: str) -> str:
     if value is None:
         if not _ok(candidate):
             return _status(candidate)
+        if (
+            below_resolution_record(candidate, field) is not None
+            or below_resolution_record(baseline, field) is not None
+        ):
+            return r"\matrixstatus{ReportMuted}{below res.}"
         return r"\matrixnaratio{ReportMuted}"
     color = (
         "ReportGreen"
@@ -318,12 +352,17 @@ def _ratio(candidate: Measurement, baseline: Measurement, field: str) -> str:
 def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
     wall = _ratio_value(candidate, baseline, "wall_seconds_per_point")
     execution = _ratio_value(candidate, baseline, "execution_seconds_per_point")
-    if wall is None or execution is None:
-        if not _ok(candidate):
-            return _status(candidate)
-        return r"\matrixnaratio{ReportMuted}"
+    if not _ok(candidate):
+        return _status(candidate)
 
-    def field(value: float) -> tuple[str, str]:
+    def field(value: float | None, name: str) -> tuple[str, str]:
+        if value is None:
+            if (
+                below_resolution_record(candidate, name) is not None
+                or below_resolution_record(baseline, name) is not None
+            ):
+                return "ReportMuted", "below res."
+            return "ReportMuted", "N/A"
         color = (
             "ReportGreen"
             if value < 1.0
@@ -333,8 +372,11 @@ def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
         )
         return color, f"x{_compact(value)}"
 
-    wall_color, wall_text = field(wall)
-    execution_color, execution_text = field(execution)
+    wall_color, wall_text = field(wall, "wall_seconds_per_point")
+    execution_color, execution_text = field(
+        execution,
+        "execution_seconds_per_point",
+    )
     return (
         rf"\matrixratiopair{{{wall_color}}}{{{wall_text}}}"
         rf"{{{execution_color}}}{{{execution_text}}}"
@@ -355,11 +397,17 @@ def _matrix_macros() -> list[str]:
             r"\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}"
         ),
         r"\providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}",
+        r"\providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}",
         (
             r"\providecommand{\matrixnaratio}[1]{\matrixpunct{(}"
             r"\matrixna{#1}\matrixpunct{)}}"
         ),
         r"\providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}",
+        (
+            r"\providecommand{\matrixncabsolute}[1]{"
+            r"\textcolor{ReportBlue}{\texttt{C }}#1"
+            r"\matrixpunct{; }\matrixstatus{ReportMuted}{n.c.}}"
+        ),
         (
             r"\providecommand{\matrixcelllc}[6]{"
             r"\begingroup\matrixentryfont"
@@ -389,10 +437,23 @@ def _lc_cell(view: JoinedMatrixCell) -> str:
         selected.baseline,
         "generation_seconds",
     )
-    all_flow_generation_ratio = _ratio(
-        all_flow.candidate,
-        all_flow.baseline,
-        "generation_seconds",
+    all_flow_generation_ratio = (
+        (
+            r"\matrixncabsolute{"
+            + _metric(all_flow.candidate, "generation_seconds")
+            + "}"
+        )
+        if (
+            view.dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
+            and view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+            and _ok(all_flow.candidate)
+            and _ok(all_flow.baseline)
+        )
+        else _ratio(
+            all_flow.candidate,
+            all_flow.baseline,
+            "generation_seconds",
+        )
     )
     selected_runtime = _metric(
         selected.baseline,
@@ -438,6 +499,7 @@ def _summary_pair(
     field: str,
     *,
     microseconds: bool = False,
+    comparable: bool = True,
 ) -> str:
     joined = [
         next(item for item in view.workloads if item.workload is workload)
@@ -451,6 +513,8 @@ def _summary_pair(
         and _ok(item.candidate)
         and item.baseline.get(field) is not None
         and item.candidate.get(field) is not None
+        and below_resolution_record(item.baseline, field) is None
+        and below_resolution_record(item.candidate, field) is None
     ]
     if not valid:
         return r"\matrixna{ReportMuted}"
@@ -458,6 +522,13 @@ def _summary_pair(
     candidate_sum = sum(float(item.candidate[field]) for item in valid)
     baseline_mean = baseline_sum / len(valid)
     baseline_text = _time(baseline_mean, microseconds=microseconds)
+    if not comparable:
+        candidate_mean = candidate_sum / len(valid)
+        candidate_text = _time(candidate_mean, microseconds=microseconds)
+        return (
+            rf"\matrixsummarypair{{{baseline_text}}}"
+            rf"{{\matrixncabsolute{{{candidate_text}}}}}"
+        )
     ratio = candidate_sum / baseline_sum if baseline_sum > 0.0 else math.nan
     if not math.isfinite(ratio):
         ratio_text = r"\matrixnaratio{ReportMuted}"
@@ -483,7 +554,7 @@ def _matrix_block(
 ) -> list[str]:
     column_spec = (
         r"@{}r@{\hspace{0.04in}}L{1.65in}"
-        + "".join(r"@{\hspace{0.06in}}L{2.58in}" for _ in multiplicities)
+        + "".join(r"@{\hspace{0.06in}}L{2.49in}" for _ in multiplicities)
         + r"@{}"
     )
     lines = [
@@ -537,7 +608,7 @@ def _matrix_block(
                 + " & ".join(
                     _matrix_generation_summary(
                         views_by_n[n_final],
-                        dataset.candidate.accuracy,
+                        dataset,
                     )
                     for n_final in multiplicities
                 )
@@ -567,9 +638,9 @@ def _matrix_block(
 
 def _matrix_generation_summary(
     views: Sequence[JoinedMatrixCell],
-    accuracy: Accuracy,
+    dataset: MatrixDataset,
 ) -> str:
-    if accuracy is Accuracy.LC:
+    if dataset.candidate.accuracy is Accuracy.LC:
         selected = _summary_pair(
             views,
             Workload.SELECTED_FLOW,
@@ -579,6 +650,10 @@ def _matrix_generation_summary(
             views,
             Workload.ALL_FLOW,
             "generation_seconds",
+            comparable=not (
+                dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
+                and dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+            ),
         )
         return rf"\matrixpair{{{selected}}}{{{all_flow}}}"
     return _summary_pair(views, Workload.CONTRACTED, "generation_seconds")
@@ -623,11 +698,25 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
     baseline = _mode_label(dataset.baseline.execution_mode)
     candidate = _mode_label(dataset.candidate.execution_mode)
     if dataset.candidate.accuracy is Accuracy.LC:
-        detail = (
-            "Each cell shows the topology-replay/all-flow-union baseline "
-            "generation times and wall times, followed by layout-matched "
-            "candidate/baseline generation and (wall|native execution) ratios."
-        )
+        if (
+            dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
+            and dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+        ):
+            detail = (
+                "Each cell shows the selected-flow library-generation and "
+                "all-flow direct-setup baseline quantities. The selected-flow "
+                "entry carries a generation ratio; the all-flow entry carries "
+                "the absolute pyAmpliCol process-generation time marked n.c. "
+                "(not comparable). Both runtime entries retain their "
+                "(wall|native execution) ratios."
+            )
+        else:
+            detail = (
+                "Each cell shows the topology-replay/all-flow-union baseline "
+                "generation times and wall times, followed by layout-matched "
+                "candidate/baseline generation and "
+                "(wall|native execution) ratios."
+            )
     else:
         detail = (
             "Each cell shows the baseline generation and wall time, followed by "
@@ -667,18 +756,18 @@ def render_matrix_table(
             r"\providecommand{\matrixsummarypair}[2]{"
             r"\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}"
         ),
+        r"\clearpage",
         rf"\subsection{{{_tex_escape(dataset.title)}}}",
     ]
     for block_index, multiplicities in enumerate(blocks):
-        lines.extend(
-            _matrix_block(
-                adapter,
-                dataset,
-                multiplicities,
-                block_index=block_index,
-                block_count=len(blocks),
-            )
+        block = _matrix_block(
+            adapter,
+            dataset,
+            multiplicities,
+            block_index=block_index,
+            block_count=len(blocks),
         )
+        lines.extend(block[1:] if block_index == 0 else block)
     return "\n".join(lines) + "\n"
 
 
@@ -719,11 +808,14 @@ def _z_value(
     *,
     reference: bool,
     microseconds: bool = False,
+    comparable: bool = True,
 ) -> str:
     measurement = joined.baseline if reference else joined.candidate
     absolute = _metric(measurement, field, microseconds=microseconds)
     if reference or not _ok(measurement):
         return absolute
+    if not comparable:
+        return rf"\matrixncabsolute{{{absolute}}}"
     return absolute + r"\," + _ratio(measurement, joined.baseline, field)
 
 
@@ -824,6 +916,7 @@ def _z_block(
                     all_flow,
                     "generation_seconds",
                     reference=reference,
+                    comparable=False,
                 ),
                 _z_value(
                     all_flow,
@@ -854,7 +947,10 @@ def _z_block(
                 r"\ReportTableNote{Original AmpliCol is the denominator. "
                 r"Each pyAmpliCol row reports separate topology-replay and "
                 r"all-flow-union generation and runtime measurements. "
-                r"Parenthesized values are candidate/reference ratios.}"
+                r"Parenthesized values are candidate/reference ratios. "
+                r"All-flow generation shows the absolute pyAmpliCol value "
+                r"marked n.c. because its setup boundary differs from the "
+                r"reference.}"
             ),
             r"\end{minipage}",
         ]
@@ -877,18 +973,18 @@ def render_z_ladder(
         "% SPDX-License-Identifier: 0BSD",
         "% Generated by tools/performance_report/render.py; do not edit.",
         *_matrix_macros(),
+        r"\clearpage",
         rf"\subsection{{{model_label} dedicated \(d\bar d\to Z+\) gluon performance}}",
     ]
     for block_index, multiplicities in enumerate(blocks):
-        lines.extend(
-            _z_block(
-                adapter,
-                model=model,
-                multiplicities=multiplicities,
-                block_index=block_index,
-                block_count=len(blocks),
-            )
+        block = _z_block(
+            adapter,
+            model=model,
+            multiplicities=multiplicities,
+            block_index=block_index,
+            block_count=len(blocks),
         )
+        lines.extend(block[1:] if block_index == 0 else block)
     return "\n".join(lines) + "\n"
 
 
@@ -913,18 +1009,19 @@ def render_all_z_ladders(
 
 
 def _scalar_value(measurement: Measurement, field: str) -> str:
-    if not _ok(measurement):
-        return _status(measurement)
-    value = measurement.get(field)
-    if value is None:
-        return r"\matrixna{ReportMuted}"
     if field == "matrix_element":
+        if not _ok(measurement):
+            return _status(measurement)
+        value = measurement.get(field)
+        if value is None:
+            return r"\matrixna{ReportMuted}"
         try:
             return rf"\texttt{{{_compact(float(value))}}}"
         except (TypeError, ValueError):
             return rf"\texttt{{{_tex_escape(str(value))}}}"
-    return _time(
-        value,
+    return _metric(
+        measurement,
+        field,
         microseconds=field
         in {"wall_seconds_per_point", "execution_seconds_per_point"},
     )
@@ -950,9 +1047,15 @@ def render_scalar_ladder(
     caches: Mapping[str, CachePayload] | Iterable[CachePayload],
 ) -> str:
     index = MeasurementIndex(caches)
+    dense = len(dataset.multiplicities) > 4
+    label_width = "1.00in" if dense else "1.08in"
+    value_width = "0.72in" if dense else "0.82in"
+    tab_column_separation = "2.2pt" if dense else "3.2pt"
     column_spec = (
-        r"@{}L{1.08in}"
-        + "".join(r"L{0.82in}" for _ in dataset.multiplicities)
+        rf"@{{}}L{{{label_width}}}"
+        + "".join(
+            rf"L{{{value_width}}}" for _ in dataset.multiplicities
+        )
         + r"@{}"
     )
     rows = (
@@ -968,7 +1071,7 @@ def render_scalar_ladder(
         rf"\subsection{{{_tex_escape(dataset.title)}}}",
         r"\begingroup",
         r"\scriptsize",
-        r"\setlength{\tabcolsep}{3.2pt}",
+        rf"\setlength{{\tabcolsep}}{{{tab_column_separation}}}",
         r"\renewcommand{\arraystretch}{1.10}",
         r"\begin{center}",
         rf"\begin{{tabular}}{{{column_spec}}}",
@@ -1048,6 +1151,10 @@ def render_all_tables(
 ) -> dict[str, str]:
     cache_source = caches if isinstance(caches, Mapping) else tuple(caches)
     return {
+        SUMMARY_TABLE_NAME: render_validation_summary(
+            cache_source,
+            catalog=catalog,
+        ),
         **render_all_matrix_tables(cache_source, catalog=catalog),
         **render_all_z_ladders(cache_source, catalog=catalog),
         **render_all_scalar_ladders(cache_source, catalog=catalog),
@@ -1065,5 +1172,6 @@ __all__ = [
     "render_all_z_ladders",
     "render_matrix_table",
     "render_scalar_ladder",
+    "render_validation_summary",
     "render_z_ladder",
 ]

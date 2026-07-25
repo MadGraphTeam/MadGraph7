@@ -24,8 +24,10 @@ from .scheduler import (
     plan_campaign,
     select_cells,
 )
-from .service import ReportPaths, ReportService
+from .service import ReportPaths, ReportService, validate_profile_name
+from .source_identity import require_eligible_report_source
 from .worker import write_cell_result
+from .workspace import export_profile, initialize_profile
 
 
 def _repo_root() -> Path:
@@ -42,6 +44,17 @@ def _parser() -> argparse.ArgumentParser:
         default=_repo_root(),
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--report-profile",
+        type=validate_profile_name,
+        help=(
+            "use docs/performance_reports/PROFILE with isolated evaluator "
+            "artifacts and coordination state"
+        ),
+    )
+    parser.add_argument("--docs-dir", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--artifact-root", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--coordination-root", type=Path, help=argparse.SUPPRESS)
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command, help_text in (
         ("validate", "validate canonical caches and rendered tables"),
@@ -57,6 +70,34 @@ def _parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="compile pyAmpliCol.pdf after publishing tables",
             )
+
+    initialize = subparsers.add_parser(
+        "init-profile",
+        help="create an isolated architecture-specific report workspace",
+    )
+    initialize.add_argument("profile", type=validate_profile_name)
+    initialize.add_argument(
+        "--source-profile",
+        type=validate_profile_name,
+        help="copy publication inputs from another report profile instead of docs/",
+    )
+    initialize.add_argument(
+        "--reset-measurements",
+        action="store_true",
+        help="replace copied measurements with canonical N/A caches and tables",
+    )
+
+    export = subparsers.add_parser(
+        "export-profile",
+        help="copy a tracked report workspace without evaluator artifacts",
+    )
+    export.add_argument("profile", type=validate_profile_name)
+    export.add_argument("destination", type=Path)
+    export.add_argument(
+        "--include-pdf",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
 
     worker = subparsers.add_parser("_worker", help=argparse.SUPPRESS)
     worker.add_argument("--cell-id", required=True)
@@ -262,7 +303,34 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     repo_root = args.repo_root.expanduser().resolve(strict=False)
-    service = ReportService(ReportPaths.from_repo(repo_root))
+    if args.command == "init-profile":
+        output = initialize_profile(
+            repo_root,
+            args.profile,
+            source_profile=args.source_profile,
+            reset_measurements=args.reset_measurements,
+        )
+        print(output.relative_to(repo_root))
+        return 0
+    if args.command == "export-profile":
+        output = export_profile(
+            repo_root,
+            args.profile,
+            args.destination,
+            include_pdf=args.include_pdf,
+        )
+        print(output)
+        return 0
+
+    service = ReportService(
+        ReportPaths.from_repo(
+            repo_root,
+            profile=args.report_profile,
+            docs_dir=args.docs_dir,
+            artifact_root=args.artifact_root,
+            coordination_root=args.coordination_root,
+        )
+    )
 
     if args.command == "validate":
         print(json.dumps(service.validate(), sort_keys=True))
@@ -321,6 +389,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
             return 0
+        require_eligible_report_source(repo_root)
         result = CampaignScheduler(service, settings=settings).run(planned)
         if args.refresh_pdf == "end":
             _compile_pdf(service)

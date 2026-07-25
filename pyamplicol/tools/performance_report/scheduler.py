@@ -293,6 +293,17 @@ class CampaignScheduler:
         self.source_revision = source_revision(service.paths.repo_root)
         self._prepared_model_paths: dict[ModelKey, Path] = {}
 
+    def _service_path_arguments(self) -> tuple[str, ...]:
+        paths = self.service.paths
+        return (
+            "--docs-dir",
+            os.fspath(paths.docs_dir),
+            "--artifact-root",
+            os.fspath(paths.artifact_root),
+            "--coordination-root",
+            os.fspath(paths.coordination_root),
+        )
+
     def _ensure_prepared_model(self, planned: Sequence[PlannedCell]) -> None:
         models = {
             item.cell.measurement.model
@@ -314,6 +325,7 @@ class CampaignScheduler:
                 os.fspath(self.service.paths.repo_root / "docs/result_tables.py"),
                 "--repo-root",
                 os.fspath(self.service.paths.repo_root),
+                *self._service_path_arguments(),
                 "_prepare",
                 "--model",
                 model.value,
@@ -457,6 +469,7 @@ class CampaignScheduler:
                     ),
                     "--repo-root",
                     os.fspath(self.service.paths.repo_root),
+                    *self._service_path_arguments(),
                     "_worker",
                     "--cell-id",
                     cell.cell_id,

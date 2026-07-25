@@ -3,21 +3,22 @@
 \label{sec:three-mode-performance-tables}
 
 The process matrices use recurrence as the primary \PAC{} execution mode.
-Built-in-SM and UFO-SM recurrence JIT O2 are compared directly with the
-independent original \AC{} reference.  Separate built-in-SM matrices then
-compare compiled JIT O3 and eager-DAG JIT O2 with the matching built-in-SM
-recurrence JIT O2 measurement.  Baseline measurements are joined when the
-tables are rendered; they are not copied into candidate result records.
+Built-in-SM and UFO-SM recurrence JIT O2 are compared with independent
+original-\AC{} results.  Separate built-in-SM matrices compare compiled JIT O3
+and eager JIT O2 with recurrence JIT O2 for the same process, colour treatment,
+and observable.
 
 The canonical matrix spans electroweak vector production, charged-current and
 leptonic channels, heavy-quark production, pure gluons, multi-boson final
 states, Higgs-associated final states, and three- and four-quark-line cases.
 Here \(n\) is the number of final-state particles.  LC coverage retains the
 declared grid through \(n=9\), with the bounded families ending at the
-multiplicity stated by the process catalog.  NLC and full-colour grids retain
-\(n=1,\ldots,5\).  Cells below a family's minimum physical multiplicity, above
-its declared limit, or without a valid measurement are shown explicitly as
-\ReportNA{}.
+multiplicity stated by the process definition.  NLC and full-colour grids
+retain \(n=1,\ldots,5\).  Cells outside this architecture edition's declared
+measurement scope or those to which a process definition does not apply are
+shown as \ReportNA{}.  A complete edition requires every applicable cell with
+\(n\leq4\) to be numerical. An in-scope result that does not pass numerical
+validation is identified by a status and does not carry a timing ratio.
 
 The UFO-SM recurrence matrices use the same process definitions, colour
 contracts, numerical parameters, selectors, and validation points as the
@@ -27,6 +28,8 @@ model-generic lowering without changing the requested physics or the original
 \AC{} reference.  Compiled and eager process matrices are built-in-only; they
 measure execution-strategy differences against recurrence without introducing
 a second model-loading comparison.
+
+\input{result_validation_summary.tex}
 
 \subsection*{Workloads and denominators}
 
@@ -42,21 +45,26 @@ baseline named in the table heading.  The recurrence matrices use original
 \AC{} as the baseline.  The compiled and eager matrices use built-in-SM
 recurrence JIT O2 as the baseline.
 
-Every LC comparison contains two independently generated, complete-coverage
-artifacts:
+Every LC comparison contains two complete-coverage layouts:
 \begin{itemize}
-  \item \texttt{topology-replay}, profiled with one physical colour flow
-        selected at runtime and all retained helicities summed; and
-  \item \texttt{all-flow-union}, profiled with one physical helicity selected
-        at runtime and all retained colour flows summed.
+  \item topology replay, measured with one physical colour flow selected and
+        all retained helicities summed; and
+  \item the all-flow union, measured with one physical helicity selected and
+        all retained colour flows summed.
 \end{itemize}
-Neither the displayed flow nor the displayed helicity is fixed during
-generation.  Each LC cell reports the two absolute baseline generation times
-and wall times, followed by layout-matched candidate generation ratios and
-\texttt{(wall$\mid$execution)} runtime ratios.  Thus compiled and eager
-generation are compared separately with recurrence topology replay and
-recurrence all-flow union, rather than against one shared recurrence
-generation value.
+Neither selection is fixed during generation.  Each LC cell reports the two
+baseline generation quantities and wall times, followed by candidate
+generation entries and \texttt{(wall$\mid$execution)} runtime ratios.
+Compiled and eager generation are compared with recurrence using the same
+layout.
+
+The two original-\AC{} reference workloads have different setup boundaries.
+For the selected-flow workload, the reported generation quantity is creation
+of the process library.  For the all-flow workload, it is preparation of the
+direct iMode-2 evaluation.  Runtime ratios compare the same physical
+observable.  The all-flow setup quantities are not like-for-like, so the table
+shows the candidate process-generation time as an absolute value marked
+\texttt{n.c.} (not comparable) instead of forming a ratio.
 
 NLC and full colour use one helicity-summed, colour-contracted artifact per
 mode.  Their cells report the absolute baseline generation and wall time,
@@ -64,26 +72,21 @@ followed by the candidate generation ratio and
 \texttt{(wall$\mid$execution)} runtime ratios.  No per-flow scalar is defined
 for these contracted colour accuracies.
 
-The wall quantity is the native Rusticol repeated-evaluation time after
-caller-language input conversion.  The execution quantity is the native
-mode-specific numerical submetric: compiled stage and amplitude evaluation,
-eager invocation-table execution, or direct recurrence-schedule execution.
-Both quantities are divided by the same matching baseline wall time because
-original \AC{} and cross-mode baselines do not expose an equivalent internal
+The wall quantity is the repeated native evaluation time after caller-language
+input conversion.  The execution quantity is the narrower numerical-kernel
+part of that measurement.  Both are divided by the matching baseline wall time
+because the reference implementations do not expose a common internal
 submetric.
 
-Preparing a reusable model-level kernel or recurrence-template bundle is
-excluded from every process-generation entry and retained as separate
-provenance.  Process-generation timings begin from the prepared input required
-by the selected mode.  Compiled timings still include process-specific
-evaluator construction and backend compilation.
+Preparing reusable model-level kernels is excluded from process-generation
+time and reported separately.  Compiled generation still includes
+process-specific evaluator construction and backend compilation.
 
-Pointwise publication requires recurrence to agree with original \AC{} at the
-independent-reference tolerance.  Compiled and eager candidates must agree
-with recurrence at the stricter shared-core tolerance.  Each candidate must
-also reproduce its own resolved sum; LC comparisons additionally use the same
-physical flow and helicity contracts in both layouts.  A failed validation
-publishes a diagnostic status but no timing ratio.
+Publication requires recurrence to agree with original \AC{} at the
+independent-reference tolerance, and compiled and eager results to agree with
+recurrence at the stricter cross-mode tolerance.  Each result must also
+reproduce its resolved sum.  LC comparisons use the same physical flow and
+helicity selections in both layouts.  A failed validation has no timing ratio.
 
 \subsection*{Cell and summary layout}
 
@@ -94,8 +97,9 @@ publishes a diagnostic status but no timing ratio.
 \textbf{contract} & \textbf{baseline entry} & \textbf{candidate entries} \\
 \midrule
 LC, upper
-  & topology-replay/all-flow-union generation times in seconds
-  & layout-matched generation ratios \\
+  & topology-replay/all-flow generation quantities in seconds
+  & layout-matched ratios, except for the absolute \texttt{n.c.} all-flow
+    candidate against original \AC{} \\
 LC, lower
   & selected-flow/all-flow wall times in microseconds per point
   & for each workload, \texttt{(wall$\mid$execution)} ratios \\
@@ -113,12 +117,10 @@ Summary rows report the baseline mean over valid candidate--baseline pairs and
 the ratio of sums
 \(\sum_i T_{\mathrm{candidate},i}/\sum_i T_{\mathrm{baseline},i}\).
 LC summaries remain separate for topology replay and all-flow union.  Missing,
-unsupported, resource-limited, and validation-failed cells do not contribute
-to a ratio-of-sums summary.
+unsupported, and validation-failed cells do not contribute to a ratio-of-sums
+summary.
 
-The following tables appear in catalog order: recurrence before compiled and
-eager; built-in SM before UFO-SM where both are defined; and LC, NLC, then full
-colour within each mode.
+The tables are grouped by execution mode, model source, and colour treatment.
 
 \input{result_matrix_recurrence_builtin_sm_lc_table.tex}
 \input{result_matrix_recurrence_builtin_sm_nlc_table.tex}

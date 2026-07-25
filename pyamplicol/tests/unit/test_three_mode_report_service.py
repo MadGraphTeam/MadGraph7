@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from tools.performance_report.cache import empty_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import source_revision
 from tools.performance_report.models import ArtifactPolicy
+from tools.performance_report.publication import publication_absolute_paths
 from tools.performance_report.service import ReportPaths, ReportService
 
 
@@ -19,7 +21,7 @@ def _service(tmp_path: Path) -> ReportService:
     return ReportService(ReportPaths.from_repo(repo))
 
 
-def test_reset_publishes_only_canonical_na_caches_and_sixteen_tables(
+def test_reset_publishes_only_canonical_na_caches_and_seventeen_tables(
     tmp_path: Path,
 ) -> None:
     service = _service(tmp_path)
@@ -27,11 +29,11 @@ def test_reset_publishes_only_canonical_na_caches_and_sixteen_tables(
     paths = service.publish(reset=True, merge_artifacts=False)
     result = service.validate()
 
-    assert result["table_count"] == 16
+    assert result["table_count"] == 17
     assert result["statuses"] == {
         "not_available": len(REPORT_CATALOG.measurement_cells())
     }
-    assert len([path for path in paths if path.suffix == ".tex"]) == 16
+    assert len([path for path in paths if path.suffix == ".tex"]) == 17
     assert (service.paths.results_dir / "report-cache.schema.json").is_file()
 
 
@@ -39,6 +41,20 @@ def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None
     service = _service(tmp_path)
     service.publish(reset=True, merge_artifacts=False)
     cell = service.catalog.measurement_cells()[0]
+    runtime_identity = {
+        "extension": {
+            "path": str(service.paths.repo_root / "native/_rusticol.so"),
+        }
+    }
+    runtime_identity_sha256 = hashlib.sha256(
+        json.dumps(
+            runtime_identity,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    ).hexdigest()
     measurement = empty_measurement()
     measurement.update(
         {
@@ -50,15 +66,25 @@ def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None
             "sample_count": 5,
             "standard_error_seconds_per_point": 0.0,
             "relative_standard_error": 0.0,
-            "artifact": {},
+            "artifact": {
+                "path": str(service.paths.artifact_root / "cells/example/artifact"),
+                "log_path": str(
+                    service.paths.artifact_root / "cells/example/worker.log"
+                ),
+            },
             "selector_contract": None,
             "validation": {"status": "ok"},
             "resources": {},
-                "provenance": {
-                    "report_source_revision": source_revision(
-                        service.paths.repo_root
-                    )
+            "provenance": {
+                "report_source_revision": source_revision(service.paths.repo_root),
+                "effective_config": {
+                    "model": {
+                        "cache_dir": str(service.paths.repo_root / ".cache/model"),
+                    }
                 },
+                "runtime_identity": runtime_identity,
+                "runtime_identity_sha256": runtime_identity_sha256,
+            },
         }
     )
     service.store.new_attempt(cell.cell_id, ArtifactPolicy.REGENERATE).publish(
@@ -70,6 +96,31 @@ def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None
     payload = json.loads(cache_path.read_text(encoding="ascii"))
     entry = next(item for item in payload["entries"] if item["cell_id"] == cell.cell_id)
     assert entry["measurement"]["matrix_element"] == 3.0
+    publication = entry["measurement"]
+    assert publication["artifact"]["path"].startswith(
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/"
+    )
+    assert publication["artifact"]["log_path"].startswith(
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/"
+    )
+    assert publication["provenance"]["effective_config"]["model"][
+        "cache_dir"
+    ].startswith("${PYAMPLICOL_SOURCE_ROOT}/")
+    assert publication["provenance"]["runtime_identity"] == runtime_identity
+    retained_identity = publication["provenance"]["runtime_identity"]
+    assert (
+        hashlib.sha256(
+            json.dumps(
+                retained_identity,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("ascii")
+        ).hexdigest()
+        == publication["provenance"]["runtime_identity_sha256"]
+    )
+    assert publication_absolute_paths(payload) == ()
 
 
 def test_failed_snapshot_publication_restores_previous_files(

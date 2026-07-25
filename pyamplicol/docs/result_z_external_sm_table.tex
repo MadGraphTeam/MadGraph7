@@ -5,12 +5,14 @@
 \providecommand{\matrixratio}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}
 \providecommand{\matrixratiopair}[4]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}
 \providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}
+\providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}
 \providecommand{\matrixnaratio}[1]{\matrixpunct{(}\matrixna{#1}\matrixpunct{)}}
 \providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}
+\providecommand{\matrixncabsolute}[1]{\textcolor{ReportBlue}{\texttt{C }}#1\matrixpunct{; }\matrixstatus{ReportMuted}{n.c.}}
 \providecommand{\matrixcelllc}[6]{\begingroup\matrixentryfont\begin{tabular}[t]{@{}l@{\hspace{0.035in}}l@{\hspace{0.035in}}l@{}}#1&#2&#3\\#4&#5&#6\end{tabular}\endgroup}
 \providecommand{\matrixcellcontracted}[4]{\begingroup\matrixentryfont\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}#1&#2\\#3&#4\end{tabular}\endgroup}
-\subsection{UFO-SM dedicated \(d\bar d\to Z+\) gluon performance}
 \clearpage
+\subsection{UFO-SM dedicated \(d\bar d\to Z+\) gluon performance}
 \noindent\begin{minipage}{\linewidth}
 \subsubsection*{UFO-SM \(d\bar d\to Z+\) gluon ladder (block 1 of 3)}
 \begingroup
@@ -23,7 +25,7 @@
 & & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} \\
 \midrule
 \rowcolor{refblue}
-1 & \AC{} reference & \texttt{15.4} & \texttt{0.169} & \matrixna{ReportMuted} & \texttt{0.00034} & \texttt{0.249} & \matrixna{ReportMuted} \\
+1 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
 1 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 1 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 1 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -60,7 +62,7 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -112,7 +114,7 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -164,5 +166,5 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}
 \end{minipage}

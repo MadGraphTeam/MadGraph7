@@ -48,7 +48,9 @@ src/pyamplicol/assets/selftest/*/
 # Generated process and benchmark output
 outputs/
 docs/.result_outputs/
-docs/results/*.lock
+docs/**/results/*.lock
+docs/**/results/.coordination/
+docs/performance_reports/.*.init-*/
 docs/*.aux
 docs/*.bbl
 docs/*.bcf
@@ -60,6 +62,17 @@ docs/*.out
 docs/*.run.xml
 docs/*.synctex.gz
 docs/*.toc
+docs/**/*.aux
+docs/**/*.bbl
+docs/**/*.bcf
+docs/**/*.blg
+docs/**/*.fdb_latexmk
+docs/**/*.fls
+docs/**/*.log
+docs/**/*.out
+docs/**/*.run.xml
+docs/**/*.synctex.gz
+docs/**/*.toc
 
 # Local tooling state
 .trash/

@@ -13,6 +13,7 @@ from tools.performance_report.legacy import (
     CommandResult,
     LegacyMeasurementAdapter,
     LegacySettings,
+    TimingRow,
     adaptive_profile_points,
 )
 from tools.performance_report.models import Accuracy, ExecutionMode, Workload
@@ -222,6 +223,69 @@ def test_adaptive_profile_points_are_bounded() -> None:
     ) == 1_000
 
 
+def test_profile_repeats_bounded_chunks_until_target_is_measured(
+    tmp_path: Path,
+) -> None:
+    adapter, _api, _executor = _adapter()
+    calls: list[int] = []
+
+    def invoke(points: int):
+        calls.append(points)
+        seconds = points * 1.0e-5
+        result = CommandResult(
+            args=("probe", str(points)),
+            cwd=tmp_path,
+            elapsed_seconds=seconds,
+            returncode=0,
+            stdout="",
+            stderr="",
+            environment={},
+        )
+        return (
+            result,
+            (TimingRow("amplitude evaluation", seconds),),
+            None,
+        )
+
+    profile = adapter._profile(
+        invoke,
+        settings=LegacySettings(
+            target_runtime_seconds=0.005,
+            warmup_points=10,
+            minimum_points=10,
+            maximum_points=100,
+            maximum_profile_chunks=8,
+            repository=tmp_path,
+        ),
+        timing_labels=("amplitude evaluation",),
+    )
+
+    assert calls == [10, 100, 100, 100, 100, 100]
+    assert profile.points == 500
+    assert profile.seconds == pytest.approx(0.005)
+    assert profile.record["target_runtime_achieved"] is True
+    assert profile.record["achieved_runtime_seconds"] == pytest.approx(0.005)
+    assert profile.record["chunk_count"] == 5
+    assert profile.standard_error_seconds_per_point == pytest.approx(0.0)
+
+
+def test_profile_rejects_a_bound_below_five_timed_chunks(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="maximum_profile_chunks must not be below",
+    ):
+        LegacySettings(
+            target_runtime_seconds=0.005,
+            warmup_points=10,
+            minimum_points=10,
+            maximum_points=100,
+            maximum_profile_chunks=2,
+            repository=tmp_path,
+        )
+
+
 def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -347,7 +411,7 @@ def test_more_than_three_open_quark_lines_is_preserved_as_unsupported(
     assert executor.commands == []
 
 
-def test_profile_reuses_warmup_when_target_count_is_not_larger(
+def test_profile_never_reuses_warmup_as_the_only_timed_sample(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -378,11 +442,61 @@ def test_profile_reuses_warmup_when_target_count_is_not_larger(
         for command in executor.commands
         if command and command[0] == "./amplicol_library_benchmark"
     ]
-    assert len(benchmark_commands) == 1
-    assert measurement["sample_count"] == 100
+    assert len(benchmark_commands) == 6
+    assert measurement["sample_count"] >= 50
     assert (
         measurement["provenance"]["runtime_profile"]["measurement"][
             "profile_phase"
         ]
-        == "warmup_reused_as_measurement"
+        == "measurement_chunks"
     )
+    assert (
+        measurement["provenance"]["runtime_profile"]["measurement"][
+            "chunk_count"
+        ]
+        == 5
+    )
+
+
+def test_fast_warmup_still_produces_five_samples_and_measured_rse(
+    tmp_path: Path,
+) -> None:
+    adapter, _api, _executor = _adapter()
+    calls: list[int] = []
+    rates = iter((0.09, 0.11, 0.10, 0.105, 0.095))
+
+    def invoke(points: int):
+        calls.append(points)
+        seconds = 5.0 if len(calls) == 1 else points * next(rates)
+        result = CommandResult(
+            args=("probe", str(points)),
+            cwd=tmp_path,
+            elapsed_seconds=seconds,
+            returncode=0,
+            stdout="",
+            stderr="",
+            environment={},
+        )
+        return (
+            result,
+            (TimingRow("amplitude evaluation", seconds),),
+            None,
+        )
+
+    profile = adapter._profile(
+        invoke,
+        settings=LegacySettings(
+            target_runtime_seconds=5.0,
+            warmup_points=10,
+            minimum_points=10,
+            maximum_points=10,
+            repository=tmp_path,
+        ),
+        timing_labels=("amplitude evaluation",),
+    )
+
+    assert len(calls) == 6
+    assert profile.record["chunk_count"] == 5
+    assert profile.seconds == pytest.approx(5.0)
+    assert profile.standard_error_seconds_per_point > 0.0
+    assert profile.relative_standard_error > 0.0

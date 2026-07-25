@@ -5,26 +5,28 @@
 \providecommand{\matrixratio}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}
 \providecommand{\matrixratiopair}[4]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}
 \providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}
+\providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}
 \providecommand{\matrixnaratio}[1]{\matrixpunct{(}\matrixna{#1}\matrixpunct{)}}
 \providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}
+\providecommand{\matrixncabsolute}[1]{\textcolor{ReportBlue}{\texttt{C }}#1\matrixpunct{; }\matrixstatus{ReportMuted}{n.c.}}
 \providecommand{\matrixcelllc}[6]{\begingroup\matrixentryfont\begin{tabular}[t]{@{}l@{\hspace{0.035in}}l@{\hspace{0.035in}}l@{}}#1&#2&#3\\#4&#5&#6\end{tabular}\endgroup}
 \providecommand{\matrixcellcontracted}[4]{\begingroup\matrixentryfont\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}#1&#2\\#3&#4\end{tabular}\endgroup}
 \providecommand{\matrixpair}[2]{\begin{tabular}[t]{@{}l@{\hspace{0.025in}/\hspace{0.025in}}l@{}}#1&#2\end{tabular}}
 \providecommand{\matrixsummarypair}[2]{\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}
-\subsection{Built-in SM recurrence versus AmpliCol LC}
 \clearpage
+\subsection{Built-in SM recurrence versus AmpliCol LC}
 \noindent\begin{minipage}{\linewidth}
 \subsubsection*{Built-in SM recurrence versus AmpliCol LC (block 1 of 3)}
 \begingroup
 \scriptsize
 \setlength{\tabcolsep}{2.1pt}
 \renewcommand{\arraystretch}{1.06}
-\begin{tabular}{@{}r@{\hspace{0.04in}}L{1.65in}@{\hspace{0.06in}}L{2.58in}@{\hspace{0.06in}}L{2.58in}@{\hspace{0.06in}}L{2.58in}@{}}
+\begin{tabular}{@{}r@{\hspace{0.04in}}L{1.65in}@{\hspace{0.06in}}L{2.49in}@{\hspace{0.06in}}L{2.49in}@{\hspace{0.06in}}L{2.49in}@{}}
 \toprule
 \textbf{ID} & \textbf{base process} & \textbf{n=1} & \textbf{n=2} & \textbf{n=3} \\
 \specialrule{0.85pt}{0pt}{0pt}
 \rowcolor{refblue}
-\texttt{1} & $d\bar d\to Z+(n-1)g$ & \matrixcelllc{\matrixpair{\texttt{15.4}}{\texttt{0.00034}}}{\matrixratio{ReportOrange}{1.24}}{\matrixratio{ReportRed}{9.37e+04}}{\matrixpair{\texttt{0.169}}{\texttt{0.249}}}{\matrixratiopair{ReportRed}{x6.21}{ReportRed}{x4.88}}{\matrixratiopair{ReportRed}{x8.89}{ReportRed}{x3}} & \matrixcelllc{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}} & \matrixcelllc{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}} \\
+\texttt{1} & $d\bar d\to Z+(n-1)g$ & \matrixcelllc{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}} & \matrixcelllc{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}} & \matrixcelllc{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}} \\
 \addlinespace[0.05em]
 \texttt{2} & $u\bar d\to W^++(n-1)g$ & \matrixcelllc{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}} & \matrixcelllc{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}} & \matrixcelllc{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}{\matrixpair{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}}}{\matrixstatus{ReportMuted}{N/A}}{\matrixstatus{ReportMuted}{N/A}} \\
 \addlinespace[0.05em]
@@ -59,13 +61,13 @@
 \texttt{14} & $d\bar d\to u\bar u\,s\bar s\,c\bar c+(n-6)g$ & \matrixna{ReportMuted} & \matrixna{ReportMuted} & \matrixna{ReportMuted} \\
 \addlinespace[0.05em]
 \specialrule{1.05pt}{0.22em}{0.18em}
-\multicolumn{2}{@{}l}{\textbf{summary: generation}} & \matrixpair{\matrixsummarypair{\texttt{15.4}}{\matrixratio{ReportOrange}{1.24}}}{\matrixsummarypair{\texttt{0.00034}}{\matrixratio{ReportRed}{9.37e+04}}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} \\
+\multicolumn{2}{@{}l}{\textbf{summary: generation}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} \\
 \addlinespace[0.08em]
-\multicolumn{2}{@{}l}{\textbf{summary: wall}} & \matrixpair{\matrixsummarypair{\texttt{0.169}}{\matrixratio{ReportRed}{6.21}}}{\matrixsummarypair{\texttt{0.249}}{\matrixratio{ReportRed}{8.89}}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} \\
+\multicolumn{2}{@{}l}{\textbf{summary: wall}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} & \matrixpair{\matrixna{ReportMuted}}{\matrixna{ReportMuted}} \\
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Baseline: original AmpliCol; candidate: recurrence JIT O2. Each cell shows the topology-replay/all-flow-union baseline generation times and wall times, followed by layout-matched candidate/baseline generation and (wall|native execution) ratios.}
+\ReportTableNote{Baseline: original AmpliCol; candidate: recurrence JIT O2. Each cell shows the selected-flow library-generation and all-flow direct-setup baseline quantities. The selected-flow entry carries a generation ratio; the all-flow entry carries the absolute pyAmpliCol process-generation time marked n.c. (not comparable). Both runtime entries retain their (wall|native execution) ratios.}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -74,7 +76,7 @@
 \scriptsize
 \setlength{\tabcolsep}{2.1pt}
 \renewcommand{\arraystretch}{1.06}
-\begin{tabular}{@{}r@{\hspace{0.04in}}L{1.65in}@{\hspace{0.06in}}L{2.58in}@{\hspace{0.06in}}L{2.58in}@{\hspace{0.06in}}L{2.58in}@{}}
+\begin{tabular}{@{}r@{\hspace{0.04in}}L{1.65in}@{\hspace{0.06in}}L{2.49in}@{\hspace{0.06in}}L{2.49in}@{\hspace{0.06in}}L{2.49in}@{}}
 \toprule
 \textbf{ID} & \textbf{base process} & \textbf{n=4} & \textbf{n=5} & \textbf{n=6} \\
 \specialrule{0.85pt}{0pt}{0pt}
@@ -120,7 +122,7 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Baseline: original AmpliCol; candidate: recurrence JIT O2. Each cell shows the topology-replay/all-flow-union baseline generation times and wall times, followed by layout-matched candidate/baseline generation and (wall|native execution) ratios.}
+\ReportTableNote{Baseline: original AmpliCol; candidate: recurrence JIT O2. Each cell shows the selected-flow library-generation and all-flow direct-setup baseline quantities. The selected-flow entry carries a generation ratio; the all-flow entry carries the absolute pyAmpliCol process-generation time marked n.c. (not comparable). Both runtime entries retain their (wall|native execution) ratios.}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -129,7 +131,7 @@
 \scriptsize
 \setlength{\tabcolsep}{2.1pt}
 \renewcommand{\arraystretch}{1.06}
-\begin{tabular}{@{}r@{\hspace{0.04in}}L{1.65in}@{\hspace{0.06in}}L{2.58in}@{\hspace{0.06in}}L{2.58in}@{\hspace{0.06in}}L{2.58in}@{}}
+\begin{tabular}{@{}r@{\hspace{0.04in}}L{1.65in}@{\hspace{0.06in}}L{2.49in}@{\hspace{0.06in}}L{2.49in}@{\hspace{0.06in}}L{2.49in}@{}}
 \toprule
 \textbf{ID} & \textbf{base process} & \textbf{n=7} & \textbf{n=8} & \textbf{n=9} \\
 \specialrule{0.85pt}{0pt}{0pt}
@@ -175,5 +177,5 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Baseline: original AmpliCol; candidate: recurrence JIT O2. Each cell shows the topology-replay/all-flow-union baseline generation times and wall times, followed by layout-matched candidate/baseline generation and (wall|native execution) ratios.}
+\ReportTableNote{Baseline: original AmpliCol; candidate: recurrence JIT O2. Each cell shows the selected-flow library-generation and all-flow direct-setup baseline quantities. The selected-flow entry carries a generation ratio; the all-flow entry carries the absolute pyAmpliCol process-generation time marked n.c. (not comparable). Both runtime entries retain their (wall|native execution) ratios.}
 \end{minipage}

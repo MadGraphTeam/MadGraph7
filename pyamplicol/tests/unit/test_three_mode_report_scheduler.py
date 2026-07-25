@@ -333,6 +333,9 @@ def test_reuse_and_retime_use_equivalent_artifact_but_target_baseline(
     assert command[command.index("--cell-id") + 1] == (
         "matrix-recurrence-builtin-sm-lc-n1-dd-z-jets-selected-flow"
     )
+    assert command[command.index("--docs-dir") + 1].endswith("/repo/docs")
+    assert command[command.index("--artifact-root") + 1].endswith("/artifacts")
+    assert command[command.index("--coordination-root") + 1].endswith("/locks")
 
 
 @pytest.mark.parametrize(

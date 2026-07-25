@@ -507,6 +507,14 @@ def _benchmark_measurement(
     matrix_element: float,
 ) -> dict[str, object]:
     uncertainty = benchmark.uncertainty
+    environment = benchmark.environment
+    target_runtime = float(benchmark.effective_config.target_runtime)
+    achieved_runtime = environment.get("elapsed_seconds")
+    if (
+        isinstance(achieved_runtime, bool)
+        or not isinstance(achieved_runtime, (int, float))
+    ):
+        raise RunnerError("benchmark did not report its achieved timing duration")
     return {
         "status": ResultStatus.OK.value,
         "wall_seconds_per_point": float(benchmark.wall_time_per_point),
@@ -519,6 +527,22 @@ def _benchmark_measurement(
         "sample_count": int(benchmark.sample_count),
         "standard_error_seconds_per_point": float(uncertainty.standard_error),
         "relative_standard_error": float(uncertainty.relative_standard_error),
+        "benchmark_evidence": {
+            "target_runtime_seconds": target_runtime,
+            "achieved_runtime_seconds": float(achieved_runtime),
+            "target_runtime_achieved": (
+                float(achieved_runtime) >= 0.95 * target_runtime
+            ),
+            "completed_sample_count": environment.get(
+                "completed_sample_count"
+            ),
+            "planned_sample_count": environment.get("planned_sample_count"),
+            "repetitions_per_sample": environment.get(
+                "repetitions_per_sample"
+            ),
+            "measured_point_count": environment.get("measured_point_count"),
+            "interrupted": bool(environment.get("interrupted", False)),
+        },
     }
 
 

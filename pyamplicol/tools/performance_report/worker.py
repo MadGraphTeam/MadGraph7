@@ -17,10 +17,10 @@ from .measurement import (
     generated_artifact_from_measurement,
     load_measurement,
     measure_pyamplicol_cell,
-    source_revision,
 )
 from .models import ExecutionMode, ResultStatus
 from .runner import RunnerSettings
+from .source_identity import require_eligible_report_source
 
 
 def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -62,6 +62,7 @@ def measure_cell(
     reused_measurement_json: Path | None = None,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
+    source_identity = require_eligible_report_source(repo_root)
     cell = catalog.cell(cell_id)
     baseline = (
         None if baseline_json is None else load_measurement(baseline_json)
@@ -102,7 +103,7 @@ def measure_cell(
     provenance = result.get("provenance")
     result["provenance"] = {
         **({} if not isinstance(provenance, Mapping) else dict(provenance)),
-        "report_source_revision": source_revision(repo_root),
+        **source_identity.provenance(),
     }
     return result
 
