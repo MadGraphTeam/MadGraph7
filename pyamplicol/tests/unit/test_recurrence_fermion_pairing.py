@@ -12,7 +12,11 @@ from pyamplicol.generation.recurrence_fermion_pairing import (
     RecurrenceFermionPairingError,
     build_recurrence_fermion_pairing_catalog_v1,
 )
-from pyamplicol.models.recurrence_template import CurrentStateTemplateV1
+from pyamplicol.models.recurrence_template import (
+    CurrentStateTemplateV1,
+    ExactComplexRationalV1,
+    QuantumFlowTemplateV1,
+)
 from pyamplicol.processes.ir import (
     CanonicalProcessIR,
     ColorEndpointSummary,
@@ -81,6 +85,45 @@ def _leg(label: int, state: CurrentStateTemplateV1) -> ProcessLegIR:
         wavefunction_family="fermion",
         color_role=role,
         source_orientation=state.orientation,
+    )
+
+
+def _charged_current_flow(
+    down: CurrentStateTemplateV1,
+    up: CurrentStateTemplateV1,
+) -> tuple[CurrentStateTemplateV1, QuantumFlowTemplateV1]:
+    boson = CurrentStateTemplateV1(
+        template_id="charged-current:w",
+        particle_id=990024,
+        anti_particle_id=-990024,
+        species_id="contract:charged-current:w",
+        orientation="particle",
+        statistics="boson",
+        color_representation=1,
+        basis="vector",
+        tensor_ordering=("v0", "v1", "v2", "v3"),
+        dimension=4,
+        chirality=0,
+        lc_color_shape_kind="singlet-forest",
+        auxiliary_kind=None,
+        mass_parameter_id=None,
+        width_parameter_id=None,
+    )
+    return boson, QuantumFlowTemplateV1(
+        template_id="charged-current:d-w-to-u",
+        input_state_template_ids=(down.template_id, boson.template_id),
+        input_spin_states=(1, 0),
+        input_flavour_flows=((down.particle_id,), (boson.particle_id,)),
+        input_quantum_number_flows=((), ()),
+        flavour_flow_operation="append-left-result",
+        quantum_number_flow_operation="particle-static-result",
+        coupling_orders=(("QED", 1),),
+        result_state_template_id=up.template_id,
+        result_spin_state=1,
+        result_flavour_flow=(down.particle_id, up.particle_id),
+        result_quantum_number_flow=(),
+        exact_coupling=ExactComplexRationalV1.one(),
+        predicate_digest="a" * 64,
     )
 
 
@@ -173,6 +216,23 @@ def test_incompatible_species_are_rejected_before_rule_enumeration() -> None:
         match="incompatible fermion species endpoints",
     ):
         build_recurrence_fermion_pairing_catalog_v1(process, states)
+
+
+def test_model_proven_charged_current_species_share_one_pairing_class() -> None:
+    down, down_anti = _state_pair("charged-down", 950011)
+    up, up_anti = _state_pair("charged-up", 950012)
+    boson, flow = _charged_current_flow(down, up)
+
+    catalog = build_recurrence_fermion_pairing_catalog_v1(
+        _process("charged-current", (down, up_anti)),
+        (down, down_anti, up, up_anti, boson),
+        quantum_flows=(flow,),
+    )
+
+    assert len(catalog.pairing_classes) == 1
+    assert catalog.pairing_classes[0].fundamental_source_slots == (0,)
+    assert catalog.pairing_classes[0].antifundamental_source_slots == (1,)
+    assert catalog.rules[0].endpoint_pairings == ((0, 1),)
 
 
 def test_equivalent_model_contracts_have_identical_pairing_topology() -> None:

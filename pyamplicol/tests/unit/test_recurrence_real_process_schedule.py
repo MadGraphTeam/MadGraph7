@@ -186,6 +186,7 @@ def test_sm_recurrence_closure_projections_match_without_forest_aliases() -> Non
     expressions = (
         "g g > g g",
         "d d~ > z g",
+        "u d~ > w+",
         "d d~ > u u~",
         "d d~ > d d~",
         "d d~ > u u~ s s~",
@@ -259,7 +260,11 @@ def test_sm_recurrence_closure_projections_match_without_forest_aliases() -> Non
                 assert len(pairing.rules) == 1
             elif expression == "d d~ > u u~":
                 assert len(pairing.endpoints) == 4
-                assert len(pairing.pairing_classes) == 2
+                assert len(pairing.pairing_classes) == 1
+                assert len(pairing.rules) == 2
+            elif expression == "u d~ > w+":
+                assert len(pairing.endpoints) == 2
+                assert len(pairing.pairing_classes) == 1
                 assert len(pairing.rules) == 1
             elif expression == "d d~ > d d~":
                 assert len(pairing.endpoints) == 4
@@ -267,8 +272,8 @@ def test_sm_recurrence_closure_projections_match_without_forest_aliases() -> Non
                 assert len(pairing.rules) == 2
             elif expression == "d d~ > u u~ s s~":
                 assert len(pairing.endpoints) == 6
-                assert len(pairing.pairing_classes) == 3
-                assert len(pairing.rules) == 1
+                assert len(pairing.pairing_classes) == 2
+                assert len(pairing.rules) == 2
             summaries[model_source][expression] = (
                 len(pairing.endpoints),
                 len(pairing.pairing_classes),

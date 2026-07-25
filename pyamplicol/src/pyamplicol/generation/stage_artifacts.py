@@ -568,10 +568,7 @@ def _compiled_plane_arena_leaves(
     ):
         raise ValueError("compiled SymJIT leaf metadata is invalid")
     if optimization_level != 3:
-        raise ValueError(
-            "compiled-plane-arena-v1 requires compiled JIT optimization level 3; "
-            "regenerate with evaluator.jit.optimization_level=3"
-        )
+        return None, output_start, None, None
     output_stop = output_start + output_len
     return (
         [
@@ -672,11 +669,10 @@ def _finalize_stage_evaluator_payload(
     requires_direct = bool(
         required_runtime_capabilities
         & {
-            SYMJIT_F64_RUNTIME_CAPABILITY,
             SYMBOLICA_CPP_RUNTIME_CAPABILITY,
             SYMBOLICA_ASM_RUNTIME_CAPABILITY,
         }
-    )
+    ) or bool(direct_stage_count)
     if requires_direct and direct_stage_count != stage_count:
         raise ValueError(
             "compiled f64 artifacts require compiled-plane-arena-v1 metadata "
@@ -995,6 +991,7 @@ def _compile_default_stage_evaluator(
             output_partitions=stage.selector_output_partitions,
             native_direct_only=(
                 getattr(candidate_settings, "backend", None) == "compiled-complex"
+                and stage.parameter_layout == "stage-local-value-momentum"
             ),
         )
 
@@ -1039,6 +1036,8 @@ def _compile_native_stage_direct_applications(
 
     if getattr(settings, "backend", None) != "compiled-complex":
         return
+    if stage.parameter_layout != "stage-local-value-momentum":
+        return
     from ..evaluators.native_direct_cpp import NativeDirectCppParameterKind
     from ..evaluators.symbolica_adapters import (
         compile_native_direct_applications,
@@ -1068,7 +1067,15 @@ def _compile_native_stage_direct_applications(
             )
         components[component.parameter_index] = kind
     if any(component is None for component in components):
-        raise ValueError("native DirectApplication stage input bindings are incomplete")
+        missing = tuple(
+            index for index, component in enumerate(components) if component is None
+        )
+        raise ValueError(
+            "native DirectApplication stage input bindings are incomplete: "
+            f"stage={stage.evaluator_label!r}, parameter_count="
+            f"{stage.parameter_count}, input_component_count="
+            f"{len(stage.input_components)}, missing_parameter_indices={missing!r}"
+        )
 
     include_features = bool(getattr(settings, "compiled_native", False))
     target = native_prepared_target(include_cpu_features=include_features)

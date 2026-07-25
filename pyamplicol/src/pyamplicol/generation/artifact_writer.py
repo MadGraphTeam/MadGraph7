@@ -2468,7 +2468,6 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
     ]
     has_direct_capability = COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY in declared
     direct_evaluator_capabilities = {
-        SYMJIT_F64_RUNTIME_CAPABILITY,
         SYMBOLICA_CPP_RUNTIME_CAPABILITY,
         SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     }

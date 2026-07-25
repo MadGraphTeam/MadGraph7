@@ -25,8 +25,8 @@ archive_prefix = "symjit-48197f32536c894b51ef25b2cf05ddd05c22675f"
 archive_sha256 = "876930348cc06761ca780570fb282d009f143f4a469e321e3b5039c5ee217424"
 candidate_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
 application_storage_version = 3
-patched_tree_sha256 = "d5d7674fef89d62b53516563ed32a385e3a33f01541ba47d49a61c54c250d2c7"
-candidate_tree_sha256 = "b3c6a283b20d921b9e87ffe5baad15a678cae0be0d4ffaaa41bf81ddebcf406c"
+patched_tree_sha256 = "7a40fe15ca19f69affc9411990c2d68cd927b7fa272493c7b98ff5a4caf15ade"
+candidate_tree_sha256 = "8651e10ca6bf4d8ab868ec95f5e9f024184069af2906108db0e61ecce43b0c8b"
 release_status = "patched-candidate"
 license = "MIT"
 
@@ -69,4 +69,11 @@ name = "symjit-x86-direct-table"
 target = "symjit"
 path = "patches/symjit/0003-x86-direct-table.patch"
 sha256 = "003b843766291c1ba96114d7f23b149b0c7074a9bb7244b782f70197e925d087"
+applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
+
+[[patches]]
+name = "symjit-expand-direct-table-output-cap"
+target = "symjit"
+path = "patches/symjit/0004-expand-direct-table-output-cap.patch"
+sha256 = "0579c51149acae37bbbcf2964a2080dccb300b1d61e28daf0180edb8d7895bf1"
 applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"

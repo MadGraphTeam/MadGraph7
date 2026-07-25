@@ -171,6 +171,7 @@ def project_recurrence_process_v1(
     fermion_pairing = build_recurrence_fermion_pairing_catalog_v1(
         process,
         template_catalog.current_states,
+        quantum_flows=template_catalog.quantum_flows,
     )
     closure_reconstruction_digest = _project_closure_obligation_roots_digest(
         process,
