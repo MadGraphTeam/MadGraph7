@@ -902,7 +902,7 @@ def _write_eager_kernel_pack(
     kernel_payloads: list[dict[str, object]] = []
     for kernel in selected:
         payload = kernel.to_dict()
-        if require_eager_direct:
+        if require_eager_direct and _requires_eager_direct_table(kernel.contract_kind):
             manifest = _mapping(payload["f64_evaluator_manifest"])
             if bundle.kernel_pack.backend == "jit":
                 direct_manifest, descriptor_path, descriptor = (
@@ -966,6 +966,16 @@ def _write_eager_kernel_pack(
                     process_id=None,
                     media_type=_media_type(Path(member_path)),
                 )
+
+
+def _requires_eager_direct_table(contract_kind: str) -> bool:
+    """Return whether a prepared kernel executes inside the eager point loop."""
+
+    # Model-parameter derivation is evaluated separately when the artifact is
+    # loaded or an override is applied.  It remains on the ordinary evaluator
+    # path, which supports scalar operations such as square roots that are
+    # deliberately outside the call-free eager DirectTable ABI.
+    return contract_kind != "model-parameter"
 
 
 def _eager_direct_evaluator_manifest(
@@ -2468,7 +2478,6 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
     ]
     has_direct_capability = COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY in declared
     direct_evaluator_capabilities = {
-        SYMJIT_F64_RUNTIME_CAPABILITY,
         SYMBOLICA_CPP_RUNTIME_CAPABILITY,
         SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     }

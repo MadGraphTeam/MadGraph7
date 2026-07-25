@@ -69,7 +69,7 @@ for every physical ordering and is the layout used for the
 single-flow/helicity-sum benchmark.
 
 The all-flow-union layout instead constructs the complete cross-flow current
-DAG before evaluator lowering.  If \(D_{hf}\) is the dependency graph of one
+dependency union before numerical lowering.  If \(D_{hf}\) is the dependency graph of one
 resolved component, its graph is the exact quotient
 \begin{equation}
   D_{\mathrm{union}}
@@ -84,9 +84,11 @@ currents across all requested flows.  This is the layout used for the
 all-flows/single-helicity benchmark.  The artifact does not also carry a
 second topology-replay graph or a generation-fixed-helicity graph.
 
-Both layouts are available with compiled and eager execution.  Compiled mode
-lowers the chosen graph to process-specific stage evaluators.  Eager mode
-lowers it to invocation tables over the prepared model kernels.  Thus
+Both layouts are available with compiled, eager, and recurrence execution.
+Compiled mode lowers the chosen graph to process-specific stage evaluators.
+Eager mode lowers it to invocation tables over prepared model kernels.
+Recurrence mode directly constructs compact current and contribution schedules
+for the selected layout without first materializing the generic DAG.  Thus
 \texttt{execution\_mode} selects how numerical kernels are supplied, while
 \texttt{lc\_flow\_layout} selects how complete LC recurrence work is shared.
 
@@ -137,10 +139,10 @@ selected-flow/helicity-sum columns use
 \(T_{\mathrm{gen}}^{\mathrm{replay}}\); the all-flows/single-helicity columns
 use \(T_{\mathrm{gen}}^{\mathrm{union}}\).  Original \AC{} produces one
 table-driven library for both workloads, so its one generation time remains
-the denominator of both \PAC{}/\AC{} ratios.  In eager-versus-compiled tables,
-each eager generation is compared with the compiled generation using the
-same LC layout.  Prepared-model creation is a reusable model-level operation
-and remains outside either eager process-generation timer.
+the denominator of both recurrence/\AC{} ratios.  In the built-in cross-mode
+tables, each compiled or eager generation is compared with recurrence using
+the same LC layout.  Prepared-model creation is a reusable model-level
+operation and remains outside eager and recurrence process-generation timers.
 
 \subsection{NLC and full colour}
 

@@ -44,6 +44,12 @@ This development-only series targets released SymJIT 2.21.1 at revision
    architecture-neutral while retaining the accepted AArch64 implementation
    and strict prepared-O3 parity tests.
 
+4. `0004-expand-direct-table-output-cap.patch` must be applied after `0003`.
+   It raises the descriptor validation cap from 256 to 1024 split-complex
+   destination planes. The fixed-width descriptor and row-stride bounds remain
+   unchanged; this admits authenticated prepared kernels with more than 128
+   complex outputs, including the complete UFO-SM eager catalog.
+
 The ordinary `symjit-application-storage-v3` ABI and non-Direct-Arena
 evaluation paths are unchanged. The local contributor build still applies its
 existing manifest rewrite separately; that mechanical `cdylib` to `rlib`

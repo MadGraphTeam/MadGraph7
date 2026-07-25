@@ -201,15 +201,11 @@ def test_compiled_plane_contract_freezes_leaf_and_plane_bindings() -> None:
     ]
 
 
-def test_compiled_plane_contract_rejects_non_o3_generation() -> None:
+def test_compiled_plane_contract_leaves_non_o3_generation_on_row_major_path() -> None:
     stage = _stage()
     stage["evaluator"]["chunks"][0]["optimization_level"] = 2
 
-    with pytest.raises(
-        ValueError,
-        match="requires compiled JIT optimization level 3",
-    ):
-        _compiled_plane_arena_stage(stage)
+    assert _compiled_plane_arena_stage(stage) is None
 
 
 @pytest.mark.parametrize(
@@ -255,17 +251,19 @@ def test_stage_set_requires_complete_capability_bound_metadata() -> None:
 
     missing = deepcopy(_set())
     del missing["stages"][0]["compiled_plane_arena"]
-    with pytest.raises(ValueError, match="compiled-plane-arena-v1"):
+    with pytest.raises(ValueError, match="compiled plane-arena capability"):
         _stage_evaluator_set(missing)
 
-    legacy = deepcopy(_set())
-    legacy["required_runtime_capabilities"].remove(
+    row_major = deepcopy(_set())
+    row_major["required_runtime_capabilities"].remove(
         COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY
     )
-    del legacy["stages"][0]["compiled_plane_arena"]
-    del legacy["amplitude_stage"]["compiled_plane_arena"]
-    with pytest.raises(ValueError, match="compiled f64 artifacts require"):
-        _stage_evaluator_set(legacy)
+    del row_major["stages"][0]["compiled_plane_arena"]
+    del row_major["amplitude_stage"]["compiled_plane_arena"]
+    assert (
+        _stage_evaluator_set(row_major)["required_runtime_capabilities"]
+        == [SYMJIT_F64_RUNTIME_CAPABILITY]
+    )
 
     drift = deepcopy(_set())
     drift["amplitude_stage"]["compiled_plane_arena"]["leaves"][1]["output_start"] = 0

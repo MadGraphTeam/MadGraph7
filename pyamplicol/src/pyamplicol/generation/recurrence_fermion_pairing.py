@@ -22,6 +22,7 @@ from typing import Final, Literal, TypeVar, cast
 from pyamplicol.models.recurrence_template import (
     CurrentStateTemplateV1,
     ExactComplexRationalV1,
+    QuantumFlowTemplateV1,
 )
 from pyamplicol.processes.ir import CanonicalProcessIR, ProcessLegIR
 
@@ -74,7 +75,7 @@ class ExternalFermionEndpointRowV1:
 
 @dataclass(frozen=True, slots=True)
 class FermionPairingClassRowV1:
-    """One species-local compatible fundamental/antifundamental endpoint set."""
+    """One model-compatible fundamental/antifundamental endpoint set."""
 
     class_id: int
     species_class_id: int
@@ -140,13 +141,20 @@ def build_recurrence_fermion_pairing_catalog_v1(
     process: CanonicalProcessIR,
     current_states: Sequence[CurrentStateTemplateV1],
     *,
+    quantum_flows: Sequence[QuantumFlowTemplateV1] = (),
     limits: FermionPairingLimitsV1 | None = None,
 ) -> FermionPairingCatalogV1:
-    """Derive all bounded, species-compatible external-fermion pairings.
+    """Derive all bounded, model-compatible external-fermion pairings.
 
     Color-singlet fermions do not define LC open-string endpoints and are
     intentionally absent.  A process with no colored fermion endpoints has one
     trivial parity-even rule, which is convenient for later closure lowering.
+
+    Fermion species connected by an authenticated model quantum flow share a
+    pairing class.  This is required for charged-current lines, where a
+    fundamental endpoint can carry a different species from its
+    antifundamental endpoint.  In the absence of such a witness the original
+    same-species rule remains exact.
     """
 
     if not isinstance(process, CanonicalProcessIR):
@@ -158,6 +166,11 @@ def build_recurrence_fermion_pairing_catalog_v1(
     if any(not isinstance(state, CurrentStateTemplateV1) for state in states):
         raise TypeError(
             "fermion pairing current states must be CurrentStateTemplateV1 rows"
+        )
+    flows = tuple(quantum_flows)
+    if any(not isinstance(flow, QuantumFlowTemplateV1) for flow in flows):
+        raise TypeError(
+            "fermion pairing quantum flows must be QuantumFlowTemplateV1 rows"
         )
 
     contracts = tuple(
@@ -171,23 +184,32 @@ def build_recurrence_fermion_pairing_catalog_v1(
             f"{len(contracts)} > {active_limits.max_endpoints}"
         )
 
+    compatibility_ids = _fermion_compatibility_ids(states, flows)
     grouped: dict[str, list[_EndpointContract]] = {}
     for contract in contracts:
-        grouped.setdefault(contract.species_id, []).append(contract)
+        grouped.setdefault(
+            compatibility_ids.get(contract.species_id, contract.species_id),
+            [],
+        ).append(contract)
     ordered_groups = sorted(
         grouped.values(),
         key=lambda group: tuple(sorted(item.source_slot for item in group)),
     )
     species_class_ids = {
-        group[0].species_id: class_id for class_id, group in enumerate(ordered_groups)
+        compatibility_ids.get(group[0].species_id, group[0].species_id): class_id
+        for class_id, group in enumerate(ordered_groups)
     }
     endpoints = tuple(
         ExternalFermionEndpointRowV1(
             endpoint_id=endpoint_id,
             source_slot=contract.source_slot,
             public_label=contract.public_label,
-            species_class_id=species_class_ids[contract.species_id],
-            species_id=contract.species_id,
+            species_class_id=species_class_ids[
+                compatibility_ids.get(contract.species_id, contract.species_id)
+            ],
+            species_id=compatibility_ids.get(
+                contract.species_id, contract.species_id
+            ),
             particle_orientation=contract.particle_orientation,
             color_orientation=contract.color_orientation,
             state_template_ids=contract.state_template_ids,
@@ -205,6 +227,9 @@ def build_recurrence_fermion_pairing_catalog_v1(
     local_options: list[tuple[_LocalPairing, ...]] = []
     total_rule_count = 1
     for class_id, group in enumerate(ordered_groups):
+        class_species_id = compatibility_ids.get(
+            group[0].species_id, group[0].species_id
+        )
         fundamental = tuple(
             sorted(
                 item.source_slot
@@ -222,13 +247,13 @@ def build_recurrence_fermion_pairing_catalog_v1(
         if len(fundamental) != len(antifundamental):
             raise RecurrenceFermionPairingError(
                 "incompatible fermion species endpoints: species contract "
-                f"{group[0].species_id!r} has {len(fundamental)} fundamental "
+                f"{class_species_id!r} has {len(fundamental)} fundamental "
                 f"and {len(antifundamental)} antifundamental endpoints"
             )
         pairing_count = math.factorial(len(fundamental))
         if pairing_count > active_limits.max_pairings_per_species:
             raise RecurrenceFermionPairingError(
-                "species-local fermion pairings exceed the configured bound: "
+                "model-compatible fermion pairings exceed the configured bound: "
                 f"{pairing_count} > {active_limits.max_pairings_per_species}"
             )
         total_rule_count *= pairing_count
@@ -252,7 +277,7 @@ def build_recurrence_fermion_pairing_catalog_v1(
             FermionPairingClassRowV1(
                 class_id=class_id,
                 species_class_id=class_id,
-                species_id=group[0].species_id,
+                species_id=class_species_id,
                 fundamental_source_slots=fundamental,
                 antifundamental_source_slots=antifundamental,
                 reference_pairings=reference,
@@ -306,6 +331,77 @@ def build_recurrence_fermion_pairing_catalog_v1(
         topology_digest=_digest(topology_payload),
         semantic_digest=_digest(semantic_payload),
     )
+
+
+def _fermion_compatibility_ids(
+    states: tuple[CurrentStateTemplateV1, ...],
+    flows: tuple[QuantumFlowTemplateV1, ...],
+) -> dict[str, str]:
+    """Return exact model-proven fermion-line compatibility components."""
+
+    state_by_id = {state.template_id: state for state in states}
+    fermion_species = tuple(
+        sorted({state.species_id for state in states if state.statistics == "fermion"})
+    )
+    parent = {species_id: species_id for species_id in fermion_species}
+
+    def find(species_id: str) -> str:
+        root = species_id
+        while parent[root] != root:
+            root = parent[root]
+        while parent[species_id] != species_id:
+            next_species = parent[species_id]
+            parent[species_id] = root
+            species_id = next_species
+        return root
+
+    def union(left: str, right: str) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root == right_root:
+            return
+        low, high = sorted((left_root, right_root))
+        parent[high] = low
+
+    for flow in flows:
+        referenced = (
+            *flow.input_state_template_ids,
+            flow.result_state_template_id,
+        )
+        try:
+            flow_states = tuple(state_by_id[template_id] for template_id in referenced)
+        except KeyError as error:
+            raise RecurrenceFermionPairingError(
+                "fermion pairing quantum flow references an unknown current-state "
+                f"template {error.args[0]!r}"
+            ) from error
+        species = tuple(
+            sorted(
+                {
+                    state.species_id
+                    for state in flow_states
+                    if state.statistics == "fermion"
+                }
+            )
+        )
+        if len(species) == 2:
+            union(*species)
+
+    components: dict[str, list[str]] = {}
+    for species_id in fermion_species:
+        components.setdefault(find(species_id), []).append(species_id)
+    result: dict[str, str] = {}
+    for members in components.values():
+        canonical_members = tuple(sorted(members))
+        compatibility_id = (
+            canonical_members[0]
+            if len(canonical_members) == 1
+            else f"model-fermion-transition-component:{_digest(canonical_members)}"
+        )
+        result.update(
+            (species_id, compatibility_id) for species_id in canonical_members
+        )
+    return result
 
 
 def _derive_endpoint(

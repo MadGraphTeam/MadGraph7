@@ -4,10 +4,12 @@
 
 use super::recurrence_backend::NativeRecurrenceDirectExecutorOwners;
 use super::*;
-use crate::recurrence::direct_backend::{DirectExecutionRoleTimings, DirectExecutorCatalog};
+use crate::recurrence::direct_backend::{
+    DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog,
+};
 use crate::recurrence::direct_runtime::{
     DirectRecurrenceExecutionRuntime, DirectRecurrenceTileOutput, DirectReplaySelectorPlan,
-    DirectRuntimePhaseTimings, DirectUnionHelicitySelectorPlan,
+    DirectRuntimeActivityCounters, DirectRuntimePhaseTimings, DirectUnionHelicitySelectorPlan,
 };
 use crate::recurrence::{
     DIRECT_NONE_U32, DirectRecurrencePlan, RecurrenceColorContraction, RecurrenceStrategy,
@@ -2033,6 +2035,8 @@ fn replay_destination_helicity_maps(
 struct DirectProfileSnapshot {
     phases: DirectRuntimePhaseTimings,
     roles: DirectExecutionRoleTimings,
+    execution: DirectExecutionCounters,
+    activity: DirectRuntimeActivityCounters,
 }
 
 impl DirectProfileSnapshot {
@@ -2040,6 +2044,8 @@ impl DirectProfileSnapshot {
         Self {
             phases: runtime.phase_timings(),
             roles: runtime.role_timings(),
+            execution: runtime.counters(),
+            activity: runtime.activity_counters(),
         }
     }
 }
@@ -2078,6 +2084,94 @@ fn direct_profile(
         .finalization
         .saturating_sub(before.roles.finalization);
     let closure = after.roles.closure.saturating_sub(before.roles.closure);
+    let execution = DirectExecutionCounters {
+        source_calls: after
+            .execution
+            .source_calls
+            .saturating_sub(before.execution.source_calls),
+        source_rows: after
+            .execution
+            .source_rows
+            .saturating_sub(before.execution.source_rows),
+        contribution_calls: after
+            .execution
+            .contribution_calls
+            .saturating_sub(before.execution.contribution_calls),
+        contribution_rows: after
+            .execution
+            .contribution_rows
+            .saturating_sub(before.execution.contribution_rows),
+        finalization_calls: after
+            .execution
+            .finalization_calls
+            .saturating_sub(before.execution.finalization_calls),
+        finalization_rows: after
+            .execution
+            .finalization_rows
+            .saturating_sub(before.execution.finalization_rows),
+        closure_calls: after
+            .execution
+            .closure_calls
+            .saturating_sub(before.execution.closure_calls),
+        closure_rows: after
+            .execution
+            .closure_rows
+            .saturating_sub(before.execution.closure_rows),
+        packed_input_bytes: after
+            .execution
+            .packed_input_bytes
+            .saturating_sub(before.execution.packed_input_bytes),
+        packed_output_bytes: after
+            .execution
+            .packed_output_bytes
+            .saturating_sub(before.execution.packed_output_bytes),
+        scatter_bytes: after
+            .execution
+            .scatter_bytes
+            .saturating_sub(before.execution.scatter_bytes),
+    };
+    let activity = DirectRuntimeActivityCounters {
+        momentum_fill_calls: after
+            .activity
+            .momentum_fill_calls
+            .saturating_sub(before.activity.momentum_fill_calls),
+        momentum_forms_filled: after
+            .activity
+            .momentum_forms_filled
+            .saturating_sub(before.activity.momentum_forms_filled),
+        momentum_terms_filled: after
+            .activity
+            .momentum_terms_filled
+            .saturating_sub(before.activity.momentum_terms_filled),
+        momentum_scalar_values_filled: after
+            .activity
+            .momentum_scalar_values_filled
+            .saturating_sub(before.activity.momentum_scalar_values_filled),
+        schedule_executions: after
+            .activity
+            .schedule_executions
+            .saturating_sub(before.activity.schedule_executions),
+        replay_schedule_executions: after
+            .activity
+            .replay_schedule_executions
+            .saturating_sub(before.activity.replay_schedule_executions),
+        replay_output_values_scaled: after
+            .activity
+            .replay_output_values_scaled
+            .saturating_sub(before.activity.replay_output_values_scaled),
+        union_source_dispatch_calls: after
+            .activity
+            .union_source_dispatch_calls
+            .saturating_sub(before.activity.union_source_dispatch_calls),
+        union_source_rows: after
+            .activity
+            .union_source_rows
+            .saturating_sub(before.activity.union_source_rows),
+        union_schedule_executions: after
+            .activity
+            .union_schedule_executions
+            .saturating_sub(before.activity.union_schedule_executions),
+    };
     RuntimeProfile {
         momentum_setup_s: profile_duration_seconds(external_momentum_flatten + momentum_fill),
         momentum_input_setup_s: profile_duration_seconds(external_momentum_flatten),
@@ -2092,6 +2186,20 @@ fn direct_profile(
         recurrence_finalization_s: profile_duration_seconds(finalization),
         recurrence_closure_s: profile_duration_seconds(closure),
         recurrence_replay_output_mapping_s: profile_duration_seconds(replay_output_mapping),
+        recurrence_momentum_scalar_value_count: activity.momentum_scalar_values_filled,
+        recurrence_schedule_execution_count: activity.schedule_executions,
+        recurrence_replay_schedule_execution_count: activity.replay_schedule_executions,
+        recurrence_union_schedule_execution_count: activity.union_schedule_executions,
+        recurrence_union_source_row_count: activity.union_source_rows,
+        recurrence_replay_output_value_count: activity.replay_output_values_scaled,
+        recurrence_source_call_count: execution.source_calls,
+        recurrence_source_row_count: execution.source_rows,
+        recurrence_contribution_call_count: execution.contribution_calls,
+        recurrence_contribution_row_count: execution.contribution_rows,
+        recurrence_finalization_call_count: execution.finalization_calls,
+        recurrence_finalization_row_count: execution.finalization_rows,
+        recurrence_closure_call_count: execution.closure_calls,
+        recurrence_closure_row_count: execution.closure_rows,
         reduction_s: profile_duration_seconds(reduction),
         total_s: profile_duration_seconds(total),
         ..RuntimeProfile::default()

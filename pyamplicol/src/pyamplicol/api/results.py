@@ -599,6 +599,20 @@ class BenchmarkProfileCounters:
     final_output_copy_values_per_point: float | None = None
     native_input_container_allocations_per_call: float | None = None
     evaluator_backend_calls_per_call: float | None = None
+    recurrence_momentum_scalar_values_per_point: float | None = None
+    recurrence_schedule_executions_per_call: float | None = None
+    recurrence_replay_schedule_executions_per_call: float | None = None
+    recurrence_union_schedule_executions_per_call: float | None = None
+    recurrence_union_source_rows_per_call: float | None = None
+    recurrence_replay_output_values_per_point: float | None = None
+    recurrence_source_calls_per_call: float | None = None
+    recurrence_source_rows_per_call: float | None = None
+    recurrence_contribution_calls_per_call: float | None = None
+    recurrence_contribution_rows_per_call: float | None = None
+    recurrence_finalization_calls_per_call: float | None = None
+    recurrence_finalization_rows_per_call: float | None = None
+    recurrence_closure_calls_per_call: float | None = None
+    recurrence_closure_rows_per_call: float | None = None
     observed_scratch_reallocations_per_call: float | None = None
     native_output_allocations_per_call: float | None = None
 
@@ -637,6 +651,20 @@ class BenchmarkProfileCounters:
             "final_output_copy_values_per_point",
             "native_input_container_allocations_per_call",
             "evaluator_backend_calls_per_call",
+            "recurrence_momentum_scalar_values_per_point",
+            "recurrence_schedule_executions_per_call",
+            "recurrence_replay_schedule_executions_per_call",
+            "recurrence_union_schedule_executions_per_call",
+            "recurrence_union_source_rows_per_call",
+            "recurrence_replay_output_values_per_point",
+            "recurrence_source_calls_per_call",
+            "recurrence_source_rows_per_call",
+            "recurrence_contribution_calls_per_call",
+            "recurrence_contribution_rows_per_call",
+            "recurrence_finalization_calls_per_call",
+            "recurrence_finalization_rows_per_call",
+            "recurrence_closure_calls_per_call",
+            "recurrence_closure_rows_per_call",
             "observed_scratch_reallocations_per_call",
             "native_output_allocations_per_call",
         ):

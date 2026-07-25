@@ -3844,6 +3844,8 @@ fn native_profile_accumulates_compiled_accounting() {
         stage_leaf_input_pack_s: 2.0,
         recurrence_schedule_s: 6.0,
         recurrence_contribution_kernel_s: 4.0,
+        recurrence_schedule_execution_count: 2,
+        recurrence_contribution_row_count: 7,
         stage_leaf_input_pack_by_stage_s: vec![2.0],
         stage_leaf_input_copy_component_count: 3,
         evaluator_backend_call_count: 4,
@@ -3856,6 +3858,8 @@ fn native_profile_accumulates_compiled_accounting() {
         stage_leaf_input_pack_s: 20.0,
         recurrence_schedule_s: 60.0,
         recurrence_contribution_kernel_s: 40.0,
+        recurrence_schedule_execution_count: 20,
+        recurrence_contribution_row_count: 70,
         stage_leaf_input_pack_by_stage_s: vec![20.0, 30.0],
         stage_leaf_input_copy_component_count: 30,
         evaluator_backend_call_count: 40,
@@ -3870,6 +3874,8 @@ fn native_profile_accumulates_compiled_accounting() {
     assert_eq!(profile.stage_leaf_input_pack_s, 22.0);
     assert_eq!(profile.recurrence_schedule_s, 66.0);
     assert_eq!(profile.recurrence_contribution_kernel_s, 44.0);
+    assert_eq!(profile.recurrence_schedule_execution_count, 22);
+    assert_eq!(profile.recurrence_contribution_row_count, 77);
     assert_eq!(profile.stage_leaf_input_pack_by_stage_s, [22.0, 30.0]);
     assert_eq!(profile.stage_leaf_input_copy_component_count, 33);
     assert_eq!(profile.evaluator_backend_call_count, 44);

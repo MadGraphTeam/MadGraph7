@@ -53,12 +53,29 @@ fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> Rusti
                 })
         })
     });
+    let all_explicit_row_major_non_o3 = all_stages.iter().all(|stage| {
+        stage.evaluator.leaf_layout().is_ok_and(|leaves| {
+            !leaves.is_empty()
+                && leaves.iter().all(|leaf| {
+                    matches!(
+                        leaf.evaluator,
+                        EvaluatorManifest::SymjitApplication {
+                            optimization_level,
+                            ..
+                        } if *optimization_level != 3
+                    )
+                })
+        })
+    });
     let direct_count = all_stages
         .iter()
         .filter(|stage| stage.compiled_plane_arena.is_some())
         .count();
 
     if !declared_execution && !declared_stage && direct_count == 0 {
+        if all_explicit_row_major_non_o3 {
+            return Ok(false);
+        }
         if compiled_direct_developer_oracle_enabled() {
             return Ok(false);
         }
@@ -3956,6 +3973,22 @@ mod compiled_plane_arena_contract_tests {
         assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
         assert!(error.to_string().contains("compiled-plane-arena-v1"));
         assert!(error.to_string().contains("generate-process"));
+    }
+
+    #[test]
+    fn explicit_non_o3_compiled_f64_uses_the_row_major_runtime() {
+        let mut value = crate::artifact::tests::minimal_execution_manifest(
+            "p0",
+            "a b > c",
+            SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
+            crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
+        );
+        value["compiled"]["stage_evaluators"]["amplitude_stage"]["evaluator"]["optimization_level"] =
+            json!(1);
+        let manifest =
+            serde_json::from_value(value).expect("deserialize row-major compiled fixture");
+
+        assert!(!validate_compiled_plane_arena_contract(&manifest).unwrap());
     }
 
     #[test]

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: 0BSD
 use std::ptr;
 
 use symjit::{
