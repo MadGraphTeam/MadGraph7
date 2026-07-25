@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
+import subprocess
 import tomllib
+from collections.abc import Iterable
 from pathlib import Path
 
 from pyamplicol._internal import versions
@@ -19,6 +22,7 @@ FIRST_PARTY_ROOTS = (
 )
 SOURCE_SUFFIXES = {".py", ".rs", ".h", ".hpp", ".f90"}
 IGNORED_PARTS = {
+    ".agent-work",
     ".git",
     ".artifacts",
     ".mypy_cache",
@@ -35,6 +39,42 @@ IGNORED_PARTS = {
     "venv",
     "wheelhouse",
 }
+
+
+def _is_model_asset_root(path: Path) -> bool:
+    return path.name == "models" and "assets" in path.parts[:-1]
+
+
+def _working_tree_model_asset_roots() -> set[Path]:
+    roots: set[Path] = set()
+    for directory, child_directories, _files in os.walk(ROOT):
+        child_directories[:] = [
+            child for child in child_directories if child not in IGNORED_PARTS
+        ]
+        path = Path(directory)
+        if _is_model_asset_root(path.relative_to(ROOT)):
+            roots.add(path)
+    return roots
+
+
+def _tracked_model_asset_roots(tracked_paths: Iterable[Path]) -> set[Path]:
+    roots: set[Path] = set()
+    for tracked_path in tracked_paths:
+        for candidate in tracked_path.parents:
+            if _is_model_asset_root(candidate):
+                roots.add(ROOT / candidate)
+    return roots
+
+
+def _repository_tracked_paths() -> tuple[Path, ...]:
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+    tracked_paths = result.stdout.split(b"\0")
+    return tuple(Path(os.fsdecode(raw_path)) for raw_path in tracked_paths if raw_path)
 
 
 def _eligible(path: Path) -> bool:
@@ -70,14 +110,20 @@ def test_release_source_roots_contain_no_symlinks() -> None:
 
 def test_model_assets_have_one_canonical_package_root() -> None:
     expected = ROOT / "src" / "pyamplicol" / "assets" / "models"
-    candidates = [
-        path
-        for path in ROOT.rglob("models")
-        if path.is_dir()
-        and "assets" in path.parts
-        and not IGNORED_PARTS.intersection(path.relative_to(ROOT).parts)
-    ]
+    candidates = sorted(
+        _working_tree_model_asset_roots()
+        | _tracked_model_asset_roots(_repository_tracked_paths())
+    )
     assert candidates == [expected]
+
+
+def test_tracked_model_assets_cannot_hide_below_an_ignored_work_root() -> None:
+    tracked_duplicate = Path(
+        ".agent-work/copy/src/pyamplicol/assets/models/MANIFEST.sha256"
+    )
+    assert _tracked_model_asset_roots((tracked_duplicate,)) == {
+        ROOT / tracked_duplicate.parent
+    }
 
 
 def test_vendored_ufo_sources_are_not_relicensed_as_first_party_code() -> None:
@@ -211,7 +257,5 @@ def test_python_rust_and_release_lock_wire_versions_are_identical() -> None:
         == versions.SYMJIT_APPLICATION_ABI
         == release["symjit_application"]
     )
-    assert (
-        release["prepared_model_bundle"] == PREPARED_MODEL_BUNDLE_SCHEMA_VERSION
-    )
+    assert release["prepared_model_bundle"] == PREPARED_MODEL_BUNDLE_SCHEMA_VERSION
     assert release["prepared_kernel_variant"] == PREPARED_KERNEL_VARIANT_ABI
