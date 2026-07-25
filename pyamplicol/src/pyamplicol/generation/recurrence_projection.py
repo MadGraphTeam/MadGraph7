@@ -836,22 +836,26 @@ def _project_physical_sectors(
         trace_source_slots = slots(sector.trace_labels, "LC trace")
         singlet_source_slots = slots(sector.singlet_labels, "LC singlets")
         word_source_slots = slots(word, "LC color word")
-        public_word_source_slots = amplicol_legacy_two_line_public_word(
-            word_source_slots,
-            tuple(
-                (
-                    line.fundamental_source_slot,
-                    line.antifundamental_source_slot,
-                    line.adjoint_source_slots,
-                    line.singlet_source_slots,
-                )
-                for line in open_strings
-            ),
-            tuple(
-                source_slot
-                for source_slot, leg in enumerate(external_legs)
-                if leg.is_initial
-            ),
+        public_word_source_slots = (
+            amplicol_legacy_two_line_public_word(
+                word_source_slots,
+                tuple(
+                    (
+                        line.fundamental_source_slot,
+                        line.antifundamental_source_slot,
+                        line.adjoint_source_slots,
+                        line.singlet_source_slots,
+                    )
+                    for line in open_strings
+                ),
+                tuple(
+                    source_slot
+                    for source_slot, leg in enumerate(external_legs)
+                    if leg.is_initial
+                ),
+            )
+            if process.color_accuracy == "lc"
+            else word_source_slots
         )
         public_word_labels = tuple(
             int(process.legs[source_slot].label)

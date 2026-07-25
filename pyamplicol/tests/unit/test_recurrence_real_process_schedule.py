@@ -216,6 +216,64 @@ def test_builtin_ddbar_to_ttbar_exposes_legacy_crossed_lc_flow() -> None:
         build_recurrence_builder_input_v1(logical)
 
 
+def test_builtin_two_line_contracted_color_keeps_unique_construction_flows() -> None:
+    model = BuiltinSMModel()
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+
+    for expression in ("d d~ > t t~", "d d~ > d d~"):
+        for accuracy in ("nlc", "full"):
+            process = build_process_ir(expression, color_accuracy=accuracy)
+            color_plan = build_color_plan(
+                process,
+                color_accuracy=accuracy,
+                fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(
+                    process
+                ),
+            )
+            logical = project_recurrence_process_v1(
+                process,
+                color_plan,
+                recurrence_catalog,
+                layout="contracted-color-union",
+                normalization=RecurrenceNormalizationV1(
+                    ExactComplexRationalV1(1),
+                    "contracted-two-line-flow-canary-v1",
+                    "0" * 64,
+                ),
+                coupling_order_limits=infer_minimal_coupling_order_limits(
+                    process,
+                    model=model,
+                ),
+                model=model,
+            )
+
+            public_ids = tuple(flow.public_id for flow in logical.public_flows)
+            construction_ids = tuple(
+                sector.public_id for sector in logical.physical_sectors
+            )
+            assert public_ids == construction_ids
+            assert len(set(public_ids)) == len(public_ids)
+            assert tuple(
+                (
+                    flow.construction_sector_id,
+                    flow.word_source_slots,
+                )
+                for flow in logical.public_flows
+            ) == tuple(
+                (
+                    sector.sector_id,
+                    sector.word_source_slots,
+                )
+                for sector in logical.physical_sectors
+            )
+            build_recurrence_builder_input_v1(logical)
+
+
 def test_sm_process_projects_model_generic_topology_replay_input() -> None:
     summaries: dict[str, dict[str, int]] = {}
     dag_shapes: dict[str, tuple[int, int]] = {}
