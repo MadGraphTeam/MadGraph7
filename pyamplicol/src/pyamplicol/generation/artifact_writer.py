@@ -713,9 +713,9 @@ def write_schema_v3_artifact(
                 compiled_model,
                 kernel_ids=eager_kernel_ids,
                 evaluator_payloads=evaluator_payloads,
-                require_eager_direct=any(
-                    isinstance(process, EagerPlanV3ProcessArtifact)
-                    for process in processes
+                require_eager_direct=(
+                    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
+                    in required_runtime_capabilities
                 ),
             )
         for process_index, process in enumerate(processes, start=1):
