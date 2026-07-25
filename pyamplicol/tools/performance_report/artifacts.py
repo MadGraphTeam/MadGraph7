@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Immutable report artifacts, validated current pointers, and filesystem locks."""
 
 from __future__ import annotations
@@ -674,20 +675,38 @@ class ArtifactAttempt:
         self._sealed = True
         return self.store._publish(self)
 
-    def mark_failed(self, error: str) -> None:
-        self._seal_unsuccessful("failed", error)
+    def mark_failed(
+        self,
+        error: str,
+        *,
+        artifact_paths: Iterable[str] = (),
+    ) -> None:
+        self._seal_unsuccessful(
+            "failed",
+            error,
+            artifact_paths=artifact_paths,
+        )
 
     def mark_interrupted(self, error: str) -> None:
         self._seal_unsuccessful("interrupted", error)
 
-    def _seal_unsuccessful(self, status: str, error: str) -> None:
+    def _seal_unsuccessful(
+        self,
+        status: str,
+        error: str,
+        *,
+        artifact_paths: Iterable[str] = (),
+    ) -> None:
         self._require_open()
         if not isinstance(error, str) or not error:
             raise ArtifactStoreError("failed attempt error must be a non-empty string")
         manifest = self._manifest(
             status=status,
             result_path=None,
-            artifacts=[],
+            artifacts=[
+                self._file_record(relative)
+                for relative in sorted(set(artifact_paths))
+            ],
             error=error,
         )
         _atomic_write_json(self.root / "manifest.json", manifest)

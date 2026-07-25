@@ -2333,6 +2333,20 @@ struct RuntimeProfile {
     recurrence_finalization_s: f64,
     recurrence_closure_s: f64,
     recurrence_replay_output_mapping_s: f64,
+    recurrence_momentum_scalar_value_count: u64,
+    recurrence_schedule_execution_count: u64,
+    recurrence_replay_schedule_execution_count: u64,
+    recurrence_union_schedule_execution_count: u64,
+    recurrence_union_source_row_count: u64,
+    recurrence_replay_output_value_count: u64,
+    recurrence_source_call_count: u64,
+    recurrence_source_row_count: u64,
+    recurrence_contribution_call_count: u64,
+    recurrence_contribution_row_count: u64,
+    recurrence_finalization_call_count: u64,
+    recurrence_finalization_row_count: u64,
+    recurrence_closure_call_count: u64,
+    recurrence_closure_row_count: u64,
 }
 
 // Saved SymJIT applications are native payloads and do not currently guarantee
@@ -2773,6 +2787,20 @@ pub struct NativeRuntimeProfile {
     /// Internal attribution owned by `recurrence_schedule_s`.
     pub recurrence_closure_s: f64,
     pub recurrence_replay_output_mapping_s: f64,
+    pub recurrence_momentum_scalar_value_count: u64,
+    pub recurrence_schedule_execution_count: u64,
+    pub recurrence_replay_schedule_execution_count: u64,
+    pub recurrence_union_schedule_execution_count: u64,
+    pub recurrence_union_source_row_count: u64,
+    pub recurrence_replay_output_value_count: u64,
+    pub recurrence_source_call_count: u64,
+    pub recurrence_source_row_count: u64,
+    pub recurrence_contribution_call_count: u64,
+    pub recurrence_contribution_row_count: u64,
+    pub recurrence_finalization_call_count: u64,
+    pub recurrence_finalization_row_count: u64,
+    pub recurrence_closure_call_count: u64,
+    pub recurrence_closure_row_count: u64,
     pub selector_planner_s: f64,
     pub selector_gather_s: f64,
     pub selector_scatter_s: f64,
@@ -2869,6 +2897,22 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
             recurrence_finalization_s: profile.recurrence_finalization_s,
             recurrence_closure_s: profile.recurrence_closure_s,
             recurrence_replay_output_mapping_s: profile.recurrence_replay_output_mapping_s,
+            recurrence_momentum_scalar_value_count: profile.recurrence_momentum_scalar_value_count,
+            recurrence_schedule_execution_count: profile.recurrence_schedule_execution_count,
+            recurrence_replay_schedule_execution_count: profile
+                .recurrence_replay_schedule_execution_count,
+            recurrence_union_schedule_execution_count: profile
+                .recurrence_union_schedule_execution_count,
+            recurrence_union_source_row_count: profile.recurrence_union_source_row_count,
+            recurrence_replay_output_value_count: profile.recurrence_replay_output_value_count,
+            recurrence_source_call_count: profile.recurrence_source_call_count,
+            recurrence_source_row_count: profile.recurrence_source_row_count,
+            recurrence_contribution_call_count: profile.recurrence_contribution_call_count,
+            recurrence_contribution_row_count: profile.recurrence_contribution_row_count,
+            recurrence_finalization_call_count: profile.recurrence_finalization_call_count,
+            recurrence_finalization_row_count: profile.recurrence_finalization_row_count,
+            recurrence_closure_call_count: profile.recurrence_closure_call_count,
+            recurrence_closure_row_count: profile.recurrence_closure_row_count,
             selector_planner_s: 0.0,
             selector_gather_s: 0.0,
             selector_scatter_s: 0.0,
@@ -3111,6 +3155,22 @@ impl NativeRuntimeProfile {
         self.recurrence_finalization_s += other.recurrence_finalization_s;
         self.recurrence_closure_s += other.recurrence_closure_s;
         self.recurrence_replay_output_mapping_s += other.recurrence_replay_output_mapping_s;
+        self.recurrence_momentum_scalar_value_count += other.recurrence_momentum_scalar_value_count;
+        self.recurrence_schedule_execution_count += other.recurrence_schedule_execution_count;
+        self.recurrence_replay_schedule_execution_count +=
+            other.recurrence_replay_schedule_execution_count;
+        self.recurrence_union_schedule_execution_count +=
+            other.recurrence_union_schedule_execution_count;
+        self.recurrence_union_source_row_count += other.recurrence_union_source_row_count;
+        self.recurrence_replay_output_value_count += other.recurrence_replay_output_value_count;
+        self.recurrence_source_call_count += other.recurrence_source_call_count;
+        self.recurrence_source_row_count += other.recurrence_source_row_count;
+        self.recurrence_contribution_call_count += other.recurrence_contribution_call_count;
+        self.recurrence_contribution_row_count += other.recurrence_contribution_row_count;
+        self.recurrence_finalization_call_count += other.recurrence_finalization_call_count;
+        self.recurrence_finalization_row_count += other.recurrence_finalization_row_count;
+        self.recurrence_closure_call_count += other.recurrence_closure_call_count;
+        self.recurrence_closure_row_count += other.recurrence_closure_row_count;
         self.selector_planner_s += other.selector_planner_s;
         self.selector_gather_s += other.selector_gather_s;
         self.selector_scatter_s += other.selector_scatter_s;

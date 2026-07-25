@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """One-cell measurement orchestration over the public pyAmpliCol Python API."""
 
 from __future__ import annotations
@@ -9,8 +10,10 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from .cache import empty_measurement
-from .models import Accuracy, CellSpec, ResultStatus
+from .models import Accuracy, CellSpec, ModelKey, ResultStatus
 from .runner import (
+    INDEPENDENT_RELATIVE_TOLERANCE,
+    RELATIVE_TOLERANCE,
     GeneratedArtifact,
     RunnerError,
     RunnerSettings,
@@ -19,6 +22,7 @@ from .runner import (
     pointwise_validation,
     profile_runtime,
     provenance_payload,
+    runtime_validation_points,
     validate_artifact_contract,
 )
 
@@ -81,6 +85,59 @@ def _baseline_matrix_element(
     return float(value)
 
 
+def generated_artifact_from_measurement(
+    measurement: Mapping[str, object],
+) -> GeneratedArtifact:
+    if measurement.get("status") != ResultStatus.OK.value:
+        raise RunnerError("only a successful measurement can provide an artifact")
+    artifact = measurement.get("artifact")
+    provenance = measurement.get("provenance")
+    generation_seconds = measurement.get("generation_seconds")
+    if (
+        not isinstance(artifact, Mapping)
+        or not isinstance(provenance, Mapping)
+        or isinstance(generation_seconds, bool)
+        or not isinstance(generation_seconds, (int, float))
+    ):
+        raise RunnerError("measurement does not contain reusable artifact metadata")
+    path = artifact.get("path")
+    process_id = artifact.get("process_id")
+    requested = provenance.get("requested_config")
+    effective = provenance.get("effective_config")
+    preparation_seconds = provenance.get("model_preparation_seconds", 0.0)
+    preparation_reused = provenance.get("model_preparation_reused", True)
+    if (
+        not isinstance(path, str)
+        or not isinstance(process_id, str)
+        or not isinstance(requested, Mapping)
+        or not isinstance(effective, Mapping)
+        or isinstance(preparation_seconds, bool)
+        or not isinstance(preparation_seconds, (int, float))
+        or not isinstance(preparation_reused, bool)
+    ):
+        raise RunnerError("measurement reusable artifact metadata is malformed")
+    artifact_path = Path(path).expanduser().resolve(strict=False)
+    if not artifact_path.is_dir():
+        raise RunnerError(f"reusable artifact directory is missing: {artifact_path}")
+    return GeneratedArtifact(
+        path=artifact_path,
+        process_id=process_id,
+        generation_seconds=float(generation_seconds),
+        model_preparation_seconds=float(preparation_seconds),
+        model_preparation_reused=preparation_reused,
+        requested_config=dict(requested),
+        effective_config=dict(effective),
+    )
+
+
+def _pointwise_tolerance(cell: CellSpec) -> float:
+    if cell.dataset_id.startswith("matrix_recurrence_") or cell.dataset_id.startswith(
+        "z_"
+    ):
+        return INDEPENDENT_RELATIVE_TOLERANCE
+    return RELATIVE_TOLERANCE
+
+
 def _load_runtime(artifact_path: Path, process_id: str) -> object:
     from pyamplicol.api import Runtime
 
@@ -119,7 +176,12 @@ def measure_pyamplicol_cell(
     )
     validate_artifact_contract(cell, generated.path)
     runtime = _load_runtime(generated.path, generated.process_id)
-    points = shared_validation_points(cell.process)
+    points = (
+        runtime_validation_points(runtime)
+        if cell.measurement.model
+        in {ModelKey.SCALAR_CONTACT, ModelKey.SCALAR_GRAVITY}
+        else shared_validation_points(cell.process)
+    )
     contract = (
         _baseline_selector_contract(baseline)
         if cell.measurement.accuracy is Accuracy.LC
@@ -139,11 +201,24 @@ def measure_pyamplicol_cell(
     validation: dict[str, object] = {
         "resolved_sum": profile.pop("resolved_sum_validation"),
     }
+    if cell.measurement.model in {
+        ModelKey.SCALAR_CONTACT,
+        ModelKey.SCALAR_GRAVITY,
+    }:
+        high_precision = runtime.evaluate(points, precision=32)
+        if not high_precision:
+            raise RunnerError("high-precision scalar evaluation returned no values")
+        high_precision_value = float(complex(high_precision[0]).real)
+        validation["high_precision"] = pointwise_validation(
+            float(profile["matrix_element"]),
+            abs(high_precision_value),
+        )
     baseline_value = _baseline_matrix_element(baseline)
     if baseline_value is not None:
         validation["pointwise"] = pointwise_validation(
             float(profile["matrix_element"]),
             baseline_value,
+            relative_tolerance=_pointwise_tolerance(cell),
         )
     statuses = {
         str(record.get("status"))
@@ -185,6 +260,11 @@ def measure_pyamplicol_cell(
             "failure": None,
         }
     )
+    if status != ResultStatus.OK.value:
+        measurement["failure"] = {
+            "kind": "MeasurementValidationError",
+            "message": "candidate or same-artifact numerical validation failed",
+        }
     return measurement
 
 
@@ -203,7 +283,11 @@ def failure_measurement(
             "status": status.value,
             "resources": None if resources is None else dict(resources),
             "failure": {
-                "kind": type(error).__name__ if isinstance(error, BaseException) else None,
+                "kind": (
+                    type(error).__name__
+                    if isinstance(error, BaseException)
+                    else None
+                ),
                 "message": message,
             },
         }
@@ -221,6 +305,7 @@ def load_measurement(path: Path) -> dict[str, object]:
 __all__ = [
     "failure_measurement",
     "file_digest",
+    "generated_artifact_from_measurement",
     "load_measurement",
     "measure_pyamplicol_cell",
     "shared_validation_points",

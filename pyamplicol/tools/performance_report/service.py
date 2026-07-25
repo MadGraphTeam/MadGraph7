@@ -1,9 +1,9 @@
+# SPDX-License-Identifier: 0BSD
 """Transactional cache merge, validation, and report-table publication."""
 
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import tempfile
 from collections import Counter
@@ -19,6 +19,7 @@ from .cache import (
     validate_measurement,
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
+from .measurement import source_revision
 from .render import render_all_tables
 
 
@@ -97,7 +98,9 @@ class ReportService:
             except FileNotFoundError:
                 payload = expected[name]
             except (OSError, json.JSONDecodeError) as error:
-                raise ReportServiceError(f"cannot load report cache {path}: {error}")
+                raise ReportServiceError(
+                    f"cannot load report cache {path}: {error}"
+                ) from error
             if not isinstance(payload, dict):
                 raise ReportServiceError(f"report cache {path} must be an object")
             caches[name] = payload
@@ -133,7 +136,14 @@ class ReportService:
         records: tuple[CurrentRecord, ...] | None = None,
     ) -> int:
         records = self.store.recover_current_records() if records is None else records
-        by_cell = {record.cell_id: record for record in records}
+        expected_revision = source_revision(self.paths.repo_root)
+        by_cell = {
+            record.cell_id: record
+            for record in records
+            if isinstance(record.result.get("provenance"), Mapping)
+            and record.result["provenance"].get("report_source_revision")
+            == expected_revision
+        }
         merged = 0
         for payload in caches.values():
             entries = payload["entries"]
@@ -163,9 +173,12 @@ class ReportService:
             )
         )
         written: list[Path] = []
+        replaced: list[tuple[Path, Path | None]] = []
         try:
             staged_results = staging / "results"
             staged_results.mkdir()
+            backup_root = staging / "previous"
+            backup_root.mkdir()
             schema_path = staged_results / "report-cache.schema.json"
             schema_path.write_bytes(_canonical_bytes(schema_document()))
             for name, payload in caches.items():
@@ -173,19 +186,46 @@ class ReportService:
             for name, content in tables.items():
                 (staging / name).write_text(content, encoding="ascii")
 
-            destination_schema = (
-                self.paths.results_dir / "report-cache.schema.json"
-            )
-            schema_path.replace(destination_schema)
-            written.append(destination_schema)
-            for name in sorted(caches):
-                destination = self.paths.results_dir / name
-                (staged_results / name).replace(destination)
-                written.append(destination)
-            for name in sorted(tables):
-                destination = self.paths.docs_dir / name
-                (staging / name).replace(destination)
-                written.append(destination)
+            publications = [
+                (
+                    schema_path,
+                    self.paths.results_dir / "report-cache.schema.json",
+                    Path("results/report-cache.schema.json"),
+                ),
+                *(
+                    (
+                        staged_results / name,
+                        self.paths.results_dir / name,
+                        Path("results") / name,
+                    )
+                    for name in sorted(caches)
+                ),
+                *(
+                    (
+                        staging / name,
+                        self.paths.docs_dir / name,
+                        Path(name),
+                    )
+                    for name in sorted(tables)
+                ),
+            ]
+            try:
+                for source, destination, relative in publications:
+                    backup: Path | None = None
+                    if destination.exists():
+                        backup = backup_root / relative
+                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(destination, backup)
+                    source.replace(destination)
+                    replaced.append((destination, backup))
+                    written.append(destination)
+            except BaseException:
+                for destination, backup in reversed(replaced):
+                    if backup is None:
+                        destination.unlink(missing_ok=True)
+                    else:
+                        backup.replace(destination)
+                raise
         finally:
             shutil.rmtree(staging, ignore_errors=True)
         return tuple(written)
@@ -214,6 +254,44 @@ class ReportService:
             "cache_count": len(caches),
             "table_count": len(tables),
             "statuses": dict(sorted(statuses.items())),
+        }
+
+    def audit(self) -> dict[str, object]:
+        """Validate cache coverage and exact checked-in render correspondence."""
+
+        result = self.validate()
+        caches = self.load_caches()
+        rendered = render_all_tables(caches, catalog=self.catalog)
+        expected_cache_files = {
+            *caches,
+            "report-cache.schema.json",
+        }
+        actual_cache_files = {
+            path.name for path in self.paths.results_dir.glob("*.json")
+        }
+        if actual_cache_files != expected_cache_files:
+            raise ReportServiceError(
+                "checked-in report cache files differ from the catalog; "
+                f"missing={sorted(expected_cache_files - actual_cache_files)}, "
+                f"extra={sorted(actual_cache_files - expected_cache_files)}"
+            )
+        mismatched_tables = [
+            name
+            for name, content in rendered.items()
+            if not (self.paths.docs_dir / name).is_file()
+            or (self.paths.docs_dir / name).read_text(encoding="ascii") != content
+        ]
+        if mismatched_tables:
+            raise ReportServiceError(
+                "checked-in report tables differ from canonical rendering: "
+                + ", ".join(sorted(mismatched_tables))
+            )
+        return {
+            **result,
+            "cache_render_match": True,
+            "artifact_current_count": len(
+                self.store.recover_current_records()
+            ),
         }
 
 

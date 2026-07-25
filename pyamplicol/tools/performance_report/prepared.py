@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Deterministic, lock-protected prepared-model assets for report workers."""
 
 from __future__ import annotations
@@ -5,6 +6,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
+import subprocess
 import tempfile
 import uuid
 from collections.abc import Iterator, Mapping
@@ -80,6 +83,7 @@ def prepared_identity(
     jit_optimization_level: int,
     source_digest: str,
     producer_revision: str,
+    target_platform: str | None = None,
 ) -> dict[str, object]:
     if len(source_digest) != 64:
         raise ValueError("source_digest must be SHA-256")
@@ -91,6 +95,11 @@ def prepared_identity(
         "jit_optimization_level": jit_optimization_level,
         "source_digest": source_digest,
         "producer_revision": producer_revision,
+        "target_platform": (
+            target_platform
+            if target_platform is not None
+            else f"{platform.system().lower()}-{platform.machine().lower()}"
+        ),
     }
 
 
@@ -147,7 +156,8 @@ def ensure_prepared_model(
             reused = False
             bundle_path.parent.mkdir(parents=True, exist_ok=True)
             staging = bundle_path.with_name(
-                f".{bundle_path.name}.{uuid.uuid4().hex}.staging"
+                f".{bundle_path.stem}.{uuid.uuid4().hex}.staging"
+                ".pyamplicol-model"
             )
             try:
                 source.compile(
@@ -184,10 +194,106 @@ def ensure_prepared_model(
         yield bundle_path, reused
 
 
+def _git_revision(repo_root: Path) -> str:
+    completed = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    revision = completed.stdout.strip()
+    return revision if completed.returncode == 0 and revision else "unknown"
+
+
+def ensure_report_prepared_model(
+    *,
+    store: ArtifactStore,
+    repo_root: Path,
+    worker_cores: int,
+    model: ModelKey,
+) -> tuple[Path, bool]:
+    """Create or reuse one portable report JIT O2 prepared bundle."""
+
+    from pyamplicol.api import ModelSource
+    from pyamplicol.config import (
+        EvaluatorBackend,
+        EvaluatorConfig,
+        EvaluatorExecutionMode,
+        EvaluatorOptimizationConfig,
+        JITConfig,
+    )
+
+    revision = _git_revision(repo_root)
+    if model is ModelKey.BUILTIN_SM:
+        source_path = None
+        source = ModelSource.built_in_sm()
+        digest = hashlib.sha256(
+            f"built-in-sm:{revision}".encode("ascii")
+        ).hexdigest()
+        stem = "built-in-sm"
+    elif model is ModelKey.UFO_SM:
+        source_path = (
+            repo_root / "src/pyamplicol/assets/models/json/sm/sm.json"
+        ).resolve()
+        source = ModelSource.from_path(source_path)
+        digest = _sha256(source_path)
+        stem = "ufo-sm"
+    else:
+        raise ValueError("report prepared packs support built-in SM and UFO-SM")
+    identity = prepared_identity(
+        model=model,
+        backend="jit",
+        jit_optimization_level=2,
+        source_digest=digest,
+        producer_revision=revision,
+    )
+    identity_digest = hashlib.sha256(
+        _canonical_bytes(identity)
+    ).hexdigest()[:20]
+    bundle_path = (
+        store.artifact_root
+        / "prepared-models"
+        / f"{stem}-jit-o2-{identity_digest}.pyamplicol-model"
+    )
+    evaluator = EvaluatorConfig(
+        backend=EvaluatorBackend.JIT,
+        execution_mode=EvaluatorExecutionMode.RECURRENCE,
+        optimization=EvaluatorOptimizationConfig(cores=worker_cores),
+        jit=JITConfig(optimization_level=2),
+    )
+    with ensure_prepared_model(
+        store=store,
+        bundle_path=bundle_path,
+        source=source,
+        evaluator=evaluator,
+        identity=identity,
+        model_cache_dir=store.artifact_root / "model-cache",
+    ) as result:
+        return result
+
+
+def ensure_report_ufo_sm_prepared_model(
+    *,
+    store: ArtifactStore,
+    repo_root: Path,
+    worker_cores: int,
+) -> tuple[Path, bool]:
+    return ensure_report_prepared_model(
+        store=store,
+        repo_root=repo_root,
+        worker_cores=worker_cores,
+        model=ModelKey.UFO_SM,
+    )
+
+
 __all__ = [
     "PREPARED_RECORD_SCHEMA",
     "PreparedModelError",
     "ensure_prepared_model",
+    "ensure_report_prepared_model",
+    "ensure_report_ufo_sm_prepared_model",
     "prepared_identity",
     "validate_prepared_record",
 ]

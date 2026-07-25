@@ -299,6 +299,20 @@ class _TimedRuntimeWithRecurrenceRepeatedProfile(_TimedRuntimeWithRepeatedProfil
             "execution_mode": "recurrence",
             "points": points,
             **{key: value * points for key, value in per_point.items()},
+            "recurrence_momentum_scalar_value_count": points * 12,
+            "recurrence_schedule_execution_count": repetitions,
+            "recurrence_replay_schedule_execution_count": repetitions,
+            "recurrence_union_schedule_execution_count": 0,
+            "recurrence_union_source_row_count": 0,
+            "recurrence_replay_output_value_count": points * 2,
+            "recurrence_source_call_count": repetitions * 4,
+            "recurrence_source_row_count": repetitions * 31,
+            "recurrence_contribution_call_count": repetitions * 7,
+            "recurrence_contribution_row_count": repetitions * 126,
+            "recurrence_finalization_call_count": repetitions * 5,
+            "recurrence_finalization_row_count": repetitions * 34,
+            "recurrence_closure_call_count": repetitions * 2,
+            "recurrence_closure_row_count": repetitions * 12,
         }
 
 
@@ -650,6 +664,13 @@ def test_recurrence_profile_uses_paired_schedule_attribution(
     assert contribution.mean_seconds_per_point == pytest.approx(6.0e-6)
     assert breakdown.other_core_time is not None
     assert breakdown.other_core_time.mean_seconds_per_point == pytest.approx(0.0)
+    assert breakdown.counters is not None
+    assert breakdown.counters.recurrence_momentum_scalar_values_per_point == 12
+    assert breakdown.counters.recurrence_schedule_executions_per_call == 1
+    assert breakdown.counters.recurrence_source_rows_per_call == 31
+    assert breakdown.counters.recurrence_contribution_rows_per_call == 126
+    assert breakdown.counters.recurrence_finalization_rows_per_call == 34
+    assert breakdown.counters.recurrence_closure_rows_per_call == 12
 
 
 def test_recurrence_profile_rejects_sub_attribution_larger_than_schedule() -> None:

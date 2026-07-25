@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
 from collections import Counter
@@ -114,6 +115,20 @@ def test_z_catalog_adds_recurrence_and_corrects_eager_label() -> None:
     ) == 16
 
 
+def test_scalar_ladders_are_canonical_resettable_cells() -> None:
+    assert tuple(dataset.dataset_id for dataset in REPORT_CATALOG.scalar_datasets) == (
+        "scalar_contact",
+        "scalar_gravity",
+    )
+    cells = REPORT_CATALOG.scalar_cells()
+    assert len(cells) == 10
+    assert all(cell.workload is Workload.CONTRACTED for cell in cells)
+    assert all(
+        cell.measurement.execution_mode is ExecutionMode.COMPILED for cell in cells
+    )
+    assert all(REPORT_CATALOG.baseline_cell(cell) is None for cell in cells)
+
+
 def test_baseline_dependencies_are_canonical_and_mode_ordered() -> None:
     recurrence = next(
         cell
@@ -141,6 +156,95 @@ def test_baseline_dependencies_are_canonical_and_mode_ordered() -> None:
     assert eager_baseline is not None
     assert eager_baseline.measurement.execution_mode is ExecutionMode.RECURRENCE
     assert REPORT_CATALOG.cell(compiled.cell_id) == compiled
+
+
+def test_equivalent_cells_require_exact_generation_semantics() -> None:
+    selected_recurrence = next(
+        cell
+        for cell in REPORT_CATALOG.matrix_cells()
+        if cell.dataset_id == "matrix_recurrence_builtin_sm_lc"
+        and cell.process_key == "dd_z_jets"
+        and cell.n_final == 3
+        and cell.workload is Workload.SELECTED_FLOW
+    )
+    equivalents = REPORT_CATALOG.equivalent_cells(selected_recurrence)
+
+    assert equivalents
+    assert all(
+        candidate.cell_id != selected_recurrence.cell_id
+        for candidate in equivalents
+    )
+    assert all(
+        (
+            candidate.process,
+            candidate.n_final,
+            candidate.process_key,
+            candidate.measurement,
+            candidate.workload,
+        )
+        == (
+            selected_recurrence.process,
+            selected_recurrence.n_final,
+            selected_recurrence.process_key,
+            selected_recurrence.measurement,
+            selected_recurrence.workload,
+        )
+        for candidate in equivalents
+    )
+    assert {
+        (candidate.dataset_id, candidate.variant)
+        for candidate in equivalents
+    } == {("z_builtin_sm", "recurrence_jit_o2")}
+
+    same_process_cells = [
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.process == selected_recurrence.process
+        and cell.n_final == selected_recurrence.n_final
+        and cell.process_key == selected_recurrence.process_key
+    ]
+    assert not {
+        candidate.cell_id
+        for candidate in same_process_cells
+        if (
+            candidate.measurement.model is ModelKey.UFO_SM
+            or candidate.workload is Workload.ALL_FLOW
+            or candidate.measurement.backend != selected_recurrence.measurement.backend
+            or candidate.measurement.execution_mode
+            is not selected_recurrence.measurement.execution_mode
+        )
+    } & {candidate.cell_id for candidate in equivalents}
+
+
+def test_equivalent_cells_cover_matching_compiled_backend_but_never_amplicol() -> None:
+    compiled = next(
+        cell
+        for cell in REPORT_CATALOG.matrix_cells()
+        if cell.dataset_id == "matrix_compiled_builtin_sm_lc"
+        and cell.process_key == "dd_z_jets"
+        and cell.n_final == 2
+        and cell.workload is Workload.ALL_FLOW
+    )
+    equivalents = REPORT_CATALOG.equivalent_cells(compiled)
+
+    assert {
+        (candidate.dataset_id, candidate.variant)
+        for candidate in equivalents
+    } == {("z_builtin_sm", "jit_o3")}
+    assert all(candidate.measurement.backend == "jit" for candidate in equivalents)
+    assert all(
+        candidate.measurement.jit_optimization_level == 3
+        for candidate in equivalents
+    )
+
+    reference = next(
+        cell
+        for cell in REPORT_CATALOG.reference_cells()
+        if cell.process_key == "dd_z_jets"
+        and cell.n_final == 2
+        and cell.workload is Workload.ALL_FLOW
+    )
+    assert REPORT_CATALOG.equivalent_cells(reference) == ()
 
 
 def test_reset_caches_are_canonical_and_cover_every_measurement_cell() -> None:

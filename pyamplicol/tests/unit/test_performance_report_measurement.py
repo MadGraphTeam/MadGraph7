@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from tools.performance_report.catalog import REPORT_CATALOG

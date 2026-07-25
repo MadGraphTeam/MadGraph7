@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Typed contracts shared by the report catalog, runner, cache, and renderer."""
 
 from __future__ import annotations
@@ -104,6 +105,23 @@ class MatrixDataset:
     candidate: MeasurementSpec
     baseline: MeasurementSpec
     multiplicities: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ScalarDataset:
+    dataset_id: str
+    title: str
+    table_name: str
+    cache_name: str
+    model: ModelKey
+    process_template: str
+    final_particle: str
+    multiplicities: tuple[int, ...]
+    measurement: MeasurementSpec
+
+    def process(self, n_final: int) -> str:
+        final_state = " ".join(self.final_particle for _ in range(n_final))
+        return f"scalar_0 scalar_0 > {final_state}"
 
 
 @dataclass(frozen=True, slots=True)

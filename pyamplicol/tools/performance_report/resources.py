@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Portable process-tree resource monitoring for report workers."""
 
 from __future__ import annotations

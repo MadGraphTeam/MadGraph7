@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Direct Python-API generation, profiling, and validation for report cells."""
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from .models import (
 )
 
 RELATIVE_TOLERANCE = 1.0e-12
+INDEPENDENT_RELATIVE_TOLERANCE = 1.0e-8
 ABSOLUTE_TOLERANCE = 1.0e-15
 GENERATION_VALIDATION_SEED = 12345
 
@@ -183,6 +185,13 @@ def _model_source_path(repo_root: Path, model: ModelKey) -> Path | None:
         return None
     if model is ModelKey.UFO_SM:
         return repo_root / "src/pyamplicol/assets/models/json/sm/sm.json"
+    if model is ModelKey.SCALAR_CONTACT:
+        return repo_root / "src/pyamplicol/assets/models/json/scalars/scalars.json"
+    if model is ModelKey.SCALAR_GRAVITY:
+        return (
+            repo_root
+            / "src/pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
+        )
     raise RunnerError(f"model {model.value!r} is not supported by process matrices")
 
 
@@ -464,10 +473,18 @@ def resolved_sum_validation(
     }
 
 
-def pointwise_validation(candidate: float, baseline: float) -> dict[str, object]:
+def pointwise_validation(
+    candidate: float,
+    baseline: float,
+    *,
+    relative_tolerance: float = RELATIVE_TOLERANCE,
+    absolute_tolerance: float = ABSOLUTE_TOLERANCE,
+) -> dict[str, object]:
+    if relative_tolerance < 0.0 or absolute_tolerance < 0.0:
+        raise ValueError("pointwise tolerances must be non-negative")
     absolute = abs(candidate - baseline)
     relative = absolute / max(abs(baseline), 1.0e-300)
-    passed = absolute <= ABSOLUTE_TOLERANCE or relative <= RELATIVE_TOLERANCE
+    passed = absolute <= absolute_tolerance or relative <= relative_tolerance
     return {
         "status": (
             ResultStatus.OK.value
@@ -478,8 +495,8 @@ def pointwise_validation(candidate: float, baseline: float) -> dict[str, object]
         "baseline": baseline,
         "absolute_difference": absolute,
         "relative_difference": relative,
-        "relative_tolerance": RELATIVE_TOLERANCE,
-        "absolute_tolerance": ABSOLUTE_TOLERANCE,
+        "relative_tolerance": relative_tolerance,
+        "absolute_tolerance": absolute_tolerance,
     }
 
 
@@ -648,6 +665,7 @@ def provenance_payload() -> dict[str, object]:
 
 __all__ = [
     "ABSOLUTE_TOLERANCE",
+    "INDEPENDENT_RELATIVE_TOLERANCE",
     "RELATIVE_TOLERANCE",
     "GeneratedArtifact",
     "RunnerError",

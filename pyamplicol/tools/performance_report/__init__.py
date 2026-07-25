@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Three-mode performance-report support.
 
 The package deliberately keeps measurement, storage, scheduling, and rendering

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
 import copy
@@ -211,11 +212,13 @@ def test_two_z_ladders_use_single_line_mode_labels(reset_caches) -> None:
         assert r"\begin{minipage}{\linewidth}" in tex
 
 
-def test_all_outputs_include_twelve_matrices_and_two_z_ladders(
+def test_all_outputs_include_matrices_z_and_scalar_ladders(
     reset_caches,
 ) -> None:
     rendered = render_all_tables(reset_caches)
 
-    assert len(rendered) == 14
+    assert len(rendered) == 16
     assert set(render_all_matrix_tables(reset_caches)) < set(rendered)
     assert set(render_all_z_ladders(reset_caches)) < set(rendered)
+    assert "result_scalar_contact_table.tex" in rendered
+    assert "result_scalar_gravity_table.tex" in rendered

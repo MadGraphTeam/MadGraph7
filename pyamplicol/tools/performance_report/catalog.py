@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Canonical report process, mode, dataset, and cell catalog."""
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from .models import (
     ModelKey,
     ModelSpec,
     ProcessFamily,
+    ScalarDataset,
     Workload,
     ZVariant,
 )
@@ -224,6 +226,39 @@ MATRIX_DATASETS = tuple(
     for accuracy in Accuracy
 )
 
+SCALAR_DATASETS = (
+    ScalarDataset(
+        dataset_id="scalar_contact",
+        cache_name="scalar_contact.json",
+        table_name="result_scalar_contact_table.tex",
+        title="Scalar-contact ladder",
+        model=ModelKey.SCALAR_CONTACT,
+        process_template="scalar_0 scalar_0 > n*scalar_0",
+        final_particle="scalar_0",
+        multiplicities=tuple(range(2, 9)),
+        measurement=_measurement(
+            ExecutionMode.COMPILED,
+            ModelKey.SCALAR_CONTACT,
+            Accuracy.FULL,
+        ),
+    ),
+    ScalarDataset(
+        dataset_id="scalar_gravity",
+        cache_name="scalar_gravity.json",
+        table_name="result_scalar_gravity_table.tex",
+        title="Scalar-gravity ladder",
+        model=ModelKey.SCALAR_GRAVITY,
+        process_template="scalar_0 scalar_0 > n*graviton",
+        final_particle="graviton",
+        multiplicities=tuple(range(2, 5)),
+        measurement=_measurement(
+            ExecutionMode.COMPILED,
+            ModelKey.SCALAR_GRAVITY,
+            Accuracy.FULL,
+        ),
+    ),
+)
+
 Z_VARIANTS = (
     ZVariant("reference", "Independent reference", ExecutionMode.AMPLICOL, "fortran"),
     ZVariant("jit_o1", "JIT level 1", ExecutionMode.COMPILED, "jit", 1),
@@ -253,11 +288,20 @@ Z_VARIANTS = (
 )
 
 
+def z_dataset_id(model: ModelKey) -> str:
+    if model is ModelKey.BUILTIN_SM:
+        return "z_builtin_sm"
+    if model is ModelKey.UFO_SM:
+        return "z_external_sm"
+    raise ValueError("Z ladders support only built-in SM and UFO-SM")
+
+
 @dataclass(frozen=True, slots=True)
 class ReportCatalog:
     models: dict[ModelKey, ModelSpec]
     process_families: tuple[ProcessFamily, ...]
     matrix_datasets: tuple[MatrixDataset, ...]
+    scalar_datasets: tuple[ScalarDataset, ...]
     z_variants: tuple[ZVariant, ...]
 
     def dataset(self, dataset_id: str) -> MatrixDataset:
@@ -329,6 +373,20 @@ class ReportCatalog:
                         )
         return tuple(cells)
 
+    def scalar_cells(self) -> tuple[CellSpec, ...]:
+        return tuple(
+            CellSpec(
+                dataset_id=dataset.dataset_id,
+                process=dataset.process(n_final),
+                n_final=n_final,
+                process_key=dataset.dataset_id,
+                measurement=dataset.measurement,
+                workload=Workload.CONTRACTED,
+            )
+            for dataset in self.scalar_datasets
+            for n_final in dataset.multiplicities
+        )
+
     def z_cells(self) -> tuple[CellSpec, ...]:
         cells: list[CellSpec] = []
         for model in (ModelKey.BUILTIN_SM, ModelKey.UFO_SM):
@@ -351,7 +409,7 @@ class ReportCatalog:
                     ):
                         cells.append(
                             CellSpec(
-                                dataset_id=f"z_{model.value}",
+                                dataset_id=z_dataset_id(model),
                                 process=process,
                                 n_final=n_final,
                                 process_key="dd_z_jets",
@@ -363,7 +421,12 @@ class ReportCatalog:
         return tuple(cells)
 
     def measurement_cells(self) -> tuple[CellSpec, ...]:
-        return (*self.reference_cells(), *self.matrix_cells(), *self.z_cells())
+        return (
+            *self.reference_cells(),
+            *self.matrix_cells(),
+            *self.scalar_cells(),
+            *self.z_cells(),
+        )
 
     def cell(self, cell_id: str) -> CellSpec:
         matches = [
@@ -374,8 +437,44 @@ class ReportCatalog:
             raise KeyError(f"{qualifier} report cell {cell_id!r}")
         return matches[0]
 
-    def baseline_cell(self, cell: CellSpec) -> CellSpec | None:
+    def equivalent_cells(self, cell: CellSpec) -> tuple[CellSpec, ...]:
+        """Return cells that can reuse exactly the same generated artifact."""
+
         if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
+            return ()
+        identity = (
+            cell.process,
+            cell.n_final,
+            cell.process_key,
+            cell.measurement,
+            cell.workload,
+        )
+        return tuple(
+            sorted(
+                (
+                    candidate
+                    for candidate in self.measurement_cells()
+                    if candidate.cell_id != cell.cell_id
+                    and (
+                        candidate.process,
+                        candidate.n_final,
+                        candidate.process_key,
+                        candidate.measurement,
+                        candidate.workload,
+                    )
+                    == identity
+                ),
+                key=lambda candidate: candidate.cell_id,
+            )
+        )
+
+    def baseline_cell(self, cell: CellSpec) -> CellSpec | None:
+        if (
+            cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            or cell.dataset_id in {
+                dataset.dataset_id for dataset in self.scalar_datasets
+            }
+        ):
             return None
         if cell.dataset_id.startswith("z_"):
             baseline_mode = ExecutionMode.AMPLICOL
@@ -406,6 +505,7 @@ REPORT_CATALOG = ReportCatalog(
     MODELS,
     PROCESS_FAMILIES,
     MATRIX_DATASETS,
+    SCALAR_DATASETS,
     Z_VARIANTS,
 )
 
@@ -416,8 +516,10 @@ __all__ = [
     "PROCESS_FAMILIES",
     "REPORT_CATALOG",
     "SCALAR_CONTACT",
+    "SCALAR_DATASETS",
     "SCALAR_GRAVITY",
     "UFO_SM",
     "Z_VARIANTS",
     "ReportCatalog",
+    "z_dataset_id",
 ]

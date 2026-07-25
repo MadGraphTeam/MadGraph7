@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Canonical reset caches and strict compact measurement validation."""
 
 from __future__ import annotations

@@ -1,0 +1,1259 @@
+# SPDX-License-Identifier: 0BSD
+"""Independent original-AmpliCol adapter for performance-report cells.
+
+This module deliberately depends on the maintained developer oracle rather
+than the historical report driver.  It owns only campaign orchestration:
+process-row selection, the three legacy measurement paths, bounded adaptive
+sampling, compact result shaping, and provenance capture.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, is_dataclass
+from pathlib import Path
+from typing import Any, Protocol
+
+from .cache import empty_measurement
+from .catalog import REPORT_CATALOG
+from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus, Workload
+from .runner import SelectorContract, point_digest
+
+DEFAULT_WARMUP_POINTS = 100
+DEFAULT_MIN_POINTS = 100
+DEFAULT_MAX_POINTS = 100_000
+MAX_OPEN_QUARK_LINES = 3
+
+
+class LegacyAdapterError(RuntimeError):
+    """The original-AmpliCol measurement contract could not be satisfied."""
+
+
+@dataclass(frozen=True, slots=True)
+class LegacySettings:
+    target_runtime_seconds: float = 20.0
+    warmup_points: int = DEFAULT_WARMUP_POINTS
+    minimum_points: int = DEFAULT_MIN_POINTS
+    maximum_points: int = DEFAULT_MAX_POINTS
+    jobs: int = 1
+    repository: Path | None = None
+
+    def __post_init__(self) -> None:
+        if self.target_runtime_seconds <= 0.0:
+            raise ValueError("target_runtime_seconds must be positive")
+        if self.warmup_points < 1:
+            raise ValueError("warmup_points must be positive")
+        if self.minimum_points < 1:
+            raise ValueError("minimum_points must be positive")
+        if self.maximum_points < self.minimum_points:
+            raise ValueError("maximum_points must not be below minimum_points")
+        if self.jobs < 1:
+            raise ValueError("jobs must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class CommandResult:
+    args: tuple[str, ...]
+    cwd: Path
+    elapsed_seconds: float
+    returncode: int
+    stdout: str
+    stderr: str
+    environment: Mapping[str, str]
+
+    def as_record(self) -> dict[str, object]:
+        return {
+            "args": list(self.args),
+            "cwd": os.fspath(self.cwd.resolve(strict=False)),
+            "elapsed_seconds": self.elapsed_seconds,
+            "returncode": self.returncode,
+            "environment": dict(self.environment),
+        }
+
+
+class CommandExecutor(Protocol):
+    def run(
+        self,
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        cwd: Path,
+        environment: Mapping[str, str] | None = None,
+    ) -> CommandResult: ...
+
+
+class SubprocessExecutor:
+    """Small command seam used by unit tests and campaign supervision."""
+
+    def run(
+        self,
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        cwd: Path,
+        environment: Mapping[str, str] | None = None,
+    ) -> CommandResult:
+        rendered = tuple(os.fspath(item) for item in args)
+        started = time.perf_counter()
+        completed = subprocess.run(
+            rendered,
+            cwd=cwd,
+            env=(
+                None
+                if environment is None
+                else {**os.environ, **dict(environment)}
+            ),
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        result = CommandResult(
+            args=rendered,
+            cwd=cwd,
+            elapsed_seconds=time.perf_counter() - started,
+            returncode=completed.returncode,
+            stdout=completed.stdout,
+            stderr=completed.stderr,
+            environment={} if environment is None else dict(environment),
+        )
+        if completed.returncode != 0:
+            raise LegacyAdapterError(
+                f"command exited with {completed.returncode}: "
+                f"{' '.join(rendered)}\nstdout:\n{completed.stdout}\n"
+                f"stderr:\n{completed.stderr}"
+            )
+        return result
+
+
+class LegacyApi(Protocol):
+    default_repository: Path
+
+    def expected_revision(self) -> str: ...
+
+    def validate_checkout(self, repository: Path) -> None: ...
+
+    def compiler_provenance(self, repository: Path) -> object: ...
+
+    def process_pdgs(self, process: str) -> tuple[int, ...]: ...
+
+    def parse_process_file(self, path: Path) -> tuple[object, ...]: ...
+
+    def select_generated_process_entry(
+        self,
+        entries: Sequence[object],
+        *,
+        generated_process: str,
+        wanted_pdgs: Sequence[int],
+    ) -> tuple[object, tuple[object, ...]]: ...
+
+    def source_mapped_color_order(
+        self,
+        entry: object,
+        *,
+        source_pdgs: Sequence[int],
+    ) -> tuple[int, ...]: ...
+
+    def ordered_momenta(
+        self,
+        source_pdgs: Sequence[int],
+        target_pdgs: Sequence[int],
+        momenta: Sequence[Sequence[float]],
+    ) -> tuple[tuple[float, ...], ...]: ...
+
+    def source_to_row_permutation(
+        self,
+        source_pdgs: Sequence[int],
+        target_pdgs: Sequence[int],
+    ) -> tuple[int, ...]: ...
+
+    def parse_probe_output(self, output: str) -> object: ...
+
+    def run_selected_flow_probe(
+        self,
+        repository: Path,
+        *,
+        entry: object,
+        source_pdgs: Sequence[int],
+        momenta: Sequence[Sequence[float]],
+        points: int,
+    ) -> object: ...
+
+    def run_color_probe(
+        self,
+        repository: Path,
+        *,
+        process_file: Path,
+        entry: object,
+        source_pdgs: Sequence[int],
+        momenta: Sequence[Sequence[float]],
+        color_accuracy: str,
+        helicities: Sequence[int] | None,
+    ) -> object: ...
+
+
+class MaintainedLegacyApi:
+    """Thin adapter over ``tools.developer.legacy_amplicol``."""
+
+    def __init__(self) -> None:
+        from tools.developer import legacy_amplicol
+
+        self._api = legacy_amplicol
+        self.default_repository = legacy_amplicol.DEFAULT_REPOSITORY
+
+    def expected_revision(self) -> str:
+        return str(self._api.expected_revision())
+
+    def validate_checkout(self, repository: Path) -> None:
+        self._api.validate_checkout(repository)
+
+    def compiler_provenance(self, repository: Path) -> object:
+        return self._api._compiler_provenance(repository)
+
+    def process_pdgs(self, process: str) -> tuple[int, ...]:
+        return tuple(self._api.process_pdgs(process))
+
+    def parse_process_file(self, path: Path) -> tuple[object, ...]:
+        return tuple(self._api.parse_process_file(path))
+
+    def select_generated_process_entry(
+        self,
+        entries: Sequence[object],
+        *,
+        generated_process: str,
+        wanted_pdgs: Sequence[int],
+    ) -> tuple[object, tuple[object, ...]]:
+        return self._api.select_generated_process_entry(
+            entries,
+            generated_process=generated_process,
+            wanted_pdgs=wanted_pdgs,
+        )
+
+    def source_mapped_color_order(
+        self,
+        entry: object,
+        *,
+        source_pdgs: Sequence[int],
+    ) -> tuple[int, ...]:
+        return tuple(
+            self._api.source_mapped_color_order(
+                entry,
+                source_pdgs=source_pdgs,
+            )
+        )
+
+    def ordered_momenta(
+        self,
+        source_pdgs: Sequence[int],
+        target_pdgs: Sequence[int],
+        momenta: Sequence[Sequence[float]],
+    ) -> tuple[tuple[float, ...], ...]:
+        return tuple(
+            tuple(float(component) for component in vector)
+            for vector in self._api._ordered_binary64_momenta(
+                source_pdgs,
+                target_pdgs,
+                momenta,
+            )
+        )
+
+    def source_to_row_permutation(
+        self,
+        source_pdgs: Sequence[int],
+        target_pdgs: Sequence[int],
+    ) -> tuple[int, ...]:
+        return tuple(self._api._permutation(source_pdgs, target_pdgs))
+
+    def parse_probe_output(self, output: str) -> object:
+        return self._api._parse_probe_output(output)
+
+    def run_selected_flow_probe(
+        self,
+        repository: Path,
+        *,
+        entry: object,
+        source_pdgs: Sequence[int],
+        momenta: Sequence[Sequence[float]],
+        points: int,
+    ) -> object:
+        return self._api.run_selected_flow_library_probe(
+            repository,
+            entry=entry,
+            source_pdgs=source_pdgs,
+            momenta=momenta,
+            points=points,
+        )
+
+    def run_color_probe(
+        self,
+        repository: Path,
+        *,
+        process_file: Path,
+        entry: object,
+        source_pdgs: Sequence[int],
+        momenta: Sequence[Sequence[float]],
+        color_accuracy: str,
+        helicities: Sequence[int] | None,
+    ) -> object:
+        return self._api.run_color_probe(
+            repository,
+            process_file=process_file,
+            entry=entry,
+            source_pdgs=source_pdgs,
+            momenta=momenta,
+            color_accuracy=color_accuracy,
+            helicities=helicities,
+        )
+
+
+class ArtifactSnapshotter(Protocol):
+    def snapshot(
+        self,
+        repository: Path,
+        destination: Path,
+        *,
+        executables: Sequence[str],
+        process_file: Path,
+    ) -> Path: ...
+
+
+class GeneratedLibrarySnapshotter:
+    """Copy a generated legacy library into its immutable cell attempt."""
+
+    def snapshot(
+        self,
+        repository: Path,
+        destination: Path,
+        *,
+        executables: Sequence[str],
+        process_file: Path,
+    ) -> Path:
+        if destination.exists():
+            shutil.rmtree(destination)
+        destination.mkdir(parents=True)
+        libraries = tuple(sorted(repository.glob("libamp*.so")))
+        if not libraries:
+            raise LegacyAdapterError("legacy generation produced no libamp*.so")
+        for source in libraries:
+            shutil.copy2(source, destination / source.name)
+        source_library = repository / "Library"
+        if not source_library.is_dir():
+            raise LegacyAdapterError("legacy generation produced no Library directory")
+        shutil.copytree(source_library, destination / "Library")
+        for executable in executables:
+            source = repository / executable
+            if not source.is_file():
+                raise LegacyAdapterError(
+                    f"legacy generated-library probe is missing: {source}"
+                )
+            shutil.copy2(source, destination / executable)
+        shutil.copy2(process_file, destination / "processes.txt")
+        return destination
+
+
+@dataclass(frozen=True, slots=True)
+class TimingRow:
+    label: str
+    seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileResult:
+    points: int
+    seconds: float
+    rows: tuple[TimingRow, ...]
+    record: Mapping[str, object]
+    probe: object | None
+    warmup_record: Mapping[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class _ProcessContext:
+    process_file: Path
+    entries: tuple[object, ...]
+    entry: object
+    matching_rows: int
+    source_pdgs: tuple[int, ...]
+    momenta: tuple[tuple[float, ...], ...]
+    points: tuple[tuple[tuple[float, ...], ...], ...]
+    mapped_color_order: tuple[int, ...]
+    selector_contract: SelectorContract
+
+
+def adaptive_profile_points(
+    warmup_seconds: float,
+    *,
+    target_runtime_seconds: float,
+    warmup_points: int = DEFAULT_WARMUP_POINTS,
+    minimum_points: int = DEFAULT_MIN_POINTS,
+    maximum_points: int = DEFAULT_MAX_POINTS,
+) -> int:
+    """Choose a bounded integer sample count from one warmup."""
+
+    if warmup_points < 1 or minimum_points < 1:
+        raise ValueError("profile point bounds must be positive")
+    if maximum_points < minimum_points:
+        raise ValueError("maximum_points must not be below minimum_points")
+    if not math.isfinite(warmup_seconds) or warmup_seconds <= 0.0:
+        return minimum_points
+    estimate = math.ceil(
+        float(target_runtime_seconds) * warmup_points / warmup_seconds
+    )
+    return max(minimum_points, min(maximum_points, int(estimate)))
+
+
+def _timing_rows(output: str) -> tuple[TimingRow, ...]:
+    rows: list[TimingRow] = []
+    in_summary = False
+    for line in output.splitlines():
+        if "Timing summary" in line:
+            in_summary = True
+            continue
+        if not in_summary:
+            continue
+        tokens = line.strip().split()
+        if len(tokens) < 2:
+            continue
+        seconds_index: int | None = None
+        seconds: float | None = None
+        for index in range(1, len(tokens)):
+            try:
+                candidate = float(tokens[index])
+            except ValueError:
+                continue
+            seconds_index = index
+            seconds = candidate
+            break
+        if seconds_index is None or seconds is None:
+            continue
+        rows.append(TimingRow(" ".join(tokens[:seconds_index]).lower(), seconds))
+    return tuple(rows)
+
+
+def _timing_seconds(rows: Sequence[TimingRow], *labels: str) -> float | None:
+    for label in labels:
+        wanted = label.strip().lower()
+        for row in rows:
+            if row.label == wanted:
+                return row.seconds
+        for row in rows:
+            if wanted in row.label:
+                return row.seconds
+    return None
+
+
+def _quark_line_count(pdgs: Sequence[int]) -> int:
+    return sum(1 for pdg in pdgs if 1 <= abs(int(pdg)) <= 6) // 2
+
+
+def _preferred_helicities(pdg: int) -> tuple[int, ...]:
+    absolute = abs(int(pdg))
+    if absolute in {
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        21,
+        22,
+    }:
+        return (-1, 1)
+    if absolute in {23, 24}:
+        return (-1, 0, 1)
+    return (0,)
+
+
+def _fixed_helicity(pdgs: Sequence[int]) -> tuple[int, ...]:
+    result: list[int] = []
+    for index, pdg in enumerate(pdgs, start=1):
+        domain = _preferred_helicities(pdg)
+        if -1 in domain and 1 in domain:
+            result.append(-1 if index % 2 else 1)
+        elif 0 in domain:
+            result.append(0)
+        else:
+            result.append(domain[0])
+    return tuple(result)
+
+
+def _helicity_id(values: Sequence[int]) -> str:
+    return "h:" + ",".join(
+        "0" if int(value) == 0 else f"{int(value):+d}" for value in values
+    )
+
+
+def _compiler_payload(value: object) -> object:
+    if is_dataclass(value):
+        return asdict(value)
+    if isinstance(value, Mapping):
+        return dict(value)
+    return str(value)
+
+
+def _shared_point(
+    process: str,
+) -> tuple[
+    tuple[int, ...],
+    tuple[tuple[float, ...], ...],
+    tuple[tuple[tuple[float, ...], ...], ...],
+]:
+    from pyamplicol.models.builtin.validation import generic_validation_point
+
+    particles = tuple(generic_validation_point(process))
+    pdgs = tuple(int(particle.pdg) for particle in particles)
+    momenta = tuple(
+        tuple(float(component) for component in particle.momentum)
+        for particle in particles
+    )
+    return pdgs, momenta, (momenta,)
+
+
+def _library_environment(path: Path) -> dict[str, str]:
+    existing = os.environ.get("LD_LIBRARY_PATH")
+    root = os.fspath(path.resolve(strict=False))
+    return {"LD_LIBRARY_PATH": root if not existing else f"{root}:{existing}"}
+
+
+@contextmanager
+def _staged_process_file(repository: Path, process_file: Path):
+    repository.mkdir(parents=True, exist_ok=True)
+    target = repository / "processes.txt"
+    backup = repository / ".processes.txt.pyamplicol-report-backup"
+    existed = target.exists()
+    if existed:
+        shutil.copy2(target, backup)
+    shutil.copy2(process_file, target)
+    try:
+        yield target.name
+    finally:
+        if existed:
+            shutil.move(backup, target)
+        else:
+            target.unlink(missing_ok=True)
+        backup.unlink(missing_ok=True)
+
+
+class LegacyMeasurementAdapter:
+    """Measure one original-AmpliCol report workload."""
+
+    def __init__(
+        self,
+        *,
+        api: LegacyApi | None = None,
+        executor: CommandExecutor | None = None,
+        snapshotter: ArtifactSnapshotter | None = None,
+    ) -> None:
+        self.api = MaintainedLegacyApi() if api is None else api
+        self.executor = SubprocessExecutor() if executor is None else executor
+        self.snapshotter = (
+            GeneratedLibrarySnapshotter() if snapshotter is None else snapshotter
+        )
+
+    def measure(
+        self,
+        cell: CellSpec,
+        *,
+        artifact_path: Path,
+        settings: LegacySettings,
+    ) -> dict[str, object]:
+        if cell.measurement.execution_mode is not ExecutionMode.AMPLICOL:
+            raise LegacyAdapterError("legacy adapter requires an AmpliCol cell")
+        source_pdgs = self.api.process_pdgs(cell.process)
+        if _quark_line_count(source_pdgs) > MAX_OPEN_QUARK_LINES:
+            return self._unsupported_measurement(
+                f"original AmpliCol supports at most {MAX_OPEN_QUARK_LINES} "
+                "open quark lines in this report"
+            )
+
+        repository = settings.repository or self.api.default_repository
+        self.api.validate_checkout(repository)
+        artifact_path.mkdir(parents=True, exist_ok=True)
+        log_path = artifact_path / "legacy.log"
+        commands: list[dict[str, object]] = []
+        context = self._prepare_process(
+            cell,
+            repository=repository,
+            artifact_path=artifact_path,
+            commands=commands,
+            log_path=log_path,
+        )
+        if cell.measurement.accuracy is Accuracy.LC:
+            if cell.workload is Workload.SELECTED_FLOW:
+                result = self._measure_selected_flow(
+                    cell,
+                    context=context,
+                    repository=repository,
+                    artifact_path=artifact_path,
+                    settings=settings,
+                    commands=commands,
+                    log_path=log_path,
+                )
+            elif cell.workload is Workload.ALL_FLOW:
+                result = self._measure_all_flow(
+                    cell,
+                    context=context,
+                    repository=repository,
+                    artifact_path=artifact_path,
+                    settings=settings,
+                    commands=commands,
+                    log_path=log_path,
+                )
+            else:
+                raise LegacyAdapterError("LC AmpliCol cell requires an LC workload")
+        elif cell.workload is Workload.CONTRACTED:
+            result = self._measure_contracted(
+                cell,
+                context=context,
+                repository=repository,
+                artifact_path=artifact_path,
+                settings=settings,
+                commands=commands,
+                log_path=log_path,
+            )
+        else:
+            raise LegacyAdapterError("NLC/full AmpliCol cells must be contracted")
+
+        result["artifact"] = {
+            "path": os.fspath(artifact_path),
+            "process_row": (
+                f"group:{int(context.entry.group)}:"
+                f"integral:{int(context.entry.integral)}"
+            ),
+            "log_path": os.fspath(log_path),
+        }
+        result["selector_contract"] = (
+            context.selector_contract.as_dict()
+            if cell.measurement.accuracy is Accuracy.LC
+            else None
+        )
+        result["validation"] = {
+            "status": ResultStatus.OK.value,
+            "method": "independent-original-amplicol-oracle",
+            "point_digest": context.selector_contract.point_digest,
+        }
+        result["resources"] = {
+            "monitor": "external-cell-supervisor",
+            "peak_rss_gib": None,
+        }
+        try:
+            compiler = _compiler_payload(
+                self.api.compiler_provenance(repository)
+            )
+        except Exception as error:
+            compiler = {
+                "status": "unavailable",
+                "error": str(error),
+            }
+        result["provenance"] = {
+            **dict(result.get("provenance") or {}),
+            "method": "original-amplicol-generated-library",
+            "revision": self.api.expected_revision(),
+            "compiler": compiler,
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "repository": os.fspath(repository.resolve(strict=False)),
+            "row_selection_policy": (
+                "exact-external-pdg-order-then-process-file-order-v1"
+            ),
+            "matching_row_count": context.matching_rows,
+            "commands": commands,
+            "target_runtime_seconds": settings.target_runtime_seconds,
+            "warmup_points": settings.warmup_points,
+            "minimum_points": settings.minimum_points,
+            "maximum_points": settings.maximum_points,
+            "generation_timing_is_workload_specific": True,
+        }
+        result["failure"] = None
+        return result
+
+    def _prepare_process(
+        self,
+        cell: CellSpec,
+        *,
+        repository: Path,
+        artifact_path: Path,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> _ProcessContext:
+        source_pdgs, momenta, points = _shared_point(cell.process)
+        declared_pdgs = self.api.process_pdgs(cell.process)
+        if source_pdgs != declared_pdgs:
+            raise LegacyAdapterError(
+                "shared validation point external order differs from the "
+                "legacy process expression"
+            )
+        family = next(
+            (
+                item
+                for item in REPORT_CATALOG.process_families
+                if item.key == cell.process_key
+            ),
+            None,
+        )
+        flags: list[str] = []
+        if family is not None:
+            if family.include_3qqbar:
+                flags.append("-3")
+            if family.include_cc:
+                flags.append("-cc")
+            if family.include_resonance:
+                flags.append("-res")
+        process_result = self._run(
+            [
+                sys.executable,
+                repository / "process_list.py",
+                "--serial",
+                *flags,
+                cell.process,
+            ],
+            cwd=artifact_path,
+            commands=commands,
+            log_path=log_path,
+        )
+        process_file = artifact_path / "processes.txt"
+        if not process_file.is_file():
+            raise LegacyAdapterError(
+                "legacy process_list.py did not produce processes.txt; "
+                f"output={process_result.stdout[-1000:]!r}"
+            )
+        entries = self.api.parse_process_file(process_file)
+        entry, matches = self.api.select_generated_process_entry(
+            entries,
+            generated_process=cell.process,
+            wanted_pdgs=source_pdgs,
+        )
+        mapped = self.api.source_mapped_color_order(
+            entry,
+            source_pdgs=source_pdgs,
+        )
+        colored_labels = {
+            index
+            for index, pdg in enumerate(source_pdgs, start=1)
+            if abs(int(pdg)) == 21 or 1 <= abs(int(pdg)) <= 6
+        }
+        color_word = tuple(label for label in mapped if label in colored_labels)
+        if not color_word:
+            raise LegacyAdapterError("selected legacy LC row has no colored word")
+        helicities = _fixed_helicity(source_pdgs)
+        contract = SelectorContract(
+            selected_color_flow_ids=(
+                "flow:" + ",".join(str(label) for label in color_word),
+            ),
+            selected_color_words=(color_word,),
+            all_flow_helicity_ids=(_helicity_id(helicities),),
+            all_flow_source_helicities=tuple(
+                (index, value)
+                for index, value in enumerate(helicities, start=1)
+            ),
+            point_digest=point_digest(points),
+        )
+        return _ProcessContext(
+            process_file=process_file,
+            entries=entries,
+            entry=entry,
+            matching_rows=len(matches),
+            source_pdgs=source_pdgs,
+            momenta=momenta,
+            points=points,
+            mapped_color_order=mapped,
+            selector_contract=contract,
+        )
+
+    def _generate_library(
+        self,
+        *,
+        context: _ProcessContext,
+        repository: Path,
+        raw_color: bool,
+        settings: LegacySettings,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> float:
+        started_index = len(commands)
+        momenta_directory = repository / "Utilities" / "ME_checks"
+        momenta_directory.mkdir(parents=True, exist_ok=True)
+        for entry in context.entries:
+            ordered = self.api.ordered_momenta(
+                context.source_pdgs,
+                entry.process_pdgs,
+                context.momenta,
+            )
+            momenta_path = (
+                momenta_directory
+                / f"momenta_{entry.group}_{entry.integral}.txt"
+            )
+            momenta_path.write_text(
+                "\n".join(
+                    " ".join(f"{component:.17e}" for component in vector)
+                    for vector in ordered
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        with _staged_process_file(repository, context.process_file) as process_arg:
+            for args in (
+                ("make", "cleanlib"),
+                ("make", f"-j{settings.jobs}", "amplicol_generate"),
+                (
+                    "./amplicol_generate",
+                    f"--library={'create-raw' if raw_color else 'create'}",
+                    f"--process={process_arg}",
+                    "--amplicol_momenta_probe=10",
+                    "--amplicol_probe_quiet",
+                    "--timing=none",
+                ),
+                ("make", f"-j{settings.jobs}", "amplicol_generate_library"),
+            ):
+                self._run(
+                    args,
+                    cwd=repository,
+                    commands=commands,
+                    log_path=log_path,
+                )
+        return math.fsum(
+            float(record["elapsed_seconds"])
+            for record in commands[started_index:]
+        )
+
+    def _measure_selected_flow(
+        self,
+        cell: CellSpec,
+        *,
+        context: _ProcessContext,
+        repository: Path,
+        artifact_path: Path,
+        settings: LegacySettings,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> dict[str, object]:
+        generation_seconds = self._generate_library(
+            context=context,
+            repository=repository,
+            raw_color=False,
+            settings=settings,
+            commands=commands,
+            log_path=log_path,
+        )
+        self._run(
+            ("make", f"-j{settings.jobs}", "amplicol_library_benchmark"),
+            cwd=repository,
+            commands=commands,
+            log_path=log_path,
+        )
+        generated = self.snapshotter.snapshot(
+            repository,
+            artifact_path / "selected-flow-generated-library",
+            executables=("amplicol_library_benchmark",),
+            process_file=context.process_file,
+        )
+        environment = _library_environment(generated)
+        profile = self._profile(
+            lambda count: self._invoke_command(
+                (
+                    "./amplicol_library_benchmark",
+                    str(count),
+                    str(context.entry.group),
+                    str(context.entry.integral),
+                ),
+                cwd=generated,
+                environment=environment,
+                commands=commands,
+                log_path=log_path,
+            ),
+            settings=settings,
+            timing_labels=("amplitude evaluation", "total"),
+        )
+        with _temporary_environment(environment):
+            probe_started = time.perf_counter()
+            probe = self.api.run_selected_flow_probe(
+                generated,
+                entry=context.entry,
+                source_pdgs=context.source_pdgs,
+                momenta=context.momenta,
+                points=1,
+            )
+            probe_record = {
+                "args": [
+                    "legacy_amplicol.run_selected_flow_library_probe",
+                    os.fspath(generated),
+                    "points=1",
+                ],
+                "cwd": os.fspath(generated),
+                "elapsed_seconds": time.perf_counter() - probe_started,
+                "returncode": 0,
+            }
+            commands.append(probe_record)
+        return self._success_measurement(
+            generation_seconds=generation_seconds,
+            profile=profile,
+            matrix_element=float(probe.value),
+            generation_source="generated-library-create-mode-1",
+        )
+
+    def _measure_all_flow(
+        self,
+        cell: CellSpec,
+        *,
+        context: _ProcessContext,
+        repository: Path,
+        artifact_path: Path,
+        settings: LegacySettings,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> dict[str, object]:
+        self._run(
+            ("make", f"-j{settings.jobs}", "amplicol_color_probe"),
+            cwd=repository,
+            commands=commands,
+            log_path=log_path,
+        )
+        helicities = tuple(
+            value
+            for _label, value in (
+                context.selector_contract.all_flow_source_helicities
+            )
+        )
+        with tempfile.TemporaryDirectory(prefix="pac-", dir="/tmp") as raw:
+            work = Path(raw)
+            process_copy = work / "processes.txt"
+            momenta_path = work / "momenta.dat"
+            shutil.copy2(context.process_file, process_copy)
+            ordered = self.api.ordered_momenta(
+                context.source_pdgs,
+                context.entry.process_pdgs,
+                context.momenta,
+            )
+            momenta_path.write_text(
+                "\n".join(
+                    " ".join(format(component, ".17g") for component in vector)
+                    for vector in ordered
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            permutation = self.api.source_to_row_permutation(
+                context.source_pdgs,
+                context.entry.process_pdgs,
+            )
+            ordered_helicities = tuple(helicities[index] for index in permutation)
+            profile = self._profile(
+                lambda count: self._invoke_probe_command(
+                    (
+                        repository / "amplicol_color_probe",
+                        str(count),
+                        str(context.entry.group),
+                        str(context.entry.integral),
+                        "lc",
+                        process_copy,
+                        momenta_path,
+                        *(str(value) for value in ordered_helicities),
+                    ),
+                    cwd=work,
+                    commands=commands,
+                    log_path=log_path,
+                ),
+                settings=settings,
+                timing_labels=("amplitude evaluation", "total"),
+            )
+        generation_seconds = _timing_seconds(profile.rows, "generation setup")
+        if generation_seconds is None:
+            raise LegacyAdapterError(
+                "direct all-flow probe did not report generation setup"
+            )
+        if profile.probe is None:
+            raise LegacyAdapterError("direct all-flow probe emitted no value")
+        return self._success_measurement(
+            generation_seconds=generation_seconds,
+            profile=profile,
+            matrix_element=float(profile.probe.value),
+            generation_source="direct-imode2-generation-setup",
+        )
+
+    def _measure_contracted(
+        self,
+        cell: CellSpec,
+        *,
+        context: _ProcessContext,
+        repository: Path,
+        artifact_path: Path,
+        settings: LegacySettings,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> dict[str, object]:
+        generation_seconds = self._generate_library(
+            context=context,
+            repository=repository,
+            raw_color=True,
+            settings=settings,
+            commands=commands,
+            log_path=log_path,
+        )
+        self._run(
+            ("make", f"-j{settings.jobs}", "amplicol_color_library_probe"),
+            cwd=repository,
+            commands=commands,
+            log_path=log_path,
+        )
+        generated = self.snapshotter.snapshot(
+            repository,
+            artifact_path / "contracted-generated-library",
+            executables=("amplicol_color_library_probe",),
+            process_file=context.process_file,
+        )
+        ordered = self.api.ordered_momenta(
+            context.source_pdgs,
+            context.entry.process_pdgs,
+            context.momenta,
+        )
+        momenta_path = generated / "momenta.dat"
+        momenta_path.write_text(
+            "\n".join(
+                " ".join(format(component, ".17g") for component in vector)
+                for vector in ordered
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        environment = _library_environment(generated)
+        profile = self._profile(
+            lambda count: self._invoke_command(
+                (
+                    "./amplicol_color_library_probe",
+                    str(count),
+                    str(context.entry.group),
+                    str(context.entry.integral),
+                    cell.measurement.accuracy.value,
+                    momenta_path.name,
+                ),
+                cwd=generated,
+                environment=environment,
+                commands=commands,
+                log_path=log_path,
+            ),
+            settings=settings,
+            timing_labels=("total",),
+        )
+        probe_started = time.perf_counter()
+        probe = self.api.run_color_probe(
+            repository,
+            process_file=context.process_file,
+            entry=context.entry,
+            source_pdgs=context.source_pdgs,
+            momenta=context.momenta,
+            color_accuracy=cell.measurement.accuracy.value,
+            helicities=None,
+        )
+        commands.append(
+            {
+                "args": [
+                    "legacy_amplicol.run_color_probe",
+                    cell.measurement.accuracy.value,
+                    "points=1",
+                ],
+                "cwd": os.fspath(repository),
+                "elapsed_seconds": time.perf_counter() - probe_started,
+                "returncode": 0,
+            }
+        )
+        return self._success_measurement(
+            generation_seconds=generation_seconds,
+            profile=profile,
+            matrix_element=float(probe.value),
+            generation_source="generated-library-create-raw",
+        )
+
+    def _profile(
+        self,
+        invoke: Any,
+        *,
+        settings: LegacySettings,
+        timing_labels: Sequence[str],
+    ) -> ProfileResult:
+        warmup_result, warmup_rows, warmup_probe = invoke(settings.warmup_points)
+        warmup_seconds = _timing_seconds(warmup_rows, *timing_labels)
+        if warmup_seconds is None:
+            warmup_seconds = warmup_result.elapsed_seconds
+        points = adaptive_profile_points(
+            warmup_seconds,
+            target_runtime_seconds=settings.target_runtime_seconds,
+            warmup_points=settings.warmup_points,
+            minimum_points=settings.minimum_points,
+            maximum_points=settings.maximum_points,
+        )
+        if points <= settings.warmup_points:
+            result, rows, probe = warmup_result, warmup_rows, warmup_probe
+            points = settings.warmup_points
+            phase = "warmup_reused_as_measurement"
+        else:
+            result, rows, probe = invoke(points)
+            phase = "measurement"
+        seconds = _timing_seconds(rows, *timing_labels)
+        if seconds is None:
+            seconds = result.elapsed_seconds
+        return ProfileResult(
+            points=points,
+            seconds=seconds,
+            rows=tuple(rows),
+            record={**result.as_record(), "profile_phase": phase},
+            probe=probe,
+            warmup_record=warmup_result.as_record(),
+        )
+
+    def _invoke_command(
+        self,
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        cwd: Path,
+        commands: list[dict[str, object]],
+        log_path: Path,
+        environment: Mapping[str, str] | None = None,
+    ) -> tuple[CommandResult, tuple[TimingRow, ...], None]:
+        result = self._run(
+            args,
+            cwd=cwd,
+            environment=environment,
+            commands=commands,
+            log_path=log_path,
+        )
+        return result, _timing_rows(result.stdout + "\n" + result.stderr), None
+
+    def _invoke_probe_command(
+        self,
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        cwd: Path,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> tuple[CommandResult, tuple[TimingRow, ...], object]:
+        result = self._run(
+            args,
+            cwd=cwd,
+            commands=commands,
+            log_path=log_path,
+        )
+        output = result.stdout + "\n" + result.stderr
+        return result, _timing_rows(output), self.api.parse_probe_output(output)
+
+    def _run(
+        self,
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        cwd: Path,
+        commands: list[dict[str, object]],
+        log_path: Path,
+        environment: Mapping[str, str] | None = None,
+    ) -> CommandResult:
+        result = self.executor.run(args, cwd=cwd, environment=environment)
+        commands.append(result.as_record())
+        with log_path.open("a", encoding="utf-8") as stream:
+            stream.write(f"$ {' '.join(result.args)}\n")
+            stream.write(result.stdout)
+            if result.stdout and not result.stdout.endswith("\n"):
+                stream.write("\n")
+            stream.write(result.stderr)
+            if result.stderr and not result.stderr.endswith("\n"):
+                stream.write("\n")
+        return result
+
+    @staticmethod
+    def _success_measurement(
+        *,
+        generation_seconds: float,
+        profile: ProfileResult,
+        matrix_element: float,
+        generation_source: str,
+    ) -> dict[str, object]:
+        measurement = empty_measurement()
+        measurement.update(
+            {
+                "status": ResultStatus.OK.value,
+                "generation_seconds": float(generation_seconds),
+                "wall_seconds_per_point": profile.seconds / profile.points,
+                "execution_seconds_per_point": profile.seconds / profile.points,
+                "matrix_element": abs(float(matrix_element)),
+                "sample_count": profile.points,
+                "standard_error_seconds_per_point": 0.0,
+                "relative_standard_error": 0.0,
+                "provenance": {
+                    "generation_source": generation_source,
+                    "runtime_profile": {
+                        "measurement": dict(profile.record),
+                        "warmup": dict(profile.warmup_record),
+                        "timing_rows": [
+                            {"label": row.label, "seconds": row.seconds}
+                            for row in profile.rows
+                        ],
+                    },
+                },
+            }
+        )
+        return measurement
+
+    @staticmethod
+    def _unsupported_measurement(message: str) -> dict[str, object]:
+        measurement = empty_measurement()
+        measurement.update(
+            {
+                "status": ResultStatus.UNSUPPORTED.value,
+                "failure": {
+                    "kind": "LegacyOracleScopeError",
+                    "message": message,
+                },
+            }
+        )
+        return measurement
+
+
+@contextmanager
+def _temporary_environment(values: Mapping[str, str]):
+    saved = {key: os.environ.get(key) for key in values}
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def measurement_digest(measurement: Mapping[str, object]) -> str:
+    """Stable helper used when linking a legacy reference from another cache."""
+
+    payload = json.dumps(
+        measurement,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return hashlib.sha256(payload).hexdigest()
+
+
+__all__ = [
+    "CommandExecutor",
+    "CommandResult",
+    "LegacyAdapterError",
+    "LegacyMeasurementAdapter",
+    "LegacySettings",
+    "MaintainedLegacyApi",
+    "SubprocessExecutor",
+    "adaptive_profile_points",
+    "measurement_digest",
+]

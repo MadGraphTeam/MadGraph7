@@ -146,6 +146,20 @@ class _NativeProfileCounterSample:
     final_output_copy_values_per_point: float | None
     native_input_container_allocations_per_call: float | None
     evaluator_backend_calls_per_call: float | None
+    recurrence_momentum_scalar_values_per_point: float | None
+    recurrence_schedule_executions_per_call: float | None
+    recurrence_replay_schedule_executions_per_call: float | None
+    recurrence_union_schedule_executions_per_call: float | None
+    recurrence_union_source_rows_per_call: float | None
+    recurrence_replay_output_values_per_point: float | None
+    recurrence_source_calls_per_call: float | None
+    recurrence_source_rows_per_call: float | None
+    recurrence_contribution_calls_per_call: float | None
+    recurrence_contribution_rows_per_call: float | None
+    recurrence_finalization_calls_per_call: float | None
+    recurrence_finalization_rows_per_call: float | None
+    recurrence_closure_calls_per_call: float | None
+    recurrence_closure_rows_per_call: float | None
     observed_scratch_reallocations_per_call: float | None
     native_output_allocations_per_call: float | None
 
@@ -1002,6 +1016,40 @@ def _native_profile_counters(
             "native_input_container_allocation_count"
         ),
         evaluator_backend_calls_per_call=per_call("evaluator_backend_call_count"),
+        recurrence_momentum_scalar_values_per_point=per_point(
+            "recurrence_momentum_scalar_value_count"
+        ),
+        recurrence_schedule_executions_per_call=per_call(
+            "recurrence_schedule_execution_count"
+        ),
+        recurrence_replay_schedule_executions_per_call=per_call(
+            "recurrence_replay_schedule_execution_count"
+        ),
+        recurrence_union_schedule_executions_per_call=per_call(
+            "recurrence_union_schedule_execution_count"
+        ),
+        recurrence_union_source_rows_per_call=per_call(
+            "recurrence_union_source_row_count"
+        ),
+        recurrence_replay_output_values_per_point=per_point(
+            "recurrence_replay_output_value_count"
+        ),
+        recurrence_source_calls_per_call=per_call("recurrence_source_call_count"),
+        recurrence_source_rows_per_call=per_call("recurrence_source_row_count"),
+        recurrence_contribution_calls_per_call=per_call(
+            "recurrence_contribution_call_count"
+        ),
+        recurrence_contribution_rows_per_call=per_call(
+            "recurrence_contribution_row_count"
+        ),
+        recurrence_finalization_calls_per_call=per_call(
+            "recurrence_finalization_call_count"
+        ),
+        recurrence_finalization_rows_per_call=per_call(
+            "recurrence_finalization_row_count"
+        ),
+        recurrence_closure_calls_per_call=per_call("recurrence_closure_call_count"),
+        recurrence_closure_rows_per_call=per_call("recurrence_closure_row_count"),
         observed_scratch_reallocations_per_call=per_call(
             "observed_scratch_reallocation_count"
         ),
@@ -1571,6 +1619,40 @@ def _profile_counter_summary(
             "native_input_container_allocations_per_call"
         ),
         evaluator_backend_calls_per_call=mean("evaluator_backend_calls_per_call"),
+        recurrence_momentum_scalar_values_per_point=mean(
+            "recurrence_momentum_scalar_values_per_point"
+        ),
+        recurrence_schedule_executions_per_call=mean(
+            "recurrence_schedule_executions_per_call"
+        ),
+        recurrence_replay_schedule_executions_per_call=mean(
+            "recurrence_replay_schedule_executions_per_call"
+        ),
+        recurrence_union_schedule_executions_per_call=mean(
+            "recurrence_union_schedule_executions_per_call"
+        ),
+        recurrence_union_source_rows_per_call=mean(
+            "recurrence_union_source_rows_per_call"
+        ),
+        recurrence_replay_output_values_per_point=mean(
+            "recurrence_replay_output_values_per_point"
+        ),
+        recurrence_source_calls_per_call=mean("recurrence_source_calls_per_call"),
+        recurrence_source_rows_per_call=mean("recurrence_source_rows_per_call"),
+        recurrence_contribution_calls_per_call=mean(
+            "recurrence_contribution_calls_per_call"
+        ),
+        recurrence_contribution_rows_per_call=mean(
+            "recurrence_contribution_rows_per_call"
+        ),
+        recurrence_finalization_calls_per_call=mean(
+            "recurrence_finalization_calls_per_call"
+        ),
+        recurrence_finalization_rows_per_call=mean(
+            "recurrence_finalization_rows_per_call"
+        ),
+        recurrence_closure_calls_per_call=mean("recurrence_closure_calls_per_call"),
+        recurrence_closure_rows_per_call=mean("recurrence_closure_rows_per_call"),
         observed_scratch_reallocations_per_call=mean(
             "observed_scratch_reallocations_per_call"
         ),

@@ -122,6 +122,9 @@ def _benchmark_result() -> BenchmarkResult:
         amplitude_evaluator_output_gather_components_per_point=10.0,
         amplitude_output_remap_components_per_point=8.0,
         evaluator_backend_calls_per_call=12.0,
+        recurrence_schedule_executions_per_call=1.0,
+        recurrence_contribution_calls_per_call=7.0,
+        recurrence_contribution_rows_per_call=126.0,
         reduction_input_components_per_point=16.0,
         total_materialized_values_per_point=1.0,
         observed_scratch_reallocations_per_call=0.0,
@@ -215,6 +218,8 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "Rusticol Stage Internal Attribution (do not add to top-level)" in rendered
     assert "evaluator call" in rendered
     assert "Native Work Counters (mean across 8 profiled blocks)" in rendered
+    assert "schedule executions" in rendered
+    assert "contribution rows" in rendered
     assert "stage leaf copy" in rendered
     assert "240 components" in rendered
     assert "per runtime call" in rendered
