@@ -837,7 +837,7 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
         std::env::var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION").as_deref(),
         Ok("direct" | "dual")
     ) {
-        for tail in [1_usize, 7, 127, 128, 129, 1023, 1024, 1025] {
+        for tail in [1_usize, 7, 63, 64, 65, 127, 128, 129, 1023, 1024, 1025] {
             let tail_momenta = momenta.repeat(tail);
             let tail_values = runtime
                 .evaluate_f64(&tail_momenta, tail)

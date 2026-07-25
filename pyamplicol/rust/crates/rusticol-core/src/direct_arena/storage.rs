@@ -406,6 +406,16 @@ pub fn checked_plane_scalar_len(
         .ok_or_else(|| invalid(format!("{label} length overflows usize")))
 }
 
+/// Portable upper bound for the physical point pitch of row-outer Direct-Arena lanes.
+///
+/// Table callables revisit their parent component planes for every row. A
+/// larger pitch spreads those planes farther apart and expands the live parent
+/// footprint even when the active point count is smaller than the allocated
+/// capacity. Keeping the pitch bounded preserves locality without consulting
+/// the host architecture or runtime timings. Lanes remain free to request a
+/// smaller tile or apply a stricter authenticated workspace bound.
+pub const DIRECT_ARENA_LOCALITY_POINT_CAP: u32 = 64;
+
 /// Select a semantic tile capacity while authenticating its padded footprint.
 ///
 /// `scalar_values_per_point` includes every physically pitched plane and both

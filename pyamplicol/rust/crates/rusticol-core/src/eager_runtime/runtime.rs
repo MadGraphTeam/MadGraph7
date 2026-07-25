@@ -10,7 +10,8 @@ use super::plan::{
 };
 use super::profile::{execute_closures_profiled, execute_stage_profiled};
 use super::{
-    EagerComplex64, EagerExecutionProfile, EagerKernelBackend, EagerKernelSpec, EagerRuntimeOptions,
+    EagerComplex64, EagerExecutionProfile, EagerKernelBackend, EagerKernelSpec,
+    EagerRuntimeOptions, EagerScheduleAuditRow,
 };
 use crate::{EagerCouplingRow, MISSING_U32, RusticolError, RusticolResult};
 use std::cmp::min;
@@ -308,6 +309,82 @@ impl EagerExecutionRuntime {
             .map(|stage| stage.invocation_packets.len() + stage.finalization_packets.len())
             .sum::<usize>()
             + self.schedule.closure_packets.len()
+    }
+
+    pub(crate) fn schedule_audit(
+        &mut self,
+        active_groups: Option<&[u32]>,
+    ) -> RusticolResult<Vec<EagerScheduleAuditRow>> {
+        if let Some(groups) = active_groups {
+            self.prepare_selected_execution(groups)?;
+        }
+        let (stages, closures, direct_closures, _, schedule) = selected_execution_rows(
+            &self.plan,
+            &self.schedule,
+            self.selected.as_ref(),
+            active_groups.is_some(),
+        );
+        let mut rows = Vec::new();
+        for (stage, stage_schedule) in stages.iter().zip(&schedule.stages) {
+            for packet in &stage_schedule.invocation_packets {
+                let items = &stage.invocations[packet.item_range.clone()];
+                rows.push(EagerScheduleAuditRow {
+                    stage_index: Some(stage.stage_index),
+                    role: "invocation",
+                    kernel_id: Some(packet.kernel_id),
+                    call_count: 1,
+                    row_count: items.len(),
+                    destination_count: items.iter().map(|item| item.attachment_range.len()).sum(),
+                });
+            }
+            if !stage.finalization_copies.is_empty() {
+                rows.push(EagerScheduleAuditRow {
+                    stage_index: Some(stage.stage_index),
+                    role: "copy",
+                    kernel_id: None,
+                    call_count: 0,
+                    row_count: stage.finalization_copies.len(),
+                    destination_count: stage
+                        .finalization_copies
+                        .iter()
+                        .map(|item| item.current.len)
+                        .sum(),
+                });
+            }
+            for packet in &stage_schedule.finalization_packets {
+                let items = &stage.finalizations[packet.item_range.clone()];
+                rows.push(EagerScheduleAuditRow {
+                    stage_index: Some(stage.stage_index),
+                    role: "finalization",
+                    kernel_id: Some(packet.kernel_id),
+                    call_count: 1,
+                    row_count: items.len(),
+                    destination_count: items.len(),
+                });
+            }
+        }
+        for packet in &schedule.closure_packets {
+            let items = &closures[packet.item_range.clone()];
+            rows.push(EagerScheduleAuditRow {
+                stage_index: None,
+                role: "closure",
+                kernel_id: Some(packet.kernel_id),
+                call_count: 1,
+                row_count: items.len(),
+                destination_count: items.len(),
+            });
+        }
+        if !direct_closures.is_empty() {
+            rows.push(EagerScheduleAuditRow {
+                stage_index: None,
+                role: "direct-closure",
+                kernel_id: None,
+                call_count: 0,
+                row_count: direct_closures.len(),
+                destination_count: direct_closures.len(),
+            });
+        }
+        Ok(rows)
     }
 
     pub fn selector_group_ids(&self) -> Option<Vec<u32>> {

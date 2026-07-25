@@ -197,6 +197,16 @@ impl EagerExecutionProfile {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EagerScheduleAuditRow {
+    pub(crate) stage_index: Option<u32>,
+    pub(crate) role: &'static str,
+    pub(crate) kernel_id: Option<u32>,
+    pub(crate) call_count: usize,
+    pub(crate) row_count: usize,
+    pub(crate) destination_count: usize,
+}
+
 #[cfg(feature = "f64-symjit")]
 mod direct_execution_arena;
 #[cfg(feature = "f64-symjit")]

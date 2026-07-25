@@ -96,6 +96,7 @@ pub(super) fn execute_stage_profiled<B: EagerKernelBackend>(
             outputs,
         })?;
         profile.kernel_call += kernel_started.elapsed();
+        profile.backend_call_count = profile.backend_call_count.saturating_add(1);
 
         let scatter_started = Instant::now();
         if packet.independent_block_size == 1 {
@@ -197,6 +198,7 @@ pub(super) fn execute_stage_profiled<B: EagerKernelBackend>(
             outputs,
         })?;
         profile.kernel_call += kernel_started.elapsed();
+        profile.backend_call_count = profile.backend_call_count.saturating_add(1);
 
         let scatter_started = Instant::now();
         if let Some(linear) = &packet.linear_finalization {
@@ -273,6 +275,7 @@ pub(super) fn execute_closures_profiled<B: EagerKernelBackend>(
             outputs,
         })?;
         profile.kernel_call += kernel_started.elapsed();
+        profile.backend_call_count = profile.backend_call_count.saturating_add(1);
 
         let scatter_started = Instant::now();
         super::execute::scatter_closures(

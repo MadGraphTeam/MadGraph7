@@ -217,6 +217,53 @@ impl EagerNativeRuntime {
         self
     }
 
+    #[cfg(feature = "f64-symjit")]
+    fn audit_direct_schedule(&mut self, active_groups: Option<&[u32]>) -> RusticolResult<()> {
+        if std::env::var("PYAMPLICOL_EAGER_DIRECT_ARENA_AUDIT").as_deref() != Ok("1") {
+            return Ok(());
+        }
+        let legacy = aggregate_eager_schedule_audit(self.scheduler.schedule_audit(active_groups)?);
+        let direct = aggregate_eager_schedule_audit(
+            self.direct_scheduler
+                .as_mut()
+                .ok_or_else(|| {
+                    RusticolError::internal("eager direct audit has no Direct-Arena scheduler")
+                })?
+                .schedule_audit(active_groups)?,
+        );
+        let mut keys = legacy
+            .keys()
+            .chain(direct.keys())
+            .copied()
+            .collect::<Vec<_>>();
+        keys.sort_unstable();
+        keys.dedup();
+        for key in keys {
+            let legacy_counts = legacy.get(&key).copied().unwrap_or_default();
+            let direct_counts = direct.get(&key).copied().unwrap_or_default();
+            eprintln!(
+                "eager_direct_schedule_audit groups={active_groups:?} stage={:?} role={} \
+                 kernel={:?} legacy_calls={} legacy_rows={} legacy_destinations={} \
+                 direct_calls={} direct_rows={} direct_destinations={}",
+                key.0,
+                key.1,
+                key.2,
+                legacy_counts.0,
+                legacy_counts.1,
+                legacy_counts.2,
+                direct_counts.0,
+                direct_counts.1,
+                direct_counts.2,
+            );
+            if legacy_counts.1 != direct_counts.1 || legacy_counts.2 != direct_counts.2 {
+                return Err(RusticolError::integrity(
+                    "eager Direct-Arena schedule audit found semantic work-count drift",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn execute_full_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
         match self.direct_mode {
             EagerDirectValidationMode::Disabled => self.scheduler.evaluate_into(
@@ -713,6 +760,10 @@ impl EagerNativeRuntime {
             .resize(amplitude_len, crate::EagerComplex64::new(0.0, 0.0));
         self.reduced.resize(point_count, 0.0);
 
+        #[cfg(feature = "f64-symjit")]
+        if self.direct_mode != EagerDirectValidationMode::Disabled {
+            self.audit_direct_schedule(None)?;
+        }
         let eager = match self.direct_mode {
             EagerDirectValidationMode::Disabled => self.scheduler.evaluate_profile_into(
                 &mut self.backend,
@@ -988,6 +1039,11 @@ impl EagerNativeRuntime {
         } else {
             false
         };
+        #[cfg(feature = "f64-symjit")]
+        if self.direct_mode != EagerDirectValidationMode::Disabled {
+            let audit_groups = has_selected_groups.then(|| self.selected_groups.clone());
+            self.audit_direct_schedule(audit_groups.as_deref())?;
+        }
         let eager = match self.direct_mode {
             EagerDirectValidationMode::Disabled => {
                 if has_selected_groups {
@@ -1409,6 +1465,22 @@ fn fill_selected_eager_group_ids(
     active.sort_unstable();
     active.dedup();
     Ok(())
+}
+
+#[cfg(feature = "f64-symjit")]
+fn aggregate_eager_schedule_audit(
+    rows: Vec<crate::eager_runtime::EagerScheduleAuditRow>,
+) -> BTreeMap<(Option<u32>, &'static str, Option<u32>), (usize, usize, usize)> {
+    let mut aggregated = BTreeMap::new();
+    for row in rows {
+        let counts = aggregated
+            .entry((row.stage_index, row.role, row.kernel_id))
+            .or_insert((0_usize, 0_usize, 0_usize));
+        counts.0 += row.call_count;
+        counts.1 += row.row_count;
+        counts.2 += row.destination_count;
+    }
+    aggregated
 }
 
 #[allow(dead_code)] // Used by the order-preserving benchmark reference lane.

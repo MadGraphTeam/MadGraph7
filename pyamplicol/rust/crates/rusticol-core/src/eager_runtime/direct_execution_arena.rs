@@ -15,7 +15,7 @@ use std::mem::size_of;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::direct_arena::DirectArenaLayout;
+use crate::direct_arena::{DIRECT_ARENA_LOCALITY_POINT_CAP, DirectArenaLayout};
 use crate::engine::symjit_eager_direct::{
     EAGER_DIRECT_SOURCE_APPLICATION_ABI, EAGER_DIRECT_TABLE_BINDING_ABI,
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI, EagerDirectArenaPlaneBinding, EagerDirectTableRows,
@@ -38,9 +38,11 @@ use super::plan::{
 };
 use super::{
     EagerComplex64, EagerKernelInput, EagerKernelRole, EagerPlanV3Sections, EagerRuntimeOptions,
+    EagerScheduleAuditRow,
 };
 
 struct DirectCall {
+    kernel_id: u32,
     application: Arc<LoadedSymjitEagerDirectTable>,
     rows: EagerDirectTableRows,
 }
@@ -60,6 +62,7 @@ struct DirectCopy {
 }
 
 struct DirectStage {
+    stage_index: u32,
     invocation_calls: Box<[DirectCall]>,
     unpropagated_copies: Box<[DirectCopy]>,
     finalization_calls: Box<[DirectCall]>,
@@ -146,7 +149,8 @@ impl EagerDirectExecutionRuntime {
         let catalog = SemanticCatalog::new(sections)?;
         let layout = derive_event_layout(sections, catalog, &plan)?;
         let requested_tile = u32::try_from(options.point_tile_size)
-            .map_err(|_| invalid("eager direct point tile size exceeds u32"))?;
+            .map_err(|_| invalid("eager direct point tile size exceeds u32"))?
+            .min(DIRECT_ARENA_LOCALITY_POINT_CAP);
         let tile_capacity = direct_tile_capacity(
             requested_tile,
             options.workspace_bytes,
@@ -417,6 +421,82 @@ impl EagerDirectExecutionRuntime {
             destinations += u64::from(call.rows.attachment_count());
         }
         (calls, invocations, destinations)
+    }
+
+    pub(crate) fn schedule_audit(
+        &mut self,
+        active_groups: Option<&[u32]>,
+    ) -> RusticolResult<Vec<EagerScheduleAuditRow>> {
+        if let Some(groups) = active_groups {
+            self.prepare_selected_schedule(groups)?;
+        }
+        let schedule = if active_groups.is_some() {
+            &self
+                .selected_schedule
+                .as_ref()
+                .ok_or_else(|| RusticolError::internal("eager direct selected schedule is absent"))?
+                .schedule
+        } else {
+            &self.full_schedule
+        };
+        let mut rows = Vec::new();
+        for stage in &schedule.stages {
+            for call in &stage.invocation_calls {
+                rows.push(EagerScheduleAuditRow {
+                    stage_index: Some(stage.stage_index),
+                    role: "invocation",
+                    kernel_id: Some(call.kernel_id),
+                    call_count: 1,
+                    row_count: call.rows.invocation_count() as usize,
+                    destination_count: call.rows.attachment_count() as usize,
+                });
+            }
+            if !stage.unpropagated_copies.is_empty() {
+                rows.push(EagerScheduleAuditRow {
+                    stage_index: Some(stage.stage_index),
+                    role: "copy",
+                    kernel_id: None,
+                    call_count: 0,
+                    row_count: stage.unpropagated_copies.len(),
+                    destination_count: stage
+                        .unpropagated_copies
+                        .iter()
+                        .map(|copy| copy.component_count as usize)
+                        .sum(),
+                });
+            }
+            for call in &stage.finalization_calls {
+                rows.push(EagerScheduleAuditRow {
+                    stage_index: Some(stage.stage_index),
+                    role: "finalization",
+                    kernel_id: Some(call.kernel_id),
+                    call_count: 1,
+                    row_count: call.rows.invocation_count() as usize,
+                    destination_count: call.rows.attachment_count() as usize,
+                });
+            }
+        }
+        for call in &schedule.closure_calls {
+            rows.push(EagerScheduleAuditRow {
+                stage_index: None,
+                role: "closure",
+                kernel_id: Some(call.kernel_id),
+                call_count: 1,
+                row_count: call.rows.invocation_count() as usize,
+                destination_count: call.rows.attachment_count() as usize,
+            });
+        }
+        if !schedule.direct_closures.is_empty() {
+            rows.push(EagerScheduleAuditRow {
+                stage_index: None,
+                role: "direct-closure",
+                kernel_id: None,
+                call_count: 0,
+                row_count: schedule.direct_closures.len(),
+                destination_count: schedule.direct_closures.len(),
+            });
+        }
+        Ok(rows)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -928,6 +1008,7 @@ fn build_direct_stage(
         factor_specs,
     )?;
     Ok(DirectStage {
+        stage_index: stage.stage_index,
         invocation_calls: invocation_calls.into_boxed_slice(),
         unpropagated_copies: copies.into_boxed_slice(),
         finalization_calls: finalization_calls.into_boxed_slice(),
@@ -1231,7 +1312,11 @@ fn load_call(
         ))
     })?;
     let rows = application.load_rows(invocation_bytes, attachment_bytes)?;
-    Ok(DirectCall { application, rows })
+    Ok(DirectCall {
+        kernel_id,
+        application,
+        rows,
+    })
 }
 
 fn encode_invocation_inputs(
@@ -2300,6 +2385,15 @@ mod tests {
     }
 
     fn runtime(fixture: &Fixture, source: &[u8], descriptor: &[u8]) -> EagerDirectExecutionRuntime {
+        runtime_with_point_tile(fixture, source, descriptor, 128)
+    }
+
+    fn runtime_with_point_tile(
+        fixture: &Fixture,
+        source: &[u8],
+        descriptor: &[u8],
+        point_tile_size: usize,
+    ) -> EagerDirectExecutionRuntime {
         let inputs = [
             EagerKernelInput::FirstCurrentComponent(0),
             EagerKernelInput::SecondCurrentComponent(0),
@@ -2329,7 +2423,7 @@ mod tests {
             fixture.sections(),
             &prepared,
             EagerRuntimeOptions {
-                point_tile_size: 128,
+                point_tile_size,
                 workspace_bytes: 16 * 1024 * 1024,
             },
         )
@@ -2367,9 +2461,9 @@ mod tests {
         let fixture = Fixture::new();
         let (source, descriptor) = source_and_descriptor();
         let mut direct = runtime(&fixture, &source, &descriptor);
-        assert_eq!(direct.effective_point_tile_size(), 128);
+        assert_eq!(direct.effective_point_tile_size(), 64);
 
-        for points in [1_usize, 7, 127, 128, 129, 1023, 1024, 1025] {
+        for points in [1_usize, 7, 63, 64, 65, 127, 128, 129, 1023, 1024, 1025] {
             let (values, momenta) = inputs(points);
             let mut amplitudes = vec![EagerComplex64::new(-13.0, 29.0); points];
             let mut reduced = vec![-1.0; points];
@@ -2462,6 +2556,14 @@ mod tests {
             };
             assert_close(point_selected[point], expected, "point-selected total");
         }
+    }
+
+    #[test]
+    fn whole_plan_preserves_requested_tiles_below_the_locality_cap() {
+        let fixture = Fixture::new();
+        let (source, descriptor) = source_and_descriptor();
+        let direct = runtime_with_point_tile(&fixture, &source, &descriptor, 32);
+        assert_eq!(direct.effective_point_tile_size(), 32);
     }
 
     #[test]

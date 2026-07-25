@@ -22,7 +22,8 @@ pub use layout::{
 pub use profile::{DirectArenaTrafficCounters, DirectArenaTrafficKind};
 pub use reduction::DirectAmplitudePlanes;
 pub use storage::{
-    AlignedF64Buffer, DIRECT_ARENA_ALIGNMENT, DirectArenaAllocationCounters, DirectArenaWorkspace,
-    DirectPointTile, DirectPointTiles, checked_aligned_point_stride, checked_plane_scalar_len,
-    clear_split_active_range, deterministic_point_tile_size,
+    AlignedF64Buffer, DIRECT_ARENA_ALIGNMENT, DIRECT_ARENA_LOCALITY_POINT_CAP,
+    DirectArenaAllocationCounters, DirectArenaWorkspace, DirectPointTile, DirectPointTiles,
+    checked_aligned_point_stride, checked_plane_scalar_len, clear_split_active_range,
+    deterministic_point_tile_size,
 };
