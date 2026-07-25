@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Produce and consume an architecture-scoped eager JIT model bundle.
+"""Produce and consume a portable eager JIT model bundle.
 
 Heavy invocations of this script must be wrapped by::
 
     python tools/ci/memory_watchdog.py --limit-gib 30 -- \
       python tools/ci/eager_portability.py ...
 
-The producer writes one built-in-SM JIT O3 bundle and a numerical transfer
-fixture.  Consumers use that exact archive; they never prepare a model pack.
-SymJIT application storage v3 may cross operating systems within one CPU
-architecture class, but x86-64 and AArch64 packs are deliberately distinct.
+The producer writes one built-in-SM portable JIT O2 bundle and a numerical
+transfer fixture.  Consumers use that exact archive; they never prepare a
+model pack.  SymJIT application storage v3 at O2 stores portable MIR and may
+cross the supported x86-64 and AArch64 host classes; each consumer recompiles
+that state for its own CPU when loading it.
 """
 
 from __future__ import annotations
@@ -107,7 +108,7 @@ DEFAULT_PROCESS = "d d~ > z"
 DEFAULT_PROCESS_ID = "d_dbar_to_z"
 DEFAULT_RTOL = 1.0e-12
 DEFAULT_ATOL = 1.0e-15
-DEFAULT_BUNDLE_NAME = "builtin-sm-jit-o3.pyamplicol-model"
+DEFAULT_BUNDLE_NAME = "builtin-sm-jit-o2.pyamplicol-model"
 DEFAULT_FIXTURE_NAME = "transfer.json"
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -704,7 +705,7 @@ def verify_consumer_artifact(
     if filtered_pack.get("backend") != "jit" or filtered_pack.get(
         "target"
     ) != bundle_pack.get("target"):
-        raise PortabilityError("consumer changed the architecture-scoped JIT target")
+        raise PortabilityError("consumer changed the portable JIT target")
     filtered_kernels = _array(filtered_pack.get("kernels"), "filtered pack kernels")
     filtered_variants = _array(
         filtered_pack.get("kernel_variants", []),
@@ -891,9 +892,18 @@ def consume_transfer(
     if fixture.get("producer") is None:
         raise PortabilityError("transfer fixture omits producer provenance")
     producer = _object(fixture.get("producer"), "transfer.producer")
-    if producer.get("architecture_class") != audit["architecture_class"]:
+    producer_architecture = architecture_class(
+        _string(
+            producer.get("architecture_class"),
+            "transfer.producer.architecture_class",
+        )
+    )
+    producer_machine_architecture = architecture_class(
+        _string(producer.get("machine"), "transfer.producer.machine")
+    )
+    if producer_architecture != producer_machine_architecture:
         raise PortabilityError(
-            "producer architecture differs from the prepared bundle target"
+            "producer machine and architecture-class provenance differ"
         )
     if producer.get("git_commit") != _git_commit():
         raise PortabilityError("producer and consumer source commits differ")
@@ -988,9 +998,7 @@ def consume_transfer(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=(
-            "Transfer-test an architecture-scoped built-in-SM JIT O3 model bundle."
-        ),
+        description=("Transfer-test a portable built-in-SM JIT O2 model bundle."),
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
 
@@ -1002,7 +1010,7 @@ def _parser() -> argparse.ArgumentParser:
     audit.add_argument("--expected-sha256")
     audit.add_argument(
         "--expected-machine",
-        help="Machine name whose storage-v3 architecture class must match the bundle.",
+        help="Supported machine class on which the portable bundle will be loaded.",
     )
 
     produce = subparsers.add_parser(

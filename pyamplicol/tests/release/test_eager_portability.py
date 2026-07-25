@@ -50,7 +50,7 @@ def _write_bundle(
     state_path = "kernels/000000/evaluator-state-0.evaluator.bin"
     model_path = "model/model.pyAmplicol-model.json"
     payloads = {
-        application_path: b"architecture-scoped-symjit-storage-v3-fixture\x00\x01",
+        application_path: b"portable-symjit-storage-v3-fixture\x00\x01",
         state_path: b"architecture-neutral-symbolica-state-fixture\x00\x02",
         model_path: json.dumps(
             {
@@ -70,7 +70,7 @@ def _write_bundle(
         "endianness": "little",
         "evaluator_state_path": state_path,
         "kind": "symjit-application-evaluator",
-        "optimization_level": 3,
+        "optimization_level": 2,
         "required_defuns": [],
         "runtime_capability": contracts.symjit_runtime_capability,
         "settings": {
@@ -79,7 +79,7 @@ def _write_bundle(
             "compiled_native": False,
             "compiler_path": None,
             "effective_compiler_flags": [],
-            "jit_optimization_level": 3,
+            "jit_optimization_level": 2,
         },
         "translation_mode": "indirect",
         "word_bits": 64,
@@ -105,7 +105,7 @@ def _write_bundle(
                 "compiled_native": False,
                 "compiler_path": None,
                 "effective_compiler_flags": [],
-                "jit_optimization_level": 3,
+                "jit_optimization_level": 2,
             },
             "producer": {
                 "compiled_model_schema": contracts.compiled_model_schema_version,
@@ -159,7 +159,7 @@ def _write_transfer_fixture(
     )
     fixture = {
         "bundle": {
-            "architecture_class": architecture,
+            "architecture_class": "portable",
             "bundle_sha256": portability._sha256_file(bundle),
             "filename": bundle.name,
             "preflight_evaluator_count": 1,
@@ -296,7 +296,7 @@ def _write_packed_consumer_artifact(
 
 
 @pytest.mark.parametrize("architecture", ("x86_64", "aarch64"))
-def test_architecture_jit_bundle_audit_accepts_matching_storage_v3_pack(
+def test_architecture_jit_bundle_audit_accepts_portable_storage_v3_pack(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
     architecture: str,
@@ -318,7 +318,7 @@ def test_architecture_jit_bundle_audit_accepts_matching_storage_v3_pack(
     assert result["kernel_count"] == 1
     assert result["symjit_application_count"] == 1
     assert result["exact_state_count"] == 1
-    assert result["architecture_class"] == architecture
+    assert result["architecture_class"] == "portable"
     assert result["target"] == symjit_storage_v3_target(architecture)
 
 
@@ -403,7 +403,7 @@ def test_architecture_jit_bundle_audit_rejects_native_source_or_object_payload(
         portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
 
 
-def test_architecture_jit_bundle_audit_rejects_legacy_portable_target(
+def test_architecture_jit_bundle_audit_rejects_legacy_target_spelling(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
 ) -> None:
@@ -423,12 +423,12 @@ def test_architecture_jit_bundle_audit_rejects_legacy_portable_target(
 
     with pytest.raises(
         portability.PortabilityError,
-        match="storage v3 must not be marked portable",
+        match="must be portable 64-bit little-endian",
     ):
         portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
 
 
-def test_architecture_jit_bundle_audit_rejects_cross_architecture_before_load(
+def test_architecture_jit_bundle_audit_accepts_cross_architecture_load(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
 ) -> None:
@@ -438,18 +438,14 @@ def test_architecture_jit_bundle_audit_rejects_cross_architecture_before_load(
         architecture="x86_64",
     )
 
-    with pytest.raises(
-        portability.PortabilityError,
-        match=(
-            "architecture class mismatch: bundle is 'x86_64', consumer is "
-            "'aarch64'; refusing before SymJIT load"
-        ),
-    ):
-        portability.audit_architecture_jit_bundle(
-            bundle,
-            contracts=contracts,
-            expected_architecture_class="aarch64",
-        )
+    result = portability.audit_architecture_jit_bundle(
+        bundle,
+        contracts=contracts,
+        expected_architecture_class="aarch64",
+    )
+
+    assert result["architecture_class"] == "portable"
+    assert result["target"] == symjit_storage_v3_target("aarch64")
 
 
 @pytest.mark.parametrize(
@@ -539,7 +535,7 @@ def test_producer_rejects_an_unexpected_architecture_before_building(
     assert not (tmp_path / "transfer").exists()
 
 
-def test_consumer_rejects_cross_architecture_before_generation_or_symjit_load(
+def test_consumer_accepts_portable_pack_across_architectures(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,
     monkeypatch: pytest.MonkeyPatch,
@@ -549,33 +545,68 @@ def test_consumer_rejects_cross_architecture_before_generation_or_symjit_load(
         contracts,
         architecture="x86_64",
     )
-    report = tmp_path / "report.json"
     monkeypatch.setattr(portability.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(portability.platform, "machine", lambda: "arm64")
     monkeypatch.setattr(portability, "_runtime_contracts", lambda: contracts)
+    monkeypatch.setattr(portability, "_git_commit", lambda: "fixture-commit")
+    monkeypatch.setattr(
+        portability,
+        "_preflight_all_prepared_applications",
+        lambda _bundle: 1,
+    )
 
-    def unexpected_run(*_args: object, **_kwargs: object) -> None:
-        pytest.fail("cross-architecture preflight started consumer generation")
+    class GenerationStarted(RuntimeError):
+        pass
 
-    def unexpected_load(*_args: object, **_kwargs: object) -> complex:
-        pytest.fail("cross-architecture preflight attempted SymJIT-backed evaluation")
+    def stop_at_generation(*_args: object, **_kwargs: object) -> None:
+        raise GenerationStarted
 
-    monkeypatch.setattr(portability, "_run", unexpected_run)
-    monkeypatch.setattr(portability, "_evaluate_artifact", unexpected_load)
+    monkeypatch.setattr(portability, "_run", stop_at_generation)
 
-    with pytest.raises(
-        portability.PortabilityError,
-        match="refusing before SymJIT load",
-    ):
+    with pytest.raises(GenerationStarted):
         portability.consume_transfer(
             transfer,
             python=Path(sys.executable),
-            report_path=report,
+            report_path=tmp_path / "report.json",
             expected_system="Darwin",
             expected_machine="arm64",
         )
 
-    assert not report.exists()
+
+def test_consumer_rejects_inconsistent_producer_host_provenance(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transfer = _write_transfer_fixture(
+        tmp_path / "transfer",
+        contracts,
+        architecture="x86_64",
+    )
+    fixture_path = transfer / portability.DEFAULT_FIXTURE_NAME
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    fixture["producer"]["machine"] = "arm64"
+    fixture_path.write_text(json.dumps(fixture), encoding="utf-8")
+    monkeypatch.setattr(portability.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(portability.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(portability, "_runtime_contracts", lambda: contracts)
+    monkeypatch.setattr(
+        portability,
+        "_preflight_all_prepared_applications",
+        lambda _bundle: 1,
+    )
+
+    with pytest.raises(
+        portability.PortabilityError,
+        match="machine and architecture-class provenance differ",
+    ):
+        portability.consume_transfer(
+            transfer,
+            python=Path(sys.executable),
+            report_path=tmp_path / "report.json",
+            expected_system="Linux",
+            expected_machine="x86_64",
+        )
 
 
 def test_consumer_accepts_same_architecture_pack_across_operating_systems(
@@ -628,7 +659,7 @@ def test_compiler_guard_records_and_denies_external_tool_execution() -> None:
         assert marker.read_text(encoding="utf-8").strip().endswith("c++ --version")
 
 
-def test_portability_workflow_transfers_matching_architecture_packs() -> None:
+def test_portability_workflow_transfers_portable_packs() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     trigger = workflow.split("on:\n", maxsplit=1)[1].split(
         "\npermissions:\n", maxsplit=1

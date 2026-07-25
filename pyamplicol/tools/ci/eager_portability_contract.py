@@ -127,11 +127,17 @@ def symjit_storage_v3_target(architecture: str) -> dict[str, object]:
 
 
 def _target_architecture_class(target: dict[str, object]) -> str:
+    """Return the storage class encoded by a prepared target.
+
+    Storage-v3 O2 applications contain portable MIR rather than host machine
+    code.  The producing and consuming hosts must each be supported, but their
+    architecture classes need not match.
+    """
+
     if target == symjit_storage_v3_target("x86_64"):
         return "portable"
     raise PortabilityError(
-        "prepared JIT target must be portable 64-bit little-endian SymJIT "
-        "storage-v3"
+        "prepared JIT target must be portable 64-bit little-endian SymJIT storage-v3"
     )
 
 
@@ -329,6 +335,9 @@ def audit_architecture_jit_bundle(
     target = object_value(kernel_pack.get("target"), "kernel_pack.target")
     bundle_architecture = _target_architecture_class(target)
     if expected_architecture_class is not None:
+        # Validate that the consumer belongs to a supported host class.  There
+        # is deliberately no equality check against ``bundle_architecture``:
+        # portable storage-v3 O2 applications are recompiled when loaded.
         architecture_class(expected_architecture_class)
     expected_target = symjit_storage_v3_target("x86_64")
 
@@ -423,9 +432,7 @@ def audit_architecture_jit_bundle(
         }
         for key, expected in required.items():
             if f64.get(key) != expected:
-                raise PortabilityError(
-                    f"prepared {context} has incompatible {key!r}"
-                )
+                raise PortabilityError(f"prepared {context} has incompatible {key!r}")
         if f64.get("required_defuns") != []:
             raise PortabilityError(f"prepared {context} requires external functions")
         kernel_settings = object_value(
@@ -441,9 +448,7 @@ def audit_architecture_jit_bundle(
                 f"prepared {context} settings do not select portable JIT O2"
             )
         if kernel_settings.get("compiled_native") is not False:
-            raise PortabilityError(
-                f"prepared {context} settings request native code"
-            )
+            raise PortabilityError(f"prepared {context} settings request native code")
         if kernel_settings.get("compiled_inline_asm") not in {None, "none"}:
             raise PortabilityError(
                 f"prepared {context} settings request inline assembly"
@@ -454,14 +459,10 @@ def audit_architecture_jit_bundle(
             )
         kernel_flags = kernel_settings.get("effective_compiler_flags")
         if kernel_flags is not None and kernel_flags != []:
-            raise PortabilityError(
-                f"prepared {context} settings record compiler flags"
-            )
+            raise PortabilityError(f"prepared {context} settings record compiler flags")
         for field in _FORBIDDEN_MANIFEST_PATH_FIELDS:
             if f64.get(field) not in {None, ""}:
-                raise PortabilityError(
-                    f"prepared {context} records forbidden {field}"
-                )
+                raise PortabilityError(f"prepared {context} records forbidden {field}")
         application_path = canonical_member_path(
             f64.get("application_path"),
             f"{context} application_path",
