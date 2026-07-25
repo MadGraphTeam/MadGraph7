@@ -13,6 +13,7 @@ from pyamplicol.runtime.symbolica_exact import (
     SymbolicaExactExecutor,
     _apply_lc_replay_input_mapping,
     _apply_lc_replay_resolved,
+    _canonical_amplitude_outputs,
     _decimal,
     _exact_helicity_plan,
     _ExactEvaluator,
@@ -114,6 +115,74 @@ def test_exact_chunked_evaluator_selects_parent_inputs() -> None:
     assert second.values is not None
     assert tuple(value[0] for value in first.values) == (Decimal("1"), Decimal("3"))
     assert tuple(value[0] for value in second.values) == (Decimal("10"),)
+
+
+def test_exact_amplitude_outputs_follow_plane_arena_bindings() -> None:
+    outputs = tuple((Decimal(index), Decimal(-index)) for index in range(4))
+    stage = {
+        "output_length": 4,
+        "compiled_plane_arena": {
+            "output_bindings": [
+                {"output_index": 0, "arena": "amplitude", "component": 0},
+                {"output_index": 1, "arena": "amplitude", "component": 2},
+                {"output_index": 2, "arena": "amplitude", "component": 1},
+                {"output_index": 3, "arena": "amplitude", "component": 3},
+            ]
+        },
+    }
+
+    assert _canonical_amplitude_outputs(outputs, stage) == (
+        outputs[0],
+        outputs[2],
+        outputs[1],
+        outputs[3],
+    )
+
+
+def test_exact_amplitude_outputs_fall_back_to_output_slots() -> None:
+    outputs = tuple((Decimal(index), Decimal(-index)) for index in range(3))
+    stage = {
+        "output_length": 3,
+        "output_slots": [
+            {
+                "output_start": 0,
+                "output_stop": 1,
+                "component_start": 2,
+                "component_stop": 3,
+            },
+            {
+                "output_start": 1,
+                "output_stop": 3,
+                "component_start": 0,
+                "component_stop": 2,
+            },
+        ],
+    }
+
+    assert _canonical_amplitude_outputs(outputs, stage) == (
+        outputs[1],
+        outputs[2],
+        outputs[0],
+    )
+
+
+def test_exact_amplitude_outputs_reject_non_permutation() -> None:
+    outputs = (
+        (Decimal(1), Decimal(0)),
+        (Decimal(2), Decimal(0)),
+    )
+    stage = {
+        "output_length": 2,
+        "compiled_plane_arena": {
+            "output_bindings": [
+                {"output_index": 0, "arena": "amplitude", "component": 0},
+                {"output_index": 1, "arena": "amplitude", "component": 0},
+            ]
+        },
+    }
+
+    with pytest.raises(ArtifactError, match="not a permutation"):
+        _canonical_amplitude_outputs(outputs, stage)
 
 
 def test_upcast_rounding_does_not_depend_on_ambient_decimal_context() -> None:

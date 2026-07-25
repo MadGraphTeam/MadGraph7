@@ -3,18 +3,20 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import warnings
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 
 from pyamplicol import (
     BenchmarkConfig,
     BenchmarkRunner,
+    CompiledModel,
     Generator,
     ModelSource,
     ProcessSet,
@@ -34,6 +36,7 @@ from pyamplicol.config import (
 from pyamplicol.generation.phase_space import massive_rambo_final_state
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.base import Model
+from pyamplicol.models.builtin.validation import generic_validation_point
 from tools.developer.analytic_oracles import (
     scalar_contact_2to2,
     scalar_gravity_2to2,
@@ -84,6 +87,35 @@ NAMED_CASE_IDS = {
 }
 
 
+def _unavailable(reason: str) -> NoReturn:
+    if os.environ.get("PYAMPLICOL_REQUIRE_NATIVE_TESTS") == "1":
+        pytest.fail(reason)
+    pytest.skip(reason)
+
+
+@pytest.fixture(scope="module")
+def builtin_sm_eager_compiled_jit_o2_model(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[CompiledModel]:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        _unavailable("the Rusticol extension has not been built")
+    if importlib.util.find_spec("symbolica") is None:
+        _unavailable("Symbolica is unavailable")
+    root = tmp_path_factory.mktemp("builtin-sm-eager-compiled-jit-o2")
+    try:
+        yield ModelSource.built_in_sm().compile(
+            cache_dir=root / "model-cache",
+            prepared_output=root / "built-in-sm-jit-o2.pyamplicol-model",
+            evaluator=EvaluatorConfig(
+                execution_mode="eager",
+                optimization=EvaluatorOptimizationConfig(cores=1),
+                jit=JITConfig(optimization_level=2),
+            ),
+        )
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def _assert_reusable_helicity_topology(
     execution: dict[str, Any],
     *,
@@ -101,8 +133,8 @@ def _assert_reusable_helicity_topology(
 
     assert materialization["strategy"] == "quotient"
     assert primary["current_count"] == materialization["materialized_current_count"]
-    assert primary["amplitude_root_count"] == (
-        materialization["materialized_root_count"]
+    assert (
+        primary["amplitude_root_count"] == (materialization["materialized_root_count"])
     )
     assert summed["current_count"] == materialization["proof_current_count"]
     assert summed["amplitude_root_count"] == materialization["proof_root_count"]
@@ -137,9 +169,7 @@ def _assert_reusable_reduction_coverage(
     represented_colors = {
         color_id for group in groups for color_id in group["physical_color_ids"]
     }
-    available_colors = {
-        component["id"] for component in physics["color_components"]
-    }
+    available_colors = {component["id"] for component in physics["color_components"]}
     computed_colors = {
         component["id"]
         for component in physics["color_components"]
@@ -147,9 +177,7 @@ def _assert_reusable_reduction_coverage(
     }
     assert computed_colors <= represented_colors <= available_colors
     for group in groups:
-        assert group["representative_helicity_id"] in group[
-            "physical_helicity_ids"
-        ]
+        assert group["representative_helicity_id"] in group["physical_helicity_ids"]
         assert group["representative_color_id"] in group["physical_color_ids"]
 
 
@@ -230,6 +258,110 @@ def _write_color_dummy_relabelled_sm(root: Path) -> Path:
     restriction = source.with_name("restrict_default.json")
     (model_root / restriction.name).write_bytes(restriction.read_bytes())
     return model_path
+
+
+@pytest.mark.parametrize("color_accuracy", ("nlc", "full"))
+def test_eager_and_compiled_exact_z3g_contracted_color_match(
+    tmp_path: Path,
+    color_accuracy: str,
+    builtin_sm_eager_compiled_jit_o2_model: CompiledModel,
+) -> None:
+    """Regress noncanonical compiled amplitude-chunk output ordering."""
+
+    process = "d d~ > z g g g"
+    generation = GenerationConfig(
+        workers=1,
+        emit_api_bundle=False,
+        validation=GenerationValidationConfig(
+            enabled=False,
+            post_build_validation=False,
+        ),
+    )
+    artifact_by_mode = {
+        execution_mode: tmp_path / execution_mode
+        for execution_mode in ("eager", "compiled")
+    }
+    for execution_mode, artifact in artifact_by_mode.items():
+        Generator(
+            RunConfig(
+                action="generate",
+                color=ColorConfig(accuracy=color_accuracy),
+                generation=generation,
+                evaluator=EvaluatorConfig(
+                    execution_mode=execution_mode,
+                    optimization=EvaluatorOptimizationConfig(cores=1),
+                    jit=JITConfig(
+                        optimization_level=2 if execution_mode == "eager" else 3
+                    ),
+                ),
+            )
+        ).generate(
+            process,
+            artifact,
+            model=builtin_sm_eager_compiled_jit_o2_model,
+        )
+
+    compiled_process = next(
+        path
+        for path in (artifact_by_mode["compiled"] / "processes").iterdir()
+        if path.is_dir()
+    )
+    execution = json.loads(
+        (compiled_process / "execution.json").read_text(encoding="utf-8")
+    )
+    amplitude_stage = execution["compiled"]["stage_evaluators"]["amplitude_stage"]
+    bindings = amplitude_stage["compiled_plane_arena"]["output_bindings"]
+    assert [binding["component"] for binding in bindings] != list(
+        range(amplitude_stage["output_length"])
+    )
+
+    point = tuple(
+        tuple(float(component) for component in particle.momentum)
+        for particle in generic_validation_point(process)
+    )
+    momenta = (point,)
+    eager = Runtime.load(artifact_by_mode["eager"])
+    compiled = Runtime.load(artifact_by_mode["compiled"])
+    eager_f64 = eager.evaluate_resolved(momenta)
+    compiled_f64 = compiled.evaluate_resolved(momenta)
+    eager_exact = eager.evaluate_resolved(momenta, precision=32)
+    compiled_exact = compiled.evaluate_resolved(momenta, precision=32)
+
+    assert eager_exact.helicity_ids == compiled_exact.helicity_ids
+    assert eager_exact.color_ids == compiled_exact.color_ids
+    eager_f64_values = tuple(
+        value
+        for point_values in eager_f64.values
+        for helicity_values in point_values
+        for value in helicity_values
+    )
+    compiled_f64_values = tuple(
+        value
+        for point_values in compiled_f64.values
+        for helicity_values in point_values
+        for value in helicity_values
+    )
+    eager_exact_values = tuple(
+        complex(value)
+        for point_values in eager_exact.values
+        for helicity_values in point_values
+        for value in helicity_values
+    )
+    compiled_exact_values = tuple(
+        complex(value)
+        for point_values in compiled_exact.values
+        for helicity_values in point_values
+        for value in helicity_values
+    )
+    assert compiled_f64_values == pytest.approx(
+        eager_f64_values, rel=1.0e-12, abs=1.0e-15
+    )
+    assert eager_exact_values == pytest.approx(
+        eager_f64_values, rel=1.0e-12, abs=1.0e-15
+    )
+    assert compiled_exact_values == pytest.approx(
+        eager_exact_values, rel=1.0e-12, abs=1.0e-15
+    )
 
 
 @pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
@@ -388,9 +520,9 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
     ).generate("g g > t t~ g", artifact)
 
     execution = json.loads(
-        (
-            artifact / "processes" / "g_g_to_t_tbar_g" / "execution.json"
-        ).read_text(encoding="utf-8")
+        (artifact / "processes" / "g_g_to_t_tbar_g" / "execution.json").read_text(
+            encoding="utf-8"
+        )
     )
     # Runtime-selected helicities use the quotient lane; the summed workload
     # retains the proof recurrence as a separate execution lane. Exact
@@ -563,9 +695,9 @@ def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(
     Generator(config(None)).generate("d d~ > z g", baseline_artifact)
 
     execution = json.loads(
-        (
-            artifact / "processes" / "d_dbar_to_z_g" / "execution.json"
-        ).read_text(encoding="utf-8")
+        (artifact / "processes" / "d_dbar_to_z_g" / "execution.json").read_text(
+            encoding="utf-8"
+        )
     )
     stages = execution["compiled"]["stage_evaluators"]
     evaluator_manifests = [
@@ -600,9 +732,9 @@ def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(
     assert resolved.total()[0] == pytest.approx(
         baseline.evaluate_resolved(momenta).total()[0], rel=1.0e-12
     )
-    assert exact.total()[0] == baseline.evaluate_resolved(
-        momenta, precision=32
-    ).total()[0]
+    assert (
+        exact.total()[0] == baseline.evaluate_resolved(momenta, precision=32).total()[0]
+    )
 
     final_state = massive_rambo_final_state(
         2,
