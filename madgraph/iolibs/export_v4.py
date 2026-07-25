@@ -5722,23 +5722,99 @@ C       so this also stays correct for split-order processes.
     #===========================================================================
     # write_check_sa   
     #===========================================================================
+    def _crossed_signatures(self, matrix_element):
+        """(signatures, complete) for the crossed subprocesses folded into this
+        matrix element (merge_crossing='record'), so check_sa can demo exactly
+        the crossings that are real subprocesses of the generation -- not every
+        mathematically valid crossing of the base.
+
+        Each signature is a representative signed-PDG tuple in the crossed leg
+        order, matched at RUNTIME against GET_PDG_FOR_FLAVOR (whose python twin
+        is compute_crossing_pdg_entries). Matching on the PDG rather than the
+        extended index avoids the NFLAV-convention gap between the crossing-PDG
+        enumeration and the runtime flavor table.
+
+        A recorded crossed process may carry merged multiparticle labels (e.g.
+        _quark = 81). Rather than resolve each such leg independently to one
+        flavor -- which would fabricate an unphysical signature for a
+        flavor-changing vertex, e.g. a W coupling two same-flavor quarks -- each
+        recorded process is matched LABEL-AWARE against the reachable set, which
+        already encodes the correct flavor pairings; the first reachable
+        instantiation is taken as the representative. Mirror pairs are collapsed
+        (the chosen signature's beam swap is also marked seen). 'complete' is
+        False only when a recorded process has NO reachable instantiation, so
+        the caller falls back to the full loop rather than hide a real
+        crossing."""
+        crossed = matrix_element.get('crossed_processes')
+        if not crossed:
+            return [], True
+        model = matrix_element.get('processes')[0].get('model')
+        merged = model.get('merged_particles')
+
+        def leg_matches(leg_id, pdg):
+            # Does the reachable PDG instantiate this recorded leg id? A merged
+            # label matches any member flavor of the same sign; a concrete
+            # particle matches only itself.
+            a = abs(leg_id)
+            if a in merged:
+                return (leg_id > 0) == (pdg > 0) and abs(pdg) in merged[a]
+            return pdg == leg_id
+
+        ninitial = matrix_element.get_nexternal_ninitial()[1]
+        # signatures the runtime can actually reach (physical crossings)
+        reachable = [tuple(pdg) for (_i, _c, _f, pdg) in
+                     self.compute_crossing_pdg_entries(matrix_element)]
+        sigs, seen, complete = [], set(), True
+        for (proc, _bp, _xp) in crossed:
+            legs = [l.get('id') for l in proc.get('legs')]
+            orients = [legs]
+            if ninitial == 2:                 # try the beam-swapped orientation
+                orients.append([legs[1], legs[0]] + legs[2:])
+            hit = None
+            for orient in orients:
+                for r in reachable:
+                    if len(r) == len(orient) and \
+                       all(leg_matches(L, P) for L, P in zip(orient, r)):
+                        hit = r
+                        break
+                if hit is not None:
+                    break
+            if hit is None:
+                complete = False
+                continue
+            mirror = (hit[1], hit[0]) + hit[2:] if ninitial == 2 else hit
+            if hit in seen or mirror in seen:
+                continue                      # mirror partner already taken
+            sigs.append(hit)
+            seen.add(hit)
+            seen.add(mirror)
+        return sigs, complete
+
     def _get_check_sa_crossing_example(self, matrix_element, proc_prefix):
         """Fortran block for check_sa.f demonstrating the crossed matrix elements.
 
         Returns '' when crossing is not active for this matrix element (flag
         off, or an s-channel constraint disables it), so the driver is
-        unchanged. Otherwise it loops over every way of crossing particle 1 and
-        particle 2 with a final-state particle, and for each flavor evaluates
-        the crossed matrix element and prints its signed PDGs and value.
+        unchanged. Otherwise it scans every crossing of the base -- FLIP1 and
+        FLIP2 each range over 1..NEXTERNAL, choosing which two legs sit in the
+        initial slots -- and, for each, evaluates the crossed matrix element and
+        prints the momenta actually used next to their signed PDGs.
 
-        The crossing code is CROSS = FLIP1*(NEXTERNAL+1) + FLIP2 with FLIP1 the
-        partner of particle 1 and FLIP2 the partner of particle 2 -- matching
+        Only the crossings that are REAL subprocesses of the generation (folded
+        in via merge_crossing='record') are shown, not every mathematically
+        valid crossing: their representative signed-PDG signatures are loaded
+        into XCSIG (from _crossed_signatures) and each enumerated crossing is
+        kept only if GET_PDG_FOR_FLAVOR matches an XCSIG row. When a folded
+        crossing has no reachable signature (e.g. a flavor-changing W), the
+        signatures are 'incomplete' and the block falls back to showing every
+        applicable crossing (non-zero PDG, minus the FLIP1=1,FLIP2=2 identity).
+
+        The crossing code is CROSS = FLIP1*(NEXTERNAL+1) + FLIP2, matching
         GET_CROSS_PERM's decode (i_part = CROSS/(NEXTERNAL+1),
-        j_part = CROSS mod (NEXTERNAL+1)). FLAV_IDX = CROSS*NFLAV + flav, and
-        NFLAV is emitted as the literal matrix.f value so the encoding matches
-        exactly. Overlapping/degenerate crossings (e.g. FLIP1==FLIP2) are left
-        in: GET_PDG_FOR_FLAVOR reports all-zero and SMATRIX returns 0 for them,
-        which is itself an informative part of the demonstration.
+        j_part = CROSS mod (NEXTERNAL+1)); FLAV_IDX = CROSS*NFLAV + flav, with
+        NFLAV emitted as the literal matrix.f value so the encoding matches
+        exactly. Degenerate crossings (e.g. FLIP1==FLIP2) decode to all-zero
+        PDGs and are skipped by both the match and the fallback.
         """
         use_crossing = self.opt.get('use_crossing', True) and \
             not any(self.breaks_crossing_symmetry(proc)
@@ -5754,38 +5830,100 @@ C       so this also stays correct for split-order processes.
         # directory of their own and this driver is the only place they are
         # exercised, so the demo is enabled to actually evaluate them.
         n_table, _ = self._build_flav_table_flat(matrix_element)
-        loop_gate = ('.true.' if matrix_element.get('crossed_processes')
-                     else '.false.')
+        if not matrix_element.get('crossed_processes'):
+            # Nothing folded in: keep the dormant example (present but disabled).
+            loop_gate = '.false.'
+        else:
+            loop_gate = '.true.'
+        sigs, complete = self._crossed_signatures(matrix_element)
 
-        sep = ('        write (*,*) "-----------------------------------------'
-               '------------------------------------"')
-        lines = [
-            '      if(%s) then' % loop_gate,
-            '      write (*,*)',
-            '      write (*,*) " Crossing-symmetry examples (crossed processes):"',
-            '      write (*,*)',
-            '      NFLAV = %d' % n_table,
-            '      DO FLIP1=NINCOMING+1,NEXTERNAL',
-            '        DO FLIP2=NINCOMING+1,NEXTERNAL',
-            '          DO J=1,NFLAV',
-            'C           CROSS = (partner of particle 1)*(NEXTERNAL+1)',
-            'C                 + (partner of particle 2)',
-            '            I = FLIP1*(NEXTERNAL+1) + FLIP2',
-            '            FLAV_IDX = I*NFLAV+J',
-            '            CALL %sGET_PDG_FOR_FLAVOR(FLAV_IDX, XPDG)' % proc_prefix,
+        sep = ('            write (*,*) "-------------------------------------'
+               '----------------------------------------"')
+
+        # For the FLAV_IDX already set: print the crossed process -- its per-leg
+        # PDG next to the momenta used to evaluate it. Every crossing shown here
+        # keeps the massive particles final and only relabels the massless
+        # partons, so its mass pattern is P's slot for slot; a standalone
+        # (non-crossed) run of that subprocess would draw the very same RAMBO
+        # point (identical hard-coded seed, sqrt(s) and per-slot masses). So the
+        # base P IS that point, printed row k = P(:,k) with the crossed PDG
+        # XPDG(k) -- copy/paste-comparable with the subprocess's own check.
+        # XPDG is already set for this FLAV_IDX by the loop body above.
+        demo_one = [
             '            CALL %sSMATRIX(P, FLAV_IDX, MATELEM)' % proc_prefix,
-            '            write(*,*) "PARTICLE #1 crossed with particle #", FLIP1',
-            '            write(*,*) "PARTICLE #2 crossed with particle #", FLIP2',
-            '            write (*,*) "PDG", (XPDG(K),K=1,NEXTERNAL),'
-            " 'FLAV_IDX', FLAV_IDX",
+            "            write (*,*) 'FLAV_IDX', FLAV_IDX",
+            "            write (*,*) '   PDG            E              px"
+            "              py              pz'",
+            '            DO XCK=1,NEXTERNAL',
+            "              write (*,'(1X,I6,4(1X,E15.7))') XPDG(XCK),",
+            '     &          P(0,XCK), P(1,XCK), P(2,XCK), P(3,XCK)',
+            '            ENDDO',
             '            write (*,*) "Matrix element = ", MATELEM,'
             ' " GeV^",-(2*nexternal-8)',
             sep,
-            '          ENDDO',
-            '        ENDDO',
-            '      ENDDO',
-            '      endif',
         ]
+
+        lines = [
+            '      if(%s) then' % loop_gate,
+            '      write (*,*)',
+            '      write (*,*) " Crossed processes (folded into this matrix'
+            ' element):"',
+            '      write (*,*)',
+            '      NFLAV = %d' % n_table,
+        ]
+        if sigs and complete:
+            # Load the signed-PDG signatures of the folded crossings, then show
+            # only the crossings whose runtime PDG matches one of them (the real
+            # subprocesses of this generation, not every valid crossing).
+            lines.append('      XCNSIG = %d' % len(sigs))
+            for s, sig in enumerate(sigs, 1):
+                for k, pid in enumerate(sig, 1):
+                    lines.append('      XCSIG(%d,%d) = %d' % (k, s, pid))
+            match_cond = 'XCMATCH'
+        else:
+            # A folded crossing could not be matched to a runtime PDG (e.g. a
+            # flavor-changing W subprocess): fall back to every crossing that is
+            # applicable here (all-zero PDG = not applicable, skipped), so no real
+            # subprocess is hidden.
+            lines.append('      XCNSIG = 0')
+            match_cond = 'XCVALID'
+        lines += [
+            'C         FLIP1/FLIP2 pick which legs sit in the two initial slots;',
+            'C         1..NEXTERNAL spans every crossing (FLIP1=1,FLIP2=2 = base).',
+            '      DO FLIP1=1,NEXTERNAL',
+            '        DO FLIP2=1,NEXTERNAL',
+            '          DO J=1,NFLAV',
+            '            I = FLIP1*(NEXTERNAL+1) + FLIP2',
+            '            FLAV_IDX = I*NFLAV+J',
+            '            CALL %sGET_PDG_FOR_FLAVOR(FLAV_IDX, XPDG)' % proc_prefix,
+        ]
+        if sigs and complete:
+            lines += [
+                'C           Keep this crossing only if its PDG matches a folded',
+                'C           subprocess signature.',
+                '            XCMATCH = .FALSE.',
+                '            DO XCS=1,XCNSIG',
+                '              XCVALID = .TRUE.',
+                '              DO XCK=1,NEXTERNAL',
+                '                IF (XPDG(XCK).NE.XCSIG(XCK,XCS))'
+                ' XCVALID = .FALSE.',
+                '              ENDDO',
+                '              IF (XCVALID) XCMATCH = .TRUE.',
+                '            ENDDO',
+            ]
+        else:
+            lines += [
+                'C           Applicable here iff its PDG signature is not all-zero,',
+                'C           skipping the identity (base process, shown above).',
+                '            XCVALID = .FALSE.',
+                '            DO XCK=1,NEXTERNAL',
+                '              IF (XPDG(XCK).NE.0) XCVALID = .TRUE.',
+                '            ENDDO',
+                '            IF (FLIP1.EQ.1 .AND. FLIP2.EQ.2) XCVALID = .FALSE.',
+            ]
+        lines.append('            IF (.NOT.%s) CYCLE' % match_cond)
+        lines.extend(demo_one)
+        lines += ['          ENDDO', '        ENDDO', '      ENDDO', '      endif']
         return '\n'.join(lines)
 
     def write_check_sa(self, writer, matrix_element, proc_prefix=''):
