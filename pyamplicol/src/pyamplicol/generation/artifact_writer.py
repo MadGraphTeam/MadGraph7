@@ -40,6 +40,7 @@ from .._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
     EVALUATOR_RUNTIME_CAPABILITIES,
+    NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
     PROCESS_ARTIFACT_SCHEMA_VERSION,
     PYTHON_API_VERSION,
     RECURRENCE_BUILDER_INPUT_ABI,
@@ -1815,7 +1816,12 @@ def _prefix_evaluator_payload_paths(
     record: Mapping[str, object],
     prefix: str,
 ) -> dict[str, object]:
-    path_fields = {"application_path", "evaluator_state_path", "library_path"}
+    path_fields = {
+        "application_path",
+        "evaluator_state_path",
+        "library_path",
+        "source_path",
+    }
 
     def visit(value: object, *, field: str | None = None) -> object:
         if field in path_fields and value is not None:
@@ -2355,6 +2361,18 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
             SYMBOLICA_ASM_RUNTIME_CAPABILITY,
         }:
             raise ValueError("compiled evaluator has an invalid runtime capability")
+        direct = record.get("native_direct_application")
+        if direct is not None:
+            if result["runtime_capability"] != SYMBOLICA_CPP_RUNTIME_CAPABILITY:
+                raise ValueError(
+                    "native DirectApplication C++ metadata cannot accompany "
+                    "an ASM evaluator"
+                )
+            result["native_direct_application"] = _native_compiled_direct_application(
+                _mapping(direct),
+                expected_function_name=str(result["function_name"]),
+                expected_output_count=int(result["output_len"]),
+            )
         return result
     if kind == "chunked-symbolica-evaluator":
         result = {
@@ -2378,6 +2396,96 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
             )
         return result
     raise ValueError(f"unsupported evaluator artifact kind {kind!r}")
+
+
+def _native_compiled_direct_application(
+    record: Mapping[str, object],
+    *,
+    expected_function_name: str,
+    expected_output_count: int,
+) -> dict[str, object]:
+    result = _select(
+        record,
+        "application_abi",
+        "function_name",
+        "source_path",
+        "library_path",
+        "target",
+        "evaluator_state_sha256",
+        "instruction_count",
+        "temporary_count",
+        "input_plane_count",
+        "scalar_input_count",
+        "output_plane_count",
+        "simd_lane_width",
+        "logical_stack_bytes",
+        "output_semantics",
+    )
+    if result["application_abi"] != NATIVE_COMPILED_DIRECT_APPLICATION_ABI:
+        raise ValueError("native DirectApplication has an incompatible ABI")
+    if result["function_name"] != expected_function_name:
+        raise ValueError(
+            "native DirectApplication function identity does not match its evaluator"
+        )
+    target = _mapping(result["target"])
+    triple = target.get("triple")
+    cpu_features = target.get("cpu_features")
+    if (
+        not isinstance(triple, str)
+        or triple not in _SUPPORTED_ARTIFACT_TARGETS
+        or isinstance(cpu_features, str | bytes)
+        or not isinstance(cpu_features, Sequence)
+    ):
+        raise ValueError("native DirectApplication target metadata is invalid")
+    features = [str(item) for item in cpu_features]
+    if features != sorted(set(features)) or any(not item for item in features):
+        raise ValueError(
+            "native DirectApplication CPU features must be sorted and unique"
+        )
+    result["target"] = {
+        "triple": triple,
+        "cpu_features": features,
+    }
+    digest = result["evaluator_state_sha256"]
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ValueError("native DirectApplication evaluator-state digest is invalid")
+    for name, minimum in (
+        ("instruction_count", 1),
+        ("temporary_count", 0),
+        ("input_plane_count", 1),
+        ("scalar_input_count", 0),
+        ("output_plane_count", 2),
+        ("logical_stack_bytes", 1),
+    ):
+        value = result[name]
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+            raise ValueError(
+                f"native DirectApplication {name.replace('_', ' ')} is invalid"
+            )
+    if result["output_plane_count"] != expected_output_count * 2:
+        raise ValueError(
+            "native DirectApplication output planes do not match evaluator outputs"
+        )
+    if result["simd_lane_width"] not in {2, 4}:
+        raise ValueError("native DirectApplication SIMD width is unsupported")
+    if result["logical_stack_bytes"] > 64 * 1024:
+        raise ValueError("native DirectApplication logical stack exceeds 64 KiB")
+    if result["output_semantics"] != "factor-free-overwrite":
+        raise ValueError("native DirectApplication output semantics are incompatible")
+    for name in ("source_path", "library_path"):
+        value = result[name]
+        if not isinstance(value, str):
+            raise ValueError(f"native DirectApplication {name} must be a string")
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(
+                f"native DirectApplication {name} must be artifact-relative"
+            )
+    return result
 
 
 def _dag_summary(record: Mapping[str, object]) -> dict[str, object]:

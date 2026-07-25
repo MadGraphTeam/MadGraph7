@@ -28,10 +28,10 @@ from pathlib import Path
 from typing import Any
 
 from .._internal.physics.types import NativeEvaluationError
+from .._internal.versions import NATIVE_COMPILED_DIRECT_APPLICATION_ABI
 
 _C_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _DIRECT_MARKER = "// pyAmpliCol genuine native DirectApplication producer v1"
-_DIRECT_ABI = "pyamplicol-native-compiled-direct-application-v1"
 _DIRECT_FLAGS = 0x3F
 _DEFAULT_STACK_LIMIT = 64 * 1024
 _SUPPORTED_LANE_WIDTHS = frozenset({2, 4})
@@ -97,6 +97,9 @@ class NativeDirectCppSource:
     """Rendered source and its authenticated producer metadata."""
 
     source: str
+    target_triple: str
+    cpu_features: tuple[str, ...]
+    simd_lane_width: int
     evaluator_state_sha256: str
     instruction_count: int
     temporary_count: int
@@ -212,6 +215,9 @@ def render_native_direct_cpp(
     )
     return NativeDirectCppSource(
         source=source,
+        target_triple=spec.target_triple,
+        cpu_features=spec.cpu_features,
+        simd_lane_width=spec.simd_lane_width,
         evaluator_state_sha256=state_sha256,
         instruction_count=program.instruction_count,
         temporary_count=program.temporary_count,
@@ -932,6 +938,7 @@ extern "C" int {function_name}_direct_application_v1(
 
 
 __all__ = [
+    "NATIVE_COMPILED_DIRECT_APPLICATION_ABI",
     "NativeDirectCppArtifact",
     "NativeDirectCppCompiler",
     "NativeDirectCppParameterKind",

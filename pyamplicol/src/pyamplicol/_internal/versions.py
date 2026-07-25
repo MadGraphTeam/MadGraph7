@@ -20,6 +20,9 @@ C_ABI_VERSION = 1
 # revisions and patch hashes live only in dependencies/contributor-lock.toml.
 SYMBOLICA_SERIALIZATION_ABI = "symbolica-bincode2-v1"
 SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
+NATIVE_COMPILED_DIRECT_APPLICATION_ABI = (
+    "pyamplicol-native-compiled-direct-application-v1"
+)
 
 SYMJIT_F64_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY = (

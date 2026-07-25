@@ -3,17 +3,27 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pyamplicol._internal.physics.types import NativeEvaluationError
-from pyamplicol.evaluators.native_direct_cpp import (
-    NativeDirectCppParameterKind as ParameterKind,
+from pyamplicol._internal.versions import (
+    NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
 )
 from pyamplicol.evaluators.native_direct_cpp import (
+    NativeDirectCppArtifact,
     NativeDirectCppSpec,
     compiler_from_symbolica_settings,
     render_native_direct_cpp,
 )
+from pyamplicol.evaluators.native_direct_cpp import (
+    NativeDirectCppParameterKind as ParameterKind,
+)
+from pyamplicol.evaluators.symbolica_adapters import (
+    _native_direct_application_manifest,
+)
+from pyamplicol.generation.artifact_writer import _evaluator
 
 
 class _Evaluator:
@@ -61,6 +71,9 @@ def test_real_instruction_stream_renders_plane_native_simd_and_scalar_tail() -> 
     assert rendered.scalar_input_count == 1
     assert rendered.output_plane_count == 2
     assert rendered.logical_stack_bytes == 96
+    assert rendered.target_triple == "aarch64-apple-darwin"
+    assert rendered.cpu_features == ("neon",)
+    assert rendered.simd_lane_width == 2
     assert "_complexf64(" not in rendered.source
     assert "using DirectVector = double __attribute__((vector_size(16)))" in (
         rendered.source
@@ -135,3 +148,55 @@ def test_compiler_settings_reject_inline_asm_and_retain_cpp_flags() -> None:
                 "compiled_inline_asm": "default",
             }
         )
+
+
+def test_direct_only_companion_identity_survives_evaluator_manifest(
+    tmp_path: Path,
+) -> None:
+    rendered = render_native_direct_cpp(
+        _Evaluator(
+            [
+                ("mul", ("out", 0), [("param", 0), ("param", 0)], 0),
+            ]
+        ),
+        _spec(),
+    )
+    source_path = tmp_path / "retained_leaf.direct.cpp"
+    library_path = tmp_path / "libretained_leaf.direct"
+    source_path.write_text(rendered.source, encoding="utf-8")
+    library_path.write_bytes(b"direct-only-test-library")
+    companion = NativeDirectCppArtifact(
+        source_path=source_path,
+        library_path=library_path,
+        source=rendered,
+        compiler_command=("c++",),
+        compile_seconds=0.125,
+    )
+
+    identity = _native_direct_application_manifest(
+        companion,
+        tmp_path,
+        expected_function_name="retained_leaf",
+    )
+    evaluator = _evaluator(
+        {
+            "kind": "compiled-complex-evaluator",
+            "runtime_capability": "symbolica.compiled-cpp.complex-f64.v1",
+            "function_name": "retained_leaf",
+            "input_len": 2,
+            "output_len": 1,
+            "library_path": "libretained_leaf",
+            "evaluator_state_path": "retained_leaf.evaluator.bin",
+            "number_type": "complex",
+            "native_direct_application": identity,
+        }
+    )
+
+    assert identity["application_abi"] == NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+    assert identity["target"] == {
+        "triple": "aarch64-apple-darwin",
+        "cpu_features": ["neon"],
+    }
+    assert identity["source_path"] == "retained_leaf.direct.cpp"
+    assert identity["library_path"] == "libretained_leaf.direct"
+    assert evaluator["native_direct_application"] == identity

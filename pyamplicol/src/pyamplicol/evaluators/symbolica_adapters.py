@@ -429,7 +429,7 @@ class _CompiledComplexEvaluatorAdapter:
         return result
 
     def artifact_manifest(self, artifact_dir: Path) -> dict[str, Any]:
-        return {
+        manifest = {
             "kind": "compiled-complex-evaluator",
             "runtime_capability": self.runtime_capability,
             "backend": self.backend,
@@ -456,6 +456,78 @@ class _CompiledComplexEvaluatorAdapter:
             ),
             "build_timing": dict(self.build_timing),
         }
+        if self.native_direct_application is not None:
+            manifest["native_direct_application"] = _native_direct_application_manifest(
+                self.native_direct_application,
+                artifact_dir,
+                expected_function_name=self.function_name,
+            )
+        return manifest
+
+
+def _native_direct_application_manifest(
+    artifact: Any,
+    artifact_dir: Path,
+    *,
+    expected_function_name: str,
+) -> dict[str, object]:
+    """Serialize one direct-only companion without accepting a dense wrapper."""
+
+    from .native_direct_cpp import (
+        NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+        NativeDirectCppArtifact,
+    )
+
+    if not isinstance(artifact, NativeDirectCppArtifact):
+        raise NativeEvaluationError(
+            "native DirectApplication producer returned an invalid artifact"
+        )
+    source = artifact.source
+    if (
+        not artifact.source_path.is_file()
+        or not artifact.library_path.is_file()
+        or source.input_plane_count < 1
+        or source.output_plane_count < 2
+        or source.output_plane_count % 2 != 0
+        or source.scalar_input_count < 0
+        or source.simd_lane_width not in {2, 4}
+        or source.logical_stack_bytes < 1
+        or source.logical_stack_bytes > 64 * 1024
+        or len(source.evaluator_state_sha256) != 64
+    ):
+        raise NativeEvaluationError(
+            "native DirectApplication artifact metadata is incomplete"
+        )
+    function_name = expected_function_name
+    if _safe_symbol_name(function_name) != function_name:
+        raise NativeEvaluationError(
+            "native DirectApplication function identity is invalid"
+        )
+    return {
+        "application_abi": NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+        "function_name": function_name,
+        "source_path": _artifact_path_for_manifest(
+            artifact.source_path,
+            artifact_dir,
+        ),
+        "library_path": _artifact_path_for_manifest(
+            artifact.library_path,
+            artifact_dir,
+        ),
+        "target": {
+            "triple": source.target_triple,
+            "cpu_features": list(source.cpu_features),
+        },
+        "evaluator_state_sha256": source.evaluator_state_sha256,
+        "instruction_count": source.instruction_count,
+        "temporary_count": source.temporary_count,
+        "input_plane_count": source.input_plane_count,
+        "scalar_input_count": source.scalar_input_count,
+        "output_plane_count": source.output_plane_count,
+        "simd_lane_width": source.simd_lane_width,
+        "logical_stack_bytes": source.logical_stack_bytes,
+        "output_semantics": "factor-free-overwrite",
+    }
 
 
 def _compiled_compiler_flags(settings: SymbolicaEvaluatorSettings) -> tuple[str, ...]:
