@@ -947,13 +947,21 @@ def _validate_generation_model_identities(
 
 def _expected_effective_jit_optimization_level(
     model_identity: Mapping[str, Any],
+    *,
+    mode: str,
 ) -> int:
     kind = model_identity.get("kind")
-    if kind == "built-in-sm-source":
+    if kind not in {
+        "built-in-sm-source",
+        "packaged-prepared-model",
+        "explicit-prepared-model",
+    }:
+        _die("generation model identity has an unsupported source kind")
+    if mode not in MODES:
+        _die(f"generation execution mode is unsupported: {mode!r}")
+    if mode == "compiled":
         return 3
-    if kind in {"packaged-prepared-model", "explicit-prepared-model"}:
-        return PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
-    _die("generation model identity has an unsupported source kind")
+    return PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
 
 
 def _selector_entry(
@@ -1311,7 +1319,8 @@ def _validate_capture(
             f"{label}.generation.{mode}.effective_contract",
         )
         expected_effective_jit_level = _expected_effective_jit_optimization_level(
-            expected_mode_model
+            expected_mode_model,
+            mode=mode,
         )
         if (
             contract.get("execution_mode") != mode

@@ -48,12 +48,14 @@ Generation-model identities follow an exact role matrix. Built-in compiled
 captures use `built-in-sm-source` and execute the requested O3 process-local
 stages. Built-in eager and recurrence captures use the packaged
 `built-in-sm-jit-o2` prepared model and must agree exactly. Every UFO-SM lane
-uses the same explicit portable prepared-model file identity. Prepared-model
-applications therefore execute at their immutable portable O2 level while the
-process-generation request and semantic generation signature remain O3. A
-different supported identity kind remains invalid even if configuration,
-generation signatures, both layout captures, and the request pin are all
-rewritten consistently.
+uses the same explicit portable prepared-model file identity. Compiled mode
+still materializes its process-local stages at the requested O3 level when
+that explicit bundle supplies the model; eager and recurrence execute the
+bundle's immutable portable O2 applications. The process-generation request
+and semantic generation signature remain O3 for every lane. A different
+supported identity kind remains invalid even if configuration, generation
+signatures, both layout captures, and the request pin are all rewritten
+consistently.
 
 The topology-replay workload selects one physical flow at runtime and sums
 helicities. The all-flow-union workload selects one source-ordered helicity at

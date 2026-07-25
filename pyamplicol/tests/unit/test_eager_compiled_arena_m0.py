@@ -295,9 +295,10 @@ def _make_capture(
                 "execution_mode": mode,
                 "backend": "jit",
                 "jit_optimization_level": (
-                    3
-                    if model_identities[mode]["kind"] == "built-in-sm-source"
-                    else m0.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+                    m0._expected_effective_jit_optimization_level(
+                        model_identities[mode],
+                        mode=mode,
+                    )
                 ),
                 "color_accuracy": "lc",
                 "lc_flow_layout": layout,
@@ -791,6 +792,103 @@ def test_producer_shaped_builtin_model_identity_split_is_accepted(
     decision, code = _run(tmp_path, corpus)
     assert code == 0
     assert decision["accepted"] is True
+
+
+@pytest.mark.parametrize(
+    ("model_kind", "mode", "expected_level"),
+    [
+        pytest.param("built-in-sm-source", "compiled", 3, id="builtin-compiled"),
+        pytest.param(
+            "packaged-prepared-model",
+            "eager",
+            m0.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
+            id="builtin-eager",
+        ),
+        pytest.param(
+            "packaged-prepared-model",
+            "recurrence",
+            m0.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
+            id="builtin-recurrence",
+        ),
+        pytest.param("explicit-prepared-model", "compiled", 3, id="ufo-compiled"),
+        pytest.param(
+            "explicit-prepared-model",
+            "eager",
+            m0.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
+            id="ufo-eager",
+        ),
+        pytest.param(
+            "explicit-prepared-model",
+            "recurrence",
+            m0.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL,
+            id="ufo-recurrence",
+        ),
+    ],
+)
+def test_effective_jit_level_is_execution_mode_aware(
+    model_kind: str,
+    mode: str,
+    expected_level: int,
+) -> None:
+    assert (
+        m0._expected_effective_jit_optimization_level(
+            {"kind": model_kind},
+            mode=mode,
+        )
+        == expected_level
+    )
+
+
+def test_producer_shaped_ufo_compiled_remains_o3(tmp_path: Path) -> None:
+    corpus = _make_corpus(tmp_path)
+    for layout in m0.LAYOUTS:
+        generation = corpus["captures"][("ufo-sm", layout)]["generation"]
+        assert generation["compiled"]["model_source"]["kind"] == (
+            "explicit-prepared-model"
+        )
+        assert (
+            generation["compiled"]["effective_contract"]["jit_optimization_level"] == 3
+        )
+        for mode in ("eager", "recurrence"):
+            assert (
+                generation[mode]["effective_contract"]["jit_optimization_level"]
+                == m0.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+            )
+
+    decision, code = _run(tmp_path, corpus)
+    assert code == 0
+    assert decision["accepted"] is True
+
+
+@pytest.mark.parametrize(
+    ("model", "mode", "wrong_level"),
+    [
+        pytest.param("built-in-sm", "compiled", 2, id="builtin-compiled-o2"),
+        pytest.param("built-in-sm", "eager", 3, id="builtin-eager-o3"),
+        pytest.param("built-in-sm", "recurrence", 3, id="builtin-recurrence-o3"),
+        pytest.param("ufo-sm", "compiled", 2, id="ufo-compiled-o2"),
+        pytest.param("ufo-sm", "eager", 3, id="ufo-eager-o3"),
+        pytest.param("ufo-sm", "recurrence", 3, id="ufo-recurrence-o3"),
+    ],
+)
+def test_rejects_model_mode_effective_jit_level_drift(
+    tmp_path: Path,
+    model: str,
+    mode: str,
+    wrong_level: int,
+) -> None:
+    corpus = _make_corpus(tmp_path)
+    capture = corpus["captures"][(model, "topology-replay")]
+    capture["generation"][mode]["effective_contract"]["jit_optimization_level"] = (
+        wrong_level
+    )
+    _rewrite_capture(corpus, model=model, layout="topology-replay")
+    _rewrite_request(corpus)
+
+    decision, code = _run(tmp_path, corpus)
+    assert code == 2
+    assert decision["accepted"] is False
+    assert "wrong effective JIT optimization level" in decision["errors"][0]
 
 
 def test_rejects_self_pinned_builtin_compiled_model_branch_mismatch(
