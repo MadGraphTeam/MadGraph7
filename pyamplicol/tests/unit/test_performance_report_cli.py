@@ -51,15 +51,21 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
 def test_final_audit_is_routed_through_the_isolated_result_tables_entrypoint() -> None:
     arguments = _parser().parse_args(
         (
+            "--report-profile",
+            "macbook_M3",
             "final-audit",
             "--expected-source-revision",
             "a" * 40,
+            "--publication-revision",
+            "b" * 40,
             "--structural-only",
         )
     )
 
     assert arguments.command == "final-audit"
+    assert arguments.report_profile == "macbook_M3"
     assert arguments.expected_source_revision == "a" * 40
+    assert arguments.publication_revision == "b" * 40
     assert arguments.expected_cell_count == 742
     assert arguments.structural_only is True
 

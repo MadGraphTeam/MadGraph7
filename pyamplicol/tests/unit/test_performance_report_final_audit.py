@@ -22,6 +22,7 @@ from tools.performance_report.final_audit import (
     ArtifactEvidence,
     FinalAuditError,
     _active_runtime_snapshot,
+    _artifact_reference,
     _audit_compiled_execution,
     _audit_eager_execution,
     _audit_measurement,
@@ -48,6 +49,7 @@ from tools.performance_report.models import (
     ModelKey,
     Workload,
 )
+from tools.performance_report.publication import portable_publication_value
 from tools.performance_report.service import ReportPaths, ReportService
 
 _REVISION = "a" * 40
@@ -1442,6 +1444,41 @@ def _candidate_measurement(artifact: Path) -> dict[str, object]:
     return result
 
 
+def test_portable_artifact_locator_resolves_only_within_profile_root(
+    tmp_path: Path,
+) -> None:
+    paths = ReportPaths.from_repo(
+        tmp_path,
+        artifact_root=tmp_path / "profile-artifacts",
+    )
+    artifact = paths.artifact_root / "cells/example/artifact"
+    artifact.mkdir(parents=True)
+    measurement = {
+        "artifact": {
+            "path": ("${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/cells/example/artifact"),
+            "process_id": "d_dbar_to_z",
+        }
+    }
+
+    reference = _artifact_reference(
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        measurement,
+        report_paths=paths,
+    )
+
+    assert reference.path == artifact
+    escaped = deepcopy(measurement)
+    escaped["artifact"]["path"] = (  # type: ignore[index]
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/../outside"
+    )
+    with pytest.raises(FinalAuditError, match="not canonical"):
+        _artifact_reference(
+            _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+            escaped,
+            report_paths=paths,
+        )
+
+
 def test_legacy_measurement_requires_pinned_revision_and_physical_point_digest() -> (
     None
 ):
@@ -1823,7 +1860,7 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
         coordination_root=tmp_path / "locks",
     )
     service = ReportService(paths, catalog=catalog)  # type: ignore[arg-type]
-    artifact = tmp_path / "synthetic-artifact"
+    artifact = paths.artifact_root / "synthetic-artifact"
     artifact.mkdir()
     measurements = {
         baseline.cell_id: _baseline_measurement(),
@@ -1836,7 +1873,10 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     caches = build_reset_caches(catalog)  # type: ignore[arg-type]
     for payload in caches.values():
         for entry in payload["entries"]:
-            entry["measurement"] = measurements[entry["cell_id"]]
+            entry["measurement"] = portable_publication_value(
+                measurements[entry["cell_id"]],
+                paths,
+            )
     paths.results_dir.mkdir(parents=True)
     for name, payload in caches.items():
         (paths.results_dir / name).write_text(
@@ -1931,7 +1971,14 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
 
     assert lock_state == {"held": False, "entries": 1}
     assert result["status"] == "incomplete"
+    assert result["schema_version"] == 2
+    assert result["measurement_source_revision"] == _REVISION
+    assert result["publication_revision"] == _REVISION
+    assert result["publication_lineage"]["relationship"] == "same-commit"
     assert result["authenticated_current_count"] == 2
+    assert result["portable_publication_projection_count"] == 2
+    assert result["publication_cache_role"] == ("portable-projection-of-current-result")
+    assert result["cryptographic_audit_source"] == "immutable-current-result"
     assert result["numerically_evidenced_cell_count"] == 2
     assert result["legacy_fresh_oracle_count"] == 1
     assert result["legacy_oracles_with_inbound_agreement"] == 1

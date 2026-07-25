@@ -27,7 +27,7 @@ from typing import Any
 
 from .cache import digest_json, reset_entry
 from .catalog import REPORT_CATALOG, ReportCatalog
-from .measurement import shared_validation_points, source_revision
+from .measurement import shared_validation_points
 from .models import (
     Accuracy,
     CellSpec,
@@ -36,6 +36,7 @@ from .models import (
     ResultStatus,
     Workload,
 )
+from .publication import publication_measurement_matches_current
 from .render import render_all_tables
 from .runner import (
     ABSOLUTE_TOLERANCE,
@@ -56,7 +57,7 @@ from .runtime_evidence import (
     python_package_tree_identity,
     source_only_bytecode_policy,
 )
-from .service import ReportPaths, ReportService
+from .service import ReportPaths, ReportService, validate_profile_name
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -100,6 +101,10 @@ _MODEL_SOURCE_PATH = {
     ),
 }
 _TEX_INPUT_RE = re.compile(r"\\(?:input|include)\s*\{([^{}]+)\}")
+_REPORT_PROFILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+_PUBLICATION_MEMBER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+_PORTABLE_ARTIFACT_ROOT = "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}"
+_PUBLICATION_LINEAGE_KIND = "pyamplicol-report-publication-lineage-v1"
 
 
 class FinalAuditError(RuntimeError):
@@ -140,7 +145,7 @@ class _ReplayObservation:
 
 ArtifactAuditor = Callable[[CellSpec, Path, str], ArtifactEvidence]
 RuntimeLoader = Callable[[Path, str], object]
-SourceAuditor = Callable[[Path, str], None]
+SourceAuditor = Callable[[Path, str], Mapping[str, object] | None]
 PdfAuditor = Callable[[ReportService], Mapping[str, object]]
 RuntimeAuditor = Callable[[str, Path], Mapping[str, object]]
 
@@ -838,15 +843,338 @@ def _audit_active_runtime(
     )
 
 
+def _git_checked(
+    repo_root: Path,
+    arguments: Sequence[str],
+    *,
+    timeout: float = 30.0,
+) -> bytes:
+    try:
+        completed = subprocess.run(
+            ("git", *arguments),
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise FinalAuditError(
+            "cannot authenticate report publication Git history"
+        ) from error
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise FinalAuditError(
+            "cannot authenticate report publication Git history: "
+            f"git {' '.join(arguments)} failed" + (f": {detail}" if detail else "")
+        )
+    return completed.stdout
+
+
+def _publication_relative_member(path: str) -> PurePosixPath | None:
+    """Return an allowed report member, rejecting executable/source paths."""
+
+    logical = PurePosixPath(path)
+    if (
+        not logical.parts
+        or logical.is_absolute()
+        or logical.as_posix() != path
+        or any(part in {"", ".", ".."} for part in logical.parts)
+        or logical.parts[0] != "docs"
+    ):
+        return None
+    parts = logical.parts
+    root_length = 1
+    if len(parts) >= 2 and parts[1] == "performance_reports":
+        if (
+            len(parts) < 4
+            or _REPORT_PROFILE_RE.fullmatch(parts[2]) is None
+            or ".." in parts[2]
+        ):
+            return None
+        root_length = 3
+    relative = PurePosixPath(*parts[root_length:])
+    relative_parts = relative.parts
+    if not relative_parts:
+        return None
+    if relative_parts[0] == "results":
+        return (
+            relative
+            if (
+                len(relative_parts) == 2
+                and _PUBLICATION_MEMBER_RE.fullmatch(relative_parts[1]) is not None
+                and relative_parts[1].endswith(".json")
+            )
+            else None
+        )
+    if len(relative_parts) != 1:
+        return None
+    name = relative_parts[0]
+    if _PUBLICATION_MEMBER_RE.fullmatch(name) is None:
+        return None
+    if name in {
+        "README.md",
+        "architecture-profile.json",
+        "architecture_profile.json",
+        "final-audit.json",
+        "pyAmpliCol.pdf",
+        "pyAmpliCol.tex",
+        "report-manifest.json",
+        "report-workspace.json",
+        "report_environment.tex",
+    }:
+        return relative
+    if name.endswith(".manifest.json"):
+        return relative
+    if name.endswith(".md"):
+        return relative
+    if name.startswith("section_") and name.endswith(".tex"):
+        return relative
+    if name.startswith("result_") and name.endswith("_table.tex"):
+        return relative
+    return None
+
+
+def _git_tree_entry(
+    repo_root: Path,
+    revision: str,
+    path: str,
+) -> tuple[str, str] | None:
+    payload = _git_checked(
+        repo_root,
+        ("ls-tree", "-z", revision, "--", path),
+    )
+    if not payload:
+        return None
+    records = tuple(record for record in payload.split(b"\0") if record)
+    if len(records) != 1:
+        raise FinalAuditError(
+            f"publication path {path!r} is ambiguous in Git tree {revision}"
+        )
+    try:
+        metadata, observed_path = records[0].split(b"\t", 1)
+        mode, kind, _object_id = metadata.decode("ascii").split(" ", 2)
+        decoded_path = os.fsdecode(observed_path)
+    except (UnicodeDecodeError, ValueError) as error:
+        raise FinalAuditError(
+            f"publication path {path!r} has malformed Git tree metadata"
+        ) from error
+    if decoded_path != path:
+        raise FinalAuditError(
+            f"publication path {path!r} does not match its Git tree entry"
+        )
+    return mode, kind
+
+
+def _require_nonexecutable_publication_blob(
+    repo_root: Path,
+    revision: str,
+    path: str,
+) -> None:
+    entry = _git_tree_entry(repo_root, revision, path)
+    if entry is None:
+        return
+    mode, kind = entry
+    if mode != "100644" or kind != "blob":
+        raise FinalAuditError(
+            f"publication path {path!r} is executable, a symlink, or not a file"
+        )
+
+
+def _publication_diff(
+    repo_root: Path,
+    measurement_source_revision: str,
+    publication_revision: str,
+) -> tuple[dict[str, str], ...]:
+    payload = _git_checked(
+        repo_root,
+        (
+            "diff",
+            "--name-status",
+            "--no-renames",
+            "-z",
+            measurement_source_revision,
+            publication_revision,
+            "--",
+        ),
+        timeout=120.0,
+    )
+    fields = tuple(field for field in payload.split(b"\0") if field)
+    if len(fields) % 2:
+        raise FinalAuditError("publication Git diff has malformed name-status data")
+    changes: list[dict[str, str]] = []
+    for offset in range(0, len(fields), 2):
+        try:
+            status = fields[offset].decode("ascii")
+            path = os.fsdecode(fields[offset + 1])
+        except UnicodeDecodeError as error:
+            raise FinalAuditError(
+                "publication Git diff contains invalid metadata"
+            ) from error
+        if status not in {"A", "D", "M"}:
+            raise FinalAuditError(
+                f"publication Git diff has unsupported status {status!r} for {path!r}"
+            )
+        if _publication_relative_member(path) is None:
+            raise FinalAuditError(
+                "publication descendant changes a path outside the explicit "
+                f"non-executable report allowlist: {path!r}"
+            )
+        if status != "A":
+            _require_nonexecutable_publication_blob(
+                repo_root,
+                measurement_source_revision,
+                path,
+            )
+        if status != "D":
+            _require_nonexecutable_publication_blob(
+                repo_root,
+                publication_revision,
+                path,
+            )
+        changes.append({"status": status, "path": path})
+    return tuple(changes)
+
+
+def _report_publication_lineage(
+    repo_root: Path,
+    measurement_source_revision: str,
+) -> dict[str, object]:
+    """Authenticate a clean report-only descendant of one measured SHA."""
+
+    root = repo_root.expanduser().resolve(strict=False)
+    if _GIT_SHA_RE.fullmatch(measurement_source_revision) is None:
+        raise FinalAuditError("measurement source revision must be a full Git SHA")
+    publication_revision = (
+        _git_checked(
+            root,
+            ("rev-parse", "--verify", "HEAD^{commit}"),
+        )
+        .decode("ascii")
+        .strip()
+    )
+    if _GIT_SHA_RE.fullmatch(publication_revision) is None:
+        raise FinalAuditError("publication revision is not a full Git SHA")
+    _git_checked(
+        root,
+        ("cat-file", "-e", f"{measurement_source_revision}^{{commit}}"),
+    )
+    status = _git_checked(
+        root,
+        ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
+    )
+    if status:
+        raise FinalAuditError(
+            "publication checkout must be completely clean, including report outputs"
+        )
+    ancestor = subprocess.run(
+        (
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            measurement_source_revision,
+            publication_revision,
+        ),
+        cwd=root,
+        check=False,
+        capture_output=True,
+        timeout=30,
+    )
+    if ancestor.returncode not in {0, 1}:
+        raise FinalAuditError("cannot authenticate measurement/publication ancestry")
+    if ancestor.returncode != 0:
+        raise FinalAuditError(
+            "publication revision is not a descendant of the measurement "
+            "source revision"
+        )
+    changes = _publication_diff(
+        root,
+        measurement_source_revision,
+        publication_revision,
+    )
+    same_revision = publication_revision == measurement_source_revision
+    if not same_revision and not changes:
+        raise FinalAuditError(
+            "later publication revision has no report-only publication diff"
+        )
+    return {
+        "kind": _PUBLICATION_LINEAGE_KIND,
+        "schema_version": 1,
+        "measurement_source_revision": measurement_source_revision,
+        "publication_revision": publication_revision,
+        "relationship": ("same-commit" if same_revision else "report-only-descendant"),
+        "worktree_clean": True,
+        "changed_path_count": len(changes),
+        "changed_paths": list(changes),
+        "changed_paths_sha256": digest_json(list(changes)),
+        "allowed_path_contract": (
+            "docs report roots: results/*.json, generated table TeX, report "
+            "TeX/Markdown/PDF, architecture metadata, and report manifests; "
+            "regular non-executable blobs only"
+        ),
+        "executable_source_unchanged": True,
+    }
+
+
 def _require_report_source_checkout(
     repo_root: Path,
     expected_source_revision: str,
-) -> None:
-    observed = source_revision(repo_root, require_clean=True)
-    if observed != expected_source_revision:
+) -> Mapping[str, object]:
+    return _report_publication_lineage(repo_root, expected_source_revision)
+
+
+def _validated_publication_lineage(
+    value: Mapping[str, object] | None,
+    *,
+    measurement_source_revision: str,
+    expected_publication_revision: str | None,
+) -> dict[str, object]:
+    if value is None:
+        # Injectable source auditors used by focused unit tests predate the
+        # lineage return value. Production always uses the fail-closed auditor.
+        result: dict[str, object] = {
+            "kind": _PUBLICATION_LINEAGE_KIND,
+            "schema_version": 1,
+            "measurement_source_revision": measurement_source_revision,
+            "publication_revision": measurement_source_revision,
+            "relationship": "same-commit",
+            "worktree_clean": True,
+            "changed_path_count": 0,
+            "changed_paths": [],
+            "changed_paths_sha256": digest_json([]),
+            "allowed_path_contract": "injected source auditor",
+            "executable_source_unchanged": True,
+        }
+    else:
+        result = dict(value)
+    publication_revision = result.get("publication_revision")
+    changes = result.get("changed_paths")
+    changed_count = result.get("changed_path_count")
+    if (
+        result.get("kind") != _PUBLICATION_LINEAGE_KIND
+        or result.get("schema_version") != 1
+        or result.get("measurement_source_revision") != measurement_source_revision
+        or not isinstance(publication_revision, str)
+        or _GIT_SHA_RE.fullmatch(publication_revision) is None
+        or result.get("relationship") not in {"same-commit", "report-only-descendant"}
+        or result.get("worktree_clean") is not True
+        or result.get("executable_source_unchanged") is not True
+        or isinstance(changes, (str, bytes))
+        or not isinstance(changes, Sequence)
+        or isinstance(changed_count, bool)
+        or not isinstance(changed_count, int)
+        or changed_count != len(changes)
+        or result.get("changed_paths_sha256") != digest_json(list(changes))
+    ):
+        raise FinalAuditError("source auditor returned invalid publication lineage")
+    if (
+        expected_publication_revision is not None
+        and publication_revision != expected_publication_revision
+    ):
         raise FinalAuditError(
-            "report checkout HEAD does not equal the expected final Arena SHA"
+            "publication checkout HEAD does not equal the explicitly expected "
+            "publication revision"
         )
+    return result
 
 
 def _pdf_text_identity(path: Path) -> dict[str, object]:
@@ -1438,6 +1766,8 @@ def _audit_model_source(
 def _artifact_reference(
     cell: CellSpec,
     measurement: Mapping[str, object],
+    *,
+    report_paths: ReportPaths | None = None,
 ) -> _ArtifactReference:
     artifact = _mapping(measurement.get("artifact"), f"{cell.cell_id}.artifact")
     raw_path = artifact.get("path")
@@ -1447,10 +1777,37 @@ def _artifact_reference(
     if not isinstance(process_id, str) or not process_id:
         raise FinalAuditError(f"{cell.cell_id}.artifact.process_id is invalid")
     try:
-        path = Path(raw_path).expanduser().resolve(strict=True)
+        if raw_path.startswith(_PORTABLE_ARTIFACT_ROOT):
+            if report_paths is None:
+                raise FinalAuditError(
+                    f"{cell.cell_id}.artifact.path requires report path context"
+                )
+            suffix = raw_path.removeprefix(_PORTABLE_ARTIFACT_ROOT)
+            if not suffix.startswith("/") or suffix == "/":
+                raise FinalAuditError(
+                    f"{cell.cell_id}.artifact.path has an invalid portable locator"
+                )
+            logical = _canonical_relative_path(
+                suffix.removeprefix("/"),
+                f"{cell.cell_id}.artifact",
+            )
+            path = report_paths.artifact_root.joinpath(*logical.parts).resolve(
+                strict=True
+            )
+            path.relative_to(report_paths.artifact_root.resolve(strict=True))
+        else:
+            if "${" in raw_path:
+                raise FinalAuditError(
+                    f"{cell.cell_id}.artifact.path has an unsupported locator"
+                )
+            path = Path(raw_path).expanduser().resolve(strict=True)
     except OSError as error:
         raise FinalAuditError(
             f"{cell.cell_id}.artifact.path is unavailable: {raw_path}"
+        ) from error
+    except ValueError as error:
+        raise FinalAuditError(
+            f"{cell.cell_id}.artifact.path escapes its report artifact root"
         ) from error
     if not path.is_dir():
         raise FinalAuditError(f"{cell.cell_id}.artifact.path is not a directory")
@@ -1492,6 +1849,7 @@ def _audit_measurement(
     expected_source_revision: str,
     expected_legacy_revision: str,
     active_runtime: Mapping[str, object] | None,
+    report_paths: ReportPaths | None = None,
 ) -> _ArtifactReference | None:
     context = cell.cell_id
     if measurement.get("status") != ResultStatus.OK.value:
@@ -1525,7 +1883,7 @@ def _audit_measurement(
     )
     if provenance.get("report_source_revision") != expected_source_revision:
         raise FinalAuditError(
-            f"{context} was not measured at final report SHA {expected_source_revision}"
+            f"{context} was not measured at source SHA {expected_source_revision}"
         )
     validation = _mapping(
         measurement.get("validation"), f"{context}.measurement.validation"
@@ -1580,7 +1938,7 @@ def _audit_measurement(
         )
     if provenance.get("source_revision") != expected_source_revision:
         raise FinalAuditError(
-            f"{context} pyAmpliCol source revision is not the final SHA"
+            f"{context} pyAmpliCol source revision is not the measurement SHA"
         )
     if active_runtime is None:
         raise FinalAuditError("pyAmpliCol measurements require an active runtime")
@@ -1636,7 +1994,11 @@ def _audit_measurement(
                 f"{context} contracted canonical baseline has selectors"
             )
 
-    return _artifact_reference(cell, measurement)
+    return _artifact_reference(
+        cell,
+        measurement,
+        report_paths=report_paths,
+    )
 
 
 def _find_process_execution(
@@ -2883,6 +3245,7 @@ def audit_final_report(
     repo_root: Path,
     *,
     expected_source_revision: str,
+    expected_publication_revision: str | None = None,
     max_n_final: int = 4,
     expected_cell_count: int | None = _EXPECTED_N4_CELL_COUNT,
     replay: bool = True,
@@ -2905,6 +3268,7 @@ def audit_final_report(
         return _audit_final_report_locked(
             root,
             expected_source_revision=expected_source_revision,
+            expected_publication_revision=expected_publication_revision,
             max_n_final=max_n_final,
             expected_cell_count=expected_cell_count,
             replay=replay,
@@ -2925,6 +3289,7 @@ def _audit_final_report_locked(
     repo_root: Path,
     *,
     expected_source_revision: str,
+    expected_publication_revision: str | None = None,
     max_n_final: int = 4,
     expected_cell_count: int | None = _EXPECTED_N4_CELL_COUNT,
     replay: bool = True,
@@ -2943,10 +3308,19 @@ def _audit_final_report_locked(
 
     if _GIT_SHA_RE.fullmatch(expected_source_revision) is None:
         raise FinalAuditError("expected source revision must be a full Git SHA")
+    if (
+        expected_publication_revision is not None
+        and _GIT_SHA_RE.fullmatch(expected_publication_revision) is None
+    ):
+        raise FinalAuditError("expected publication revision must be a full Git SHA")
     if max_n_final < 1:
         raise FinalAuditError("max_n_final must be positive")
     root = repo_root.expanduser().resolve(strict=False)
-    source_auditor(root, expected_source_revision)
+    publication_lineage = _validated_publication_lineage(
+        source_auditor(root, expected_source_revision),
+        measurement_source_revision=expected_source_revision,
+        expected_publication_revision=expected_publication_revision,
+    )
     report = service or ReportService(ReportPaths.from_repo(root), catalog=catalog)
     render_result = (
         report.audit()
@@ -2987,8 +3361,8 @@ def _audit_final_report_locked(
             root,
         )
 
+    published_measurements: dict[str, Mapping[str, object]] = {}
     measurements: dict[str, Mapping[str, object]] = {}
-    references: list[_ArtifactReference] = []
     errors: list[str] = []
     for cell in cells:
         entry = entries.get(cell.cell_id)
@@ -3007,22 +3381,55 @@ def _audit_final_report_locked(
                 + ", ".join(descriptor_mismatches)
             )
             continue
-        measurement = _mapping(entry.get("measurement"), f"{cell.cell_id}.measurement")
-        measurements[cell.cell_id] = measurement
+        published = _mapping(
+            entry.get("measurement"),
+            f"{cell.cell_id}.published_measurement",
+        )
+        current = report.store.load_current(cell.cell_id)
+        if current is None:
+            errors.append(f"{cell.cell_id}: authenticated current result is missing")
+            continue
+        if not publication_measurement_matches_current(
+            published,
+            current.result,
+            report.paths,
+        ):
+            errors.append(
+                f"{cell.cell_id}: checked-in cache is not the exact portable "
+                "projection of authenticated current.result"
+            )
+            continue
+        published_measurements[cell.cell_id] = published
+        measurements[cell.cell_id] = _mapping(
+            current.result,
+            f"{cell.cell_id}.current.result",
+        )
+    if errors:
+        rendered = "\n".join(f"- {message}" for message in errors[:50])
+        suffix = (
+            ""
+            if len(errors) <= 50
+            else f"\n- ... and {len(errors) - 50} additional failures"
+        )
+        raise FinalAuditError(
+            "final report publication projection audit failed "
+            f"({len(errors)}):\n{rendered}{suffix}"
+        )
+
+    references: list[_ArtifactReference] = []
+    errors = []
+    for cell in cells:
+        measurement = measurements[cell.cell_id]
         baseline_cell = catalog.baseline_cell(cell)
         try:
             if baseline_cell is None:
                 baseline = None
             else:
-                baseline_entry = entries.get(baseline_cell.cell_id)
-                if baseline_entry is None:
+                baseline = measurements.get(baseline_cell.cell_id)
+                if baseline is None:
                     raise FinalAuditError(
                         f"canonical baseline {baseline_cell.cell_id!r} is missing"
                     )
-                baseline = _mapping(
-                    baseline_entry.get("measurement"),
-                    f"{baseline_cell.cell_id}.measurement",
-                )
             reference = _audit_measurement(
                 cell,
                 measurement,
@@ -3030,14 +3437,21 @@ def _audit_final_report_locked(
                 expected_source_revision=expected_source_revision,
                 expected_legacy_revision=expected_legacy_revision,
                 active_runtime=active_runtime,
+                report_paths=report.paths,
             )
-            current = report.store.load_current(cell.cell_id)
-            assert current is not None
-            if dict(current.result) != dict(measurement):
-                raise FinalAuditError(
-                    "checked-in cache differs from authenticated current result"
-                )
             if reference is not None:
+                published_reference = _artifact_reference(
+                    cell,
+                    published_measurements[cell.cell_id],
+                    report_paths=report.paths,
+                )
+                if (
+                    published_reference.path != reference.path
+                    or published_reference.process_id != reference.process_id
+                ):
+                    raise FinalAuditError(
+                        "portable artifact locator differs from raw current.result"
+                    )
                 references.append(reference)
         except Exception as error:  # collect every independently actionable cell
             errors.append(f"{cell.cell_id}: {error}")
@@ -3175,7 +3589,15 @@ def _audit_final_report_locked(
     else:
         pdf_result = {"status": "incomplete", "skipped": True}
 
-    source_auditor(root, expected_source_revision)
+    publication_postflight = _validated_publication_lineage(
+        source_auditor(root, expected_source_revision),
+        measurement_source_revision=expected_source_revision,
+        expected_publication_revision=expected_publication_revision,
+    )
+    if publication_postflight != publication_lineage:
+        raise FinalAuditError(
+            "report publication lineage changed during final report audit"
+        )
     if pyamplicol_cells:
         runtime_postflight = runtime_auditor(expected_source_revision, root)
         _validate_loaded_origin_policy(
@@ -3207,13 +3629,19 @@ def _audit_final_report_locked(
         modes[cell.measurement.execution_mode.value] += 1
     return {
         "kind": "pyamplicol-final-report-audit",
-        "schema_version": 1,
+        "schema_version": 2,
         "status": (ResultStatus.OK.value if final_gate_complete else "incomplete"),
         "expected_source_revision": expected_source_revision,
+        "measurement_source_revision": expected_source_revision,
+        "publication_revision": publication_lineage["publication_revision"],
+        "publication_lineage": publication_lineage,
         "maximum_n_final": max_n_final,
         "selected_cell_count": len(cells),
         "mode_counts": dict(sorted(modes.items())),
         "authenticated_current_count": len(cells),
+        "portable_publication_projection_count": len(published_measurements),
+        "publication_cache_role": "portable-projection-of-current-result",
+        "cryptographic_audit_source": "immutable-current-result",
         "numerically_evidenced_cell_count": len(cells),
         "pyamplicol_measurement_count": len(pyamplicol_cells),
         "legacy_fresh_oracle_count": len(legacy_cells),
@@ -3246,12 +3674,18 @@ def _audit_final_report_locked(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Audit every n<=4 report record at one exact source/runtime SHA. "
-            "Numerical replay is mandatory by default."
+            "Audit every n<=4 report record at one exact measured source/runtime "
+            "SHA and an optional report-only publication descendant. Numerical "
+            "replay is mandatory by default."
         )
     )
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument("--report-profile", type=validate_profile_name)
     parser.add_argument("--expected-source-revision", required=True)
+    parser.add_argument(
+        "--publication-revision",
+        help="require the clean publication checkout to equal this full Git SHA",
+    )
     parser.add_argument("--max-n-final", type=int, default=4)
     parser.add_argument(
         "--expected-cell-count",
@@ -3301,12 +3735,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parser().parse_args(raw_arguments)
     try:
         _ensure_exact_cli_python(arguments.repo_root, raw_arguments)
+        service = ReportService(
+            ReportPaths.from_repo(
+                arguments.repo_root,
+                profile=arguments.report_profile,
+            )
+        )
         result = audit_final_report(
             arguments.repo_root,
             expected_source_revision=arguments.expected_source_revision,
+            expected_publication_revision=arguments.publication_revision,
             max_n_final=arguments.max_n_final,
             expected_cell_count=arguments.expected_cell_count,
             replay=arguments.replay,
+            service=service,
         )
     except Exception as error:
         print(f"final report audit failed: {error}", file=sys.stderr)

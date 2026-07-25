@@ -24,7 +24,7 @@ from .scheduler import (
     plan_campaign,
     select_cells,
 )
-from .service import ReportPaths, ReportService
+from .service import ReportPaths, ReportService, validate_profile_name
 from .worker import write_cell_result
 
 
@@ -41,6 +41,11 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=_repo_root(),
         help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--report-profile",
+        type=validate_profile_name,
+        help="use one docs/performance_reports/PROFILE publication workspace",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command, help_text in (
@@ -60,9 +65,16 @@ def _parser() -> argparse.ArgumentParser:
 
     final_audit = subparsers.add_parser(
         "final-audit",
-        help="run the exact-SHA numerical, artifact, and PDF publication gate",
+        help=(
+            "run the measured-SHA/runtime and report-only publication "
+            "numerical, artifact, and PDF gate"
+        ),
     )
     final_audit.add_argument("--expected-source-revision", required=True)
+    final_audit.add_argument(
+        "--publication-revision",
+        help="require the clean publication checkout to equal this full Git SHA",
+    )
     final_audit.add_argument("--max-n-final", type=int, default=4)
     final_audit.add_argument("--expected-cell-count", type=int, default=742)
     final_audit.add_argument(
@@ -275,7 +287,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     repo_root = args.repo_root.expanduser().resolve(strict=False)
-    service = ReportService(ReportPaths.from_repo(repo_root))
+    service = ReportService(
+        ReportPaths.from_repo(repo_root, profile=args.report_profile)
+    )
 
     if args.command == "validate":
         print(json.dumps(service.validate(), sort_keys=True))
@@ -289,6 +303,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = audit_final_report(
             repo_root,
             expected_source_revision=args.expected_source_revision,
+            expected_publication_revision=args.publication_revision,
             max_n_final=args.max_n_final,
             expected_cell_count=args.expected_cell_count,
             replay=not args.structural_only,
