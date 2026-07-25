@@ -50,9 +50,9 @@ pub use engine::{
     NativeEagerExactFinalization, NativeEagerExactInvocation, NativeEagerExactSections,
     NativeEagerExactStage, NativeExternalParticle, NativeHelicityConfiguration,
     NativeModelParameter, NativeProfiledEvaluation, NativeRecurrenceExactExecutor,
-    NativeRecurrenceExactFactor, NativeRecurrenceExactSections, NativeResolvedEvaluation,
-    NativeRuntime, NativeRuntimeMetadata, NativeRuntimeProfile, RuntimeCapability,
-    preflight_prepared_kernel_pack, supported_runtime_capabilities,
+    NativeRecurrenceExactFactor, NativeRecurrenceExactSections, NativeRecurrenceSelectorPlan,
+    NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata, NativeRuntimeProfile,
+    RuntimeCapability, preflight_prepared_kernel_pack, supported_runtime_capabilities,
 };
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{

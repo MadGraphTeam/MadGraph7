@@ -1748,6 +1748,7 @@ pub(super) fn build_recurrence_program_with_progress(
         color_target_prune_count,
     ))?;
     let closures = build_closures(
+        strategy,
         process_input,
         &process_catalog,
         pairing_catalog,
@@ -1824,7 +1825,7 @@ fn build_sources(
         }
 
         match strategy {
-            RecurrenceStrategy::TopologyReplay => {
+            RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion => {
                 for process_state in retained_states {
                     let source = *template
                         .sources
@@ -1843,19 +1844,34 @@ fn build_sources(
                         leg.source_slot,
                         template_catalog.source_seed(source)?.proof_digest(),
                     )?;
+                    let helicity_identity = match strategy {
+                        RecurrenceStrategy::TopologyReplay => {
+                            CurrentHelicityIdentity::topology_replay(
+                                process_state.spin_state,
+                                vec![SourceStateAssignment::new(
+                                    leg.source_slot,
+                                    process_state.state_index,
+                                )],
+                            )?
+                        }
+                        RecurrenceStrategy::ContractedColorUnion => {
+                            CurrentHelicityIdentity::contracted_color_union(
+                                process_state.spin_state,
+                                vec![SourceStateAssignment::new(
+                                    leg.source_slot,
+                                    process_state.state_index,
+                                )],
+                            )?
+                        }
+                        RecurrenceStrategy::AllFlowUnion => unreachable!(),
+                    };
                     insert_source_current(
                         catalog_digest,
                         process_state.current_state_template_id,
                         color_id,
                         leg.source_slot,
                         process_state.momentum_sign,
-                        CurrentHelicityIdentity::topology_replay(
-                            process_state.spin_state,
-                            vec![SourceStateAssignment::new(
-                                leg.source_slot,
-                                process_state.state_index,
-                            )],
-                        )?,
+                        helicity_identity,
                         source,
                         reflection,
                         CurrentSourceBinding::FixedTemplate(process_state.source_template_id),
@@ -3514,6 +3530,7 @@ fn materialize_three_line_certificates(
 
 #[allow(clippy::too_many_arguments)]
 fn build_closures(
+    strategy: RecurrenceStrategy,
     process: &OwnedRecurrenceProcessInput,
     process_catalog: &ProcessCatalog<'_>,
     pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
@@ -3581,6 +3598,7 @@ fn build_closures(
                         .ok_or_else(|| invalid("closure-attempt count exceeds usize"))?;
                     for parent_ids in orders {
                         add_closure_terms(
+                            strategy,
                             sector,
                             *closure,
                             parent_ids,
@@ -3600,6 +3618,9 @@ fn build_closures(
             }
         }
         if !result.keys().any(|key| key.target_sector_id == sector_id) {
+            if strategy == RecurrenceStrategy::ContractedColorUnion {
+                continue;
+            }
             let mut support_histogram = BTreeMap::<usize, usize>::new();
             let mut support_signatures = BTreeSet::new();
             for current in currents {
@@ -3739,6 +3760,7 @@ fn validate_pending_closure_obligations(
 
 #[allow(clippy::too_many_arguments)]
 fn add_closure_terms(
+    strategy: RecurrenceStrategy,
     sector: ProcessPhysicalLCSectorRow,
     closure: ClosureRow,
     parent_ids: [u32; 2],
@@ -3837,8 +3859,14 @@ fn add_closure_terms(
                     .map(|component| (component.kind(), component.source_slots().to_vec()))
                     .collect(),
             );
-            if !closed_components_match_sector(&closed, sector, process, process_catalog, template)?
-            {
+            if !closed_components_match_sector(
+                strategy,
+                &closed,
+                sector,
+                process,
+                process_catalog,
+                template,
+            )? {
                 continue;
             }
             if pairing_catalog.is_some() && pairing_certificate_ids.is_empty() {
@@ -4152,7 +4180,9 @@ fn finish_program(
             .physical_lc_sectors
             .len()
             .max(replay_targets.len()),
-        RecurrenceStrategy::AllFlowUnion => process_catalog.input.physical_lc_sectors.len(),
+        RecurrenceStrategy::AllFlowUnion | RecurrenceStrategy::ContractedColorUnion => {
+            process_catalog.input.physical_lc_sectors.len()
+        }
     };
     let helicity_keys = pending_closures
         .iter()
@@ -4579,6 +4609,32 @@ fn complete_closure_source_states(
             CurrentHelicityIdentity::AllFlowUnion { .. },
             CurrentHelicityIdentity::AllFlowUnion { .. },
         ) => Ok(Box::new([])),
+        (
+            CurrentHelicityIdentity::ContractedColorUnion {
+                local_source_states: left,
+                ..
+            },
+            CurrentHelicityIdentity::ContractedColorUnion {
+                local_source_states: right,
+                ..
+            },
+        ) => {
+            let mut result = left.iter().chain(right.iter()).copied().collect::<Vec<_>>();
+            result.sort_unstable();
+            if result.len() != source_count {
+                return Err(invalid(
+                    "contracted-color closure ancestry does not cover every external source",
+                ));
+            }
+            for (source_slot, assignment) in result.iter().copied().enumerate() {
+                if assignment.source_slot() as usize != source_slot {
+                    return Err(invalid(
+                        "contracted-color closure ancestry is incomplete or overlapping",
+                    ));
+                }
+            }
+            Ok(result.into_boxed_slice())
+        }
         _ => Err(invalid(
             "closure parents use incompatible recurrence helicity strategies",
         )),
@@ -4720,6 +4776,7 @@ fn expected_sector_components(
 }
 
 fn closed_components_match_sector(
+    strategy: RecurrenceStrategy,
     closed: &[LCColorComponent],
     sector: ProcessPhysicalLCSectorRow,
     process: &OwnedRecurrenceProcessInput,
@@ -4730,24 +4787,46 @@ fn closed_components_match_sector(
     if sector.kind()? != ProcessLCSectorKind::OpenLines {
         return Ok(closed == expected);
     }
-    if closed.len() != expected.len() {
+    if !unordered_color_components_match(closed, &expected) {
         return Ok(false);
     }
 
-    // Independent open strings form an unordered physical forest at closure,
-    // even though their construction order remains part of every partial-current
-    // identity. Match the exact line blocks without canonicalizing the states so
-    // alternative multi-line closure partners survive as distinct terms.
-    let mut matched = vec![false; expected.len()];
-    for component in closed {
-        let Some(index) = expected.iter().enumerate().find_map(|(index, candidate)| {
+    if strategy == RecurrenceStrategy::ContractedColorUnion {
+        // A permutation of complete open strings is the same product of color
+        // tensors. Accumulate the full coherent amplitude in one deterministic
+        // owner instead of duplicating or partitioning it across ordering
+        // aliases.
+        for candidate in process
+            .physical_lc_sectors
+            .iter()
+            .take(sector.sector_id as usize)
+        {
+            if candidate.kind()? != ProcessLCSectorKind::OpenLines {
+                continue;
+            }
+            let candidate_components = expected_sector_components(*candidate, process, catalog)?;
+            if unordered_color_components_match(&expected, &candidate_components) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn unordered_color_components_match(left: &[LCColorComponent], right: &[LCColorComponent]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut matched = vec![false; right.len()];
+    for component in left {
+        let Some(index) = right.iter().enumerate().find_map(|(index, candidate)| {
             (!matched[index] && candidate == component).then_some(index)
         }) else {
-            return Ok(false);
+            return false;
         };
         matched[index] = true;
     }
-    Ok(true)
+    true
 }
 
 fn materialized_sector_ids(
@@ -4756,7 +4835,7 @@ fn materialized_sector_ids(
     replay_targets: &[RecurrenceReplayTarget],
 ) -> BTreeSet<u32> {
     match strategy {
-        RecurrenceStrategy::AllFlowUnion => process
+        RecurrenceStrategy::AllFlowUnion | RecurrenceStrategy::ContractedColorUnion => process
             .physical_lc_sectors
             .iter()
             .map(|sector| sector.sector_id)
@@ -4773,7 +4852,7 @@ fn build_replay_targets(
     process: &OwnedRecurrenceProcessInput,
     catalog: &ProcessCatalog<'_>,
 ) -> RusticolResult<Vec<RecurrenceReplayTarget>> {
-    if strategy == RecurrenceStrategy::AllFlowUnion {
+    if !strategy.uses_topology_replay_targets() {
         return Ok(Vec::new());
     }
     let source_momentum_signs = external_source_momentum_signs(process)?;
@@ -5039,6 +5118,20 @@ fn merged_helicity_identity(
             CurrentHelicityIdentity::AllFlowUnion { .. },
             CurrentHelicityIdentity::AllFlowUnion { .. },
         ) => Ok(CurrentHelicityIdentity::all_flow_union(result_spin)),
+        (
+            CurrentHelicityIdentity::ContractedColorUnion {
+                local_source_states: left,
+                ..
+            },
+            CurrentHelicityIdentity::ContractedColorUnion {
+                local_source_states: right,
+                ..
+            },
+        ) => {
+            let mut values = left.iter().chain(right.iter()).copied().collect::<Vec<_>>();
+            values.sort_unstable();
+            CurrentHelicityIdentity::contracted_color_union(result_spin, values)
+        }
         _ => Err(invalid(
             "cannot merge recurrence helicity identities from different strategies",
         )),
@@ -6202,6 +6295,7 @@ mod tests {
         )
         .unwrap();
         let closures = build_closures(
+            RecurrenceStrategy::AllFlowUnion,
             &process,
             &process_catalog,
             None,

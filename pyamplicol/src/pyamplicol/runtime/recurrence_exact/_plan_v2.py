@@ -305,12 +305,16 @@ def _parse_exact_sections(
     if root.get("process_id") != process_id:
         raise ArtifactError("recurrence exact sections select the wrong process")
     strategy = root.get("strategy")
-    if strategy not in {"topology-replay", "all-flow-union"}:
+    if strategy not in {
+        "topology-replay",
+        "all-flow-union",
+        "contracted-color-union",
+    }:
         raise CompatibilityError(f"unsupported exact recurrence strategy {strategy!r}")
     counts = _row(root.get("counts"), 4, "recurrence exact counts")
     sections = _RecurrenceExactSectionsV1(
         process_id=process_id,
-        strategy=cast(str, strategy),
+        strategy=strategy,
         semantic_digest=_digest(root.get("semantic_digest"), "semantic digest"),
         runtime_layout_digest=_digest(
             root.get("runtime_layout_digest"), "runtime-layout digest"
@@ -543,8 +547,10 @@ def _validate_sections(sections: _RecurrenceExactSectionsV1) -> None:
         raise ArtifactError("recurrence amplitude destination IDs are not dense")
     if sections.strategy == "topology-replay":
         _validate_replay_sections(sections)
-    else:
+    elif sections.strategy == "all-flow-union":
         _validate_union_sections(sections)
+    else:
+        _validate_contracted_sections(sections)
 
 
 def _validate_replay_sections(sections: _RecurrenceExactSectionsV1) -> None:
@@ -745,6 +751,69 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
     ):
         raise ArtifactError(
             "all-flow-union destinations are not completely covered by public flows"
+        )
+
+
+def _validate_contracted_sections(sections: _RecurrenceExactSectionsV1) -> None:
+    if (
+        sections.replay_targets
+        or sections.source_permutations
+        or sections.replay_momentum_signs
+        or sections.replay_helicity_map
+        or sections.public_flow_ids
+    ):
+        raise ArtifactError(
+            "contracted-color recurrence carries a public flow or replay axis"
+        )
+    if (
+        sections.source_dispatch_variants
+        or sections.source_embeddings
+        or sections.source_projections
+        or sections.resolved_source_selections
+    ):
+        raise ArtifactError(
+            "contracted-color recurrence carries union source-dispatch tables"
+        )
+    helicity_count = len(sections.resolved_helicities)
+    if helicity_count == 0:
+        raise ArtifactError("contracted-color recurrence has no resolved helicities")
+    for index, helicity in enumerate(sections.resolved_helicities):
+        if (
+            helicity.source_state_count != sections.external_source_count
+            or helicity.source_selection_count != 0
+            or helicity.source_state_start + helicity.source_state_count
+            > len(sections.source_state_assignments)
+        ):
+            raise ArtifactError(
+                f"contracted resolved helicity {index} has invalid source coverage"
+            )
+        assignments = _table_slice(
+            sections.source_state_assignments,
+            helicity.source_state_start,
+            helicity.source_state_count,
+            f"contracted resolved helicity {index} source states",
+        )
+        if tuple(row.source_slot for row in assignments) != tuple(
+            range(sections.external_source_count)
+        ):
+            raise ArtifactError(
+                f"contracted resolved helicity {index} source rows are not ordered"
+            )
+
+    actual = [
+        (row.target_sector_id, row.target_helicity_id)
+        for row in sections.amplitude_destinations
+    ]
+    if (
+        len(set(actual)) != len(actual)
+        or any(
+            helicity_id == DIRECT_NONE_U32 or helicity_id >= helicity_count
+            for _, helicity_id in actual
+        )
+        or {helicity_id for _, helicity_id in actual} != set(range(helicity_count))
+    ):
+        raise ArtifactError(
+            "contracted-color destinations have invalid sparse sector/helicity coverage"
         )
 
 

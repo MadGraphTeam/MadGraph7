@@ -5,7 +5,8 @@ use std::ops::Range;
 use sha2::{Digest, Sha256};
 
 use super::{
-    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_BUILDER_RESULT_ABI, RECURRENCE_INPUT_ENDIANNESS,
+    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_BUILDER_RESULT_ABI,
+    RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_INPUT_ENDIANNESS,
     RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI, RECURRENCE_RUNTIME_CAPABILITY,
     RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI, RECURRENCE_TEMPLATE_ABI,
     RecurrenceStrategy, SemanticDigest,
@@ -206,7 +207,13 @@ impl RecurrenceBuilderInputHeader {
             runtime_layout_abi: RECURRENCE_RUNTIME_LAYOUT_ABI.to_owned(),
             runtime_kind: RECURRENCE_RUNTIME_KIND.to_owned(),
             runtime_capability: RECURRENCE_RUNTIME_CAPABILITY.to_owned(),
-            color_capability: RECURRENCE_LC_COLOR_CAPABILITY.to_owned(),
+            color_capability: match strategy {
+                RecurrenceStrategy::ContractedColorUnion => RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
+                RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::AllFlowUnion => {
+                    RECURRENCE_LC_COLOR_CAPABILITY
+                }
+            }
+            .to_owned(),
             endianness: RECURRENCE_INPUT_ENDIANNESS.to_owned(),
             strategy,
             section_count,
@@ -241,10 +248,16 @@ impl RecurrenceBuilderInputHeader {
             &self.runtime_capability,
             RECURRENCE_RUNTIME_CAPABILITY,
         )?;
+        let expected_color_capability = match self.strategy {
+            RecurrenceStrategy::ContractedColorUnion => RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
+            RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::AllFlowUnion => {
+                RECURRENCE_LC_COLOR_CAPABILITY
+            }
+        };
         validate_constant(
             "color capability",
             &self.color_capability,
-            RECURRENCE_LC_COLOR_CAPABILITY,
+            expected_color_capability,
         )?;
         validate_constant(
             "input endianness",

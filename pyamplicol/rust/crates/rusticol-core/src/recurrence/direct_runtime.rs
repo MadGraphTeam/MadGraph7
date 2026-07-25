@@ -732,14 +732,14 @@ impl DirectRecurrenceExecutionRuntime {
     }
 
     /// Fill canonical momentum forms without a replay permutation.
-    fn fill_union_momenta_from_external<const PROFILE: bool>(
+    fn fill_identity_momenta_from_external<const PROFILE: bool>(
         &mut self,
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<()> {
-        if self.plan.strategy() != RecurrenceStrategy::AllFlowUnion {
+        if !self.plan.strategy().materializes_all_color_sectors() {
             return Err(invalid(
-                "identity momentum fill requires an all-flow-union recurrence plan",
+                "identity momentum fill requires a complete-color recurrence plan",
             ));
         }
         self.validate_point_count(point_count)?;
@@ -1057,7 +1057,7 @@ impl DirectRecurrenceExecutionRuntime {
         external_four_momenta: &[f64],
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
         self.validate_union_selector(selector)?;
-        self.fill_union_momenta_from_external::<PROFILE>(point_count, external_four_momenta)?;
+        self.fill_identity_momenta_from_external::<PROFILE>(point_count, external_four_momenta)?;
         self.execute_union_sources::<PROFILE>(selector, point_count)?;
         self.execute_direct_tile_impl::<PROFILE>(point_count)?;
         if PROFILE {
@@ -1066,6 +1066,41 @@ impl DirectRecurrenceExecutionRuntime {
                 .union_schedule_executions
                 .saturating_add(1);
         }
+        self.last_point_count = point_count;
+        self.last_public_flow_id = None;
+        self.last_representative_flow_id = None;
+        Ok(self.borrowed_output(point_count, None, None))
+    }
+
+    /// Execute a complete contracted-color schedule with fixed source templates.
+    pub fn execute_contracted_tile_from_external(
+        &mut self,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.execute_contracted_tile_from_external_impl::<true>(point_count, external_four_momenta)
+    }
+
+    pub fn execute_contracted_tile_from_external_unprofiled(
+        &mut self,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.execute_contracted_tile_from_external_impl::<false>(point_count, external_four_momenta)
+    }
+
+    fn execute_contracted_tile_from_external_impl<const PROFILE: bool>(
+        &mut self,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        if self.plan.strategy() != RecurrenceStrategy::ContractedColorUnion {
+            return Err(invalid(
+                "contracted-color execution requires a contracted-color recurrence plan",
+            ));
+        }
+        self.fill_identity_momenta_from_external::<PROFILE>(point_count, external_four_momenta)?;
+        self.execute_direct_tile_impl::<PROFILE>(point_count)?;
         self.last_point_count = point_count;
         self.last_public_flow_id = None;
         self.last_representative_flow_id = None;

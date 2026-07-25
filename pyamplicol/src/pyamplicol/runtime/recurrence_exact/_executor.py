@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from pathlib import Path
 from typing import Any, cast
@@ -30,7 +30,12 @@ from pyamplicol.runtime.symbolica_exact import (
     _working_precision,
 )
 
-from ._execution import _evaluate_replay_point, _evaluate_union_point
+from ._color import _contract_color_amplitudes
+from ._execution import (
+    _evaluate_contracted_point,
+    _evaluate_replay_point,
+    _evaluate_union_point,
+)
 from ._plan import _RecurrenceExactPlan
 from ._plan_v2 import (
     DIRECT_NONE_U32,
@@ -92,6 +97,7 @@ class RecurrenceExactExecutor:
         self._plan = _RecurrenceExactPlan.load(
             artifact_root=self._artifact,
             process_id=representative_id,
+            execution_path=execution_records[0].path,
             execution=execution,
             manifest=manifest,
             kernel_loader=kernel_loader,
@@ -100,16 +106,21 @@ class RecurrenceExactExecutor:
         )
         self._physics = physics
         self._permutation = permutation
+        self._replay_by_color: tuple[_ReplayTarget, ...] = ()
+        self._destination_helicities: tuple[tuple[int, ...], ...] = ()
+        self._union_destination_by_color: tuple[_AmplitudeDestination, ...] = ()
+        self._union_helicity_by_physics: tuple[_ResolvedHelicity | None, ...] = ()
+        self._contracted_destination_helicity: tuple[int, ...] = ()
         if self._plan.sections.strategy == "topology-replay":
             self._replay_by_color = self._replay_targets_by_color()
             self._destination_helicities = self._destination_helicity_maps()
-            self._union_destination_by_color = ()
-            self._union_helicity_by_physics = ()
-        else:
-            self._replay_by_color = ()
-            self._destination_helicities = ()
+        elif self._plan.sections.strategy == "all-flow-union":
             self._union_destination_by_color = self._union_destinations_by_color()
             self._union_helicity_by_physics = self._union_helicities_by_physics()
+        else:
+            self._contracted_destination_helicity = (
+                self._contracted_destination_helicity_map()
+            )
 
     def evaluate_resolved(
         self,
@@ -160,11 +171,14 @@ class RecurrenceExactExecutor:
             helicities,
             "helicity",
         )
-        selected_colors = _selected_indices(
-            color_ids,
-            color_flows,
-            "color component",
-        )
+        if (
+            self._plan.sections.strategy == "contracted-color-union"
+            and color_flows is not None
+        ):
+            raise EvaluationError(
+                "contracted NLC/full recurrence does not expose a color-flow selector"
+            )
+        selected_colors = _selected_indices(color_ids, color_flows, "color component")
         helicity_positions = {
             index: position for position, index in enumerate(selected_helicities)
         }
@@ -193,13 +207,23 @@ class RecurrenceExactExecutor:
                         normalization,
                         point_values,
                     )
-                else:
+                elif self._plan.sections.strategy == "all-flow-union":
                     self._evaluate_union_resolved_point(
                         point,
                         selected_helicities,
                         selected_colors,
                         helicity_records,
                         color_records,
+                        parameters.prepared,
+                        working_precision,
+                        normalization,
+                        point_values,
+                    )
+                else:
+                    self._evaluate_contracted_resolved_point(
+                        point,
+                        selected_helicities,
+                        helicity_records,
                         parameters.prepared,
                         working_precision,
                         normalization,
@@ -226,8 +250,8 @@ class RecurrenceExactExecutor:
         point: object,
         selected_colors: Sequence[int],
         helicity_positions: dict[int, int],
-        helicity_records: Sequence[dict[str, object]],
-        color_records: Sequence[dict[str, object]],
+        helicity_records: Sequence[Mapping[str, object]],
+        color_records: Sequence[Mapping[str, object]],
         prepared_parameters: Sequence[tuple[Decimal, Decimal]],
         working_precision: int,
         normalization: Decimal,
@@ -250,9 +274,7 @@ class RecurrenceExactExecutor:
             for destination in self._plan.sections.amplitude_destinations:
                 if destination.target_sector_id != target.representative_id:
                     continue
-                physics_helicity = destination_helicities[
-                    destination.destination_id
-                ]
+                physics_helicity = destination_helicities[destination.destination_id]
                 helicity_position = helicity_positions.get(physics_helicity)
                 if helicity_position is None:
                     continue
@@ -271,10 +293,7 @@ class RecurrenceExactExecutor:
                     normalization
                     * color_weight
                     * helicity_weight
-                    * (
-                        amplitude[0] * amplitude[0]
-                        + amplitude[1] * amplitude[1]
-                    )
+                    * (amplitude[0] * amplitude[0] + amplitude[1] * amplitude[1])
                 )
 
     def _evaluate_union_resolved_point(
@@ -282,8 +301,8 @@ class RecurrenceExactExecutor:
         point: object,
         selected_helicities: Sequence[int],
         selected_colors: Sequence[int],
-        helicity_records: Sequence[dict[str, object]],
-        color_records: Sequence[dict[str, object]],
+        helicity_records: Sequence[Mapping[str, object]],
+        color_records: Sequence[Mapping[str, object]],
         prepared_parameters: Sequence[tuple[Decimal, Decimal]],
         working_precision: int,
         normalization: Decimal,
@@ -323,11 +342,53 @@ class RecurrenceExactExecutor:
                     normalization
                     * color_weight
                     * helicity_weight
-                    * (
-                        amplitude[0] * amplitude[0]
-                        + amplitude[1] * amplitude[1]
-                    )
+                    * (amplitude[0] * amplitude[0] + amplitude[1] * amplitude[1])
                 )
+
+    def _evaluate_contracted_resolved_point(
+        self,
+        point: object,
+        selected_helicities: Sequence[int],
+        helicity_records: Sequence[Mapping[str, object]],
+        prepared_parameters: Sequence[tuple[Decimal, Decimal]],
+        working_precision: int,
+        normalization: Decimal,
+        point_values: list[list[Decimal]],
+    ) -> None:
+        contraction = self._plan.color_contraction
+        if contraction is None:
+            raise ArtifactError(
+                "contracted exact execution has no color-contraction payload"
+            )
+        amplitudes = _evaluate_contracted_point(
+            self._plan,
+            cast(Any, point),
+            prepared_parameters,
+            working_precision,
+        )
+        selected = set(selected_helicities)
+        contracted = _contract_color_amplitudes(
+            contraction,
+            amplitudes,
+            self._contracted_destination_helicity,
+            selected,
+        )
+        for helicity_position, physics_helicity in enumerate(selected_helicities):
+            helicity_record = helicity_records[physics_helicity]
+            if (
+                helicity_record.get("computed") is not True
+                or helicity_record.get("structural_zero") is True
+            ):
+                continue
+            helicity_weight = _decimal(
+                helicity_record.get("coefficient", 1),
+                "helicity coefficient",
+            )
+            point_values[helicity_position][0] = (
+                normalization
+                * helicity_weight
+                * contracted.get(physics_helicity, _ZERO)
+            )
 
     def _replay_targets_by_color(self) -> tuple[_ReplayTarget, ...]:
         by_public_id = {
@@ -430,9 +491,7 @@ class RecurrenceExactExecutor:
                 "all-flow-union repeats an amplitude destination sector"
             )
         try:
-            return tuple(
-                by_sector[sector_id] for sector_id in sections.public_flow_ids
-            )
+            return tuple(by_sector[sector_id] for sector_id in sections.public_flow_ids)
         except KeyError as exc:
             raise ArtifactError(
                 "all-flow-union public color axis references an absent destination"
@@ -473,9 +532,7 @@ class RecurrenceExactExecutor:
                     "all-flow-union helicity is outside public coverage"
                 ) from exc
             if result[physics_index] is not None:
-                raise ArtifactError(
-                    "all-flow-union repeats a public helicity"
-                )
+                raise ArtifactError("all-flow-union repeats a public helicity")
             result[physics_index] = descriptor
         for index, (record, descriptor) in enumerate(
             zip(helicity_records, result, strict=True)
@@ -485,9 +542,98 @@ class RecurrenceExactExecutor:
                 and record.get("structural_zero") is not True
                 and descriptor is None
             ):
+                raise ArtifactError(f"all-flow-union omits computed helicity {index}")
+        return tuple(result)
+
+    def _contracted_destination_helicity_map(self) -> tuple[int, ...]:
+        sections = self._plan.sections
+        contraction = self._plan.color_contraction
+        if contraction is None:
+            raise ArtifactError(
+                "contracted exact execution has no color-contraction payload"
+            )
+        if (
+            contraction.component_count != len(sections.resolved_helicities)
+            or contraction.destination_count != sections.amplitude_destination_count
+            or len(contraction.destination_by_group)
+            != sections.amplitude_destination_count
+            or len(contraction.group_sector_ids) != contraction.group_count
+            or len(contraction.group_component_ids) != contraction.group_count
+        ):
+            raise ArtifactError(
+                "contracted color dimensions disagree with the recurrence plan"
+            )
+        direct_to_physics = self._direct_helicity_to_physics()
+        result = [DIRECT_NONE_U32] * sections.amplitude_destination_count
+        for group_id, destination_id in enumerate(contraction.destination_by_group):
+            expected_sector = contraction.group_sector_ids[group_id]
+            direct_helicity = contraction.group_component_ids[group_id]
+            try:
+                destination = sections.amplitude_destinations[destination_id]
+                physics_helicity = direct_to_physics[direct_helicity]
+            except IndexError as exc:
                 raise ArtifactError(
-                    f"all-flow-union omits computed helicity {index}"
+                    "contracted color mapping references an absent destination"
+                ) from exc
+            if (
+                destination.destination_id != destination_id
+                or destination.target_sector_id != expected_sector
+                or destination.target_helicity_id != direct_helicity
+                or result[destination_id] != DIRECT_NONE_U32
+            ):
+                raise ArtifactError(
+                    "contracted color mapping disagrees with recurrence destinations"
                 )
+            result[destination_id] = physics_helicity
+        if any(value == DIRECT_NONE_U32 for value in result):
+            raise ArtifactError(
+                "contracted color mapping does not cover every destination"
+            )
+        return tuple(result)
+
+    def _direct_helicity_to_physics(self) -> tuple[int, ...]:
+        sections = self._plan.sections
+        helicity_records = tuple(
+            _mapping(value, f"physics helicity {index}")
+            for index, value in enumerate(
+                _sequence(self._physics.get("helicities"), "physics helicities")
+            )
+        )
+        physics_by_values = {
+            tuple(
+                _signed_integer(component, "physics helicity component")
+                for component in _sequence(
+                    record.get("values"), "physics helicity values"
+                )
+            ): index
+            for index, record in enumerate(helicity_records)
+        }
+        result = [DIRECT_NONE_U32] * len(sections.resolved_helicities)
+        for descriptor in sections.resolved_helicities:
+            start = descriptor.public_helicity_start
+            stop = start + descriptor.public_helicity_count
+            vector = tuple(sections.public_helicities[start:stop])
+            if len(
+                vector
+            ) != sections.external_source_count or descriptor.helicity_id >= len(
+                result
+            ):
+                raise ArtifactError(
+                    "contracted recurrence helicity has invalid source coverage"
+                )
+            try:
+                physics_helicity = physics_by_values[vector]
+            except KeyError as exc:
+                raise ArtifactError(
+                    "contracted recurrence helicity is outside public coverage"
+                ) from exc
+            if result[descriptor.helicity_id] != DIRECT_NONE_U32:
+                raise ArtifactError("contracted recurrence repeats a direct helicity")
+            result[descriptor.helicity_id] = physics_helicity
+        if any(value == DIRECT_NONE_U32 for value in result):
+            raise ArtifactError(
+                "contracted recurrence does not map every direct helicity"
+            )
         return tuple(result)
 
 

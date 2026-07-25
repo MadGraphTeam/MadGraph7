@@ -549,6 +549,43 @@ def test_eager_artifact_inspection_reports_execution_contract() -> None:
     assert "256.00 MiB / available after runtime load" in rendered
 
 
+def test_recurrence_artifact_inspection_reports_contracted_color() -> None:
+    inspection = _artifact_inspection()
+    recurrence_process = replace(
+        inspection.processes[0],
+        color_accuracy="full",
+        execution_mode="recurrence",
+        prepared_backend="jit",
+        direct_source_row_count=12,
+        direct_contribution_row_count=126,
+        direct_finalization_row_count=69,
+        direct_closure_row_count=24,
+        recurrence_color_accuracy="full",
+        recurrence_color_storage="repeated",
+        recurrence_color_sector_count=36,
+        recurrence_color_active_sector_count=6,
+        recurrence_color_component_count=64,
+        recurrence_color_group_count=384,
+        recurrence_color_entry_count=21,
+        recurrence_color_logical_entry_count=1344,
+        recurrence_color_factorization_kind="klein-four-walsh",
+        recurrence_color_factorization_rank=2,
+        recurrence_color_factorization_coset_count=1,
+    )
+
+    rendered = render_summary(
+        replace(inspection, processes=(recurrence_process,)), color=False
+    )
+
+    assert rendered is not None
+    assert "recurrence (jit)" in rendered
+    assert "12 sources; 126 contributions; 69 finalizations; 24 closures" in rendered
+    assert "6/36 active sectors" in rendered
+    assert "21/1344" in rendered
+    assert "stored/logical entries" in rendered
+    assert "klein-four-walsh, rank 2, 1 cosets" in rendered
+
+
 def test_artifact_inspection_reports_runtime_selector_proofs() -> None:
     inspection = _artifact_inspection()
     reusable_process = replace(

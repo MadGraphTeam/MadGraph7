@@ -28,6 +28,11 @@ from pyamplicol.runtime.eager_exact._plan import (
     _load_exact_kernel_pack,
 )
 
+from ._color import (
+    RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
+    _load_recurrence_color_contraction,
+    _RecurrenceColorContraction,
+)
 from ._plan_v2 import (
     RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_V2_ABI,
@@ -106,6 +111,7 @@ class _RecurrenceExactPlan:
     prepared_defaults: tuple[tuple[Decimal, Decimal], ...]
     parameter_projection: tuple[_ParameterProjectionRow, ...]
     parameter_derivation: _PreparedParameterDerivation | None
+    color_contraction: _RecurrenceColorContraction | None = None
 
     @classmethod
     def load(
@@ -113,6 +119,7 @@ class _RecurrenceExactPlan:
         *,
         artifact_root: Path,
         process_id: str,
+        execution_path: str,
         execution: Mapping[str, object],
         manifest: ArtifactManifest,
         kernel_loader: _KernelLoader | None,
@@ -124,6 +131,13 @@ class _RecurrenceExactPlan:
             artifact_root,
             process_id,
             loader=native_sections_loader,
+        )
+        color_contraction = _load_recurrence_color_contraction(
+            artifact_root=artifact_root,
+            process_id=process_id,
+            execution_path=execution_path,
+            execution=execution,
+            manifest=manifest,
         )
         pack, payload_root, effective_kernel_loader = _load_exact_kernel_pack(
             artifact_root=artifact_root,
@@ -203,6 +217,7 @@ class _RecurrenceExactPlan:
             prepared_defaults=defaults,
             parameter_projection=projection_rows,
             parameter_derivation=derivation,
+            color_contraction=color_contraction,
         )
         result._validate(pack)
         return result
@@ -237,6 +252,12 @@ class _RecurrenceExactPlan:
         )
 
     def _validate(self, pack: PreparedKernelPack) -> None:
+        if (self.sections.strategy == "contracted-color-union") != (
+            self.color_contraction is not None
+        ):
+            raise ArtifactError(
+                "recurrence exact plan and contracted-color payload disagree"
+            )
         if len(self.executors) != len(self.sections.executors):
             raise ArtifactError("recurrence direct executor IDs are duplicated")
         pack_by_id = {record.kernel_id: record for record in pack.kernels}
@@ -292,7 +313,7 @@ class _RecurrenceExactPlan:
                     f"direct executor {executor.executor_id} output width disagrees "
                     "with its prepared kernel"
                 )
-        if self.sections.strategy == "topology-replay":
+        if self.sections.strategy in {"topology-replay", "contracted-color-union"}:
             for source in self.sections.sources:
                 if (
                     source.source_template_or_dispatch_domain
@@ -497,20 +518,32 @@ def _validate_execution(
             f"{execution.get('runtime_layout_abi')!r}"
         )
     summary = _mapping(execution.get("recurrence_summary"), "recurrence summary")
-    if summary.get("lc_flow_layout") not in {
+    layout = summary.get("lc_flow_layout")
+    if layout not in {
         "topology-replay",
         "all-flow-union",
+        "contracted-color-union",
     }:
         raise CompatibilityError(
             "unsupported exact recurrence LC flow layout "
             f"{summary.get('lc_flow_layout')!r}"
         )
     capabilities = execution.get("required_runtime_capabilities")
+    color_capability = (
+        RECURRENCE_CONTRACTED_COLOR_CAPABILITY
+        if layout == "contracted-color-union"
+        else _RECURRENCE_COLOR_CAPABILITY
+    )
     if set(_sequence(capabilities, "recurrence capabilities")) != {
         RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
-        _RECURRENCE_COLOR_CAPABILITY,
+        color_capability,
     }:
         raise CompatibilityError("unsupported recurrence runtime capability contract")
+    color_accuracy = execution.get("color_accuracy")
+    if (layout == "contracted-color-union") != (color_accuracy in {"nlc", "full"}):
+        raise ArtifactError(
+            "recurrence layout and color-accuracy contracts are inconsistent"
+        )
 
 
 def _parse_complex_default(

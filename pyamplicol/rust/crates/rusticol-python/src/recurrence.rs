@@ -14,9 +14,10 @@ use pyo3::types::{PyAny, PyBytes, PyDict, PyList};
 use rusticol_core::recurrence::process;
 use rusticol_core::recurrence::template;
 use rusticol_core::recurrence::{
-    AuthenticatedRecurrenceBuilderInput, CheckedTableRange, DirectExecutorRole,
+    AuthenticatedRecurrenceBuilderInput, CheckedTableRange, DIRECT_NONE_U32, DirectExecutorRole,
     DirectRecurrencePlan, DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding,
-    PreparedDirectExecutorCatalog, RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_DIRECT_PLAN_ABI,
+    PreparedDirectExecutorCatalog, RECURRENCE_BUILDER_INPUT_ABI,
+    RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_PLAN_ABI,
     RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
     RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
     RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceStrategy, SemanticDigest,
@@ -796,6 +797,7 @@ struct NativeDirectLoweringResult {
     direct_executor_count: u32,
     prepared_kernel_count: usize,
     resolved_helicities: Vec<Vec<i32>>,
+    amplitude_destinations: Vec<(u32, Option<u32>)>,
     construction: RecurrenceConstructionMetrics,
     timings: DirectLoweringTimings,
 }
@@ -978,6 +980,17 @@ fn lower_recurrence_direct(
     let direct_lowering_seconds = direct_lowering_started.elapsed().as_secs_f64();
 
     let resolved_helicities = resolved_helicities_from_direct_plan(&plan)?;
+    let amplitude_destinations = plan
+        .amplitude_destinations()
+        .iter()
+        .map(|destination| {
+            (
+                destination.target_sector_id,
+                (destination.target_helicity_id_or_sentinel != DIRECT_NONE_U32)
+                    .then_some(destination.target_helicity_id_or_sentinel),
+            )
+        })
+        .collect();
     let semantic_component_count = plan.currents().iter().try_fold(0_u64, |total, current| {
         total
             .checked_add(u64::from(current.component_count))
@@ -1024,6 +1037,7 @@ fn lower_recurrence_direct(
         direct_executor_count: plan.direct_executor_count(),
         prepared_kernel_count: direct_catalog.prepared_kernel_count,
         resolved_helicities,
+        amplitude_destinations,
         construction,
         timings: DirectLoweringTimings {
             python_extraction_seconds,
@@ -1866,7 +1880,14 @@ fn direct_lowering_mapping(
         PyList::new(
             py,
             [
-                RECURRENCE_LC_COLOR_CAPABILITY,
+                match native.strategy {
+                    RecurrenceStrategy::ContractedColorUnion => {
+                        RECURRENCE_CONTRACTED_COLOR_CAPABILITY
+                    }
+                    RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::AllFlowUnion => {
+                        RECURRENCE_LC_COLOR_CAPABILITY
+                    }
+                },
                 RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
             ],
         )?,
@@ -1984,6 +2005,7 @@ fn direct_lowering_mapping(
 
     result.set_item("inspection_summary", inspection)?;
     result.set_item("resolved_helicities", native.resolved_helicities)?;
+    result.set_item("amplitude_destinations", native.amplitude_destinations)?;
     Ok(result.into_any().unbind())
 }
 

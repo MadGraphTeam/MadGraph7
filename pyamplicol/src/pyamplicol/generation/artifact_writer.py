@@ -44,6 +44,7 @@ from .._internal.versions import (
     PYTHON_API_VERSION,
     RECURRENCE_BUILDER_INPUT_ABI,
     RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+    RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_TEMPLATE_ABI,
@@ -123,6 +124,7 @@ RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
 RECURRENCE_RUNTIME_STORAGE_ABI = "pacbin-v1"
 _RECURRENCE_RUNTIME_CONTAINER_PATH = "recurrence-runtime.pacbin"
 _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = "schedule/recurrence-direct-schedule-v2.bin"
+_RECURRENCE_COLOR_CONTRACTION_PATH = "recurrence-color.bin"
 _MAX_RECURRENCE_EXECUTION_SUMMARY_BYTES = 1 << 20
 _RECURRENCE_SCHEDULE_SHARING_EXTENSION = "recurrence_schedule_sharing"
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -247,6 +249,8 @@ class RecurrenceProcessArtifact:
     referenced_kernel_ids: frozenset[int]
     inspection_summary: Mapping[str, object]
     runtime_metadata: Mapping[str, object]
+    color_contraction_payload: bytes | None
+    color_contraction_summary: Mapping[str, object] | None
     point_tile_size: int
     workspace_mib: int
     recurrence_summary: Mapping[str, object]
@@ -1093,12 +1097,29 @@ def _write_process_payloads(
                 f"recurrence process binding {process.process_id!r} changed "
                 "during publication"
             )
+        color_contraction_record = None
+        if process.color_contraction_payload is not None:
+            if process.color_contraction_summary is None:
+                raise ValueError(
+                    "recurrence color-contraction payload has no bounded summary"
+                )
+            color_contraction_record = evaluator_payloads.add_bytes(
+                f"{prefix}/{_RECURRENCE_COLOR_CONTRACTION_PATH}",
+                process.color_contraction_payload,
+                process_id=process.process_id,
+                media_type="application/octet-stream",
+            )
+        elif process.color_contraction_summary is not None:
+            raise ValueError(
+                "recurrence color-contraction summary has no binary payload"
+            )
         execution_record = builder.add_bytes(
             execution_path,
             _bounded_recurrence_execution_summary(
                 process,
                 schedule_path=schedule.artifact_path,
                 binding=binding.to_mapping(),
+                color_contraction_record=color_contraction_record,
             ),
             role="evaluator-manifest",
             media_type="application/json",
@@ -1311,6 +1332,7 @@ def _bounded_recurrence_execution_summary(
     *,
     schedule_path: str,
     binding: Mapping[str, object],
+    color_contraction_record: PayloadRecord | None,
 ) -> bytes:
     try:
         content = (
@@ -1319,6 +1341,7 @@ def _bounded_recurrence_execution_summary(
                     process,
                     schedule_path=schedule_path,
                     binding=binding,
+                    color_contraction_record=color_contraction_record,
                 ),
                 ensure_ascii=True,
                 allow_nan=False,
@@ -1344,13 +1367,9 @@ def _recurrence_execution_manifest(
     *,
     schedule_path: str,
     binding: Mapping[str, object],
+    color_contraction_record: PayloadRecord | None,
 ) -> dict[str, object]:
-    capabilities = sorted(
-        {
-            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
-            RECURRENCE_COLOR_RUNTIME_CAPABILITY,
-        }
-    )
+    capabilities = list(_recurrence_process_runtime_capabilities(process))
     runtime_schedule = {
         "kind": RECURRENCE_RUNTIME_CONTAINER_KIND,
         "schema_version": RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION,
@@ -1404,6 +1423,21 @@ def _recurrence_execution_manifest(
         "process_binding": _deep_plain(binding),
         "inspection_summary": _deep_plain(process.inspection_summary),
     }
+    runtime_metadata = _deep_plain(process.runtime_metadata)
+    if not isinstance(runtime_metadata, dict):
+        raise TypeError("recurrence runtime metadata must be a mapping")
+    if color_contraction_record is None:
+        runtime_metadata["color_contraction"] = None
+    else:
+        summary = _deep_plain(process.color_contraction_summary)
+        if not isinstance(summary, dict):
+            raise TypeError("recurrence color-contraction summary must be a mapping")
+        runtime_metadata["color_contraction"] = {
+            **summary,
+            "path": _RECURRENCE_COLOR_CONTRACTION_PATH,
+            "size_bytes": color_contraction_record.size_bytes,
+            "sha256": color_contraction_record.sha256,
+        }
     return {
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
         "kind": RECURRENCE_RUNTIME_KIND,
@@ -1433,7 +1467,7 @@ def _recurrence_execution_manifest(
             "point_tile_size": process.point_tile_size,
             "workspace_mib": process.workspace_mib,
         },
-        "runtime_metadata": _deep_plain(process.runtime_metadata),
+        "runtime_metadata": runtime_metadata,
         "plan": plan,
         "recurrence_summary": _deep_plain(process.recurrence_summary),
     }
@@ -2964,19 +2998,30 @@ def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
     if isinstance(process, RecurrenceProcessArtifact):
-        return tuple(
-            sorted(
-                {
-                    RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
-                    RECURRENCE_COLOR_RUNTIME_CAPABILITY,
-                }
-            )
-        )
+        return _recurrence_process_runtime_capabilities(process)
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return (EAGER_PLAN_V3_RUNTIME_CAPABILITY,)
     if isinstance(process, EagerProcessArtifact):
         return _eager_process_runtime_capabilities(process)
     return _compiled_process_runtime_capabilities(process)
+
+
+def _recurrence_process_runtime_capabilities(
+    process: RecurrenceProcessArtifact,
+) -> tuple[str, ...]:
+    color_capability = (
+        RECURRENCE_COLOR_RUNTIME_CAPABILITY
+        if process.color_accuracy == "lc"
+        else RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+    )
+    return tuple(
+        sorted(
+            {
+                RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+                color_capability,
+            }
+        )
+    )
 
 
 def _eager_process_runtime_capabilities(

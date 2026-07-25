@@ -11,7 +11,9 @@ from .contraction_trace import (
     _check_nlc,
     _check_nlc_one_open_line,
     _eval_nc_terms,
+    _eval_nc_terms_exact,
     _eval_trace,
+    _eval_trace_exact,
     _simplify_trace_terms,
     _simplify_trace_terms_nc_power,
 )
@@ -41,6 +43,37 @@ def _pure_adjoint_color_factors(
             full_col_acc=full_col_acc,
         ),
         _pure_adjoint_color_factor(
+            left,
+            right,
+            n_ord,
+            accuracy="full",
+            full_col_acc=full_col_acc,
+        ),
+    )
+
+
+def _pure_adjoint_color_factors_exact(
+    left: LCColorSector,
+    right: LCColorSector,
+    n_ord: int,
+    full_col_acc: int,
+) -> tuple[Fraction, Fraction, Fraction]:
+    return (
+        _pure_adjoint_color_factor_exact(
+            left,
+            right,
+            n_ord,
+            accuracy="lc",
+            full_col_acc=full_col_acc,
+        ),
+        _pure_adjoint_color_factor_exact(
+            left,
+            right,
+            n_ord,
+            accuracy="nlc",
+            full_col_acc=full_col_acc,
+        ),
+        _pure_adjoint_color_factor_exact(
             left,
             right,
             n_ord,
@@ -85,6 +118,42 @@ def _pure_adjoint_color_factor(
     )
 
 
+def _pure_adjoint_color_factor_exact(
+    left: LCColorSector,
+    right: LCColorSector,
+    n_ord: int,
+    *,
+    accuracy: str,
+    full_col_acc: int,
+) -> Fraction:
+    iper = _coloured_word(left)
+    jper = _coloured_word(right)
+    if n_ord == 0:
+        return Fraction(1 if not iper and not jper else 0)
+    nc = Fraction(NC)
+    if accuracy == "lc":
+        return nc**n_ord if iper == jper else Fraction(0)
+    if accuracy == "nlc":
+        if iper == jper:
+            return nc**n_ord - n_ord * nc ** (n_ord - 2)
+        return Fraction(_check_nlc(tuple(jper), tuple(iper))) * nc ** (n_ord - 2)
+    if accuracy != "full":
+        return Fraction(0)
+    relative = _relative_adjoint_permutation(iper, jper)
+    if relative is not None:
+        return _pure_adjoint_full_factor_exact_by_relative_permutation(
+            relative,
+            n_ord,
+            full_col_acc,
+        )
+    return _pure_adjoint_full_factor_exact_uncached(
+        tuple(iper),
+        tuple(jper),
+        n_ord,
+        full_col_acc,
+    )
+
+
 def _relative_adjoint_permutation(
     left: tuple[int, ...],
     right: tuple[int, ...],
@@ -118,6 +187,21 @@ def _pure_adjoint_full_factor_by_relative_permutation(
     )
 
 
+@lru_cache(maxsize=65536)
+def _pure_adjoint_full_factor_exact_by_relative_permutation(
+    relative: tuple[int, ...],
+    n_ord: int,
+    full_col_acc: int,
+) -> Fraction:
+    canonical = tuple(range(len(relative)))
+    return _pure_adjoint_full_factor_exact_uncached(
+        canonical,
+        relative,
+        n_ord,
+        full_col_acc,
+    )
+
+
 def _pure_adjoint_full_factor_uncached(
     iper: tuple[int, ...],
     jper: tuple[int, ...],
@@ -128,6 +212,21 @@ def _pure_adjoint_full_factor_uncached(
         ((Fraction(1), (tuple(iper), tuple(reversed(jper)))),)
     )
     return _eval_nc_terms(
+        full_terms,
+        min_power=max(n_ord - 2 * full_col_acc, 0),
+    )
+
+
+def _pure_adjoint_full_factor_exact_uncached(
+    iper: tuple[int, ...],
+    jper: tuple[int, ...],
+    n_ord: int,
+    full_col_acc: int,
+) -> Fraction:
+    full_terms = _simplify_trace_terms(
+        ((Fraction(1), (tuple(iper), tuple(reversed(jper)))),)
+    )
+    return _eval_nc_terms_exact(
         full_terms,
         min_power=max(n_ord - 2 * full_col_acc, 0),
     )
@@ -149,6 +248,25 @@ def _one_open_line_color_factors(
     else:
         acc = _check_nlc_one_open_line(tuple(jper[1:-1]), tuple(iper[1:-1]))
         nlc = full if acc != 0 else 0.0
+    return (lc, nlc, full)
+
+
+def _one_open_line_color_factors_exact(
+    left: LCColorSector,
+    right: LCColorSector,
+    n_ord: int,
+) -> tuple[Fraction, Fraction, Fraction]:
+    iper = _coloured_word(left)
+    jper = _coloured_word(right)
+    lc = Fraction(NC) ** (n_ord - 1) if iper == jper else Fraction(0)
+    full = _eval_trace_exact(
+        (tuple((*iper[1:-1], *reversed(jper[1:-1]))),),
+    )
+    if iper == jper:
+        nlc = full
+    else:
+        acc = _check_nlc_one_open_line(tuple(jper[1:-1]), tuple(iper[1:-1]))
+        nlc = full if acc != 0 else Fraction(0)
     return (lc, nlc, full)
 
 
@@ -214,6 +332,68 @@ def _two_open_line_color_factors(
     return (lc, nlc, full)
 
 
+def _two_open_line_color_factors_exact(
+    color_plan: GenericColorPlan,
+    left: LCColorSector,
+    right: LCColorSector,
+    n_ord: int,
+) -> tuple[Fraction, Fraction, Fraction]:
+    reference_start = _two_line_reference_start(color_plan)
+    iper = _rotate_to_reference_start(_coloured_word(left), reference_start)
+    jper = _rotate_to_reference_start(_coloured_word(right), reference_start)
+    reference = (
+        _rotate_to_reference_start(
+            _coloured_word(color_plan.sectors[0]), reference_start
+        )
+        if color_plan.sectors
+        else iper
+    )
+    gi, ui = _two_line_gi_ui(color_plan, iper, reference)
+    gj, uj = _two_line_gi_ui(color_plan, jper, reference)
+    repeated_fundamental_species = _has_repeated_fundamental_species(color_plan)
+    lc = Fraction(0)
+    if iper == jper:
+        if ui == 1 and uj == 1:
+            lc = Fraction(NC) ** (n_ord - 2)
+        elif ui == 2 and uj == 2 and not repeated_fundamental_species:
+            lc = Fraction(9) * Fraction(NC) ** (n_ord - 4)
+        elif ui == 2 and uj == 2 and repeated_fundamental_species:
+            lc = Fraction(NC) ** (n_ord - 2)
+    full = _two_open_line_full_factor_exact(
+        iper,
+        jper,
+        n_ord=n_ord,
+        gi=gi,
+        gj=gj,
+        ui=ui,
+        uj=uj,
+    )
+    nlc = Fraction(0)
+    if full:
+        iper_adj, jper_adj = _two_line_ordered_adjoint_strings(
+            color_plan,
+            iper,
+            jper,
+        )
+        iper_ord, jper_ord = _convert_two_line_adjoint_strings(
+            n_ord,
+            iper_adj,
+            jper_adj,
+        )
+        acc = _check_nlc_two_open_lines_same_species(
+            n_ord,
+            iper_ord,
+            jper_ord,
+            gi,
+            gj,
+            ui,
+            uj,
+        )
+        if acc != 0:
+            nlc = full
+    return (lc, nlc, full)
+
+
 def _two_open_line_full_factor(
     iper: tuple[int, ...],
     jper: tuple[int, ...],
@@ -245,6 +425,39 @@ def _two_open_line_full_factor(
     else:
         return 0.0
     return _eval_trace(traces, coeff=coeff)
+
+
+def _two_open_line_full_factor_exact(
+    iper: tuple[int, ...],
+    jper: tuple[int, ...],
+    *,
+    n_ord: int,
+    gi: int,
+    gj: int,
+    ui: int,
+    uj: int,
+) -> Fraction:
+    if ui == uj:
+        traces = (
+            tuple((*iper[1 : 1 + gi], *reversed(jper[1 : 1 + gj]))),
+            tuple((*iper[gi + 3 : n_ord - 1], *reversed(jper[gj + 3 : n_ord - 1]))),
+        )
+        coeff = Fraction(1)
+    elif (ui, uj) in {(1, 2), (2, 1)}:
+        traces = (
+            tuple(
+                (
+                    *iper[1 : 1 + gi],
+                    *reversed(jper[gj + 3 : n_ord - 1]),
+                    *iper[gi + 3 : n_ord - 1],
+                    *reversed(jper[1 : 1 + gj]),
+                )
+            ),
+        )
+        coeff = Fraction(-1)
+    else:
+        return Fraction(0)
+    return _eval_trace_exact(traces, coeff=coeff)
 
 
 def _is_open_line_pair(
@@ -289,6 +502,80 @@ def _multi_open_line_color_factors(
     # present (for example 8 -> 9 for three open lines plus one adjoint).
     nlc = full if max(terms) >= leading_power - 2 else 0.0
     return (lc, nlc, full)
+
+
+def _multi_open_line_color_factors_exact(
+    color_plan: GenericColorPlan,
+    left: LCColorSector,
+    right: LCColorSector,
+) -> tuple[Fraction, Fraction, Fraction]:
+    terms = _open_line_nc_power_terms(
+        left.open_color_lines,
+        right.open_color_lines,
+    )
+    if not terms:
+        return (Fraction(0), Fraction(0), Fraction(0))
+    leading_power = color_plan.process.color_endpoints.pair_count + len(
+        color_plan.process.adjoint_labels
+    )
+    lc = _eval_nc_terms_exact(terms, min_power=leading_power)
+    full = _eval_nc_terms_exact(terms)
+    nlc = full if max(terms) >= leading_power - 2 else Fraction(0)
+    return (lc, nlc, full)
+
+
+def exact_color_contraction_factors(
+    color_plan: GenericColorPlan,
+    left: LCColorSector,
+    right: LCColorSector,
+    *,
+    full_col_acc: int = 20,
+) -> tuple[Fraction, Fraction, Fraction]:
+    """Return exact reference-normalized ``(LC, NLC, full)`` color factors."""
+
+    open_line_count = color_plan.process.color_endpoints.pair_count
+    n_ord = len(_coloured_word(left))
+    if len(_coloured_word(right)) != n_ord:
+        return (Fraction(0), Fraction(0), Fraction(0))
+    if open_line_count == 0:
+        return _pure_adjoint_color_factors_exact(
+            left,
+            right,
+            n_ord,
+            full_col_acc,
+        )
+    if open_line_count == 1:
+        return _one_open_line_color_factors_exact(left, right, n_ord)
+    if open_line_count == 2:
+        return _two_open_line_color_factors_exact(color_plan, left, right, n_ord)
+    if open_line_count >= 3 and _is_open_line_pair(left, right):
+        return _multi_open_line_color_factors_exact(color_plan, left, right)
+    return (Fraction(0), Fraction(0), Fraction(0))
+
+
+def exact_color_contraction_factor(
+    color_plan: GenericColorPlan,
+    left: LCColorSector,
+    right: LCColorSector,
+    *,
+    accuracy: str,
+    full_col_acc: int = 20,
+) -> Fraction:
+    """Return one exact reference-normalized color factor."""
+
+    values = exact_color_contraction_factors(
+        color_plan,
+        left,
+        right,
+        full_col_acc=full_col_acc,
+    )
+    if accuracy == "lc":
+        return values[0]
+    if accuracy == "nlc":
+        return values[1]
+    if accuracy == "full":
+        return values[2]
+    return Fraction(0)
 
 
 def _open_line_nc_power_terms(

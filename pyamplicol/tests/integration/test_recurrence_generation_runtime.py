@@ -7,12 +7,14 @@ import importlib
 import importlib.util
 import json
 import os
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from pyamplicol import CompiledModel, Generator, ModelSource, Runtime
+from pyamplicol.api.errors import EvaluationError
 from pyamplicol.artifacts import inspect_artifact, load_manifest
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
@@ -32,6 +34,15 @@ from pyamplicol.reporting import CallbackProgressSink, ProgressUpdate
 from pyamplicol.runtime.recurrence_exact._plan import _validate_execution
 
 _PROCESS = "d d~ > z g g"
+_THREE_LINE_PROCESS = "d d~ > u u~ s s~"
+_PURE_GLUON_PROCESS = "g g > g g"
+_SAME_FLAVOUR_PROCESS = "d d~ > d d~"
+_CONTRACTED_COLOR_PROCESSES = (
+    _PROCESS,
+    _THREE_LINE_PROCESS,
+    _PURE_GLUON_PROCESS,
+    _SAME_FLAVOUR_PROCESS,
+)
 _TOPOLOGY_REPLAY_PROCESSES = (
     "d d~ > z g",
     _PROCESS,
@@ -43,6 +54,10 @@ _TOPOLOGY_REPLAY_STRUCTURE = {
 _RECURRENCE_KIND = "pyamplicol-runtime-recurrence-execution"
 _RECURRENCE_CAPABILITIES = {
     "rusticol.recurrence-color.lc.v1",
+    "rusticol.recurrence-direct-arena.complex-f64.v1",
+}
+_CONTRACTED_RECURRENCE_CAPABILITIES = {
+    "rusticol.recurrence-color.contracted.v1",
     "rusticol.recurrence-direct-arena.complex-f64.v1",
 }
 _UFO_SM_ROOT = (
@@ -78,12 +93,13 @@ def _require_native_recurrence() -> None:
 def _generation_config(
     execution_mode: str,
     *,
+    color_accuracy: str = "lc",
     lc_flow_layout: str = "topology-replay",
 ) -> RunConfig:
     return RunConfig(
         action="generate",
         color=ColorConfig(
-            accuracy="lc",
+            accuracy=color_accuracy,
             lc_flow_layout=lc_flow_layout,
         ),
         generation=GenerationConfig(
@@ -413,6 +429,255 @@ def _assert_topology_replay_exact_matches_compiled(
         )
 
 
+def _assert_contracted_color_artifacts_match(
+    recurrence_artifact: Path,
+    compiled_artifact: Path,
+    process_expression: str,
+    color_accuracy: str,
+    *,
+    parameter_update: tuple[str, float] | None = None,
+) -> None:
+    points = _validation_points(process_expression)
+    recurrence = Runtime.load(recurrence_artifact)
+    compiled = Runtime.load(compiled_artifact)
+    assert recurrence.physics.color_accuracy == color_accuracy
+    assert recurrence.physics.color_ids == ("color:contracted",)
+    assert compiled.physics.color_ids == recurrence.physics.color_ids
+    assert compiled.physics.helicity_ids == recurrence.physics.helicity_ids
+
+    recurrence_total = recurrence.evaluate(points)
+    compiled_total = compiled.evaluate(points)
+    recurrence_resolved = recurrence.evaluate_resolved(points)
+    compiled_resolved = compiled.evaluate_resolved(points)
+    assert recurrence_resolved.total() == pytest.approx(
+        recurrence_total,
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert recurrence_total == pytest.approx(
+        compiled_total,
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert recurrence_resolved.shape == compiled_resolved.shape
+    assert _flatten(recurrence_resolved.values) == pytest.approx(
+        _flatten(compiled_resolved.values),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+
+    nonzero_helicities = tuple(
+        helicity.id
+        for helicity in recurrence.physics.helicities
+        if not helicity.structural_zero
+    )
+    assert nonzero_helicities
+    sampled_helicities = tuple(
+        dict.fromkeys(
+            (
+                nonzero_helicities[0],
+                nonzero_helicities[len(nonzero_helicities) // 2],
+                nonzero_helicities[-1],
+            )
+        )
+    )
+    recurrence_selected = recurrence.evaluate_resolved(
+        points,
+        helicities=sampled_helicities,
+    )
+    compiled_selected = compiled.evaluate_resolved(
+        points,
+        helicities=sampled_helicities,
+    )
+    assert _flatten(recurrence_selected.values) == pytest.approx(
+        _flatten(compiled_selected.values),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+
+    repeated_points = points * len(sampled_helicities)
+    assert recurrence.evaluate(
+        repeated_points,
+        helicity_by_point=sampled_helicities,
+    ) == pytest.approx(
+        compiled.evaluate(
+            repeated_points,
+            helicity_by_point=sampled_helicities,
+        ),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    with pytest.raises(EvaluationError, match="color-flow selection"):
+        recurrence.evaluate(points, color_flows=("color:contracted",))
+
+    for precision in (32, 50):
+        recurrence_exact = recurrence.evaluate_resolved(
+            points,
+            helicities=sampled_helicities,
+            precision=precision,
+        )
+        recurrence_f64 = recurrence.evaluate_resolved(
+            points,
+            helicities=sampled_helicities,
+        )
+        assert _flatten(recurrence_exact.values) == pytest.approx(
+            _flatten(recurrence_f64.values),
+            rel=1.0e-12,
+            abs=1.0e-15,
+        )
+        _assert_decimal_values_match(
+            recurrence_exact.total(),
+            recurrence.evaluate(
+                points,
+                helicities=sampled_helicities,
+                precision=precision,
+            ),
+            precision,
+        )
+
+    manifest = load_manifest(recurrence_artifact)
+    assert len(manifest.processes) == 1
+    process_id = str(manifest.processes[0]["id"])
+    execution = json.loads(
+        (
+            recurrence_artifact
+            / "processes"
+            / process_id
+            / "execution.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert (
+        execution["recurrence_summary"]["lc_flow_layout"]
+        == "contracted-color-union"
+    )
+    assert (
+        set(execution["required_runtime_capabilities"])
+        == _CONTRACTED_RECURRENCE_CAPABILITIES
+    )
+    color_reference = execution["runtime_metadata"]["color_contraction"]
+    inspection = inspect_artifact(recurrence_artifact).processes[0]
+    assert inspection.execution_mode == "recurrence"
+    assert inspection.recurrence_color_accuracy == color_accuracy
+    assert inspection.recurrence_color_storage == color_reference["storage"]
+    assert (
+        inspection.recurrence_color_sector_count
+        == color_reference["sector_count"]
+    )
+    assert (
+        inspection.recurrence_color_active_sector_count
+        == color_reference["active_sector_count"]
+    )
+    assert (
+        inspection.recurrence_color_component_count
+        == color_reference["component_count"]
+    )
+    assert inspection.recurrence_color_group_count == color_reference["group_count"]
+    assert (
+        inspection.recurrence_color_entry_count
+        == color_reference["entry_count"]
+    )
+    assert (
+        inspection.recurrence_color_logical_entry_count
+        == color_reference["logical_entry_count"]
+    )
+    if process_expression == _THREE_LINE_PROCESS:
+        # Six endpoint pairings are physical. The six orderings of each
+        # disconnected open-string forest are coherent aliases and must have
+        # one deterministic owner, not six duplicated amplitude destinations.
+        assert color_reference["sector_count"] == 36
+        assert color_reference["active_sector_count"] == 6
+        assert color_reference["group_count"] == (
+            6 * color_reference["component_count"]
+        )
+        assert color_reference["storage"] == "repeated"
+    color_path = (
+        recurrence_artifact
+        / "processes"
+        / process_id
+        / color_reference["path"]
+    )
+    assert color_path.is_file()
+    assert color_path.stat().st_size == color_reference["size_bytes"]
+    payloads = {
+        record.path: record
+        for record in manifest.payloads
+        if record.process_id == process_id
+    }
+    relative_color_path = color_path.relative_to(recurrence_artifact).as_posix()
+    assert payloads[relative_color_path].sha256 == color_reference["sha256"]
+
+    if parameter_update is not None:
+        parameter_name, parameter_value = parameter_update
+        exact_before_update = recurrence.evaluate(points, precision=50)
+        recurrence.set_model_parameters({parameter_name: parameter_value})
+        compiled.set_model_parameters({parameter_name: parameter_value})
+        assert recurrence.evaluate(points, precision=50) != exact_before_update
+        assert recurrence.evaluate(points) == pytest.approx(
+            compiled.evaluate(points),
+            rel=1.0e-12,
+            abs=1.0e-15,
+        )
+        recurrence_exact = recurrence.evaluate_resolved(points, precision=50)
+        recurrence_f64 = recurrence.evaluate_resolved(points)
+        assert _flatten(recurrence_exact.values) == pytest.approx(
+            _flatten(recurrence_f64.values),
+            rel=1.0e-12,
+            abs=1.0e-15,
+        )
+        _assert_decimal_values_match(
+            recurrence_exact.total(),
+            recurrence.evaluate(points, precision=50),
+            50,
+        )
+
+
+def _contracted_structure_signature(artifact: Path) -> dict[str, object]:
+    manifest = load_manifest(artifact)
+    assert len(manifest.processes) == 1
+    process_id = str(manifest.processes[0]["id"])
+    execution = json.loads(
+        (
+            artifact / "processes" / process_id / "execution.json"
+        ).read_text(encoding="utf-8")
+    )
+    summary = execution["recurrence_summary"]
+    inspection = execution["plan"]["inspection_summary"]
+    schedule = inspection["schedule"]
+    construction = inspection["construction"]
+    color = execution["runtime_metadata"]["color_contraction"]
+    return {
+        "layout": summary["lc_flow_layout"],
+        "currents": summary["current_count"],
+        "contributions": summary["contribution_count"],
+        "closures": summary["closure_term_count"],
+        "sources": schedule["source_row_count"],
+        "finalizations": schedule["finalization_count"],
+        "destinations": schedule["amplitude_destination_count"],
+        "resolved_helicities": schedule["resolved_helicity_count"],
+        "dynamic_color_states": construction["peak_dynamic_color_state_count"],
+        "color_storage": color["storage"],
+        "color_sectors": color["sector_count"],
+        "active_color_sectors": color["active_sector_count"],
+        "color_components": color["component_count"],
+        "color_groups": color["group_count"],
+        "color_entries": color["entry_count"],
+        "logical_color_entries": color["logical_entry_count"],
+        "factorization": color["factorization"],
+    }
+
+
+@pytest.fixture(scope="module")
+def builtin_sm_recurrence_jit_o2_model() -> Iterator[ModelSource]:
+    """Use a source-current prepared pack without weakening packaged checks."""
+
+    override = os.environ.get("PYAMPLICOL_RECURRENCE_TEST_PREPARED_MODEL")
+    if override:
+        yield ModelSource.from_path(Path(override))
+        return
+    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
+        yield ModelSource.from_path(prepared_model)
+
+
 @pytest.fixture(scope="module")
 def ufo_sm_recurrence_jit_o2_model(
     tmp_path_factory: pytest.TempPathFactory,
@@ -439,6 +704,7 @@ def ufo_sm_recurrence_jit_o2_model(
 def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
     tmp_path: Path,
     process_expression: str,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
 ) -> None:
     """Exercise the first public topology-replay artifact end to end."""
 
@@ -447,17 +713,14 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
     compiled_artifact = tmp_path / "compiled"
     progress_events: list[object] = []
 
-    # Keep the packaged resource alive throughout generation without writing a
-    # user-cache copy. Its compiled-model identity is still the built-in SM.
-    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
-        Generator(
-            _generation_config("recurrence"),
-            progress=CallbackProgressSink(progress_events.append),
-        ).generate(
-            process_expression,
-            recurrence_artifact,
-            model=ModelSource.from_path(prepared_model),
-        )
+    Generator(
+        _generation_config("recurrence"),
+        progress=CallbackProgressSink(progress_events.append),
+    ).generate(
+        process_expression,
+        recurrence_artifact,
+        model=builtin_sm_recurrence_jit_o2_model,
+    )
     Generator(_generation_config("compiled")).generate(
         process_expression,
         compiled_artifact,
@@ -617,25 +880,144 @@ def test_ufo_sm_lc_recurrence_artifact_loads_and_matches_compiled(
     )
 
 
+@pytest.mark.parametrize("process_expression", _CONTRACTED_COLOR_PROCESSES)
+@pytest.mark.parametrize("color_accuracy", ("nlc", "full"))
+def test_builtin_contracted_color_recurrence_matches_compiled(
+    tmp_path: Path,
+    color_accuracy: str,
+    process_expression: str,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+) -> None:
+    """Exercise built-in NLC/full generation and Direct-Arena contraction."""
+
+    _require_native_recurrence()
+    recurrence_artifact = tmp_path / f"recurrence-{color_accuracy}"
+    compiled_artifact = tmp_path / f"compiled-{color_accuracy}"
+    Generator(
+        _generation_config(
+            "recurrence",
+            color_accuracy=color_accuracy,
+        )
+    ).generate(
+        process_expression,
+        recurrence_artifact,
+        model=builtin_sm_recurrence_jit_o2_model,
+    )
+    Generator(
+        _generation_config(
+            "compiled",
+            color_accuracy=color_accuracy,
+        )
+    ).generate(
+        process_expression,
+        compiled_artifact,
+        model=builtin_sm_recurrence_jit_o2_model,
+    )
+    _assert_contracted_color_artifacts_match(
+        recurrence_artifact,
+        compiled_artifact,
+        process_expression,
+        color_accuracy,
+        parameter_update=(
+            ("particle.23.mass", 100.0)
+            if process_expression == _PROCESS
+            else None
+        ),
+    )
+
+
+@pytest.mark.parametrize("process_expression", _CONTRACTED_COLOR_PROCESSES)
+@pytest.mark.parametrize("color_accuracy", ("nlc", "full"))
+def test_ufo_sm_contracted_color_recurrence_matches_compiled(
+    tmp_path: Path,
+    color_accuracy: str,
+    process_expression: str,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Exercise model-generic NLC/full recurrence with the UFO-SM pack."""
+
+    recurrence_artifact = tmp_path / f"recurrence-ufo-{color_accuracy}"
+    compiled_artifact = tmp_path / f"compiled-ufo-{color_accuracy}"
+    Generator(
+        _generation_config(
+            "recurrence",
+            color_accuracy=color_accuracy,
+        )
+    ).generate(
+        process_expression,
+        recurrence_artifact,
+        model=ufo_sm_recurrence_jit_o2_model,
+    )
+    Generator(
+        _generation_config(
+            "compiled",
+            color_accuracy=color_accuracy,
+        )
+    ).generate(
+        process_expression,
+        compiled_artifact,
+        model=ufo_sm_recurrence_jit_o2_model,
+    )
+    _assert_contracted_color_artifacts_match(
+        recurrence_artifact,
+        compiled_artifact,
+        process_expression,
+        color_accuracy,
+        parameter_update=(
+            ("MZ", 100.0) if process_expression == _PROCESS else None
+        ),
+    )
+
+
+def test_builtin_and_ufo_contracted_recurrence_have_matching_structure(
+    tmp_path: Path,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Equivalent SM models must construct the same generic color schedule."""
+
+    artifacts = []
+    for label, model in (
+        ("builtin", builtin_sm_recurrence_jit_o2_model),
+        ("ufo", ufo_sm_recurrence_jit_o2_model),
+    ):
+        artifact = tmp_path / label
+        Generator(
+            _generation_config(
+                "recurrence",
+                color_accuracy="full",
+            )
+        ).generate(
+            _THREE_LINE_PROCESS,
+            artifact,
+            model=model,
+        )
+        artifacts.append(artifact)
+
+    assert _contracted_structure_signature(
+        artifacts[0]
+    ) == _contracted_structure_signature(artifacts[1])
+
+
 def test_builtin_lc_all_flow_union_recurrence_matches_compiled(
     tmp_path: Path,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
 ) -> None:
     """Exercise all-flow union with runtime-selected helicity end to end."""
 
     _require_native_recurrence()
     recurrence_artifact = tmp_path / "recurrence-union"
     compiled_artifact = tmp_path / "compiled-union"
-    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
-        Generator(
-            _generation_config(
-                "recurrence",
-                lc_flow_layout="all-flow-union",
-            )
-        ).generate(
-            _PROCESS,
-            recurrence_artifact,
-            model=ModelSource.from_path(prepared_model),
+    Generator(
+        _generation_config(
+            "recurrence",
+            lc_flow_layout="all-flow-union",
         )
+    ).generate(
+        _PROCESS,
+        recurrence_artifact,
+        model=builtin_sm_recurrence_jit_o2_model,
+    )
     Generator(
         _generation_config(
             "compiled",
@@ -648,6 +1030,7 @@ def test_builtin_lc_all_flow_union_recurrence_matches_compiled(
     _assert_all_flow_union_artifacts_match(
         recurrence_artifact,
         compiled_artifact,
+        parameter_update=("particle.23.mass", 100.0),
     )
     _assert_recurrence_per_point_selector_patterns(
         recurrence_artifact,
@@ -687,12 +1070,15 @@ def test_ufo_sm_lc_all_flow_union_recurrence_matches_compiled(
     _assert_all_flow_union_artifacts_match(
         recurrence_artifact,
         compiled_artifact,
+        parameter_update=("MZ", 100.0),
     )
 
 
 def _assert_all_flow_union_artifacts_match(
     recurrence_artifact: Path,
     compiled_artifact: Path,
+    *,
+    parameter_update: tuple[str, float] | None = None,
 ) -> None:
     point = tuple(
         tuple(float(component) for component in particle.momentum)
@@ -765,6 +1151,21 @@ def _assert_all_flow_union_artifacts_match(
             ),
             32,
         )
+    if parameter_update is not None:
+        parameter_name, parameter_value = parameter_update
+        before = recurrence.evaluate(points, precision=50)
+        recurrence.set_model_parameters({parameter_name: parameter_value})
+        compiled.set_model_parameters({parameter_name: parameter_value})
+        assert recurrence.evaluate(points, precision=50) != before
+        for helicity_id in selected_ids:
+            assert recurrence.evaluate(
+                points,
+                helicities=(helicity_id,),
+            ) == pytest.approx(
+                compiled.evaluate(points, helicities=(helicity_id,)),
+                rel=1.0e-12,
+                abs=1.0e-15,
+            )
 
 
 def test_recurrence_exact_accepts_all_flow_union_layout() -> None:

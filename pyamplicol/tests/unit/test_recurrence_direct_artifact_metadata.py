@@ -78,6 +78,7 @@ def _execution_manifest(process: SimpleNamespace | None = None) -> dict[str, obj
             "size_bytes": 128,
             "sha256": _digest("9"),
         },
+        color_contraction_record=None,
     )
 
 
@@ -184,6 +185,7 @@ def test_recurrence_physics_identifies_direct_plan_and_runtime_layout() -> None:
     process = SimpleNamespace(
         key="d_dbar_to_z_g",
         process="d d~ > z g",
+        color_accuracy="lc",
         legs=(
             SimpleNamespace(
                 label=1,
@@ -267,6 +269,53 @@ def test_direct_recurrence_inspection_exposes_arena_counters(tmp_path: Path) -> 
     assert result.packed_input_bytes == 0
     assert result.packed_output_bytes == 0
     assert result.scatter_bytes == 0
+
+
+def test_direct_recurrence_inspection_exposes_contracted_color_summary(
+    tmp_path: Path,
+) -> None:
+    _write_prepared_pack(tmp_path)
+    execution = _execution_manifest()
+    execution["runtime_metadata"]["color_contraction"] = {
+        "abi": "pyamplicol-recurrence-color-contraction-v3",
+        "color_accuracy": "full",
+        "storage": "repeated",
+        "includes_color_factor": True,
+        "group_count": 384,
+        "sector_count": 36,
+        "active_sector_count": 6,
+        "component_count": 64,
+        "destination_count": 384,
+        "entry_count": 21,
+        "logical_entry_count": 1344,
+        "semantic_digest": _digest("7"),
+        "factorization": {
+            "kind": "klein-four-walsh",
+            "rank": 2,
+            "coset_count": 1,
+        },
+        "path": "recurrence-color.bin",
+        "size_bytes": 4096,
+        "sha256": _digest("8"),
+    }
+
+    result = inspection._recurrence_execution_inspection(
+        SimpleNamespace(root=tmp_path),
+        execution,
+    )
+
+    assert result.recurrence_color_accuracy == "full"
+    assert result.recurrence_color_storage == "repeated"
+    assert result.recurrence_color_sector_count == 36
+    assert result.recurrence_color_active_sector_count == 6
+    assert result.recurrence_color_component_count == 64
+    assert result.recurrence_color_group_count == 384
+    assert result.recurrence_color_destination_count == 384
+    assert result.recurrence_color_entry_count == 21
+    assert result.recurrence_color_logical_entry_count == 1344
+    assert result.recurrence_color_factorization_kind == "klein-four-walsh"
+    assert result.recurrence_color_factorization_rank == 2
+    assert result.recurrence_color_factorization_coset_count == 1
 
 
 def test_inspection_requires_v2_metadata_without_packet_fallback(

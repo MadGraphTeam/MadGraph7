@@ -271,7 +271,11 @@ fn strategy_and_digest_validation_fail_closed() {
         RecurrenceStrategy::try_from(1).unwrap(),
         RecurrenceStrategy::AllFlowUnion
     );
-    assert!(RecurrenceStrategy::try_from(2).is_err());
+    assert_eq!(
+        RecurrenceStrategy::try_from(2).unwrap(),
+        RecurrenceStrategy::ContractedColorUnion
+    );
+    assert!(RecurrenceStrategy::try_from(3).is_err());
     assert!(SemanticDigest::new([0; 32]).is_err());
 }
 

@@ -9,6 +9,8 @@ from .contraction import (
     build_color_contraction_plan,
     color_contraction_factor,
     color_contraction_factors,
+    exact_color_contraction_factor,
+    exact_color_contraction_factors,
 )
 from .plan import (
     GenericColorPlan,
@@ -39,4 +41,6 @@ __all__ = [
     "build_lc_topology_replay_plan",
     "color_contraction_factor",
     "color_contraction_factors",
+    "exact_color_contraction_factor",
+    "exact_color_contraction_factors",
 ]

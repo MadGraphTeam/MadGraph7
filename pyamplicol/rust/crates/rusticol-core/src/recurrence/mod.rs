@@ -5,6 +5,7 @@
 mod arena;
 mod builder;
 mod color;
+mod color_contraction;
 mod construct;
 pub mod direct_backend;
 mod direct_codec;
@@ -29,6 +30,14 @@ pub use color::{
     LCColorComponentOperation, LCColorComponentRole, LCColorEndpoint, LCColorParentPort,
     LCColorPortBinding, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
     LCColorTransitionWitness,
+};
+pub use color_contraction::{
+    CanonicalColorContractionEntries, CanonicalColorContractionEntry, FactorizedColorContraction,
+    FactorizedColorContractionKind, RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+    RawColorContractionEntry, RecurrenceColorAccuracy, RecurrenceColorContraction,
+    RecurrenceColorStorage, RuntimeColorContractionEntries, RuntimeColorContractionEntry,
+    RuntimeFactorizedColorContraction, RuntimeFactorizedColorContractionEntry,
+    decode_recurrence_color_contraction_v3, recurrence_color_contraction_digest,
 };
 pub use construct::RecurrenceBuildProgress;
 pub use direct_codec::{decode_recurrence_direct_plan_v2, encode_recurrence_direct_plan_v2};
@@ -89,6 +98,8 @@ pub const RECURRENCE_RUNTIME_KIND: &str = "pyamplicol-runtime-recurrence-executi
 pub const RECURRENCE_RUNTIME_CAPABILITY: &str = RECURRENCE_DIRECT_RUNTIME_CAPABILITY;
 /// LC color capability required by recurrence.
 pub const RECURRENCE_LC_COLOR_CAPABILITY: &str = "rusticol.recurrence-color.lc.v1";
+/// Contracted NLC/full-color capability required by recurrence.
+pub const RECURRENCE_CONTRACTED_COLOR_CAPABILITY: &str = "rusticol.recurrence-color.contracted.v1";
 /// The builder input always consists of explicitly little-endian columns.
 pub const RECURRENCE_INPUT_ENDIANNESS: &str = "little";
 

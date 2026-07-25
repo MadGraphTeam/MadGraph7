@@ -20,6 +20,13 @@ from .._internal.versions import (
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
 )
+from ..color import (
+    ColorContractionPlan,
+    ColorGroupDescriptor,
+    GenericColorPlan,
+    build_color_contraction_plan,
+    exact_color_contraction_factor,
+)
 from ..models.base import Model
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR
@@ -79,13 +86,16 @@ def build_recurrence_physics(
     process_id: str,
     resolved_helicities: Sequence[Sequence[int]],
     normalization: Mapping[str, object],
+    color_plan: GenericColorPlan | None = None,
 ) -> dict[str, object]:
     """Build strict ``pyamplicol-resolved-physics`` metadata pre-DAG."""
 
     if logical.process_id != process.key:
         raise ValueError("recurrence projection does not belong to the process IR")
-    if logical.layout == "topology-replay" and not resolved_helicities:
-        raise ValueError("topology-replay recurrence has no resolved helicities")
+    if process.color_accuracy != "lc" and color_plan is None:
+        raise ValueError("contracted recurrence physics requires its color plan")
+    if logical.layout != "all-flow-union" and not resolved_helicities:
+        raise ValueError("fixed-source recurrence has no resolved helicities")
 
     possible_helicities = _possible_helicities(logical)
     resolved = {tuple(int(value) for value in row) for row in resolved_helicities}
@@ -130,22 +140,34 @@ def build_recurrence_physics(
     labels_by_slot = {
         leg.source_slot: leg.public_label for leg in logical.external_legs
     }
-    color_components = []
-    for index, flow in enumerate(retained_flows):
-        weight = _complex_factor(flow.reduction_weight)
-        color_components.append(
+    if process.color_accuracy == "lc":
+        color_components = []
+        for index, flow in enumerate(retained_flows):
+            weight = _complex_factor(flow.reduction_weight)
+            color_components.append(
+                {
+                    "kind": "lc-flow",
+                    "id": flow.public_id,
+                    "index": index,
+                    "word": [labels_by_slot[slot] for slot in flow.word_source_slots],
+                    "computed": True,
+                    "representative_id": flow.public_id,
+                    "coefficient": float(
+                        weight.real * weight.real + weight.imag * weight.imag
+                    ),
+                }
+            )
+    else:
+        color_components = [
             {
-                "kind": "lc-flow",
-                "id": flow.public_id,
-                "index": index,
-                "word": [labels_by_slot[slot] for slot in flow.word_source_slots],
-                "computed": True,
-                "representative_id": flow.public_id,
-                "coefficient": float(
-                    weight.real * weight.real + weight.imag * weight.imag
+                "kind": "contracted-color",
+                "id": "color:contracted",
+                "index": 0,
+                "description": (
+                    "coherent sparse contraction of the complete ordered color basis"
                 ),
             }
-        )
+        ]
 
     selected_sources = {
         row.source_slot: tuple(row.source_state_indices)
@@ -156,11 +178,19 @@ def build_recurrence_physics(
         retained = selected_sources.get(leg.source_slot)
         if retained is None:
             continue
-        values = {leg.source_states[index].public_helicity for index in retained}
-        if len(values) == 1:
-            selected_source_helicities[str(leg.public_label)] = values.pop()
+        retained_helicities = {
+            leg.source_states[index].public_helicity for index in retained
+        }
+        if len(retained_helicities) == 1:
+            selected_source_helicities[str(leg.public_label)] = (
+                retained_helicities.pop()
+            )
 
-    color_coverage = "complete" if selected_flow_ids is None else "selected"
+    color_coverage = (
+        ("complete" if selected_flow_ids is None else "selected")
+        if process.color_accuracy == "lc"
+        else "contracted"
+    )
     helicity_coverage = (
         "complete" if logical.selected_source_coverage is None else "selected"
     )
@@ -170,11 +200,15 @@ def build_recurrence_physics(
         "kind": "pyamplicol-resolved-physics",
         "process_id": process_id,
         "process": process.process,
-        "color_accuracy": "lc",
+        "color_accuracy": process.color_accuracy,
         "coverage": {
             "helicities": helicity_coverage,
             "color": color_coverage,
-            "color_kind": "physical-lc-flows",
+            "color_kind": (
+                "physical-lc-flows"
+                if process.color_accuracy == "lc"
+                else "contracted-color"
+            ),
             "structural_zero_helicity_count": structural_zero_count,
         },
         "external_particles": [
@@ -193,11 +227,16 @@ def build_recurrence_physics(
         "color_components": color_components,
         # The compact recurrence plan owns the high-cardinality destination
         # expansion.  Rusticol hydrates these groups while loading the plan.
-        "reduction": {"kind": "lc-diagonal", "groups": []},
+        "reduction": {
+            "kind": (
+                "lc-diagonal" if process.color_accuracy == "lc" else "contracted-color"
+            ),
+            "groups": [],
+        },
         "model_parameters": public_parameters,
         "selectors": {
             "helicity": True,
-            "color_flow": True,
+            "color_flow": process.color_accuracy == "lc",
             "contracted_color": False,
         },
         "extensions": {
@@ -228,13 +267,17 @@ def build_recurrence_physics(
                         "runtime_contract": (
                             "complete-reusable"
                             if color_coverage == "complete"
-                            else "generation-specialized"
+                            else (
+                                "generation-specialized"
+                                if color_coverage == "selected"
+                                else "contracted-color"
+                            )
                         ),
                     },
                 },
                 "generation_specialized_axes": [
                     *([] if helicity_coverage == "complete" else ["helicity"]),
-                    *([] if color_coverage == "complete" else ["color_flow"]),
+                    *(["color_flow"] if color_coverage == "selected" else []),
                 ],
             },
             "recurrence_runtime_reduction": {
@@ -316,7 +359,11 @@ def build_recurrence_runtime_metadata(
                     if is_complex
                     else parameter.name
                 ),
-                "kind": parameter.parameter_kind,
+                "kind": (
+                    "derived_parameter_component"
+                    if parameter.parameter_kind == "derived"
+                    else parameter.parameter_kind
+                ),
                 "parameter_index": projection.runtime_slot,
                 "default": float(
                     value.real if projection.component == 0 else value.imag
@@ -408,14 +455,18 @@ def build_recurrence_runtime_metadata(
             )
 
     return {
-        "public_color_flows": [
-            {
-                "public_id": flow.public_id,
-                "construction_sector_id": flow.construction_sector_id,
-                "target_sector_id": target_sector_id,
-            }
-            for target_sector_id, flow in enumerate(_retained_public_flows(logical))
-        ],
+        "public_color_flows": (
+            [
+                {
+                    "public_id": flow.public_id,
+                    "construction_sector_id": flow.construction_sector_id,
+                    "target_sector_id": target_sector_id,
+                }
+                for target_sector_id, flow in enumerate(_retained_public_flows(logical))
+            ]
+            if logical.layout != "contracted-color-union"
+            else []
+        ),
         "runtime_parameters": runtime_parameters,
         "prepared_parameter_defaults": [
             [float(value.real), float(value.imag)] for value in prepared_defaults
@@ -451,6 +502,179 @@ def build_recurrence_runtime_metadata(
             if key in normalization
         },
     }
+
+
+def build_recurrence_color_contraction(
+    logical: RecurrenceBuilderLogicalInputV1,
+    color_plan: GenericColorPlan,
+    resolved_helicities: Sequence[Sequence[int]],
+    amplitude_destinations: Sequence[tuple[int, int | None]],
+) -> ColorContractionPlan | None:
+    if color_plan.color_accuracy == "lc":
+        return None
+    if logical.layout != "contracted-color-union":
+        raise ValueError("NLC/full recurrence requires contracted-color-union")
+    if not logical.physical_sectors or not resolved_helicities:
+        raise ValueError("contracted recurrence has an empty color/helicity domain")
+    labels_by_slot = {
+        leg.source_slot: leg.public_label for leg in logical.external_legs
+    }
+    sectors_by_id = {sector.sector_id: sector for sector in logical.physical_sectors}
+    descriptors = []
+    for group_id, (sector_id, helicity_id) in enumerate(amplitude_destinations):
+        try:
+            sector = sectors_by_id[sector_id]
+        except KeyError as exc:
+            raise ValueError(
+                f"contracted recurrence destination {group_id} references "
+                f"unknown physical sector {sector_id}"
+            ) from exc
+        if helicity_id is None:
+            raise ValueError(
+                f"contracted recurrence destination {group_id} has no helicity"
+            )
+        try:
+            helicity = resolved_helicities[helicity_id]
+        except IndexError as exc:
+            raise ValueError(
+                f"contracted recurrence destination {group_id} references "
+                f"unknown resolved helicity {helicity_id}"
+            ) from exc
+        descriptors.append(
+            ColorGroupDescriptor(
+                group_id=group_id,
+                helicity_key=tuple(int(value) for value in helicity),
+                sector_id=sector.sector_id,
+                word=tuple(labels_by_slot[slot] for slot in sector.word_source_slots),
+                helicity_weight=1.0,
+            )
+        )
+    if not descriptors:
+        raise ValueError("contracted recurrence has no nonzero amplitude destination")
+    contraction = build_color_contraction_plan(color_plan, tuple(descriptors))
+    if contraction is None or not contraction.supported:
+        reason = None if contraction is None else contraction.reason
+        raise ValueError(
+            f"could not build recurrence color contraction: {reason or 'unsupported'}"
+        )
+    return contraction
+
+
+def recurrence_color_sector_owner_map(
+    logical: RecurrenceBuilderLogicalInputV1,
+    active_sector_ids: set[int],
+) -> tuple[int, ...]:
+    """Return the independently derived canonical owner of every color sector.
+
+    Contracted recurrence construction treats permutations of complete open
+    strings as aliases of the same product of color tensors.  This map binds
+    that reduction into the process artifact so the loader can reject a
+    schedule that silently omits, duplicates, or changes an alias class.
+    """
+
+    sectors = tuple(sorted(logical.physical_sectors, key=lambda item: item.sector_id))
+    if tuple(sector.sector_id for sector in sectors) != tuple(range(len(sectors))):
+        raise ValueError("recurrence physical color sectors are not densely numbered")
+
+    owner_by_key: dict[tuple[object, ...], int] = {}
+    owners: list[int] = []
+    for sector in sectors:
+        if sector.kind == "open-lines":
+            open_strings = tuple(
+                sorted(
+                    (
+                        string.fundamental_source_slot,
+                        string.adjoint_source_slots,
+                        string.antifundamental_source_slot,
+                        string.singlet_source_slots,
+                    )
+                    for string in sector.open_strings
+                )
+            )
+            key: tuple[object, ...] = ("open-lines", open_strings)
+        else:
+            # Trace orientation and singlet sectors are already canonicalized
+            # by their construction-sector identity.  Rust does not alias them.
+            key = (sector.kind, sector.sector_id)
+        owner = owner_by_key.setdefault(key, sector.sector_id)
+        owners.append(owner)
+    active = set(active_sector_ids)
+    unknown = active.difference(range(len(sectors)))
+    if unknown:
+        raise ValueError(
+            f"recurrence color destinations reference unknown sectors {sorted(unknown)}"
+        )
+    result = []
+    for sector_id, owner_id in enumerate(owners):
+        if owner_id in active:
+            result.append(owner_id)
+        elif sector_id in active:
+            raise ValueError(
+                f"recurrence color sector {sector_id} is active while its canonical "
+                f"owner {owner_id} is absent"
+            )
+        else:
+            # Absence from the Rust-built schedule is not an independent
+            # structural-zero proof. Fail closed until the projection carries
+            # an exact model-owned zero certificate for this complete class.
+            raise ValueError(
+                f"recurrence color sector class owned by {owner_id} has no active "
+                "destination and no independent structural-zero certificate"
+            )
+    return tuple(result)
+
+
+def recurrence_exact_color_coefficients(
+    color_plan: GenericColorPlan,
+    contraction: ColorContractionPlan,
+    group_sector_ids: Sequence[int],
+) -> tuple[ExactComplexRationalV1, ...]:
+    """Return exact symmetry-folded coefficients in compact entry order."""
+
+    sector_by_id = {sector.id: sector for sector in color_plan.sectors}
+    repeated = contraction.repeated_block
+    entries = contraction.entries if repeated is None else repeated.entries
+    component_count = 1 if repeated is None else repeated.component_count
+
+    result = []
+    for entry in entries:
+        if repeated is None:
+            left_group_id = entry.left_group_id
+            right_group_id = entry.right_group_id
+        else:
+            left_group_id = repeated.component_group_ids[
+                entry.left_group_index * component_count
+            ]
+            right_group_id = repeated.component_group_ids[
+                entry.right_group_index * component_count
+            ]
+        try:
+            left_sector = sector_by_id[group_sector_ids[left_group_id]]
+            right_sector = sector_by_id[group_sector_ids[right_group_id]]
+        except (IndexError, KeyError) as exc:
+            raise ValueError(
+                "recurrence color entry references an unknown physical sector"
+            ) from exc
+        exact = exact_color_contraction_factor(
+            color_plan,
+            left_sector,
+            right_sector,
+            accuracy=contraction.color_accuracy,
+            full_col_acc=20,
+        )
+        symmetry = entry.symmetry_factor
+        if symmetry not in {1.0, 2.0}:
+            raise ValueError(
+                "recurrence color contraction has a non-integral symmetry factor"
+            )
+        folded = exact * int(symmetry)
+        result.append(
+            ExactComplexRationalV1(
+                real_numerator=folded.numerator,
+                real_denominator=folded.denominator,
+            )
+        )
+    return tuple(result)
 
 
 def _runtime_particle_parameter_name(
@@ -580,8 +804,11 @@ def _helicity_id(values: Sequence[int]) -> str:
 
 
 __all__ = [
+    "build_recurrence_color_contraction",
     "build_recurrence_normalization",
     "build_recurrence_physics",
     "build_recurrence_runtime_metadata",
+    "recurrence_color_sector_owner_map",
+    "recurrence_exact_color_coefficients",
     "recurrence_referenced_kernel_ids",
 ]

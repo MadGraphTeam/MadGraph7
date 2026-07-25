@@ -18,6 +18,17 @@ def _eval_trace(
     return _eval_nc_terms(terms)
 
 
+def _eval_trace_exact(
+    traces: tuple[tuple[int, ...], ...],
+    *,
+    coeff: Fraction = Fraction(1),
+) -> Fraction:
+    """Evaluate a trace product at ``Nc`` without passing through binary64."""
+
+    terms = _simplify_trace_terms(((coeff, traces),))
+    return _eval_nc_terms_exact(terms)
+
+
 def _simplify_trace_terms(
     initial: Iterable[tuple[Fraction, tuple[tuple[int, ...], ...]]],
 ) -> Mapping[int, Fraction]:
@@ -313,6 +324,22 @@ def _eval_nc_terms(
         if min_power is not None and power < min_power:
             continue
         value += float(coeff) * (float(NC) ** power)
+    return value
+
+
+def _eval_nc_terms_exact(
+    terms: Mapping[int, Fraction],
+    *,
+    min_power: int | None = None,
+) -> Fraction:
+    """Evaluate an exact Laurent polynomial in ``Nc`` as a ``Fraction``."""
+
+    value = Fraction(0)
+    nc = Fraction(NC)
+    for power, coeff in terms.items():
+        if min_power is not None and power < min_power:
+            continue
+        value += coeff * nc**power
     return value
 
 

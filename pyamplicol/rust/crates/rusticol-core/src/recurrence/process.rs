@@ -2500,11 +2500,11 @@ impl<'a> RecurrenceProcessInputView<'a> {
         _catalogs: &ProcessCatalogs<'_>,
         strategy: RecurrenceStrategy,
     ) -> RusticolResult<()> {
-        if strategy == RecurrenceStrategy::AllFlowUnion
+        if !strategy.uses_topology_replay_targets()
             && (!self.replay_partitions.is_empty() || !self.replay_targets.is_empty())
         {
             return Err(invalid(
-                "all-flow-union recurrence input must not carry topology-replay rows",
+                "non-replay recurrence input must not carry topology-replay rows",
             ));
         }
         let ranges = self

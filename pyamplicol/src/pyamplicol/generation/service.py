@@ -65,6 +65,7 @@ from .artifact_writer import (
     EAGER_RUNTIME_LAYOUT_ABI,
     EAGER_RUNTIME_STORAGE_ABI,
     RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+    RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_CONTAINER_KIND,
@@ -110,15 +111,23 @@ from .helicity_replay import (
 )
 from .physics_metadata import build_resolved_physics_from_dag
 from .progress import GenerationPhaseReporter, PhaseHandle
+from .recurrence_color import (
+    RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+    encode_recurrence_color_contraction,
+    recurrence_color_contraction_digest,
+)
 from .recurrence_columnar import (
     RECURRENCE_BUILDER_INPUT_ABI,
     RecurrenceBuilderInputV1,
     build_recurrence_builder_input_v1,
 )
 from .recurrence_physics import (
+    build_recurrence_color_contraction,
     build_recurrence_normalization,
     build_recurrence_physics,
     build_recurrence_runtime_metadata,
+    recurrence_color_sector_owner_map,
+    recurrence_exact_color_coefficients,
     recurrence_referenced_kernel_ids,
 )
 from .recurrence_projection import (
@@ -331,6 +340,7 @@ class _RustEagerLoweringOutput:
 class _RustRecurrenceLoweringOutput:
     inspection_summary: Mapping[str, object]
     resolved_helicities: tuple[tuple[int, ...], ...]
+    amplitude_destinations: tuple[tuple[int, int | None], ...]
     payload_path: Path
     payload_size_bytes: int
     payload_sha256: str
@@ -481,6 +491,10 @@ def _invoke_rust_recurrence_lowering_v2(
         resolved_helicities=cast(
             tuple[tuple[int, ...], ...], result["resolved_helicities"]
         ),
+        amplitude_destinations=cast(
+            tuple[tuple[int, int | None], ...],
+            result["amplitude_destinations"],
+        ),
         payload_path=destination,
         payload_size_bytes=payload_size,
         payload_sha256=payload_sha256,
@@ -517,6 +531,7 @@ def _validate_rust_recurrence_lowering_result(
             "runtime_container",
             "inspection_summary",
             "resolved_helicities",
+            "amplitude_destinations",
         },
     )
     expected = {
@@ -543,11 +558,16 @@ def _validate_rust_recurrence_lowering_result(
             + ", ".join(mismatched)
         )
     capabilities = result["required_runtime_capabilities"]
+    color_capability = (
+        RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+        if builder_input.layout == "contracted-color-union"
+        else RECURRENCE_COLOR_RUNTIME_CAPABILITY
+    )
     expected_capabilities = tuple(
         sorted(
             {
                 RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
-                RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+                color_capability,
             }
         )
     )
@@ -617,9 +637,46 @@ def _validate_rust_recurrence_lowering_result(
         resolved_helicities.append(row)
     if len(set(resolved_helicities)) != len(resolved_helicities):
         raise GenerationError("Rust recurrence resolved helicities are not unique")
+    raw_destinations = result["amplitude_destinations"]
+    if isinstance(raw_destinations, str | bytes) or not isinstance(
+        raw_destinations, Sequence
+    ):
+        raise GenerationError("Rust recurrence amplitude destinations must be a list")
+    amplitude_destinations = []
+    for destination_id, raw_row in enumerate(raw_destinations):
+        if (
+            isinstance(raw_row, str | bytes)
+            or not isinstance(raw_row, Sequence)
+            or len(raw_row) != 2
+        ):
+            raise GenerationError(
+                "Rust recurrence amplitude destination rows must be "
+                "[sector_id, helicity_id-or-null]"
+            )
+        sector_id = _result_integer(
+            raw_row[0],
+            f"Rust recurrence amplitude destination {destination_id} sector ID",
+            minimum=0,
+        )
+        raw_helicity_id = raw_row[1]
+        helicity_id = (
+            None
+            if raw_helicity_id is None
+            else _result_integer(
+                raw_helicity_id,
+                (f"Rust recurrence amplitude destination {destination_id} helicity ID"),
+                minimum=0,
+            )
+        )
+        amplitude_destinations.append((sector_id, helicity_id))
+    if len(set(amplitude_destinations)) != len(amplitude_destinations):
+        raise GenerationError(
+            "Rust recurrence amplitude destinations repeat a sector/helicity pair"
+        )
     return {
         "inspection_summary": inspection,
         "resolved_helicities": tuple(resolved_helicities),
+        "amplitude_destinations": tuple(amplitude_destinations),
         "member_count": member_count,
         "unpacked_size_bytes": unpacked_size,
         "index_sha256": index_sha256,
@@ -2265,10 +2322,31 @@ class GenerationBackend:
                 build_recurrence_normalization(expanded.process_ir, model)
             )
             layout = (
-                "all-flow-union" if self._all_flow_union_enabled else "topology-replay"
+                "contracted-color-union"
+                if self._color_accuracy in {"nlc", "full"}
+                else (
+                    "all-flow-union"
+                    if self._all_flow_union_enabled
+                    else "topology-replay"
+                )
             )
-            typed_layout = cast(Literal["topology-replay", "all-flow-union"], layout)
+            typed_layout = cast(
+                Literal[
+                    "topology-replay",
+                    "all-flow-union",
+                    "contracted-color-union",
+                ],
+                layout,
+            )
             selection = self._process_selection
+            if (
+                layout == "contracted-color-union"
+                and selection.selected_color_sector_ids is not None
+            ):
+                raise GenerationError(
+                    "NLC/full recurrence contracts the complete color basis and "
+                    "does not support generation-selected color sectors"
+                )
             source_selection = (
                 None
                 if selection.selected_source_helicities is None
@@ -2448,6 +2526,19 @@ class GenerationBackend:
         resolved_helicities = process_remap.remap_resolved_helicities(
             output.resolved_helicities
         )
+        try:
+            amplitude_destinations = tuple(
+                (
+                    process_remap.physical_sector_ids[sector_id],
+                    helicity_id,
+                )
+                for sector_id, helicity_id in output.amplitude_destinations
+            )
+        except IndexError as exc:
+            raise GenerationError(
+                "shared recurrence schedule references a physical sector outside "
+                "the concrete process binding"
+            ) from exc
         physics = build_recurrence_physics(
             expanded.process_ir,
             logical,
@@ -2455,6 +2546,7 @@ class GenerationBackend:
             process_id=process_name,
             resolved_helicities=resolved_helicities,
             normalization=normalization_payload,
+            color_plan=prepared.complete_color_plan,
         )
         run = self._run_config
         assert run is not None
@@ -2483,6 +2575,105 @@ class GenerationBackend:
         inspection_summary["process_id"] = process_name
         inspection_summary["semantic_digest"] = builder_input.digest
         inspection_summary["schedule_digest"] = schedule_digest
+        color_contraction = build_recurrence_color_contraction(
+            logical,
+            prepared.complete_color_plan,
+            resolved_helicities,
+            amplitude_destinations,
+        )
+        color_contraction_payload = None
+        color_contraction_summary = None
+        if color_contraction is not None:
+            sector_count = len(logical.physical_sectors)
+            component_count = len(resolved_helicities)
+            group_count = color_contraction.group_count
+            destination_count = int(
+                schedule_summary.get("amplitude_destination_count", 0)
+                if isinstance(schedule_summary, Mapping)
+                else 0
+            )
+            if destination_count != group_count or destination_count != len(
+                amplitude_destinations
+            ):
+                raise GenerationError(
+                    "contracted recurrence destination metadata does not match "
+                    "its color-contraction groups"
+                )
+            if any(helicity_id is None for _, helicity_id in amplitude_destinations):
+                raise GenerationError(
+                    "contracted recurrence exposes a destination without a "
+                    "resolved helicity"
+                )
+            group_sector_ids = tuple(
+                sector_id for sector_id, _ in amplitude_destinations
+            )
+            group_component_ids = tuple(
+                cast(int, helicity_id) for _, helicity_id in amplitude_destinations
+            )
+            repeated = color_contraction.repeated_block
+            ordered_group_ids = (
+                tuple(range(group_count))
+                if repeated is None
+                else repeated.component_group_ids
+            )
+            color_contraction_payload = encode_recurrence_color_contraction(
+                color_contraction,
+                sector_count=sector_count,
+                component_count=component_count,
+                ordered_group_ids=ordered_group_ids,
+                destination_by_group=tuple(range(destination_count)),
+                destination_count=destination_count,
+                group_sector_ids=group_sector_ids,
+                group_component_ids=group_component_ids,
+                sector_owner_ids=recurrence_color_sector_owner_map(
+                    logical,
+                    set(group_sector_ids),
+                ),
+                exact_coefficients=recurrence_exact_color_coefficients(
+                    prepared.complete_color_plan,
+                    color_contraction,
+                    group_sector_ids,
+                ),
+            )
+            color_digest = recurrence_color_contraction_digest(
+                color_contraction_payload
+            )
+            color_contraction_summary = {
+                "abi": RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+                "color_accuracy": color_contraction.color_accuracy,
+                "storage": (
+                    "expanded"
+                    if color_contraction.repeated_block is None
+                    else "repeated"
+                ),
+                "includes_color_factor": color_contraction.includes_color_factor,
+                "group_count": group_count,
+                "sector_count": sector_count,
+                "active_sector_count": len(set(group_sector_ids)),
+                "component_count": component_count,
+                "destination_count": destination_count,
+                "entry_count": (
+                    len(color_contraction.entries)
+                    if repeated is None
+                    else len(repeated.entries)
+                ),
+                "logical_entry_count": color_contraction.logical_entry_count,
+                "semantic_digest": color_digest,
+                "factorization": (
+                    None
+                    if repeated is None or repeated.factorized_block is None
+                    else {
+                        "kind": repeated.factorized_block.kind,
+                        "rank": (
+                            2
+                            if repeated.factorized_block.kind
+                            == "klein-four-walsh"
+                            else repeated.factorized_block.rank
+                        ),
+                        "coset_count": len(repeated.factorized_block.cosets),
+                    }
+                ),
+            }
         artifact = RecurrenceProcessArtifact(
             process_id=process_name,
             expression=expanded.process_ir.process,
@@ -2513,6 +2704,8 @@ class GenerationBackend:
                 model,
                 normalization_payload,
             ),
+            color_contraction_payload=color_contraction_payload,
+            color_contraction_summary=color_contraction_summary,
             point_tile_size=run.evaluator.recurrence.point_tile_size,
             workspace_mib=run.evaluator.recurrence.workspace_mib,
             recurrence_summary=recurrence_summary,
@@ -3434,11 +3627,10 @@ class GenerationBackend:
 
         if not self._recurrence_execution_enabled:
             return
-        if self._color_accuracy != "lc":
+        if self._color_accuracy not in {"lc", "nlc", "full"}:
             raise GenerationError(
-                "recurrence execution is available only for LC generation; "
-                "use --execution-mode compiled or --execution-mode eager for "
-                f"color.accuracy={self._color_accuracy!r}"
+                "recurrence execution supports LC, NLC, and full color; "
+                f"got color.accuracy={self._color_accuracy!r}"
             )
 
     @property

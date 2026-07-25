@@ -904,14 +904,14 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
         }
     }
     match parts.strategy {
-        RecurrenceStrategy::TopologyReplay => {
+        RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion => {
             if !parts.source_dispatch_variants.is_empty()
                 || !parts.source_embeddings.is_empty()
                 || !parts.source_projections.is_empty()
                 || !parts.resolved_source_selections.is_empty()
             {
                 return Err(invalid(
-                    "topology-replay must not carry runtime source-dispatch tables",
+                    "fixed-source recurrence must not carry runtime source-dispatch tables",
                 ));
             }
         }
@@ -1308,6 +1308,11 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                     )));
                 }
             }
+            RecurrenceStrategy::ContractedColorUnion => {
+                return Err(invalid(format!(
+                    "contracted-color recurrence unexpectedly carries replay target {index}"
+                )));
+            }
         }
     }
 
@@ -1367,9 +1372,11 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             )));
         }
         match parts.strategy {
-            RecurrenceStrategy::TopologyReplay if helicity.source_selection_count != 0 => {
+            RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion
+                if helicity.source_selection_count != 0 =>
+            {
                 return Err(invalid(format!(
-                    "topology-replay resolved helicity {index} carries source dispatch selections"
+                    "fixed-source resolved helicity {index} carries source dispatch selections"
                 )));
             }
             RecurrenceStrategy::AllFlowUnion

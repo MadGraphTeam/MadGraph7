@@ -2277,9 +2277,13 @@ impl RecurrenceProgram {
                     )));
                 }
                 match self.strategy {
-                    RecurrenceStrategy::TopologyReplay if current.source_exact_factor.is_none() => {
+                    RecurrenceStrategy::TopologyReplay
+                    | RecurrenceStrategy::ContractedColorUnion
+                        if current.source_exact_factor.is_none() =>
+                    {
                         return Err(invalid(format!(
-                            "topology-replay source current {expected_id} requires an exact source factor"
+                            "{} source current {expected_id} requires an exact source factor",
+                            self.strategy
                         )));
                     }
                     RecurrenceStrategy::AllFlowUnion if current.source_exact_factor.is_some() => {
@@ -2517,6 +2521,11 @@ impl RecurrenceProgram {
                     "all-flow-union recurrence must not carry topology-replay targets",
                 ));
             }
+            RecurrenceStrategy::ContractedColorUnion if !self.replay_targets.is_empty() => {
+                return Err(invalid(
+                    "contracted-color recurrence must not carry topology-replay targets",
+                ));
+            }
             _ => {}
         }
         for destination in &self.amplitude_destinations {
@@ -2550,6 +2559,11 @@ impl RecurrenceProgram {
             RecurrenceStrategy::AllFlowUnion if !self.resolved_helicities.is_empty() => {
                 return Err(invalid(
                     "all-flow-union recurrence must select source helicity at runtime",
+                ));
+            }
+            RecurrenceStrategy::ContractedColorUnion if self.resolved_helicities.is_empty() => {
+                return Err(invalid(
+                    "contracted-color recurrence requires resolved-helicity destinations",
                 ));
             }
             _ => {}
@@ -2615,6 +2629,18 @@ impl RecurrenceProgram {
                 (RecurrenceStrategy::AllFlowUnion, Some(_)) => {
                     return Err(invalid(format!(
                         "all-flow-union amplitude destination {destination_id} fixes a helicity"
+                    )));
+                }
+                (RecurrenceStrategy::ContractedColorUnion, Some(helicity_id))
+                    if u64::from(helicity_id) < helicity_count => {}
+                (RecurrenceStrategy::ContractedColorUnion, Some(helicity_id)) => {
+                    return Err(invalid(format!(
+                        "contracted-color amplitude destination {destination_id} references unknown resolved helicity {helicity_id}"
+                    )));
+                }
+                (RecurrenceStrategy::ContractedColorUnion, None) => {
+                    return Err(invalid(format!(
+                        "contracted-color amplitude destination {destination_id} lacks a helicity"
                     )));
                 }
             }

@@ -443,13 +443,14 @@ fn build_direct_parts(
         let source_slot = only_source_slot(current)?;
         match (program.strategy(), current.key().source_binding()) {
             (
-                RecurrenceStrategy::TopologyReplay,
+                RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion,
                 CurrentSourceBinding::FixedTemplate(source_template_id),
             ) => {
                 let source_factor = current.source_exact_factor().ok_or_else(|| {
                     invalid(format!(
-                        "topology-replay source current {} has no exact source factor",
-                        current.id()
+                        "{} source current {} has no exact source factor",
+                        program.strategy(),
+                        current.id(),
                     ))
                 })?;
                 let source = input
@@ -517,10 +518,11 @@ fn build_direct_parts(
                     &mut runtime_sources,
                 )?;
             }
-            (RecurrenceStrategy::TopologyReplay, _) => {
+            (RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion, _) => {
                 return Err(invalid(format!(
-                    "topology-replay source current {} does not use one fixed source template",
-                    current.id()
+                    "{} source current {} does not use one fixed source template",
+                    program.strategy(),
+                    current.id(),
                 )));
             }
             (RecurrenceStrategy::AllFlowUnion, _) => {
@@ -1011,7 +1013,7 @@ fn build_direct_parts(
         resolved_source_selections,
         public_helicities,
     ) = match program.strategy() {
-        RecurrenceStrategy::TopologyReplay => {
+        RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion => {
             let (descriptors, source_states, public_helicities) =
                 lower_resolved_helicities(program)?;
             (descriptors, source_states, Vec::new(), public_helicities)
@@ -1052,15 +1054,17 @@ fn build_direct_parts(
         state_template_count,
         source_template_count,
         source_template_or_dispatch_count: match program.strategy() {
-            RecurrenceStrategy::TopologyReplay => source_template_count,
+            RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion => {
+                source_template_count
+            }
             RecurrenceStrategy::AllFlowUnion => templates.summary().runtime_helicity_contract_count,
         },
         runtime_helicity_contract_count: match program.strategy() {
-            RecurrenceStrategy::TopologyReplay => 0,
+            RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion => 0,
             RecurrenceStrategy::AllFlowUnion => templates.summary().runtime_helicity_contract_count,
         },
         runtime_helicity_variant_count: match program.strategy() {
-            RecurrenceStrategy::TopologyReplay => 0,
+            RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion => 0,
             RecurrenceStrategy::AllFlowUnion => u32_len(
                 "runtime-helicity variant",
                 input.runtime_helicity_variants.len(),
@@ -2093,10 +2097,10 @@ fn lower_replay_targets(
     program: &RecurrenceProgram,
     exact_factor_ids: &BTreeMap<ExactComplexRational, u32>,
 ) -> RusticolResult<DirectReplayTables> {
-    if program.strategy() == RecurrenceStrategy::AllFlowUnion {
+    if !program.strategy().uses_topology_replay_targets() {
         if !program.replay_targets().is_empty() {
             return Err(invalid(
-                "all-flow-union program unexpectedly carries replay targets",
+                "non-replay recurrence program unexpectedly carries replay targets",
             ));
         }
         return Ok((Vec::new(), Vec::new(), Vec::new(), Vec::new()));

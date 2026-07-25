@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from fractions import Fraction
 from itertools import permutations
 from math import isclose, nextafter
 
@@ -17,6 +18,8 @@ from pyamplicol.color import (
     build_color_contraction_plan,
     build_color_plan,
     color_contraction_factors,
+    exact_color_contraction_factor,
+    exact_color_contraction_factors,
 )
 from pyamplicol.color.contraction import _build_walsh_color_contraction_block
 from pyamplicol.color.contraction_factors import (
@@ -39,6 +42,45 @@ def test_color_one_open_line_factors_match_reference_convention() -> None:
     )
     sector = plan.sectors[0]
     assert color_contraction_factors(plan, sector, sector) == (9.0, 8.0, 8.0)
+
+
+@pytest.mark.parametrize(
+    "process",
+    (
+        "g g > g g",
+        "d d~ > z g",
+        "d d~ > u u~",
+        "d d~ > u u~ s s~ g",
+    ),
+)
+def test_exact_color_factors_match_binary64_reference_for_every_sector_pair(
+    process: str,
+) -> None:
+    plan = build_color_plan(
+        build_process_ir(process, color_accuracy="full"),
+        color_accuracy="full",
+    )
+
+    for left in plan.sectors:
+        for right in plan.sectors:
+            exact = exact_color_contraction_factors(plan, left, right)
+            binary64 = color_contraction_factors(plan, left, right)
+            assert all(isinstance(value, Fraction) for value in exact)
+            assert tuple(float(value) for value in exact) == binary64
+            for accuracy, expected in zip(
+                ("lc", "nlc", "full"),
+                exact,
+                strict=True,
+            ):
+                assert (
+                    exact_color_contraction_factor(
+                        plan,
+                        left,
+                        right,
+                        accuracy=accuracy,
+                    )
+                    == expected
+                )
 
 
 def test_pure_adjoint_full_factors_cache_relative_permutations_exactly() -> None:
@@ -849,5 +891,7 @@ def test_color_contraction_compaction_falls_back_for_nonidentical_components() -
 def test_color_contraction_public_names_have_no_legacy_aliases() -> None:
     assert callable(color.color_contraction_factor)
     assert callable(color.color_contraction_factors)
+    assert callable(color.exact_color_contraction_factor)
+    assert callable(color.exact_color_contraction_factors)
     assert not hasattr(color, "amplicol_color_factor")
     assert not hasattr(color, "amplicol_color_factors")

@@ -172,6 +172,8 @@ pub const EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY: &str =
 pub const RECURRENCE_RUNTIME_CAPABILITY: &str = crate::recurrence::RECURRENCE_RUNTIME_CAPABILITY;
 pub const RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_LC_COLOR_CAPABILITY;
+pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
+    crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
 pub const COMPILED_HELICITY_DUAL_LANE_CAPABILITY: &str = "rusticol.compiled.helicity-dual-lane.v1";
 pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =
@@ -223,6 +225,7 @@ pub enum RuntimeCapability {
     EagerLcTopologyReplayComplexF64V1,
     RecurrenceRuntimeComplexF64V1,
     RecurrenceLcColorV1,
+    RecurrenceContractedColorV1,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -248,6 +251,7 @@ impl RuntimeCapability {
             Self::EagerLcTopologyReplayComplexF64V1 => EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
             Self::RecurrenceRuntimeComplexF64V1 => RECURRENCE_RUNTIME_CAPABILITY,
             Self::RecurrenceLcColorV1 => RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
+            Self::RecurrenceContractedColorV1 => RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
@@ -284,6 +288,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         RECURRENCE_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
         #[cfg(feature = "f64-symjit")]
         SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
         #[cfg(feature = "symbolica-runtime")]
@@ -2530,6 +2536,20 @@ pub struct NativeRuntimeMetadata {
     pub interaction_count: usize,
     pub stage_count: usize,
     pub amplitude_output_count: usize,
+}
+
+/// Prepared batch-global selectors for allocation-free recurrence evaluation.
+///
+/// Selector resolution and validation may allocate while this handle is
+/// created. Reusing it with
+/// [`NativeRuntime::evaluate_f64_into_with_recurrence_selector_plan`] borrows
+/// the retained selector sets and caller-owned input/output storage.
+#[derive(Clone, Debug)]
+pub struct NativeRecurrenceSelectorPlan {
+    artifact_root: PathBuf,
+    process_key: String,
+    selected_helicities: Option<BTreeSet<String>>,
+    selected_colors: Option<BTreeSet<String>>,
 }
 
 /// Exact-required sections decoded lazily from one authenticated eager plan-v3

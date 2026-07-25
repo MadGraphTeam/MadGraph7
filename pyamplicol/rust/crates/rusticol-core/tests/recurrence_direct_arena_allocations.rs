@@ -82,6 +82,7 @@ const EXPECTED_IM: [f64; 4] = [1.0, 2.0, 3.0, 4.0];
 const REAL_ARTIFACT_REPETITIONS: usize = 8;
 const TOPOLOGY_ARTIFACT_ENV: &str = "RUSTICOL_RECURRENCE_TOPOLOGY_ALLOCATION_ARTIFACT";
 const UNION_ARTIFACT_ENV: &str = "RUSTICOL_RECURRENCE_UNION_ALLOCATION_ARTIFACT";
+const CONTRACTED_ARTIFACT_ENV: &str = "RUSTICOL_RECURRENCE_CONTRACTED_ALLOCATION_ARTIFACT";
 
 unsafe extern "C" fn fill_sources(
     _context: *const c_void,
@@ -867,6 +868,58 @@ fn prove_genuine_artifact_warmed_loop_allocates_nothing(artifact: PathBuf, expec
     );
 }
 
+fn prove_genuine_contracted_selector_plan_allocates_nothing(artifact: PathBuf) {
+    let mut runtime =
+        NativeRuntime::load(&artifact, None, None).expect("load genuine recurrence artifact");
+    let metadata = runtime.metadata();
+    assert_eq!(metadata.execution_mode, "recurrence");
+    assert_recurrence_layout(
+        &artifact,
+        &metadata.representative_process_key,
+        "contracted-color-union",
+    );
+    let helicity_id = runtime
+        .helicity_ids()
+        .expect("load recurrence helicity IDs")
+        .into_iter()
+        .next()
+        .expect("contracted recurrence artifact has no helicity");
+    let selected_helicities = [helicity_id];
+    let selector_plan = runtime
+        .prepare_recurrence_selector_plan(Some(&selected_helicities), None)
+        .expect("prepare recurrence selector plan");
+    let momenta = validation_momenta(&runtime);
+    let mut output = [f64::NAN; 1];
+    runtime
+        .evaluate_f64_into_with_recurrence_selector_plan(&selector_plan, &momenta, 1, &mut output)
+        .expect("warm genuine selected recurrence evaluation");
+    let expected = output;
+
+    let (result, allocation_count, allocated_bytes) = count_allocations(|| {
+        for _ in 0..REAL_ARTIFACT_REPETITIONS {
+            runtime.evaluate_f64_into_with_recurrence_selector_plan(
+                &selector_plan,
+                &momenta,
+                1,
+                &mut output,
+            )?;
+            std::hint::black_box(output.as_slice());
+        }
+        Ok::<(), RusticolError>(())
+    });
+    result.expect("repeat genuine selected recurrence evaluation");
+
+    assert_eq!(output, expected, "selected recurrence output changed");
+    assert_eq!(
+        allocation_count, 0,
+        "prepared recurrence selector loop allocated"
+    );
+    assert_eq!(
+        allocated_bytes, 0,
+        "prepared recurrence selector loop allocated bytes"
+    );
+}
+
 #[test]
 fn genuine_topology_replay_artifact_warmed_loop_allocates_zero_heap_bytes() {
     let Some(artifact) = genuine_artifact_path(TOPOLOGY_ARTIFACT_ENV) else {
@@ -881,4 +934,20 @@ fn genuine_all_flow_union_artifact_warmed_loop_allocates_zero_heap_bytes() {
         return;
     };
     prove_genuine_artifact_warmed_loop_allocates_nothing(artifact, "all-flow-union");
+}
+
+#[test]
+fn genuine_contracted_color_artifact_warmed_loop_allocates_zero_heap_bytes() {
+    let Some(artifact) = genuine_artifact_path(CONTRACTED_ARTIFACT_ENV) else {
+        return;
+    };
+    prove_genuine_artifact_warmed_loop_allocates_nothing(artifact, "contracted-color-union");
+}
+
+#[test]
+fn genuine_contracted_color_prepared_selector_allocates_zero_heap_bytes() {
+    let Some(artifact) = genuine_artifact_path(CONTRACTED_ARTIFACT_ENV) else {
+        return;
+    };
+    prove_genuine_contracted_selector_plan_allocates_nothing(artifact);
 }

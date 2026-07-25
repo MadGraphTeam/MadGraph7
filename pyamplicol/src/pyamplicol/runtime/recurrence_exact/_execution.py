@@ -151,6 +151,33 @@ def _evaluate_union_point(
     )
 
 
+def _evaluate_contracted_point(
+    plan: _RecurrenceExactPlan,
+    point: _Point,
+    prepared_parameters: Sequence[_ComplexDecimal],
+    precision: int,
+) -> tuple[_ComplexDecimal, ...]:
+    """Execute the fixed-source contracted-color schedule once."""
+
+    sections = plan.sections
+    if sections.strategy != "contracted-color-union":
+        raise ArtifactError(
+            "contracted exact execution requires a contracted-color plan"
+        )
+    momenta = _momentum_forms(
+        plan,
+        point,
+        tuple(range(sections.external_source_count)),
+    )
+    return _execute_schedule(
+        plan,
+        momenta,
+        prepared_parameters,
+        precision,
+        selected_source_variants=None,
+    )
+
+
 def _execute_schedule(
     plan: _RecurrenceExactPlan,
     momenta: Sequence[Sequence[Decimal]],
@@ -803,4 +830,8 @@ def _role_index(role: str) -> int:
         raise ArtifactError(f"unsupported direct executor role {role!r}") from exc
 
 
-__all__ = ["_evaluate_replay_point", "_evaluate_union_point"]
+__all__ = [
+    "_evaluate_contracted_point",
+    "_evaluate_replay_point",
+    "_evaluate_union_point",
+]

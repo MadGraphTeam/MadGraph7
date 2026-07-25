@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pyamplicol.api import ModelSource, ProcessRequest, ProcessSet
+from pyamplicol.api import ModelSource
 from pyamplicol.api.errors import GenerationError
 from pyamplicol.config import ColorConfig, EvaluatorConfig, RunConfig
 from pyamplicol.generation.service import GenerationBackend
@@ -26,13 +26,10 @@ def _backend(*, accuracy: str = "lc") -> GenerationBackend:
 
 
 @pytest.mark.parametrize("accuracy", ("nlc", "full"))
-def test_recurrence_rejects_contracted_color_before_process_expansion(
+def test_recurrence_accepts_contracted_color_before_process_expansion(
     accuracy: str,
 ) -> None:
-    processes = ProcessSet((ProcessRequest.parse("d d~ > z g"),))
-
-    with pytest.raises(GenerationError, match="available only for LC generation"):
-        _backend(accuracy=accuracy).plan(processes)
+    _backend(accuracy=accuracy)._validate_recurrence_request()
 
 
 def test_recurrence_lc_is_fail_closed_before_generic_dag_construction() -> None:

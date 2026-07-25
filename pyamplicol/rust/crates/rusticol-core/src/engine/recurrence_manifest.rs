@@ -5,7 +5,8 @@
 use crate::recurrence::direct_backend::RECURRENCE_DIRECT_BACKEND_ABI;
 use crate::recurrence::template::RECURRENCE_TEMPLATE_INPUT_ABI;
 use crate::recurrence::{
-    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
+    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+    RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
     RECURRENCE_DIRECT_TEMPLATE_ABI, RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_CAPABILITY, RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI,
 };
@@ -20,6 +21,7 @@ pub(super) const RECURRENCE_RUNTIME_CONTAINER_KIND: &str =
 pub(super) const RECURRENCE_RUNTIME_CONTAINER_SCHEMA: u16 = 1;
 pub(super) const RECURRENCE_PROCESS_BINDING_ABI: &str = "pyamplicol-recurrence-process-binding-v2";
 pub(super) const RECURRENCE_PROCESS_BINDING_PATH: &str = "recurrence-binding.bin";
+pub(super) const RECURRENCE_COLOR_CONTRACTION_PATH: &str = "recurrence-color.bin";
 pub(super) const RECURRENCE_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const RECURRENCE_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 
@@ -146,6 +148,7 @@ pub(super) struct RecurrenceRuntimeContainer {
 pub(super) enum RecurrenceLcFlowLayout {
     TopologyReplay,
     AllFlowUnion,
+    ContractedColorUnion,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -254,6 +257,37 @@ pub(super) struct RecurrenceRuntimeMetadata {
     pub(super) external_legs: Vec<RecurrenceExternalLeg>,
     pub(super) particle_masses: Vec<RecurrenceParticleMass>,
     pub(super) normalization: RecurrenceNormalization,
+    pub(super) color_contraction: Option<RecurrenceColorContractionReference>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceColorContractionReference {
+    pub(super) abi: String,
+    pub(super) path: String,
+    pub(super) size_bytes: u64,
+    pub(super) sha256: String,
+    pub(super) color_accuracy: String,
+    pub(super) storage: String,
+    pub(super) includes_color_factor: bool,
+    pub(super) group_count: u64,
+    pub(super) sector_count: u64,
+    pub(super) active_sector_count: u64,
+    pub(super) component_count: u64,
+    pub(super) destination_count: u64,
+    pub(super) entry_count: u64,
+    pub(super) logical_entry_count: u64,
+    pub(super) semantic_digest: String,
+    #[serde(default)]
+    pub(super) factorization: Option<RecurrenceColorFactorizationReference>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceColorFactorizationReference {
+    pub(super) kind: String,
+    pub(super) rank: u32,
+    pub(super) coset_count: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -448,10 +482,12 @@ impl RecurrenceExecutionManifest {
         }
         validate_capabilities(
             &self.required_runtime_capabilities,
+            &self.color_accuracy,
             "recurrence execution manifest",
         )?;
         validate_capabilities(
             &outer.required_runtime_capabilities,
+            &self.color_accuracy,
             "outer recurrence process",
         )?;
         validate_direct_contract(
@@ -488,6 +524,7 @@ impl RecurrenceExecutionManifest {
             &self.key,
             &self.prepared_kernel_pack_digest,
             &self.direct_template_catalog_digest,
+            &self.color_accuracy,
         )?;
         self.recurrence_summary.validate()?;
         self.runtime_metadata.validate(
@@ -498,7 +535,8 @@ impl RecurrenceExecutionManifest {
 
         let inspection = &self.plan.inspection_summary;
         let remap = &self.plan.process_binding.remap;
-        if remap.public_flow_ids.len() != self.runtime_metadata.public_color_flows.len()
+        if (inspection.lc_flow_layout != RecurrenceLcFlowLayout::ContractedColorUnion
+            && remap.public_flow_ids.len() != self.runtime_metadata.public_color_flows.len())
             || remap.physical_sector_ids.len() as u64 != inspection.sector_count
         {
             return Err(RusticolError::integrity(
@@ -541,6 +579,7 @@ impl RecurrencePlanSummary {
         process_key: &str,
         prepared_kernel_pack_digest: &str,
         direct_template_catalog_digest: &str,
+        color_accuracy: &str,
     ) -> RusticolResult<()> {
         if self.kind != RECURRENCE_RUNTIME_KIND {
             return Err(RusticolError::compatibility(format!(
@@ -577,6 +616,7 @@ impl RecurrencePlanSummary {
         }
         validate_capabilities(
             &self.required_runtime_capabilities,
+            color_accuracy,
             "nested recurrence plan",
         )?;
         self.runtime_schedule.validate()?;
@@ -1046,16 +1086,12 @@ impl RecurrenceRuntimeMetadata {
         ] {
             bounded_len(context, len)?;
         }
-        if self.public_color_flows.is_empty() {
-            return Err(RusticolError::artifact(
-                "recurrence runtime metadata has no public color flows",
-            ));
-        }
         let expected_public_flow_count = match inspection.lc_flow_layout {
             RecurrenceLcFlowLayout::TopologyReplay => Some(inspection.schedule.replay_target_count),
             // Folded trace reflections remain distinct public flows while
             // sharing one authenticated construction sector.
             RecurrenceLcFlowLayout::AllFlowUnion => None,
+            RecurrenceLcFlowLayout::ContractedColorUnion => Some(0),
         };
         if expected_public_flow_count
             .is_some_and(|count| self.public_color_flows.len() as u64 != count)
@@ -1099,6 +1135,34 @@ impl RecurrenceRuntimeMetadata {
             return Err(RusticolError::integrity(
                 "recurrence public color flows do not cover every Direct-Arena construction sector",
             ));
+        }
+        match inspection.lc_flow_layout {
+            RecurrenceLcFlowLayout::TopologyReplay | RecurrenceLcFlowLayout::AllFlowUnion => {
+                if color_accuracy != "lc" || self.public_color_flows.is_empty() {
+                    return Err(RusticolError::artifact(
+                        "LC recurrence runtime metadata requires public physical color flows",
+                    ));
+                }
+                if self.color_contraction.is_some() {
+                    return Err(RusticolError::artifact(
+                        "LC recurrence must not carry a contracted-color payload",
+                    ));
+                }
+            }
+            RecurrenceLcFlowLayout::ContractedColorUnion => {
+                if !matches!(color_accuracy, "nlc" | "full") || !self.public_color_flows.is_empty()
+                {
+                    return Err(RusticolError::artifact(
+                        "contracted recurrence metadata requires NLC/full color and no public color-flow axis",
+                    ));
+                }
+                let color_contraction = self.color_contraction.as_ref().ok_or_else(|| {
+                    RusticolError::artifact(
+                        "NLC/full recurrence has no contracted-color payload reference",
+                    )
+                })?;
+                color_contraction.validate(color_accuracy, inspection)?;
+            }
         }
         if self.prepared_parameter_defaults.len() as u64 != inspection.parameter_count {
             return Err(RusticolError::integrity(
@@ -1346,6 +1410,79 @@ impl RecurrenceRuntimeMetadata {
     }
 }
 
+impl RecurrenceColorContractionReference {
+    fn validate(
+        &self,
+        color_accuracy: &str,
+        inspection: &RecurrenceInspectionSummary,
+    ) -> RusticolResult<()> {
+        if self.abi != RECURRENCE_COLOR_CONTRACTION_CODEC_ABI
+            || self.path != RECURRENCE_COLOR_CONTRACTION_PATH
+        {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence color-contraction payload contract",
+            ));
+        }
+        if self.color_accuracy != color_accuracy
+            || !matches!(self.color_accuracy.as_str(), "nlc" | "full")
+            || !matches!(self.storage.as_str(), "expanded" | "repeated")
+        {
+            return Err(RusticolError::integrity(
+                "recurrence color-contraction summary has incompatible accuracy or storage",
+            ));
+        }
+        if !self.includes_color_factor {
+            return Err(RusticolError::integrity(
+                "NLC/full recurrence color contraction must include the color factor",
+            ));
+        }
+        if let Some(factorization) = &self.factorization {
+            let valid_kind_and_rank = match factorization.kind.as_str() {
+                "klein-four-walsh" => factorization.rank == 2,
+                "elementary-abelian-walsh" => (3..=16).contains(&factorization.rank),
+                _ => false,
+            };
+            if self.storage != "repeated" || !valid_kind_and_rank || factorization.coset_count == 0
+            {
+                return Err(RusticolError::integrity(
+                    "recurrence color factorization summary is inconsistent",
+                ));
+            }
+        }
+        parse_sha256(&self.sha256, "recurrence color-contraction payload")?;
+        parse_sha256(
+            &self.semantic_digest,
+            "recurrence color-contraction semantic payload",
+        )?;
+        if self.sha256 != self.semantic_digest
+            || self.size_bytes == 0
+            || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES
+            || self.sector_count != inspection.sector_count
+            || self.component_count != inspection.schedule.resolved_helicity_count
+            || self.destination_count != inspection.schedule.amplitude_destination_count
+            || self.active_sector_count == 0
+            || self.active_sector_count > self.sector_count
+            || self.group_count < self.active_sector_count
+            || self.group_count
+                > self
+                    .active_sector_count
+                    .checked_mul(self.component_count)
+                    .ok_or_else(|| {
+                        RusticolError::artifact(
+                            "recurrence color-contraction active group bound overflows",
+                        )
+                    })?
+            || self.entry_count == 0
+            || self.logical_entry_count < self.entry_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence color-contraction summary is inconsistent with the Direct-Arena schedule",
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl RecurrenceSourceTemplate {
     fn validate(&self, index: usize) -> RusticolResult<()> {
         if self.dimension == 0 || self.dimension > MAX_SOURCE_COMPONENTS {
@@ -1568,13 +1705,26 @@ pub(super) fn parse_recurrence_execution_manifest(
     Ok(manifest)
 }
 
-fn validate_capabilities(capabilities: &[String], context: &str) -> RusticolResult<()> {
+fn validate_capabilities(
+    capabilities: &[String],
+    color_accuracy: &str,
+    context: &str,
+) -> RusticolResult<()> {
+    let color_capability = match color_accuracy {
+        "lc" => RECURRENCE_LC_COLOR_CAPABILITY,
+        "nlc" | "full" => RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
+        other => {
+            return Err(RusticolError::compatibility(format!(
+                "{context} has unsupported recurrence color accuracy {other:?}"
+            )));
+        }
+    };
     if capabilities.len() != 2
-        || capabilities[0] != RECURRENCE_LC_COLOR_CAPABILITY
+        || capabilities[0] != color_capability
         || capabilities[1] != RECURRENCE_RUNTIME_CAPABILITY
     {
         return Err(RusticolError::compatibility(format!(
-            "{context} must require exactly [{RECURRENCE_LC_COLOR_CAPABILITY:?}, {RECURRENCE_RUNTIME_CAPABILITY:?}]"
+            "{context} must require exactly [{color_capability:?}, {RECURRENCE_RUNTIME_CAPABILITY:?}]"
         )));
     }
     Ok(())
@@ -1826,6 +1976,7 @@ pub(super) mod tests {
                 "is_initial": false
             }],
             "particle_masses": [{"outgoing_pdg": 25, "mass": 0.0}],
+            "color_contraction": null,
             "normalization": {
                 "color_accuracy": "lc",
                 "color_factor": 1.0,

@@ -24,10 +24,18 @@ RECURRENCE_BUILDER_INPUT_ABI: Final = "pyamplicol-recurrence-builder-input-v2"
 RECURRENCE_BUILDER_INPUT_SCHEMA_VERSION: Final = 1
 MISSING_U32: Final = (1 << 32) - 1
 
-RecurrenceLCFlowLayout = Literal["topology-replay", "all-flow-union"]
+RecurrenceLCFlowLayout = Literal[
+    "topology-replay",
+    "all-flow-union",
+    "contracted-color-union",
+]
 LCColorSectorKind = Literal["singlet", "open-lines", "single-trace"]
 
-_LAYOUT_CODES: Final = {"topology-replay": 0, "all-flow-union": 1}
+_LAYOUT_CODES: Final = {
+    "topology-replay": 0,
+    "all-flow-union": 1,
+    "contracted-color-union": 2,
+}
 _SECTOR_KIND_CODES: Final = {"singlet": 0, "open-lines": 1, "single-trace": 2}
 _REQUIRED_HEADER_DIGEST_ROLES: Final = frozenset(
     {"process", "model-catalog", "prepared-catalog", "color-plan"}
@@ -748,6 +756,16 @@ class RecurrenceBuilderInputV1:
             if table.name == name:
                 return table
         raise KeyError(f"recurrence builder input has no table {name!r}")
+
+    @property
+    def layout(self) -> RecurrenceLCFlowLayout:
+        code = int(self.table("header").column("layout")[0])
+        for layout, candidate in _LAYOUT_CODES.items():
+            if candidate == code:
+                return layout
+        raise RecurrenceColumnarInputError(
+            f"recurrence header contains unknown layout code {code}"
+        )
 
     def fermion_pairing_table(self, name: str) -> RecurrenceColumnarTable:
         """Return one table from the private process-owned pairing payload."""

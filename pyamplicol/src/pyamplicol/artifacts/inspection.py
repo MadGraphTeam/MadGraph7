@@ -13,6 +13,7 @@ from typing import cast
 from pyamplicol._internal.versions import (
     RECURRENCE_BUILDER_INPUT_ABI,
     RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+    RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_TEMPLATE_ABI,
@@ -29,6 +30,9 @@ _RECURRENCE_RUNTIME_KIND = "pyamplicol-runtime-recurrence-execution"
 _RETIRED_RECURRENCE_RUNTIME_CAPABILITY = "rusticol.recurrence-runtime.complex-f64.v1"
 _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = (
     "schedule/recurrence-direct-schedule-v2.bin"
+)
+_RECURRENCE_COLOR_CONTRACTION_CODEC_ABI = (
+    "pyamplicol-recurrence-color-contraction-v3"
 )
 _EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 _EAGER_RUNTIME_CAPABILITIES = frozenset(
@@ -139,6 +143,18 @@ class ArtifactProcessInspection:
     direct_finalization_row_count: int | None = None
     direct_closure_row_count: int | None = None
     direct_row_group_count: int | None = None
+    recurrence_color_accuracy: str | None = None
+    recurrence_color_storage: str | None = None
+    recurrence_color_sector_count: int | None = None
+    recurrence_color_active_sector_count: int | None = None
+    recurrence_color_component_count: int | None = None
+    recurrence_color_group_count: int | None = None
+    recurrence_color_destination_count: int | None = None
+    recurrence_color_entry_count: int | None = None
+    recurrence_color_logical_entry_count: int | None = None
+    recurrence_color_factorization_kind: str | None = None
+    recurrence_color_factorization_rank: int | None = None
+    recurrence_color_factorization_coset_count: int | None = None
     packed_input_bytes: int | None = None
     packed_output_bytes: int | None = None
     scatter_bytes: int | None = None
@@ -312,6 +328,18 @@ class _ExecutionInspection:
     direct_finalization_row_count: int | None = None
     direct_closure_row_count: int | None = None
     direct_row_group_count: int | None = None
+    recurrence_color_accuracy: str | None = None
+    recurrence_color_storage: str | None = None
+    recurrence_color_sector_count: int | None = None
+    recurrence_color_active_sector_count: int | None = None
+    recurrence_color_component_count: int | None = None
+    recurrence_color_group_count: int | None = None
+    recurrence_color_destination_count: int | None = None
+    recurrence_color_entry_count: int | None = None
+    recurrence_color_logical_entry_count: int | None = None
+    recurrence_color_factorization_kind: str | None = None
+    recurrence_color_factorization_rank: int | None = None
+    recurrence_color_factorization_coset_count: int | None = None
     packed_input_bytes: int | None = None
     packed_output_bytes: int | None = None
     scatter_bytes: int | None = None
@@ -1167,6 +1195,121 @@ def _recurrence_execution_inspection(
         "closure_term_count",
         "recurrence inspection closure row count",
     )
+    runtime_metadata = _mapping(
+        execution.get("runtime_metadata"),
+        "recurrence execution.runtime_metadata",
+    )
+    color_reference_raw = runtime_metadata.get("color_contraction")
+    color_accuracy = None
+    color_storage = None
+    color_sector_count = None
+    color_active_sector_count = None
+    color_component_count = None
+    color_group_count = None
+    color_destination_count = None
+    color_entry_count = None
+    color_logical_entry_count = None
+    color_factorization_kind = None
+    color_factorization_rank = None
+    color_factorization_coset_count = None
+    if color_reference_raw is not None:
+        color_reference = _mapping(
+            color_reference_raw,
+            "recurrence execution.runtime_metadata.color_contraction",
+        )
+        _require_contract(
+            color_reference,
+            "abi",
+            _RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+            "recurrence execution.runtime_metadata.color_contraction",
+        )
+        color_accuracy = _string(
+            color_reference.get("color_accuracy"),
+            "recurrence color-contraction accuracy",
+        )
+        if color_accuracy not in {"nlc", "full"}:
+            raise ArtifactError(
+                "recurrence color-contraction accuracy must be nlc or full"
+            )
+        color_storage = _string(
+            color_reference.get("storage"),
+            "recurrence color-contraction storage",
+        )
+        if color_storage not in {"expanded", "repeated"}:
+            raise ArtifactError(
+                "recurrence color-contraction storage must be expanded or repeated"
+            )
+        color_sector_count = _integer(
+            color_reference.get("sector_count"),
+            "recurrence color-contraction sector count",
+            minimum=1,
+        )
+        color_active_sector_count = _integer(
+            color_reference.get("active_sector_count"),
+            "recurrence color-contraction active sector count",
+            minimum=1,
+        )
+        color_component_count = _integer(
+            color_reference.get("component_count"),
+            "recurrence color-contraction component count",
+            minimum=1,
+        )
+        color_group_count = _integer(
+            color_reference.get("group_count"),
+            "recurrence color-contraction group count",
+            minimum=1,
+        )
+        color_destination_count = _integer(
+            color_reference.get("destination_count"),
+            "recurrence color-contraction destination count",
+            minimum=1,
+        )
+        color_entry_count = _integer(
+            color_reference.get("entry_count"),
+            "recurrence color-contraction entry count",
+            minimum=1,
+        )
+        color_logical_entry_count = _integer(
+            color_reference.get("logical_entry_count"),
+            "recurrence color-contraction logical entry count",
+            minimum=1,
+        )
+        if color_active_sector_count > color_sector_count:
+            raise ArtifactError(
+                "recurrence active color sectors exceed the physical sector count"
+            )
+        if color_destination_count != color_group_count:
+            raise ArtifactError(
+                "recurrence color destinations do not match contraction groups"
+            )
+        if color_group_count > color_active_sector_count * color_component_count:
+            raise ArtifactError(
+                "recurrence color groups exceed the active sector-helicity domain"
+            )
+        factorization_raw = color_reference.get("factorization")
+        if factorization_raw is not None:
+            factorization = _mapping(
+                factorization_raw,
+                "recurrence color-contraction factorization",
+            )
+            color_factorization_kind = _string(
+                factorization.get("kind"),
+                "recurrence color-contraction factorization kind",
+            )
+            color_factorization_rank = _integer(
+                factorization.get("rank"),
+                "recurrence color-contraction factorization rank",
+                minimum=2,
+            )
+            color_factorization_coset_count = _integer(
+                factorization.get("coset_count"),
+                "recurrence color-contraction factorization coset count",
+                minimum=1,
+            )
+            if color_storage != "repeated":
+                raise ArtifactError(
+                    "recurrence color factorization requires repeated storage"
+                )
     return _ExecutionInspection(
         execution_mode="recurrence",
         prepared_backend=_string(
@@ -1198,6 +1341,20 @@ def _recurrence_execution_inspection(
             "row_group_count",
             "recurrence inspection direct_arena.row_group_count",
         ),
+        recurrence_color_accuracy=color_accuracy,
+        recurrence_color_storage=color_storage,
+        recurrence_color_sector_count=color_sector_count,
+        recurrence_color_active_sector_count=color_active_sector_count,
+        recurrence_color_component_count=color_component_count,
+        recurrence_color_group_count=color_group_count,
+        recurrence_color_destination_count=color_destination_count,
+        recurrence_color_entry_count=color_entry_count,
+        recurrence_color_logical_entry_count=color_logical_entry_count,
+        recurrence_color_factorization_kind=color_factorization_kind,
+        recurrence_color_factorization_rank=color_factorization_rank,
+        recurrence_color_factorization_coset_count=(
+            color_factorization_coset_count
+        ),
         packed_input_bytes=0,
         packed_output_bytes=0,
         scatter_bytes=0,
@@ -1220,8 +1377,19 @@ def _execution_inspection(
     )
     capability_values = frozenset(str(value) for value in capabilities)
     if RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in capability_values:
+        color_capabilities = capability_values.intersection(
+            {
+                RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+                RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            }
+        )
+        if len(color_capabilities) != 1:
+            raise ArtifactError(
+                "recurrence direct-arena execution must declare exactly one "
+                "recurrence color capability"
+            )
         required = {
-            RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+            *color_capabilities,
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
         }
         if not required.issubset(capability_values):
@@ -1708,6 +1876,30 @@ def _process_inspection(
         direct_finalization_row_count=execution.direct_finalization_row_count,
         direct_closure_row_count=execution.direct_closure_row_count,
         direct_row_group_count=execution.direct_row_group_count,
+        recurrence_color_accuracy=execution.recurrence_color_accuracy,
+        recurrence_color_storage=execution.recurrence_color_storage,
+        recurrence_color_sector_count=execution.recurrence_color_sector_count,
+        recurrence_color_active_sector_count=(
+            execution.recurrence_color_active_sector_count
+        ),
+        recurrence_color_component_count=execution.recurrence_color_component_count,
+        recurrence_color_group_count=execution.recurrence_color_group_count,
+        recurrence_color_destination_count=(
+            execution.recurrence_color_destination_count
+        ),
+        recurrence_color_entry_count=execution.recurrence_color_entry_count,
+        recurrence_color_logical_entry_count=(
+            execution.recurrence_color_logical_entry_count
+        ),
+        recurrence_color_factorization_kind=(
+            execution.recurrence_color_factorization_kind
+        ),
+        recurrence_color_factorization_rank=(
+            execution.recurrence_color_factorization_rank
+        ),
+        recurrence_color_factorization_coset_count=(
+            execution.recurrence_color_factorization_coset_count
+        ),
         packed_input_bytes=execution.packed_input_bytes,
         packed_output_bytes=execution.packed_output_bytes,
         scatter_bytes=execution.scatter_bytes,

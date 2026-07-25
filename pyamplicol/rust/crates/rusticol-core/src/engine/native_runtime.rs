@@ -584,6 +584,40 @@ impl NativeRuntime {
         Ok((helicity_count, color_count))
     }
 
+    /// Resolve and retain batch-global recurrence selectors once.
+    ///
+    /// The returned handle is tied to this artifact and representative
+    /// process. Handle creation may allocate; repeated evaluation through the
+    /// prepared-plan API does not rebuild string selector sets.
+    pub fn prepare_recurrence_selector_plan(
+        &self,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+    ) -> RusticolResult<NativeRecurrenceSelectorPlan> {
+        let NativeExecutionLane::Recurrence(runtime) = &self.execution_lane else {
+            return Err(RusticolError::invalid_argument(
+                "recurrence selector plans require a recurrence artifact",
+            ));
+        };
+        self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
+        let selected_helicities = selector_set(helicity_ids, "helicity")?;
+        let selected_colors = selector_set(color_ids, "color component")?;
+        let physics = self.runtime.physics.as_ref().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        runtime.validate_global_selectors(
+            physics,
+            selected_helicities.as_ref(),
+            selected_colors.as_ref(),
+        )?;
+        Ok(NativeRecurrenceSelectorPlan {
+            artifact_root: self.root.clone(),
+            process_key: self.process_key.clone(),
+            selected_helicities,
+            selected_colors,
+        })
+    }
+
     pub fn evaluate_f64(
         &mut self,
         momenta: &[f64],
@@ -599,6 +633,54 @@ impl NativeRuntime {
         output: &mut [f64],
     ) -> RusticolResult<()> {
         self.evaluate_f64_into_with_selectors(momenta, point_count, None, None, None, None, output)
+    }
+
+    /// Evaluate recurrence totals with a previously resolved selector plan.
+    pub fn evaluate_f64_into_with_recurrence_selector_plan(
+        &mut self,
+        plan: &NativeRecurrenceSelectorPlan,
+        momenta: &[f64],
+        point_count: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        if !matches!(&self.execution_lane, NativeExecutionLane::Recurrence(_)) {
+            return Err(RusticolError::invalid_argument(
+                "recurrence selector plans require a recurrence artifact",
+            ));
+        }
+        if plan.artifact_root != self.root || plan.process_key != self.process_key {
+            return Err(RusticolError::selector(
+                "recurrence selector plan belongs to a different artifact or process",
+            ));
+        }
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        if output.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {point_count}",
+                output.len()
+            )));
+        }
+        let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
+        let result = (|| {
+            let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                momenta,
+                point_count,
+                self.runtime.external_count,
+                crossing_lookup.as_deref(),
+            )?;
+            if plan.selected_helicities.is_some() || plan.selected_colors.is_some() {
+                self.run_selected_f64_batch_into(
+                    batch,
+                    plan.selected_helicities.as_ref(),
+                    plan.selected_colors.as_ref(),
+                    output,
+                )
+            } else {
+                self.run_f64_batch_into(batch, output)
+            }
+        })();
+        self.input_crossing_map = crossing_lookup;
+        result
     }
 
     /// Evaluate one total per point with optional global or per-point selectors.

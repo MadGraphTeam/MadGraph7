@@ -16,6 +16,8 @@ from .contraction_factors import (
     _pure_adjoint_color_factor,
     _pure_adjoint_color_factors,
     _two_open_line_color_factors,
+    exact_color_contraction_factor,
+    exact_color_contraction_factors,
 )
 from .contraction_types import (
     ColorContractionEntry,
@@ -505,4 +507,6 @@ __all__ = [
     "build_color_contraction_plan",
     "color_contraction_factor",
     "color_contraction_factors",
+    "exact_color_contraction_factor",
+    "exact_color_contraction_factors",
 ]

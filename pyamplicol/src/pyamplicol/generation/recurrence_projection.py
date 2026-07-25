@@ -416,14 +416,29 @@ def _validate_projection_roots(
         raise TypeError("recurrence projection requires GenericColorPlan")
     if not isinstance(template_catalog, RecurrenceTemplateCatalog):
         raise TypeError("recurrence projection requires RecurrenceTemplateCatalog")
-    if layout not in {"topology-replay", "all-flow-union"}:
+    if layout not in {
+        "topology-replay",
+        "all-flow-union",
+        "contracted-color-union",
+    }:
         raise RecurrenceProjectionError(
-            f"unsupported recurrence LC flow layout {layout!r}"
+            f"unsupported recurrence flow layout {layout!r}"
         )
-    if process.color_accuracy != "lc" or color_plan.color_accuracy != "lc":
+    if process.color_accuracy != color_plan.color_accuracy:
         raise RecurrenceProjectionError(
-            "recurrence process projection v1 supports LC only; use compiled or "
-            "eager for NLC/full"
+            "recurrence process and color-plan accuracies disagree"
+        )
+    if process.color_accuracy == "lc" and layout == "contracted-color-union":
+        raise RecurrenceProjectionError(
+            "LC recurrence requires topology-replay or all-flow-union"
+        )
+    if process.color_accuracy in {"nlc", "full"} and layout != "contracted-color-union":
+        raise RecurrenceProjectionError(
+            "NLC/full recurrence requires the contracted-color-union strategy"
+        )
+    if process.color_accuracy not in {"lc", "nlc", "full"}:
+        raise RecurrenceProjectionError(
+            f"unsupported recurrence color accuracy {process.color_accuracy!r}"
         )
     if color_plan.process != process:
         raise RecurrenceProjectionError(
@@ -939,7 +954,7 @@ def _project_replay_partitions(
     replay: LCColorTopologyReplayPlan | None,
     layout: RecurrenceLCFlowLayout,
 ) -> tuple[RecurrenceReplayPartitionV1, ...]:
-    if layout == "all-flow-union":
+    if layout != "topology-replay":
         return ()
     if replay is None:
         return ()
@@ -1080,19 +1095,23 @@ def _project_parameters(
     catalog: RecurrenceTemplateCatalog,
     template_ids: Mapping[tuple[str, str], int],
 ) -> tuple[RecurrenceParameterProjectionV1, ...]:
-    mutable = tuple(
+    runtime_parameters = tuple(
         sorted(
-            (parameter for parameter in catalog.parameters if parameter.mutable),
+            (
+                parameter
+                for parameter in catalog.parameters
+                if parameter.mutable or parameter.parameter_kind == "derived"
+            ),
             key=lambda item: (item.name, item.template_id),
         )
     )
-    names = tuple(parameter.name for parameter in mutable)
+    names = tuple(parameter.name for parameter in runtime_parameters)
     if len(names) != len(set(names)):
         raise RecurrenceProjectionError(
-            "recurrence catalog exposes duplicate mutable parameter names"
+            "recurrence catalog exposes duplicate runtime parameter names"
         )
     result: list[RecurrenceParameterProjectionV1] = []
-    for parameter in mutable:
+    for parameter in runtime_parameters:
         components = (0,) if parameter.value_type == "real" else (0, 1)
         for component in components:
             result.append(

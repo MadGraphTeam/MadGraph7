@@ -12,7 +12,9 @@ use super::recurrence_manifest::*;
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::recurrence::{
-    DirectRecurrencePlan, RECURRENCE_DIRECT_SCHEDULE_MEMBER, decode_recurrence_direct_plan_v2,
+    DirectRecurrencePlan, FactorizedColorContractionKind, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
+    RecurrenceColorContraction, SemanticDigest, decode_recurrence_color_contraction_v3,
+    decode_recurrence_direct_plan_v2, recurrence_color_contraction_digest,
 };
 
 pub(super) struct LoadedRecurrenceRuntime {
@@ -50,6 +52,7 @@ pub(super) fn load_recurrence_native_runtime(
     common.refresh_derived_model_parameters()?;
     let public_flow_ids = public_flow_ids(&plan, &manifest.runtime_metadata, physics)?;
     let direct_helicity_to_physics = direct_helicity_to_physics(&plan, physics)?;
+    let color_contraction = load_color_contraction(artifact, evaluator_root, manifest)?;
     let lane = RecurrenceNativeRuntime::new(
         plan,
         executors,
@@ -58,8 +61,97 @@ pub(super) fn load_recurrence_native_runtime(
         parameter_projection,
         public_flow_ids,
         direct_helicity_to_physics,
+        color_contraction,
     )?;
     Ok(LoadedRecurrenceRuntime { common, lane })
+}
+
+fn load_color_contraction(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &RecurrenceExecutionManifest,
+) -> RusticolResult<Option<RecurrenceColorContraction>> {
+    let Some(reference) = manifest.runtime_metadata.color_contraction.as_ref() else {
+        return Ok(None);
+    };
+    let relative_root = evaluator_root
+        .strip_prefix(artifact.root())
+        .map_err(|_| RusticolError::security("recurrence process root escapes the artifact"))?;
+    let logical = relative_root.join(&reference.path);
+    let logical = logical
+        .to_str()
+        .ok_or_else(|| RusticolError::security("recurrence color payload path is not UTF-8"))?;
+    let record = artifact.payload(logical)?;
+    if record.role != PayloadRole::EvaluatorState
+        || record.media_type != "application/octet-stream"
+        || record.process_id.as_deref() != Some(manifest.key.as_str())
+        || record.size_bytes != reference.size_bytes
+        || record.sha256 != reference.sha256
+    {
+        return Err(RusticolError::integrity(
+            "recurrence color-contraction payload disagrees with execution.json",
+        ));
+    }
+    let bytes = artifact.read_payload(logical)?;
+    let semantic_digest = SemanticDigest::new(recurrence_color_contraction_digest(&bytes))
+        .map_err(|_| {
+            RusticolError::integrity(
+                "recurrence color-contraction payload has an invalid semantic digest",
+            )
+        })?;
+    if semantic_digest.to_string() != reference.semantic_digest {
+        return Err(RusticolError::integrity(
+            "recurrence color-contraction payload digest is inconsistent",
+        ));
+    }
+    let contraction = decode_recurrence_color_contraction_v3(&bytes)?;
+    let accuracy = match contraction.accuracy() {
+        crate::recurrence::RecurrenceColorAccuracy::Nlc => "nlc",
+        crate::recurrence::RecurrenceColorAccuracy::Full => "full",
+    };
+    let storage = match contraction.storage() {
+        crate::recurrence::RecurrenceColorStorage::Expanded => "expanded",
+        crate::recurrence::RecurrenceColorStorage::Repeated => "repeated",
+    };
+    if accuracy != reference.color_accuracy
+        || storage != reference.storage
+        || contraction.active_sector_count() as u64 != reference.active_sector_count
+        || contraction.group_count() as u64 != reference.group_count
+        || contraction.sector_count() as u64 != reference.sector_count
+        || contraction.component_count() as u64 != reference.component_count
+        || contraction.destination_count() as u64 != reference.destination_count
+        || contraction.entries().len() as u64 != reference.entry_count
+        || contraction.logical_entry_count() as u64 != reference.logical_entry_count
+        || contraction.includes_color_factor() != reference.includes_color_factor
+    {
+        return Err(RusticolError::integrity(
+            "recurrence color-contraction payload disagrees with its bounded summary",
+        ));
+    }
+    let factorization_matches = match (
+        reference.factorization.as_ref(),
+        contraction.factorization(),
+    ) {
+        (None, None) => true,
+        (Some(reference), Some(factorization)) => {
+            let kind = match factorization.kind() {
+                FactorizedColorContractionKind::KleinFourWalsh => "klein-four-walsh",
+                FactorizedColorContractionKind::ElementaryAbelianWalsh => {
+                    "elementary-abelian-walsh"
+                }
+            };
+            reference.kind == kind
+                && reference.rank == factorization.rank()
+                && reference.coset_count == factorization.coset_count() as u64
+        }
+        _ => false,
+    };
+    if !factorization_matches {
+        return Err(RusticolError::integrity(
+            "recurrence color-contraction factorization disagrees with its bounded summary",
+        ));
+    }
+    Ok(Some(contraction))
 }
 
 pub(super) fn load_recurrence_exact_sections(
@@ -148,11 +240,6 @@ fn public_flow_ids(
     metadata: &RecurrenceRuntimeMetadata,
     physics: &ProcessPhysicsV1,
 ) -> RusticolResult<Vec<u32>> {
-    if metadata.public_color_flows.len() != physics.color_components.len() {
-        return Err(RusticolError::integrity(
-            "recurrence public color-flow bindings do not cover the physics axis",
-        ));
-    }
     let available = match plan.strategy() {
         crate::recurrence::RecurrenceStrategy::TopologyReplay => {
             let available = plan
@@ -180,7 +267,26 @@ fn public_flow_ids(
             }
             available
         }
+        crate::recurrence::RecurrenceStrategy::ContractedColorUnion => {
+            if !metadata.public_color_flows.is_empty()
+                || physics.color_components.len() != 1
+                || !matches!(
+                    physics.color_components.first(),
+                    Some(PhysicsColorComponentV1::ContractedColor(_))
+                )
+            {
+                return Err(RusticolError::integrity(
+                    "contracted recurrence must expose exactly one contracted color component and no public flow bindings",
+                ));
+            }
+            return Ok(Vec::new());
+        }
     };
+    if metadata.public_color_flows.len() != physics.color_components.len() {
+        return Err(RusticolError::integrity(
+            "recurrence public color-flow bindings do not cover the physics axis",
+        ));
+    }
     let mut seen = BTreeSet::new();
     let strategy = plan.strategy();
     let result = metadata
@@ -202,6 +308,9 @@ fn public_flow_ids(
                 crate::recurrence::RecurrenceStrategy::TopologyReplay => binding.target_sector_id,
                 crate::recurrence::RecurrenceStrategy::AllFlowUnion => {
                     binding.construction_sector_id
+                }
+                crate::recurrence::RecurrenceStrategy::ContractedColorUnion => {
+                    unreachable!("contracted recurrence has no public color-flow bindings")
                 }
             };
             if plan_sector_id >= plan.physical_sector_count()
@@ -648,7 +757,8 @@ fn apply_process_remap(
         .map_err(|_| RusticolError::artifact("recurrence source count exceeds usize"))?;
     let topology_flow_count = match plan.strategy() {
         crate::recurrence::RecurrenceStrategy::TopologyReplay => Some(plan.replay_targets().len()),
-        crate::recurrence::RecurrenceStrategy::AllFlowUnion => None,
+        crate::recurrence::RecurrenceStrategy::AllFlowUnion
+        | crate::recurrence::RecurrenceStrategy::ContractedColorUnion => None,
     };
     if remap.source_slots.len() != source_count
         || remap.source_momentum_signs.len() != source_count
@@ -1009,7 +1119,16 @@ fn build_common_runtime(
             "recurrence execution requires local vertex couplings in prepared kernel calls",
         ));
     }
-    let normalization_factor = normalization.color_factor * normalization.global_coupling_factor
+    let color_factor = if metadata
+        .color_contraction
+        .as_ref()
+        .is_some_and(|contraction| contraction.includes_color_factor)
+    {
+        1.0
+    } else {
+        normalization.color_factor
+    };
+    let normalization_factor = color_factor * normalization.global_coupling_factor
         / (normalization.average_factor * normalization.identical_factor);
     if !normalization_factor.is_finite() {
         return Err(RusticolError::integrity(
@@ -1078,7 +1197,7 @@ fn build_common_runtime(
         particle_masses,
         particle_mass_parameter_names,
         normalization_factor,
-        normalization_color_factor: normalization.color_factor,
+        normalization_color_factor: color_factor,
         normalization_average_factor: normalization.average_factor,
         normalization_identical_factor: normalization.identical_factor,
         normalization_qcd_coupling_power: normalization.qcd_coupling_power.unwrap_or(0) as usize,
@@ -1127,7 +1246,8 @@ fn build_direct_source_domains(
         vec![BTreeMap::<DirectSourceDispatchKey, DirectSourceTemplateSpec>::new(); domain_count];
 
     match plan.strategy() {
-        crate::recurrence::RecurrenceStrategy::TopologyReplay => {
+        crate::recurrence::RecurrenceStrategy::TopologyReplay
+        | crate::recurrence::RecurrenceStrategy::ContractedColorUnion => {
             for row in plan.sources() {
                 let source = templates
                     .get(&row.source_template_or_dispatch_domain)

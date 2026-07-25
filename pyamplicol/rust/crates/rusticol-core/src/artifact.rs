@@ -1589,6 +1589,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::EagerLcTopologyReplayComplexF64V1,
         RuntimeCapability::RecurrenceRuntimeComplexF64V1,
         RuntimeCapability::RecurrenceLcColorV1,
+        RuntimeCapability::RecurrenceContractedColorV1,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,
         RuntimeCapability::SymbolicaCompiledCppComplexF64V1,

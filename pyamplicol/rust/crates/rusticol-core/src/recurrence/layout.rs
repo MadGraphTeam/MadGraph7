@@ -35,12 +35,13 @@ impl fmt::Display for SemanticDigest {
     }
 }
 
-/// Workload-specific LC recurrence schedule strategy.
+/// Workload-specific recurrence schedule strategy.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum RecurrenceStrategy {
     TopologyReplay = 0,
     AllFlowUnion = 1,
+    ContractedColorUnion = 2,
 }
 
 impl RecurrenceStrategy {
@@ -52,7 +53,24 @@ impl RecurrenceStrategy {
         match self {
             Self::TopologyReplay => "topology-replay",
             Self::AllFlowUnion => "all-flow-union",
+            Self::ContractedColorUnion => "contracted-color-union",
         }
+    }
+
+    pub const fn uses_runtime_source_dispatch(self) -> bool {
+        matches!(self, Self::AllFlowUnion)
+    }
+
+    pub const fn retains_local_source_ancestry(self) -> bool {
+        !self.uses_runtime_source_dispatch()
+    }
+
+    pub const fn materializes_all_color_sectors(self) -> bool {
+        !matches!(self, Self::TopologyReplay)
+    }
+
+    pub const fn uses_topology_replay_targets(self) -> bool {
+        matches!(self, Self::TopologyReplay)
     }
 }
 
@@ -63,6 +81,7 @@ impl TryFrom<u32> for RecurrenceStrategy {
         match value {
             0 => Ok(Self::TopologyReplay),
             1 => Ok(Self::AllFlowUnion),
+            2 => Ok(Self::ContractedColorUnion),
             _ => Err(invalid(format!(
                 "unknown recurrence strategy discriminant {value}"
             ))),
@@ -159,6 +178,11 @@ pub enum CurrentHelicityIdentity {
     },
     /// Static transition spin class with source helicities selected at runtime.
     AllFlowUnion { spin_state_class: i32 },
+    /// Static spin class and local source ancestry across the complete color basis.
+    ContractedColorUnion {
+        spin_state_class: i32,
+        local_source_states: Box<[SourceStateAssignment]>,
+    },
 }
 
 impl CurrentHelicityIdentity {
@@ -182,10 +206,27 @@ impl CurrentHelicityIdentity {
         Self::AllFlowUnion { spin_state_class }
     }
 
+    pub fn contracted_color_union(
+        spin_state_class: i32,
+        local_source_states: Vec<SourceStateAssignment>,
+    ) -> RusticolResult<Self> {
+        validate_sequence_len("local source-state ancestry", local_source_states.len())?;
+        let source_slots = local_source_states
+            .iter()
+            .map(|assignment| assignment.source_slot)
+            .collect::<Vec<_>>();
+        validate_strict_u32_sequence("local source-state ancestry", &source_slots)?;
+        Ok(Self::ContractedColorUnion {
+            spin_state_class,
+            local_source_states: local_source_states.into_boxed_slice(),
+        })
+    }
+
     pub const fn strategy(&self) -> RecurrenceStrategy {
         match self {
             Self::TopologyReplay { .. } => RecurrenceStrategy::TopologyReplay,
             Self::AllFlowUnion { .. } => RecurrenceStrategy::AllFlowUnion,
+            Self::ContractedColorUnion { .. } => RecurrenceStrategy::ContractedColorUnion,
         }
     }
 
@@ -194,7 +235,10 @@ impl CurrentHelicityIdentity {
             Self::TopologyReplay {
                 spin_state_class, ..
             }
-            | Self::AllFlowUnion { spin_state_class } => *spin_state_class,
+            | Self::AllFlowUnion { spin_state_class }
+            | Self::ContractedColorUnion {
+                spin_state_class, ..
+            } => *spin_state_class,
         }
     }
 
@@ -205,6 +249,10 @@ impl CurrentHelicityIdentity {
                 ..
             } => local_source_states,
             Self::AllFlowUnion { .. } => &[],
+            Self::ContractedColorUnion {
+                local_source_states,
+                ..
+            } => local_source_states,
         }
     }
 }
@@ -462,7 +510,7 @@ impl CurrentCoreKey {
             .iter()
             .map(|assignment| assignment.source_slot)
             .collect::<Vec<_>>();
-        if helicity_identity.strategy() == RecurrenceStrategy::TopologyReplay
+        if helicity_identity.strategy().retains_local_source_ancestry()
             && ancestry_slots != support_source_slots
         {
             return Err(invalid(
@@ -477,6 +525,11 @@ impl CurrentCoreKey {
             )
             | (
                 RecurrenceNodeKind::Source,
+                RecurrenceStrategy::ContractedColorUnion,
+                CurrentSourceBinding::FixedTemplate(_),
+            )
+            | (
+                RecurrenceNodeKind::Source,
                 RecurrenceStrategy::AllFlowUnion,
                 CurrentSourceBinding::RuntimeDispatch { .. },
             )
@@ -484,6 +537,11 @@ impl CurrentCoreKey {
             (RecurrenceNodeKind::Source, RecurrenceStrategy::TopologyReplay, _) => {
                 return Err(invalid(
                     "topology-replay source requires one fixed source template",
+                ));
+            }
+            (RecurrenceNodeKind::Source, RecurrenceStrategy::ContractedColorUnion, _) => {
+                return Err(invalid(
+                    "contracted-color-union source requires one fixed source template",
                 ));
             }
             (RecurrenceNodeKind::Source, RecurrenceStrategy::AllFlowUnion, _) => {

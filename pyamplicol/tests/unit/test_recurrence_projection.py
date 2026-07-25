@@ -21,6 +21,9 @@ from pyamplicol.generation.recurrence_columnar import (
     RecurrenceNormalizationV1,
     build_recurrence_builder_input_v1,
 )
+from pyamplicol.generation.recurrence_physics import (
+    recurrence_color_sector_owner_map,
+)
 from pyamplicol.generation.recurrence_projection import (
     RecurrenceGenerationSliceV1,
     RecurrenceProjectionError,
@@ -538,6 +541,47 @@ def test_all_flow_union_retains_all_sectors_without_replay_partitions() -> None:
     assert len(encoded.canonical_digest) == 64
 
 
+def test_contracted_color_owner_map_rejects_an_unproved_missing_sector() -> None:
+    process = _process()
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+    )
+
+    with pytest.raises(ValueError, match="no independent structural-zero certificate"):
+        recurrence_color_sector_owner_map(logical, {0})
+
+
+def test_contracted_color_owner_map_preserves_open_string_singlets() -> None:
+    process = _process()
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+    )
+    first, second = logical.physical_sectors
+    second_string = replace(
+        second.open_strings[0],
+        adjoint_source_slots=first.open_strings[0].adjoint_source_slots,
+        singlet_source_slots=(3,),
+    )
+    logical = replace(
+        logical,
+        physical_sectors=(
+            first,
+            replace(second, open_strings=(second_string,)),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="no independent structural-zero certificate"):
+        recurrence_color_sector_owner_map(logical, {0})
+
+
 def test_all_singlet_sector_uses_smallest_fermionic_source_as_closure_anchor() -> None:
     process = _all_singlet_process()
     plan = GenericColorPlan(
@@ -870,9 +914,12 @@ def test_projection_and_columnar_digest_are_deterministic() -> None:
 
 
 @pytest.mark.parametrize("accuracy", ["nlc", "full"])
-def test_non_lc_projection_fails_closed(accuracy: str) -> None:
+def test_non_lc_projection_requires_contracted_color_union(accuracy: str) -> None:
     process = _process(color_accuracy=accuracy)
-    with pytest.raises(RecurrenceProjectionError, match="supports LC only"):
+    with pytest.raises(
+        RecurrenceProjectionError,
+        match="requires the contracted-color-union strategy",
+    ):
         project_recurrence_process_v1(
             process,
             _color_plan(process),

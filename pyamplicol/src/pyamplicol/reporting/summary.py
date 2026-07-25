@@ -1311,6 +1311,55 @@ def _artifact_inspection_summary(
                     f"{process.get('helicity_materialized_amplitude_count')} roots"
                 )
             execution_table.add_row((process_id, "helicity recurrence", recurrence))
+        if mode == "recurrence":
+            execution_table.add_row(
+                (
+                    process_id,
+                    "direct recurrence rows",
+                    (
+                        f"{process.get('direct_source_row_count')} sources; "
+                        f"{process.get('direct_contribution_row_count')} "
+                        "contributions; "
+                        f"{process.get('direct_finalization_row_count')} "
+                        "finalizations; "
+                        f"{process.get('direct_closure_row_count')} closures"
+                    ),
+                )
+            )
+            if process.get("recurrence_color_storage") is not None:
+                factorization = process.get(
+                    "recurrence_color_factorization_kind"
+                )
+                factorization_text = (
+                    "none"
+                    if factorization is None
+                    else (
+                        f"{factorization}, rank "
+                        f"{process.get('recurrence_color_factorization_rank')}, "
+                        f"{process.get('recurrence_color_factorization_coset_count')} "
+                        "cosets"
+                    )
+                )
+                execution_table.add_row(
+                    (
+                        process_id,
+                        "contracted color",
+                        (
+                            f"{process.get('recurrence_color_accuracy')}; "
+                            f"{process.get('recurrence_color_storage')}; "
+                            f"{process.get('recurrence_color_active_sector_count')}/"
+                            f"{process.get('recurrence_color_sector_count')} "
+                            "active sectors; "
+                            f"{process.get('recurrence_color_component_count')} "
+                            "components; "
+                            f"{process.get('recurrence_color_group_count')} groups; "
+                            f"{process.get('recurrence_color_entry_count')}/"
+                            f"{process.get('recurrence_color_logical_entry_count')} "
+                            f"stored/logical entries; {factorization_text}"
+                        ),
+                    )
+                )
+            continue
         if mode != "eager":
             continue
         pack_kernels = process.get("prepared_kernel_count")
