@@ -847,6 +847,29 @@ def test_eager_exact_plan_v3_rejects_wrong_native_section_abi(
         )
 
 
+def test_eager_exact_plan_v3_preserves_attachment_start_diagnostic(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    sections = _build_artifact(artifact, compact_v3=True)
+    assert sections is not None
+    stages = sections["stages"]
+    assert isinstance(stages, list)
+    stage = stages[0]
+    assert isinstance(stage, list)
+    stage[3] = "invalid"
+
+    with pytest.raises(
+        ArtifactError,
+        match=r"compact eager stage 0 start must be an integer",
+    ):
+        eager_plan_v3._load_eager_exact_sections_v1(
+            artifact,
+            "synthetic",
+            loader=lambda _root, _process: sections,
+        )
+
+
 def test_eager_reduction_groups_use_bounded_native_bridge(tmp_path: Path) -> None:
     artifact = tmp_path / "artifact"
     groups = (

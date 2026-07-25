@@ -380,7 +380,7 @@ def _parse_stages(
         invocation_cursor = invocation_start + invocation_count
         stage_invocation_rows = invocations[invocation_start:invocation_cursor]
 
-        attachment_start = _integer(values[3], f"{context} attachment start")
+        attachment_start = _integer(values[3], f"{context} start")
         attachment_count = _integer(values[4], f"{context} count")
         if (
             attachment_start != attachment_cursor
