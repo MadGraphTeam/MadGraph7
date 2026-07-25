@@ -26,6 +26,7 @@ from .models import (
     Workload,
 )
 from .resources import ResourceUsage, supervise_worker
+from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .service import ReportService
 
 
@@ -63,7 +64,7 @@ class CellSelection:
 class CampaignSettings:
     workers: int = 1
     cell_cores: int = 1
-    target_runtime_seconds: float = 20.0
+    target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
     batch_size: int = 128
     timeout_seconds: float | None = None
     max_rss_bytes: int | None = None

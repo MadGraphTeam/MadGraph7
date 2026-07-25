@@ -4,7 +4,25 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tools.performance_report.cli import main
+from tools.performance_report.cli import _parser, main
+
+
+def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
+    populate = _parser().parse_args(("populate",))
+    assert populate.target_runtime == 5.0
+
+    worker = _parser().parse_args(
+        (
+            "_worker",
+            "--cell-id",
+            "cell",
+            "--attempt-root",
+            "attempt",
+            "--result-json",
+            "result.json",
+        )
+    )
+    assert worker.target_runtime == 5.0
 
 
 def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:

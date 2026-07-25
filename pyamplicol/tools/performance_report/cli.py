@@ -16,6 +16,7 @@ from .catalog import REPORT_CATALOG
 from .measurement import source_revision
 from .models import Accuracy, ArtifactPolicy, ExecutionMode, ModelKey, Workload
 from .prepared import ensure_report_prepared_model
+from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .scheduler import (
     CampaignScheduler,
     CampaignSettings,
@@ -65,7 +66,11 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--baseline-json", type=Path)
     worker.add_argument("--prepared-model", type=Path)
     worker.add_argument("--reused-measurement-json", type=Path)
-    worker.add_argument("--target-runtime", type=float, default=20.0)
+    worker.add_argument(
+        "--target-runtime",
+        type=float,
+        default=DEFAULT_TARGET_RUNTIME_SECONDS,
+    )
     worker.add_argument("--batch-size", type=int, default=128)
     worker.add_argument("--cell-cores", type=int, default=1)
 
@@ -119,7 +124,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     populate.add_argument("--workers", type=int, default=1)
     populate.add_argument("--cell-cores", type=int, default=1)
-    populate.add_argument("--target-runtime", type=float, default=20.0)
+    populate.add_argument(
+        "--target-runtime",
+        type=float,
+        default=DEFAULT_TARGET_RUNTIME_SECONDS,
+    )
     populate.add_argument("--batch-size", type=int, default=128)
     populate.add_argument("--timeout-seconds", type=float)
     populate.add_argument("--max-ram-gib", type=float)

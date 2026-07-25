@@ -28,7 +28,11 @@ from typing import Any, Protocol
 from .cache import empty_measurement
 from .catalog import REPORT_CATALOG
 from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus, Workload
-from .runner import SelectorContract, point_digest
+from .runner import (
+    DEFAULT_TARGET_RUNTIME_SECONDS,
+    SelectorContract,
+    point_digest,
+)
 
 DEFAULT_WARMUP_POINTS = 100
 DEFAULT_MIN_POINTS = 100
@@ -42,7 +46,7 @@ class LegacyAdapterError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class LegacySettings:
-    target_runtime_seconds: float = 20.0
+    target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
     warmup_points: int = DEFAULT_WARMUP_POINTS
     minimum_points: int = DEFAULT_MIN_POINTS
     maximum_points: int = DEFAULT_MAX_POINTS

@@ -27,6 +27,7 @@ RELATIVE_TOLERANCE = 1.0e-12
 INDEPENDENT_RELATIVE_TOLERANCE = 1.0e-8
 ABSOLUTE_TOLERANCE = 1.0e-15
 GENERATION_VALIDATION_SEED = 12345
+DEFAULT_TARGET_RUNTIME_SECONDS = 5.0
 
 
 class RunnerError(RuntimeError):
@@ -35,7 +36,7 @@ class RunnerError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class RunnerSettings:
-    target_runtime_seconds: float = 20.0
+    target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
     batch_size: int = 128
     worker_cores: int = 1
     model_cache_dir: Path | None = None
