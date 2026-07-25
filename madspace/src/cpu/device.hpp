@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <random>
 
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/tensor.hpp"
 #include "madspace/driver/thread_pool.hpp"
-#include "madspace/util.hpp"
 #include "simd.hpp"
 
 namespace madspace {
@@ -17,11 +17,9 @@ class CpuDevice : public Device {
 public:
     static constexpr bool is_concurrent = false;
 
-    // Returns the generator randomness consumed by this device's op_random /
-    // op_random_int / op_unweight should draw from. The base implementation (used
-    // for CpuDevice and AsyncCpuDevice, i.e. whenever no per-call seed is in play)
-    // falls back to the runtime's non-deterministic per-thread stream; SeqCpuDevice
-    // hides this with its own seeded generator.
+    // RNG for op_random/op_random_int/op_unweight. Base implementation falls back
+    // to the runtime's non-deterministic per-thread stream; SeqCpuDevice overrides
+    // it with its own seeded generator.
     std::mt19937& rand_gen(CpuRuntime& runtime) const;
 
     std::pair<void*, Tensor> allocate(std::size_t size, AllocHint hint) const override {

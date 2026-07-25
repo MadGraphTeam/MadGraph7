@@ -63,15 +63,7 @@ struct GeneratorConfig {
     int combine_thread_count = -1;
     double cut_efficiency_threshold = 0.7;
     std::size_t max_cut_repetitions = 100;
-    // Steady-state event generation dispatches a channel's jobs in barrier-gated
-    // batches (a new batch is only sized/created once the previous one has fully
-    // committed), so a batch's size is a deterministic function of committed data,
-    // never of scheduling timing. generation_batch_fraction caps a batch to this
-    // fraction of the channel's currently remaining need, so a single batch never
-    // bets everything on an efficiency estimate that may still be noisy (e.g. for
-    // costly/high-variance channels early on); min_batch_jobs floors the batch size
-    // so a lone active channel still gets enough parallel jobs to keep all worker
-    // threads busy. See EventGenerator::next_batch_job_count().
+    // Cap/floor on a steady-state batch's job count; see next_batch_job_count().
     double generation_batch_fraction = 0.5;
     std::size_t min_batch_jobs = 1;
 };
@@ -87,7 +79,7 @@ struct GeneratorStatus {
     std::size_t count_after_cuts;
     std::size_t count_after_cuts_opt;
     double count_unweighted;
-    double count_target;
+    std::size_t count_target;
     std::size_t iterations;
     bool optimized;
     bool done;
@@ -104,11 +96,7 @@ struct Histogram {
 struct GeneratorBatchJob {
     std::size_t channel_index;
     bool unweight;
-    // Nonzero to make start_jobs() split this ready_job into ceil(vegas_batch_size /
-    // context_batch_size) sub-jobs and dispatch all of them atomically (bypassing
-    // the usual per-context dispatch cap), so channel_job_count reflects the whole
-    // batch from the moment it's dispatched rather than only whichever prefix fit
-    // under the cap -- see is_vegas_batch for what the batch is *for*.
+    // Nonzero: start_jobs() splits this into sub-jobs and dispatches them atomically.
     std::size_t vegas_batch_size;
     std::size_t split_job_count;
     Tensor weights;
@@ -120,14 +108,10 @@ struct GeneratorBatchJob {
     std::size_t context_index;
     std::size_t job_id;
     double max_weight;
-    // Base seed for this job's deterministic random stream, derived at scheduling
-    // time from (context seed, channel, per-channel job sequence). 0 means "use the
-    // non-deterministic pool generator" (context seed 0). See ChannelEventGenerator.
+    // Base seed for this job's deterministic random stream; 0 means non-deterministic.
     std::uint64_t rng_seed = 0;
-    // True for a VEGAS-grid-optimization batch (triggers clear_events()/
-    // optimize_vegas() at the start/end of the batch); false for a steady-state
-    // generation batch (see EventGenerator::_channel_batch_pending), even though
-    // both use vegas_batch_size > 0 to get the same atomic whole-batch dispatch.
+    // True for a VEGAS-grid-optimization batch, false for a steady-state generation
+    // batch -- both use vegas_batch_size > 0 for atomic whole-batch dispatch.
     bool is_vegas_batch = false;
 };
 

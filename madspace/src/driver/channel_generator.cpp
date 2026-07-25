@@ -1,4 +1,5 @@
 #include "madspace/driver/channel_generator.hpp"
+#include "madspace/driver/random.hpp"
 #include "madspace/util.hpp"
 
 using namespace madspace;
@@ -64,7 +65,7 @@ ChannelEventGenerator::ChannelEventGenerator(
         .count_after_cuts = 0,
         .count_after_cuts_opt = 0,
         .count_unweighted = 0.,
-        .count_target = 1.,
+        .count_target = 1,
         .optimized = false,
         .done = false
     },
@@ -188,7 +189,7 @@ ChannelEventGenerator::ChannelEventGenerator(
         .count_after_cuts = 0,
         .count_after_cuts_opt = 0,
         .count_unweighted = 0.,
-        .count_target = 1.,
+        .count_target = 1,
         .optimized = false,
         .done = false
     },
@@ -398,6 +399,9 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
     return weight_sum;
 }
 
+// Assigns job's base seed on the scheduling thread, from its logical identity
+// only (channel, kind, sequence) -- never from context_index -- so it doesn't
+// depend on worker/context assignment.
 void ChannelEventGenerator::start_job(
     GeneratorBatchJob& job,
     ResultQueue& result_queue,
@@ -405,19 +409,6 @@ void ChannelEventGenerator::start_job(
     bool is_survey,
     std::size_t survey_pass
 ) {
-    // Assign the job's deterministic base seed on the (single) scheduling thread so
-    // it depends only on the job's logical identity, not on which worker runs it --
-    // deliberately not on job.context_index either, so the same logical job gets the
-    // same seed no matter how many contexts/threads are available to run it or which
-    // one it lands on (context assignment is a load-balancing detail, see
-    // start_jobs()). This is safe because _survey_rng_seq/_generate_rng_seq are
-    // incremented exactly once per logical job, on the single scheduling thread,
-    // before dispatch -- so a given (channel, seq) pair is never reused regardless
-    // of context assignment. Survey and generate draw from independent counters so
-    // a job's seed never depends on job counts from the other kind of call; survey
-    // jobs additionally key off survey_pass so that a channel re-surveyed across
-    // multiple independent survey() calls doesn't need its job count inferred from
-    // call history.
     if (seed == 0) {
         job.rng_seed = 0;
     } else if (is_survey) {
@@ -433,10 +424,7 @@ void ChannelEventGenerator::start_job(
         .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
-            // Every runtime->run() call below that can consume randomness gets its
-            // own sub-seed, uniquely salted by a running call index, derived from
-            // the job's base seed. This keeps each call fully deterministic without
-            // sharing mutable RNG state across independent Runtime objects.
+            // Each run() call below gets its own sub-seed derived from job's base seed.
             std::uint64_t rng_call_index = 0;
             auto next_seed = [&]() -> std::optional<std::uint64_t> {
                 if (job.rng_seed == 0) {
@@ -614,8 +602,9 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
 
     double w_sum = 0;
     double max_truncation = _config.max_overweight_truncation *
-        std::min(_status.count_target,
-                 static_cast<double>(_config.freeze_max_weight_after));
+        static_cast<double>(std::min(
+            _status.count_target, _config.freeze_max_weight_after
+        ));
     std::size_t count = 0;
     for (auto w : _large_weights) {
         if (w < _max_weight) {

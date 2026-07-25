@@ -1610,11 +1610,14 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     );
 }
 
-TensorVec GpuRuntime::run(const TensorVec& inputs, std::optional<std::uint64_t>) {
+TensorVec GpuRuntime::run(const TensorVec& inputs, std::optional<std::uint64_t> seed) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     auto& streams = _streams.get();
     auto& events = _events.get();
     gpu_device.activate();
+    if (seed) {
+        check_error(gpurandSetPseudoRandomGeneratorSeed(gpurand_generator(), *seed));
+    }
     auto locals = _locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
     gpuStream_t main_stream = streams.at(0);
@@ -1652,12 +1655,15 @@ TensorVec GpuRuntime::run(const TensorVec& inputs, std::optional<std::uint64_t>)
 std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     const TensorVec& inputs,
     const std::vector<bool>& input_requires_grad,
-    std::optional<std::uint64_t>
+    std::optional<std::uint64_t> seed
 ) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     auto& streams = _streams.get();
     auto& events = _events.get();
     gpu_device.activate();
+    if (seed) {
+        check_error(gpurandSetPseudoRandomGeneratorSeed(gpurand_generator(), *seed));
+    }
     auto locals = _locals_init;
     auto requires_grad = _requires_grad_init;
     std::vector<bool> store_local(locals.size());

@@ -1,23 +1,26 @@
 #include "madspace/driver/event_generator.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <format>
 #include <memory>
+#include <numeric>
 #include <ranges>
 
 #include "madspace/driver/logger.hpp"
+#include "madspace/driver/random.hpp"
 #include "madspace/util.hpp"
 
 using namespace madspace;
 
 namespace {
-// Salts keeping the driver-level random streams independent of each other for a
-// given context seed (see seeded_rng()). Parallel stages additionally mix in a
-// per-thread index.
-constexpr std::uint32_t kSaltCombineSelect = 1; // channel selection in read_and_combine
-constexpr std::uint32_t kSaltLheComplete = 2;   // colour/helicity in fill_lhe_event
-constexpr std::uint32_t kSaltUnweight = 3;      // final unweighting
+
+// salts to derive seeds for different generation phases
+constexpr std::uint32_t salt_combine_select = 1;
+constexpr std::uint32_t salt_lhe_complete = 2;
+constexpr std::uint32_t salt_unweight = 3;
+
 } // namespace
 
 const GeneratorConfig EventGenerator::default_config = {};
@@ -41,7 +44,7 @@ EventGenerator::EventGenerator(
         .count_after_cuts = 0,
         .count_after_cuts_opt = 0,
         .count_unweighted = 0.,
-        .count_target = static_cast<double>(config.target_count),
+        .count_target = config.target_count,
         .optimized = false,
         .done = false
     },
@@ -260,18 +263,9 @@ void EventGenerator::generate() {
     print_gen_update(true);
 }
 
-void EventGenerator::commit_generate_stage(GeneratorBatchJob& job) {
-    // Per-channel-ordered commit of a job's generate stage. Called strictly in
-    // ascending job id *within job.channel_index* (see _channel_commit_cursor), so
-    // cross-section accumulation and the max-weight update happen in a fixed order.
-    // update_integral_status() runs on every commit so logging/progress reporting
-    // stays fully live; update_integral_fractions() -- the piece that feeds back
-    // into per-channel scheduling decisions -- is deferred to once per round in
-    // generate_deterministic(), since reading it here would make a channel's
-    // scheduling depend on how far other channels happen to have gotten in real
-    // time. Does not write events itself: if job.unweight, that's deferred to
-    // commit_unweight_stage() once the (separately dispatched, possibly GPU-copy-
-    // bound) unweighting finishes -- see _context_unweight_queue.
+// Commits a job's generate stage in ascending job id per channel. Doesn't write
+// events itself -- if job.unweight, that's deferred to commit_unweight_job().
+void EventGenerator::commit_generate_job(GeneratorBatchJob& job) {
     auto& channel = _channels.at(job.channel_index);
     auto& channel_job_count = _channel_job_counts.at(job.channel_index);
     if (job.is_vegas_batch && channel_job_count == job.split_job_count) {
@@ -283,10 +277,7 @@ void EventGenerator::commit_generate_stage(GeneratorBatchJob& job) {
     --channel_job_count;
     --_context_job_counts.at(job.context_index);
     if (job.unweight) {
-        // Captured here, at this job's fixed position in the per-channel commit
-        // order, so the max weight used for unweighting doesn't depend on when the
-        // separately-dispatched unweight computation actually runs -- see
-        // ChannelEventGenerator::prepare_unweight_job().
+        // Snapshot max_weight here, at this job's fixed commit position.
         channel->prepare_unweight_job(job);
         _context_unweight_queue.at(job.context_index).push_back(job.job_id);
     }
@@ -294,9 +285,7 @@ void EventGenerator::commit_generate_stage(GeneratorBatchJob& job) {
     print_gen_update(false);
 }
 
-void EventGenerator::commit_unweight_stage(GeneratorBatchJob& job) {
-    // Per-channel-ordered commit of a job's unweight stage, independently sequenced
-    // from commit_generate_stage() -- see _channel_unweight_cursor.
+void EventGenerator::commit_unweight_job(GeneratorBatchJob& job) {
     auto& channel = _channels.at(job.channel_index);
     channel->write_events(job.unweighted_events, job.max_weight);
     update_counts();
@@ -330,6 +319,8 @@ void EventGenerator::register_dispatched_ids(std::size_t first_id, std::size_t e
     }
 }
 
+// Deterministic generate path: jobs still run on the pool, but commit strictly
+// in per-channel job-id order, so results are a pure function of the seed.
 void EventGenerator::generate_deterministic() {
     reset_start_time();
     print_gen_init();
@@ -341,8 +332,8 @@ void EventGenerator::generate_deterministic() {
              ++channel_index) {
             auto& channel = _channels.at(channel_index);
             double integral_frac = _channel_integral_fractions.at(channel_index);
-            double target = integral_frac * _config.target_count;
-            if (integral_frac > 0 && channel->status().count_unweighted >= target) {
+            if (integral_frac > 0 &&
+                channel->status().count_unweighted >= channel->status().count_target) {
                 continue;
             }
             if (channel->needs_optimization()) {
@@ -359,18 +350,10 @@ void EventGenerator::generate_deterministic() {
             } else if (!_channel_batch_pending.at(channel_index)) {
                 _channel_batch_pending.at(channel_index) = true;
                 _channel_cursor_set.at(channel_index) = false;
-                std::size_t batch_jobs = next_batch_job_count(channel_index, target);
-                // Pushed as a single ready_job with vegas_batch_size set (rather
-                // than batch_jobs separate ready_jobs) so start_jobs() dispatches
-                // the whole batch atomically -- see
-                // GeneratorBatchJob::vegas_batch_size. Otherwise, once batch_jobs
-                // exceeds the per-context dispatch cap, channel_job_count could reach 0
-                // (looking "done") as soon as whichever prefix got dispatched all
-                // commit, while the rest of the batch is still sitting undispatched --
-                // reintroducing exactly the kind of scheduling-timing-dependent
-                // overshoot this batching was meant to eliminate. It also gives this
-                // channel's round a single contiguous job-id range, which is what
-                // lets register_dispatched_ids() find its start cheaply.
+                std::size_t batch_jobs = next_batch_job_count(channel_index);
+                // Single ready_job with vegas_batch_size set so start_jobs() dispatches
+                // the whole batch atomically, giving the round a contiguous job-id
+                // range.
                 _ready_jobs.push_back({
                     .channel_index = channel_index,
                     .unweight = true,
@@ -385,16 +368,7 @@ void EventGenerator::generate_deterministic() {
         std::size_t round_in_flight = (_job_id - job_id_before) + unweight_dispatched;
         register_dispatched_ids(job_id_before, _job_id);
 
-        // Wait for this round -- every channel's currently dispatched batch, through
-        // both its generate and unweight stages -- to finish. Each stage commits as
-        // soon as it's next in line *for its own channel and stage*
-        // (_channel_commit_cursor / _channel_unweight_cursor), streamed immediately
-        // rather than buffered; channels no longer block each other's commits, and a
-        // job's own unweight stage doesn't block the next job's generate stage from
-        // committing either. Only once the whole round has committed
-        // (round_in_flight reaches 0) do we resync the cross-channel integral
-        // fractions, since that's the one piece of state that isn't safe to read
-        // mid-round -- see commit_generate_stage().
+        // Wait for the round to fully commit before resyncing cross-channel fractions.
         while (round_in_flight > 0) {
             std::size_t job_id = _result_queue.wait();
             --round_in_flight;
@@ -405,7 +379,7 @@ void EventGenerator::generate_deterministic() {
                 ready.insert(job_id);
                 while (ready.erase(cursor) > 0) {
                     auto& gen_job = _running_jobs.at(cursor);
-                    commit_generate_stage(gen_job);
+                    commit_generate_job(gen_job);
                     if (!gen_job.unweight) {
                         _running_jobs.erase(cursor);
                     }
@@ -416,7 +390,7 @@ void EventGenerator::generate_deterministic() {
                 auto& cursor = _channel_unweight_cursor.at(job.channel_index);
                 ready.insert(job_id);
                 while (ready.erase(cursor) > 0) {
-                    commit_unweight_stage(_running_jobs.at(cursor));
+                    commit_unweight_job(_running_jobs.at(cursor));
                     _running_jobs.erase(cursor);
                     ++cursor;
                 }
@@ -427,10 +401,6 @@ void EventGenerator::generate_deterministic() {
             register_dispatched_ids(job_id_refill, _job_id);
         }
 
-        // Status (mean/error/counts, used for logging) is already fully up to date
-        // from the per-commit update_integral_status() calls above; only the
-        // fractions used for the *next* round's scheduling need to wait for the
-        // whole round to be committed.
         update_integral_fractions();
 
         if (_status.done) {
@@ -443,6 +413,7 @@ void EventGenerator::generate_deterministic() {
     print_gen_update(true);
 }
 
+// Deterministic survey path, same commit-ordering approach as generate_deterministic().
 void EventGenerator::survey_deterministic() {
     reset_start_time();
     _commit_cursor = _job_id;
@@ -477,11 +448,7 @@ void EventGenerator::survey_deterministic() {
                 continue;
             }
             std::size_t vegas_batch_size = channel->next_vegas_batch_size();
-            // Reset so register_dispatched_ids() re-initializes
-            // _channel_unweight_cursor for this channel's new job below -- safe
-            // since, by construction of this loop, a channel never has a prior
-            // job still outstanding when it's given a new one (we don't start the
-            // next iteration until in_flight, tracking both stages, reaches 0).
+            // Let register_dispatched_ids() re-init the cursor for this new job.
             _channel_cursor_set.at(i) = false;
             _ready_jobs.push_back({
                 .channel_index = i,
@@ -505,11 +472,8 @@ void EventGenerator::survey_deterministic() {
             --in_flight;
             auto& job = _running_jobs.at(job_id);
             if (job.unweighted_events.size() == 0) {
-                // Generate-stage completion: still globally ordered (_ready_gen /
-                // _commit_cursor), unlike the unweight stage below -- this survey
-                // loop already barriers on the whole iteration (in_flight == 0)
-                // before starting the next one, so relaxing this ordering wouldn't
-                // buy the same throughput win it does in generate_deterministic().
+                // Generate-stage completion, globally ordered via
+                // _ready_gen/_commit_cursor.
                 _ready_gen.insert(job_id);
                 while (_ready_gen.erase(_commit_cursor) > 0) {
                     auto& gen_job = _running_jobs.at(_commit_cursor);
@@ -525,9 +489,7 @@ void EventGenerator::survey_deterministic() {
                     --channel_job_count;
                     --_context_job_counts.at(gen_job.context_index);
                     if (gen_job.unweight) {
-                        // Captured here, at this job's fixed position in the
-                        // (globally ordered) generate commit sequence -- see
-                        // ChannelEventGenerator::prepare_unweight_job().
+                        // Snapshot max_weight at this fixed commit position.
                         channel->prepare_unweight_job(gen_job);
                         _context_unweight_queue.at(gen_job.context_index)
                             .push_back(gen_job.job_id);
@@ -542,9 +504,7 @@ void EventGenerator::survey_deterministic() {
                     ++_commit_cursor;
                 }
             } else {
-                // Unweight-stage completion: ordered per channel only, independent
-                // of other channels and of the generate-stage commit order above --
-                // same pattern as generate_deterministic()'s commit_unweight_stage().
+                // Unweight-stage completion, ordered per channel only.
                 auto& ready = _channel_unweight_ready.at(job.channel_index);
                 auto& cursor = _channel_unweight_cursor.at(job.channel_index);
                 ready.insert(job_id);
@@ -579,21 +539,20 @@ void EventGenerator::survey_deterministic() {
     print_survey_update(true, done_event_count, total_event_count, iter - 1);
 }
 
-std::size_t
-EventGenerator::next_batch_job_count(std::size_t channel_index, double target) const {
+// Sizes the next batch from committed data only, so the estimate never depends
+// on jobs still in flight.
+std::size_t EventGenerator::next_batch_job_count(std::size_t channel_index) const {
     auto& status = _channels.at(channel_index)->status();
-    // Before any data has committed for this channel, assume the pessimistic 1.0
-    // (i.e. a whole raw batch becomes unweighted events), so the very first batch
-    // under- rather than over-estimates how many jobs are needed.
+    // No data yet: assume a pessimistic efficiency of 1.0.
     double efficiency = status.count_opt > 0
         ? status.count_unweighted / static_cast<double>(status.count_opt)
         : 1.;
-    // Floor the assumed per-job contribution at 1 event: guards against a
-    // near-zero observed efficiency (e.g. an unlucky small first sample) blowing
-    // this up into an unbounded batch size.
+    // Floor at 1 event so a near-zero observed efficiency can't blow this up.
     double per_job_estimate =
         std::max(efficiency * static_cast<double>(_config.cpu_batch_size), 1.);
-    double remaining = std::max(target - status.count_unweighted, 0.);
+    double remaining = std::max(
+        static_cast<double>(status.count_target) - status.count_unweighted, 0.
+    );
     double estimated = _config.generation_batch_fraction * remaining / per_job_estimate;
     return std::max(
         _config.min_batch_jobs, static_cast<std::size_t>(std::ceil(estimated))
@@ -610,11 +569,7 @@ std::size_t EventGenerator::start_jobs() {
             ? _config.cpu_batch_size
             : _config.gpu_batch_size;
 
-        // Unweight jobs get priority over starting new regular batches: their
-        // (possibly costly, e.g. GPU device-to-host copy) generation work is
-        // already done, so they should be finished promptly rather than get stuck
-        // behind a _ready_jobs backlog that can now cover an entire channel round.
-        // Empty for every caller except generate_deterministic().
+        // give priority to unweighting jobs to reduce memory usage
         auto& unweight_queue = _context_unweight_queue.at(context_index);
         std::size_t unweight_index = 0;
         for (; job_count < target_count && unweight_index < unweight_queue.size();
@@ -692,24 +647,45 @@ void EventGenerator::update_integral_status() {
 }
 
 void EventGenerator::update_integral_fractions() {
-    // Reuses _status.mean rather than re-summing channel means, so this stays a
-    // pure function of whatever update_integral_status() last computed -- callers
-    // that want it to reflect only fully-committed-this-round data (see
-    // generate_deterministic()) just need to make sure update_integral_status() was
-    // last called from committed (not in-flight) state.
     for (auto [channel, integral_fraction] :
          zip(_channels, _channel_integral_fractions)) {
         integral_fraction = channel->cross_section().mean() / _status.mean;
-        channel->set_target_count(integral_fraction * _config.target_count);
+    }
+
+    // Distribute events between channels, ensure sum is exactly target_count
+    std::vector<std::size_t> counts(_channels.size());
+    std::vector<double> remainders(_channels.size());
+    std::size_t allocated = 0;
+    for (auto [count, remainder, fraction] :
+         zip(counts, remainders, _channel_integral_fractions)) {
+        double raw = fraction * _config.target_count;
+        double floored = std::floor(std::isfinite(raw) && raw > 0. ? raw : 0.);
+        count = static_cast<std::size_t>(floored);
+        remainder = raw - floored;
+        allocated += count;
+    }
+    std::vector<std::size_t> order(_channels.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        double rem_a = remainders.at(a), rem_b = remainders.at(b);
+        return rem_a == rem_b ? a < b : rem_a > rem_b;
+    });
+    std::size_t leftover =
+        allocated <= _config.target_count ? _config.target_count - allocated : 0;
+    leftover = std::min(leftover, order.size());
+    for (std::size_t index : order | std::views::take(leftover)) {
+        ++counts.at(index);
+    }
+    for (auto [channel, count] : zip(_channels, counts)) {
+        channel->set_target_count(count);
     }
 }
 
 void EventGenerator::update_counts() {
     double total_eff_count = 0.;
     bool done = true;
-    for (auto [channel, integral_fraction] :
-         zip(_channels, _channel_integral_fractions)) {
-        double chan_target = integral_fraction * _config.target_count;
+    for (auto& channel : _channels) {
+        std::size_t chan_target = channel->status().count_target;
         if (channel->status().count_unweighted < chan_target) {
             total_eff_count += channel->status().count_unweighted;
             done = false;
@@ -723,7 +699,7 @@ void EventGenerator::update_counts() {
 
 void EventGenerator::combine_to_compact_npy(const std::string& file_name) {
     reset_start_time();
-    std::mt19937 select_rng = seeded_rng(_seed, {kSaltCombineSelect});
+    std::mt19937 select_rng = seeded_rng(_seed, {salt_combine_select});
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout layout(
         EventRecord::layout(
@@ -761,8 +737,8 @@ void EventGenerator::combine_to_lhe_npy(
 ) {
     reset_start_time();
     std::uint64_t seed = _seed;
-    std::mt19937 select_rng = seeded_rng(seed, {kSaltCombineSelect});
-    std::mt19937 rand_gen = seeded_rng(seed, {kSaltLheComplete});
+    std::mt19937 select_rng = seeded_rng(seed, {salt_combine_select});
+    std::mt19937 rand_gen = seeded_rng(seed, {salt_lhe_complete});
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout in_layout(
         EventRecord::layout(
@@ -825,7 +801,7 @@ void EventGenerator::combine_to_lhe(
 ) {
     reset_start_time();
     std::uint64_t seed = _seed;
-    std::mt19937 select_rng = seeded_rng(seed, {kSaltCombineSelect});
+    std::mt19937 select_rng = seeded_rng(seed, {salt_combine_select});
     ThreadPool pool(_config.combine_thread_count);
     auto [channel_data, particle_count, norm_factor] = init_combine();
     std::vector<std::pair<EventBuffer, std::string>> buffers;
@@ -848,13 +824,8 @@ void EventGenerator::combine_to_lhe(
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     bool done = false;
-    // Each batch is seeded from its own submission-order sequence number rather
-    // than from whichever worker thread happens to run it, and a batch's formatted
-    // output is only written once every earlier-submitted batch has been written --
-    // buffered out of submission order in ready_slots until its turn comes up --
-    // so the LHE file's event order and content no longer depend on real
-    // completion timing. slot_batch_seq tracks which batch a (reused) buffer slot
-    // currently holds.
+    // Batches are seeded by submission order and written in that same order
+    // (buffered in ready_slots until their turn), independent of completion timing.
     std::size_t next_batch_seq = 0;
     std::size_t write_cursor = 0;
     std::vector<std::size_t> slot_batch_seq(buffers.size());
@@ -876,7 +847,7 @@ void EventGenerator::combine_to_lhe(
             pool.submit(
                 [slot, batch_seq, seed, this, &in_buffer, &out_buffer, &lhe_completer] {
                     std::mt19937 rand_gen = seeded_rng(
-                        seed, {kSaltLheComplete, static_cast<std::uint32_t>(batch_seq)}
+                        seed, {salt_lhe_complete, static_cast<std::uint32_t>(batch_seq)}
                     );
                     LHEEvent lhe_event;
                     out_buffer.clear();
@@ -933,14 +904,13 @@ void EventGenerator::add_timing_data(const std::string& key) {
 }
 
 void EventGenerator::unweight_all() {
-    std::mt19937 rand_gen = seeded_rng(_seed, {kSaltUnweight});
+    std::mt19937 rand_gen = seeded_rng(_seed, {salt_unweight});
     bool done = true;
     double total_eff_count = 0.;
-    for (auto [channel, integral_fraction] :
-         zip(_channels, _channel_integral_fractions)) {
+    for (auto& channel : _channels) {
         channel->unweight_file(rand_gen);
 
-        double chan_target = integral_fraction * _config.target_count;
+        std::size_t chan_target = channel->status().count_target;
         if (channel->status().count_unweighted < chan_target) {
             total_eff_count += channel->status().count_unweighted;
             done = false;
@@ -998,11 +968,12 @@ EventGenerator::init_combine() {
     std::size_t count_sum = 0;
     std::size_t particle_count = 0;
     double weight_sum = 0.;
-    for (auto [channel, integral_fraction] :
-         zip(_channels, _channel_integral_fractions)) {
+    for (auto& channel : _channels) {
         particle_count =
             std::max(particle_count, channel->event_file().particle_count());
-        std::size_t count = std::round(integral_fraction * _config.target_count);
+        // Exact apportioned target (see update_integral_fractions()), so counts
+        // sum to exactly _config.target_count.
+        std::size_t count = channel->status().count_target;
         count_sum += count;
         channel->event_file().seek(0);
         weight_sum += channel->channel_weight_sum(count);
@@ -1170,8 +1141,7 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
         {"histograms", histograms()},
     };
     f << j.dump();
-    // rename atomically deletes the old file and replaces it with the new one
-    // such that the status file exists at all times
+    // Atomic rename keeps the status file present at all times.
     std::filesystem::rename(status_tmp_file, _status_file);
 }
 

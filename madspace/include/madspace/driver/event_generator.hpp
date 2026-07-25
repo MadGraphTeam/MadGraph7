@@ -34,12 +34,8 @@ public:
         const GeneratorConfig& config = default_config,
         std::uint64_t seed = 0
     );
-    // `survey_pass` distinguishes independent survey() calls that end up
-    // scheduling jobs on the same ChannelEventGenerator (e.g. an initial
-    // multichannel survey followed by a post-simplification re-survey of a channel
-    // that got carried over unchanged): each pass gets its own seed salt, so a
-    // pass's job seeds depend only on its own logical identity, never on how many
-    // jobs a previous, unrelated survey pass happened to schedule first.
+    // `survey_pass` salts job seeds so repeated survey() calls on the same
+    // channel (e.g. re-survey after simplification) don't share a seed stream.
     void survey(std::size_t survey_pass = 0);
     void generate();
     void combine_to_compact_npy(const std::string& file_name);
@@ -77,64 +73,33 @@ private:
     std::vector<bool> _channel_optimizing;
     std::vector<double> _channel_integral_fractions;
     std::vector<std::size_t> _context_job_counts;
-    // True while a channel has a steady-state (non-VEGAS) generation batch
-    // dispatched but not yet fully committed. Mirrors _channel_optimizing's role
-    // for VEGAS batches: while true, no new batch is created for this channel, so
-    // the next batch's size (see next_batch_job_count()) is always computed from
-    // fully-committed data. Without this, jobs already dispatched but not yet
-    // committed are invisible to the "does this channel need more work" decision,
-    // so a burst of them can all commit after the channel's target was already met
-    // -- overshooting it by an amount that depends on real scheduling timing rather
-    // than on the seed.
+    // True while a channel has a steady-state batch dispatched but not yet fully
+    // committed; keeps next_batch_job_count() from double-counting in-flight work.
     std::vector<bool> _channel_batch_pending;
-    // generate_deterministic() only: per-channel analogue of _ready_gen/
-    // _commit_cursor. Each channel's jobs still commit strictly in that channel's
-    // own ascending job-id order (out-of-order arrivals buffered in
-    // _channel_ready_gen until the cursor catches up), streamed as soon as they're
-    // next in line rather than deferred -- but channels no longer block each
-    // other's commits, so a channel with much costlier jobs (e.g. higher final-
-    // state multiplicity in an inclusive run) can't head-of-line-block the rest.
-    // _channel_cursor_set tracks whether _channel_commit_cursor has been
-    // initialized for the channel's current round yet; see
-    // register_dispatched_ids().
+    // generate_deterministic() only: per-channel commit cursor/buffer, analogous
+    // to _ready_gen/_commit_cursor but ordered per channel instead of globally.
     std::vector<std::set<std::size_t>> _channel_ready_gen;
     std::vector<std::size_t> _channel_commit_cursor;
     std::vector<bool> _channel_cursor_set;
-    // generate_deterministic() only: second, independent per-channel cursor/buffer
-    // for the unweight stage's completions, analogous to _channel_ready_gen/
-    // _channel_commit_cursor but for a job's *second* commit (see
-    // commit_unweight_stage()). A job's generate-stage and unweight-stage commits
-    // are tracked separately because they arrive as two distinct completion events
-    // (see ChannelEventGenerator::submit_unweight_job), but both cursors are reset
-    // together in register_dispatched_ids() since a job's unweight-stage id is the
-    // same as its generate-stage id.
+    // generate_deterministic() only: same as above, for a job's unweight-stage
+    // completion (tracked separately since it's a distinct completion event).
     std::vector<std::set<std::size_t>> _channel_unweight_ready;
     std::vector<std::size_t> _channel_unweight_cursor;
     // generate_deterministic() only: per-context queue of job ids awaiting
-    // unweight-stage dispatch. Populated by commit_generate_stage() (via
-    // ChannelEventGenerator::prepare_unweight_job(), which snapshots max_weight at
-    // that fixed, job-id-ordered point) and drained with priority by start_jobs(),
-    // ahead of any new regular batch dispatch -- otherwise, since a single
-    // _ready_jobs entry can now cover an entire channel round, unweight jobs (whose
-    // generation work is already done and just needs finishing, possibly via a
-    // costly GPU device-to-host copy) could get stuck behind it.
+    // unweight-stage dispatch, drained with priority by start_jobs().
     std::vector<std::vector<std::size_t>> _context_unweight_queue;
     ResultQueue _result_queue;
 
-    // Base seed for reproducible event generation. 0 means "seed
-    // non-deterministically" (the historical default); see seeded_rng().
+    // Base seed for reproducible event generation; 0 means non-deterministic.
     std::uint64_t _seed;
 
-    // Job-scheduling context for the currently running survey()/generate() call,
-    // read by start_jobs() when it hands a job's seed derivation off to its
-    // ChannelEventGenerator. Set once at the top of survey()/generate(), before
-    // the scheduling loop starts.
+    // Scheduling context for the running survey()/generate() call, read by
+    // start_jobs() to derive job seeds.
     bool _survey_job = false;
     std::size_t _survey_pass = 0;
 
-    // Deterministic-path state. _deterministic is set from _seed. Generate
-    // completions are buffered in _ready_gen and committed in ascending job id, with
-    // _commit_cursor pointing at the next job id to commit.
+    // Deterministic-path state, set from _seed. Generate completions are
+    // committed in ascending job id, with _commit_cursor as the next id due.
     bool _deterministic = false;
     std::set<std::size_t> _ready_gen;
     std::size_t _commit_cursor = 0;
@@ -148,62 +113,14 @@ private:
     std::string _status_file;
     std::unordered_map<std::string, TimingData> _timing_data;
 
-    // Deterministic generation path (enabled when the context seed is non-zero):
-    // expensive matrix-element jobs still run on the pool, but their results are
-    // committed strictly in job-id order with unweighting folded in synchronously,
-    // so the whole computation is a deterministic function of the seed at a fixed
-    // thread count.
     void survey_deterministic();
     void generate_deterministic();
-    // Per-channel-ordered commit of a job's generate stage: cross-section
-    // accumulation, max-weight update, and (if job.unweight) capturing max_weight
-    // and queuing the job for prioritized unweight dispatch -- see
-    // _context_unweight_queue. Does not itself write events; that happens once the
-    // (separately ordered) unweight stage commits, in commit_unweight_stage().
-    void commit_generate_stage(GeneratorBatchJob& job);
-    // Per-channel-ordered commit of a job's unweight stage: writes the unweighted
-    // events and updates counts. Called once job.unweighted_events is populated,
-    // strictly in job-id order per channel (see _channel_unweight_cursor), same as
-    // commit_generate_stage() but independently sequenced.
-    void commit_unweight_stage(GeneratorBatchJob& job);
-    // Shared tail of both commit steps: once a job's channel_job_count reaches
-    // zero (both stages committed), runs the batch-completion action
-    // (optimize_vegas / release _channel_optimizing, or release
-    // _channel_batch_pending) that used to be keyed off channel_job_count hitting a
-    // magic value mid-stream in the old single-stage commit.
+    void commit_generate_job(GeneratorBatchJob& job);
+    void commit_unweight_job(GeneratorBatchJob& job);
     void finish_channel_job(const GeneratorBatchJob& job);
-    // generate_deterministic() only: scans the job ids newly added to
-    // _running_jobs by the last start_jobs() call ([first_id, end_id)) and, for
-    // any channel seen for the first time since its current round started (i.e.
-    // _channel_cursor_set is still false), initializes _channel_commit_cursor and
-    // _channel_unweight_cursor to that job's id. Safe because a channel's whole
-    // round is always dispatched atomically as one contiguous id range (see
-    // GeneratorBatchJob::vegas_batch_size), so the first id encountered for a
-    // channel in ascending order is always that round's minimum.
     void register_dispatched_ids(std::size_t first_id, std::size_t end_id);
-
-    // Size a new steady-state generation batch for a channel from fully-committed
-    // data only: the channel's own observed efficiency so far (count_unweighted /
-    // count_opt, or the pessimistic 1.0 -- i.e. a whole raw batch -- before any data
-    // exists yet) and its remaining need (target - count_unweighted). Capped to
-    // generation_batch_fraction of the remaining need so a single batch never bets
-    // everything on an estimate that may still be noisy, and floored at
-    // min_batch_jobs so a lone active channel still gets enough parallel jobs to
-    // keep all worker threads busy.
-    std::size_t next_batch_job_count(std::size_t channel_index, double target) const;
-
-    // Dispatches from _context_unweight_queue (with priority, per context) and
-    // then _ready_jobs, up to each context's capacity. Returns the number of
-    // unweight jobs actually (re-)dispatched this call -- unlike a newly dispatched
-    // regular job, resubmitting a job for its unweight stage doesn't consume a new
-    // id, so callers that track in-flight completions via _job_id deltas (see
-    // generate_deterministic()) need this separately.
+    std::size_t next_batch_job_count(std::size_t channel_index) const;
     std::size_t start_jobs();
-    // update_integral() = update_integral_status() + update_integral_fractions().
-    // Split so generate_deterministic() can keep the status half (used for
-    // logging/progress only) fully live, per commit, while deferring the fractions
-    // half (which feeds back into per-channel scheduling decisions, see
-    // next_batch_job_count()) to once per round -- see commit_generate_deterministic().
     void update_integral();
     void update_integral_status();
     void update_integral_fractions();

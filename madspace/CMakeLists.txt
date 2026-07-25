@@ -178,6 +178,7 @@ add_library(
     src/driver/backend.cpp
     src/driver/lhe_output.cpp
     src/driver/madnis_training.cpp
+    src/driver/random.cpp
     src/compgraphs/type.cpp
     src/compgraphs/function.cpp
     src/compgraphs/instruction.cpp
@@ -230,6 +231,7 @@ add_library(
     include/madspace/driver/lhe_output.hpp
     include/madspace/driver/logger.hpp
     include/madspace/driver/madnis_training.hpp
+    include/madspace/driver/random.hpp
     include/madspace/compgraphs.hpp
     include/madspace/compgraphs/type.hpp
     include/madspace/compgraphs/function.hpp
