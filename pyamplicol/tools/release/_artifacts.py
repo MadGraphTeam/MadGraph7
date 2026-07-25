@@ -159,6 +159,8 @@ _SYSTEM_LIBRARIES = {
 }
 _MACOS_FRAMEWORKS = {"CoreFoundation", "IOKit", "Security", "SystemConfiguration"}
 _CANONICAL_DEPENDENCY_LOCK = Path("dependencies/release-lock.toml")
+_CONTRIBUTOR_DEPENDENCY_LOCK = Path("dependencies/contributor-lock.toml")
+_CANDIDATE_INSTALL_STATE = Path("dependencies/install-state.json")
 _REQUIRED_PACKAGE_RESOURCES = {
     "pyamplicol/assets/schemas/README.md",
     "pyamplicol/assets/schemas/artifact-manifest-v3.schema.json",
@@ -477,11 +479,115 @@ def _locked_python_dependencies(lock: dict[str, Any]) -> dict[str, str]:
     return dependencies
 
 
+def _candidate_dependency_overrides() -> dict[str, str]:
+    release_path = ROOT / _CANONICAL_DEPENDENCY_LOCK
+    contributor_path = ROOT / _CONTRIBUTOR_DEPENDENCY_LOCK
+    state_path = ROOT / _CANDIDATE_INSTALL_STATE
+    missing = [
+        path for path in (contributor_path, state_path) if not path.is_file()
+    ]
+    if missing:
+        raise ArtifactError(
+            "candidate dependency provenance is incomplete: "
+            + ", ".join(str(path) for path in missing)
+        )
+    try:
+        with contributor_path.open("rb") as stream:
+            contributor = tomllib.load(stream)
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
+        raise ArtifactError(
+            f"candidate dependency provenance is invalid: {error}"
+        ) from error
+    if contributor.get("schema_version") != 1:
+        raise ArtifactError(
+            "candidate dependency provenance has an unsupported contributor lock"
+        )
+    if (
+        not isinstance(state, dict)
+        or state.get("schema_version") != 1
+        or state.get("publishable") is not False
+    ):
+        raise ArtifactError(
+            "candidate dependency provenance requires non-publishable schema-v1 "
+            "installer state"
+        )
+    expected_digests = {
+        "release_lock_sha256": hashlib.sha256(release_path.read_bytes()).hexdigest(),
+        "contributor_lock_sha256": hashlib.sha256(
+            contributor_path.read_bytes()
+        ).hexdigest(),
+    }
+    if any(state.get(key) != value for key, value in expected_digests.items()):
+        raise ArtifactError(
+            "candidate dependency provenance is not bound to the current locks"
+        )
+
+    release = _dependency_lock()
+    dependencies = _locked_python_dependencies(release)
+    release_symbolica = release.get("symbolica")
+    candidate_symbolica = contributor.get("symbolica")
+    if not isinstance(release_symbolica, dict) or not isinstance(
+        candidate_symbolica, dict
+    ):
+        raise ArtifactError(
+            "candidate dependency provenance has no Symbolica contract"
+        )
+    distribution = release_symbolica.get("python_distribution")
+    release_version = release_symbolica.get("python_version")
+    candidate_version = candidate_symbolica.get("candidate_version")
+    candidate_revision = candidate_symbolica.get("candidate_revision")
+    source_url = candidate_symbolica.get("source_url")
+    if not all(
+        isinstance(value, str) and value
+        for value in (
+            distribution,
+            release_version,
+            candidate_version,
+            candidate_revision,
+            source_url,
+        )
+    ):
+        raise ArtifactError(
+            "candidate dependency provenance has an invalid Symbolica contract"
+        )
+    name = canonicalize_name(distribution)
+    try:
+        normalized_release = str(Version(release_version))
+        normalized_candidate = str(Version(candidate_version))
+    except InvalidVersion as error:
+        raise ArtifactError(
+            "candidate dependency provenance has an invalid Symbolica version"
+        ) from error
+    if dependencies.get(name) != normalized_release:
+        raise ArtifactError(
+            "release dependency inventory disagrees with its Symbolica contract"
+        )
+    sources = state.get("sources")
+    source = sources.get("symbolica") if isinstance(sources, dict) else None
+    if (
+        not isinstance(source, dict)
+        or source.get("revision") != candidate_revision
+        or source.get("url") != source_url
+    ):
+        raise ArtifactError(
+            "candidate dependency provenance is not bound to the pinned Symbolica "
+            "source"
+        )
+    return {name: normalized_candidate}
+
+
 def _validate_runtime_requirements(
     raw_requirements: list[str],
     lock: dict[str, Any],
+    *,
+    mode: str,
 ) -> None:
     dependencies = _locked_python_dependencies(lock)
+    if mode == "candidate":
+        dependencies.update(_candidate_dependency_overrides())
+    elif mode != "release":
+        raise ArtifactError(f"unsupported dependency contract mode: {mode}")
     requirements: dict[str, Requirement] = {}
 
     def marker_uses_extra(items: Any) -> bool:
@@ -1645,7 +1751,7 @@ def audit_wheel(
     raw_requirements = list(metadata.get_all("Requires-Dist", []))
     _reject_direct_requirements(raw_requirements)
     dependency_lock = _dependency_lock()
-    _validate_runtime_requirements(raw_requirements, dependency_lock)
+    _validate_runtime_requirements(raw_requirements, dependency_lock, mode=mode)
     _validate_legal_members(entries, metadata_name, metadata)
     if str(metadata.get("License-Expression", "")) != "0BSD":
         raise ArtifactError("wheel metadata must declare License-Expression: 0BSD")

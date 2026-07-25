@@ -22,8 +22,20 @@ sys.path.insert(0, str(ROOT / "tools" / "release"))
 _LOCK = tomllib.loads(
     (ROOT / "dependencies" / "release-lock.toml").read_text(encoding="utf-8")
 )
+_CONTRIBUTOR_LOCK = tomllib.loads(
+    (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
+)
 _DEFAULT_REQUIREMENTS = [
     f"{entry['distribution']}=={entry['version']}"
+    for entry in _LOCK["python_dependencies"]
+]
+_CANDIDATE_REQUIREMENTS = [
+    (
+        f"{entry['distribution']}=="
+        f"{_CONTRIBUTOR_LOCK['symbolica']['candidate_version']}"
+        if entry["distribution"] == _LOCK["symbolica"]["python_distribution"]
+        else f"{entry['distribution']}=={entry['version']}"
+    )
     for entry in _LOCK["python_dependencies"]
 ]
 _LEGAL_FILES = (
@@ -139,6 +151,49 @@ from audit_sdist import (  # noqa: E402
     REQUIRED_SDIST_MEMBERS,
     prepared_model_asset_members,
 )
+
+
+@pytest.fixture
+def candidate_dependency_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contributor_path = tmp_path / "contributor-lock.toml"
+    state_path = tmp_path / "install-state.json"
+    contributor_data = (
+        ROOT / "dependencies" / "contributor-lock.toml"
+    ).read_bytes()
+    contributor_path.write_bytes(contributor_data)
+    symbolica = _CONTRIBUTOR_LOCK["symbolica"]
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "release_lock_sha256": hashlib.sha256(
+                    (ROOT / "dependencies" / "release-lock.toml").read_bytes()
+                ).hexdigest(),
+                "contributor_lock_sha256": hashlib.sha256(
+                    contributor_data
+                ).hexdigest(),
+                "sources": {
+                    "symbolica": {
+                        "url": symbolica["source_url"],
+                        "revision": symbolica["candidate_revision"],
+                    }
+                },
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        artifacts,
+        "_CONTRIBUTOR_DEPENDENCY_LOCK",
+        contributor_path,
+    )
+    monkeypatch.setattr(artifacts, "_CANDIDATE_INSTALL_STATE", state_path)
 
 
 def _record_hash(data: bytes) -> str:
@@ -615,7 +670,13 @@ def _wheel(
     runtime_requirements = (
         [requirement]
         if requirement is not None
-        else list(_DEFAULT_REQUIREMENTS if requirements is None else requirements)
+        else list(
+            (
+                _CANDIDATE_REQUIREMENTS if candidate else _DEFAULT_REQUIREMENTS
+            )
+            if requirements is None
+            else requirements
+        )
     )
     declared_legal_files = _LEGAL_FILES if license_files is None else license_files
     dist_info = f"pyamplicol-{version}.dist-info"
@@ -935,6 +996,7 @@ def test_wheel_rejects_prepared_model_bundle_identity_drift(
 
 def test_release_and_candidate_wheels_are_distinct_and_audited(
     tmp_path: Path,
+    candidate_dependency_provenance: None,
 ) -> None:
     release = _wheel(tmp_path)
     report = audit_wheel(release, mode="release", native_scan=False)
@@ -949,12 +1011,54 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
     )
     candidate_report = audit_wheel(candidate, mode="candidate", native_scan=False)
     assert candidate_report.version == candidate_version
-    with pytest.raises(ArtifactError, match="release wheel"):
+    with pytest.raises(ArtifactError, match=r"locked version 2\.1\.0"):
         audit_wheel(candidate, mode="release", native_scan=False)
+
+
+def test_candidate_and_release_symbolica_pins_are_mode_specific(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+) -> None:
+    candidate_version = "0.1.0.dev0+candidate.0123456789ab"
+    release_pin = _wheel(
+        tmp_path,
+        version=candidate_version,
+        candidate=True,
+        requirements=_DEFAULT_REQUIREMENTS,
+    )
+    with pytest.raises(ArtifactError, match=r"excludes locked version 2\.2\.0"):
+        audit_wheel(release_pin, mode="candidate", native_scan=False)
+
+    release_pin.unlink()
+    candidate_pin = _wheel(
+        tmp_path,
+        requirements=_CANDIDATE_REQUIREMENTS,
+    )
+    with pytest.raises(ArtifactError, match=r"excludes locked version 2\.1\.0"):
+        audit_wheel(candidate_pin, mode="release", native_scan=False)
+
+
+def test_candidate_dependency_provenance_fails_closed(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+) -> None:
+    state_path = artifacts.ROOT / artifacts._CANDIDATE_INSTALL_STATE
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["contributor_lock_sha256"] = "0" * 64
+    state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+    candidate = _wheel(
+        tmp_path,
+        version="0.1.0.dev0+candidate.0123456789ab",
+        candidate=True,
+    )
+
+    with pytest.raises(ArtifactError, match="not bound to the current locks"):
+        audit_wheel(candidate, mode="candidate", native_scan=False)
 
 
 def test_candidate_wheel_rejects_selftest_fixture_bootstrap_marker(
     tmp_path: Path,
+    candidate_dependency_provenance: None,
 ) -> None:
     candidate = _wheel(
         tmp_path,
@@ -967,7 +1071,10 @@ def test_candidate_wheel_rejects_selftest_fixture_bootstrap_marker(
         audit_wheel(candidate, mode="candidate", native_scan=False)
 
 
-def test_host_native_linux_tag_is_candidate_only(tmp_path: Path) -> None:
+def test_host_native_linux_tag_is_candidate_only(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+) -> None:
     candidate = _wheel(
         tmp_path,
         version="0.1.0.dev0+candidate.0123456789ab",
@@ -985,6 +1092,7 @@ def test_host_native_linux_tag_is_candidate_only(tmp_path: Path) -> None:
 
 def test_candidate_allows_only_rustup_standard_library_source_paths(
     tmp_path: Path,
+    candidate_dependency_provenance: None,
 ) -> None:
     candidate_version = "0.1.0.dev0+candidate.0123456789ab"
     rustup_location = (
@@ -1569,6 +1677,7 @@ def test_wheel_requires_standard_license_metadata_and_allows_extra_notices(
 
 def test_candidate_sdk_version_must_match_staged_package_exactly(
     tmp_path: Path,
+    candidate_dependency_provenance: None,
 ) -> None:
     version = "0.1.0.dev0+candidate.0123456789ab"
     wheel = _wheel(

@@ -30,7 +30,11 @@ except ModuleNotFoundError:  # pragma: no cover - pip vendors the build fallback
         parse_wheel_filename,
     )
 
-from _artifacts import audit_wheel, canonicalize_name
+from _artifacts import (
+    _candidate_dependency_overrides,
+    audit_wheel,
+    canonicalize_name,
+)
 from _common import (
     CANDIDATE_ARTIFACTS,
     DEPENDENCY_WHEELHOUSE,
@@ -470,23 +474,6 @@ def exact_dependencies() -> dict[str, str]:
             raise ReleaseError(f"release lock repeats Python dependency {name}")
         dependencies[name] = version
     return dependencies
-
-
-def _candidate_dependencies(
-    lock: dict[str, Any], dependencies: dict[str, str]
-) -> dict[str, str]:
-    symbolica = lock["symbolica"]
-    candidates = {
-        canonicalize_name(str(symbolica["python_distribution"])): str(
-            symbolica["python_version"]
-        ),
-    }
-    for name, version in candidates.items():
-        if dependencies.get(name) != version:
-            raise ReleaseError(
-                f"candidate dependency contract disagrees with lock for {name}"
-            )
-    return candidates
 
 
 def _wheel_identity(path: Path) -> tuple[str, str, set[str]]:
@@ -1126,7 +1113,8 @@ def _install_dependencies(
         "https://pypi.org/simple",
     ]
     if mode == "candidate":
-        candidate_requirements = _candidate_dependencies(lock, dependencies)
+        candidate_requirements = _candidate_dependency_overrides()
+        dependencies.update(candidate_requirements)
         local_wheels = _candidate_dependency_wheels(
             candidate_requirements,
             wheelhouses,

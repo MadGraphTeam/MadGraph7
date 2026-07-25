@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import json
 import os
 import subprocess
 import sys
+import tomllib
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +18,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "release"))
 
+import _artifacts as release_artifacts  # noqa: E402
 import build_from_sdist  # noqa: E402
 import build_release_artifacts  # noqa: E402
 import install_wheel  # noqa: E402
@@ -43,6 +47,54 @@ def _dependency_wheel(
             f"Wheel-Version: 1.0\nTag: {tag}\n\n",
         )
     return wheel
+
+
+@pytest.fixture
+def candidate_dependency_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contributor_path = tmp_path / "contributor-lock.toml"
+    state_path = tmp_path / "install-state.json"
+    contributor_data = (
+        ROOT / "dependencies" / "contributor-lock.toml"
+    ).read_bytes()
+    contributor_path.write_bytes(contributor_data)
+    contributor = tomllib.loads(contributor_data.decode("utf-8"))
+    symbolica = contributor["symbolica"]
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "release_lock_sha256": hashlib.sha256(
+                    (ROOT / "dependencies" / "release-lock.toml").read_bytes()
+                ).hexdigest(),
+                "contributor_lock_sha256": hashlib.sha256(
+                    contributor_data
+                ).hexdigest(),
+                "sources": {
+                    "symbolica": {
+                        "url": symbolica["source_url"],
+                        "revision": symbolica["candidate_revision"],
+                    }
+                },
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        release_artifacts,
+        "_CONTRIBUTOR_DEPENDENCY_LOCK",
+        contributor_path,
+    )
+    monkeypatch.setattr(
+        release_artifacts,
+        "_CANDIDATE_INSTALL_STATE",
+        state_path,
+    )
 
 
 def test_select_compatible_abi3_wheel_uses_target_tag_order(tmp_path: Path) -> None:
@@ -123,10 +175,17 @@ def test_deployment_path_guard_allows_only_the_isolated_sandbox(
 def test_candidate_deployment_installs_only_symbolica_by_exact_local_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    candidate_dependency_provenance: None,
 ) -> None:
     wheelhouse = tmp_path / "wheelhouse"
     symbolica = _dependency_wheel(
         wheelhouse / "symbolica",
+        "symbolica",
+        "2.2.0",
+        "cp311-abi3-test_platform",
+    )
+    release_symbolica = _dependency_wheel(
+        wheelhouse / "release-symbolica",
         "symbolica",
         "2.1.0",
         "cp311-abi3-test_platform",
@@ -150,12 +209,14 @@ def test_candidate_deployment_installs_only_symbolica_by_exact_local_path(
     assert installation.local_wheels == {
         "symbolica": symbolica.resolve(),
     }
+    assert installation.versions["symbolica"] == "2.2.0"
     assert len(commands) == 1
     command = commands[0]
     assert "--require-hashes" not in command
     assert "--find-links" not in command
     assert "--index-url" in command
     assert str(symbolica.resolve()) in command
+    assert str(release_symbolica.resolve()) not in command
     assert "ufo-model-loader==0.1.7" in command
     assert "numpy==2.4.2" in command
     assert not any(item.startswith("python-utils==") for item in command)
