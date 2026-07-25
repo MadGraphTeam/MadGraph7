@@ -3404,15 +3404,19 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # those partonic contributions, so it must not be reachable from
         # --use_crossing: use_crossing=False has to remain a complete output.
         #
-        # merge_crossing='record' keeps the partonic contribution (records the
-        # crossed process on the base instead of dropping it) so the crossed
-        # subprocess is never generated but is still reached through the base's
-        # crossing-aware SMATRIX. TEMP: gated on an env var during staged rollout
-        # (standalone consumes it first, madevent next); becomes the default for
-        # crossing-enabled output once both backends read the metadata.
-        merge_crossing = False
-        if os.environ.get('MG_MERGE_CROSSING') == 'record':
-            merge_crossing = 'record'
+        # merge_crossing='record' keeps the partonic contribution: the crossed
+        # process is recorded on the base (not generated on its own) and reached
+        # through the base's crossing-aware SMATRIX. This is the DEFAULT for a
+        # crossing-enabled generation -> the standalone output is one directory
+        # per base ME, and the grouped backends (madevent/mg7) reconstruct the
+        # crossed subprocesses at output time (see do_output). A process that
+        # breaks crossing (s-channel constraint, decay chain, loop, ...) falls
+        # back to full generation per-process inside generate_matrix_elements.
+        # --use_crossing=False keeps the complete unmerged generation, and
+        # MG_MERGE_CROSSING=off is a debug escape hatch to the same.
+        merge_crossing = 'record' if use_crossing else False
+        if os.environ.get('MG_MERGE_CROSSING') == 'off':
+            merge_crossing = False
 
         # Check the validity of the arguments
         self.check_add(args)
@@ -9980,7 +9984,18 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     # regeneration). The normal grouping + crossing routing then
                     # handles them exactly as an unmerged (merge_crossing=False)
                     # generation would.
-                    if any(amp.get('crossed_processes') for amp in non_dc_amps):
+                    # The plain fortran 'standalone' exporter consumes the
+                    # crossed_processes metadata directly -- it folds the crossings
+                    # into the base directory and reaches them through the base's
+                    # crossing-aware SMATRIX (see write_check_sa), so it must NOT
+                    # reconstruct. Every other (summation / event-generation)
+                    # backend needs the crossings back as integration units, and
+                    # reconstructing is also the safe default for any format that
+                    # does not implement folding (it just reproduces the complete
+                    # unmerged output).
+                    if self._export_format != 'standalone' and \
+                            any(amp.get('crossed_processes')
+                                for amp in non_dc_amps):
                         if self.options['group_subprocesses'] == 'Auto':
                             collect_mirror = True
                         else:
