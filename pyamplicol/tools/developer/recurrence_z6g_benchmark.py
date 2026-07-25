@@ -1392,20 +1392,14 @@ def _expected_effective_jit_optimization_level(
 ) -> int:
     """Return the executable optimization level, not merely the request.
 
-    Process-local compiled DAGs honor the requested JIT level.  Eager and
-    recurrence lanes consume the portable prepared-model applications, as do
-    all lanes when an explicit prepared model is supplied.  Those immutable
-    applications are deliberately stored at the portable O2 level even when
-    the process-generation request remains O3.
+    Process-local compiled DAGs honor the requested JIT level, including when
+    their model source is an explicit prepared-model bundle.  Eager and
+    recurrence lanes execute that bundle's immutable portable applications,
+    which are deliberately stored at O2 even when process generation requests
+    O3.
     """
 
-    prepared_model = getattr(arguments, "prepared_model", None)
-    prepared_model_path = getattr(arguments, "prepared_model_path", None)
-    if (
-        prepared_model is not None
-        or prepared_model_path is not None
-        or mode != "compiled"
-    ):
+    if mode != "compiled":
         return PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
     return int(arguments.jit_optimization_level)
 

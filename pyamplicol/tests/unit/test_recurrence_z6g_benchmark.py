@@ -873,7 +873,7 @@ def test_pairwise_validation_recomputes_lane_point_evidence() -> None:
         ("compiled", False, 3),
         ("eager", False, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
         ("recurrence", False, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
-        ("compiled", True, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
+        ("compiled", True, 3),
         ("eager", True, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
         ("recurrence", True, benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL),
     ],
