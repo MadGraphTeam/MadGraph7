@@ -28,7 +28,11 @@ use crate::direct_arena::{
     deterministic_point_tile_size,
 };
 
-const COMPILED_DIRECT_MAX_TILE_POINTS: u32 = 1024;
+// Fused applications repeatedly traverse many split-complex parent/output
+// planes. Keeping a small, fixed power-of-two point tile preserves that
+// cross-stage locality on both cache-rich and cache-poor CPUs without an
+// online host-specific tuner.
+const COMPILED_DIRECT_LOCALITY_POINT_CAP: u32 = 16;
 const COMPILED_DIRECT_WORKSPACE_BYTES: usize = 256 * 1024 * 1024;
 const COMPILED_DIRECT_CACHE_TARGET_BYTES: usize = 4 * 1024 * 1024;
 
@@ -362,7 +366,7 @@ impl CompiledDirectEnginePrototype {
                 RusticolError::integrity("compiled Direct-Arena per-point shape overflows")
             })?;
         let tile_capacity = deterministic_point_tile_size(
-            COMPILED_DIRECT_MAX_TILE_POINTS,
+            COMPILED_DIRECT_LOCALITY_POINT_CAP,
             COMPILED_DIRECT_WORKSPACE_BYTES,
             compiled_direct_cache_target_bytes(),
             scalar_values_per_point,
@@ -1743,6 +1747,22 @@ mod tests {
                     })
             })
             .collect()
+    }
+
+    #[test]
+    fn compiled_direct_tile_policy_caps_representative_fused_shapes_at_sixteen_points() {
+        for scalar_values_per_point in [16, 1_024, 32_768] {
+            assert_eq!(
+                deterministic_point_tile_size(
+                    COMPILED_DIRECT_LOCALITY_POINT_CAP,
+                    COMPILED_DIRECT_WORKSPACE_BYTES,
+                    COMPILED_DIRECT_CACHE_TARGET_BYTES,
+                    scalar_values_per_point,
+                )
+                .unwrap(),
+                16,
+            );
+        }
     }
 
     #[test]
