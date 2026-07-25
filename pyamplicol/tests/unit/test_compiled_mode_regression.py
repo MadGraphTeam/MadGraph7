@@ -29,9 +29,9 @@ def _write_artifact(
     payload_path = path / "payload.bin"
     payload_path.write_bytes(b"compiled-payload")
     capability = (
-        "rusticol.eager-dag.complex-f64.v1"
+        regression.EAGER_DIRECT_ARENA_CAPABILITY
         if eager
-        else "symjit.application.complex-f64.v1"
+        else regression.COMPILED_DIRECT_ARENA_CAPABILITY
     )
     (path / "artifact.json").write_text(
         json.dumps(
@@ -81,12 +81,40 @@ def _profile_payload(
     batch_size: int = 1024,
     numerical_values: tuple[float, ...] = (2.5,),
     native_module_sha256: str = "a" * 64,
+    execution_mode: str = "compiled",
 ) -> dict[str, object]:
     sample_count = 5
     repetitions = 11
     evaluations = sample_count * repetitions
     points = evaluations * batch_size
     profiled_wall = wall * 1.1
+    expanded_values = tuple(
+        numerical_values[index % len(numerical_values)]
+        for index in range(regression.VALIDATION_SAMPLE_COUNT)
+    )
+
+    def numerical_result(precision: int) -> dict[str, object]:
+        return {
+            "precision": precision,
+            "point_count": len(expanded_values),
+            "distinct_point_count": len(expanded_values),
+            "point_sha256": [
+                f"{index:064x}" for index in range(1, len(expanded_values) + 1)
+            ],
+            "batch_sha256": "d" * 64,
+            "values_f64": list(expanded_values),
+            "values_f64_hex": [value.hex() for value in expanded_values],
+            "helicities": [],
+            "color_flows": [],
+            "resolved": {
+                "shape": [len(expanded_values), 1, 1],
+                "helicity_ids": ["h:-1,+1"],
+                "color_ids": ["flow:1,2"],
+                "totals_complex": [[value, 0.0] for value in expanded_values],
+                "values_complex": [[[[value, 0.0]]] for value in expanded_values],
+            },
+        }
+
     return {
         "kind": regression.NATIVE_SAMPLE_RESULT_KIND,
         "schema_version": regression.NATIVE_SAMPLE_SCHEMA_VERSION,
@@ -98,24 +126,39 @@ def _profile_payload(
         "uncertainty": {"standard_deviation": wall / 100.0},
         "evaluator_time_per_point": wall / 2.0,
         "evaluator_uncertainty": {"standard_deviation": wall / 200.0},
-        "warmed_numerical_result": {
-            "point_count": len(numerical_values),
-            "batch_sha256": "d" * 64,
-            "values_f64": list(numerical_values),
-            "values_f64_hex": [value.hex() for value in numerical_values],
-            "helicities": [],
-            "color_flows": [],
-        },
+        "warmed_numerical_result": numerical_result(16),
+        "precision32_numerical_result": numerical_result(32),
+        "cold_load_seconds": 0.01,
         "timing_breakdown": {
             "sample_count": sample_count,
-            "execution_mode": "compiled",
+            "execution_mode": execution_mode,
             "wall_time": {
                 "mean_seconds_per_point": profiled_wall,
                 "sample_count": sample_count,
                 "samples_seconds_per_point": [profiled_wall] * sample_count,
             },
             "raw_profile_samples": [
-                {"wall_time_s": profiled_wall * batch_size * repetitions}
+                {
+                    "wall_time_s": profiled_wall * batch_size * repetitions,
+                    **{
+                        key: 0
+                        for key in (
+                            *regression._ZERO_ARENA_PROFILE_COUNTERS,
+                            *regression._ZERO_COMPILED_BOUNDARY_COUNTERS,
+                        )
+                    },
+                    **{key: 0.0 for key in regression._ZERO_ARENA_PROFILE_TIMES},
+                    "execution_mode": execution_mode,
+                    "evaluator_backend_call_count": (
+                        1 if execution_mode == "compiled" else 0
+                    ),
+                    "compiled_direct_arena_engine_count": (
+                        1 if execution_mode == "compiled" else 0
+                    ),
+                    "compiled_direct_arena_call_count": (
+                        1 if execution_mode == "compiled" else 0
+                    ),
+                }
                 for _ in range(sample_count)
             ],
         },
@@ -134,7 +177,7 @@ def _profile_payload(
             "profile_attribution_paired_with_headline": True,
             "profile_attribution_identical_batch": True,
             "profile_attribution_identical_repetitions": True,
-            "execution_mode": "compiled",
+            "execution_mode": execution_mode,
             "batch_size": batch_size,
             "completed_sample_count": sample_count,
             "planned_sample_count": sample_count,
@@ -180,9 +223,9 @@ def test_parser_exposes_required_lanes_and_plan_defaults(tmp_path: Path) -> None
     assert arguments.lc_flow_layout == "topology-replay"
     assert arguments.shared_artifact is None
     assert arguments.batch_size == 1024
-    assert arguments.samples == 5
+    assert arguments.samples == 7
     assert arguments.target_runtime == 5.0
-    assert arguments.minimum_samples == 5
+    assert arguments.minimum_samples == 7
 
 
 def test_parser_rejects_fewer_than_five_outer_samples(tmp_path: Path) -> None:
@@ -224,8 +267,81 @@ def test_generation_command_is_cross_version_compiled_jit_o3() -> None:
     assert command[command.index("--color-accuracy") + 1] == "full"
     assert command[command.index("--lc-flow-layout") + 1] == "topology-replay"
     assert command[command.index("--workers") + 1] == "1"
-    assert "--execution-mode" not in command
+    assert command[command.index("--execution-mode") + 1] == "compiled"
     assert "--no-post-build-validation" in command
+
+
+def test_artifact_execution_mode_accepts_frozen_and_arena_eager_capabilities() -> None:
+    frozen = {
+        "required_runtime_capabilities": [
+            "rusticol.eager-runtime-layout.complex-f64.v1"
+        ]
+    }
+    arena = {"required_runtime_capabilities": ["eager-direct-arena-v1"]}
+
+    assert regression._artifact_execution_mode(frozen) == "eager"
+    assert regression._artifact_execution_mode(arena) == "eager"
+
+
+def test_arena_profile_gate_requires_current_capability_and_complete_calls() -> None:
+    eager_sample = regression._native_profile_sample(
+        _profile_payload(1.0, execution_mode="eager"),
+        minimum_samples=5,
+        expected_execution_mode="eager",
+    )
+    eager_measurements = ({"lane": "current", "pair_index": 1, **eager_sample},)
+    legacy = {
+        "current": {
+            "required_runtime_capabilities": [
+                "rusticol.eager-runtime-layout.complex-f64.v1"
+            ]
+        }
+    }
+    direct = {
+        "current": {
+            "required_runtime_capabilities": [regression.EAGER_DIRECT_ARENA_CAPABILITY]
+        }
+    }
+    assert (
+        regression._arena_profile_gate(
+            eager_measurements,
+            execution_mode="eager",
+            artifacts=legacy,
+        )["passes"]
+        is False
+    )
+    assert (
+        regression._arena_profile_gate(
+            eager_measurements,
+            execution_mode="eager",
+            artifacts=direct,
+        )["passes"]
+        is True
+    )
+
+    compiled_sample = regression._native_profile_sample(
+        _profile_payload(1.0),
+        minimum_samples=5,
+    )
+    profiles = compiled_sample["paired_profile_timing_breakdown"]["raw_profile_samples"]
+    assert isinstance(profiles, list)
+    profiles[0]["evaluator_backend_call_count"] = 2
+    profiles[0]["stage_input_pack_time_s"] = 1.0e-9
+    compiled = {
+        "current": {
+            "required_runtime_capabilities": [
+                regression.COMPILED_DIRECT_ARENA_CAPABILITY
+            ]
+        }
+    }
+    assert (
+        regression._arena_profile_gate(
+            ({"lane": "current", "pair_index": 1, **compiled_sample},),
+            execution_mode="compiled",
+            artifacts=compiled,
+        )["passes"]
+        is False
+    )
 
 
 def test_profile_command_carries_sampling_and_selector_controls() -> None:
@@ -361,10 +477,10 @@ def test_distribution_reports_median_and_median_absolute_deviation() -> None:
     assert summary["mad_seconds_per_point"] == 1.0
 
 
-def test_gate_requires_both_two_percent_and_three_baseline_mad() -> None:
+def test_gate_requires_both_three_percent_and_three_baseline_mad() -> None:
     baseline = {
         "median_seconds_per_point": 100.0,
-        "mad_seconds_per_point": 1.0,
+        "mad_seconds_per_point": 2.0,
     }
 
     passing = regression._regression_gate(
@@ -373,7 +489,7 @@ def test_gate_requires_both_two_percent_and_three_baseline_mad() -> None:
     )
     relative_failure = regression._regression_gate(
         baseline,
-        {"median_seconds_per_point": 102.1},
+        {"median_seconds_per_point": 103.1},
     )
     mad_failure = regression._regression_gate(
         {"median_seconds_per_point": 100.0, "mad_seconds_per_point": 0.1},
@@ -381,10 +497,10 @@ def test_gate_requires_both_two_percent_and_three_baseline_mad() -> None:
     )
 
     assert passing["passes"] is True
-    assert relative_failure["within_two_percent"] is False
+    assert relative_failure["within_three_percent"] is False
     assert relative_failure["within_three_baseline_mad"] is True
     assert relative_failure["passes"] is False
-    assert mad_failure["within_two_percent"] is True
+    assert mad_failure["within_three_percent"] is True
     assert mad_failure["within_three_baseline_mad"] is False
     assert mad_failure["passes"] is False
 
@@ -403,6 +519,9 @@ def test_performance_authority_requires_shared_or_matching_payloads() -> None:
             "process_id": "d_dbar_to_z",
             "color_accuracy": "lc",
             "lc_flow_layout": "topology-replay",
+            "required_runtime_capabilities": [
+                regression.COMPILED_DIRECT_ARENA_CAPABILITY
+            ],
             "payload_digests": matching_payloads,
         }
         for lane in ("baseline", "current")
@@ -444,16 +563,35 @@ def test_correctness_gate_compares_warmed_values_at_contract_tolerances() -> Non
         value: float,
         pair_index: int,
     ) -> dict[str, object]:
+        def numerical_result(precision: int) -> dict[str, object]:
+            values = [value] * regression.VALIDATION_SAMPLE_COUNT
+            return {
+                "precision": precision,
+                "point_count": regression.VALIDATION_SAMPLE_COUNT,
+                "distinct_point_count": regression.VALIDATION_SAMPLE_COUNT,
+                "point_sha256": [
+                    f"{index:064x}"
+                    for index in range(1, regression.VALIDATION_SAMPLE_COUNT + 1)
+                ],
+                "batch_sha256": "d" * 64,
+                "values_f64": values,
+                "values_f64_hex": [entry.hex() for entry in values],
+                "helicities": ["h:-1,+1"],
+                "color_flows": ["flow:1,2"],
+                "resolved": {
+                    "shape": [regression.VALIDATION_SAMPLE_COUNT, 1, 1],
+                    "helicity_ids": ["h:-1,+1"],
+                    "color_ids": ["flow:1,2"],
+                    "totals_complex": [[entry, 0.0] for entry in values],
+                    "values_complex": [[[[entry, 0.0]]] for entry in values],
+                },
+            }
+
         return {
             "lane": lane,
             "pair_index": pair_index,
-            "warmed_numerical_result": {
-                "point_count": 1,
-                "batch_sha256": "d" * 64,
-                "values_f64": [value],
-                "helicities": ["h:-1,+1"],
-                "color_flows": ["flow:1,2"],
-            },
+            "warmed_numerical_result": numerical_result(16),
+            "precision32_numerical_result": numerical_result(32),
         }
 
     passing = regression._correctness_gate(
@@ -474,6 +612,93 @@ def test_correctness_gate_compares_warmed_values_at_contract_tolerances() -> Non
     assert passing["passes"] is True
     assert failing["passes"] is False
     assert failing["comparisons"][1]["passes"] is False
+
+
+def test_native_sample_rejects_inconsistent_totals_and_resolved_shape() -> None:
+    inconsistent_total = _profile_payload(1.0)
+    inconsistent_total["warmed_numerical_result"]["resolved"]["totals_complex"][0] = [
+        999.0,
+        0.0,
+    ]
+    with pytest.raises(regression.RegressionError, match="resolved totals"):
+        regression._native_profile_sample(inconsistent_total, minimum_samples=5)
+
+    inconsistent_shape = _profile_payload(1.0)
+    inconsistent_shape["warmed_numerical_result"]["resolved"]["shape"] = [8, 2, 1]
+    with pytest.raises(regression.RegressionError, match="resolved shape differs"):
+        regression._native_profile_sample(inconsistent_shape, minimum_samples=5)
+
+
+def test_correctness_gate_compares_precision32_cross_lane() -> None:
+    baseline = regression._native_profile_sample(
+        _profile_payload(1.0),
+        minimum_samples=5,
+        require_precision32=True,
+    )
+    current_payload = _profile_payload(1.0)
+    precise = current_payload["precision32_numerical_result"]
+    precise["values_f64"] = [3.0] * regression.VALIDATION_SAMPLE_COUNT
+    precise["values_f64_hex"] = [(3.0).hex()] * regression.VALIDATION_SAMPLE_COUNT
+    precise["resolved"]["totals_complex"] = [
+        [3.0, 0.0]
+    ] * regression.VALIDATION_SAMPLE_COUNT
+    precise["resolved"]["values_complex"] = [
+        [[[3.0, 0.0]]]
+    ] * regression.VALIDATION_SAMPLE_COUNT
+    current = regression._native_profile_sample(
+        current_payload,
+        minimum_samples=5,
+        require_precision32=True,
+    )
+    result = regression._correctness_gate(
+        (
+            {"lane": "baseline", "pair_index": 1, **baseline},
+            {"lane": "current", "pair_index": 1, **current},
+        )
+    )
+    assert result["passes"] is False
+    assert any(
+        comparison["kind"] == "precision32-cross-lane"
+        and comparison["lane"] == "current"
+        and comparison["passes"] is False
+        for comparison in result["comparisons"]
+    )
+
+
+def test_correctness_batch_requires_eight_distinct_points() -> None:
+    points = tuple((index,) for index in range(8))
+    assert compiled_mode_sample._correctness_batch(points) == points
+    with pytest.raises(compiled_mode_sample.SampleError, match="8 distinct"):
+        compiled_mode_sample._correctness_batch(((1,),) * 8)
+
+
+def test_dependency_site_identity_tracks_distribution_content(tmp_path: Path) -> None:
+    for package in ("numpy", "symbolica"):
+        package_root = tmp_path / package
+        package_root.mkdir()
+        (package_root / "__init__.py").write_text(
+            f'VERSION = "{package}"\n',
+            encoding="utf-8",
+        )
+        metadata = tmp_path / f"{package}-1.0.dist-info"
+        metadata.mkdir()
+        (metadata / "METADATA").write_text(
+            f"Metadata-Version: 2.1\nName: {package}\nVersion: 1.0\n",
+            encoding="utf-8",
+        )
+        (metadata / "RECORD").write_text(
+            f"{package}/__init__.py,,\n"
+            f"{package}-1.0.dist-info/METADATA,,\n"
+            f"{package}-1.0.dist-info/RECORD,,\n",
+            encoding="utf-8",
+        )
+    before = regression._dependency_site_identity(tmp_path)
+    (tmp_path / "numpy" / "__init__.py").write_text(
+        'VERSION = "changed"\n',
+        encoding="utf-8",
+    )
+    after = regression._dependency_site_identity(tmp_path)
+    assert before["sha256"] != after["sha256"]
 
 
 def test_exact_identities_cover_file_tree_model_and_command_bytes(
@@ -826,6 +1051,9 @@ def test_run_regression_reports_independent_alternating_samples(
             "process_expression": "d d~ > z",
             "color_accuracy": "lc",
             "lc_flow_layout": "topology-replay",
+            "required_runtime_capabilities": [
+                regression.COMPILED_DIRECT_ARENA_CAPABILITY
+            ],
             "manifest_sha256": ("a" if lane == "baseline" else "b") * 64,
             "tree_identity": {
                 "sha256": ("c" if lane == "baseline" else "d") * 64,
@@ -1020,6 +1248,17 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
     native_module = tmp_path / "native-module.so"
     native_module.write_bytes(b"native-module")
 
+    class FakeResolved:
+        helicity_ids = ("h:-1,+1",)
+        color_ids = ("flow:1,2",)
+
+        def __init__(self, point_count: int) -> None:
+            self.shape = (point_count, 1, 1)
+            self.values = tuple(((2.5 + 0.0j,),) for _ in range(point_count))
+
+        def total(self) -> tuple[complex, ...]:
+            return tuple(2.5 + 0.0j for _ in range(self.shape[0]))
+
     class FakeRuntime:
         def __init__(self) -> None:
             self._native_module = SimpleNamespace(__file__=str(native_module))
@@ -1063,6 +1302,14 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
             self.evaluate_calls.append((id(batch), dict(kwargs)))
             return [2.5] * len(batch)
 
+        def evaluate_resolved(
+            self,
+            batch: tuple[object, ...],
+            **kwargs: object,
+        ) -> FakeResolved:
+            self.evaluate_calls.append((id(batch), dict(kwargs)))
+            return FakeResolved(len(batch))
+
     runtime = FakeRuntime()
     monkeypatch.setattr(
         compiled_mode_sample,
@@ -1075,7 +1322,9 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
     monkeypatch.setattr(
         compiled_mode_sample,
         "_validation_momenta",
-        lambda *_args, **_kwargs: (((1.0, 0.0, 0.0, 1.0),),),
+        lambda *_args, **_kwargs: tuple(
+            ((float(index), 0.0, 0.0, 1.0),) for index in range(1, 9)
+        ),
     )
     monkeypatch.setattr(
         compiled_mode_sample,
@@ -1110,10 +1359,10 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
     )
     assert measured["wall_seconds_per_point"] == pytest.approx(0.005)
     assert measured["paired_profile_wall_seconds_per_point"] == pytest.approx(0.007)
-    assert measured["warmed_numerical_result"]["values_f64"] == [2.5, 2.5]
+    assert measured["warmed_numerical_result"]["values_f64"] == [2.5] * 8
     assert len(runtime.wall_calls) == 7
     assert len(runtime.profile_calls) == 6
-    assert len(runtime.evaluate_calls) == 1
+    assert len(runtime.evaluate_calls) == 2
     assert runtime.evaluate_calls[0][1] == {
         "helicities": ("h:-1,+1",),
         "color_flows": ("flow:1,2",),
