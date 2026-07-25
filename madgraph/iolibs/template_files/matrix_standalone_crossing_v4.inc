@@ -229,3 +229,51 @@ C     into it, via SRC_CROSS_TABLE.
 
       RETURN
       END
+
+      SUBROUTINE %(proc_prefix)sCROSS_GHIDX(CROSS, PERM, SGN, NHELCOL,
+     & GHIDX)
+C     Runtime good-helicity remap: send a crossed helicity row (given by its
+C     BASE-table config NHELCOL and the crossing's PERM/SGN from GET_CROSS_PERM)
+C     to the identity row whose shared GOODHEL bit gates it. This replaces the
+C     baked GHREMAP(NCROSS*NCOMB) table: the map is a fixed permutation, so it is
+C     cheaper to recompute it from the config than to store it -- permute and
+C     sign-flip the config, then re-encode it in the canonical mixed-radix order
+C     (the same STATES/NHSTATE the encoder/decoder use).
+C     GHIDX=0 when the crossing is not filterable (GHFILT flag: initial-initial
+C     swap, inapplicable, or a non-bijection); the caller then computes every
+C     helicity and never trains. For CROSS=0 (PERM identity, SGN +1) this returns
+C     IHEL, so the uncrossed path is unchanged.
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER    NCROSS
+      PARAMETER (NCROSS=(NEXTERNAL+1)*(NEXTERNAL+1))
+      INTEGER CROSS, PERM(NEXTERNAL), SGN(NEXTERNAL)
+      INTEGER NHELCOL(NEXTERNAL), GHIDX
+      INTEGER I, K, D, TGT(NEXTERNAL)
+      INTEGER GHFILT(0:NCROSS-1)
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(ghfilt_data)s
+%(nhstate_data)s
+%(states_data)s
+      IF (GHFILT(CROSS).EQ.0) THEN
+        GHIDX = 0
+        RETURN
+      ENDIF
+      DO K=1,NEXTERNAL
+        TGT(PERM(K)) = SGN(K)*NHELCOL(K)
+      ENDDO
+      GHIDX = 0
+      DO K=1,NEXTERNAL
+        DO D=1,NHSTATE(K)
+          IF (STATES(D,K).EQ.TGT(K)) GOTO 7
+        ENDDO
+        D = 1
+ 7      CONTINUE
+        GHIDX = GHIDX*NHSTATE(K) + (D-1)
+      ENDDO
+      GHIDX = GHIDX + 1
+
+      RETURN
+      END

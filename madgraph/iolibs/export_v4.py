@@ -2512,15 +2512,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             (key, value % {'proc_prefix': prefix,
                            'den_factor_line': replace_dict['den_factor_line']})
             for key, value in self.CROSSING_SNIPPETS.items()))
-        # The GHREMAP DATA is process dependent (it depends on the helicity
-        # table and the crossing permutations), so it is appended here rather
-        # than living in the fixed CROSSING_SNIPPETS. The fortran NHEL table is
-        # emitted with get_helicity_matrix()'s default order (allow_reverse
-        # True), so the remap must be built in that same order.
-        ghremap = self.compute_ghremap(matrix_element, allow_reverse=True)
-        replace_dict['smatrix_cross_decl'] += '\n' + \
-            self.format_integer_data_lines(
-                'GHREMAP', [0 if row is None else row + 1 for row in ghremap])
+        # CROSS_GHIDX (in the crossing routines below) recomputes the crossed
+        # -> identity helicity row map at runtime; it needs only the small
+        # per-crossing GHFILT flag plus the STATES/NHSTATE the encoder uses (in
+        # get_helicity_matrix()'s default allow_reverse=True order, so the map is
+        # built in the same order the NHEL table is emitted).
+        hel_data = self._helstate_data(matrix_element)
+        replace_dict['maxhel'] = hel_data['maxhel']
+        replace_dict['nhstate_data'] = hel_data['nhstate_data']
+        replace_dict['states_data'] = hel_data['states_data']
+        replace_dict['ghfilt_data'] = self.format_integer_data_lines(
+            'GHFILT', self.compute_ghfilt(matrix_element, allow_reverse=True))
         replace_dict['pdg_cross_snippets'] = tuple(
             snippet % {'proc_prefix': prefix}
             for snippet in self.PDG_CROSS_SNIPPETS_ON)
@@ -2563,6 +2565,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     '\nC     flavor index, there is no crossing to decode.',
                 'smatrix_me_cross_decode': '',
                 'me_flav_key': 'IFLAV',
+                'me_goodhel_idx': 'I',
+                'me_goodhel_train_guard': '',
                 'smatrix_me_goodhel_or': '',
                 'me_matrix_args': 'P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC',
                 'smatrix_me_iden_line':
@@ -2597,10 +2601,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         cp = 'CR%s_' % pid
         crossing_template = pjoin(_file_path, 'iolibs', 'template_files',
                                   'matrix_standalone_crossing_v4.inc')
+        hel_data = self._helstate_data(matrix_element)
         crossing_routines = open(crossing_template).read() % {
             'proc_prefix': cp,
             'nflav': nflav,
-            'iden_cross_lines': self.get_iden_cross_lines(matrix_element)}
+            'iden_cross_lines': self.get_iden_cross_lines(matrix_element),
+            'maxhel': hel_data['maxhel'],
+            'nhstate_data': hel_data['nhstate_data'],
+            'states_data': hel_data['states_data'],
+            'ghfilt_data': self.format_integer_data_lines(
+                'GHFILT', self.compute_ghfilt(matrix_element,
+                                              allow_reverse=True))}
         replace_dict.update({
             'smatrix_me_cross_decl': (
                 '      INTEGER NFLAV\n'
@@ -2610,7 +2621,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
                 '      INTEGER NHELUSE(NEXTERNAL,NCOMB)\n'
                 '      INTEGER %(cp)sGET_SPINCOL_CROSS\n'
-                '      INTEGER %(cp)sGET_IDENT_CROSS'
+                '      INTEGER %(cp)sGET_IDENT_CROSS\n'
+                # runtime good-helicity remap: GHIDXA(I) is the identity row that
+                # gates crossed row I (0 = not filterable), precomputed once per
+                # SMATRIX call from the crossing permutation XGPERM/XGSGN.
+                '      INTEGER GHIDXA(NCOMB), XGPERM(NEXTERNAL)\n'
+                '      INTEGER XGSGN(NEXTERNAL), XGDUM, XGH'
                 ) % {'nflav': nflav, 'cp': cp},
             # Decode the crossing and build the crossed P/NHEL/IC once, before the
             # helicity loop. An unusable crossing (spin*color = 0) has a zero ME.
@@ -2627,14 +2643,30 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '        IC0(XKCR) = 1\n'
                 '      ENDDO\n'
                 '      CALL %(cp)sAPPLY_CROSSING_TABLE(IFLAV, NCOMB, P, NHEL,\n'
-                '     &   IC0, PUSE, NHELUSE, IC, FLAV_USE)'
+                '     &   IC0, PUSE, NHELUSE, IC, FLAV_USE)\n'
+                # Precompute the crossed->identity helicity-row map once (the
+                # crossing permutation does not depend on the row), so the shared
+                # GOODHEL filter (keyed by the reduced FLAV_USE) can gate crossed
+                # rows through it just like the standalone. CROSS=0 gives
+                # GHIDXA(I)=I, i.e. the historical unfiltered-flavor behaviour.
+                '      CALL %(cp)sGET_CROSS_PERM(IFLAV, XGPERM, XGSGN, XGDUM)\n'
+                '      DO XGH=1,NCOMB\n'
+                '        CALL %(cp)sCROSS_GHIDX(CROSSUSE, XGPERM, XGSGN,\n'
+                '     &   NHEL(1,XGH), GHIDXA(XGH))\n'
+                '      ENDDO'
                 ) % {'cp': cp},
             'me_flav_key': 'FLAV_USE',
-            # A crossing permutes/flips helicities, so the shared GOODHEL filter
-            # (keyed by the reduced flavor) no longer gates its rows; compute
-            # every helicity for a crossing-enabled ME (optimise with a remap
-            # later). For CROSS=0 the crossed arrays equal the originals.
-            'smatrix_me_goodhel_or': ' .OR. .TRUE.',
+            # The shared GOODHEL filter (keyed by the reduced flavor) is gated
+            # and trained through the runtime remap GHIDXA: crossed row I is good
+            # iff identity row GHIDXA(I) is. GHIDXA(I)=0 (non-filterable crossing)
+            # forces the row to be computed (.OR. GHIDXA(I).EQ.0) and never
+            # trained (GHIDXA(I).NE.0 guard). The index is clamped with MAX(...,1)
+            # because the gate reads GOODHEL before the .EQ.0 guard and fortran
+            # does not short-circuit .OR.; the clamped value is only ever read
+            # when GHIDXA(I).EQ.0 already forces the branch true, so it is inert.
+            'me_goodhel_idx': 'MAX(GHIDXA(I),1)',
+            'me_goodhel_train_guard': 'GHIDXA(I).NE.0 .AND. ',
+            'smatrix_me_goodhel_or': ' .OR. GHIDXA(I).EQ.0',
             'me_matrix_args':
                 'PUSE ,NHELUSE(1,I),IC,FLAV_USE,I,AMP2, JAMP2, IVEC',
             # Uncrossed keeps IDEN/BROKEN_SYM; crossed rebuilds the denominator
@@ -2749,12 +2781,12 @@ C     requested, so the uncrossed path pays nothing for them.
       INTEGER NHELUSE(NEXTERNAL,NCOMB)
       INTEGER ICUSE(NEXTERNAL)
       INTEGER DUMFLAV
-C     GHREMAP maps a crossed helicity row to the identity row whose GOODHEL
-C     bit gates it (see smatrix_goodhel_gate); the DATA statements follow.
-      INTEGER NCROSS
-      PARAMETER (NCROSS=(NEXTERNAL+1)*(NEXTERNAL+1))
+C     GHIDX is the identity row whose shared GOODHEL bit gates the current
+C     crossed row, recomputed at runtime by CROSS_GHIDX (which owns the small
+C     per-crossing GHFILT flag table); XGPERM/XGSGN are the crossing's slot
+C     permutation and NSF signs, fetched once per call (see smatrix_cross_apply).
       INTEGER GHIDX
-      INTEGER GHREMAP(0:NCROSS*NCOMB-1)""",
+      INTEGER XGPERM(NEXTERNAL), XGSGN(NEXTERNAL), XGDUM""",
 
         'smatrix_cross_decode': """C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply. IDENUSE is 0 for a
 C     crossing that cannot be applied, whose matrix element is identically zero.
@@ -2765,7 +2797,11 @@ C     crossing that cannot be applied, whose matrix element is identically zero.
         RETURN
       ENDIF""",
 
-        'smatrix_cross_apply': """C     Apply the crossing ONCE, here, rather than once per helicity: the whole
+        'smatrix_cross_apply': """C     Fetch the crossing's slot permutation / NSF signs once (the good-helicity
+C     gate below reuses them per helicity via CROSS_GHIDX). Cheap, and the
+C     identity crossing returns the identity permutation.
+      CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX, XGPERM, XGSGN, XGDUM)
+C     Apply the crossing ONCE, here, rather than once per helicity: the whole
 C     NHEL table is permuted in one go (the crossing is a fixed slot
 C     permutation, identical for every row) together with the momenta and the
 C     NSF/NSV flags. When CROSSUSE is 0 nothing is copied at all and the loop
@@ -2778,12 +2814,13 @@ C     before crossings existed.
 
         'smatrix_goodhel_gate': """C     The good-helicity filter (GOODHEL) is shared by every crossing of a
 C     flavor, but a crossing permutes and flips helicities, so a crossed row
-C     and its identity counterpart are different rows. GHREMAP sends crossed
-C     row IHEL to the identity row that gates it (sigma^-1); 0 means the
-C     crossing is not filterable (an initial-initial swap, or a crossing that
-C     cannot be applied) so its every helicity is computed. For CROSSUSE=0
-C     GHREMAP is the identity, so this is exactly the historical gate.
-                GHIDX = GHREMAP(CROSSUSE*NCOMB + IHEL - 1)
+C     and its identity counterpart are different rows. CROSS_GHIDX sends crossed
+C     row IHEL to the identity row that gates it (sigma^-1, recomputed from the
+C     config); GHIDX=0 means the crossing is not filterable (an initial-initial
+C     swap, or a crossing that cannot be applied) so its every helicity is
+C     computed. For CROSSUSE=0 it returns IHEL, exactly the historical gate.
+                CALL %(proc_prefix)sCROSS_GHIDX(CROSSUSE, XGPERM, XGSGN,
+     &           NHEL(1,IHEL), GHIDX)
                 IF (GHIDX.EQ.0 .OR. GOODHEL(GHIDX,FLAV_USE) .OR. NTRY(FLAV_USE).LT.20 .OR. USERHEL.NE.-1) THEN""",
 
         'smatrix_goodhel_train': """C     Train the SHARED filter through the same map: mark the IDENTITY row
@@ -3267,6 +3304,25 @@ C     crossing carried by FLAV_IDX moves across.
                     block[big_h] = h
             remap.extend(block)
         return remap
+
+    def compute_ghfilt(self, matrix_element, allow_reverse=True):
+        """Per-crossing filterability flags for the runtime good-helicity remap.
+
+        Returns a list of length NCROSS: 1 if crossing CROSS is filterable (its
+        helicity-row permutation sigma is a clean bijection -- see
+        compute_ghremap), 0 otherwise (initial-initial swap, inapplicable, or a
+        non-bijection). This is the small flag table that replaces the full
+        GHREMAP(NCROSS*NCOMB) row table: at runtime the row map itself is
+        recomputed by permuting+sign-flipping the config and re-encoding it (see
+        the CROSS_GHIDX routine), so only the per-crossing yes/no survives as
+        DATA. A whole compute_ghremap block is either fully derivable or fully
+        None, so this loses nothing."""
+        remap = self.compute_ghremap(matrix_element, allow_reverse)
+        nexternal = matrix_element.get_nexternal_ninitial()[0]
+        ncross = (nexternal + 1) * (nexternal + 1)
+        ncomb = len(remap) // ncross
+        return [0 if all(x is None for x in remap[c * ncomb:(c + 1) * ncomb])
+                else 1 for c in range(ncross)]
 
     @staticmethod
     def format_integer_data_lines(name, values, per_line=10):
