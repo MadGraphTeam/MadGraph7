@@ -24,6 +24,7 @@ from tools.performance_report.runner import (
     _authenticated_direct_codegen_identity,
     _authenticated_effective_config,
     _authenticated_recurrence_source_identity,
+    _benchmark_measurement,
     _real_nonnegative,
     _regular_file_identity,
     config_values,
@@ -36,6 +37,76 @@ from tools.performance_report.runner import (
     validate_runtime_contract,
     validate_selector_contract,
 )
+
+
+def _benchmark_fixture(
+    *,
+    evaluator_time: float | None,
+    timing_status: str,
+    compiled_direct_arena_active: bool,
+) -> SimpleNamespace:
+    raw_time = 0.0 if evaluator_time is None else evaluator_time
+    return SimpleNamespace(
+        uncertainty=SimpleNamespace(
+            standard_error=1.0e-9,
+            relative_standard_error=0.01,
+        ),
+        wall_time_per_point=1.0e-6,
+        evaluator_time_per_point=evaluator_time,
+        sample_count=5,
+        environment={
+            "evaluator_time_raw_seconds_per_point": raw_time,
+            "evaluator_time_status": timing_status,
+            "evaluator_time_ratio_eligible": evaluator_time is not None,
+            "evaluator_time_source": (
+                "runtime_profile_core_compiled_direct_arena_orchestration_time"
+                if compiled_direct_arena_active
+                else "runtime_profile_core_evaluator_call_time"
+            ),
+            "compiled_direct_arena_active": compiled_direct_arena_active,
+            "evaluator_sample_count": 5,
+            "native_profile_points_per_sample": 128,
+            "timing_sample_contract": (
+                "paired_unprofiled_headline_profiled_attribution_v1"
+            ),
+        },
+    )
+
+
+def test_benchmark_measurement_records_compiled_zero_below_timer_resolution() -> None:
+    measurement = _benchmark_measurement(
+        _benchmark_fixture(
+            evaluator_time=None,
+            timing_status="below_timer_resolution",
+            compiled_direct_arena_active=True,
+        ),
+        matrix_element=2.0,
+    )
+
+    assert measurement["execution_seconds_per_point"] is None
+    assert measurement["execution_timing"] == {
+        "abi": "pyamplicol-report-execution-timing-v1",
+        "status": "below_timer_resolution",
+        "ratio_eligible": False,
+        "raw_seconds_per_point": 0.0,
+        "source": ("runtime_profile_core_compiled_direct_arena_orchestration_time"),
+        "compiled_direct_arena_active": True,
+        "sample_count": 5,
+        "native_profile_points_per_sample": 128,
+        "sample_contract": ("paired_unprofiled_headline_profiled_attribution_v1"),
+    }
+
+
+def test_benchmark_measurement_rejects_unauthenticated_zero_execution() -> None:
+    with pytest.raises(RunnerError, match="authenticated compiled Direct-Arena zero"):
+        _benchmark_measurement(
+            _benchmark_fixture(
+                evaluator_time=None,
+                timing_status="below_timer_resolution",
+                compiled_direct_arena_active=False,
+            ),
+            matrix_element=2.0,
+        )
 
 
 def _digest_json(value: object) -> str:

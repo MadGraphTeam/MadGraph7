@@ -287,9 +287,7 @@ def _validate_runtime_identity_postflight(
         not in postflight_keys
         for observation in initial_observations
     ):
-        raise RunnerError(
-            "report runtime lost an authenticated loaded-module origin"
-        )
+        raise RunnerError("report runtime lost an authenticated loaded-module origin")
 
 
 def _load_runtime(artifact_path: Path, process_id: str) -> object:
@@ -360,6 +358,7 @@ def measure_pyamplicol_cell(
         benchmark_config=_resolution_benchmark_config(generated.effective_config),
         selector_contract=contract,
     )
+    execution_timing = profile.pop("execution_timing")
     validation: dict[str, object] = {
         "resolved_sum": profile.pop("resolved_sum_validation"),
     }
@@ -442,11 +441,10 @@ def measure_pyamplicol_cell(
                 "model_preparation_seconds": generated.model_preparation_seconds,
                 "model_preparation_reused": generated.model_preparation_reused,
                 "generation_timer_excludes_model_preparation": True,
+                "execution_timing": execution_timing,
                 "runtime_identity": runtime_identity,
                 "runtime_identity_sha256": runtime_identity_sha256,
-                "runtime_identity_stable_sha256": (
-                    runtime_identity_stable_sha256
-                ),
+                "runtime_identity_stable_sha256": (runtime_identity_stable_sha256),
                 "runtime_identity_postflight_stable_sha256": (
                     runtime_identity_postflight_stable_sha256
                 ),

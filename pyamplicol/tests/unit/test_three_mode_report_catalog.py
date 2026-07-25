@@ -346,6 +346,62 @@ def _candidate_measurement_with_runtime_postflight() -> dict[str, object]:
     return measurement
 
 
+def _below_resolution_candidate_measurement() -> dict[str, object]:
+    measurement = _candidate_measurement_with_runtime_postflight()
+    measurement["execution_seconds_per_point"] = None
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    provenance["source_revision"] = "a" * 40
+    provenance["execution_timing"] = {
+        "abi": "pyamplicol-report-execution-timing-v1",
+        "status": "below_timer_resolution",
+        "ratio_eligible": False,
+        "raw_seconds_per_point": 0.0,
+        "source": ("runtime_profile_core_compiled_direct_arena_orchestration_time"),
+        "compiled_direct_arena_active": True,
+        "sample_count": 5,
+        "native_profile_points_per_sample": 128,
+        "sample_contract": ("paired_unprofiled_headline_profiled_attribution_v1"),
+    }
+    return measurement
+
+
+def test_candidate_compiled_zero_requires_below_resolution_provenance() -> None:
+    measurement = _below_resolution_candidate_measurement()
+    validate_measurement(measurement)
+
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    provenance.pop("execution_timing")
+    with pytest.raises(ValueError, match="below-resolution provenance"):
+        validate_measurement(measurement)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("ratio_eligible", True),
+        ("raw_seconds_per_point", 1.0e-9),
+        ("source", "runtime_profile_core_evaluator_call_time"),
+        ("compiled_direct_arena_active", False),
+        ("native_profile_points_per_sample", None),
+    ),
+)
+def test_below_resolution_execution_provenance_is_fail_closed(
+    field: str,
+    value: object,
+) -> None:
+    measurement = _below_resolution_candidate_measurement()
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    timing = provenance["execution_timing"]
+    assert isinstance(timing, dict)
+    timing[field] = value
+
+    with pytest.raises(ValueError, match="below-resolution record"):
+        validate_measurement(measurement)
+
+
 @pytest.mark.parametrize(
     ("field", "value", "match"),
     [

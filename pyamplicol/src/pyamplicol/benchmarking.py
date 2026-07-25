@@ -496,6 +496,7 @@ class BenchmarkBackend:
         )
         mean, deviation, error, relative_error = _sample_statistics(wall_samples)
         uncertainty = BenchmarkStatistics(deviation, error, relative_error)
+        compiled_direct_arena_active = False
         if evaluator_samples is None:
             evaluator_time_per_point = mean
             evaluator_uncertainty = uncertainty
@@ -601,6 +602,26 @@ class BenchmarkBackend:
                 "evaluator_standard_error_seconds_per_point": evaluator_error,
                 "evaluator_relative_standard_error": evaluator_relative,
             }
+        raw_evaluator_time_per_point = evaluator_time_per_point
+        evaluator_below_timer_resolution = (
+            compiled_direct_arena_active and raw_evaluator_time_per_point == 0.0
+        )
+        if evaluator_below_timer_resolution:
+            evaluator_time_per_point = None
+        evaluator_environment.update(
+            {
+                "evaluator_time_status": (
+                    "below_timer_resolution"
+                    if evaluator_below_timer_resolution
+                    else "measured"
+                ),
+                "evaluator_time_ratio_eligible": (
+                    not evaluator_below_timer_resolution
+                    and raw_evaluator_time_per_point > 0.0
+                ),
+                "evaluator_time_raw_seconds_per_point": (raw_evaluator_time_per_point),
+            }
+        )
         execution_mode = (
             timing_breakdown.execution_mode
             if timing_breakdown is not None

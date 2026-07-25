@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -15,6 +16,10 @@ from .models import CellSpec, ResultStatus
 
 CACHE_SCHEMA_VERSION = 3
 REPORT_VERSION = "0.2.0"
+_EXECUTION_TIMING_ABI = "pyamplicol-report-execution-timing-v1"
+_COMPILED_ARENA_EXECUTION_TIME_SOURCE = (
+    "runtime_profile_core_compiled_direct_arena_orchestration_time"
+)
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
     {
         "observed_module_count",
@@ -235,6 +240,91 @@ def _required_number_or_none(value: object, name: str) -> float | None:
     return number
 
 
+def _validate_execution_timing(
+    value: object,
+    *,
+    execution_seconds_per_point: float | None,
+) -> None:
+    timing = _required_mapping(value, "measurement.provenance.execution_timing")
+    expected_fields = {
+        "abi",
+        "status",
+        "ratio_eligible",
+        "raw_seconds_per_point",
+        "source",
+        "compiled_direct_arena_active",
+        "sample_count",
+        "native_profile_points_per_sample",
+        "sample_contract",
+    }
+    if set(timing) != expected_fields:
+        raise ValueError(
+            "measurement.provenance.execution_timing fields do not match contract"
+        )
+    raw = timing.get("raw_seconds_per_point")
+    if (
+        isinstance(raw, bool)
+        or not isinstance(raw, (int, float))
+        or not math.isfinite(float(raw))
+        or float(raw) < 0.0
+    ):
+        raise ValueError("measurement.provenance.execution_timing raw time is invalid")
+    sample_count = timing.get("sample_count")
+    if (
+        isinstance(sample_count, bool)
+        or not isinstance(sample_count, int)
+        or sample_count < 1
+    ):
+        raise ValueError(
+            "measurement.provenance.execution_timing sample_count is invalid"
+        )
+    native_points = timing.get("native_profile_points_per_sample")
+    if native_points is not None and (
+        isinstance(native_points, bool)
+        or not isinstance(native_points, int)
+        or native_points < 1
+    ):
+        raise ValueError(
+            "measurement.provenance.execution_timing native point count is invalid"
+        )
+    sample_contract = timing.get("sample_contract")
+    if not isinstance(sample_contract, str) or not sample_contract:
+        raise ValueError(
+            "measurement.provenance.execution_timing sample contract is invalid"
+        )
+    if timing.get("abi") != _EXECUTION_TIMING_ABI:
+        raise ValueError("measurement.provenance.execution_timing ABI is invalid")
+    if timing.get("status") == "below_timer_resolution":
+        if (
+            execution_seconds_per_point is not None
+            or float(raw) != 0.0
+            or timing.get("ratio_eligible") is not False
+            or timing.get("compiled_direct_arena_active") is not True
+            or timing.get("source") != _COMPILED_ARENA_EXECUTION_TIME_SOURCE
+            or native_points is None
+        ):
+            raise ValueError(
+                "measurement.provenance.execution_timing below-resolution "
+                "record is not an authenticated compiled Direct-Arena zero"
+            )
+        return
+    if timing.get("status") != "measured":
+        raise ValueError(
+            "measurement.provenance.execution_timing status is unsupported"
+        )
+    if (
+        execution_seconds_per_point is None
+        or float(raw) != execution_seconds_per_point
+        or timing.get("ratio_eligible") is not (execution_seconds_per_point > 0.0)
+        or not isinstance(timing.get("compiled_direct_arena_active"), bool)
+        or not isinstance(timing.get("source"), str)
+        or not timing.get("source")
+    ):
+        raise ValueError(
+            "measurement.provenance.execution_timing measured record is inconsistent"
+        )
+
+
 def validate_measurement(value: object) -> None:
     measurement = _required_mapping(value, "measurement")
     expected_keys = set(empty_measurement())
@@ -286,6 +376,21 @@ def validate_measurement(value: object) -> None:
         provenance = _required_mapping(
             measurement["provenance"], "measurement.provenance"
         )
+        execution_seconds = _required_number_or_none(
+            measurement["execution_seconds_per_point"],
+            "measurement.execution_seconds_per_point",
+        )
+        raw_execution_timing = provenance.get("execution_timing")
+        if raw_execution_timing is not None:
+            _validate_execution_timing(
+                raw_execution_timing,
+                execution_seconds_per_point=execution_seconds,
+            )
+        elif execution_seconds is None and "source_revision" in provenance:
+            raise ValueError(
+                "successful pyAmpliCol measurement with unavailable execution "
+                "timing requires below-resolution provenance"
+            )
         _validate_runtime_identity_postflight(provenance, validation)
         if measurement["failure"] is not None:
             raise ValueError("successful measurement cannot contain failure metadata")

@@ -31,8 +31,7 @@ _Z_BLOCK_SIZE = 3
 
 def _chunks(values: Sequence[int], size: int) -> tuple[tuple[int, ...], ...]:
     return tuple(
-        tuple(values[start : start + size])
-        for start in range(0, len(values), size)
+        tuple(values[start : start + size]) for start in range(0, len(values), size)
     )
 
 
@@ -166,9 +165,7 @@ class BaselineCandidateAdapter:
             else (Workload.CONTRACTED,)
         )
         if not applicable:
-            joined = tuple(
-                JoinedWorkload(workload, _NA, _NA) for workload in workloads
-            )
+            joined = tuple(JoinedWorkload(workload, _NA, _NA) for workload in workloads)
         else:
             baseline_dataset = self._baseline_dataset(dataset)
             joined = tuple(
@@ -284,6 +281,14 @@ def _ratio_value(
 ) -> float | None:
     if not (_ok(candidate) and _ok(baseline)):
         return None
+    if field == "execution_seconds_per_point":
+        for measurement in (candidate, baseline):
+            provenance = measurement.get("provenance")
+            if not isinstance(provenance, Mapping):
+                continue
+            timing = provenance.get("execution_timing")
+            if isinstance(timing, Mapping) and timing.get("ratio_eligible") is not True:
+                return None
     numerator = candidate.get(field)
     denominator = baseline.get(field)
     if numerator is None or denominator is None:
@@ -306,11 +311,7 @@ def _ratio(candidate: Measurement, baseline: Measurement, field: str) -> str:
             return _status(candidate)
         return r"\matrixnaratio{ReportMuted}"
     color = (
-        "ReportGreen"
-        if value < 1.0
-        else "ReportOrange"
-        if value < 2.0
-        else "ReportRed"
+        "ReportGreen" if value < 1.0 else "ReportOrange" if value < 2.0 else "ReportRed"
     )
     return rf"\matrixratio{{{color}}}{{{_compact(value)}}}"
 
@@ -735,9 +736,7 @@ def _z_block(
     block_index: int,
     block_count: int,
 ) -> list[str]:
-    model_label = (
-        "Built-in SM" if model is ModelKey.BUILTIN_SM else "UFO-SM"
-    )
+    model_label = "Built-in SM" if model is ModelKey.BUILTIN_SM else "UFO-SM"
     lines = [
         r"\clearpage",
         r"\noindent\begin{minipage}{\linewidth}",
@@ -925,8 +924,7 @@ def _scalar_value(measurement: Measurement, field: str) -> str:
             return rf"\texttt{{{_tex_escape(str(value))}}}"
     return _time(
         value,
-        microseconds=field
-        in {"wall_seconds_per_point", "execution_seconds_per_point"},
+        microseconds=field in {"wall_seconds_per_point", "execution_seconds_per_point"},
     )
 
 
@@ -951,9 +949,7 @@ def render_scalar_ladder(
 ) -> str:
     index = MeasurementIndex(caches)
     column_spec = (
-        r"@{}L{1.08in}"
-        + "".join(r"L{0.82in}" for _ in dataset.multiplicities)
-        + r"@{}"
+        r"@{}L{1.08in}" + "".join(r"L{0.82in}" for _ in dataset.multiplicities) + r"@{}"
     )
     rows = (
         ("generation [s]", "generation_seconds"),
@@ -1017,9 +1013,7 @@ def render_scalar_ladder(
     lines.extend(
         [
             r"\rowcolor{ReportOrange!8}",
-            "relative diff. vs hp & "
-            + " & ".join(relative_values)
-            + r" \\",
+            "relative diff. vs hp & " + " & ".join(relative_values) + r" \\",
             r"\bottomrule",
             r"\end{tabular}",
             r"\end{center}",

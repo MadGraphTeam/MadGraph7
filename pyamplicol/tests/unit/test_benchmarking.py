@@ -291,6 +291,20 @@ class _TimedRuntimeWithCompiledDirectArenaRepeatedProfile(
         }
 
 
+class _TimedRuntimeWithBelowResolutionCompiledDirectArenaProfile(
+    _TimedRuntimeWithCompiledDirectArenaRepeatedProfile
+):
+    def profile_repeated(
+        self,
+        momenta: object,
+        repetitions: int,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        profile = super().profile_repeated(momenta, repetitions, **kwargs)
+        profile["orchestration_time_s"] = 0.0
+        return profile
+
+
 class _TimedRuntimeWithRecurrenceRepeatedProfile(_TimedRuntimeWithRepeatedProfile):
     def profile_repeated(
         self,
@@ -703,6 +717,36 @@ def test_compiled_direct_arena_uses_fused_orchestration_attribution(
         counters.compiled_direct_arena_boundary_amplitude_output_bytes_per_call
         == pytest.approx(0.0)
     )
+
+
+def test_compiled_direct_arena_zero_is_recorded_below_timer_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithBelowResolutionCompiledDirectArenaProfile(clock)
+    runtime.repeated_profile_calls = 0
+    runtime.native_wall_calls = 0
+    config = BenchmarkConfig(
+        target_runtime=0.1,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=4,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.evaluator_time_per_point is None
+    assert result.environment["evaluator_time_status"] == "below_timer_resolution"
+    assert result.environment["evaluator_time_ratio_eligible"] is False
+    assert result.environment["evaluator_time_raw_seconds_per_point"] == 0.0
+    assert result.environment["compiled_direct_arena_active"] is True
+    assert result.timing_breakdown is not None
+    assert result.timing_breakdown.orchestration_time is not None
+    assert result.timing_breakdown.orchestration_time.mean_seconds_per_point == 0.0
 
 
 def test_recurrence_profile_uses_paired_schedule_attribution(

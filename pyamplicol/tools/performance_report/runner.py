@@ -47,6 +47,10 @@ _RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
 _RECURRENCE_JIT_SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
 _RECURRENCE_JIT_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
 _RECURRENCE_JIT_SOURCE_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
+_EXECUTION_TIMING_ABI = "pyamplicol-report-execution-timing-v1"
+_COMPILED_ARENA_EXECUTION_TIME_SOURCE = (
+    "runtime_profile_core_compiled_direct_arena_orchestration_time"
+)
 
 
 class RunnerError(RuntimeError):
@@ -1606,14 +1610,91 @@ def _benchmark_measurement(
     matrix_element: float,
 ) -> dict[str, object]:
     uncertainty = benchmark.uncertainty
+    environment = getattr(benchmark, "environment", None)
+    if not isinstance(environment, Mapping):
+        raise RunnerError("benchmark did not retain timing provenance")
+    evaluator_time = benchmark.evaluator_time_per_point
+    raw_evaluator_time = environment.get("evaluator_time_raw_seconds_per_point")
+    if (
+        isinstance(raw_evaluator_time, bool)
+        or not isinstance(raw_evaluator_time, (int, float))
+        or not math.isfinite(float(raw_evaluator_time))
+        or float(raw_evaluator_time) < 0.0
+    ):
+        raise RunnerError("benchmark has invalid raw evaluator timing provenance")
+    raw_evaluator_time = float(raw_evaluator_time)
+    timing_status = environment.get("evaluator_time_status")
+    ratio_eligible = environment.get("evaluator_time_ratio_eligible")
+    time_source = environment.get("evaluator_time_source")
+    compiled_direct_arena_active = environment.get(
+        "compiled_direct_arena_active",
+        False,
+    )
+    if not isinstance(time_source, str) or not time_source:
+        raise RunnerError("benchmark has no evaluator timing source")
+    if not isinstance(compiled_direct_arena_active, bool):
+        raise RunnerError("benchmark has invalid compiled Direct-Arena timing state")
+    if timing_status == "below_timer_resolution":
+        if (
+            evaluator_time is not None
+            or raw_evaluator_time != 0.0
+            or ratio_eligible is not False
+            or compiled_direct_arena_active is not True
+            or time_source != _COMPILED_ARENA_EXECUTION_TIME_SOURCE
+        ):
+            raise RunnerError(
+                "benchmark below-resolution execution timing is not an "
+                "authenticated compiled Direct-Arena zero"
+            )
+    elif timing_status == "measured":
+        if (
+            isinstance(evaluator_time, bool)
+            or not isinstance(evaluator_time, (int, float))
+            or not math.isfinite(float(evaluator_time))
+            or float(evaluator_time) != raw_evaluator_time
+            or ratio_eligible is not (raw_evaluator_time > 0.0)
+        ):
+            raise RunnerError("benchmark measured execution timing is inconsistent")
+    else:
+        raise RunnerError("benchmark has unsupported evaluator timing status")
+    evaluator_sample_count = environment.get(
+        "evaluator_sample_count",
+        benchmark.sample_count,
+    )
+    if (
+        isinstance(evaluator_sample_count, bool)
+        or not isinstance(evaluator_sample_count, int)
+        or evaluator_sample_count < 1
+    ):
+        raise RunnerError("benchmark has invalid evaluator timing sample count")
+    raw_points_per_sample = environment.get("native_profile_points_per_sample")
+    if raw_points_per_sample is not None and (
+        isinstance(raw_points_per_sample, bool)
+        or not isinstance(raw_points_per_sample, int)
+        or raw_points_per_sample < 1
+    ):
+        raise RunnerError("benchmark has invalid native-profile point count")
+    timing_sample_contract = environment.get("timing_sample_contract")
+    if not isinstance(timing_sample_contract, str) or not timing_sample_contract:
+        raise RunnerError("benchmark has no timing sample contract")
+    execution_timing = {
+        "abi": _EXECUTION_TIMING_ABI,
+        "status": timing_status,
+        "ratio_eligible": ratio_eligible,
+        "raw_seconds_per_point": raw_evaluator_time,
+        "source": time_source,
+        "compiled_direct_arena_active": compiled_direct_arena_active,
+        "sample_count": evaluator_sample_count,
+        "native_profile_points_per_sample": raw_points_per_sample,
+        "sample_contract": timing_sample_contract,
+    }
     return {
         "status": ResultStatus.OK.value,
         "wall_seconds_per_point": float(benchmark.wall_time_per_point),
         "execution_seconds_per_point": (
-            None
-            if benchmark.evaluator_time_per_point is None
-            else float(benchmark.evaluator_time_per_point)
+            None if evaluator_time is None else float(evaluator_time)
         ),
+        "execution_timing": execution_timing,
         "matrix_element": matrix_element,
         "sample_count": int(benchmark.sample_count),
         "standard_error_seconds_per_point": float(uncertainty.standard_error),
