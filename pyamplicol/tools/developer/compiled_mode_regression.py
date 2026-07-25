@@ -47,7 +47,7 @@ PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
 NATIVE_SAMPLE_RESULT_KIND = "pyamplicol-compiled-mode-native-sample"
 NATIVE_SAMPLE_SCHEMA_VERSION = 3
 INSTALLATION_IDENTITY_KIND = "pyamplicol-installed-distribution-identity"
-INSTALLATION_IDENTITY_SCHEMA_VERSION = 1
+INSTALLATION_IDENTITY_SCHEMA_VERSION = 2
 RESULT_KIND = "pyamplicol-compiled-mode-regression"
 CACHE_KIND = "pyamplicol-compiled-mode-regression-artifact-cache"
 SCHEMA_VERSION = 4
@@ -78,6 +78,11 @@ PERFORMANCE_RELEVANT_PAYLOAD_ROLES = frozenset(
 REQUIRED_PERFORMANCE_PAYLOAD_ROLES = frozenset({"evaluator-state"})
 _HASH_CHUNK_BYTES = 1024 * 1024
 EXECUTION_MODES = ("eager", "compiled")
+DEPENDENCY_DISTRIBUTIONS = (
+    ("numpy", "numpy"),
+    ("symbolica", "symbolica"),
+    ("ufo-model-loader", "ufo_model_loader"),
+)
 EAGER_DIRECT_ARENA_CAPABILITY = "eager-direct-arena-v1"
 COMPILED_DIRECT_ARENA_CAPABILITY = "compiled-plane-arena-v1"
 
@@ -167,7 +172,7 @@ def _normalized_distribution_name(value: str) -> str:
 
 
 def _dependency_site_identity(path: Path) -> dict[str, object]:
-    """Hash the complete importable NumPy/Symbolica distributions at one site."""
+    """Hash every external distribution used by measured artifact generation."""
 
     try:
         root = path.expanduser().resolve(strict=True)
@@ -183,11 +188,13 @@ def _dependency_site_identity(path: Path) -> dict[str, object]:
                 distribution
             )
     identities: dict[str, dict[str, object]] = {}
-    for package in ("numpy", "symbolica"):
-        matches = available.get(package, [])
+    for distribution_name, import_name in DEPENDENCY_DISTRIBUTIONS:
+        normalized_name = _normalized_distribution_name(distribution_name)
+        matches = available.get(normalized_name, [])
         if len(matches) != 1:
             raise RegressionError(
-                f"dependency site must contain exactly one {package} distribution, "
+                "dependency site must contain exactly one "
+                f"{distribution_name} distribution, "
                 f"found {len(matches)}: {root}"
             )
         distribution = matches[0]
@@ -211,7 +218,8 @@ def _dependency_site_identity(path: Path) -> dict[str, object]:
                 resolved.relative_to(root)
             except (OSError, ValueError) as error:
                 raise RegressionError(
-                    f"{package} dependency file escapes its authenticated site: {entry}"
+                    f"{distribution_name} dependency file escapes its "
+                    f"authenticated site: {entry}"
                 ) from error
             if not resolved.is_file():
                 continue
@@ -225,14 +233,14 @@ def _dependency_site_identity(path: Path) -> dict[str, object]:
                     digest.update(chunk)
             file_count += 1
             size_bytes += size
-            if relative.as_posix() == f"{package}/__init__.py":
+            if relative.as_posix() == f"{import_name}/__init__.py":
                 package_origin = resolved
         if file_count == 0 or package_origin is None:
             raise RegressionError(
-                f"dependency distribution {package!r} has no authenticated package "
-                f"content in {root}"
+                f"dependency distribution {distribution_name!r} has no "
+                f"authenticated package content in {root}"
             )
-        identities[package] = {
+        identities[distribution_name] = {
             "name": str(distribution.metadata["Name"]),
             "version": distribution.version,
             "package_origin": str(package_origin),
@@ -252,7 +260,7 @@ def _dependency_site_identity(path: Path) -> dict[str, object]:
     return {
         "path": str(path),
         "resolved_path": str(root),
-        "algorithm": "sha256-numpy-symbolica-distributions-v1",
+        "algorithm": ("sha256-numpy-symbolica-ufo-model-loader-distributions-v1"),
         "sha256": _canonical_sha256(digest_basis),
         "distributions": identities,
     }
@@ -898,6 +906,8 @@ def _generation_signature(
     artifact: Path | None = None,
 ) -> dict[str, object]:
     result: dict[str, object] = {
+        "generation_driver": _path_identity(Path(__file__)),
+        "dependency_entry": _path_identity(DEPENDENCY_ENTRY),
         "python": _path_identity(python),
         "installed_pyamplicol": dict(installation_identity),
         "process": process,
@@ -1024,6 +1034,7 @@ def _ensure_artifact(
     lane_root = output_root / lane
     artifact = lane_root / "artifact"
     cache_path = lane_root / "artifact-cache.json"
+    expected_artifact_lc_flow_layout = lc_flow_layout if color == "lc" else None
     generation_command = _generation_command(
         python,
         process=process,
@@ -1066,7 +1077,7 @@ def _ensure_artifact(
                 expected_process=process,
                 expected_color=color,
                 expected_execution_mode=execution_mode,
-                expected_lc_flow_layout=lc_flow_layout,
+                expected_lc_flow_layout=expected_artifact_lc_flow_layout,
             )
         except RegressionError:
             pass
@@ -1078,6 +1089,7 @@ def _ensure_artifact(
             ) == tree_identity.get("sha256"):
                 return {
                     **metadata,
+                    "installation_identity": installation_identity,
                     "reused": True,
                     "generation": None,
                     "generation_command": command_identity,
@@ -1095,7 +1107,7 @@ def _ensure_artifact(
         expected_process=process,
         expected_color=color,
         expected_execution_mode=execution_mode,
-        expected_lc_flow_layout=lc_flow_layout,
+        expected_lc_flow_layout=expected_artifact_lc_flow_layout,
     )
     tree_identity = metadata["tree_identity"]
     assert isinstance(tree_identity, Mapping)
@@ -1111,6 +1123,7 @@ def _ensure_artifact(
     )
     return {
         **metadata,
+        "installation_identity": installation_identity,
         "reused": False,
         "generation": {
             "command": command_identity,
@@ -2435,6 +2448,7 @@ def _environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment.pop("PYTHONPATH", None)
     environment["PYTHONHASHSEED"] = "0"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment.setdefault("SYMBOLICA_HIDE_BANNER", "1")
     return environment
 
@@ -2509,6 +2523,9 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         "lc_flow_layout",
         DEFAULT_LC_FLOW_LAYOUT,
     )
+    expected_artifact_lc_flow_layout = (
+        lc_flow_layout if arguments.color == "lc" else None
+    )
     workload = _resolved_workload(arguments, lc_flow_layout=lc_flow_layout)
     shared_artifact_argument = getattr(arguments, "shared_artifact", None)
     if shared_artifact_argument is not None and arguments.regenerate_artifacts:
@@ -2567,7 +2584,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             expected_process=arguments.process,
             expected_color=arguments.color,
             expected_execution_mode=execution_mode,
-            expected_lc_flow_layout=lc_flow_layout,
+            expected_lc_flow_layout=expected_artifact_lc_flow_layout,
         )
         artifacts = {
             lane: {
@@ -2589,7 +2606,12 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         "artifacts": artifacts,
         "measurements": [],
     }
-    result_path = output_root / "result.json"
+    result_path_argument = getattr(arguments, "result_path", None)
+    result_path = (
+        output_root / "result.json"
+        if result_path_argument is None
+        else _absolute_path(result_path_argument)
+    )
     _write_json_atomic(result_path, partial)
 
     measurements: list[dict[str, Any]] = []
@@ -2675,7 +2697,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             expected_process=arguments.process,
             expected_color=arguments.color,
             expected_execution_mode=execution_mode,
-            expected_lc_flow_layout=lc_flow_layout,
+            expected_lc_flow_layout=expected_artifact_lc_flow_layout,
         )
         for key in (
             "artifact_id",
@@ -2694,7 +2716,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 expected_process=arguments.process,
                 expected_color=arguments.color,
                 expected_execution_mode=execution_mode,
-                expected_lc_flow_layout=lc_flow_layout,
+                expected_lc_flow_layout=expected_artifact_lc_flow_layout,
             )
             for key in (
                 "artifact_id",
@@ -2714,6 +2736,8 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             raise RegressionError(
                 f"{lane} dependency site changed during generation/sampling"
             )
+    if _model_identity(model) != provenance["model"]:
+        raise RegressionError("model input changed during generation/sampling")
     distributions = {
         lane: _distribution(lane_values) for lane, lane_values in values.items()
     }
@@ -2831,6 +2855,14 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--baseline-python", type=Path, required=True)
     result.add_argument("--current-python", type=Path, required=True)
     result.add_argument("--output-root", type=Path, required=True)
+    result.add_argument(
+        "--result-path",
+        type=Path,
+        help=(
+            "write the result outside the artifact-cache root; this permits "
+            "multiple timing cells to reuse one exact generated artifact"
+        ),
+    )
     result.add_argument(
         "--shared-artifact",
         type=Path,

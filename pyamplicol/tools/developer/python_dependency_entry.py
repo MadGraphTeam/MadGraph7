@@ -34,7 +34,7 @@ def activate(path: Path) -> dict[str, str]:
     original_path = list(sys.path)
     try:
         sys.path.insert(0, str(dependency_site))
-        for package in ("numpy", "symbolica"):
+        for package in ("numpy", "symbolica", "ufo_model_loader"):
             importlib.import_module(package)
     except ImportError as error:
         raise EntryError(
@@ -54,7 +54,7 @@ def activate(path: Path) -> dict[str, str]:
             "dependency activation changed the measured pyamplicol origin: "
             f"before={before}, after={after}, distribution={distribution_origin}"
         )
-    for package in ("numpy", "symbolica"):
+    for package in ("numpy", "symbolica", "ufo_model_loader"):
         specification = importlib.util.find_spec(package)
         origin = None if specification is None else specification.origin
         if origin is None:

@@ -222,6 +222,7 @@ def test_parser_exposes_required_lanes_and_plan_defaults(tmp_path: Path) -> None
     assert arguments.color == "lc"
     assert arguments.lc_flow_layout == "topology-replay"
     assert arguments.shared_artifact is None
+    assert arguments.result_path is None
     assert arguments.batch_size == 1024
     assert arguments.samples == 7
     assert arguments.target_runtime == 5.0
@@ -673,23 +674,24 @@ def test_correctness_batch_requires_eight_distinct_points() -> None:
 
 
 def test_dependency_site_identity_tracks_distribution_content(tmp_path: Path) -> None:
-    for package in ("numpy", "symbolica"):
-        package_root = tmp_path / package
+    for distribution_name, import_name in regression.DEPENDENCY_DISTRIBUTIONS:
+        package_root = tmp_path / import_name
         package_root.mkdir()
         (package_root / "__init__.py").write_text(
-            f'VERSION = "{package}"\n',
+            f'VERSION = "{distribution_name}"\n',
             encoding="utf-8",
         )
-        metadata = tmp_path / f"{package}-1.0.dist-info"
+        metadata_stem = distribution_name.replace("-", "_")
+        metadata = tmp_path / f"{metadata_stem}-1.0.dist-info"
         metadata.mkdir()
         (metadata / "METADATA").write_text(
-            f"Metadata-Version: 2.1\nName: {package}\nVersion: 1.0\n",
+            f"Metadata-Version: 2.1\nName: {distribution_name}\nVersion: 1.0\n",
             encoding="utf-8",
         )
         (metadata / "RECORD").write_text(
-            f"{package}/__init__.py,,\n"
-            f"{package}-1.0.dist-info/METADATA,,\n"
-            f"{package}-1.0.dist-info/RECORD,,\n",
+            f"{import_name}/__init__.py,,\n"
+            f"{metadata_stem}-1.0.dist-info/METADATA,,\n"
+            f"{metadata_stem}-1.0.dist-info/RECORD,,\n",
             encoding="utf-8",
         )
     before = regression._dependency_site_identity(tmp_path)
@@ -884,6 +886,59 @@ def test_generation_signature_tracks_reinstalled_pyamplicol_content(
     assert first["python"] == reinstalled["python"]
     assert first["installed_pyamplicol"] != reinstalled["installed_pyamplicol"]
     assert first != reinstalled
+
+
+def test_generation_signature_tracks_dependency_entry_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    python = Path(sys.executable)
+    installation = {
+        "kind": regression.INSTALLATION_IDENTITY_KIND,
+        "schema_version": regression.INSTALLATION_IDENTITY_SCHEMA_VERSION,
+        "distribution_content": {"sha256": "b" * 64},
+        "native_modules": [{"sha256": "a" * 64}],
+    }
+    original_path_identity = regression._path_identity
+    dependency_digest = "c" * 64
+
+    def path_identity(path: Path) -> dict[str, object]:
+        identity = original_path_identity(path)
+        if path == regression.DEPENDENCY_ENTRY:
+            identity["sha256"] = dependency_digest
+        return identity
+
+    monkeypatch.setattr(regression, "_path_identity", path_identity)
+    first = regression._generation_signature(
+        python,
+        installation_identity=installation,
+        process="d d~ > z",
+        model="built-in-sm",
+        color="lc",
+        artifact=tmp_path / "artifact",
+    )
+    dependency_digest = "d" * 64
+    second = regression._generation_signature(
+        python,
+        installation_identity=installation,
+        process="d d~ > z",
+        model="built-in-sm",
+        color="lc",
+        artifact=tmp_path / "artifact",
+    )
+
+    assert first["dependency_entry"] != second["dependency_entry"]
+    assert first != second
+
+
+def test_regression_environment_disables_python_bytecode_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "0")
+
+    environment = regression._environment()
+
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
 
 
 def test_eager_artifact_is_never_accepted_as_compiled(tmp_path: Path) -> None:
@@ -1329,6 +1384,11 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
     monkeypatch.setattr(
         compiled_mode_sample,
         "_resolve_color_flows",
+        lambda _artifact, *, process, requested: tuple(requested),
+    )
+    monkeypatch.setattr(
+        compiled_mode_sample,
+        "_resolve_helicities",
         lambda _artifact, *, process, requested: tuple(requested),
     )
     artifact = tmp_path / "artifact"

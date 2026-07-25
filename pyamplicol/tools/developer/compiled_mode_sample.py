@@ -31,7 +31,7 @@ from typing import Any
 RESULT_KIND = "pyamplicol-compiled-mode-native-sample"
 SCHEMA_VERSION = 3
 INSTALLATION_IDENTITY_KIND = "pyamplicol-installed-distribution-identity"
-INSTALLATION_IDENTITY_SCHEMA_VERSION = 1
+INSTALLATION_IDENTITY_SCHEMA_VERSION = 2
 NATIVE_WALL_TIME_SOURCE = "runtime_core_repeated_wall_time"
 NATIVE_WALL_TIME_SAMPLE_PASS = "runtime._benchmark_f64_wall_time"
 PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
@@ -48,6 +48,7 @@ class SampleError(RuntimeError):
 
 
 EXECUTION_MODES = ("eager", "compiled")
+DEPENDENCY_PACKAGES = ("numpy", "symbolica", "ufo_model_loader")
 
 
 def _positive_float(value: str) -> float:
@@ -138,7 +139,7 @@ def _activate_dependency_site(path: Path | None) -> dict[str, object] | None:
     original_path = list(sys.path)
     try:
         sys.path.insert(0, str(dependency_site))
-        for package in ("numpy", "symbolica"):
+        for package in DEPENDENCY_PACKAGES:
             importlib.import_module(package)
     except ImportError as error:
         raise SampleError(
@@ -164,7 +165,7 @@ def _activate_dependency_site(path: Path | None) -> dict[str, object] | None:
             f"{distribution_init} != {pyamplicol_before}"
         )
     dependencies: dict[str, object] = {}
-    for package in ("numpy", "symbolica"):
+    for package in DEPENDENCY_PACKAGES:
         origin = _package_origin(package)
         if origin is None:
             raise SampleError(f"required dependency {package!r} has no import origin")
@@ -237,7 +238,17 @@ def _installed_distribution_identity() -> dict[str, object]:
         }:
             native_modules.append(identity)
         if relative.endswith("pyamplicol/_build_info.json"):
-            build_info_files.append(identity)
+            try:
+                payload = json.loads(resolved.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as error:
+                raise SampleError(
+                    f"cannot read installed build provenance: {resolved}"
+                ) from error
+            if not isinstance(payload, dict):
+                raise SampleError(
+                    "installed pyamplicol build provenance is not an object"
+                )
+            build_info_files.append({**identity, "payload": payload})
     if len(native_modules) != 1:
         raise SampleError(
             "the selected pyamplicol installation must contain exactly one "
@@ -545,6 +556,49 @@ def _resolve_color_flows(
     return tuple(resolved)
 
 
+def _resolve_helicities(
+    artifact: Path,
+    *,
+    process: str,
+    requested: Sequence[str],
+) -> tuple[str, ...]:
+    if not requested:
+        return ()
+    manifest = _json_object(artifact / "artifact.json", label="artifact manifest")
+    process_record = _artifact_process(manifest, process=process)
+    physics_path = process_record.get("physics_path")
+    if not isinstance(physics_path, str) or not physics_path:
+        raise SampleError("artifact process has no runtime physics payload")
+    physics = _json_object(artifact / physics_path, label="runtime physics")
+    helicities = physics.get("helicities")
+    if not isinstance(helicities, list):
+        raise SampleError("runtime physics has no helicity inventory")
+    available = tuple(
+        str(helicity["id"])
+        for helicity in helicities
+        if isinstance(helicity, Mapping)
+        and isinstance(helicity.get("id"), str)
+        and helicity.get("structural_zero") is not True
+    )
+    resolved: list[str] = []
+    for value in requested:
+        if value in available:
+            resolved.append(value)
+            continue
+        try:
+            ordinal = int(value, 10)
+        except ValueError:
+            resolved.append(value)
+            continue
+        if str(ordinal) != value.strip() or ordinal < 1 or ordinal > len(available):
+            raise SampleError(
+                f"non-structural-zero helicity ordinal {value!r} is out of range; "
+                f"choose 1..{len(available)} or a stable helicity ID"
+            )
+        resolved.append(available[ordinal - 1])
+    return tuple(resolved)
+
+
 def _execution_mode(runtime: object) -> str:
     metadata_operation = getattr(runtime, "metadata_json", None)
     if not callable(metadata_operation):
@@ -806,7 +860,12 @@ def sample(arguments: argparse.Namespace) -> dict[str, object]:
     points = _validation_momenta(artifact, process=arguments.process)
     batch = _benchmark_batch(points, arguments.batch_size)
     correctness_batch = _correctness_batch(points)
-    helicities = tuple(arguments.helicity) or None
+    resolved_helicities = _resolve_helicities(
+        artifact,
+        process=arguments.process,
+        requested=arguments.helicity,
+    )
+    helicities = resolved_helicities or None
     resolved_color_flows = _resolve_color_flows(
         artifact,
         process=arguments.process,
