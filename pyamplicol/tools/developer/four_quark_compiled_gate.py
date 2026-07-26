@@ -1093,8 +1093,13 @@ def _artifact_identity_and_audit(
         _mapping(concrete[0], label="concrete process").get("filters"),
         label="concrete process filters",
     )
-    if filters.get("lc_flow_layout") != lane.lc_flow_layout:
-        raise GateError(f"{lane.name} generation layout metadata is wrong")
+    if lane.color_accuracy == "lc":
+        if filters.get("lc_flow_layout") != lane.lc_flow_layout:
+            raise GateError(f"{lane.name} generation layout metadata is wrong")
+    elif "lc_flow_layout" in filters:
+        raise GateError(
+            f"{lane.name} generation metadata illegally carries an LC layout"
+        )
 
     try:
         effective = tomllib.loads(

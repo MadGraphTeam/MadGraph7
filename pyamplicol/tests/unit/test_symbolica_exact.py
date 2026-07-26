@@ -829,6 +829,104 @@ def test_exact_executor_replays_physical_helicities_and_selectors() -> None:
     assert selected.values == (((Decimal(18),),),)
 
 
+def test_exact_executor_reuses_noncomputed_helicity_representative() -> None:
+    execution, physics = _quotient_metadata()
+    helicities = physics["helicities"]
+    assert isinstance(helicities, list)
+    helicities[0].update(
+        {
+            "computed": True,
+            "representative_id": "h:-1",
+        }
+    )
+    helicities[1].update(
+        {
+            "computed": False,
+            "representative_id": "h:+0",
+        }
+    )
+    helicities[2].update(
+        {
+            "computed": False,
+            "representative_id": "h:-1",
+        }
+    )
+    executor = _synthetic_quotient_executor()
+    executor._physics = physics
+    executor._helicity_plan = _exact_helicity_plan(execution, physics, None)
+    evaluate_point = executor._evaluate_point
+    evaluation_count = 0
+
+    def counted_evaluate_point(
+        _self: SymbolicaExactExecutor,
+        point: object,
+        parameters: object,
+        precision: int,
+        source_states: object = None,
+    ) -> tuple[tuple[Decimal, Decimal], ...]:
+        nonlocal evaluation_count
+        evaluation_count += 1
+        return evaluate_point(point, parameters, precision, source_states)
+
+    executor._evaluate_point = MethodType(counted_evaluate_point, executor)
+
+    result = executor.evaluate_resolved(
+        (((1.0, 0.0, 0.0, 0.0),),),
+        helicities=None,
+        color_flows=None,
+        precision=40,
+    )
+
+    assert result.values == (
+        (
+            (Decimal(8),),
+            (Decimal(0),),
+            (Decimal(8),),
+        ),
+    )
+    assert evaluation_count == 1
+
+    evaluation_count = 0
+    selected = executor.evaluate_resolved(
+        (((1.0, 0.0, 0.0, 0.0),),),
+        helicities=("h:+1",),
+        color_flows=None,
+        precision=40,
+    )
+    assert selected.helicity_ids == ("h:+1",)
+    assert selected.values == (((Decimal(8),),),)
+    assert evaluation_count == 1
+
+
+def test_exact_helicity_plan_rejects_reduction_representative_drift() -> None:
+    execution, physics = _quotient_metadata()
+    helicities = physics["helicities"]
+    assert isinstance(helicities, list)
+    helicities[0].update(
+        {
+            "computed": True,
+            "representative_id": "h:-1",
+        }
+    )
+    helicities[2].update(
+        {
+            "computed": False,
+            "representative_id": "h:-1",
+        }
+    )
+    reduction = physics["reduction"]
+    assert isinstance(reduction, dict)
+    groups = reduction["groups"]
+    assert isinstance(groups, list)
+    groups[0]["representative_helicity_id"] = "h:+1"
+
+    with pytest.raises(
+        ArtifactError,
+        match="representative disagrees with its reduction group",
+    ):
+        _exact_helicity_plan(execution, physics, None)
+
+
 def test_exact_materialized_source_fill_applies_route_factor() -> None:
     execution, _physics = _quotient_metadata()
     schema = execution["runtime_schema"]

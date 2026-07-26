@@ -87,6 +87,7 @@ class _ExactRuntimeSourceState:
 @dataclass(frozen=True, slots=True)
 class _ExactHelicitySchedule:
     physical_helicity_index: int
+    representative_helicity_index: int
     selector_domain_id: int
     structural_zero: bool
     source_states: tuple[_ExactRuntimeSourceState | None, ...]
@@ -628,6 +629,7 @@ class SymbolicaExactExecutor:
         full_points: list[tuple[tuple[Decimal, ...], ...]] = []
         for point in points:
             full = [[_ZERO for _color in color_ids] for _helicity in helicity_ids]
+            representative_amplitudes: dict[int, tuple[_ComplexDecimal, ...]] = {}
             for schedule in self._helicity_plan.schedules:
                 helicity_index = schedule.physical_helicity_index
                 if (
@@ -635,12 +637,17 @@ class SymbolicaExactExecutor:
                     or schedule.structural_zero
                 ):
                     continue
-                amplitudes = self._evaluate_point(
-                    point,
-                    model_parameters,
-                    precision,
-                    schedule.source_states,
-                )
+                representative_index = schedule.representative_helicity_index
+                representative = self._helicity_plan.schedules[representative_index]
+                amplitudes = representative_amplitudes.get(representative_index)
+                if amplitudes is None:
+                    amplitudes = self._evaluate_point(
+                        point,
+                        model_parameters,
+                        precision,
+                        representative.source_states,
+                    )
+                    representative_amplitudes[representative_index] = amplitudes
                 full[helicity_index] = list(
                     _reduce_materialized_helicity(
                         amplitudes,
@@ -648,7 +655,7 @@ class SymbolicaExactExecutor:
                         self._physics,
                         normalization,
                         helicity_index,
-                        schedule.root_factors,
+                        representative.root_factors,
                     )
                 )
             full_points.append(
@@ -737,6 +744,7 @@ def _parse_exact_helicity_plan(
     physical = cast(Sequence[Mapping[str, object]], helicities)
     external_count = len(particles)
     physical_by_values: dict[tuple[int, ...], int] = {}
+    physical_by_id: dict[str, int] = {}
     for index, helicity in enumerate(physical):
         values = _integer_vector(
             helicity.get("values"),
@@ -748,6 +756,112 @@ def _parse_exact_helicity_plan(
         if not isinstance(helicity.get("structural_zero"), bool):
             raise ArtifactError("physical helicity structural-zero flag is not boolean")
         physical_by_values[values] = index
+        raw_identifier = helicity.get("id")
+        if (
+            not isinstance(raw_identifier, str)
+            or not raw_identifier
+            or raw_identifier in physical_by_id
+        ):
+            raise ArtifactError(
+                "physical helicity metadata has invalid or duplicate IDs"
+            )
+        physical_by_id[raw_identifier] = index
+    representative_by_physical: list[int] = []
+    for index, helicity in enumerate(physical):
+        identifier = str(helicity["id"])
+        computed = helicity.get("computed", True)
+        if not isinstance(computed, bool):
+            raise ArtifactError("physical helicity computed flag is not boolean")
+        representative_id = helicity.get("representative_id", identifier)
+        if not isinstance(representative_id, str) or not representative_id:
+            raise ArtifactError("physical helicity representative ID is invalid")
+        representative_index = physical_by_id.get(representative_id)
+        if representative_index is None:
+            raise ArtifactError(
+                f"physical helicity {identifier!r} references an unknown "
+                f"representative {representative_id!r}"
+            )
+        representative = physical[representative_index]
+        physical_structural_zero = bool(helicity["structural_zero"])
+        if not physical_structural_zero:
+            representative_computed = representative.get("computed", True)
+            representative_self_id = representative.get(
+                "representative_id", representative_id
+            )
+            if representative_computed is not True or (
+                representative_self_id != representative_id
+            ):
+                raise ArtifactError(
+                    f"physical helicity {identifier!r} does not reference a "
+                    "self-representing computed helicity"
+                )
+            if computed and representative_index != index:
+                raise ArtifactError(
+                    f"computed physical helicity {identifier!r} does not "
+                    "represent itself"
+                )
+            if bool(representative["structural_zero"]):
+                raise ArtifactError(
+                    f"nonzero physical helicity {identifier!r} references a "
+                    "structural-zero representative"
+                )
+            coefficient = _decimal(
+                helicity.get("coefficient", 1), "helicity coefficient"
+            )
+            representative_coefficient = _decimal(
+                representative.get("coefficient", 1),
+                "representative helicity coefficient",
+            )
+            if coefficient != representative_coefficient:
+                raise ArtifactError(
+                    f"physical helicity {identifier!r} and its representative "
+                    "have different reduction coefficients"
+                )
+        representative_by_physical.append(representative_index)
+    reduction = physics.get("reduction")
+    if isinstance(reduction, Mapping):
+        raw_groups = reduction.get("groups")
+        if isinstance(raw_groups, Sequence) and not isinstance(
+            raw_groups, (str, bytes)
+        ):
+            for raw_group in raw_groups:
+                if not isinstance(raw_group, Mapping):
+                    continue
+                group_representative = raw_group.get("representative_helicity_id")
+                if group_representative is None:
+                    # Legacy reduction records predate the explicit group
+                    # representative. Per-helicity metadata remains authoritative.
+                    continue
+                if (
+                    not isinstance(group_representative, str)
+                    or group_representative not in physical_by_id
+                ):
+                    raise ArtifactError(
+                        "resolved reduction group has an invalid helicity "
+                        "representative"
+                    )
+                raw_members = raw_group.get("physical_helicity_ids")
+                if isinstance(raw_members, (str, bytes)) or not isinstance(
+                    raw_members, Sequence
+                ):
+                    continue
+                member_ids = tuple(str(member) for member in raw_members)
+                if group_representative not in member_ids:
+                    raise ArtifactError(
+                        "resolved reduction group helicity representative is "
+                        "not a group member"
+                    )
+                for member_id in member_ids:
+                    member_index = physical_by_id.get(member_id)
+                    if member_index is None:
+                        continue
+                    member = physical[member_index]
+                    declared = member.get("representative_id", member_id)
+                    if declared != group_representative:
+                        raise ArtifactError(
+                            f"physical helicity {member_id!r} representative "
+                            "disagrees with its reduction group"
+                        )
     if public_permutation is not None and (
         len(public_permutation) != external_count
         or set(public_permutation) != set(range(external_count))
@@ -911,6 +1025,7 @@ def _parse_exact_helicity_plan(
             )
         schedules_by_physical[physical_index] = _ExactHelicitySchedule(
             physical_helicity_index=physical_index,
+            representative_helicity_index=representative_by_physical[physical_index],
             selector_domain_id=domain_id,
             structural_zero=structural_zero,
             source_states=schedule_source_states,
