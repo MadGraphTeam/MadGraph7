@@ -2385,46 +2385,69 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ninitial = tables['ninitial']
         ncross = (nexternal + 1) * (nexternal + 1)
         nflav = len(me.get_external_flavors_with_iden())
-        spincol = tables['spincol']
-        basepid = tables['basepid']
-        source = tables['source']
-        perm = tables['perm']
-        ic = tables['ic']
-
-        # Crossed per-leg signed PDG for every extended flavor id (physical PDG,
-        # conjugated where the leg swapped side; 0 for an invalid crossing).
+        # Per-leg base tables only: the crossing is decoded at runtime
+        # (cross_perm_ic, mirroring the fortran GET_CROSS_PERM) instead of
+        # tabulating anything per crossing. _build_flav_pdg_tables gives the base
+        # signed PDG per (flavor, leg) and its charge conjugate, from which
+        # flavorPDG rebuilds the crossed PDGs at runtime (see flavorpdg_body).
         n_flavors, pdg_flat, antipdg_flat = Fort._build_flav_pdg_tables(self, me)
-        fpdg = []
-        for cross in range(ncross):
-            for flav0 in range(nflav):
-                for k in range(nexternal):
-                    if spincol[cross] == 0:
-                        fpdg.append(0)
-                        continue
-                    src = perm[cross * nexternal + k]
-                    if ic[cross * nexternal + k] == 1:
-                        fpdg.append(pdg_flat[flav0 * nexternal + src])
-                    else:
-                        fpdg.append(antipdg_flat[flav0 * nexternal + src])
 
         def arr(vals):
             return '{ ' + ', '.join(str(v) for v in vals) + ' }'
 
         crossing_decl = (
-            "  // ---- Crossing symmetry tables (extended id = cross*nmaxflavor + flav) ----\n"
-            "  // Initial-state spin*color average per crossing (0 = crossing that\n"
-            "  // must not be applied: out of range, impossible, or overlapping swap).\n"
-            "  static const int spincol_cross[%(ncross)d] = %(spincol)s;\n"
-            "  // Crossed physical signed PDG per (extended id, leg); 0 if invalid.\n"
-            "  static const int flavorPDGs_cross[%(nfpdg)d] = %(fpdg)s;\n"
-            "  // Identical-final-state factor of the crossed process (flavor\n"
-            "  // dependent -> runtime). FLAVOR is not permuted, so slot k reads the\n"
-            "  // original leg that moved into it via src_cross.\n"
+            "  // ---- Crossing symmetry (extended id = cross*nmaxflavor + flav) ----\n"
+            "  // A crossing is a fixed slot relabelling decoded from the crossing\n"
+            "  // code at runtime (cross_perm_ic, mirroring the fortran\n"
+            "  // GET_CROSS_PERM): perm[k] is the input slot landing in crossed slot\n"
+            "  // k and ic[k] its NSF sign flip, left a valid permutation (identity\n"
+            "  // for an inapplicable code) so a momentum gather never reads out of\n"
+            "  // range. The two halves of the denominator are rebuilt from small\n"
+            "  // per-leg tables, so no cross-indexed table is stored.\n"
+            "  __host__ __device__ inline bool cross_perm_ic( int cross, int* perm, int* ic )\n"
+            "  {\n"
+            "    constexpr int ncross = ( npar + 1 ) * ( npar + 1 );\n"
+            "    for ( int k = 0; k < npar; k++ ) { perm[k] = k; ic[k] = 1; }\n"
+            "    if ( cross < 0 || cross >= ncross ) return false;\n"
+            "    const int xi = cross / ( npar + 1 );\n"
+            "    const int xj = cross %% ( npar + 1 );\n"
+            "    // Overlapping-swap codes compose into a 3-cycle the consumers read\n"
+            "    // with opposite orientation: pure redundancy, invalid.\n"
+            "    if ( xi != 0 && xi != 1 && xj != 0 && xj != 2 &&\n"
+            "         ( xi == 2 || xj == 1 || xi == xj ) ) return false;\n"
+            "    if ( xi != 0 && xi != 1 )\n"
+            "    { int t = perm[0]; perm[0] = perm[xi - 1]; perm[xi - 1] = t; ic[0] = -ic[0]; ic[xi - 1] = -ic[xi - 1]; }\n"
+            "    if ( xj != 0 && xj != 2 )\n"
+            "    { int t = perm[1]; perm[1] = perm[xj - 1]; perm[xj - 1] = t; ic[1] = -ic[1]; ic[xj - 1] = -ic[xj - 1]; }\n"
+            "    return true;\n"
+            "  }\n"
+            "  // Initial-state spin*color average of the crossed process: product of\n"
+            "  // the per-leg spin*color (spincol_part, conjugation invariant) over\n"
+            "  // the legs the crossing puts in the initial state. 0 if inapplicable.\n"
+            "  __device__ inline int spincol_cross( int cross )\n"
+            "  {\n"
+            "    static const int spincol_part[npar] = %(spincol_part)s;\n"
+            "    int perm[npar], ic[npar];\n"
+            "    if ( !cross_perm_ic( cross, perm, ic ) ) return 0;\n"
+            "    int factor = 1;\n"
+            "    for ( int k = 0; k < %(ninitial)d; k++ ) factor *= spincol_part[perm[k]];\n"
+            "    return factor;\n"
+            "  }\n"
+            "  // Identical-final-state factor (product of n!) of the crossed\n"
+            "  // process. Flavor dependent -> runtime: two crossed final legs are\n"
+            "  // identical when they carry the same flavor group (same representative\n"
+            "  // PDG -- ids_base, conjugated to antipid_base when the leg swapped\n"
+            "  // side) and the same actual flavor. FLAVOR is not permuted, so slot k\n"
+            "  // reads cFlavors[iflavor][perm[k]].\n"
             "  __device__ int ident_cross( int cross, int iflavor )\n"
             "  {\n"
-            "    static const int basepid_cross[%(ncrossN)d] = %(basepid)s;\n"
-            "    static const int src_cross[%(ncrossN)d] = %(source)s;\n"
-            "    const int off = cross * npar;\n"
+            "    static const int ids_base[npar] = %(ids_base)s;\n"
+            "    static const int antipid_base[npar] = %(antipid_base)s;\n"
+            "    int perm[npar], ic[npar];\n"
+            "    cross_perm_ic( cross, perm, ic );\n"
+            "    int bpid[npar];\n"
+            "    for ( int k = 0; k < npar; k++ )\n"
+            "      bpid[k] = ( ic[k] == 1 ) ? ids_base[perm[k]] : antipid_base[perm[k]];\n"
             "    bool used[npar];\n"
             "    for ( int k = 0; k < npar; k++ ) used[k] = false;\n"
             "    int fact = 1;\n"
@@ -2435,8 +2458,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "      for ( int l = k + 1; l < npar; l++ )\n"
             "      {\n"
             "        if ( used[l] ) continue;\n"
-            "        if ( basepid_cross[off + k] == basepid_cross[off + l] &&\n"
-            "             cFlavors[iflavor][src_cross[off + k]] == cFlavors[iflavor][src_cross[off + l]] )\n"
+            "        if ( bpid[k] == bpid[l] &&\n"
+            "             cFlavors[iflavor][perm[k]] == cFlavors[iflavor][perm[l]] )\n"
             "        {\n"
             "          used[l] = true;\n"
             "          n = n + 1;\n"
@@ -2446,10 +2469,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    }\n"
             "    return fact;\n"
             "  }\n"
-        ) % {'ncross': ncross, 'spincol': arr(spincol),
-             'nfpdg': ncross * nflav * nexternal, 'fpdg': arr(fpdg),
-             'ncrossN': ncross * nexternal, 'basepid': arr(basepid),
-             'source': arr(source), 'ninitial': ninitial}
+        ) % {'spincol_part': arr(tables['spincol_part']),
+             'ids_base': arr(tables['ids_base']),
+             'antipid_base': arr(tables['antipid_base']),
+             'ninitial': ninitial}
 
         # Per-leg helicity states in the cHel (allow_reverse=False) order, used
         # to re-encode a crossed helicity config into its canonical code.
@@ -2488,13 +2511,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    const int xcross = (int)( flavor_id / nmaxflavor );\n"
             "    if ( xcross == 0 ) return base_ihel + 1;\n"
             "    constexpr int maxhel = %(maxhel)d;\n"
-            "    static const int xhel_perm[( npar + 1 ) * ( npar + 1 ) * npar] = %(xperm)s;\n"
             "    static const int xhel_nhstate[npar] = %(xnhstate)s;\n"
             "    static const int xhel_states[npar * maxhel] = %(xstates)s;\n"
+            "    int xperm[npar], xic[npar];\n"
+            "    cross_perm_ic( xcross, xperm, xic ); // NSF sign in xic is not used here\n"
             "    int code = 0;\n"
             "    for ( int k = 0; k < npar; k++ )\n"
             "    {\n"
-            "      const int val = (int)cHel[base_ihel][xhel_perm[xcross * npar + k]];\n"
+            "      const int val = (int)cHel[base_ihel][xperm[k]];\n"
             "      int d = 0;\n"
             "      for ( int dd = 0; dd < xhel_nhstate[k]; dd++ )\n"
             "      {\n"
@@ -2508,7 +2532,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    }\n"
             "    return code + 1;\n"
             "  }\n"
-        ) % {'xperm': arr(perm), 'xnhstate': arr(hnstate),
+        ) % {'xnhstate': arr(hnstate),
              'maxhel': maxhel, 'xstates': arr(states_flat)}
 
         sigmakin_denominator = (
@@ -2527,18 +2551,31 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "        fptype& me = reinterpret_cast<fptype*>( &MEs_sv )[ieppV];\n"
             "        if ( dcr == 0 )\n"
             "          me *= (fptype)broken_symmetry_factor( dfl ) / helcolDenominators[0];\n"
-            "        else if ( spincol_cross[dcr] == 0 )\n"
+            "        else if ( spincol_cross( dcr ) == 0 )\n"
             "          me = (fptype)0.; // invalid crossing (out of range / overlapping swap) -> ME 0\n"
             "        else\n"
-            "          me *= (fptype)1. / ( (fptype)spincol_cross[dcr] * (fptype)ident_cross( dcr, dfl ) );\n"
+            "          me *= (fptype)1. / ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) );\n"
             "      }"
         )
 
+        # Crossed physical signed PDG per (extended id, leg), rebuilt at runtime
+        # like the fortran GET_PDG_FOR_FLAVOR: base signed PDG of the leg the
+        # crossing moves into slot ipar (base_pdg per (flavor, leg)), charge-
+        # conjugated when that leg swapped side -- no per-crossing PDG table.
         flavorpdg_body = (
             "    const int ncross = ( npar + 1 ) * ( npar + 1 );\n"
             "    if ( iflavor < 0 || iflavor >= ncross * nmaxflavor ) return 0;\n"
-            "    return flavorPDGs_cross[iflavor * npar + ipar];"
-        )
+            "    static const int base_pdg[nmaxflavor * npar] = %(base_pdg)s;\n"
+            "    static const int base_antipdg[nmaxflavor * npar] = %(base_antipdg)s;\n"
+            "    const int cross = iflavor / nmaxflavor;\n"
+            "    const int flav0 = iflavor %% nmaxflavor;\n"
+            "    int perm[npar], ic[npar];\n"
+            "    if ( !cross_perm_ic( cross, perm, ic ) ) return 0; // invalid crossing\n"
+            "    const int src = perm[ipar];\n"
+            "    return ( ic[ipar] == 1 ) ? base_pdg[flav0 * npar + src]\n"
+            "                             : base_antipdg[flav0 * npar + src];"
+        ) % {'base_pdg': arr(pdg_flat[:nflav * nexternal]),
+             'base_antipdg': arr(antipdg_flat[:nflav * nexternal])}
 
         return {
             'crossing_decl': crossing_decl,
@@ -2548,7 +2585,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             # crossing simply contributes 0 at run time.
             'goodhel_scan_count': str(ncross * nflav),
             'goodhel_scan_skip':
-                '      if ( spincol_cross[iflav / nmaxflavor] == 0 ) continue;\n    ',
+                '      if ( spincol_cross( iflav / nmaxflavor ) == 0 ) continue;\n    ',
             'sigmakin_denominator': sigmakin_denominator,
             'flavorpdg_body': flavorpdg_body,
             # Reported per-event helicity: the crossed code for the event's
@@ -3025,14 +3062,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
         what indexes cFlavors/masks (constant across the SIMD page)."""
         return ' % nmaxflavor' if getattr(self, 'use_crossing_ic', False) else ''
 
-    @staticmethod
-    def _crossing_int_2d(flat, ncols):
-        """Format a flat int list as a C++ 2-D initializer { {...}, {...} }."""
-        rows = []
-        for start in range(0, len(flat), ncols):
-            rows.append('{ ' + ', '.join(str(v) for v in flat[start:start+ncols]) + ' }')
-        return '{\n        ' + ',\n        '.join(rows) + ' }'
-
     def _crossing_tables(self, matrix_element):
         import madgraph.iolibs.export_v4 as export_v4
         return export_v4.ProcessExporterFortran.compute_crossing_tables(
@@ -3047,16 +3076,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
         positive energy preserved) and record the per-event NSF sign flips
         (icsign). The momentum sign flip of a swapped leg is applied through the
         NSF flag inside the HELAS routines (see _crossing_external_block)."""
-        tables = self._crossing_tables(matrix_element)
-        nexternal = tables['nexternal']
-        ncross = (nexternal + 1) * (nexternal + 1)
-        perm = self._crossing_int_2d(tables['perm'], nexternal)
-        ic = self._crossing_int_2d(tables['ic'], nexternal)
         return """#ifndef MGONGPUCPP_GPUIMPL
       // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
-      constexpr int ncross = ( npar + 1 ) * ( npar + 1 );
-      static const int cross_perm[ncross][npar] = %(perm)s;
-      static const int cross_ic[ncross][npar] = %(ic)s;
+      // The crossing slot permutation and NSF signs are decoded per event from
+      // its crossing code (cross_perm_ic), not read from a per-crossing table.
       alignas( mgOnGpu::cppAlign ) fptype xmom[npar * np4 * neppV];
       fptype_sv icsign[npar];
       // 2 scratch external wavefunctions for the per-event NSF-sign blend
@@ -3068,17 +3091,19 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
         const int xcr = (int)( iflavorVec[ievt0 + ieppV] / nmaxflavor );
+        int xperm[npar], xic[npar];
+        cross_perm_ic( xcr, xperm, xic );
         for( int s = 0; s < npar; ++s )
         {
-          const int src = cross_perm[xcr][s];
+          const int src = xperm[s];
           for( int ip4 = 0; ip4 < np4; ++ip4 )
             xmom[s * np4 * neppV + ip4 * neppV + ieppV] =
               MemoryAccessMomenta::ieventAccessIp4IparConst( momenta, ieppV, ip4, src );
-          reinterpret_cast<fptype*>( &icsign[s] )[ieppV] = (fptype)cross_ic[xcr][s];
+          reinterpret_cast<fptype*>( &icsign[s] )[ieppV] = (fptype)xic[s];
         }
       }
 #endif
-""" % {'perm': perm, 'ic': ic}
+"""
 
     @staticmethod
     def _hel_state_values(spin, mass):

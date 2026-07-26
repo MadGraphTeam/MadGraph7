@@ -1465,11 +1465,14 @@ class OneProcessExporterCPP(object):
         ninitial = tables['ninitial']
         ncross = (nexternal + 1) * (nexternal + 1)
 
-        spincol_init = self._cpp_int_array(tables['spincol'])
-        perm_init = self._cpp_int_array2d(tables['perm'], nexternal)
-        ic_init = self._cpp_int_array2d(tables['ic'], nexternal)
-        basepid_init = self._cpp_int_array(tables['basepid'])
-        src_init = self._cpp_int_array(tables['source'])
+        # Per-leg tables (one entry per external leg). The crossing's slot
+        # permutation and NSF sign flips are decoded from the crossing code at
+        # runtime (cross_perm_ic, mirroring the fortran GET_CROSS_PERM), and the
+        # two halves of the denominator are rebuilt from these -- so no
+        # cross-indexed table (spincol/basepid/src/perm/ic) is stored.
+        spincol_part_init = self._cpp_int_array(tables['spincol_part'])
+        ids_base_init = self._cpp_int_array(tables['ids_base'])
+        antipid_base_init = self._cpp_int_array(tables['antipid_base'])
         # Good-helicity remap: instead of the baked ghremap[ncross*ncomb] row
         # table, keep only the per-crossing filterable flag and resolve the
         # gating identity row at runtime (see cross_ghidx_setup) -- the same
@@ -1484,36 +1487,33 @@ class OneProcessExporterCPP(object):
             "//   cross    = flavor_id / nflavors\n"
             "//   flav_use = flavor_id %% nflavors  (index used for masking)\n"
             "// A crossing permutes momenta/helicities between slots and flips\n"
-            "// each swapped leg's NSF flag; the denominator splits into the\n"
-            "// crossing-dependent initial-state spin*color (spincol_cross) and\n"
-            "// the flavor-dependent identical-final-state factor (ident_cross).\n"
+            "// each swapped leg's NSF flag. The slot permutation is a fixed\n"
+            "// relabelling decoded from the crossing code at runtime\n"
+            "// (cross_perm_ic), so no cross-indexed table is stored; the\n"
+            "// denominator splits into the crossing-dependent initial-state\n"
+            "// spin*color (spincol_cross) and the flavor-dependent identical-\n"
+            "// final-state factor (ident_cross), both rebuilt from per-leg data.\n"
             "const int ncross = %(ncross)d;\n"
-            "static const int spincol_cross[ncross] = %(spincol)s;\n"
-            "static const int cross_perm[ncross][nexternal] = %(perm)s;\n"
-            "static const int cross_ic[ncross][nexternal] = %(ic)s;\n"
             "// ghfilt[cross] = 1 if this crossing's good-helicity filter is a\n"
             "// clean bijection of the identity rows, 0 otherwise (initial-\n"
-            "// initial swap, inapplicable, or non-bijection). The gating\n"
-            "// identity row itself is recomputed per row at runtime (see the\n"
-            "// good-helicity loop) rather than stored as an ncross*ncomb table.\n"
+            "// initial swap, inapplicable, or non-bijection). Genuinely per-\n"
+            "// crossing (not derivable from per-leg data), so kept as a table --\n"
+            "// the fortran path tabulates it too. The gating identity row itself\n"
+            "// is recomputed per row at runtime (see the good-helicity loop).\n"
             "// See ProcessExporterFortran.compute_ghfilt.\n"
             "static const int ghfilt[ncross] = %(ghfilt)s;\n"
             "int cross = flavor_id / nflavors;\n"
             "int flav_use = flavor_id %% nflavors;\n"
             "// A null spin*color entry (out of range, impossible, or an\n"
             "// overlapping swap) means an identically-zero matrix element.\n"
-            "if (cross < 0 || cross >= ncross || spincol_cross[cross] == 0)\n"
+            "if (cross < 0 || cross >= ncross || spincol_cross(cross) == 0)\n"
             "    return 0.;"
-        ) % {'ncross': ncross, 'spincol': spincol_init,
-             'perm': perm_init, 'ic': ic_init, 'ghfilt': ghfilt_init}
+        ) % {'ncross': ncross, 'ghfilt': ghfilt_init}
 
         cross_perm_block = (
             "int perm[nexternal];\n"
             "int ic[nexternal];\n"
-            "for(int i = 0; i < nexternal; i++){\n"
-            "    perm[i] = cross_perm[cross][i];\n"
-            "    ic[i] = cross_ic[cross][i];\n"
-            "}")
+            "cross_perm_ic(cross, perm, ic);")
 
         cross_return = (
             "// Uncrossed: historical path (IDEN via denominator, BROKEN_SYM\n"
@@ -1523,23 +1523,74 @@ class OneProcessExporterCPP(object):
             "if (cross == 0)\n"
             "    return matrix_element * broken_sym(flavor) / denominator;\n"
             "return matrix_element / "
-            "(spincol_cross[cross] * ident_cross(cross, flavor));")
+            "(spincol_cross(cross) * ident_cross(cross, flavor));")
 
         ident_cross_function = (
+            "//------------------------------------------------------------------\n"
+            "// Runtime crossing decode (mirrors the fortran GET_CROSS_PERM/\n"
+            "// SWAP_LEGS): cross = i*(nexternal+1) + j swaps particle 1 with i\n"
+            "// and particle 2 with j (0 = leave alone; i==1 / j==2 are self-swaps,\n"
+            "// also no-ops). perm[k] is the input slot landing in crossed slot k\n"
+            "// and ic[k] its NSF sign flip. perm/ic are always left a valid\n"
+            "// permutation (identity for an inapplicable code) so a momentum\n"
+            "// gather never reads out of range; the return value flags an\n"
+            "// applicable crossing (false = overlapping swap / out of range).\n"
+            "bool CPPProcess::cross_perm_ic(int cross, int* perm, int* ic)\n"
+            "{\n"
+            "    const int ncross = (nexternal + 1) * (nexternal + 1);\n"
+            "    for (int k = 0; k < nexternal; k++) { perm[k] = k; ic[k] = 1; }\n"
+            "    if (cross < 0 || cross >= ncross) return false;\n"
+            "    const int xi = cross / (nexternal + 1);\n"
+            "    const int xj = cross %% (nexternal + 1);\n"
+            "    // Overlapping-swap codes compose into a 3-cycle the consumers\n"
+            "    // read with opposite orientation: pure redundancy, invalid.\n"
+            "    if (xi != 0 && xi != 1 && xj != 0 && xj != 2 &&\n"
+            "        (xi == 2 || xj == 1 || xi == xj)) return false;\n"
+            "    if (xi != 0 && xi != 1)\n"
+            "    {\n"
+            "        int t = perm[0]; perm[0] = perm[xi - 1]; perm[xi - 1] = t;\n"
+            "        ic[0] = -ic[0]; ic[xi - 1] = -ic[xi - 1];\n"
+            "    }\n"
+            "    if (xj != 0 && xj != 2)\n"
+            "    {\n"
+            "        int t = perm[1]; perm[1] = perm[xj - 1]; perm[xj - 1] = t;\n"
+            "        ic[1] = -ic[1]; ic[xj - 1] = -ic[xj - 1];\n"
+            "    }\n"
+            "    return true;\n"
+            "}\n"
+            "\n"
+            "//------------------------------------------------------------------\n"
+            "// Initial-state spin*color average of the crossed process: the\n"
+            "// product of the per-leg spin*color (spincol_part, conjugation\n"
+            "// invariant) over the legs the crossing puts in the initial state.\n"
+            "// 0 for a crossing that cannot be applied.\n"
+            "int CPPProcess::spincol_cross(int cross)\n"
+            "{\n"
+            "    static const int spincol_part[nexternal] = %(spincol_part)s;\n"
+            "    int perm[nexternal], ic[nexternal];\n"
+            "    if (!cross_perm_ic(cross, perm, ic)) return 0;\n"
+            "    int factor = 1;\n"
+            "    for (int k = 0; k < %(ninitial)d; k++)\n"
+            "        factor *= spincol_part[perm[k]];\n"
+            "    return factor;\n"
+            "}\n"
+            "\n"
             "//------------------------------------------------------------------\n"
             "// Identical-final-state factor (product of n!) of the crossed\n"
             "// process. Flavor dependent, so computed at runtime: two crossed\n"
             "// final legs are identical when they carry the same flavor group\n"
-            "// (same representative PDG, conjugated already when the leg swapped\n"
-            "// side) and the same position inside it. FLAVOR is not permuted by\n"
-            "// the crossing, so slot k reads the position of the original leg\n"
-            "// that moved into it, via src_cross.\n"
+            "// (same representative PDG -- ids_base, conjugated to antipid_base\n"
+            "// when the leg swapped side) and the same actual flavor. FLAVOR is\n"
+            "// not permuted by the crossing, so slot k reads flavor[perm[k]].\n"
             "int CPPProcess::ident_cross(int cross, const int* flavor)\n"
             "{\n"
-            "    const int ncross = %(ncross)d;\n"
-            "    static const int basepid_cross[ncross * nexternal] = %(basepid)s;\n"
-            "    static const int src_cross[ncross * nexternal] = %(src)s;\n"
-            "    const int off = cross * nexternal;\n"
+            "    static const int ids_base[nexternal] = %(ids_base)s;\n"
+            "    static const int antipid_base[nexternal] = %(antipid_base)s;\n"
+            "    int perm[nexternal], ic[nexternal];\n"
+            "    cross_perm_ic(cross, perm, ic);\n"
+            "    int bpid[nexternal];\n"
+            "    for (int k = 0; k < nexternal; k++)\n"
+            "        bpid[k] = (ic[k] == 1) ? ids_base[perm[k]] : antipid_base[perm[k]];\n"
             "    bool used[nexternal];\n"
             "    for (int k = 0; k < nexternal; k++) used[k] = false;\n"
             "    int fact = 1;\n"
@@ -1550,8 +1601,8 @@ class OneProcessExporterCPP(object):
             "        for (int l = k + 1; l < nexternal; l++)\n"
             "        {\n"
             "            if (used[l]) continue;\n"
-            "            if (basepid_cross[off + k] == basepid_cross[off + l] &&\n"
-            "                flavor[src_cross[off + k]] == flavor[src_cross[off + l]])\n"
+            "            if (bpid[k] == bpid[l] &&\n"
+            "                flavor[perm[k]] == flavor[perm[l]])\n"
             "            {\n"
             "                used[l] = true;\n"
             "                n = n + 1;\n"
@@ -1561,8 +1612,8 @@ class OneProcessExporterCPP(object):
             "    }\n"
             "    return fact;\n"
             "}"
-        ) % {'ncross': ncross, 'basepid': basepid_init, 'src': src_init,
-             'ninitial': ninitial}
+        ) % {'spincol_part': spincol_part_init, 'ids_base': ids_base_init,
+             'antipid_base': antipid_base_init, 'ninitial': ninitial}
 
         return {
             'fidx': 'flav_use',
@@ -1571,14 +1622,17 @@ class OneProcessExporterCPP(object):
             'cross_cw_args': ', ic',
             'cross_return': cross_return,
             'cross_cw_sig_extra': ', const int ic[]',
-            'cross_member_decl': '  int ident_cross(int cross, const int* flavor);',
+            'cross_member_decl':
+                '  bool cross_perm_ic(int cross, int* perm, int* ic);\n'
+                '  int spincol_cross(int cross);\n'
+                '  int ident_cross(int cross, const int* flavor);',
             'ident_cross_function': ident_cross_function,
             # The good-helicity filter is shared per flavor but consulted and
             # trained through the crossing's row permutation sigma^-1: a crossed
             # row is good iff its identity counterpart is. Rather than store the
             # whole sigma^-1 (ghremap[ncross*ncomb]), recompute the gating
             # identity row here: inverse-permute + sign-flip the crossed row's
-            # config (perm/ic already hold cross_perm[cross]/cross_ic[cross]),
+            # config (perm/ic already hold the runtime-decoded cross_perm_ic),
             # then find the identity row carrying it. ghidx = -1 disables the
             # filter for a non-filterable crossing (ghfilt[cross] == 0: compute
             # the row, never train). For cross 0 perm/ic are the identity so

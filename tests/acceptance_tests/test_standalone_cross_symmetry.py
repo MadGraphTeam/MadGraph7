@@ -1715,7 +1715,7 @@ class TestStandaloneCppCrossSymmetry(unittest.TestCase):
 
         on_src = self._cpp_source(with_dir)
         off_src = self._cpp_source(without_dir)
-        for token in ('spincol_cross', 'cross_perm', 'cross_ic',
+        for token in ('spincol_cross', 'cross_perm_ic', 'spincol_part',
                       'ident_cross', 'flav_use', 'const int ic[]'):
             self.assertIn(token, on_src,
                           '%s should be emitted with crossing on' % token)
@@ -1918,8 +1918,8 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                                               options='--use_crossing=False')
         on_src = self._cpp_source(on_dir)
         off_src = self._cpp_source(off_dir)
-        for token in ('spincol_cross', 'cross_perm', 'cross_ic', 'ident_cross',
-                      'xmom', 'flavorPDGs_cross'):
+        for token in ('spincol_cross', 'cross_perm_ic', 'spincol_part',
+                      'ident_cross', 'xmom', 'ids_base'):
             self.assertIn(token, on_src,
                           '%s should be emitted with crossing on' % token)
             self.assertNotIn(token, off_src,
