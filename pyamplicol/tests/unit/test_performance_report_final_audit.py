@@ -2177,7 +2177,7 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
 
     assert lock_state == {"held": False, "entries": 1}
     assert result["status"] == "incomplete"
-    assert result["schema_version"] == 2
+    assert result["schema_version"] == 3
     assert result["measurement_source_revision"] == _REVISION
     assert result["publication_revision"] == _REVISION
     assert result["publication_lineage"]["relationship"] == "same-commit"
@@ -2191,11 +2191,13 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     assert result["legacy_pointwise_agreement_edge_count"] == 1
     assert result["direct_agreement_edge_count"] == 0
     assert result["direct_agreement_edge_counts"] == {
-        "builtin-ufo-recurrence": 0,
-        "z-recurrence-cross-mode": 0,
-        "lc-cross-layout-component": 0,
-    }
+            "builtin-ufo-recurrence": 0,
+            "z-recurrence-cross-mode": 0,
+            "lc-cross-layout-component": 0,
+            "lc-legacy-pyamplicol-component": 0,
+        }
     assert result["replayed_direct_agreement_edge_count"] == 0
+    assert set(result["direct_agreement_replay_category_counts"].values()) == {0}
     assert result["unique_artifact_count"] == 1
     assert result["canonical_publication_scope"] is False
     assert result["final_gate_complete"] is False

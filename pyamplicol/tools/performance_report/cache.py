@@ -11,11 +11,17 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from .agreements import (
+    DIRECT_AGREEMENT_FIELD,
+    LC_COMMON_COMPONENT_FIELD,
+    validate_direct_agreement_records,
+    validate_lc_common_component,
+)
 from .catalog import REPORT_CATALOG, ReportCatalog
-from .models import CellSpec, ResultStatus
+from .models import Accuracy, CellSpec, ResultStatus
 
-CACHE_SCHEMA_VERSION = 3
-REPORT_VERSION = "0.2.0"
+CACHE_SCHEMA_VERSION = 4
+REPORT_VERSION = "0.3.0"
 _EXECUTION_TIMING_ABI = "pyamplicol-report-execution-timing-v1"
 _COMPILED_ARENA_EXECUTION_TIME_SOURCE = (
     "runtime_profile_core_compiled_direct_arena_orchestration_time"
@@ -325,7 +331,11 @@ def _validate_execution_timing(
         )
 
 
-def validate_measurement(value: object) -> None:
+def validate_measurement(
+    value: object,
+    *,
+    expected_cell: CellSpec | None = None,
+) -> None:
     measurement = _required_mapping(value, "measurement")
     expected_keys = set(empty_measurement())
     if set(measurement) != expected_keys:
@@ -373,6 +383,40 @@ def validate_measurement(value: object) -> None:
         validation = _required_mapping(measurement["validation"], "validation")
         if validation.get("status") != ResultStatus.OK.value:
             raise ValueError("successful measurement requires successful validation")
+        validate_direct_agreement_records(
+            validation.get(DIRECT_AGREEMENT_FIELD),
+            expected_candidate_id=(
+                None if expected_cell is None else expected_cell.cell_id
+            ),
+        )
+        selector_contract = measurement.get("selector_contract")
+        if expected_cell is not None:
+            expects_lc = expected_cell.measurement.accuracy is Accuracy.LC
+            if expects_lc and not isinstance(selector_contract, Mapping):
+                raise ValueError(
+                    "successful LC measurement requires selector_contract"
+                )
+            if not expects_lc and selector_contract is not None:
+                raise ValueError(
+                    "successful non-LC measurement cannot contain selector_contract"
+                )
+        requires_lc_component = (
+            expected_cell.measurement.accuracy is Accuracy.LC
+            if expected_cell is not None
+            else isinstance(selector_contract, Mapping)
+        )
+        if requires_lc_component:
+            validate_lc_common_component(
+                validation.get(LC_COMMON_COMPONENT_FIELD),
+                expected_cell_id=(
+                    None if expected_cell is None else expected_cell.cell_id
+                ),
+                selector_contract=selector_contract,
+            )
+        elif validation.get(LC_COMMON_COMPONENT_FIELD) is not None:
+            raise ValueError(
+                "non-LC measurement cannot contain lc_common_component"
+            )
         provenance = _required_mapping(
             measurement["provenance"], "measurement.provenance"
         )
@@ -403,6 +447,14 @@ def validate_cache(
     *,
     expected_cells: Iterable[CellSpec] | None = None,
 ) -> None:
+    expected_cell_list = (
+        None if expected_cells is None else tuple(expected_cells)
+    )
+    expected_by_id = (
+        {}
+        if expected_cell_list is None
+        else {cell.cell_id: cell for cell in expected_cell_list}
+    )
     cache = _required_mapping(payload, "cache")
     if cache.get("schema_version") != CACHE_SCHEMA_VERSION:
         raise ValueError("cache schema_version is unsupported")
@@ -432,14 +484,17 @@ def validate_cache(
         n_final = entry.get("n_final")
         if isinstance(n_final, bool) or not isinstance(n_final, int) or n_final < 1:
             raise ValueError(f"entries[{index}].n_final must be positive")
-        validate_measurement(entry.get("measurement"))
+        validate_measurement(
+            entry.get("measurement"),
+            expected_cell=expected_by_id.get(cell_id),
+        )
     duplicate_ids = sorted(
         cell_id for cell_id, count in Counter(ids).items() if count > 1
     )
     if duplicate_ids:
         raise ValueError(f"cache contains duplicate cell IDs: {duplicate_ids}")
-    if expected_cells is not None:
-        expected = sorted(cell.cell_id for cell in expected_cells)
+    if expected_cell_list is not None:
+        expected = sorted(cell.cell_id for cell in expected_cell_list)
         if sorted(ids) != expected:
             raise ValueError(f"cache coverage differs for dataset {dataset_id}")
 
@@ -447,9 +502,104 @@ def validate_cache(
 def schema_document() -> dict[str, object]:
     statuses = [status.value for status in ResultStatus]
     nullable_number: dict[str, Any] = {"type": ["number", "null"], "minimum": 0}
+    direct_agreement_record: dict[str, Any] = {
+        "type": "object",
+        "required": [
+            "abi",
+            "edge_kind",
+            "value_kind",
+            "baseline_cell_id",
+            "candidate_cell_id",
+            "status",
+            "candidate",
+            "baseline",
+            "absolute_difference",
+            "relative_difference",
+            "relative_tolerance",
+            "absolute_tolerance",
+        ],
+        "properties": {
+            "abi": {"const": "pyamplicol-report-direct-agreement-v1"},
+            "edge_kind": {
+                "enum": [
+                    "builtin-ufo-recurrence",
+                    "z-recurrence-cross-mode",
+                    "lc-cross-layout-component",
+                    "lc-legacy-pyamplicol-component",
+                ]
+            },
+            "value_kind": {
+                "enum": ["matrix_element", LC_COMMON_COMPONENT_FIELD]
+            },
+            "baseline_cell_id": {"type": "string", "minLength": 1},
+            "candidate_cell_id": {"type": "string", "minLength": 1},
+            "status": {"enum": statuses},
+            "candidate": {"type": "number"},
+            "baseline": {"type": "number"},
+            "absolute_difference": {"type": "number", "minimum": 0},
+            "relative_difference": {"type": "number", "minimum": 0},
+            "relative_tolerance": {"type": "number", "minimum": 0},
+            "absolute_tolerance": {"type": "number", "minimum": 0},
+        },
+        "additionalProperties": False,
+    }
+    lc_common_component: dict[str, Any] = {
+        "type": "object",
+        "required": [
+            "abi",
+            "cell_id",
+            "value",
+            "point_digest",
+            "helicity_ids",
+            "color_flow_ids",
+        ],
+        "properties": {
+            "abi": {"const": "pyamplicol-report-lc-common-component-v1"},
+            "cell_id": {"type": "string", "minLength": 1},
+            "value": {"type": "number"},
+            "point_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "helicity_ids": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": True,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "color_flow_ids": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": True,
+                "items": {"type": "string", "minLength": 1},
+            },
+        },
+        "additionalProperties": False,
+    }
+    validation_properties = {
+        DIRECT_AGREEMENT_FIELD: {
+            "type": "array",
+            "items": direct_agreement_record,
+        },
+        LC_COMMON_COMPONENT_FIELD: lc_common_component,
+    }
+    validation_record: dict[str, Any] = {
+        "oneOf": [
+            {"type": "null"},
+            {
+                "type": "object",
+                "properties": validation_properties,
+            },
+        ]
+    }
+    successful_validation_record: dict[str, Any] = {
+        "type": "object",
+        "required": [DIRECT_AGREEMENT_FIELD],
+        "properties": validation_properties,
+    }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://pyamplicol.dev/schema/report-cache-v3.json",
+        "$id": "https://pyamplicol.dev/schema/report-cache-v4.json",
         "title": "pyAmpliCol three-mode performance cache",
         "type": "object",
         "required": [
@@ -511,11 +661,28 @@ def schema_document() -> dict[str, object]:
                                 "relative_standard_error": nullable_number,
                                 "artifact": {"type": ["object", "null"]},
                                 "selector_contract": {"type": ["object", "null"]},
-                                "validation": {"type": ["object", "null"]},
+                                "validation": validation_record,
                                 "resources": {"type": ["object", "null"]},
                                 "provenance": {"type": ["object", "null"]},
                                 "failure": {"type": ["object", "null"]},
                             },
+                            "allOf": [
+                                {
+                                    "if": {
+                                        "properties": {
+                                            "status": {"const": ResultStatus.OK.value}
+                                        },
+                                        "required": ["status"],
+                                    },
+                                    "then": {
+                                        "properties": {
+                                            "validation": (
+                                                successful_validation_record
+                                            )
+                                        }
+                                    },
+                                }
+                            ],
                             "additionalProperties": False,
                         },
                     },

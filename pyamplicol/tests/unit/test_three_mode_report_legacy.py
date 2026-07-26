@@ -38,6 +38,7 @@ class FakeApi:
         self.entry = FakeEntry(process_pdgs=pdgs)
         self.selected_calls: list[int] = []
         self.color_calls: list[tuple[str, tuple[int, ...] | None]] = []
+        self.lc_probe_result: object | None = None
 
     def expected_revision(self) -> str:
         return "a" * 40
@@ -100,11 +101,15 @@ class FakeApi:
         self.color_calls.append(
             (accuracy, None if helicities is None else tuple(helicities))
         )
+        if accuracy == Accuracy.LC.value and self.lc_probe_result is not None:
+            return self.lc_probe_result
+        aggregate = 2.5 if accuracy == Accuracy.LC.value else 9.75
         return SimpleNamespace(
-            value=9.75,
+            value=aggregate,
             lc_row_partitions=(
-                SimpleNamespace(value=2.5, permutation=(2, 4, 1)),
+                SimpleNamespace(row=1, value=2.5, permutation=(2, 4, 1)),
             ),
+            lc_partition_sum=2.5,
         )
 
 
@@ -473,6 +478,114 @@ def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(
     flattened = [" ".join(command) for command in executor.commands]
     assert not any("--library=create" in command for command in flattened)
     assert any(command.endswith("amplicol_color_probe") for command in flattened)
+
+
+def _measure_with_lc_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: object,
+) -> dict[str, object]:
+    api = FakeApi()
+    api.lc_probe_result = probe
+    adapter, _api, _executor = _adapter(api)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+    return adapter.measure(
+        _cell(Accuracy.LC, Workload.ALL_FLOW),
+        artifact_path=tmp_path / "adversarial",
+        settings=_settings(tmp_path / "repository"),
+    )
+
+
+@pytest.mark.parametrize(
+    "permutation",
+    (
+        (2, 4),
+        (2, 4, 4),
+        (0, 4, 1),
+        (2, 5, 1),
+        (2, "4", 1),
+    ),
+)
+def test_lc_common_probe_rejects_malformed_row_permutations(
+    permutation: tuple[object, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probe = SimpleNamespace(
+        value=2.5,
+        lc_row_partitions=(
+            SimpleNamespace(row=1, value=2.5, permutation=permutation),
+        ),
+        lc_partition_sum=2.5,
+    )
+
+    with pytest.raises(
+        LegacyAdapterError,
+        match=r"row permutation|every colored source label",
+    ):
+        _measure_with_lc_probe(tmp_path, monkeypatch, probe)
+
+
+@pytest.mark.parametrize(
+    "partitions",
+    (
+        (
+            SimpleNamespace(row=1, value=1.0, permutation=(2, 4, 1)),
+            SimpleNamespace(row=1, value=1.5, permutation=(2, 1, 4)),
+        ),
+        (
+            SimpleNamespace(row=1, value=1.0, permutation=(2, 4, 1)),
+            SimpleNamespace(row=2, value=1.5, permutation=(2, 4, 1)),
+        ),
+    ),
+)
+def test_lc_common_probe_rejects_duplicate_rows(
+    partitions: tuple[object, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probe = SimpleNamespace(
+        value=2.5,
+        lc_row_partitions=partitions,
+        lc_partition_sum=2.5,
+    )
+
+    with pytest.raises(LegacyAdapterError, match=r"duplicate"):
+        _measure_with_lc_probe(tmp_path, monkeypatch, probe)
+
+
+@pytest.mark.parametrize(
+    ("partition_sum", "aggregate", "match"),
+    (
+        (3.0, 3.0, "resolved partitions do not match"),
+        (2.5, 3.0, "partition sum does not match"),
+        (float("nan"), 2.5, "aggregate evidence is not finite"),
+    ),
+)
+def test_lc_common_probe_authenticates_partition_sum_and_aggregate(
+    partition_sum: float,
+    aggregate: float,
+    match: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probe = SimpleNamespace(
+        value=aggregate,
+        lc_row_partitions=(
+            SimpleNamespace(row=1, value=2.5, permutation=(2, 4, 1)),
+        ),
+        lc_partition_sum=partition_sum,
+    )
+
+    with pytest.raises(LegacyAdapterError, match=match):
+        _measure_with_lc_probe(tmp_path, monkeypatch, probe)
 
 
 @pytest.mark.parametrize("accuracy", [Accuracy.NLC, Accuracy.FULL])

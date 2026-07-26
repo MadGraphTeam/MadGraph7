@@ -97,6 +97,7 @@ class PlannedCell:
     baseline_cell_id: str | None
     rank: int
     comparison_peer_ids: tuple[str, ...] = ()
+    force_recompare: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,9 +149,14 @@ def _successful_current(
     cell_id: str,
     *,
     expected_revision: str | None = None,
+    expected_cell: CellSpec | None = None,
 ) -> CurrentRecord | None:
     current = store.load_current(cell_id, missing_ok=True)
     if current is None or current.result.get("status") != ResultStatus.OK.value:
+        return None
+    try:
+        validate_measurement(current.result, expected_cell=expected_cell)
+    except ValueError:
         return None
     if expected_revision is not None:
         provenance = current.result.get("provenance")
@@ -176,6 +182,7 @@ def _fresh_equivalent_current(
             store,
             equivalent.cell_id,
             expected_revision=expected_revision,
+            expected_cell=equivalent,
         )
         if current is not None:
             return current
@@ -192,6 +199,7 @@ def plan_campaign(
 ) -> tuple[PlannedCell, ...]:
     requested_ids = {cell.cell_id for cell in requested}
     needed: dict[str, CellSpec] = {}
+    force_recompare_ids: set[str] = set()
     visiting: set[str] = set()
 
     def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
@@ -211,17 +219,33 @@ def plan_campaign(
         )
 
     def include(cell: CellSpec, *, explicitly_requested: bool) -> None:
-        if (
+        fresh_requested = (
             settings.missing_only
             and explicitly_requested
             and _successful_current(
                 store,
                 cell.cell_id,
                 expected_revision=expected_revision,
+                expected_cell=cell,
             )
             is not None
-        ):
+        )
+        cell_dependencies = dependencies(cell)
+        missing_dependencies = tuple(
+            dependency
+            for dependency in cell_dependencies
+            if _successful_current(
+                store,
+                dependency.cell_id,
+                expected_revision=expected_revision,
+                expected_cell=dependency,
+            )
+            is None
+        )
+        if fresh_requested and not missing_dependencies:
             return
+        if fresh_requested and missing_dependencies:
+            force_recompare_ids.add(cell.cell_id)
         if cell.cell_id in needed:
             return
         if cell.cell_id in visiting:
@@ -229,13 +253,8 @@ def plan_campaign(
                 f"report comparison dependency cycle reaches {cell.cell_id!r}"
             )
         visiting.add(cell.cell_id)
-        for dependency in dependencies(cell):
-            if _successful_current(
-                store,
-                dependency.cell_id,
-                expected_revision=expected_revision,
-            ) is None:
-                include(dependency, explicitly_requested=False)
+        for dependency in missing_dependencies:
+            include(dependency, explicitly_requested=False)
         visiting.remove(cell.cell_id)
         needed[cell.cell_id] = cell
 
@@ -269,6 +288,7 @@ def plan_campaign(
                 edge.baseline.cell_id
                 for edge in incoming_agreement_edges(cell, catalog=catalog)
             ),
+            force_recompare=cell.cell_id in force_recompare_ids,
         )
         for cell in sorted(
             needed.values(),
@@ -433,10 +453,12 @@ class CampaignScheduler:
         with self.service.store.named_lock(f"campaign-cell-{cell.cell_id}"):
             if (
                 self.settings.missing_only
+                and not planned.force_recompare
                 and _successful_current(
                     self.service.store,
                     cell.cell_id,
                     expected_revision=self.source_revision,
+                    expected_cell=cell,
                 )
                 is not None
             ):
@@ -450,6 +472,7 @@ class CampaignScheduler:
                     self.service.store,
                     cell.cell_id,
                     expected_revision=self.source_revision,
+                    expected_cell=cell,
                 )
                 is not None
             )
@@ -458,6 +481,7 @@ class CampaignScheduler:
                 and decision.current is not None
                 and current_is_fresh
                 and not self.settings.rerun
+                and not planned.force_recompare
                 and decision.current.result.get("status") == ResultStatus.OK.value
             ):
                 return CellOutcome(cell.cell_id, "reused", decision.current.attempt_id)
@@ -484,6 +508,7 @@ class CampaignScheduler:
                     self.service.store,
                     baseline.cell_id,
                     expected_revision=self.source_revision,
+                    expected_cell=baseline,
                 )
             )
             if baseline is not None and baseline_record is None:
@@ -494,10 +519,16 @@ class CampaignScheduler:
                 )
             peer_records: dict[str, CurrentRecord] = {}
             for peer_cell_id in planned.comparison_peer_ids:
+                peer_cell = next(
+                    candidate
+                    for candidate in self.catalog.measurement_cells()
+                    if candidate.cell_id == peer_cell_id
+                )
                 peer_record = _successful_current(
                     self.service.store,
                     peer_cell_id,
                     expected_revision=self.source_revision,
+                    expected_cell=peer_cell,
                 )
                 if peer_record is None:
                     return self._publish_skip(
@@ -602,7 +633,7 @@ class CampaignScheduler:
                         raise TypeError("worker result must be a JSON object")
                     result = dict(raw)
                     result["resources"] = resources
-                validate_measurement(result)
+                validate_measurement(result, expected_cell=cell)
                 _write_json(worker_result, result)
                 paths = _attempt_files(attempt.root)
                 if result["status"] == ResultStatus.OK.value:

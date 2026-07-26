@@ -32,6 +32,7 @@ from .agreements import (
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     LC_CROSS_LAYOUT_COMPONENT,
+    LC_LEGACY_PYAMPLICOL_COMPONENT,
     STRICT_ABSOLUTE_TOLERANCE,
     STRICT_RELATIVE_TOLERANCE,
     Z_RECURRENCE_CROSS_MODE,
@@ -86,6 +87,22 @@ _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 136,
     Z_RECURRENCE_CROSS_MODE: 80,
     LC_CROSS_LAYOUT_COMPONENT: 208,
+    LC_LEGACY_PYAMPLICOL_COMPONENT: 176,
+}
+_FULLY_REPLAYED_PYAMPLICOL = "fully-replayed-pyamplicol"
+_REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY = (
+    "replayed-pyamplicol-vs-authenticated-legacy"
+)
+_AUTHENTICATED_STORED_LEGACY_LAYOUT = "authenticated-stored-legacy-layout"
+_DIRECT_REPLAY_CATEGORIES = (
+    _FULLY_REPLAYED_PYAMPLICOL,
+    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY,
+    _AUTHENTICATED_STORED_LEGACY_LAYOUT,
+)
+_EXPECTED_N4_DIRECT_REPLAY_COUNTS = {
+    _FULLY_REPLAYED_PYAMPLICOL: 392,
+    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 176,
+    _AUTHENTICATED_STORED_LEGACY_LAYOUT: 32,
 }
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
     {
@@ -840,7 +857,7 @@ def _audit_direct_agreements(
                         baseline_measurement,
                         context=edge.baseline.cell_id,
                     ),
-                    expected_relative_tolerance=STRICT_RELATIVE_TOLERANCE,
+                    expected_relative_tolerance=edge.relative_tolerance,
                 )
             except Exception as error:
                 errors.append(f"{context}: {error}")
@@ -882,6 +899,7 @@ def _audit_direct_agreements(
             BUILTIN_UFO_RECURRENCE,
             Z_RECURRENCE_CROSS_MODE,
             LC_CROSS_LAYOUT_COMPONENT,
+            LC_LEGACY_PYAMPLICOL_COMPONENT,
         )
     }
 
@@ -3755,16 +3773,27 @@ def _replayed_agreement_value(
     cell: CellSpec,
     measurement: Mapping[str, object],
     replayed: Mapping[str, _ReplayObservation],
+    replay_required: bool,
 ) -> float:
     observation = replayed.get(cell.cell_id)
+    if replay_required and observation is None:
+        raise FinalAuditError(
+            f"{cell.cell_id} is missing its required pyAmpliCol replay"
+        )
+    if not replay_required and observation is not None:
+        raise FinalAuditError(
+            f"{cell.cell_id} unexpectedly has replay evidence in a stored-only lane"
+        )
     if edge.value_kind == "matrix_element":
-        if observation is None:
+        if not replay_required:
             return _finite_number(
                 measurement.get("matrix_element"),
                 f"{cell.cell_id}.matrix_element",
             )
+        assert observation is not None
         return observation.matrix_element
-    if observation is not None:
+    if replay_required:
+        assert observation is not None
         if observation.lc_common_component is None:
             raise FinalAuditError(
                 f"{cell.cell_id} replay has no LC common component"
@@ -3777,41 +3806,82 @@ def _replayed_agreement_value(
     )
 
 
+def _direct_replay_category(edge: AgreementEdge) -> str:
+    candidate_is_pyamplicol = (
+        edge.candidate.measurement.execution_mode is not ExecutionMode.AMPLICOL
+    )
+    baseline_is_pyamplicol = (
+        edge.baseline.measurement.execution_mode is not ExecutionMode.AMPLICOL
+    )
+    if candidate_is_pyamplicol and baseline_is_pyamplicol:
+        return _FULLY_REPLAYED_PYAMPLICOL
+    if (
+        candidate_is_pyamplicol
+        and not baseline_is_pyamplicol
+        and edge.kind == LC_LEGACY_PYAMPLICOL_COMPONENT
+    ):
+        return _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY
+    if (
+        not candidate_is_pyamplicol
+        and not baseline_is_pyamplicol
+        and edge.kind == LC_CROSS_LAYOUT_COMPONENT
+    ):
+        return _AUTHENTICATED_STORED_LEGACY_LAYOUT
+    raise FinalAuditError(
+        f"{edge.candidate.cell_id}: unexpected direct-edge replay endpoint classes "
+        f"for {edge.kind}"
+    )
+
+
 def _audit_replayed_direct_agreements(
     edges: Sequence[AgreementEdge],
     measurements: Mapping[str, Mapping[str, object]],
     replayed: Mapping[str, _ReplayObservation],
-) -> int:
+) -> dict[str, int]:
     errors: list[str] = []
+    counts: Counter[str] = Counter()
     for edge in edges:
-        candidate = _replayed_agreement_value(
-            edge,
-            edge.candidate,
-            measurements[edge.candidate.cell_id],
-            replayed,
-        )
-        baseline = _replayed_agreement_value(
-            edge,
-            edge.baseline,
-            measurements[edge.baseline.cell_id],
-            replayed,
-        )
-        absolute = abs(candidate - baseline)
-        relative = absolute / max(abs(baseline), 1.0e-300)
-        if (
-            absolute > STRICT_ABSOLUTE_TOLERANCE
-            and relative > STRICT_RELATIVE_TOLERANCE
-        ):
+        try:
+            category = _direct_replay_category(edge)
+            counts[category] += 1
+            candidate = _replayed_agreement_value(
+                edge,
+                edge.candidate,
+                measurements[edge.candidate.cell_id],
+                replayed,
+                replay_required=category
+                in {
+                    _FULLY_REPLAYED_PYAMPLICOL,
+                    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY,
+                },
+            )
+            baseline = _replayed_agreement_value(
+                edge,
+                edge.baseline,
+                measurements[edge.baseline.cell_id],
+                replayed,
+                replay_required=category == _FULLY_REPLAYED_PYAMPLICOL,
+            )
+            absolute = abs(candidate - baseline)
+            relative = absolute / max(abs(baseline), 1.0e-300)
+            if (
+                absolute > STRICT_ABSOLUTE_TOLERANCE
+                and relative > edge.relative_tolerance
+            ):
+                raise FinalAuditError(
+                    f"replayed {edge.kind} direct edge differs from "
+                    f"{edge.baseline.cell_id}"
+                )
+        except Exception as error:
             errors.append(
-                f"{edge.candidate.cell_id}: replayed {edge.kind} direct edge "
-                f"differs from {edge.baseline.cell_id}"
+                f"{edge.candidate.cell_id}: {error}"
             )
     if errors:
         rendered = "\n".join(f"- {message}" for message in errors[:50])
         raise FinalAuditError(
             f"final report direct-edge replay failed ({len(errors)}):\n{rendered}"
         )
-    return len(edges)
+    return {category: counts.get(category, 0) for category in _DIRECT_REPLAY_CATEGORIES}
 
 
 def audit_final_report(
@@ -4181,7 +4251,9 @@ def _audit_final_report_locked(
         )
 
     replayed: dict[str, _ReplayObservation] = {}
-    replayed_direct_agreement_count = 0
+    replayed_direct_agreement_counts = {
+        category: 0 for category in _DIRECT_REPLAY_CATEGORIES
+    }
     if replay:
         errors = []
         for key, group in grouped.items():
@@ -4225,11 +4297,23 @@ def _audit_final_report_locked(
             raise FinalAuditError(
                 f"final report numerical replay failed ({len(errors)}):\n{rendered}"
             )
-        replayed_direct_agreement_count = _audit_replayed_direct_agreements(
+        replayed_direct_agreement_counts = _audit_replayed_direct_agreements(
             direct_edges,
             measurements,
             replayed,
         )
+        if (
+            catalog is REPORT_CATALOG
+            and max_n_final == 4
+            and len(cells) == _EXPECTED_N4_CELL_COUNT
+            and replayed_direct_agreement_counts
+            != _EXPECTED_N4_DIRECT_REPLAY_COUNTS
+        ):
+            raise FinalAuditError(
+                "canonical n<=4 direct-agreement replay categories differ: "
+                f"expected={_EXPECTED_N4_DIRECT_REPLAY_COUNTS}, "
+                f"observed={replayed_direct_agreement_counts}"
+            )
         if len(replayed) != len(pyamplicol_cells):
             raise FinalAuditError(
                 "final report replay did not cover every pyAmpliCol measurement: "
@@ -4294,7 +4378,7 @@ def _audit_final_report_locked(
         modes[cell.measurement.execution_mode.value] += 1
     return {
         "kind": "pyamplicol-final-report-audit",
-        "schema_version": 2,
+        "schema_version": 3,
         "status": (ResultStatus.OK.value if final_gate_complete else "incomplete"),
         "expected_source_revision": expected_source_revision,
         "measurement_source_revision": expected_source_revision,
@@ -4316,7 +4400,12 @@ def _audit_final_report_locked(
         "direct_agreement_edge_count": len(direct_edges),
         "direct_agreement_edge_counts": direct_agreement_counts,
         "replayed_direct_agreement_edge_count": (
-            replayed_direct_agreement_count if replay else 0
+            sum(replayed_direct_agreement_counts.values()) if replay else 0
+        ),
+        "direct_agreement_replay_category_counts": (
+            replayed_direct_agreement_counts
+            if replay
+            else {category: 0 for category in _DIRECT_REPLAY_CATEGORIES}
         ),
         "unique_artifact_count": len(grouped),
         "arena_record_count": sum(

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.performance_report.agreements import DIRECT_AGREEMENT_FIELD
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import source_revision
@@ -69,7 +70,11 @@ def test_reset_publishes_only_canonical_na_caches_and_seventeen_tables(
 def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None:
     service = _service(tmp_path)
     service.publish(reset=True, merge_artifacts=False)
-    cell = service.catalog.measurement_cells()[0]
+    cell = next(
+        item
+        for item in service.catalog.measurement_cells()
+        if item.measurement.accuracy.value != "lc"
+    )
     observations = [
         {
             "module": "pyamplicol",
@@ -147,7 +152,7 @@ def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None
                 ),
             },
             "selector_contract": None,
-            "validation": {"status": "ok"},
+            "validation": {"status": "ok", DIRECT_AGREEMENT_FIELD: []},
             "resources": {},
             "provenance": {
                 "report_source_revision": source_revision(service.paths.repo_root),
@@ -257,7 +262,7 @@ def test_audit_rejects_nonpublication_timing_and_source_evidence(
             "relative_standard_error": 1.0e-3,
             "artifact": {},
             "selector_contract": None,
-            "validation": {"status": "ok"},
+            "validation": {"status": "ok", DIRECT_AGREEMENT_FIELD: []},
             "resources": {},
             "provenance": {},
             "failure": None,

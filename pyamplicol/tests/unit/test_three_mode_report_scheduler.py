@@ -8,6 +8,11 @@ from pathlib import Path
 
 import pytest
 
+from tools.performance_report.agreements import (
+    DIRECT_AGREEMENT_FIELD,
+    LC_COMMON_COMPONENT_ABI,
+    LC_COMMON_COMPONENT_FIELD,
+)
 from tools.performance_report.artifacts import ArtifactStore, CurrentRecord
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
@@ -41,8 +46,37 @@ def _store(tmp_path: Path) -> ArtifactStore:
     )
 
 
-def _ok_measurement(*, revision: str | None = None) -> dict[str, object]:
+def _ok_measurement(
+    cell: CellSpec | None = None,
+    *,
+    revision: str | None = None,
+) -> dict[str, object]:
     measurement = empty_measurement()
+    selector = (
+        None
+        if cell is None or cell.measurement.accuracy is not Accuracy.LC
+        else {
+            "selected_color_flow_ids": ["flow:2,1"],
+            "selected_color_words": [[2, 1]],
+            "all_flow_helicity_ids": ["h:-1,+1,-1"],
+            "all_flow_source_helicities": {"1": -1, "2": 1, "3": -1},
+            "point_digest": "a" * 64,
+        }
+    )
+    validation: dict[str, object] = {
+        "status": ResultStatus.OK.value,
+        DIRECT_AGREEMENT_FIELD: [],
+    }
+    if selector is not None:
+        assert cell is not None
+        validation[LC_COMMON_COMPONENT_FIELD] = {
+            "abi": LC_COMMON_COMPONENT_ABI,
+            "cell_id": cell.cell_id,
+            "value": 1.0,
+            "point_digest": selector["point_digest"],
+            "helicity_ids": selector["all_flow_helicity_ids"],
+            "color_flow_ids": selector["selected_color_flow_ids"],
+        }
     measurement.update(
         {
             "status": ResultStatus.OK.value,
@@ -54,7 +88,8 @@ def _ok_measurement(*, revision: str | None = None) -> dict[str, object]:
             "standard_error_seconds_per_point": 0.0,
             "relative_standard_error": 0.0,
             "artifact": {},
-            "validation": {"status": ResultStatus.OK.value},
+            "selector_contract": selector,
+            "validation": validation,
             "resources": {},
             "provenance": (
                 {} if revision is None else {"report_source_revision": revision}
@@ -108,7 +143,7 @@ def test_dependency_plan_orders_amplicol_recurrence_then_candidate(
     assert [item.dependency for item in planned] == [True, True, False]
 
 
-def test_missing_only_skips_completed_candidate_and_dependencies(
+def test_missing_only_rechecks_completed_candidate_with_missing_dependencies(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
@@ -121,7 +156,7 @@ def test_missing_only_skips_completed_candidate_and_dependencies(
         and cell.workload is Workload.SELECTED_FLOW
     )
     store.new_attempt(candidate.cell_id, ArtifactPolicy.REGENERATE).publish(
-        _ok_measurement()
+        _ok_measurement(candidate)
     )
 
     planned = plan_campaign(
@@ -130,7 +165,77 @@ def test_missing_only_skips_completed_candidate_and_dependencies(
         settings=CampaignSettings(missing_only=True),
     )
 
+    assert candidate.cell_id in {item.cell.cell_id for item in planned}
+    target = next(item for item in planned if item.cell == candidate)
+    assert target.force_recompare is True
+    assert all(
+        peer_id in {item.cell.cell_id for item in planned}
+        for peer_id in target.comparison_peer_ids
+    )
+
+
+def test_missing_only_skips_only_after_all_dependencies_are_fresh(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    candidate = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    initial = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(),
+    )
+    for item in initial:
+        _publish_current(store, item.cell, revision="same")
+
+    planned = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(missing_only=True),
+        expected_revision="same",
+    )
+
     assert planned == ()
+
+
+def test_missing_only_schedules_stale_direct_peer_and_recomparison(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    candidate = _matrix_cell(
+        "matrix_compiled_builtin_sm_lc",
+        workload=Workload.ALL_FLOW,
+    )
+    initial = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(),
+    )
+    target = next(item for item in initial if item.cell == candidate)
+    baseline_id = target.baseline_cell_id
+    stale_peer_id = next(
+        peer_id
+        for peer_id in target.comparison_peer_ids
+        if peer_id != baseline_id
+    )
+    for item in initial:
+        _publish_current(
+            store,
+            item.cell,
+            revision=("old" if item.cell.cell_id == stale_peer_id else "new"),
+        )
+
+    repaired = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(missing_only=True),
+        expected_revision="new",
+    )
+    repaired_by_id = {item.cell.cell_id: item for item in repaired}
+
+    assert stale_peer_id in repaired_by_id
+    assert candidate.cell_id in repaired_by_id
+    assert repaired_by_id[candidate.cell_id].force_recompare is True
+    assert repaired_by_id[stale_peer_id].rank < repaired_by_id[candidate.cell_id].rank
 
 
 def test_missing_only_rejects_stale_report_revision(tmp_path: Path) -> None:
@@ -144,7 +249,7 @@ def test_missing_only_rejects_stale_report_revision(tmp_path: Path) -> None:
         and cell.workload is Workload.SELECTED_FLOW
     )
     store.new_attempt(candidate.cell_id, ArtifactPolicy.REGENERATE).publish(
-        _ok_measurement(revision="old")
+        _ok_measurement(candidate, revision="old")
     )
 
     planned = plan_campaign(
@@ -204,12 +309,12 @@ def _service(tmp_path: Path) -> ReportService:
 
 def _publish_current(
     store: ArtifactStore,
-    cell_id: str,
+    cell: CellSpec,
     *,
     revision: str,
 ) -> CurrentRecord:
-    return store.new_attempt(cell_id, ArtifactPolicy.REGENERATE).publish(
-        _ok_measurement(revision=revision)
+    return store.new_attempt(cell.cell_id, ArtifactPolicy.REGENERATE).publish(
+        _ok_measurement(cell, revision=revision)
     )
 
 
@@ -219,7 +324,7 @@ def test_equivalent_reuse_requires_fresh_revision_and_never_uses_amplicol(
     store = _store(tmp_path)
     candidate = _matrix_cell("matrix_recurrence_builtin_sm_lc")
     equivalent = REPORT_CATALOG.equivalent_cells(candidate)[0]
-    stale = _publish_current(store, equivalent.cell_id, revision="old")
+    stale = _publish_current(store, equivalent, revision="old")
 
     assert (
         _fresh_equivalent_current(
@@ -231,7 +336,7 @@ def test_equivalent_reuse_requires_fresh_revision_and_never_uses_amplicol(
         is None
     )
 
-    fresh = _publish_current(store, equivalent.cell_id, revision="new")
+    fresh = _publish_current(store, equivalent, revision="new")
     selected = _fresh_equivalent_current(
         store,
         candidate,
@@ -276,18 +381,18 @@ def _run_with_captured_worker(
     revision = "current-revision"
     baseline_record = _publish_current(
         service.store,
-        baseline.cell_id,
+        baseline,
         revision=revision,
     )
     equivalent_record = _publish_current(
         service.store,
-        equivalent.cell_id,
+        equivalent,
         revision=revision,
     )
     if target_current:
         _publish_current(
             service.store,
-            target.cell_id,
+            target,
             revision=revision,
         )
     command_seen: list[str] = []
@@ -299,7 +404,7 @@ def _run_with_captured_worker(
         command_seen.extend(command)
         result_path = Path(command_seen[command_seen.index("--result-json") + 1])
         result_path.write_text(
-            json.dumps(_ok_measurement(revision=revision)) + "\n",
+            json.dumps(_ok_measurement(target, revision=revision)) + "\n",
             encoding="ascii",
         )
         return SupervisedResult(

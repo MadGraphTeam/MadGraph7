@@ -6,7 +6,10 @@ from copy import deepcopy
 
 import pytest
 
+from tools.performance_report.agreements import DIRECT_AGREEMENT_FIELD
 from tools.performance_report.cache import (
+    CACHE_SCHEMA_VERSION,
+    REPORT_VERSION,
     build_reset_caches,
     digest_json,
     empty_measurement,
@@ -47,6 +50,11 @@ def test_matrix_catalog_has_requested_twelve_datasets() -> None:
         if item.candidate.execution_mode
         in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
     )
+
+
+def test_required_agreement_evidence_bumps_report_cache_contract() -> None:
+    assert CACHE_SCHEMA_VERSION == 4
+    assert REPORT_VERSION == "0.3.0"
 
 
 def test_prepared_modes_are_portable_o2_and_compiled_is_o3() -> None:
@@ -329,7 +337,10 @@ def _candidate_measurement_with_runtime_postflight() -> dict[str, object]:
             "matrix_element": 1.0,
             "sample_count": 5,
             "artifact": {},
-            "validation": {"status": ResultStatus.OK.value},
+            "validation": {
+                "status": ResultStatus.OK.value,
+                DIRECT_AGREEMENT_FIELD: [],
+            },
             "resources": {},
             "provenance": {
                 "runtime_identity": identity,

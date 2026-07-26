@@ -18,6 +18,7 @@ from .models import (
 )
 from .runner import (
     ABSOLUTE_TOLERANCE,
+    INDEPENDENT_RELATIVE_TOLERANCE,
     RELATIVE_TOLERANCE,
     SelectorContract,
     _real_nonnegative,
@@ -29,10 +30,12 @@ LC_COMMON_COMPONENT_ABI = "pyamplicol-report-lc-common-component-v1"
 BUILTIN_UFO_RECURRENCE = "builtin-ufo-recurrence"
 Z_RECURRENCE_CROSS_MODE = "z-recurrence-cross-mode"
 LC_CROSS_LAYOUT_COMPONENT = "lc-cross-layout-component"
+LC_LEGACY_PYAMPLICOL_COMPONENT = "lc-legacy-pyamplicol-component"
 DIRECT_AGREEMENT_KINDS = (
     BUILTIN_UFO_RECURRENCE,
     Z_RECURRENCE_CROSS_MODE,
     LC_CROSS_LAYOUT_COMPONENT,
+    LC_LEGACY_PYAMPLICOL_COMPONENT,
 )
 DIRECT_AGREEMENT_FIELD = "direct_agreements"
 LC_COMMON_COMPONENT_FIELD = "lc_common_component"
@@ -54,9 +57,14 @@ class AgreementEdge:
     def value_kind(self) -> str:
         return (
             LC_COMMON_COMPONENT_FIELD
-            if self.kind == LC_CROSS_LAYOUT_COMPONENT
+            if self.kind
+            in {LC_CROSS_LAYOUT_COMPONENT, LC_LEGACY_PYAMPLICOL_COMPONENT}
             else "matrix_element"
         )
+
+    @property
+    def relative_tolerance(self) -> float:
+        return agreement_relative_tolerance(self.kind)
 
 
 def _unique_cell(
@@ -163,6 +171,42 @@ def _lc_layout_peer(
     )
 
 
+def _lc_legacy_peer(
+    cell: CellSpec,
+    cells: Sequence[CellSpec],
+) -> CellSpec | None:
+    if (
+        cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        or cell.measurement.accuracy is not Accuracy.LC
+        or cell.workload is not Workload.ALL_FLOW
+    ):
+        return None
+    return _unique_cell(
+        tuple(
+            candidate
+            for candidate in cells
+            if candidate.dataset_id == "reference_amplicol_lc"
+            and candidate.measurement.execution_mode is ExecutionMode.AMPLICOL
+            and candidate.measurement.accuracy is Accuracy.LC
+            and candidate.process == cell.process
+            and candidate.process_key == cell.process_key
+            and candidate.n_final == cell.n_final
+            and candidate.workload is Workload.ALL_FLOW
+        ),
+        context=f"{cell.cell_id} legacy/pyAmpliCol LC agreement",
+    )
+
+
+def agreement_relative_tolerance(kind: str) -> float:
+    """Return the independent tolerance assigned to one direct-edge family."""
+
+    if kind == LC_LEGACY_PYAMPLICOL_COMPONENT:
+        return INDEPENDENT_RELATIVE_TOLERANCE
+    if kind in DIRECT_AGREEMENT_KINDS:
+        return STRICT_RELATIVE_TOLERANCE
+    raise AgreementError(f"unsupported direct-agreement kind {kind!r}")
+
+
 def incoming_agreement_edges(
     cell: CellSpec,
     *,
@@ -181,6 +225,11 @@ def incoming_agreement_edges(
     layout = _lc_layout_peer(cell, cells)
     if layout is not None:
         edges.append(AgreementEdge(LC_CROSS_LAYOUT_COMPONENT, layout, cell))
+    legacy = _lc_legacy_peer(cell, cells)
+    if legacy is not None:
+        edges.append(
+            AgreementEdge(LC_LEGACY_PYAMPLICOL_COMPONENT, legacy, cell)
+        )
     return tuple(
         sorted(
             edges,
@@ -328,10 +377,191 @@ def _direct_record(
         **pointwise_validation(
             candidate,
             baseline,
-            relative_tolerance=STRICT_RELATIVE_TOLERANCE,
+            relative_tolerance=edge.relative_tolerance,
             absolute_tolerance=STRICT_ABSOLUTE_TOLERANCE,
         ),
     }
+
+
+def validate_direct_agreement_records(
+    value: object,
+    *,
+    expected_candidate_id: str | None = None,
+) -> None:
+    """Validate the complete per-measurement direct-agreement wire contract."""
+
+    if not isinstance(value, list):
+        raise ValueError(f"{DIRECT_AGREEMENT_FIELD} must be an array")
+    expected_fields = {
+        "abi",
+        "edge_kind",
+        "value_kind",
+        "baseline_cell_id",
+        "candidate_cell_id",
+        "status",
+        "candidate",
+        "baseline",
+        "absolute_difference",
+        "relative_difference",
+        "relative_tolerance",
+        "absolute_tolerance",
+    }
+    seen: set[tuple[str, str, str]] = set()
+    for index, raw in enumerate(value):
+        if not isinstance(raw, Mapping):
+            raise ValueError(
+                f"{DIRECT_AGREEMENT_FIELD}[{index}] must be an object"
+            )
+        if set(raw) != expected_fields:
+            raise ValueError(
+                f"{DIRECT_AGREEMENT_FIELD}[{index}] fields differ from the ABI"
+            )
+        kind = raw.get("edge_kind")
+        if not isinstance(kind, str) or kind not in DIRECT_AGREEMENT_KINDS:
+            raise ValueError(
+                f"{DIRECT_AGREEMENT_FIELD}[{index}] edge kind is unsupported"
+            )
+        expected_value_kind = (
+            LC_COMMON_COMPONENT_FIELD
+            if kind
+            in {LC_CROSS_LAYOUT_COMPONENT, LC_LEGACY_PYAMPLICOL_COMPONENT}
+            else "matrix_element"
+        )
+        baseline_id = raw.get("baseline_cell_id")
+        candidate_id = raw.get("candidate_cell_id")
+        if (
+            raw.get("abi") != DIRECT_AGREEMENT_ABI
+            or raw.get("value_kind") != expected_value_kind
+            or not isinstance(baseline_id, str)
+            or not baseline_id
+            or not isinstance(candidate_id, str)
+            or not candidate_id
+            or (
+                expected_candidate_id is not None
+                and candidate_id != expected_candidate_id
+            )
+        ):
+            raise ValueError(
+                f"{DIRECT_AGREEMENT_FIELD}[{index}] identity is invalid"
+            )
+        key = (kind, baseline_id, candidate_id)
+        if key in seen:
+            raise ValueError(
+                f"{DIRECT_AGREEMENT_FIELD}[{index}] duplicates an edge"
+            )
+        seen.add(key)
+        numeric: dict[str, float] = {}
+        for field in (
+            "candidate",
+            "baseline",
+            "absolute_difference",
+            "relative_difference",
+            "relative_tolerance",
+            "absolute_tolerance",
+        ):
+            raw_number = raw.get(field)
+            if (
+                isinstance(raw_number, bool)
+                or not isinstance(raw_number, (int, float))
+                or not math.isfinite(float(raw_number))
+            ):
+                raise ValueError(
+                    f"{DIRECT_AGREEMENT_FIELD}[{index}].{field} is not finite"
+                )
+            numeric[field] = float(raw_number)
+        recomputed_absolute = abs(numeric["candidate"] - numeric["baseline"])
+        recomputed_relative = recomputed_absolute / max(
+            abs(numeric["baseline"]), 1.0e-300
+        )
+        expected_relative_tolerance = agreement_relative_tolerance(kind)
+        passed = (
+            recomputed_absolute <= STRICT_ABSOLUTE_TOLERANCE
+            or recomputed_relative <= expected_relative_tolerance
+        )
+        if (
+            numeric["absolute_difference"] != recomputed_absolute
+            or numeric["relative_difference"] != recomputed_relative
+            or numeric["relative_tolerance"] != expected_relative_tolerance
+            or numeric["absolute_tolerance"] != STRICT_ABSOLUTE_TOLERANCE
+            or raw.get("status")
+            != (
+                ResultStatus.OK.value
+                if passed
+                else ResultStatus.VALIDATION_FAILED.value
+            )
+        ):
+            raise ValueError(
+                f"{DIRECT_AGREEMENT_FIELD}[{index}] numerical record is invalid"
+            )
+        if not passed:
+            raise ValueError(
+                f"{DIRECT_AGREEMENT_FIELD}[{index}] agreement is not successful"
+            )
+
+
+def validate_lc_common_component(
+    value: object,
+    *,
+    expected_cell_id: str | None = None,
+    selector_contract: object = None,
+) -> None:
+    """Validate one LC component record before it is admitted to the cache."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{LC_COMMON_COMPONENT_FIELD} must be an object")
+    expected_fields = {
+        "abi",
+        "cell_id",
+        "value",
+        "point_digest",
+        "helicity_ids",
+        "color_flow_ids",
+    }
+    if set(value) != expected_fields:
+        raise ValueError(
+            f"{LC_COMMON_COMPONENT_FIELD} fields differ from the ABI"
+        )
+    cell_id = value.get("cell_id")
+    number = value.get("value")
+    point_digest = value.get("point_digest")
+    helicity_ids = value.get("helicity_ids")
+    color_flow_ids = value.get("color_flow_ids")
+    if (
+        value.get("abi") != LC_COMMON_COMPONENT_ABI
+        or not isinstance(cell_id, str)
+        or not cell_id
+        or (expected_cell_id is not None and cell_id != expected_cell_id)
+        or isinstance(number, bool)
+        or not isinstance(number, (int, float))
+        or not math.isfinite(float(number))
+        or not isinstance(point_digest, str)
+        or len(point_digest) != 64
+        or any(character not in "0123456789abcdef" for character in point_digest)
+        or not isinstance(helicity_ids, list)
+        or not helicity_ids
+        or any(not isinstance(item, str) or not item for item in helicity_ids)
+        or len(set(helicity_ids)) != len(helicity_ids)
+        or not isinstance(color_flow_ids, list)
+        or not color_flow_ids
+        or any(not isinstance(item, str) or not item for item in color_flow_ids)
+        or len(set(color_flow_ids)) != len(color_flow_ids)
+    ):
+        raise ValueError(f"{LC_COMMON_COMPONENT_FIELD} record is invalid")
+    if selector_contract is not None:
+        try:
+            selector = SelectorContract.from_mapping(
+                selector_contract  # type: ignore[arg-type]
+            )
+        except (TypeError, ValueError, RuntimeError) as error:
+            raise ValueError("selector contract is invalid") from error
+        if (
+            point_digest != selector.point_digest
+            or helicity_ids != list(selector.all_flow_helicity_ids)
+            or color_flow_ids != list(selector.selected_color_flow_ids)
+        ):
+            raise ValueError(
+                f"{LC_COMMON_COMPONENT_FIELD} is not bound to the selector"
+            )
 
 
 def attach_direct_agreements(
@@ -405,14 +635,18 @@ __all__ = [
     "LC_COMMON_COMPONENT_ABI",
     "LC_COMMON_COMPONENT_FIELD",
     "LC_CROSS_LAYOUT_COMPONENT",
+    "LC_LEGACY_PYAMPLICOL_COMPONENT",
     "STRICT_ABSOLUTE_TOLERANCE",
     "STRICT_RELATIVE_TOLERANCE",
     "Z_RECURRENCE_CROSS_MODE",
     "AgreementEdge",
     "AgreementError",
     "agreement_edges",
+    "agreement_relative_tolerance",
     "attach_direct_agreements",
     "evaluate_lc_common_component",
     "incoming_agreement_edges",
     "legacy_lc_common_component",
+    "validate_direct_agreement_records",
+    "validate_lc_common_component",
 ]

@@ -453,6 +453,30 @@ def _initial_state_count(process: str) -> int:
     return initial_count
 
 
+def _colored_roles(
+    source_pdgs: Sequence[int],
+    *,
+    initial_state_count: int,
+) -> dict[int, str]:
+    roles: dict[int, str] = {}
+    for label, physical_pdg in enumerate(source_pdgs, start=1):
+        absolute = abs(int(physical_pdg))
+        if absolute == 21:
+            roles[label] = "adjoint"
+            continue
+        if not 1 <= absolute <= 6:
+            continue
+        outgoing_pdg = (
+            -int(physical_pdg)
+            if label <= initial_state_count
+            else int(physical_pdg)
+        )
+        roles[label] = (
+            "fundamental" if outgoing_pdg > 0 else "antifundamental"
+        )
+    return roles
+
+
 def _canonical_mapped_color_word(
     source_pdgs: Sequence[int],
     mapped_color_order: Sequence[int],
@@ -474,22 +498,40 @@ def _canonical_mapped_color_word(
             "legacy selector canonicalization requires nonempty initial and "
             "final states"
         )
+    roles = _colored_roles(pdgs, initial_state_count=initial_state_count)
+    return _canonical_colored_word(
+        pdgs,
+        tuple(label for label in mapped if label in roles),
+        initial_state_count=initial_state_count,
+    )
 
-    roles: dict[int, str] = {}
-    for label, physical_pdg in enumerate(pdgs, start=1):
-        absolute = abs(physical_pdg)
-        if absolute == 21:
-            roles[label] = "adjoint"
-            continue
-        if not 1 <= absolute <= 6:
-            continue
-        outgoing_pdg = -physical_pdg if label <= initial_state_count else physical_pdg
-        roles[label] = "fundamental" if outgoing_pdg > 0 else "antifundamental"
 
-    word = tuple(label for label in mapped if label in roles)
-    if not word:
+def _canonical_colored_word(
+    source_pdgs: Sequence[int],
+    colored_word: Sequence[int],
+    *,
+    initial_state_count: int,
+) -> tuple[int, ...]:
+    """Canonicalize one exact colored-label permutation without padding it."""
+
+    pdgs = tuple(int(pdg) for pdg in source_pdgs)
+    word = tuple(colored_word)
+    if not 0 < initial_state_count < len(pdgs):
+        raise LegacyAdapterError(
+            "legacy selector canonicalization requires nonempty initial and "
+            "final states"
+        )
+
+    roles = _colored_roles(pdgs, initial_state_count=initial_state_count)
+
+    if not roles:
         raise LegacyAdapterError("selected legacy LC row has no colored word")
-    if len(word) != len(roles) or len(set(word)) != len(word):
+    if (
+        any(isinstance(label, bool) or not isinstance(label, int) for label in word)
+        or len(word) != len(roles)
+        or len(set(word)) != len(word)
+        or set(word) != set(roles)
+    ):
         raise LegacyAdapterError(
             "legacy mapped color word must contain every colored source label "
             "exactly once"
@@ -897,34 +939,111 @@ class LegacyMeasurementAdapter:
             context.source_pdgs,
             context.entry.process_pdgs,
         )
+        if (
+            len(source_to_row) != len(context.source_pdgs)
+            or any(
+                isinstance(position, bool) or not isinstance(position, int)
+                for position in source_to_row
+            )
+            or set(source_to_row) != set(range(len(context.source_pdgs)))
+        ):
+            raise LegacyAdapterError(
+                "direct LC probe source-to-row mapping is not a permutation"
+            )
         wanted_word = context.selector_contract.selected_color_words[0]
         matching: list[object] = []
+        seen_rows: set[int] = set()
+        seen_words: set[tuple[int, ...]] = set()
+        resolved_values: list[float] = []
         for partition in partitions:
             raw_permutation = tuple(getattr(partition, "permutation", ()))
-            try:
-                source_word = tuple(
-                    source_to_row[int(position) - 1] + 1
+            row = getattr(partition, "row", None)
+            if (
+                isinstance(row, bool)
+                or not isinstance(row, int)
+                or row < 1
+                or row in seen_rows
+            ):
+                raise LegacyAdapterError(
+                    "direct LC probe emitted an invalid or duplicate row index"
+                )
+            seen_rows.add(row)
+            if (
+                any(
+                    isinstance(position, bool) or not isinstance(position, int)
                     for position in raw_permutation
                 )
-            except (IndexError, TypeError, ValueError) as error:
+                or len(set(raw_permutation)) != len(raw_permutation)
+                or any(
+                    position < 1 or position > len(source_to_row)
+                    for position in raw_permutation
+                )
+            ):
                 raise LegacyAdapterError(
                     "direct LC probe emitted an invalid row permutation"
-                ) from error
-            complete_source_order = (
-                *source_word,
-                *(
-                    label
-                    for label in range(1, len(context.source_pdgs) + 1)
-                    if label not in source_word
-                ),
+                )
+            source_word = tuple(
+                source_to_row[position - 1] + 1
+                for position in raw_permutation
             )
-            canonical_word = _canonical_mapped_color_word(
+            if source_word in seen_words:
+                raise LegacyAdapterError(
+                    "direct LC probe emitted a duplicate physical row"
+                )
+            seen_words.add(source_word)
+            canonical_word = _canonical_colored_word(
                 context.source_pdgs,
-                complete_source_order,
+                source_word,
                 initial_state_count=_initial_state_count(cell.process),
             )
+            raw_value = getattr(partition, "value", None)
+            if (
+                isinstance(raw_value, bool)
+                or not isinstance(raw_value, (int, float))
+                or not math.isfinite(float(raw_value))
+            ):
+                raise LegacyAdapterError(
+                    "direct LC probe emitted a non-finite partition value"
+                )
+            resolved_values.append(float(raw_value))
             if canonical_word == wanted_word:
                 matching.append(partition)
+        if sorted(seen_rows) != list(range(1, len(partitions) + 1)):
+            raise LegacyAdapterError(
+                "direct LC probe row indices are not a complete contiguous axis"
+            )
+        raw_partition_sum = getattr(probe, "lc_partition_sum", None)
+        raw_aggregate = getattr(probe, "value", None)
+        if (
+            isinstance(raw_partition_sum, bool)
+            or not isinstance(raw_partition_sum, (int, float))
+            or not math.isfinite(float(raw_partition_sum))
+            or isinstance(raw_aggregate, bool)
+            or not isinstance(raw_aggregate, (int, float))
+            or not math.isfinite(float(raw_aggregate))
+        ):
+            raise LegacyAdapterError(
+                "direct LC probe aggregate evidence is not finite"
+            )
+        resolved_sum = math.fsum(resolved_values)
+        if not math.isclose(
+            resolved_sum,
+            float(raw_partition_sum),
+            rel_tol=1.0e-10,
+            abs_tol=1.0e-12,
+        ):
+            raise LegacyAdapterError(
+                "direct LC probe resolved partitions do not match their sum"
+            )
+        if not math.isclose(
+            float(raw_partition_sum),
+            float(raw_aggregate),
+            rel_tol=1.0e-10,
+            abs_tol=1.0e-12,
+        ):
+            raise LegacyAdapterError(
+                "direct LC probe partition sum does not match its aggregate"
+            )
         if len(matching) != 1:
             raise LegacyAdapterError(
                 "direct LC probe did not identify exactly one selected physical row"

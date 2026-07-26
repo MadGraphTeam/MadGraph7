@@ -183,6 +183,9 @@ class ReportService:
             and record.result["provenance"].get("report_source_revision")
             == expected_revision
         }
+        cells_by_id = {
+            cell.cell_id: cell for cell in self.catalog.measurement_cells()
+        }
         merged = 0
         for payload in caches.values():
             entries = payload["entries"]
@@ -193,7 +196,10 @@ class ReportService:
                 if record is None:
                     continue
                 measurement = record.result
-                validate_measurement(measurement)
+                validate_measurement(
+                    measurement,
+                    expected_cell=cells_by_id[str(entry["cell_id"])],
+                )
                 entry["measurement"] = dict(measurement)
                 merged += 1
         self.validate_payloads(caches)
