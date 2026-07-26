@@ -4,33 +4,38 @@ pyAmpliCol has two deliberately separate dependency modes.
 
 ## Release Mode
 
-Release-equivalent builds use only versions published on PyPI and crates.io.
-They never apply patches or reference a local checkout. The exact required
-versions and compatibility state are recorded in `release-lock.toml`.
+Release-equivalent builds use exact versions published on PyPI and crates.io,
+except for SymJIT, which is redirected from crates.io to one immutable commit
+of `ValentinHirschi/symjit_changes_for_pyamplicol`. The exact Git repository,
+branch, revision, upstream PR, versions, and compatibility state are recorded
+in `release-lock.toml`. Release builds never apply source patches or reference
+a local checkout.
 
-`tools/release/check_dependencies.py` is a hard release gate. At present,
-strict release mode is expected to fail because published Symbolica
-serialization/runtime compatibility has not been marked verified.
+`tools/release/check_dependencies.py` is a hard release gate. It verifies the
+workspace-level SymJIT source override and fully resolved Cargo lock, including
+the full Git revision, before release artifacts are built.
 
 ## Candidate Development Mode
 
 `just dev-install` uses immutable Symbolica/GammaLoop source revisions and the
 checksummed SymJIT source archive listed in `contributor-lock.toml`.
-It applies only the target-, revision-, and SHA-256-pinned patches listed in
-that lock. Candidate mode exists for development and physics validation only.
+That archive is generated from the same fork revision used by release mode, so
+the active contributor patch list is empty. Candidate mode exists for
+development and physics validation only.
 It installs the verified published `ufo-model-loader==0.1.7` wheel directly
 from the hash-locked runtime closure. Artifacts produced in this mode record
-the candidate revisions, patch identity, and resulting source-tree identity
-and are not eligible for PyPI publication.
+the candidate revisions and resulting source-tree identity and are not
+eligible for PyPI publication.
 
-The contributor build uses the checksummed upstream source archive for SymJIT
-2.21.1 at revision `48197f32536c894b51ef25b2cf05ddd05c22675f`.
-The installer verifies and applies the ordered, individually checksummed
-generic SymJIT patch set before changing the crate target from `cdylib` to
-`rlib` so Symbolica can consume it as a Rust dependency. It then verifies the
-complete configured tree against the lock. The patches provide deterministic
-AArch64 compressed funclets, generic direct split-plane applications, and a
-generic table-driven direct application on AArch64 and x86-64. The direct
+The contributor build uses the checksummed fork archive for SymJIT 2.21.1 at
+revision `89efdb806e7fcd9ac68a9d38f3f2880adf1987d2` on branch
+`pyamplicol-generic-direct-apis`. The fork contains the ordered generic SymJIT
+commit series and builds as both `cdylib` and `rlib`; the installer verifies
+the archive tree, selects only `rlib` in its managed contributor checkout to
+avoid Cargo output collisions, and verifies that configured tree. The changes
+provide deterministic AArch64 compressed funclets, generic direct split-plane
+applications, and a generic table-driven direct application on AArch64 and
+x86-64. The direct
 contracts expose overwrite/accumulate, live/before-write input, and
 identity/complex-scalar policies; Rusticol owns the mapping from pyAmpliCol
 recurrence roles to those policies. The previously unreleased direct contracts
@@ -42,17 +47,15 @@ immutable planned-release revisions recorded in the lock. GammaLoop is pinned
 to the merged main revision that provides Spenso's
 cached symbolic-parallelism policy. Spynso3 initializes that policy in `Auto`
 mode, checking the license once and keeping symbolic tensor reductions serial
-for restricted users or parallel for licensed users. The matching Symbolica,
-symbolica-community, and SymJIT versions must be published with the required
-extensions before a strict PyPI build can replace the currently verified
-release pins.
+for restricted users or parallel for licensed users.
 
-The contributor-only SymJIT series remains an upstream release blocker until a
-published crates.io version contains the generic APIs. A Git dependency is not
-used as a publication workaround. The planned Symbolica revision must likewise
-be represented by compatible published Python and Rust releases before the
-strict gate can be updated. The release dependency gate remains unchanged and
-fails closed until that published pair is verified.
+Symbolica 2.2.0 is pinned from PyPI and crates.io. SymJIT is pinned through the
+workspace's `[patch.crates-io]` table so Symbolica and Rusticol resolve the
+same fork revision rather than compiling two copies. This is suitable for
+pyAmpliCol's precompiled Python-wheel publication workflow because no Rust
+crate is published to crates.io. Once the upstream PR is released, the
+workspace override can be replaced by an exact crates.io version without
+changing Rusticol's generic API use.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. The pinned

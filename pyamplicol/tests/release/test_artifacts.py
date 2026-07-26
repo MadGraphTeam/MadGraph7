@@ -1051,11 +1051,11 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
     )
     candidate_report = audit_wheel(candidate, mode="candidate", native_scan=False)
     assert candidate_report.version == candidate_version
-    with pytest.raises(ArtifactError, match=r"locked version 2\.1\.0"):
+    with pytest.raises(ArtifactError, match="release wheel has invalid version"):
         audit_wheel(candidate, mode="release", native_scan=False)
 
 
-def test_candidate_and_release_symbolica_pins_are_mode_specific(
+def test_candidate_and_release_symbolica_wheel_pins_can_match(
     tmp_path: Path,
     candidate_dependency_provenance: None,
 ) -> None:
@@ -1066,16 +1066,24 @@ def test_candidate_and_release_symbolica_pins_are_mode_specific(
         candidate=True,
         requirements=_DEFAULT_REQUIREMENTS,
     )
-    with pytest.raises(ArtifactError, match=r"excludes locked version 2\.2\.0"):
-        audit_wheel(release_pin, mode="candidate", native_scan=False)
+    candidate_report = audit_wheel(
+        release_pin,
+        mode="candidate",
+        native_scan=False,
+    )
+    assert candidate_report.version == candidate_version
 
     release_pin.unlink()
     candidate_pin = _wheel(
         tmp_path,
         requirements=_CANDIDATE_REQUIREMENTS,
     )
-    with pytest.raises(ArtifactError, match=r"excludes locked version 2\.1\.0"):
-        audit_wheel(candidate_pin, mode="release", native_scan=False)
+    release_report = audit_wheel(
+        candidate_pin,
+        mode="release",
+        native_scan=False,
+    )
+    assert release_report.version == _LOCK["project"]["version"]
 
 
 def test_candidate_dependency_provenance_fails_closed(
@@ -1555,11 +1563,11 @@ def test_runtime_requirements_must_agree_with_release_contract(tmp_path: Path) -
     non_exact = _wheel(
         tmp_path,
         requirements=[
-            "symbolica>=2.1.0,<3" if item.startswith("symbolica") else item
+            "symbolica>=2.2.0,<3" if item.startswith("symbolica") else item
             for item in _DEFAULT_REQUIREMENTS
         ],
     )
-    with pytest.raises(ArtifactError, match=r"pin symbolica==2\.1\.0 exactly"):
+    with pytest.raises(ArtifactError, match=r"pin symbolica==2\.2\.0 exactly"):
         audit_wheel(non_exact, mode="release", native_scan=False)
 
     non_exact.unlink()

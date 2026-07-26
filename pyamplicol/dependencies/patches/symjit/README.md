@@ -1,9 +1,16 @@
-# SymJIT contributor and upstream patch series
+# SymJIT upstream review archive
 
 The patches in `upstream/` target SymJIT 2.21.1 at revision
 `48197f32536c894b51ef25b2cf05ddd05c22675f`. They contain only generic
 SymJIT capabilities; pyAmpliCol recurrence roles and artifact policy remain in
-Rusticol.
+Rusticol. They are retained as a reviewable record and are no longer applied
+by pyAmpliCol's contributor installer.
+
+The same four commits are published on
+`ValentinHirschi/symjit_changes_for_pyamplicol` branch
+`pyamplicol-generic-direct-apis` at
+`89efdb806e7fcd9ac68a9d38f3f2880adf1987d2` and proposed upstream in
+`siravan/symjit#12`.
 
 ## Upstream submission order
 
@@ -19,10 +26,8 @@ Rusticol.
    table-driven direct application for repeated row/point execution and
    multi-destination fan-out on AArch64 and x86-64.
 
-Patches 2–4 are the contributor-build patch closure. Patch 1 is excluded from
-that closure because the installer already performs its equivalent mechanical
-`cdylib`-to-`rlib` manifest rewrite; including both would make the configured
-tree dependent on how the source was materialized.
+All four patches are already present in the locked fork revision. The active
+contributor patch closure is empty.
 
 The direct application input format is for trusted bytecode. It is not a
 sandbox or hostile-input parser. Shape, range, and alias checks remain because

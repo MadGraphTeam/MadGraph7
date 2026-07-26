@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # Source-checkout-only dependency inputs for non-publishable contributor builds.
 schema_version = 1
+patches = []
 
 [abis]
 symbolica_serialization = "symbolica-bincode2-v1"
@@ -19,14 +20,17 @@ release_status = "merged-main-candidate"
 
 [symjit]
 candidate_version = "2.21.1"
-source_url = "https://github.com/siravan/symjit/archive/48197f32536c894b51ef25b2cf05ddd05c22675f.tar.gz"
-archive_prefix = "symjit-48197f32536c894b51ef25b2cf05ddd05c22675f"
-archive_sha256 = "876930348cc06761ca780570fb282d009f143f4a469e321e3b5039c5ee217424"
-candidate_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
+repository = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git"
+branch = "pyamplicol-generic-direct-apis"
+source_url = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol/archive/89efdb806e7fcd9ac68a9d38f3f2880adf1987d2.tar.gz"
+archive_prefix = "symjit_changes_for_pyamplicol-89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
+archive_sha256 = "070ff7fc04d5cdc5ab769d7a47b3da04cbc2b97d87136d303180c95b9eb380cd"
+candidate_revision = "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
 application_storage_version = 3
-patched_tree_sha256 = "e530b43c47df2eebbda1d35f996126d6f18e3c067dff7823663aed6e0aeae735"
+source_tree_sha256 = "e42d648d995c61881e560aefc50f80a995e86fb24a67ed9b0f0b5a80d6773fcf"
 candidate_tree_sha256 = "820675246517cd49198495936327768da7a7a1d25f8bf20749c21aad1c2f56da"
-release_status = "patched-candidate"
+upstream_pr = "https://github.com/siravan/symjit/pull/12"
+release_status = "fork-pr-candidate"
 license = "MIT"
 
 [gammaloop_candidate]
@@ -48,24 +52,3 @@ release_status = "developer-only"
 license = "NOASSERTION"
 redistributed = false
 license_evidence = "No LICENSE or COPYING file exists at the pinned branch revision"
-
-[[patches]]
-name = "symjit-aarch64-compressed-funclets"
-target = "symjit"
-path = "patches/symjit/upstream/0002-Support-compressed-funclets-on-AArch64.patch"
-sha256 = "e0b9c7b0215b40f5defe2fa5dc65a4bd129f0e548c740d700f52af643278fdf1"
-applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
-
-[[patches]]
-name = "symjit-generic-direct-applications"
-target = "symjit"
-path = "patches/symjit/upstream/0003-Add-generic-direct-plane-applications.patch"
-sha256 = "7a8f5161e93c04fff8f3a04d770d78b272e7367d1083b020d519758e5b9a8238"
-applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
-
-[[patches]]
-name = "symjit-generic-direct-table-applications"
-target = "symjit"
-path = "patches/symjit/upstream/0004-Add-generic-table-driven-direct-applications.patch"
-sha256 = "34792f5e42298961d1df67d3ed16e66489e380ac3f0c4249119d2ff297a13606"
-applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"

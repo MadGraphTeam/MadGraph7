@@ -3,13 +3,13 @@
 ## Objective
 
 Replace pyAmpliCol's combined 9,231-line SymJIT delta with a generic,
-reviewable SymJIT series and a small pyAmpliCol-owned adapter. The eventual
-release path is patch-less: pyAmpliCol depends on a published SymJIT release
-that contains the generic APIs and keeps all amplitude-specific policy in
-Rusticol.
+reviewable SymJIT series and a small pyAmpliCol-owned adapter. The active build
+path is patch-less: pyAmpliCol consumes one immutable fork revision containing
+the generic APIs and keeps all amplitude-specific policy in Rusticol.
 
-The separation is based on SymJIT 2.21.1 commit
-`48197f32536c894b51ef25b2cf05ddd05c22675f`.
+The series is based on SymJIT 2.21.1 commit
+`48197f32536c894b51ef25b2cf05ddd05c22675f` and ends at fork revision
+`89efdb806e7fcd9ac68a9d38f3f2880adf1987d2`.
 
 ## Ownership boundary
 
@@ -45,9 +45,11 @@ overwrite, live input, and identity scaling.
 4. Add generic table-driven direct applications: 5,602 insertions and
    2 deletions.
 
-The table layer is intentionally last and may be proposed separately if the
-maintainer prefers a smaller initial review. The contributor installer applies
-commits 2–4. It already performs the build-manifest rewrite from commit 1.
+The table layer is intentionally last and can be reviewed separately if the
+maintainer prefers a smaller initial review. All four commits are on
+`ValentinHirschi/symjit_changes_for_pyamplicol:pyamplicol-generic-direct-apis`
+and are proposed in `siravan/symjit#12`. The contributor installer applies no
+patches.
 
 ## Trusted input and validation
 
@@ -80,17 +82,15 @@ applications, and eager table adapter.
 
 ## Publication path
 
-The repository remains release-pinned to published SymJIT 2.18.9. As of
-2026-07-26, crates.io exposes SymJIT 2.21.0, so neither the 2.21.1 Git state nor
-this generic series is available to a crates.io-only build.
+The release workspace redirects crates.io SymJIT to the exact fork revision
+through `[patch.crates-io]`. This makes Symbolica 2.2.0 and Rusticol share the
+same SymJIT instance and lets the cross-platform CI jobs compile pyAmpliCol
+wheels now. The dependency gate verifies the repository, revision, lockfile
+source, and absence of local path dependencies.
 
-A publishable Rust crate cannot rely on a Git-only dependency in its packaged
-dependency graph. The final sequence is therefore:
-
-1. upstream and release the generic changes in SymJIT;
-2. update pyAmpliCol's exact crates.io SymJIT pin and release lock;
-3. regenerate prepared direct assets under the new v1 contracts;
-4. run cross-platform wheels and strict release gates;
-5. publish through the existing trusted-publisher workflow.
+This is valid for pyAmpliCol because the publication unit is a precompiled
+Python wheel; pyAmpliCol is not publishing its internal Rust crates to
+crates.io. When the upstream PR is released, the remaining migration is to
+remove the workspace override and select the exact crates.io release.
 
 No publication action is part of this branch.

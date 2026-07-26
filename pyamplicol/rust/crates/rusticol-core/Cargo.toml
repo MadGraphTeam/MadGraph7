@@ -23,7 +23,7 @@ num-complex = { version = "0.4", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-symbolica = { version = "=2.1.0", default-features = false, features = ["bincode", "gmp"], optional = true }
-symjit = { version = "=2.18.9", default-features = false, optional = true }
+symbolica = { version = "=2.2.0", default-features = false, features = ["bincode", "gmp"], optional = true }
+symjit = { version = "=2.21.1", default-features = false, optional = true }
 thiserror.workspace = true
 wide.workspace = true

@@ -11,8 +11,8 @@ and the series is deliberately layered:
 - `0003`: generic direct plane applications;
 - `0004`: optional generic table-driven applications built on `0003`.
 
-The contributor lock uses `0002`–`0004`; its installer already supplies the
-`rlib` configuration represented by `0001`.
+The contributor lock now consumes the fork commit containing all four changes,
+so these files are review artifacts and are not replayed during installation.
 
 These patches make no assumptions about amplitudes, currents, recurrences, or
 pyAmpliCol artifact roles. Bytecode is trusted input; the APIs retain ordinary

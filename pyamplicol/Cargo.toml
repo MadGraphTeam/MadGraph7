@@ -28,9 +28,12 @@ pyo3 = { version = "0.28", features = ["abi3-py311"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip", "raw_value"] }
 sha2 = "0.10"
-symbolica = { version = "=2.1.0", default-features = true, features = ["bincode"] }
+symbolica = { version = "=2.2.0", default-features = true, features = ["bincode"] }
 thiserror = "2.0"
 wide = "1.3"
+
+[patch.crates-io]
+symjit = { git = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git", rev = "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2" }
 
 [profile.release]
 codegen-units = 1

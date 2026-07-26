@@ -24,10 +24,10 @@ def _module():
     return module
 
 
-def test_release_gate_reports_only_the_true_upstream_blocker_offline() -> None:
+def test_release_gate_is_ready_offline() -> None:
     module = _module()
     codes = [issue.code for issue in module.check(candidate=False, online=False)]
-    assert codes == ["symbolica-unverified"]
+    assert codes == []
 
 
 def test_release_contract_is_lean_exact_and_schema_8() -> None:
@@ -44,10 +44,18 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
         "python_version",
         "rust_crate",
         "rust_version",
-        "published_symjit_version",
         "serialization_abi",
         "release_status",
     }
+    assert set(lock["symjit"]) == {
+        "version",
+        "repository",
+        "branch",
+        "revision",
+        "upstream_pr",
+        "release_status",
+    }
+    assert len(lock["symjit"]["revision"]) == 40
     assert set(lock["ufo_model_loader"]) == {
         "python_distribution",
         "required_version",
@@ -56,7 +64,7 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
     }
 
 
-def test_release_cargo_lock_contains_only_published_registry_crates() -> None:
+def test_release_cargo_lock_contains_registry_crates_and_exact_symjit_git() -> None:
     module = _module()
     assert module._release_cargo_lock_issues(module._load_lock()) == []
 
@@ -75,7 +83,7 @@ def test_release_cargo_lock_rejects_candidate_path_resolution(
     text = module.CARGO_LOCK_PATH.read_text(encoding="utf-8")
     marker = (
         'name = "symbolica"\n'
-        'version = "2.1.0"\n'
+        'version = "2.2.0"\n'
         'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
     )
     assert marker in text
@@ -115,6 +123,8 @@ def test_candidate_gate_uses_revisions_and_pinned_symjit_tree_fingerprint(
     checkouts = tmp_path / "checkouts"
     for name in revisions:
         (checkouts / name).mkdir(parents=True)
+    for name in ("graphica", "numerica"):
+        (checkouts / name).mkdir()
     source_state = {
         name: {"revision": revision} for name, revision in revisions.items()
     }
@@ -145,7 +155,12 @@ def test_candidate_gate_uses_revisions_and_pinned_symjit_tree_fingerprint(
         encoding="utf-8",
     )
     cargo_config.write_text(
-        f'[patch.crates-io]\nsymbolica = {{ path = "{checkouts / "symbolica"}" }}\n',
+        "[patch.crates-io]\n"
+        + "\n".join(
+            f'{name} = {{ path = "{checkouts / name}" }}'
+            for name in ("graphica", "numerica", "symbolica", "symjit")
+        )
+        + "\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(module, "STATE_PATH", state_path)
@@ -172,11 +187,18 @@ def test_candidate_patch_contract_rejects_tampered_patch(
     module = _module()
     contributor = copy.deepcopy(module._load_contributor_lock())
     dependencies = tmp_path / "dependencies"
-    for index, entry in enumerate(contributor["patches"]):
-        patch = dependencies / entry["path"]
-        patch.parent.mkdir(parents=True, exist_ok=True)
-        source = module.DEPENDENCIES_PATH / entry["path"]
-        patch.write_bytes(b"tampered patch\n" if index == 0 else source.read_bytes())
+    patch = dependencies / "patches" / "symjit" / "change.patch"
+    patch.parent.mkdir(parents=True)
+    patch.write_bytes(b"tampered patch\n")
+    contributor["patches"] = [
+        {
+            "name": "synthetic",
+            "target": "symjit",
+            "path": "patches/symjit/change.patch",
+            "sha256": "0" * 64,
+            "applies_to_revision": contributor["symjit"]["candidate_revision"],
+        }
+    ]
     monkeypatch.setattr(module, "DEPENDENCIES_PATH", dependencies)
 
     _, issues = module._candidate_patch_contract(contributor)
@@ -197,7 +219,7 @@ def test_candidate_contributor_contract_pins_arena_abis_and_both_tree_states() -
     } == {"candidate-abi-contract"}
 
     wrong_tree = copy.deepcopy(contributor)
-    wrong_tree["symjit"]["patched_tree_sha256"] = "wrong"
+    wrong_tree["symjit"]["source_tree_sha256"] = "wrong"
     assert {
         issue.code
         for issue in module._candidate_contributor_contract_issues(wrong_tree)

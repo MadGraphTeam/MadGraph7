@@ -302,9 +302,9 @@ def _source_tree_sha256(root: Path) -> str:
 def _contributor_patches(payload: dict[str, Any]) -> tuple[ContributorPatch, ...]:
     """Load and verify every tracked contributor patch before touching sources."""
 
-    raw_patches = payload.get("patches")
-    if not isinstance(raw_patches, list) or not raw_patches:
-        raise SetupError("contributor lock must list at least one source patch")
+    raw_patches = payload.get("patches", [])
+    if not isinstance(raw_patches, list):
+        raise SetupError("contributor lock patches must be a list")
     allowed_keys = {
         "name",
         "target",
@@ -423,6 +423,8 @@ def _apply_contributor_patches(runner: Runner, payload: dict[str, Any]) -> None:
     """Apply each exact patch once, or verify that it is already fully applied."""
 
     patches = _contributor_patches(payload)
+    if not patches:
+        return
     if runner.dry_run:
         for patch in patches:
             print(
@@ -435,7 +437,7 @@ def _apply_contributor_patches(runner: Runner, payload: dict[str, Any]) -> None:
         raise SetupError(f"contributor patch target is missing: {patches[0].target}")
     symjit = payload["symjit"]
     known_complete_trees: set[str] = set()
-    for key in ("patched_tree_sha256", "candidate_tree_sha256"):
+    for key in ("source_tree_sha256", "candidate_tree_sha256"):
         digest = symjit.get(key)
         if digest is None:
             continue
@@ -715,12 +717,12 @@ def _configure_source_manifests(runner: Runner) -> None:
     symjit_cargo = symjit / "Cargo.toml"
     text = symjit_cargo.read_text(encoding="utf-8")
     text, count = re.subn(
-        r'(?m)^crate-type\s*=\s*\["cdylib"\]\s*$',
+        r"(?m)^crate-type\s*=\s*\[[^\]]*\]\s*$",
         'crate-type = ["rlib"]',
         text,
         count=1,
     )
-    if count == 0 and 'crate-type = ["rlib"]' not in text:
+    if count != 1:
         raise SetupError("could not configure SymJIT as an rlib")
     symjit_cargo.write_text(text, encoding="utf-8")
 
@@ -900,8 +902,12 @@ def _cargo_lock_packages(path: Path) -> list[dict[str, Any]]:
 
 
 def _validate_release_cargo_lock(path: Path) -> None:
-    """Require the canonical lock to contain published registry crates only."""
+    """Require registry crates plus the exact immutable SymJIT Git revision."""
 
+    symjit = _release_lock()["symjit"]
+    symjit_source = (
+        f"git+{symjit['repository']}?rev={symjit['revision']}#{symjit['revision']}"
+    )
     invalid: list[str] = []
     for package in _cargo_lock_packages(path):
         name = str(package.get("name", "<unnamed>"))
@@ -909,14 +915,21 @@ def _validate_release_cargo_lock(path: Path) -> None:
         checksum = package.get("checksum")
         if name in _WORKSPACE_CRATES and source is None and checksum is None:
             continue
+        if (
+            name == "symjit"
+            and str(package.get("version")) == str(symjit["version"])
+            and source == symjit_source
+            and checksum is None
+        ):
+            continue
         if source != _CRATES_IO_SOURCE:
-            invalid.append(f"{name} has non-registry source {source!r}")
+            invalid.append(f"{name} has an unexpected source {source!r}")
             continue
         if not isinstance(checksum, str) or _SHA256_PATTERN.fullmatch(checksum) is None:
             invalid.append(f"{name} has no valid registry checksum")
     if invalid:
         raise SetupError(
-            "canonical Cargo.lock is candidate/path-resolved; regenerate it "
+            "canonical Cargo.lock is not release-resolved; regenerate it "
             "without the candidate Cargo patch configuration:\n  "
             + "\n  ".join(invalid)
         )
@@ -1003,6 +1016,7 @@ def _rewrite_candidate_requirements(root: Path) -> None:
     """Project published release pins onto the pinned candidate sources."""
 
     lock = _lock()
+    release = _release_lock()
     manifest = root / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
     text = manifest.read_text(encoding="utf-8")
     projections = (
@@ -1013,7 +1027,7 @@ def _rewrite_candidate_requirements(root: Path) -> None:
         ),
         (
             "symjit",
-            str(lock["symbolica"]["published_symjit_version"]),
+            str(release["symjit"]["version"]),
             str(lock["symjit"]["candidate_version"]),
         ),
     )

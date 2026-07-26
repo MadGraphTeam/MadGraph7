@@ -71,7 +71,7 @@ version = "1.17.0"
 
 [[python_dependencies]]
 distribution = "symbolica"
-version = "2.1.0"
+version = "2.2.0"
 
 [[python_dependencies]]
 distribution = "tomli-w"
@@ -83,12 +83,19 @@ version = "0.1.7"
 
 [symbolica]
 python_distribution = "symbolica"
-python_version = "2.1.0"
+python_version = "2.2.0"
 rust_crate = "symbolica"
-rust_version = "2.1.0"
-published_symjit_version = "2.18.9"
+rust_version = "2.2.0"
 serialization_abi = "symbolica-bincode2-v1"
-release_status = "unverified"
+release_status = "verified"
+
+[symjit]
+version = "2.21.1"
+repository = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git"
+branch = "pyamplicol-generic-direct-apis"
+revision = "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
+upstream_pr = "https://github.com/siravan/symjit/pull/12"
+release_status = "verified-git-revision"
 
 [ufo_model_loader]
 python_distribution = "ufo-model-loader"

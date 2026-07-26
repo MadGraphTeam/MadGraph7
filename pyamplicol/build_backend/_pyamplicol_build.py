@@ -1068,7 +1068,7 @@ def _rewrite_candidate_dependency_requirements(overlay: Path) -> None:
         ),
         (
             "symjit",
-            str(release["symbolica"]["published_symjit_version"]),
+            str(release["symjit"]["version"]),
             str(contributor["symjit"]["candidate_version"]),
         ),
     )

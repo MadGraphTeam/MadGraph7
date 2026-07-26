@@ -80,29 +80,21 @@ def test_venv_reset_bootstraps_with_the_unmoved_base_interpreter(
     assert module._venv_bootstrap_python() == base_python
 
 
-def test_symjit_patch_set_is_revision_digest_and_tree_pinned() -> None:
+def test_symjit_fork_revision_archive_and_tree_are_pinned_without_patches() -> None:
     module = _module()
     payload = module._lock()
     patches = module._contributor_patches(payload)
 
-    assert [patch.name for patch in patches] == [
-        "symjit-aarch64-compressed-funclets",
-        "symjit-generic-direct-applications",
-        "symjit-generic-direct-table-applications",
-    ]
-    assert all(patch.target == "symjit" for patch in patches)
-    assert all(
-        patch.applies_to_revision == payload["symjit"]["candidate_revision"]
-        for patch in patches
-    )
-    assert all(
-        patch.sha256 == hashlib.sha256(patch.path.read_bytes()).hexdigest()
-        for patch in patches
-    )
+    assert patches == ()
     assert len(module._patch_closure_sha256(patches)) == 64
-    assert len(payload["symjit"]["patched_tree_sha256"]) == 64
+    assert len(payload["symjit"]["candidate_revision"]) == 40
+    assert len(payload["symjit"]["archive_sha256"]) == 64
+    assert len(payload["symjit"]["source_tree_sha256"]) == 64
     assert len(payload["symjit"]["candidate_tree_sha256"]) == 64
-    assert payload["symjit"]["release_status"] == "patched-candidate"
+    assert payload["symjit"]["source_tree_sha256"] != (
+        payload["symjit"]["candidate_tree_sha256"]
+    )
+    assert payload["symjit"]["release_status"] == "fork-pr-candidate"
 
 
 def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> None:
@@ -115,10 +107,15 @@ def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> 
     environment["GIT_CEILING_DIRECTORIES"] = str(target.parent.resolve())
 
     applied: list[str] = []
-    for patch in module._contributor_patches(module._lock()):
+    patch_paths = sorted(
+        (module.DEPENDENCIES / "patches" / "symjit" / "upstream").glob(
+            "000[2-4]-*.patch"
+        )
+    )
+    for patch_path in patch_paths:
         if (
             b"diff --git a/rust/direct.rs b/rust/direct.rs\n"
-            not in patch.path.read_bytes()
+            not in patch_path.read_bytes()
         ):
             continue
         command = [
@@ -126,7 +123,7 @@ def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> 
             "apply",
             "--whitespace=nowarn",
             "--include=rust/direct.rs",
-            str(patch.path),
+            str(patch_path),
         ]
         check = subprocess.run(
             [*command[:2], "--check", *command[2:]],
@@ -137,7 +134,7 @@ def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> 
             check=False,
         )
         assert check.returncode == 0, (
-            f"{patch.name} does not follow the tracked rust/direct.rs lineage:\n"
+            f"{patch_path.name} does not follow the tracked rust/direct.rs lineage:\n"
             f"{check.stderr}"
         )
         subprocess.run(
@@ -148,10 +145,10 @@ def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> 
             text=True,
             check=True,
         )
-        applied.append(patch.name)
+        applied.append(patch_path.name)
 
     assert applied == [
-        "symjit-generic-direct-applications",
+        "0003-Add-generic-direct-plane-applications.patch",
     ]
     direct = target / "rust" / "direct.rs"
     digest = subprocess.run(
@@ -253,7 +250,7 @@ def test_overlapping_contributor_patch_series_is_idempotent_by_tree_identity(
     payload = {
         "symjit": {
             "candidate_revision": revision,
-            "patched_tree_sha256": "0" * 64,
+            "source_tree_sha256": "0" * 64,
             "candidate_tree_sha256": "1" * 64,
         },
         "patches": [
@@ -267,7 +264,7 @@ def test_overlapping_contributor_patch_series_is_idempotent_by_tree_identity(
 
     module._apply_contributor_patches(runner, payload)
     assert source.read_text(encoding="utf-8") == "FIRST\nSECOND\n"
-    payload["symjit"]["patched_tree_sha256"] = module._source_tree_sha256(target)
+    payload["symjit"]["source_tree_sha256"] = module._source_tree_sha256(target)
     module._apply_contributor_patches(runner, payload)
     assert source.read_text(encoding="utf-8") == "FIRST\nSECOND\n"
 
@@ -604,7 +601,7 @@ def test_candidate_dependency_projection_rewrites_only_the_isolated_manifest(
     manifest.parent.mkdir(parents=True)
     manifest.write_text(
         'symbolica = { version = "=2.1.0", default-features = false }\n'
-        'symjit = { version = "=2.18.9", default-features = false }\n',
+        'symjit = { version = "=2.21.1", default-features = false }\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -614,14 +611,18 @@ def test_candidate_dependency_projection_rewrites_only_the_isolated_manifest(
             "symbolica": {
                 "rust_version": "2.1.0",
                 "candidate_version": "2.2.0",
-                "published_symjit_version": "2.18.9",
             },
-            "symjit": {"candidate_version": "2.19.3"},
+            "symjit": {"candidate_version": "2.21.2"},
         },
+    )
+    monkeypatch.setattr(
+        module,
+        "_release_lock",
+        lambda: {"symjit": {"version": "2.21.1"}},
     )
 
     module._rewrite_candidate_requirements(tmp_path)
 
     projected = manifest.read_text(encoding="utf-8")
     assert 'symbolica = { version = "=2.2.0"' in projected
-    assert 'symjit = { version = "=2.19.3"' in projected
+    assert 'symjit = { version = "=2.21.2"' in projected
