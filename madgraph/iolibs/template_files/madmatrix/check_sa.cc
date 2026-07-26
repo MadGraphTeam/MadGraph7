@@ -386,7 +386,11 @@ namespace
       }
     };
 
-    inline double rn()
+    // Persistent RANMAR state, re-seedable via reset_rng() so a caller can draw
+    // the SAME first phase-space point for several mass permutations (used by the
+    // crossing demo to show each crossed subprocess at the point a standalone run
+    // of it would generate).
+    inline Random& rng()
     {
       static Random rand;
       static bool init = true;
@@ -395,10 +399,16 @@ namespace
         init = false;
         rand.rmarin( 1802, 9373 );
       }
+      return rand;
+    }
+    inline void reset_rng() { rng().rmarin( 1802, 9373 ); }
+
+    inline double rn()
+    {
       double ran;
       while( true )
       {
-        ran = rand.ranmar();
+        ran = rng().ranmar();
         if( ran > 1e-16 ) break;
       }
       return ran;
@@ -747,6 +757,86 @@ namespace
                 << mes[0] << " GeV^" << kMEGeVExponent << std::endl
                 << std::defaultfloat
                 << std::string( SEP79, '-' ) << std::endl;
+    }
+
+    // === Crossed subprocesses folded into this base matrix element ===
+    // The exporter lists their extended flavor ids in crossing_demo.dat; show
+    // each at the RAMBO point generated for ITS OWN mass permutation (the crossed
+    // legs carry the same particles as the base, relabelled, so the crossed
+    // masses are a permutation of the base masses).
+    {
+      std::vector<unsigned int> demo_ids;
+      std::ifstream fdemo( "crossing_demo.dat" );
+      unsigned int _did;
+      while( fdemo >> _did ) demo_ids.push_back( _did );
+      if( !demo_ids.empty() )
+      {
+        std::cout << std::endl
+                  << " Crossed processes folded into this matrix element:"
+                  << std::endl;
+        for( unsigned int fid : demo_ids )
+        {
+          // Crossed masses: base mass of the leg carrying the same |PDG|.
+          std::vector<double> xmasses( CPPProcess::npar );
+          for( int k = 0; k < CPPProcess::npar; ++k )
+          {
+            const int pk = std::abs( CPPProcess::flavorPDG( (int)fid, k ) );
+            double mk = 0.;
+            for( int j = 0; j < CPPProcess::npar; ++j )
+              if( std::abs( CPPProcess::flavorPDG( 0, j ) ) == pk ) { mk = (double)masses[j]; break; }
+            xmasses[k] = mk;
+          }
+          double xwgt = 0.;
+          classic_rambo::reset_rng(); // draw the FIRST point for this mass permutation
+          std::vector<std::vector<double>> xpoint =
+            classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, xmasses, xwgt );
+          for( int ip4 = 0; ip4 < 4; ++ip4 )
+            for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+              for( unsigned int ievt = 0; ievt < nevt; ++ievt )
+                umamiMomenta[(std::size_t)ip4 * CPPProcess::npar * nevt + (std::size_t)ipar * nevt + ievt] = xpoint[ipar][ip4];
+          std::fill( flvVec.begin(), flvVec.end(), fid );
+#ifdef MGONGPUCPP_GPUIMPL
+          gpuMemcpy( devUmamiMomenta.data(), umamiMomenta.data(), umamiMomenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
+          gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+#endif
+          UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
+          UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
+#ifdef MGONGPUCPP_GPUIMPL
+          const void* inputs[3] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
+          void* outputs[1] = { devUmamiMEs.data() };
+#else
+          const void* inputs[3] = { umamiMomenta.data(), flvVec.data(), alphasVec.data() };
+          void* outputs[1] = { umamiMEs.data() };
+#endif
+          UmamiStatus xst = umami_matrix_element(
+            umami_handle, nevt, nevt, 0, 3, in_keys, inputs, 1, out_keys, outputs );
+          if( xst != UMAMI_SUCCESS )
+          {
+            std::cerr << "ERROR! crossed umami_matrix_element failed (flavorID=" << fid << ")" << std::endl;
+            continue;
+          }
+#ifdef MGONGPUCPP_GPUIMPL
+          gpuMemcpy( hstUmamiMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
+          const double* xmes = hstUmamiMEs.data();
+#else
+          const double* xmes = umamiMEs.data();
+#endif
+          std::cout << std::endl << " flavorID " << fid << std::endl
+                    << "   PDG            E              px              py              pz" << std::endl;
+          for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+            std::cout << std::scientific << std::setprecision( 7 )
+                      << std::setw( 6 ) << CPPProcess::flavorPDG( (int)fid, ipar )
+                      << std::setw( 16 ) << xpoint[ipar][0]
+                      << std::setw( 16 ) << xpoint[ipar][1]
+                      << std::setw( 16 ) << xpoint[ipar][2]
+                      << std::setw( 16 ) << xpoint[ipar][3]
+                      << std::endl << std::defaultfloat;
+          std::cout << " Matrix element = " << std::scientific << std::setprecision( 16 )
+                    << xmes[0] << " GeV^" << kMEGeVExponent << std::endl
+                    << std::defaultfloat
+                    << std::string( SEP79, '-' ) << std::endl;
+        }
+      }
     }
 
     umami_free( umami_handle );

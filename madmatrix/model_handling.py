@@ -1976,9 +1976,76 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         super().generate_process_files()
+        self.edit_crossing_demo() # per-process folded-crossing flavor ids for check_sa
         # NB: symlink of cudacpp.mk to makefile is overwritten by madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
         files.ln(pjoin(self.path, "..", "makefile"), self.path, "makefile")
+
+    def _folded_crossing_flavorids(self, matrix_element):
+        """Extended flavor ids of the crossed subprocesses folded into this base
+        ME (merge_crossing='record'). One id per asked crossing direction
+        (mirror pairs collapsed), matched LABEL-AWARE against the reachable
+        (index, cross, flav, pdg) enumeration so a merged _quark leg matches any
+        same-sign flavor -- the same selection check_sa.f's crossing demo uses.
+        The index IS the mg7 flavor id (cross*nflav+flav0), so flavorPDG(id, k)
+        gives the crossed PDG at runtime."""
+        crossed = matrix_element.get('crossed_processes')
+        if not crossed:
+            return []
+        import madgraph.iolibs.export_v4 as export_v4
+        Fort = export_v4.ProcessExporterFortran
+        merged = matrix_element.get('processes')[0].get('model').get(
+            'merged_particles')
+        entries = Fort.compute_crossing_pdg_entries(self, matrix_element)
+        pdg_to_id = {}
+        for (index, _cross, _flav0, pdg) in entries:
+            pdg_to_id.setdefault(pdg, index)
+        reach = [pdg for (_i, _c, _f, pdg) in entries]
+
+        def leg_matches(leg_id, pdg):
+            a = abs(leg_id)
+            if a in merged:
+                return (leg_id > 0) == (pdg > 0) and abs(pdg) in merged[a]
+            return pdg == leg_id
+
+        ninitial = matrix_element.get_nexternal_ninitial()[1]
+        ids, seen = [], set()
+        for (proc, _bp, _xp) in crossed:
+            legs = [l.get('id') for l in proc.get('legs')]
+            orients = [legs]
+            if ninitial == 2:
+                orients.append([legs[1], legs[0]] + legs[2:])
+            hit = None
+            for orient in orients:
+                for r in reach:
+                    if len(r) == len(orient) and \
+                       all(leg_matches(L, P) for L, P in zip(orient, r)):
+                        hit = r
+                        break
+                if hit is not None:
+                    break
+            if hit is None:
+                continue
+            mirror = (hit[1], hit[0]) + hit[2:] if ninitial == 2 else hit
+            if hit in seen or mirror in seen:
+                continue
+            seen.add(hit)
+            seen.add(mirror)
+            ids.append(pdg_to_id[hit])
+        return ids
+
+    def edit_crossing_demo(self):
+        """Write crossing_demo.dat (the folded-crossing flavor ids) into the P*
+        directory so the shared check_sa.exe can demonstrate each crossed
+        subprocess at its own RAMBO point. Nothing is written when the ME has no
+        folded crossings (check_sa then just shows the base flavors)."""
+        if not getattr(self, 'use_crossing', False):
+            return
+        ids = self._folded_crossing_flavorids(self.matrix_elements[0])
+        if not ids:
+            return
+        with open(pjoin(self.path, 'crossing_demo.dat'), 'w') as fsock:
+            fsock.write(' '.join(str(i) for i in ids) + '\n')
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
