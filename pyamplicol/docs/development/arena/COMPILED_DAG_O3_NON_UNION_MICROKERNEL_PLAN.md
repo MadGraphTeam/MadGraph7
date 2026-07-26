@@ -81,6 +81,77 @@ census are authoritative; these timing values are provisional diagnostic
 anchors. Landing acceptance uses a new quiet, alternating baseline/candidate
 capture and does not reuse these medians.
 
+### Mandatory pre-code census outcome
+
+The exact materialized `f4606fa` `u u~ > Z+6g` schedule was censused on
+2026-07-26 before integrating the candidate. The immutable proceed gates do
+not pass:
+
+The captured census JSON is
+`COMPILED_DAG_O3_NON_UNION_MICROKERNEL_CENSUS.json`, with SHA-256
+`8c4fb66f671e11256f7168b523653066273b39195d59bd2e49ef5ab013654372`.
+It was produced from the clean generation worktree by constructing the
+existing unit-test `u u~ > Z g g g g g g` evaluator process and calling
+`build_compiled_microkernel_selection` directly; no evaluator compilation or
+native build participated in the census.
+
+| Census quantity | Required | Observed |
+|---|---:|---:|
+| Active materialized interactions/evaluation groups | exact denominator | 203 / 203 |
+| Repeated evaluation-group IDs | non-empty, with at least 50% covered | 0 |
+| Exactly eligible complete currents | within all hard bounds | 6 |
+| Interactions covered by exactly eligible currents | diagnostic | 8 / 203 (3.94%) |
+| Two-component interactions covered | diagnostic | 8 / 98 (8.16%) |
+| Reused exact normalized source motifs | required for compression | 0 |
+| Projected table/replaced source bytes | at most 25% | 19,278 / 19,278 (100%) |
+| Projected semantic rows | at most 4 MiB | below the cap |
+
+The initial structural pass found eight candidate currents. Exact expression
+normalization, with the structural motif digest deliberately excluded from
+the hash subject, proved that all eight sources are distinct. Their current
+IDs and normalized source SHA-256 prefixes are:
+
+| Current | Exact complex inputs | Contributions | Source SHA-256 prefix | Result |
+|---:|---:|---:|---|---|
+| 11 | 11 | 1 | `2801b15a` | eligible, unique |
+| 12 | 11 | 1 | `6b1acc43` | eligible, unique |
+| 13 | 10 | 1 | `642f1962` | eligible, unique |
+| 14 | 10 | 1 | `d09c4c2b` | eligible, unique |
+| 25 | 17 | 2 | `ca0386ad` | rejected by the 16-input cap |
+| 26 | 17 | 2 | `45cc8958` | rejected by the 16-input cap |
+| 27 | 16 | 2 | `b4cf9f3c` | eligible, unique |
+| 28 | 16 | 2 | `11fbefd4` | eligible, unique |
+
+This is not fragmentation from current IDs, selector IDs, evaluation-group
+IDs, or the motif digest. Z and gluon rows have genuinely different normalized
+expressions and input widths because the Z coupling is a mutable model scalar
+while the fixed gluon coupling is baked into the source. Opposite chirality
+and one- versus two-contribution currents are also distinct. Merging them would
+require a different parameterized kernel representation, beyond the approved
+complete-current motif slice.
+
+An independent read-only reconstruction reproduced these counts and source
+classes. It also tested an unrealistically favourable externalized-coupling
+classification: that leaves four chirality/contribution shapes, each used
+twice, so its best possible projected ratio is still 50%. The prepared
+interaction kernels do repeat 49+49 times, but exploiting that repetition
+would tableize contributions rather than complete currents and therefore
+violate this slice's ownership rule.
+
+There is a second independent acceptance limitation in the pinned SymJIT API.
+`DirectTableCallable` exposes exact scalar and SIMD code shapes, but
+`DirectApplication` privately lowers its source to a distinct `Application`
+and neither it nor the resulting `DirectApplet` exposes the lowered
+`MachineCode::size`. The public source-application machine-code size is not
+the executed lowered DirectApplication body. Consequently an exact combined
+table-plus-residual runtime machine-code reduction cannot be authenticated
+without a new SymJIT API, which this plan forbids.
+
+Per the fail-fast and no-land rules, implementation stops at this census.
+No compiled-stage-plan v2 runtime, compatibility cutover, or candidate
+performance claim is integrated. The exploratory generation/runtime changes
+remain excluded from this branch, and no candidate is eligible for `main`.
+
 ## Design
 
 The compiled schedule remains the owner of topology, helicity, selector,

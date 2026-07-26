@@ -1,0 +1,208 @@
+{
+  "active_evaluation_group_count": 203,
+  "active_interaction_count": 203,
+  "active_repeated_evaluation_group_count": 0,
+  "candidate_attachment_count": 8,
+  "candidate_invocation_count": 8,
+  "candidate_kernel_count": 8,
+  "candidate_projected_replaced_text_bytes": 26104,
+  "candidate_projected_table_text_bytes": 26104,
+  "candidate_projected_text_ratio_basis_points": 10000,
+  "candidate_semantic_row_bytes": 960,
+  "decision": "repeated-group-coverage-below-threshold,projected-text-ratio-above-threshold",
+  "eligible_current_count": 8,
+  "exact_normalization": {
+    "active_interaction_count": 203,
+    "eligible_current_count": 6,
+    "eligible_interaction_count": 8,
+    "eligible_interaction_coverage_basis_points": 394,
+    "eligible_source_bytes": 19278,
+    "input_limit": 16,
+    "motif_digest_excluded_from_source_digest": true,
+    "normalized_sources": [
+      {
+        "current_id": 11,
+        "eligible": true,
+        "expression_bytes": [
+          1417,
+          1421
+        ],
+        "input_count": 11,
+        "source_digest": "2801b15a200d6175ded1b4be48f82e1ec5fe1d82d95b56cb5e1b4da7e848404a"
+      },
+      {
+        "current_id": 12,
+        "eligible": true,
+        "expression_bytes": [
+          1415,
+          1413
+        ],
+        "input_count": 11,
+        "source_digest": "6b1acc43c5bd10e459448eba684b49866a850f5e1ec2455af99c27f13f9a26b3"
+      },
+      {
+        "current_id": 13,
+        "eligible": true,
+        "expression_bytes": [
+          1303,
+          1307
+        ],
+        "input_count": 10,
+        "source_digest": "642f19620be7b033e0ca09a8934444eb085cb86b8aa681173b315878b9ec0750"
+      },
+      {
+        "current_id": 14,
+        "eligible": true,
+        "expression_bytes": [
+          1301,
+          1299
+        ],
+        "input_count": 10,
+        "source_digest": "d09c4c2be70e0d06a0587b50c14a5a5aa04454937ab12b9b945de0f5632e2532"
+      },
+      {
+        "current_id": 25,
+        "eligible": false,
+        "expression_bytes": [
+          2217,
+          2221
+        ],
+        "input_count": 17,
+        "source_digest": "ca0386ad0151c22e01c41c21ca2cfcaf2caccecbe17acd589d73a3b5425d3f3d"
+      },
+      {
+        "current_id": 26,
+        "eligible": false,
+        "expression_bytes": [
+          2211,
+          2209
+        ],
+        "input_count": 17,
+        "source_digest": "45cc895827d3999407acf6b936b2d0da012efaa63618f338db9c8faf2c8492a7"
+      },
+      {
+        "current_id": 27,
+        "eligible": true,
+        "expression_bytes": [
+          2103,
+          2107
+        ],
+        "input_count": 16,
+        "source_digest": "b4cf9f3ccf98a0f120ebe9d6094f4be9d96382f316cbd4f1fd33d0834f9bcc03"
+      },
+      {
+        "current_id": 28,
+        "eligible": true,
+        "expression_bytes": [
+          2097,
+          2095
+        ],
+        "input_count": 16,
+        "source_digest": "11fbefd403daa2076c6939b227bdf0b9ec5916cb50ef031198427c9b3bc2c151"
+      }
+    ],
+    "projected_replaced_source_bytes": 19278,
+    "projected_table_source_bytes": 19278,
+    "projected_text_ratio_basis_points": 10000,
+    "two_component_interaction_count": 98,
+    "two_component_interaction_coverage_basis_points": 816,
+    "unique_normalized_source_count": 6
+  },
+  "materialized": {
+    "amplitude_root_count": 2,
+    "current_count_including_sources": 66,
+    "interaction_count": 203,
+    "non_source_current_slot_count": 55,
+    "result_dimension_counts": {
+      "2": 98,
+      "4": 75,
+      "6": 30
+    },
+    "stage_count": 7
+  },
+  "motifs": [
+    {
+      "current_id": 11,
+      "digest": "b328f45a8c5a41e607bae9d4ec6fb595a884f6971dd069e0b0b01556b992564f",
+      "frequency": 1,
+      "input_count": 6,
+      "result_chirality": 1,
+      "contribution_count": 1,
+      "coupling_class": "Z"
+    },
+    {
+      "current_id": 12,
+      "digest": "b37812df45fad7eed9fff616ca6dbdddad3b72b01887eaa88bf06d880f93d95f",
+      "frequency": 1,
+      "input_count": 6,
+      "result_chirality": -1,
+      "contribution_count": 1,
+      "coupling_class": "Z"
+    },
+    {
+      "current_id": 13,
+      "digest": "4f7d803ea9b93da0bceb47c7b227ca31bf30ce496dced01c6baec94c01dc8f04",
+      "frequency": 1,
+      "input_count": 6,
+      "result_chirality": 1,
+      "contribution_count": 1,
+      "coupling_class": "gluon"
+    },
+    {
+      "current_id": 14,
+      "digest": "f18561d66896625fb71679b17ba43e6b6254799a6e6f53ccced277bfe586aab3",
+      "frequency": 1,
+      "input_count": 6,
+      "result_chirality": -1,
+      "contribution_count": 1,
+      "coupling_class": "gluon"
+    },
+    {
+      "current_id": 25,
+      "digest": "291a1b4cf4a779f6db88cd015cb24391d6ca41c08e90c8e5cd9b6229299a816a",
+      "frequency": 1,
+      "input_count": 12,
+      "result_chirality": 1,
+      "contribution_count": 2,
+      "coupling_class": "Z+gluon"
+    },
+    {
+      "current_id": 26,
+      "digest": "3c7ff053b7ba885010b488cbd59cd5fce058f8fe9d392ca9067328bb6982e4f0",
+      "frequency": 1,
+      "input_count": 12,
+      "result_chirality": -1,
+      "contribution_count": 2,
+      "coupling_class": "Z+gluon"
+    },
+    {
+      "current_id": 27,
+      "digest": "5e277b8535e2abab77f87dde2954f4ae90763ef4c96d318d658ea81cc8979c7a",
+      "frequency": 1,
+      "input_count": 12,
+      "result_chirality": 1,
+      "contribution_count": 2,
+      "coupling_class": "gluon+gluon"
+    },
+    {
+      "current_id": 28,
+      "digest": "9fd196a436ccf2718a1dcd17f5147984c1fda363fc2bf3ac388dc50742c25a61",
+      "frequency": 1,
+      "input_count": 12,
+      "result_chirality": -1,
+      "contribution_count": 2,
+      "coupling_class": "gluon+gluon"
+    }
+  ],
+  "proof_only": {
+    "amplitude_root_count": 384,
+    "current_count": 1425
+  },
+  "rejections": {
+    "complex-input-limit": 18,
+    "result-is-not-two-component-weyl": 29
+  },
+  "selected_attachment_count": 0,
+  "selected_invocation_count": 0,
+  "selected_kernel_count": 0
+}
