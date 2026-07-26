@@ -59,11 +59,11 @@ def test_reset_publishes_only_canonical_na_caches_and_seventeen_tables(
     paths = service.publish(reset=True, merge_artifacts=False)
     result = service.validate()
 
-    assert result["table_count"] == 17
+    assert result["table_count"] == 20
     assert result["statuses"] == {
         "not_available": len(REPORT_CATALOG.measurement_cells())
     }
-    assert len([path for path in paths if path.suffix == ".tex"]) == 17
+    assert len([path for path in paths if path.suffix == ".tex"]) == 20
     assert (service.paths.results_dir / "report-cache.schema.json").is_file()
 
 

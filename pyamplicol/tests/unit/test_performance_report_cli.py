@@ -286,7 +286,7 @@ def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:
 
     assert main(("--repo-root", str(repo), "validate")) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["table_count"] == 17
+    assert payload["table_count"] == 20
     assert payload["cache_count"] > 12
 
     assert main(("--repo-root", str(repo), "audit")) == 0

@@ -123,7 +123,23 @@ LC summaries remain separate for topology replay and all-flow union.  Missing,
 unsupported, and validation-failed cells do not contribute to a ratio-of-sums
 summary.
 
-The tables are grouped by execution mode, model source, and colour treatment.
+The first three matrices provide a built-in-SM overview against original
+\AC{}.  For each process, multiplicity, colour treatment, and LC workload,
+they select the validated pyAmpliCol mode with the smallest wall time.  The
+generation multiplier is followed by \texttt{(A)}, \texttt{(B)}, or
+\texttt{(C)} for recurrence JIT O2, compiled JIT O3, or eager-DAG JIT O2,
+respectively.  Selection is independent in every cell: the overview records
+the measured winner rather than prescribing one mode for all processes.
+For the LC all-flow workload, the displayed setup multiplier spans the
+different setup boundaries described above and is therefore descriptive, not
+a like-for-like compiler benchmark.
+
+\input{result_matrix_best_builtin_sm_lc_table.tex}
+\input{result_matrix_best_builtin_sm_nlc_table.tex}
+\input{result_matrix_best_builtin_sm_full_table.tex}
+
+The detailed tables are grouped by execution mode, model source, and colour
+treatment.
 
 \input{result_matrix_recurrence_builtin_sm_lc_table.tex}
 \input{result_matrix_recurrence_builtin_sm_nlc_table.tex}

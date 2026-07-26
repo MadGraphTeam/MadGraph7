@@ -34,6 +34,17 @@ CachePayload = Mapping[str, object]
 _NA = empty_measurement()
 _MATRIX_BLOCK_SIZE = 3
 _Z_BLOCK_SIZE = 3
+_BEST_MODE_CODES = {
+    ExecutionMode.RECURRENCE: "A",
+    ExecutionMode.COMPILED: "B",
+    ExecutionMode.EAGER: "C",
+}
+_BEST_MODE_ORDER = tuple(_BEST_MODE_CODES)
+_BEST_MODE_TABLE_NAMES = {
+    Accuracy.LC: "result_matrix_best_builtin_sm_lc_table.tex",
+    Accuracy.NLC: "result_matrix_best_builtin_sm_nlc_table.tex",
+    Accuracy.FULL: "result_matrix_best_builtin_sm_full_table.tex",
+}
 
 
 def _chunks(values: Sequence[int], size: int) -> tuple[tuple[int, ...], ...]:
@@ -129,6 +140,23 @@ class JoinedMatrixCell:
     n_final: int
     applicable: bool
     workloads: tuple[JoinedWorkload, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BestModeWorkload:
+    workload: Workload
+    baseline: Measurement
+    candidate: Measurement
+    mode: ExecutionMode | None
+
+
+@dataclass(frozen=True, slots=True)
+class BestModeMatrixCell:
+    process_family: ProcessFamily
+    n_final: int
+    accuracy: Accuracy
+    applicable: bool
+    workloads: tuple[BestModeWorkload, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,6 +300,91 @@ class BaselineCandidateAdapter:
         )
         return JoinedWorkload(workload, baseline, candidate)
 
+    def best_mode_cell(
+        self,
+        accuracy: Accuracy,
+        family: ProcessFamily,
+        n_final: int,
+    ) -> BestModeMatrixCell:
+        """Join AmpliCol to the fastest valid built-in-SM mode per workload."""
+
+        process = family.process(n_final)
+        multiplicities = tuple(range(1, 10 if accuracy is Accuracy.LC else 6))
+        applicable = (
+            process is not None
+            and n_final in multiplicities
+            and n_final <= family.maximum_n(accuracy)
+        )
+        workloads = (
+            (Workload.SELECTED_FLOW, Workload.ALL_FLOW)
+            if accuracy is Accuracy.LC
+            else (Workload.CONTRACTED,)
+        )
+        if not applicable:
+            joined = tuple(
+                BestModeWorkload(workload, _NA, _NA, None)
+                for workload in workloads
+            )
+            return BestModeMatrixCell(
+                family,
+                n_final,
+                accuracy,
+                applicable,
+                joined,
+            )
+
+        baseline_dataset = f"reference_amplicol_{accuracy.value}"
+        joined_workloads: list[BestModeWorkload] = []
+        for workload in workloads:
+            baseline = self.index.get(
+                baseline_dataset,
+                family.key,
+                n_final,
+                workload,
+            )
+            candidates = tuple(
+                (
+                    mode,
+                    self.index.get(
+                        f"matrix_{mode.value}_builtin_sm_{accuracy.value}",
+                        family.key,
+                        n_final,
+                        workload,
+                    ),
+                )
+                for mode in _BEST_MODE_ORDER
+            )
+            eligible = tuple(
+                (mode, measurement)
+                for mode, measurement in candidates
+                if _runtime_value(measurement) is not None
+            )
+            if eligible:
+                winner_mode, winner = min(
+                    eligible,
+                    key=lambda item: (
+                        _runtime_value(item[1]),
+                        _BEST_MODE_ORDER.index(item[0]),
+                    ),
+                )
+            else:
+                winner_mode, winner = None, _NA
+            joined_workloads.append(
+                BestModeWorkload(
+                    workload,
+                    baseline,
+                    winner,
+                    winner_mode,
+                )
+            )
+        return BestModeMatrixCell(
+            family,
+            n_final,
+            accuracy,
+            applicable,
+            tuple(joined_workloads),
+        )
+
 
 def _tex_escape(value: str) -> str:
     replacements = {
@@ -335,6 +448,20 @@ def _status(measurement: Measurement) -> str:
 
 def _ok(measurement: Measurement) -> bool:
     return measurement.get("status") == ResultStatus.OK.value
+
+
+def _runtime_value(measurement: Measurement) -> float | None:
+    """Return a comparable wall time for best-mode selection."""
+
+    if not _ok(measurement):
+        return None
+    value = measurement.get("wall_seconds_per_point")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0:
+        return None
+    return number
 
 
 def _metric(measurement: Measurement, field: str, *, microseconds: bool = False) -> str:
@@ -863,6 +990,364 @@ def render_all_matrix_tables(
             catalog=catalog,
         )
         for dataset in catalog.matrix_datasets
+    }
+
+
+def _best_mode_code(mode: ExecutionMode | None) -> str:
+    if mode is None:
+        return ""
+    return rf"\bestmodecode{{{_BEST_MODE_CODES[mode]}}}"
+
+
+def _best_mode_ratio(
+    joined: BestModeWorkload,
+    field: str,
+) -> str:
+    if joined.mode is None:
+        return _status(joined.candidate)
+    if not _ok(joined.baseline):
+        return _status(joined.baseline)
+    return _ratio(joined.candidate, joined.baseline, field) + _best_mode_code(
+        joined.mode
+    )
+
+
+def _best_mode_lc_cell(view: BestModeMatrixCell) -> str:
+    selected, all_flow = view.workloads
+    baseline_generation = (
+        rf"\matrixpair{{{_metric(selected.baseline, 'generation_seconds')}}}"
+        rf"{{{_metric(all_flow.baseline, 'generation_seconds')}}}"
+    )
+    baseline_runtime = (
+        rf"\matrixpair{{"
+        rf"{_metric(selected.baseline, 'wall_seconds_per_point', microseconds=True)}"
+        rf"}}{{"
+        rf"{_metric(all_flow.baseline, 'wall_seconds_per_point', microseconds=True)}"
+        rf"}}"
+    )
+    return (
+        r"\matrixcelllc"
+        f"{{{baseline_generation}}}"
+        f"{{{_best_mode_ratio(selected, 'generation_seconds')}}}"
+        f"{{{_best_mode_ratio(all_flow, 'generation_seconds')}}}"
+        f"{{{baseline_runtime}}}"
+        f"{{{_ratio(selected.candidate, selected.baseline, 'wall_seconds_per_point')}}}"
+        f"{{{_ratio(all_flow.candidate, all_flow.baseline, 'wall_seconds_per_point')}}}"
+    )
+
+
+def _best_mode_contracted_cell(view: BestModeMatrixCell) -> str:
+    joined = view.workloads[0]
+    return (
+        r"\matrixcellcontracted"
+        f"{{{_metric(joined.baseline, 'generation_seconds')}}}"
+        f"{{{_best_mode_ratio(joined, 'generation_seconds')}}}"
+        f"{{{_metric(joined.baseline, 'wall_seconds_per_point', microseconds=True)}}}"
+        f"{{{_ratio(joined.candidate, joined.baseline, 'wall_seconds_per_point')}}}"
+    )
+
+
+def _best_mode_summary_pair(
+    views: Sequence[BestModeMatrixCell],
+    workload: Workload,
+    field: str,
+    *,
+    microseconds: bool = False,
+    show_mode_mix: bool = False,
+) -> str:
+    joined = tuple(
+        next(item for item in view.workloads if item.workload is workload)
+        for view in views
+        if view.applicable
+    )
+    valid = tuple(
+        item
+        for item in joined
+        if item.mode is not None
+        and _ok(item.baseline)
+        and _ok(item.candidate)
+        and item.baseline.get(field) is not None
+        and item.candidate.get(field) is not None
+        and below_resolution_record(item.baseline, field) is None
+        and below_resolution_record(item.candidate, field) is None
+    )
+    if not valid:
+        return r"\matrixna{ReportMuted}"
+    baseline_sum = math.fsum(float(item.baseline[field]) for item in valid)
+    candidate_sum = math.fsum(float(item.candidate[field]) for item in valid)
+    baseline_mean = baseline_sum / len(valid)
+    ratio = candidate_sum / baseline_sum if baseline_sum > 0.0 else math.nan
+    baseline_text = _time(baseline_mean, microseconds=microseconds)
+    ratio_text = (
+        r"\matrixnaratio{ReportMuted}"
+        if not math.isfinite(ratio)
+        else _ratio(
+            {
+                "status": ResultStatus.OK.value,
+                field: candidate_sum,
+            },
+            {
+                "status": ResultStatus.OK.value,
+                field: baseline_sum,
+            },
+            field,
+        )
+    )
+    if show_mode_mix:
+        counts = {
+            mode: sum(item.mode is mode for item in valid)
+            for mode in _BEST_MODE_ORDER
+        }
+        ratio_text += (
+            r"\bestmodemix{"
+            + "/".join(
+                f"{_BEST_MODE_CODES[mode]}:{counts[mode]}"
+                for mode in _BEST_MODE_ORDER
+            )
+            + "}"
+        )
+    return rf"\matrixsummarypair{{{baseline_text}}}{{{ratio_text}}}"
+
+
+def _best_mode_generation_summary(
+    views: Sequence[BestModeMatrixCell],
+    accuracy: Accuracy,
+) -> str:
+    if accuracy is Accuracy.LC:
+        selected = _best_mode_summary_pair(
+            views,
+            Workload.SELECTED_FLOW,
+            "generation_seconds",
+            show_mode_mix=True,
+        )
+        all_flow = _best_mode_summary_pair(
+            views,
+            Workload.ALL_FLOW,
+            "generation_seconds",
+            show_mode_mix=True,
+        )
+        return (
+            rf"\matrixpair{{{selected}}}{{{all_flow}}}"
+        )
+    return _best_mode_summary_pair(
+        views,
+        Workload.CONTRACTED,
+        "generation_seconds",
+        show_mode_mix=True,
+    )
+
+
+def _best_mode_wall_summary(
+    views: Sequence[BestModeMatrixCell],
+    accuracy: Accuracy,
+) -> str:
+    if accuracy is Accuracy.LC:
+        selected = _best_mode_summary_pair(
+            views,
+            Workload.SELECTED_FLOW,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
+        all_flow = _best_mode_summary_pair(
+            views,
+            Workload.ALL_FLOW,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
+        return (
+            rf"\matrixpair{{{selected}}}{{{all_flow}}}"
+        )
+    return _best_mode_summary_pair(
+        views,
+        Workload.CONTRACTED,
+        "wall_seconds_per_point",
+        microseconds=True,
+    )
+
+
+def _best_mode_block(
+    adapter: BaselineCandidateAdapter,
+    accuracy: Accuracy,
+    multiplicities: tuple[int, ...],
+    *,
+    block_index: int,
+    block_count: int,
+) -> list[str]:
+    accuracy_label = {
+        Accuracy.LC: "LC",
+        Accuracy.NLC: "NLC",
+        Accuracy.FULL: "full-colour",
+    }[accuracy]
+    column_spec = (
+        r"@{}r@{\hspace{0.04in}}L{1.65in}"
+        + "".join(r"@{\hspace{0.06in}}L{2.49in}" for _ in multiplicities)
+        + r"@{}"
+    )
+    lines = [
+        r"\clearpage",
+        r"\noindent\begin{minipage}{\linewidth}",
+        (
+            rf"\subsubsection*{{Built-in SM best measured mode versus AmpliCol "
+            rf"{accuracy_label}"
+            + (
+                ""
+                if block_count == 1
+                else rf" (block {block_index + 1} of {block_count})"
+            )
+            + "}"
+        ),
+        r"\begingroup",
+        r"\scriptsize",
+        r"\setlength{\tabcolsep}{2.1pt}",
+        r"\renewcommand{\arraystretch}{1.06}",
+        rf"\begin{{tabular}}{{{column_spec}}}",
+        r"\toprule",
+        (
+            r"\textbf{ID} & \textbf{base process} & "
+            + " & ".join(rf"\textbf{{n={n_final}}}" for n_final in multiplicities)
+            + r" \\"
+        ),
+        r"\specialrule{0.85pt}{0pt}{0pt}",
+    ]
+    views_by_n: dict[int, list[BestModeMatrixCell]] = {
+        n_final: [] for n_final in multiplicities
+    }
+    for row_index, family in enumerate(adapter.catalog.process_families):
+        row = [rf"\texttt{{{family.identifier}}}", family.label_tex]
+        for n_final in multiplicities:
+            view = adapter.best_mode_cell(accuracy, family, n_final)
+            views_by_n[n_final].append(view)
+            if not view.applicable:
+                row.append(_not_applicable())
+            elif accuracy is Accuracy.LC:
+                row.append(_best_mode_lc_cell(view))
+            else:
+                row.append(_best_mode_contracted_cell(view))
+        if row_index % 2 == 0:
+            lines.append(r"\rowcolor{refblue}")
+        lines.append(" & ".join(row) + r" \\")
+        lines.append(r"\addlinespace[0.05em]")
+    boundary_note = (
+        r" For the LC all-flow workload, the generation multiplier compares "
+        r"pyAmpliCol process generation with AmpliCol direct-evaluation setup; "
+        r"it is a setup-cost indicator across different boundaries, not a "
+        r"like-for-like compiler benchmark."
+        if accuracy is Accuracy.LC
+        else ""
+    )
+    lines.extend(
+        [
+            r"\specialrule{1.05pt}{0.22em}{0.18em}",
+            (
+                r"\multicolumn{2}{@{}l}{\textbf{summary: generation}} & "
+                + " & ".join(
+                    _best_mode_generation_summary(
+                        views_by_n[n_final],
+                        accuracy,
+                    )
+                    for n_final in multiplicities
+                )
+                + r" \\"
+            ),
+            r"\addlinespace[0.08em]",
+            (
+                r"\multicolumn{2}{@{}l}{\textbf{summary: wall}} & "
+                + " & ".join(
+                    _best_mode_wall_summary(
+                        views_by_n[n_final],
+                        accuracy,
+                    )
+                    for n_final in multiplicities
+                )
+                + r" \\"
+            ),
+            r"\bottomrule",
+            r"\end{tabular}",
+            r"\endgroup",
+            (
+                r"\ReportTableNote{The candidate is selected independently in "
+                r"each cell and workload by the smallest validated wall time. "
+                r"Generation multipliers identify that runtime winner: "
+                r"\texttt{(A)} recurrence JIT O2, \texttt{(B)} compiled JIT O3, "
+                r"and \texttt{(C)} eager-DAG JIT O2. Runtime entries are "
+                r"winner/AmpliCol wall-time multipliers."
+                + boundary_note
+                + r" Summary mode counts use the order A/B/C.}"
+            ),
+            r"\end{minipage}",
+        ]
+    )
+    return lines
+
+
+def render_best_mode_table(
+    accuracy: Accuracy,
+    caches: Mapping[str, CachePayload] | Iterable[CachePayload],
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> str:
+    """Render the fastest valid built-in mode against AmpliCol."""
+
+    adapter = BaselineCandidateAdapter(caches, catalog=catalog)
+    multiplicities = tuple(range(1, 10 if accuracy is Accuracy.LC else 6))
+    blocks = _chunks(multiplicities, _MATRIX_BLOCK_SIZE)
+    accuracy_label = {
+        Accuracy.LC: "LC",
+        Accuracy.NLC: "NLC",
+        Accuracy.FULL: "full-colour",
+    }[accuracy]
+    lines = [
+        "% SPDX-License-Identifier: 0BSD",
+        "% Generated by tools/performance_report/render.py; do not edit.",
+        *_matrix_macros(),
+        (
+            r"\providecommand{\matrixpair}[2]{"
+            r"\begin{tabular}[t]{@{}l@{\hspace{0.025in}/\hspace{0.025in}}l@{}}"
+            r"#1&#2\end{tabular}}"
+        ),
+        (
+            r"\providecommand{\matrixsummarypair}[2]{"
+            r"\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}"
+        ),
+        (
+            r"\providecommand{\bestmodecode}[1]{"
+            r"\hspace{0.025in}\textcolor{ReportBlue}{\texttt{(#1)}}}"
+        ),
+        (
+            r"\providecommand{\bestmodemix}[1]{"
+            r"\hspace{0.025in}\textcolor{ReportBlue}{\texttt{[#1]}}}"
+        ),
+        r"\clearpage",
+        (
+            r"\subsection{Built-in SM best measured mode versus AmpliCol: "
+            f"{accuracy_label}}}"
+        ),
+    ]
+    for block_index, block in enumerate(blocks):
+        rendered = _best_mode_block(
+            adapter,
+            accuracy,
+            block,
+            block_index=block_index,
+            block_count=len(blocks),
+        )
+        lines.extend(rendered[1:] if block_index == 0 else rendered)
+    return "\n".join(lines) + "\n"
+
+
+def render_all_best_mode_tables(
+    caches: Mapping[str, CachePayload] | Iterable[CachePayload],
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> dict[str, str]:
+    cache_source = caches if isinstance(caches, Mapping) else tuple(caches)
+    return {
+        _BEST_MODE_TABLE_NAMES[accuracy]: render_best_mode_table(
+            accuracy,
+            cache_source,
+            catalog=catalog,
+        )
+        for accuracy in Accuracy
     }
 
 
@@ -1590,6 +2075,7 @@ def render_all_tables(
             cache_source,
             catalog=catalog,
         ),
+        **render_all_best_mode_tables(cache_source, catalog=catalog),
         **render_all_matrix_tables(cache_source, catalog=catalog),
         **render_all_z_ladders(cache_source, catalog=catalog),
         **render_all_scalar_ladders(cache_source, catalog=catalog),
@@ -1602,10 +2088,12 @@ __all__ = [
     "JoinedWorkload",
     "MeasurementIndex",
     "VisibleCompleteness",
+    "render_all_best_mode_tables",
     "render_all_matrix_tables",
     "render_all_scalar_ladders",
     "render_all_tables",
     "render_all_z_ladders",
+    "render_best_mode_table",
     "render_matrix_table",
     "render_scalar_ladder",
     "render_validation_summary",

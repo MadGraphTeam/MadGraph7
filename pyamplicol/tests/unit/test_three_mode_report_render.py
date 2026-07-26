@@ -9,6 +9,7 @@ import tools.performance_report.render as report_render
 from tools.performance_report.cache import build_reset_caches
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.models import (
+    Accuracy,
     ExecutionMode,
     ModelKey,
     ResultStatus,
@@ -17,9 +18,11 @@ from tools.performance_report.models import (
 from tools.performance_report.render import (
     BaselineCandidateAdapter,
     _ratio_value,
+    render_all_best_mode_tables,
     render_all_matrix_tables,
     render_all_tables,
     render_all_z_ladders,
+    render_best_mode_table,
     render_matrix_table,
     render_scalar_ladder,
     render_z_ladder,
@@ -161,6 +164,116 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
 
     assert len(rendered) == 12
     assert list(rendered) == expected
+
+
+def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> None:
+    caches = copy.deepcopy(reset_caches)
+    reference = _cache_by_dataset(caches, "reference_amplicol_lc")
+    candidates = {
+        mode: _cache_by_dataset(
+            caches,
+            f"matrix_{mode.value}_builtin_sm_lc",
+        )
+        for mode in (
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+        )
+    }
+    for workload in (Workload.SELECTED_FLOW, Workload.ALL_FLOW):
+        _set_ok(
+            reference,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+            generation=10.0,
+            wall=10.0e-6,
+            execution=None,
+        )
+    timings = {
+        ExecutionMode.RECURRENCE: (3.0e-6, 4.0e-6),
+        ExecutionMode.COMPILED: (1.0e-6, 2.0e-6),
+        ExecutionMode.EAGER: (2.0e-6, 1.0e-6),
+    }
+    generations = {
+        ExecutionMode.RECURRENCE: 6.0,
+        ExecutionMode.COMPILED: 4.0,
+        ExecutionMode.EAGER: 5.0,
+    }
+    for mode, (selected_wall, all_flow_wall) in timings.items():
+        for workload, wall in (
+            (Workload.SELECTED_FLOW, selected_wall),
+            (Workload.ALL_FLOW, all_flow_wall),
+        ):
+            _set_ok(
+                candidates[mode],
+                process_key="dd_z_jets",
+                n_final=1,
+                workload=workload,
+                generation=generations[mode],
+                wall=wall,
+                execution=wall,
+            )
+
+    adapter = BaselineCandidateAdapter(caches)
+    view = adapter.best_mode_cell(
+        Accuracy.LC,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert view.workloads[0].mode is ExecutionMode.COMPILED
+    assert view.workloads[1].mode is ExecutionMode.EAGER
+
+    tex = render_best_mode_table(Accuracy.LC, caches)
+    row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
+    assert r"\matrixratio{ReportGreen}{0.4}\bestmodecode{B}" in row
+    assert r"\matrixratio{ReportGreen}{0.5}\bestmodecode{C}" in row
+
+
+def test_best_mode_summary_tie_breaks_in_documented_mode_order(reset_caches) -> None:
+    caches = copy.deepcopy(reset_caches)
+    for workload in (Workload.SELECTED_FLOW, Workload.ALL_FLOW):
+        _set_ok(
+            _cache_by_dataset(caches, "reference_amplicol_lc"),
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+            generation=10.0,
+            wall=10.0e-6,
+            execution=None,
+        )
+        for mode in (
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+        ):
+            _set_ok(
+                _cache_by_dataset(
+                    caches,
+                    f"matrix_{mode.value}_builtin_sm_lc",
+                ),
+                process_key="dd_z_jets",
+                n_final=1,
+                workload=workload,
+                generation=5.0,
+                wall=1.0e-6,
+                execution=1.0e-6,
+            )
+
+    view = BaselineCandidateAdapter(caches).best_mode_cell(
+        Accuracy.LC,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert {item.mode for item in view.workloads} == {
+        ExecutionMode.RECURRENCE
+    }
+    rendered = render_all_best_mode_tables(caches)
+    assert list(rendered) == [
+        "result_matrix_best_builtin_sm_lc_table.tex",
+        "result_matrix_best_builtin_sm_nlc_table.tex",
+        "result_matrix_best_builtin_sm_full_table.tex",
+    ]
 
 
 def test_matrix_baseline_labels_follow_dataset_contract(reset_caches) -> None:
@@ -713,8 +826,9 @@ def test_all_outputs_include_matrices_z_and_scalar_ladders(
 ) -> None:
     rendered = render_all_tables(reset_caches)
 
-    assert len(rendered) == 17
+    assert len(rendered) == 20
     assert "result_validation_summary.tex" in rendered
+    assert set(render_all_best_mode_tables(reset_caches)) < set(rendered)
     assert set(render_all_matrix_tables(reset_caches)) < set(rendered)
     assert set(render_all_z_ladders(reset_caches)) < set(rendered)
     assert "result_scalar_contact_table.tex" in rendered
