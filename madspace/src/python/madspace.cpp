@@ -1378,7 +1378,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readwrite(
             "softclip_threshold", &MadnisTraining::Config::softclip_threshold
-        );
+        )
+        .def_readwrite("reproducible", &MadnisTraining::Config::reproducible);
 
     py::classh<MadnisTraining>(m, "MadnisTraining")
         .def(

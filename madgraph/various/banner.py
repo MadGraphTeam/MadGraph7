@@ -6594,6 +6594,7 @@ class RunCardMG7(RunCard):
             allowed=['none', 'uniform', 'learned'])
         self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33)
         self.add_toml_param('madnis', 'softclip_threshold', 30.0)
+        self.add_toml_param('madnis', 'reproducible', False)
 
         # ----------------- dynamic (free-form) sections ---------------
         self.dynamic_sections['multiparticles'] = collections.OrderedDict([

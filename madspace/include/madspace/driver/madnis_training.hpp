@@ -42,6 +42,10 @@ public:
         double buffer_unweighting_quantile = 0.99;
         double fixed_cwnet_fraction = 0.33;
         double softclip_threshold = 0.0;
+        // Makes generator-job scheduling (CPU only) deterministic given the same
+        // seed, independent of thread count, at some cost to throughput/memory.
+        // GPU multi-channel batches are unaffected and stay non-deterministic.
+        bool reproducible = false;
     };
     MadnisTraining(
         ContextPtr generator_context,
@@ -67,9 +71,7 @@ private:
     struct SampleJob {
         SampleBatch samples;
         SampleBatch unweighted_samples;
-        // Per-channel dispatch sequence number (see start_single_job), used to commit
-        // results in dispatch order regardless of completion order. Unused (left at
-        // 0) for multi-channel GPU jobs, which are committed on completion instead.
+        // per-channel dispatch sequence, used to commit in order; unused for GPU jobs
         std::size_t channel_seq = 0;
     };
     struct ChannelData {
@@ -83,13 +85,13 @@ private:
         RuntimePtr generator_runtime = nullptr;
         RuntimePtr unweighter_runtime = nullptr;
         SampleBatch buffer;
-        // Commit-ordering state for single-channel (CPU) generator jobs: each
-        // dispatched job gets the next channel-local sequence number, and results are
-        // applied (see process_job_results) only once all earlier-numbered jobs for
-        // this channel have already been applied.
+        // commit-ordering state for single-channel generator jobs (see
+        // process_job_results)
         std::size_t next_dispatch_seq = 0;
         std::size_t commit_cursor = 0;
         std::unordered_map<std::size_t, std::size_t> ready_job_ids;
+        // reproducible mode: samples staged here, flushed into buffer next round
+        std::vector<SampleBatch> pending_buffer_samples;
     };
 
     inline static std::function<void(void)> _abort_check_function = [] {};
@@ -97,6 +99,9 @@ private:
     void build_runtimes_and_optimizer();
     std::vector<std::size_t> compute_channel_sizes();
     void start_generator_jobs(const std::vector<std::size_t>& channel_fractions);
+    void maybe_start_generator_jobs(
+        const std::vector<std::size_t>& channel_fractions, bool is_online_attempt
+    );
     TensorVec permute_tensors(const TensorVec& tensors) const;
     void start_single_job(std::size_t channel_index, std::size_t batch_size);
     void start_multi_job(const std::vector<std::size_t> batch_sizes);
@@ -129,6 +134,8 @@ private:
     bool _buffer_ready = false;
     std::vector<std::size_t> _active_flavors_count;
     std::uint64_t _seed;
+    // sequence for seeding build_buffered_training_batch's BatchSampler::run() call
+    std::size_t _buffered_batch_seq = 0;
 };
 
 class MultiMadnisTraining {

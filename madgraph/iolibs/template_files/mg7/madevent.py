@@ -532,6 +532,7 @@ class MadgraphProcess:
         config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
         config.fixed_cwnet_fraction = madnis_args["fixed_cwnet_fraction"]
         config.softclip_threshold = madnis_args["softclip_threshold"]
+        config.reproducible = madnis_args["reproducible"]
         madnis_phasespaces = []
         integrands = []
         cwnets = []

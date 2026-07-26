@@ -1,5 +1,7 @@
 #include "madspace/driver/madnis_training.hpp"
 
+#include <limits>
+
 #include "madspace/driver/random.hpp"
 #include "madspace/phasespace/batch_sampler.hpp"
 
@@ -57,7 +59,7 @@ void MadnisTraining::train_step(std::size_t batch_index) {
         _config.buffer_capacity > 0 && batch_index % (_config.buffered_steps + 1) != 0;
     TensorVec training_batch;
     while (true) {
-        start_generator_jobs(channel_sizes);
+        maybe_start_generator_jobs(channel_sizes, !try_buffered);
         if (try_buffered) {
             if (check_buffered_training_batch(channel_sizes)) {
                 training_batch = build_buffered_training_batch(channel_sizes);
@@ -265,20 +267,18 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
     if (_running_jobs.size() > 0) {
         return;
     }
-    // KNOWN LIMITATION: the weight snapshot taken below is gated by
-    // "all previously dispatched jobs have completed", a condition that depends
-    // on real wall-clock thread-completion timing rather than a deterministic
-    // logical step boundary. Under concurrent execution, the number and
-    // position of these snapshot/round boundaries can therefore vary between
-    // otherwise identically-seeded runs (e.g. depending on how batches happen
-    // to be scheduled across worker threads), which can make full end-to-end
-    // training reproducibility intermittently flaky even though every
-    // individual job is itself deterministically seeded. Fixing this would
-    // require pinning round boundaries to a deterministic step counter instead
-    // of thread-completion state; left as a follow-up design discussion.
+    bool is_gpu = _generator_context->device()->device_type() != DeviceType::cpu;
+    if (_config.reproducible && !is_gpu) {
+        // flush buffer samples staged since the last round (see process_job_results)
+        for (auto& channel : _channels) {
+            for (auto& pending : channel.pending_buffer_samples) {
+                buffer_store(channel, pending);
+            }
+            channel.pending_buffer_samples.clear();
+        }
+    }
     _generator_params.copy_from(_optimizer->parameters());
     std::size_t chan_count = counts.size();
-    bool is_gpu = _generator_context->device()->device_type() != DeviceType::cpu;
     std::size_t batch_size = is_gpu
         ? _config.gpu_generator_batch_granularity
         : _config.cpu_generator_batch_size;
@@ -294,7 +294,11 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
             ? (target_count - channel.sample_count + batch_size - 1) / batch_size
             : 0;
     }
-    std::size_t available_jobs = _generator_context->thread_pool().thread_count();
+    // reproducible mode (CPU only): dispatch the full round in one shot, uncapped
+    // by thread count, so round contents don't depend on thread count
+    std::size_t available_jobs = _config.reproducible && !is_gpu
+        ? std::numeric_limits<std::size_t>::max()
+        : _generator_context->thread_pool().thread_count();
     std::vector<std::size_t> channel_sizes;
     std::size_t gpu_subbatches =
         (_config.gpu_generator_batch_size + _config.gpu_generator_batch_granularity -
@@ -363,6 +367,32 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
     }
 }
 
+// Reproducible mode (CPU only) additionally requires an online attempt and the
+// online cache to be exhausted or about to be, both deterministic conditions.
+void MadnisTraining::maybe_start_generator_jobs(
+    const std::vector<std::size_t>& counts, bool is_online_attempt
+) {
+    if (_running_jobs.size() > 0) {
+        return;
+    }
+    if (_config.reproducible) {
+        if (!is_online_attempt) {
+            return;
+        }
+        bool depletion_imminent = false;
+        for (auto [channel, count] : zip(_channels, counts)) {
+            if (count >= channel.sample_count) {
+                depletion_imminent = true;
+                break;
+            }
+        }
+        if (!depletion_imminent) {
+            return;
+        }
+    }
+    start_generator_jobs(counts);
+}
+
 TensorVec MadnisTraining::permute_tensors(const TensorVec& tensors) const {
     TensorVec ret;
     ret.reserve(tensors.size());
@@ -372,13 +402,8 @@ TensorVec MadnisTraining::permute_tensors(const TensorVec& tensors) const {
     return ret;
 }
 
-// Assigns the job's base seed on the scheduling thread, from its logical identity
-// only (channel index, channel-local sequence) -- never from which worker thread ends
-// up running it -- so the sample stream doesn't depend on the thread pool's
-// scheduling. generator_runtime is built with concurrent=false (see
-// build_runtimes_and_optimizer), so a single job's own graph execution is always
-// single-threaded and safe to seed even though many jobs run concurrently across
-// the thread pool.
+// Seed depends only on channel index and channel-local sequence, not on which
+// worker thread runs the job.
 void MadnisTraining::start_single_job(
     std::size_t channel_index, std::size_t batch_size
 ) {
@@ -401,7 +426,13 @@ void MadnisTraining::start_single_job(
             job.samples.size = samples.at(0).size(0);
             job.samples.channel_index = channel_index;
             if (channel.unweighter_runtime) {
-                auto unw_samples = channel.unweighter_runtime->run(samples);
+                std::optional<std::uint64_t> unweight_seed = seed
+                    ? std::optional<std::uint64_t>(
+                          mix_seed(*seed, {salt::madnis_train_unweight})
+                      )
+                    : std::nullopt;
+                auto unw_samples =
+                    channel.unweighter_runtime->run(samples, unweight_seed);
                 job.unweighted_samples.tensors = permute_tensors(unw_samples);
                 job.unweighted_samples.size = unw_samples.at(0).size(0);
                 job.unweighted_samples.channel_index = channel_index;
@@ -411,8 +442,8 @@ void MadnisTraining::start_single_job(
     );
 }
 
-// TODO: GPU multi-channel batches aren't seeded or given a commit-ordering scheme
-// (see process_job_results) -- left for a follow-up, like the buffered-training path.
+// TODO: GPU multi-channel batches aren't seeded or commit-ordered, unlike
+// start_single_job.
 void MadnisTraining::start_multi_job(const std::vector<std::size_t> batch_sizes) {
     std::size_t job_id = _job_id;
     ++_job_id;
@@ -533,15 +564,19 @@ MadnisTraining::build_buffered_training_batch(const std::vector<size_t>& counts)
         }
     }
     args.emplace_back(counts);
-    return _multi_channel_sampler->run(args);
+    std::optional<std::uint64_t> seed = _seed == 0
+        ? std::nullopt
+        : std::optional<std::uint64_t>(
+              mix_seed(_seed, {salt::buffered_batch_sample, _buffered_batch_seq++})
+          );
+    return _multi_channel_sampler->run(args, seed);
 }
 
 void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids) {
     for (auto job_id : job_ids) {
         auto& job = _running_jobs.at(job_id);
         if (job.samples.channel_sizes.size() == 0) {
-            // Single-channel (CPU) job: mark ready, committed below strictly in
-            // dispatch order so results don't depend on completion timing.
+            // single-channel job: mark ready, committed below in dispatch order
             _channels.at(job.samples.channel_index)
                 .ready_job_ids.emplace(job.channel_seq, job_id);
             continue;
@@ -581,8 +616,7 @@ void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids
         }
     }
 
-    // Commit each channel's completed single-channel jobs strictly in dispatch order
-    // (channel_seq), independent of which job happened to finish first.
+    // commit each channel's ready jobs strictly in dispatch order
     for (auto& channel : _channels) {
         for (auto it = channel.ready_job_ids.find(channel.commit_cursor);
              it != channel.ready_job_ids.end();
@@ -593,7 +627,14 @@ void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids
             channel.sample_count += committed_job.samples.size;
             channel.sample_batches.push_back(std::move(committed_job.samples));
             if (committed_job.unweighted_samples.size > 0) {
-                buffer_store(channel, committed_job.unweighted_samples);
+                if (_config.reproducible) {
+                    // flushed into buffer at the start of the next round instead
+                    channel.pending_buffer_samples.push_back(
+                        std::move(committed_job.unweighted_samples)
+                    );
+                } else {
+                    buffer_store(channel, committed_job.unweighted_samples);
+                }
             }
         }
     }
@@ -687,8 +728,7 @@ void MadnisTraining::drop_channels() {
     }
     std::vector<std::size_t> indices(_channels.size());
     std::iota(indices.begin(), indices.end(), 0);
-    // stable_sort: exact ties in abs_means (e.g. symmetric/charge-conjugate channels)
-    // must break the same way every run, not depend on sort implementation details.
+    // stable_sort: exact ties (e.g. charge-conjugate channels) must break consistently
     std::stable_sort(indices.begin(), indices.end(), [&](auto i, auto j) {
         return abs_means.at(i) < abs_means.at(j);
     });
@@ -715,8 +755,7 @@ void MadnisTraining::drop_channels() {
                         return _active_flavors_count.at(flav_index) == 0;
                     }
                 )) {
-                // cannot drop this channel because one of its flavors is not
-                // available in any other channel
+                // a flavor of this channel has no other channel to fall back to
                 continue;
             }
             for (std::size_t flav_index : active_flavors) {
@@ -771,8 +810,7 @@ MultiMadnisTraining::MultiMadnisTraining(
 ) :
     _config(config) {
     _subprocesses.reserve(integrands.size());
-    // Each subprocess gets its own derived seed so their per-job streams (see
-    // MadnisTraining::start_single_job) don't collide with each other.
+    // each subprocess gets its own derived seed so their streams don't collide
     for (std::size_t subproc_index = 0; auto [integ, cwnet] : zip(integrands, cwnets)) {
         _subprocesses.emplace_back(
             generator_context,
