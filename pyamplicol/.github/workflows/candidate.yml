@@ -177,7 +177,7 @@ jobs:
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
       - name: Build pinned baseline dependency environment
-        working-directory: /tmp/pyamplicol-eager-compiled-arena-base-src
+        working-directory: /private/tmp/pyamplicol-eager-compiled-arena-base-src
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py

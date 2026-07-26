@@ -198,10 +198,12 @@ def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
     assert "runs-on: ubuntu-24.04" in runtime_job
     assert "timeout-minutes: 360" in runtime_job
     assert "needs: release-tool-tests" in runtime_job
+    baseline_root = "/private/tmp/pyamplicol-eager-compiled-arena-base-src"
+    assert f"BASELINE_SOURCE_ROOT: {baseline_root}" in runtime_job
+    assert f"working-directory: {baseline_root}" in runtime_job
     assert (
-        "BASELINE_SOURCE_ROOT: "
-        "/private/tmp/pyamplicol-eager-compiled-arena-base-src"
-        in runtime_job
+        "working-directory: /tmp/pyamplicol-eager-compiled-arena-base-src"
+        not in runtime_job
     )
     private_tmp_setup = "sudo install -d -m 1777 /private/tmp"
     assert private_tmp_setup in runtime_job
