@@ -27,11 +27,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::ptr;
 use symjit::{
-    Config, DIRECT_EXACT_FACTOR_IMAG_SCALAR, DIRECT_EXACT_FACTOR_REAL_SCALAR, DIRECT_NO_ALIAS,
+    Config, DIRECT_COMPLEX_SCALE_IMAG_SCALAR, DIRECT_COMPLEX_SCALE_REAL_SCALAR, DIRECT_NO_ALIAS,
     DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT, DIRECT_STATUS_INVALID_CONTEXT,
     Defuns, DirectApplication, DirectApplicationMetadata, DirectCallable,
-    DirectDestinationOperation as SymjitDestinationOperation, DirectInputBinding, DirectPlane,
-    DirectScalar,
+    DirectDestinationOperation as SymjitDestinationOperation, DirectInputBinding,
+    DirectInputSnapshot as SymjitInputSnapshot, DirectOutputScale, DirectPlane, DirectScalar,
 };
 #[cfg(test)]
 use symjit::{DIRECT_APPLICATION_STORAGE_ABI, Storage};
@@ -408,9 +408,9 @@ fn validate_projections(
             metadata.scalar_input_count
         )));
     }
-    if scalars.get(DIRECT_EXACT_FACTOR_REAL_SCALAR as usize)
+    if scalars.get(DIRECT_COMPLEX_SCALE_REAL_SCALAR as usize)
         != Some(&SymjitDirectScalarProjection::ExactFactor { imaginary: false })
-        || scalars.get(DIRECT_EXACT_FACTOR_IMAG_SCALAR as usize)
+        || scalars.get(DIRECT_COMPLEX_SCALE_IMAG_SCALAR as usize)
             != Some(&SymjitDirectScalarProjection::ExactFactor { imaginary: true })
     {
         return Err(RusticolError::integrity(
@@ -418,10 +418,19 @@ fn validate_projections(
         ));
     }
 
-    let expected_operation = match role {
-        DirectExecutorRole::Contribution => SymjitDestinationOperation::Add,
-        DirectExecutorRole::Finalization => SymjitDestinationOperation::FinalizeInPlace,
-        DirectExecutorRole::Closure => SymjitDestinationOperation::ClosureAdd,
+    let (expected_operation, expected_snapshot) = match role {
+        DirectExecutorRole::Contribution => (
+            SymjitDestinationOperation::Accumulate,
+            SymjitInputSnapshot::Live,
+        ),
+        DirectExecutorRole::Finalization => (
+            SymjitDestinationOperation::Overwrite,
+            SymjitInputSnapshot::BeforeWrite,
+        ),
+        DirectExecutorRole::Closure => (
+            SymjitDestinationOperation::Accumulate,
+            SymjitInputSnapshot::BeforeWrite,
+        ),
         DirectExecutorRole::Source => {
             return Err(RusticolError::compatibility(
                 "recurrence source executors are Rusticol SourceIR intrinsics",
@@ -433,6 +442,17 @@ fn validate_projections(
             "SymJIT direct destination operation {:?} does not match executor role {role:?}",
             metadata.destination_operation
         )));
+    }
+    if metadata.input_snapshot != expected_snapshot {
+        return Err(RusticolError::integrity(format!(
+            "SymJIT direct input snapshot {:?} does not match executor role {role:?}",
+            metadata.input_snapshot
+        )));
+    }
+    if metadata.output_scale != DirectOutputScale::ComplexScalar {
+        return Err(RusticolError::integrity(
+            "recurrence SymJIT direct applications must use complex-scalar output scaling",
+        ));
     }
     let total_plane_count = input_planes
         .len()
@@ -1142,7 +1162,9 @@ pub(crate) mod tests {
             .compile_params(&[], &[expression], &[parent, coupling])
             .unwrap();
         let metadata = DirectApplicationMetadata::new(
-            SymjitDestinationOperation::Add,
+            SymjitDestinationOperation::Accumulate,
+            SymjitInputSnapshot::Live,
+            DirectOutputScale::ComplexScalar,
             vec![],
             vec![
                 DirectInputBinding::Plane(0),
@@ -1175,7 +1197,9 @@ pub(crate) mod tests {
             .compile_params(&[], &[expression], &[parent, coupling])
             .unwrap();
         let metadata = DirectApplicationMetadata::new(
-            SymjitDestinationOperation::ClosureAdd,
+            SymjitDestinationOperation::Accumulate,
+            SymjitInputSnapshot::BeforeWrite,
+            DirectOutputScale::ComplexScalar,
             vec![],
             vec![
                 DirectInputBinding::Plane(0),
@@ -1208,7 +1232,9 @@ pub(crate) mod tests {
             .compile_params(&[], &[expression], &[parent, coupling])
             .unwrap();
         let metadata = DirectApplicationMetadata::new(
-            SymjitDestinationOperation::Add,
+            SymjitDestinationOperation::Accumulate,
+            SymjitInputSnapshot::Live,
+            DirectOutputScale::ComplexScalar,
             vec![],
             vec![
                 DirectInputBinding::Plane(0),
@@ -1249,7 +1275,9 @@ pub(crate) mod tests {
             .unwrap();
         let parameter_bindings = (0..8).map(DirectInputBinding::Plane).collect::<Vec<_>>();
         let metadata = DirectApplicationMetadata::new(
-            SymjitDestinationOperation::FinalizeInPlace,
+            SymjitDestinationOperation::Overwrite,
+            SymjitInputSnapshot::BeforeWrite,
+            DirectOutputScale::ComplexScalar,
             vec![],
             parameter_bindings,
             16,
@@ -1985,7 +2013,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn authenticated_destination_operation_must_match_executor_role() {
+    fn destination_snapshot_policy_must_match_executor_role() {
         let error = LoadedSymjitDirectExecutor::load_bytes(
             &direct_closure_bytes(),
             PathBuf::from("closure-as-contribution.symjit"),
@@ -1996,7 +2024,7 @@ pub(crate) mod tests {
         )
         .err()
         .unwrap();
-        assert!(error.to_string().contains("destination operation"));
+        assert!(error.to_string().contains("input snapshot"));
     }
 
     #[test]

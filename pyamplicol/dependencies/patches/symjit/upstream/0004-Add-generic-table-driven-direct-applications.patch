@@ -1,375 +1,502 @@
-diff --git a/.gitignore b/.gitignore
+From 89efdb806e7fcd9ac68a9d38f3f2880adf1987d2 Mon Sep 17 00:00:00 2001
+From: ValentinHirschi <valentin.hirschi@gmail.com>
+Date: Sun, 26 Jul 2026 15:41:33 +0200
+Subject: [PATCH] Add generic table-driven direct applications
+
+---
+ DIRECT_TABLE.md      |   34 +
+ rust/amd/asm.rs      |   29 +-
+ rust/amd/mod.rs      |    1 +
+ rust/amd/table.rs    |  359 ++++
+ rust/arm/macros.rs   |   20 +-
+ rust/arm/mod.rs      |    1 +
+ rust/arm/table.rs    |  440 ++++
+ rust/direct_table.rs | 4712 ++++++++++++++++++++++++++++++++++++++++++
+ rust/lib.rs          |    8 +
+ 9 files changed, 5602 insertions(+), 2 deletions(-)
+ create mode 100644 DIRECT_TABLE.md
+ create mode 100644 rust/amd/table.rs
+ create mode 100644 rust/arm/table.rs
+ create mode 100644 rust/direct_table.rs
+
+diff --git a/DIRECT_TABLE.md b/DIRECT_TABLE.md
 new file mode 100644
-index 0000000..042776a
+index 0000000..addfe97
 --- /dev/null
-+++ b/.gitignore
-@@ -0,0 +1,2 @@
-+/Cargo.lock
-+/target/
-diff --git a/COMBINED_DIRECT_ARENA_MRE.md b/COMBINED_DIRECT_ARENA_MRE.md
-new file mode 100644
-index 0000000..558b393
---- /dev/null
-+++ b/COMBINED_DIRECT_ARENA_MRE.md
-@@ -0,0 +1,69 @@
-+# Combined Eager and Compiled Direct-Arena MRE
++++ b/DIRECT_TABLE.md
+@@ -0,0 +1,34 @@
++# Direct table applications
 +
-+This temporary branch combines the independently reviewed eager table-aware
-+prototype at `b025c4a7b31f9f225ed73024c86d35ffd95c6fdd` with the compiled
-+Direct-Arena series through
-+`7cff626d304f85465b083c150d5e8b0f189b43c5`. It is an integration MRE, not an
-+authoritative pyAmpliCol or recurrence checkout.
++`DirectTableApplication` is an optional table-driven companion to
++`DirectApplication`. It emits the source MIR body once inside native row,
++point, and attachment loops, allowing one prepared expression to consume many
++plane bindings and fan out into many destinations without a packed evaluator
++buffer.
 +
-+The two execution contracts remain separate:
++The caller defines two fixed-width row layouts:
 +
-+- eager table callables execute a row-outer/point-inner schedule with explicit
-+  plane/scalar parameter bindings, multiple complex outputs, and ordered
-+  whole-output attachment fanout;
-+- compiled callables use `Initialize + Identity` O3 applications with
-+  factor-free multiple-output stores and source-first v3 storage.
++- an invocation row selects input planes and a contiguous attachment range;
++- an attachment row selects destination planes, a complex scale, and either
++  overwrite or accumulate semantics.
 +
-+Exact-factor direct applications retain their O2 requirement and recurrence
-+destination semantics. Compiled identity applications require O3. The eager
-+table boundary rejects complete-range same-row input/output and destination
-+collisions while permitting ordered cross-row producer/consumer,
-+expired-input, and destination-reuse aliases. Scalar, factor, table, and
-+descriptor-catalog buffers remain globally protected. Warmed checked and
-+unchecked calls allocate zero. The eager table fixture remains the pinned
-+360-byte built-in-SM recurrence-canary payload with SHA-256
-+`558b681aab77670552237c3ca544cc618a23851586c244e873188921b48d73ab`;
-+this wording does not claim that the still-evolving recurrence branch is
-+accepted or source-frozen.
++Field positions are byte offsets to little-endian `u32` values. The portable
++descriptor records those offsets plus the source shape and parameter
++bindings. It contains no pointers or executable machine code.
 +
-+Conflict resolution deliberately retained both portable-source transformation
-+tests and both allocation regressions. The eager table allocation probe is the
-+single test global allocator and is reused by compiled plane-call tests.
-+The pinned eager payload stays O3 for table execution. An untouched O3 dense
-+evaluation establishes both complex outputs bit-for-bit through complete
-+four-component attachments and two-way fanout. The separate O2 exact-factor
-+DirectApplication oracle still lowers the retained first-output MIR to
-+validate factor, operation, and fanout ordering.
-+`DIRECT_APPLICATION_STORAGE_ABI` remains the sole current writer identity,
-+`symjit-direct-application-storage-v3`. A narrow read-only compatibility path
-+accepts accepted recurrence exact-factor O2 v1 payloads, identified separately
-+by `DIRECT_APPLICATION_LEGACY_V1_STORAGE_ABI`; their already-lowered callable
-+is fully revalidated before use and cannot be reserialized as v3. V2 remains
-+unsupported.
++At execution time, `DirectTableCallViewV1` supplies immutable invocation and
++attachment tables, plane and scalar catalogs, split real/imaginary complex
++scale catalogs, and a point range. The generated callable evaluates rows
++outermost, points next, and attachments in their declared order. Scalar
++head/tail handling and a SIMD middle preserve odd point ranges on x86-64 and
++AArch64.
 +
-+The eager side now also has a separate bounded source-first descriptor codec.
-+It serializes only little-endian fixed-width metadata, never executable bytes
-+or pointers, and validates loaded-source counts before bounded allocation.
++The table mechanism has no knowledge of a scheduler, model, recurrence role,
++or artifact format. Those policies—including how row tables and scale
++catalogs are constructed—belong to the owning runtime.
 +
-+This MRE proves that both proposed SymJIT ABI extensions coexist. It does not
-+provide pyAmpliCol artifact wiring, x86-64 table callable generation, or
-+end-to-end performance evidence; those remain cutover gates in the feature
-+worktree. Eager descriptors and validation are architecture-neutral, but
-+`DirectTableApplication::seal` reports the x86 callable gap explicitly.
++Descriptor and call-view validation protects the raw-pointer execution
++contract from accidental shape, range, and alias mistakes. As with ordinary
++SymJIT storage, source bytecode is assumed to be trusted; DirectTable is not a
++sandbox or a hostile-code inspection layer.
 +
-+## Validation
-+
-+On the AArch64 MRE host, strict all-target Clippy passes, and both the debug and
-+optimized library suites pass 43/43. Both integration suites pass 4/4. All
-+build/test commands are guarded by the 30 GiB watchdog; the largest observed
-+peak in the hardened debug/release validation is 0.656 GiB RSS.
-+
-+The former optimized-integration SIGSEGVs in
-+`compressed_storage_v3_roundtrip_is_exact_and_stable` and
-+`compressed_vector_matches_expanded` were independently traced to the test
-+fixture compiling state-backed inputs while invoking the parameter-backed
-+`Application::evaluate` entry point. The integrated fix from
-+`2fe9f777c10340e9ae80a0bccd04da7487e27da9` compiles those inputs as
-+parameters and adds non-vacuity assertions; both debug and optimized
-+integration suites now pass 4/4. `RELEASE_SIGSEGV_DIAGNOSIS.md` preserves the
-+root-cause and machine-code evidence.
-diff --git a/COMPILED_DIRECT_MRE.md b/COMPILED_DIRECT_MRE.md
-new file mode 100644
-index 0000000..bc9210c
---- /dev/null
-+++ b/COMPILED_DIRECT_MRE.md
-@@ -0,0 +1,43 @@
-+# Compiled O3 Direct-Arena MRE
-+
-+This additive prototype extends the existing portable Direct-Arena
-+application with an identity output scale orthogonal to the existing
-+destination operation. Compiled applications use `Initialize + Identity`;
-+the two-bit operation encoding remains unchanged.
-+
-+The compiled output contract:
-+
-+- accepts portable Native Symbolica complex O3 MIR;
-+- preserves compressed funclet calls and labels;
-+- maps every source parameter to a point-contiguous input plane;
-+- writes multiple outputs to distinct persistent planes;
-+- reserves no exact-factor scalar slots;
-+- performs no factor multiplication at the output boundary; and
-+- rejects input/output, scalar/output, and output/output aliasing across full
-+  declared ranges in the checked call.
-+
-+The recurrence O2 operations retain their existing exact-factor and aliased
-+destination contracts. Direct-application storage is intentionally bumped to
-+v3; no v1/v2 reader is retained. Version 3 stores the portable source application
-+before source-sized direct metadata, then validates and re-lowers at load time.
-+Encoded metadata counts must match the loaded source before any metadata vector
-+is reserved. It never
-+serializes the already-complexified Direct-Arena MIR as though it were a source
-+application.
-+
-+The focused tests compare the direct plane result bitwise with the ordinary
-+dense O3 application for 1, 2, 3, 127, 128, and 129 points. They also prove
-+that both source and lowered machine code contain an out-of-line compressed
-+funclet call, identity stores preserve signed zero/subnormal/NaN payload bits,
-+and checked calls reject exact and partial overlap across complete declared
-+plane ranges, including future input/scalar tiles and output/output overlap.
-+Storage tests exercise valid Identity/O3 round trips, shared source loading,
-+legacy and malformed v2 rejection, nonportable source configuration rejection,
-+and panic containment. Warmed checked and unchecked plane calls allocate zero.
-+
-+The prototype intentionally does not add a table-row outer loop or claim an
-+end-to-end speedup. Its interface contains only borrowed plane descriptors and
-+therefore has no packet/gather/scatter buffer path, but it does not claim
-+end-to-end pyAmpliCol traffic measurements. It isolates the higher-risk O3,
-+factor-free, multiple-output, odd-tail ABI required before measuring a real
-+compiled stage in pyAmpliCol.
-diff --git a/Cargo.toml b/Cargo.toml
-index 12345a0..8a1f4cb 100644
---- a/Cargo.toml
-+++ b/Cargo.toml
-@@ -32,6 +32,9 @@ hugepage-rs = "0.1"
- lazy_static = "1.5"
- rand = "0.10"
+diff --git a/rust/amd/asm.rs b/rust/amd/asm.rs
+index 683b075..7e7eb62 100644
+--- a/rust/amd/asm.rs
++++ b/rust/amd/asm.rs
+@@ -461,6 +461,12 @@ impl Amd {
+         self.modrm_mem(reg, rm, offset);
+     }
  
-+[dev-dependencies]
-+sha2 = "0.10"
++    pub fn vbroadcastsd_indexed(&mut self, reg: u8, base: u8, index: u8, scale: u8) {
++        self.vex3pd(reg, 0, base, index, 2);
++        self.append_byte(0x19);
++        self.modrm_sib(reg, base, index, scale);
++    }
 +
- [target.'cfg(windows)'.dependencies]
- windows-sys = { version = "0.61", features = ["Win32_System_Memory"] }
+     pub fn vbroadcastsd_label(&mut self, reg: u8, label: &str) {
+         self.vex3pd(reg, 0, 0, 0, 2);
+         self.append_byte(0x19);
+@@ -1082,6 +1088,15 @@ impl Amd {
+         self.modrm_mem(reg, rm, offset);
+     }
  
-diff --git a/DIRECT_TABLE_MRE.md b/DIRECT_TABLE_MRE.md
++    pub fn mov_u32_reg_mem(&mut self, reg: u8, rm: u8, offset: i32) {
++        let rex = 0x40 + ((rm & 8) >> 3) + ((reg & 8) >> 1);
++        if rex != 0x40 {
++            self.append_byte(rex);
++        }
++        self.append_byte(0x8b);
++        self.modrm_mem(reg, rm, offset);
++    }
++
+     pub fn lea_mem(&mut self, reg: u8, rm: u8, offset: i32) {
+         self.rex(reg, rm);
+         self.append_byte(0x8d);
+@@ -1103,7 +1118,7 @@ impl Amd {
+     }
+ 
+     pub fn lea_indexed(&mut self, reg: u8, base: u8, index: u8, scale: u8) {
+-        self.rex(reg, 0);
++        self.rex_index(reg, base, index);
+         self.append_byte(0x8d);
+         self.modrm_sib(reg, base, index, scale);
+     }
+@@ -1181,6 +1196,18 @@ impl Amd {
+         self.modrm_reg(reg, rm);
+     }
+ 
++    pub fn imul(&mut self, reg: u8, rm: u8) {
++        self.rex(reg, rm);
++        self.append_bytes(&[0x0f, 0xaf]);
++        self.modrm_reg(reg, rm);
++    }
++
++    pub fn cmp(&mut self, reg: u8, rm: u8) {
++        self.rex(reg, rm);
++        self.append_byte(0x3b);
++        self.modrm_reg(reg, rm);
++    }
++
+     pub fn add_imm(&mut self, rm: u8, imm: u32) {
+         self.rex(0, rm);
+         self.append_byte(0x81);
+diff --git a/rust/amd/mod.rs b/rust/amd/mod.rs
+index 7c207b0..fe562e9 100644
+--- a/rust/amd/mod.rs
++++ b/rust/amd/mod.rs
+@@ -10,6 +10,7 @@ use asm::Amd;
+ mod complex;
+ mod scalar;
+ mod sse;
++mod table;
+ mod vector;
+ mod vector_f64x8;
+ 
+diff --git a/rust/amd/table.rs b/rust/amd/table.rs
 new file mode 100644
-index 0000000..559428e
+index 0000000..6f0d187
 --- /dev/null
-+++ b/DIRECT_TABLE_MRE.md
-@@ -0,0 +1,141 @@
-+# Table-aware Direct-Arena ABI
++++ b/rust/amd/table.rs
+@@ -0,0 +1,359 @@
++use std::mem::offset_of;
 +
-+This branch adds a table-aware API beside the existing per-row
-+`DirectCallable`. Portable descriptors and checked call-view validation are
-+architecture-neutral. Generated scalar and SIMD table callables are currently
-+implemented only for AArch64.
++use crate::direct_table::{DirectTableCallViewV1, DirectTableCodegen, DirectTableCodegenLayout};
 +
-+## Two-table ABI
++use super::asm::Amd;
++use super::{AmdScalarGenerator, AmdVectorF64x4Generator, IDX, PARAMS, STACK, STATES};
 +
-+`DirectTableApplicationMetadata` authenticates byte offsets in fixed-width
-+opaque rows:
++const VIEW: u8 = Amd::RBP;
++const ROW: u8 = Amd::R14;
++const ROW_COUNT: u8 = Amd::R15;
 +
-+- an invocation row supplies every split input-plane descriptor index plus an
-+  attachment start/count;
-+- an attachment row supplies one destination-plane field for every split
-+  source output component, one complex-factor index, and `Initialize` or
-+  `Add`.
++const ATTACHMENT: u8 = Amd::RDX;
++const ATTACHMENT_COUNT: u8 = Amd::RCX;
++const SCRATCH_INDEX: u8 = Amd::R10;
++const SCRATCH_VALUE: u8 = Amd::R11;
++const DESTINATION_RE: u8 = Amd::R8;
++const DESTINATION_IM: u8 = Amd::R9;
 +
-+An attachment therefore applies one factor/operation to the complete complex
-+output vector. Multiple attachment rows provide whole-output fanout. Source
-+states are implicit leading plane bindings. Every source parameter has an
-+authenticated `Plane(binding)` or `Scalar(catalog_index)` mapping, so
-+point-varying planes and fixed scalar broadcasts can be mixed.
++const STACK_ALIGNMENT_PAD: u32 = 8;
 +
-+The logical execution order is exact:
++impl DirectTableCodegen for AmdScalarGenerator {
++    fn direct_table_prologue(&mut self, layout: &DirectTableCodegenLayout) {
++        emit_prologue(&mut self.amd, layout, false);
++    }
 +
-+```text
-+for invocation row:
-+    for point:
-+        execute the inline source body
-+        for attachment in that row's declared order:
-+            for complex output in source order:
-+                Initialize/Add destination = complex_factor * output
-+```
++    fn direct_table_begin_loops(&mut self, layout: &DirectTableCodegenLayout) {
++        emit_begin_loops(&mut self.amd, layout, false);
++    }
 +
-+The host dispatcher keeps invocation rows outermost when it splits an
-+unaligned range into scalar head, NEON middle, and scalar tail calls. That
-+detail is required for shifted cross-row aliases: an entire earlier row
-+finishes before a later row starts.
++    fn direct_table_end_loops(&mut self, layout: &DirectTableCodegenLayout) {
++        emit_end_loops(&mut self.amd, layout, false);
++    }
 +
-+## Ordered alias contract
++    fn direct_table_epilogue(&mut self, layout: &DirectTableCodegenLayout) {
++        emit_epilogue(&mut self.amd, layout, false);
++    }
 +
-+Checked calls compare complete descriptor ranges, not just pointer equality or
-+the active point window.
++    fn direct_table_ip(&self) -> usize {
++        self.amd.a.ip()
++    }
++}
 +
-+- Within one invocation row, every input/destination alias and every
-+  destination/destination collision is rejected, including shifted partial
-+  overlaps and collisions between different outputs of one attachment.
-+- Across different rows, ordered aliases are accepted. A later row may consume
-+  an earlier output, overwrite an input whose earlier row has expired, reuse an
-+  attachment row, or accumulate/fan out into a destination written by an
-+  earlier row.
-+- Scalar values, factor arrays, invocation/attachment tables, and
-+  plane/scalar descriptor catalogs remain live globally. Any destination that
-+  overlaps one of those buffers is rejected.
++impl DirectTableCodegen for AmdVectorF64x4Generator {
++    fn direct_table_prologue(&mut self, layout: &DirectTableCodegenLayout) {
++        emit_prologue(&mut self.amd, layout, true);
++    }
 +
-+The row-local validator uses no temporary heap collections. After warmup, both
-+checked and unchecked calls remain allocation-free.
++    fn direct_table_begin_loops(&mut self, layout: &DirectTableCodegenLayout) {
++        emit_begin_loops(&mut self.amd, layout, true);
++    }
 +
-+Layout and metadata fields are public descriptor data and may be mutated by a
-+caller after construction. The public standalone
-+`DirectTableApplicationMetadata::validate_call_view` entry point therefore
-+reruns complete metadata/layout validation before it inspects any row pointer.
-+Constructed applets privately own already-authenticated metadata, so their
-+checked hot path can retain zero-allocation validation safely.
++    fn direct_table_end_loops(&mut self, layout: &DirectTableCodegenLayout) {
++        emit_end_loops(&mut self.amd, layout, true);
++    }
 +
-+## Portable descriptor codec
++    fn direct_table_epilogue(&mut self, layout: &DirectTableCodegenLayout) {
++        emit_epilogue(&mut self.amd, layout, true);
++    }
 +
-+`DirectTableApplicationMetadata::encode_descriptor` and
-+`decode_descriptor(source, bytes)` implement
-+`symjit-direct-table-descriptor-v1`. `DirectTableApplication::from_descriptor`
-+is the source-first construction path.
++    fn direct_table_ip(&self) -> usize {
++        self.amd.a.ip()
++    }
++}
 +
-+The independently loaded immutable source is authoritative for state,
-+parameter, and split-output counts. The descriptor contains only an eight-byte
-+magic followed by little-endian `u32` fields: version, declared byte length,
-+source counts, row strides, field counts/offsets, scalar count, and two-`u32`
-+parameter binding records. It contains no native `usize`, executable bytes, or
-+raw pointers.
++fn emit_prologue(amd: &mut Amd, layout: &DirectTableCodegenLayout, simd: bool) {
++    for register in [Amd::RBP, Amd::RBX, Amd::R12, Amd::R13, Amd::R14, Amd::R15] {
++        amd.push(register);
++    }
 +
-+Input, output-component, and parameter counts are each capped at 256, row
-+strides at 16,384 bytes, and the complete descriptor at 16 KiB. Decoding checks
-+the declared length and loaded-source counts before reserving bounded vectors,
-+then rejects unknown versions/kinds, truncation, trailing bytes, out-of-range
-+or duplicate fields, malformed complex output pairs, and arithmetic overflow.
-+Descriptor encode/decode and source validation do not require AArch64.
++    amd.mov(VIEW, super::ARGS[0]);
++    load_ptr_view(amd, ROW, offset_of!(DirectTableCallViewV1, invocations));
++    load_u32_view(
++        amd,
++        ROW_COUNT,
++        offset_of!(DirectTableCallViewV1, invocation_count),
++    );
 +
-+## Generated AArch64 control flow
++    let dynamic_size = layout
++        .dynamic_stack_bytes(simd)
++        .checked_add(STACK_ALIGNMENT_PAD)
++        .expect("validated direct-table stack size");
++    amd.sub_rsp(dynamic_size);
++    amd.mov(STACK, Amd::RSP);
++    amd.lea_mem(
++        STATES,
++        STACK,
++        i32::try_from(layout.mir_stack_bytes(simd))
++            .expect("validated direct-table MIR stack offset"),
++    );
++    load_ptr_view(amd, PARAMS, offset_of!(DirectTableCallViewV1, scalars));
++}
 +
-+The AArch64 scalar and two-lane NEON functions resolve the current row's input
-+plane pointers, execute the remapped MIR body inline once per point block, and
-+walk the row's attachments. Every complex source output is stored in its own
-+fixed spill pair and each attachment emits all output pairs in source order.
++fn emit_begin_loops(amd: &mut Amd, layout: &DirectTableCodegenLayout, _simd: bool) {
++    amd.or(ROW_COUNT, ROW_COUNT);
++    amd.jz("@direct_table_loops_done");
 +
-+The compiler calls `Mir::rerun` exactly once per scalar/SIMD machine function.
-+The call view contains no legacy `CompiledFunc`; focused code-shape tests find
-+no AArch64 `BL`/`BLR` and zero packet, gather, or scatter materializations.
-+Generated scalar and SIMD frames are checked against `Config::stack_limit()`
-+before executable memory is created.
++    amd.a.set_label("@direct_table_row");
++    for (descriptor, &row_offset) in layout.input_plane_row_offsets.iter().enumerate() {
++        load_u32_offset(amd, SCRATCH_INDEX, ROW, row_offset);
++        amd.add(SCRATCH_INDEX, SCRATCH_INDEX);
++        load_ptr_view(
++            amd,
++            SCRATCH_VALUE,
++            offset_of!(DirectTableCallViewV1, planes),
++        );
++        amd.lea_indexed(SCRATCH_VALUE, SCRATCH_VALUE, SCRATCH_INDEX, 8);
++        amd.mov_reg_mem(SCRATCH_VALUE, SCRATCH_VALUE, 0);
++        amd.mov_mem_reg(
++            STATES,
++            i32::try_from(descriptor * 16).expect("descriptor stack offset exceeds i32"),
++            SCRATCH_VALUE,
++        );
++    }
 +
-+## Current boundary
++    load_u32_view(amd, IDX, offset_of!(DirectTableCallViewV1, point_start));
++    load_u32_view(
++        amd,
++        SCRATCH_VALUE,
++        offset_of!(DirectTableCallViewV1, point_count),
++    );
++    amd.add(SCRATCH_VALUE, IDX);
++    amd.mov_mem_reg(STATES, point_end_stack_offset(layout), SCRATCH_VALUE);
 +
-+- AArch64 scalar and NEON `f64x2` callable generation and execution are
-+  implemented.
-+- Descriptor encoding/decoding, source validation, row layouts, and checked
-+  alias validation are portable.
-+- x86-64 has **no callable implementation yet**: there is no scalar, SSE, or
-+  AVX table generator. A non-AArch64 host may decode and validate descriptors,
-+  but `DirectTableApplication::seal` fails explicitly.
-+- Source MIR must remain call-free and branch-free; external-call and
-+  branch-divergence fallbacks are not implemented.
-+- The descriptor codec does not yet provide a canonical digest, prepared-pack
-+  emission, or recurrence-runtime pack loading.
++    amd.a.set_label("@direct_table_point");
++}
 +
-+Focused tests cover one and multiple complex outputs, whole-output fanout,
-+non-unit factors, both destination operations, exact row/attachment/output
-+order, cross-row producer/consumer and expired-input aliases, attachment reuse,
-+shifted descriptor bases, odd scalar tails, same-row and global-buffer
-+rejections, malformed/oversized descriptor bytes, fixed scalar broadcasts,
-+mixed plane/scalar parameters, large spill frames, signed zero, finite
-+extremes, and exact quiet-NaN payload bits.
++fn emit_end_loops(amd: &mut Amd, layout: &DirectTableCodegenLayout, simd: bool) {
++    load_ptr_view(
++        amd,
++        ATTACHMENT,
++        offset_of!(DirectTableCallViewV1, attachments),
++    );
++    load_u32_offset(
++        amd,
++        SCRATCH_INDEX,
++        ROW,
++        layout.invocation.attachment_start_offset,
++    );
++    load_u32_view(
++        amd,
++        SCRATCH_VALUE,
++        offset_of!(DirectTableCallViewV1, attachment_stride),
++    );
++    amd.imul(SCRATCH_INDEX, SCRATCH_VALUE);
++    amd.add(ATTACHMENT, SCRATCH_INDEX);
++    load_u32_offset(
++        amd,
++        ATTACHMENT_COUNT,
++        ROW,
++        layout.invocation.attachment_count_offset,
++    );
++    amd.or(ATTACHMENT_COUNT, ATTACHMENT_COUNT);
++    amd.jz("@direct_table_attachments_done");
 +
-+## Prepared-eager evidence
++    amd.a.set_label("@direct_table_attachment");
++    emit_attachment(amd, layout, simd);
 +
-+Tests embed the pinned 360-byte built-in-SM recurrence-canary payload
-+`kernels/000006/application-0.symjit`, SHA-256
-+`558b681aab77670552237c3ca544cc618a23851586c244e873188921b48d73ab`.
-+The payload has six complex inputs and two complex outputs. The untouched O3
-+payload now executes through one table attachment containing all four split
-+destination fields and fans the complete output vector to two destination
-+sets; every active component is compared bit-for-bit with ordinary O3 dense
-+evaluation. A separate retained-first-output path continues to exercise the
-+O2 exact-factor per-row oracle.
++    load_u32_view(
++        amd,
++        SCRATCH_INDEX,
++        offset_of!(DirectTableCallViewV1, attachment_stride),
++    );
++    amd.add(ATTACHMENT, SCRATCH_INDEX);
++    amd.dec(ATTACHMENT_COUNT);
++    amd.jnz("@direct_table_attachment");
 +
-+The full two-output prepared callable is also the warmed allocation
-+regression: 128 checked and 128 unchecked calls allocate zero while retaining
-+the odd seven-point NEON tail and zero materialization code shape.
++    amd.a.set_label("@direct_table_attachments_done");
++    amd.add_imm(IDX, if simd { 4 } else { 1 });
++    amd.mov_reg_mem(SCRATCH_VALUE, STATES, point_end_stack_offset(layout));
++    amd.cmp(IDX, SCRATCH_VALUE);
++    amd.jnz("@direct_table_point");
 +
-+This standalone branch establishes the hardened ABI behavior. It does not
-+claim that prepared-pack wiring, x86 callable generation, or authoritative
-+recurrence-runtime integration is complete.
-diff --git a/RELEASE_SIGSEGV_DIAGNOSIS.md b/RELEASE_SIGSEGV_DIAGNOSIS.md
-new file mode 100644
-index 0000000..e40e898
---- /dev/null
-+++ b/RELEASE_SIGSEGV_DIAGNOSIS.md
-@@ -0,0 +1,73 @@
-+# Optimized integration-test SIGSEGV diagnosis
++    load_u32_view(
++        amd,
++        SCRATCH_INDEX,
++        offset_of!(DirectTableCallViewV1, invocation_stride),
++    );
++    amd.add(ROW, SCRATCH_INDEX);
++    amd.dec(ROW_COUNT);
++    amd.jnz("@direct_table_row");
 +
-+## Scope
++    amd.a.set_label("@direct_table_loops_done");
++    amd.a.set_label("@epilogue");
++}
 +
-+This diagnosis applies to combined Direct-Arena MRE commit
-+`e1c84e9d2e35569f253020347848d0a5bb134309`. The original optimized
-+reproducer was:
++fn emit_attachment(amd: &mut Amd, layout: &DirectTableCodegenLayout, simd: bool) {
++    for (output, destinations) in layout
++        .attachment
++        .destination_plane_offsets
++        .chunks_exact(2)
++        .enumerate()
++    {
++        emit_attachment_output(
++            amd,
++            layout,
++            simd,
++            u32::try_from(output * 2).expect("direct-table output offset exceeds u32"),
++            destinations[0],
++            destinations[1],
++        );
++    }
++}
 +
-+```text
-+cargo test --release --test arm_compress \
-+  compressed_storage_v3_roundtrip_is_exact_and_stable -- --exact --nocapture
-+```
++fn emit_attachment_output(
++    amd: &mut Amd,
++    layout: &DirectTableCodegenLayout,
++    simd: bool,
++    output_component: u32,
++    destination_real_offset: u32,
++    destination_imag_offset: u32,
++) {
++    load_destination(amd, DESTINATION_RE, destination_real_offset);
++    load_destination(amd, DESTINATION_IM, destination_imag_offset);
 +
-+It exited with `SIGSEGV` after every assertion in the test body had completed.
-+The first guarded build/reproducer peaked at 1.524 GiB RSS.
++    load_u32_offset(
++        amd,
++        SCRATCH_INDEX,
++        ATTACHMENT,
++        layout.attachment.scale_offset,
++    );
++    let result_offset = if simd {
++        layout
++            .result_stack_offset
++            .checked_add(output_component)
++            .and_then(|slot| slot.checked_mul(32))
++    } else {
++        layout
++            .result_stack_offset
++            .checked_add(output_component)
++            .and_then(|slot| slot.checked_mul(8))
++    }
++    .and_then(|offset| i32::try_from(offset).ok())
++    .expect("validated direct-table result stack offset");
 +
-+## Root cause
++    if simd {
++        amd.vmovpd_ymm_mem(2, STACK, result_offset);
++        amd.vmovpd_ymm_mem(3, STACK, result_offset + 32);
++        load_indexed_scale(amd, 4, offset_of!(DirectTableCallViewV1, scale_re), true);
++        load_indexed_scale(amd, 5, offset_of!(DirectTableCallViewV1, scale_im), true);
 +
-+The `arm_compress` fixture compiled `x`, `y`, and `z` as application *states*
-+using `Compiler::compile`, then called `Application::evaluate(args, outs)`.
-+That generic entry point passes `outs` as the machine-code memory pointer,
-+passes a null indirect-state view, and passes `args` as the parameter pointer.
-+It is therefore valid for the parameter-backed evaluator shape used by
-+prepared Symbolica applications, not for this state-backed fixture.
++        amd.vmulpd(0, 2, 4);
++        amd.vmulpd(1, 3, 5);
++        amd.vsubpd(0, 0, 1);
++        amd.vmulpd(1, 2, 5);
++        amd.vmulpd(2, 3, 4);
++        amd.vaddpd(1, 1, 2);
++    } else {
++        amd.vmovsd_xmm_mem(2, STACK, result_offset);
++        amd.vmovsd_xmm_mem(3, STACK, result_offset + 8);
++        load_indexed_scale(amd, 4, offset_of!(DirectTableCallViewV1, scale_re), false);
++        load_indexed_scale(amd, 5, offset_of!(DirectTableCallViewV1, scale_im), false);
 +
-+The invalid fixture produced an application with six scalar state components,
-+two scalar output components, and no parameters. In the emitted AArch64 SIMD
-+function:
++        amd.vmulsd(0, 2, 4);
++        amd.vmulsd(1, 3, 5);
++        amd.vsubsd(0, 0, 1);
++        amd.vmulsd(1, 2, 5);
++        amd.vmulsd(2, 3, 4);
++        amd.vaddsd(1, 1, 2);
++    }
 +
-+```text
-+0x20   mov x19, x0
-+0x34   b.eq 0x88
-+0x94   ldp q6, q7, [x19]
-+0x98   ldp q16, q17, [x19, #0x20]
-+0xc0   ldp q20, q21, [x19, #0x40]
-+...
-+0xcb0  stp q18, q19, [x19, #0x60]
-+```
++    load_u32_offset(
++        amd,
++        SCRATCH_VALUE,
++        ATTACHMENT,
++        layout.attachment.operation_offset,
++    );
++    amd.or(SCRATCH_VALUE, SCRATCH_VALUE);
++    let store_label = amd.a.create_label();
++    amd.jz(&store_label);
 +
-+`x0`/`x19` is the start of the caller's one-element
-+`Complex<f64x2>` output, which is only 32 bytes. The JIT reads the nonexistent
-+state region through that pointer and stores the result at byte offset 96,
-+outside the output. Both compared output arrays normally remained zero, so
-+the debug assertion was also vacuous. Optimized stack placement made the
-+latent overwrite corrupt live test-harness state and crash after the body
-+returned.
++    if simd {
++        amd.vmovpd_ymm_indexed(2, DESTINATION_RE, IDX, 8);
++        amd.vaddpd(0, 0, 2);
++        amd.vmovpd_ymm_indexed(2, DESTINATION_IM, IDX, 8);
++        amd.vaddpd(1, 1, 2);
++    } else {
++        amd.vmovsd_xmm_indexed(2, DESTINATION_RE, IDX, 8);
++        amd.vaddsd(0, 0, 2);
++        amd.vmovsd_xmm_indexed(2, DESTINATION_IM, IDX, 8);
++        amd.vaddsd(1, 1, 2);
++    }
 +
-+## Why this predates the Direct-Arena work
++    amd.a.set_label(&store_label);
++    if simd {
++        amd.vmovpd_indexed_ymm(DESTINATION_RE, IDX, 8, 0);
++        amd.vmovpd_indexed_ymm(DESTINATION_IM, IDX, 8, 1);
++    } else {
++        amd.vmovsd_indexed_xmm(DESTINATION_RE, IDX, 8, 0);
++        amd.vmovsd_indexed_xmm(DESTINATION_IM, IDX, 8, 1);
++    }
++}
 +
-+`tests/arm_compress.rs`, `rust/applet.rs`, and `rust/compiler.rs` are byte-for-
-+byte unchanged between the imported baseline `575dfdbaa0742160d341d158811079592d359c45`
-+and `e1c84e9`. The only changes in the nearby ordinary AArch64 path are field
-+visibility and a precomplexified-MIR branch that this fixture does not use.
-+The current `rust/applet.rs` also has the same SHA-256
-+`65212e6e0f1e96a01a90045709549e0e6cdc0bf2b93e169703373f38b1361438`
-+as the locally retained published SymJIT 2.18.9 source.
++fn load_destination(amd: &mut Amd, destination: u8, row_offset: u32) {
++    load_u32_offset(amd, SCRATCH_INDEX, ATTACHMENT, row_offset);
++    amd.add(SCRATCH_INDEX, SCRATCH_INDEX);
++    load_ptr_view(
++        amd,
++        SCRATCH_VALUE,
++        offset_of!(DirectTableCallViewV1, planes),
++    );
++    amd.lea_indexed(SCRATCH_VALUE, SCRATCH_VALUE, SCRATCH_INDEX, 8);
++    amd.mov_reg_mem(destination, SCRATCH_VALUE, 0);
++}
 +
-+Neither Direct-Arena ABI invokes this generic state-backed `evaluate` shape.
-+`DirectApplication` and `DirectTableApplication` lower and call their own
-+validated plane/view entry points. pyAmpliCol's ordinary prepared evaluator
-+loader separately requires zero states before sealing an application.
-+Consequently this crash does not identify a Direct-Arena kernel, storage, or
-+production-call defect.
++fn load_indexed_scale(amd: &mut Amd, vector: u8, view_offset: usize, simd: bool) {
++    load_ptr_view(amd, SCRATCH_VALUE, view_offset);
++    if simd {
++        amd.vbroadcastsd_indexed(vector, SCRATCH_VALUE, SCRATCH_INDEX, 8);
++    } else {
++        amd.vmovsd_xmm_indexed(vector, SCRATCH_VALUE, SCRATCH_INDEX, 8);
++    }
++}
 +
-+## Fix and regression coverage
++fn emit_epilogue(amd: &mut Amd, layout: &DirectTableCodegenLayout, simd: bool) {
++    amd.vzeroupper();
++    amd.add_rsp(
++        layout
++            .dynamic_stack_bytes(simd)
++            .checked_add(STACK_ALIGNMENT_PAD)
++            .expect("validated direct-table stack size"),
++    );
++    for register in [Amd::R15, Amd::R14, Amd::R13, Amd::R12, Amd::RBX, Amd::RBP] {
++        amd.pop(register);
++    }
++    amd.xor(Amd::RAX, Amd::RAX);
++    amd.ret();
++}
 +
-+The fixture now compiles its three arguments as parameters with
-+`compile_params(&[], outputs, params)`, matching the entry point it exercises.
-+It asserts the resulting zero-state/six-parameter/two-output shape and asserts
-+that scalar and SIMD results are nonzero, preventing the former out-of-bounds,
-+zero-equals-zero test from returning unnoticed.
++fn load_ptr_view(amd: &mut Amd, destination: u8, byte_offset: usize) {
++    amd.mov_reg_mem(
++        destination,
++        VIEW,
++        i32::try_from(byte_offset).expect("call-view offset exceeds i32"),
++    );
++}
 +
-+Both eager table-aware and compiled Direct-Arena contracts remain unchanged.
++fn load_u32_view(amd: &mut Amd, destination: u8, byte_offset: usize) {
++    load_u32_offset(
++        amd,
++        destination,
++        VIEW,
++        u32::try_from(byte_offset).expect("call-view offset exceeds u32"),
++    );
++}
++
++fn load_u32_offset(amd: &mut Amd, destination: u8, base: u8, byte_offset: u32) {
++    assert_eq!(byte_offset & 3, 0);
++    assert!(byte_offset < 16_384);
++    amd.mov_u32_reg_mem(
++        destination,
++        base,
++        i32::try_from(byte_offset).expect("row offset exceeds i32"),
++    );
++}
++
++fn point_end_stack_offset(layout: &DirectTableCodegenLayout) -> i32 {
++    i32::try_from(layout.input_plane_row_offsets.len() * 16)
++        .expect("validated direct-table descriptor scratch offset")
++}
 diff --git a/rust/arm/macros.rs b/rust/arm/macros.rs
 index 59b079b..438a555 100644
 --- a/rust/arm/macros.rs
@@ -423,10 +550,10 @@ index 59b079b..438a555 100644
          0xd341fc00 | rd!($rd) | rn!($rn)
      };
 diff --git a/rust/arm/mod.rs b/rust/arm/mod.rs
-index ca4722f..6cce194 100644
+index ca4722f..fdad221 100644
 --- a/rust/arm/mod.rs
 +++ b/rust/arm/mod.rs
-@@ -35,10 +35,12 @@ const T2: u8 = 31;
+@@ -35,6 +35,7 @@ const T2: u8 = 31;
  
  mod complex;
  mod scalar;
@@ -434,35 +561,15 @@ index ca4722f..6cce194 100644
  mod vector;
  
  pub use complex::ArmComplexGenerator;
- pub use scalar::ArmGenerator;
-+pub(crate) use table::DirectTableCodegen;
- pub use vector::ArmSimdGenerator;
- 
- const fn ϕ(r: Reg) -> u8 {
-diff --git a/rust/arm/scalar.rs b/rust/arm/scalar.rs
-index fb62637..37fb29c 100644
---- a/rust/arm/scalar.rs
-+++ b/rust/arm/scalar.rs
-@@ -12,8 +12,8 @@ use super::*;
- const REG_SIZE: u32 = 8;
- 
- pub struct ArmGenerator {
--    a: Assembler,
--    config: Config,
-+    pub(super) a: Assembler,
-+    pub(super) config: Config,
- }
- 
- impl ArmGenerator {
 diff --git a/rust/arm/table.rs b/rust/arm/table.rs
 new file mode 100644
-index 0000000..2662110
+index 0000000..918f583
 --- /dev/null
 +++ b/rust/arm/table.rs
-@@ -0,0 +1,448 @@
+@@ -0,0 +1,440 @@
 +use std::mem::offset_of;
 +
-+use crate::direct_table::{DirectTableCallViewV1, DirectTableCodegenLayout};
++use crate::direct_table::{DirectTableCallViewV1, DirectTableCodegen, DirectTableCodegenLayout};
 +
 +use super::{
 +    add_stack, load_d_from_mem, load_q_from_mem, load_x_from_mem, sub_stack, ArmGenerator,
@@ -480,14 +587,6 @@ index 0000000..2662110
 +const SCRATCH_VALUE: u8 = 12;
 +
 +const HEADER_SIZE: u32 = 96;
-+
-+pub(crate) trait DirectTableCodegen {
-+    fn direct_table_prologue(&mut self, layout: &DirectTableCodegenLayout);
-+    fn direct_table_begin_loops(&mut self, layout: &DirectTableCodegenLayout);
-+    fn direct_table_end_loops(&mut self, layout: &DirectTableCodegenLayout);
-+    fn direct_table_epilogue(&mut self, layout: &DirectTableCodegenLayout);
-+    fn direct_table_ip(&self) -> usize;
-+}
 +
 +impl DirectTableCodegen for ArmGenerator {
 +    fn direct_table_prologue(&mut self, layout: &DirectTableCodegenLayout) {
@@ -757,10 +856,10 @@ index 0000000..2662110
 +        assembler,
 +        SCRATCH_INDEX,
 +        ATTACHMENT,
-+        layout.attachment.factor_offset,
++        layout.attachment.scale_offset,
 +    );
-+    load_x_view(assembler, 3, offset_of!(DirectTableCallViewV1, factor_re));
-+    load_x_view(assembler, 4, offset_of!(DirectTableCallViewV1, factor_im));
++    load_x_view(assembler, 3, offset_of!(DirectTableCallViewV1, scale_re));
++    load_x_view(assembler, 4, offset_of!(DirectTableCallViewV1, scale_im));
 +
 +    if simd {
 +        load_q_from_mem(
@@ -908,1511 +1007,13 @@ index 0000000..2662110
 +fn emit(assembler: &mut crate::assembler::Assembler, instruction: u32) {
 +    assembler.append_word(instruction);
 +}
-diff --git a/rust/arm/vector.rs b/rust/arm/vector.rs
-index 0750b00..5e5a674 100644
---- a/rust/arm/vector.rs
-+++ b/rust/arm/vector.rs
-@@ -12,8 +12,8 @@ use super::*;
- const REG_SIZE: u32 = 16;
- 
- pub struct ArmSimdGenerator {
--    a: Assembler,
--    config: Config,
-+    pub(super) a: Assembler,
-+    pub(super) config: Config,
- }
- 
- impl ArmSimdGenerator {
-diff --git a/rust/config.rs b/rust/config.rs
-index 688d7d8..6be1b8c 100644
---- a/rust/config.rs
-+++ b/rust/config.rs
-@@ -32,6 +32,7 @@ pub const DEBUG_LOCK: u32 = 0x0100_0000;
- pub const HUGE: u32 = 0x0010_0000;
- pub const PARALLEL_MUL: u32 = 0x0020_0000;
- pub const DIRECT_ARENA: u32 = 0x0040_0000;
-+pub const DIRECT_ARENA_IDENTITY_OUTPUT: u32 = 0x0080_0000;
- pub const DIRECT_ARENA_OPERATION_MASK: u32 = 0x0600_0000;
- pub const DIRECT_ARENA_OPERATION_SHIFT: usize = 25;
- 
-@@ -407,6 +408,11 @@ impl Config {
-         ((self.opt & DIRECT_ARENA_OPERATION_MASK) >> DIRECT_ARENA_OPERATION_SHIFT) as u8
-     }
- 
-+    /// Bypasses exact-factor scaling and overwrites distinct output planes.
-+    pub fn direct_arena_identity_output(&self) -> bool {
-+        self.test(DIRECT_ARENA_IDENTITY_OUTPUT)
-+    }
-+
-     pub fn debug_bytecode(&self) -> bool {
-         self.test(DEBUG_BYTECODE)
-     }
-@@ -619,6 +625,16 @@ impl Config {
-             | ((operation as u32) << DIRECT_ARENA_OPERATION_SHIFT);
-     }
- 
-+    /// Selects factor-free overwrite semantics independently of the operation.
-+    pub fn set_direct_arena_identity_output(&mut self, enabled: bool) {
-+        self.opt = (self.opt & !DIRECT_ARENA_IDENTITY_OUTPUT)
-+            | if enabled {
-+                DIRECT_ARENA_IDENTITY_OUTPUT
-+            } else {
-+                0
-+            };
-+    }
-+
-     /// Dump bytecode for debugging
-     pub fn set_debug_bytecode(&mut self, enabled: bool) {
-         self.opt = (self.opt & !DEBUG_BYTECODE) | if enabled { DEBUG_BYTECODE } else { 0 };
-diff --git a/rust/direct.rs b/rust/direct.rs
-index fe2b943..6f60ac7 100644
---- a/rust/direct.rs
-+++ b/rust/direct.rs
-@@ -8,6 +8,7 @@
- use std::collections::{BTreeSet, HashSet};
- use std::ffi::c_void;
- use std::io::{Read, Write};
-+use std::panic::{catch_unwind, AssertUnwindSafe};
- use std::ptr;
- 
- use anyhow::{anyhow, bail, Context, Result};
-@@ -21,14 +22,18 @@ use crate::serializer::MirWriter;
- use crate::symbol::Loc;
- use crate::utils::{Compiled, Reg, Storage};
- 
--pub const DIRECT_APPLICATION_STORAGE_ABI: &str = "symjit-direct-application-storage-v1";
-+pub const DIRECT_APPLICATION_STORAGE_ABI: &str = "symjit-direct-application-storage-v3";
-+pub const DIRECT_APPLICATION_LEGACY_V1_STORAGE_ABI: &str = "symjit-direct-application-storage-v1";
- pub const DIRECT_NO_ALIAS: u32 = u32::MAX;
- pub const DIRECT_EXACT_FACTOR_REAL_SCALAR: u32 = 0;
- pub const DIRECT_EXACT_FACTOR_IMAG_SCALAR: u32 = 1;
- pub const DIRECT_EXACT_FACTOR_SCALAR_COUNT: u32 = 2;
- 
--const DIRECT_MAGIC: [u8; 8] = *b"SJDA0001";
--const DIRECT_VERSION: u32 = 1;
-+const DIRECT_MAGIC: [u8; 8] = *b"SJDA0003";
-+const DIRECT_VERSION: u32 = 3;
-+const DIRECT_LEGACY_V1_MAGIC: [u8; 8] = *b"SJDA0001";
-+const DIRECT_LEGACY_V1_VERSION: u32 = 1;
-+const DIRECT_LEGACY_V1_MAX_BINDINGS: usize = 1 << 20;
- 
- pub const DIRECT_STATUS_OK: i32 = 0;
- pub const DIRECT_STATUS_INVALID_CONTEXT: i32 = 1;
-@@ -65,6 +70,43 @@ impl TryFrom<u8> for DirectDestinationOperation {
-     }
- }
- 
-+/// Scaling applied before a generated direct kernel stores one complex output.
-+///
-+/// This is orthogonal to destination accumulation. Recurrence applications
-+/// retain their authenticated exact factor; fused compiled stages overwrite
-+/// distinct planes with an identity scale.
-+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-+#[repr(u8)]
-+pub enum DirectOutputScale {
-+    ExactFactor = 0,
-+    Identity = 1,
-+}
-+
-+impl DirectOutputScale {
-+    fn requires_exact_factor(self) -> bool {
-+        matches!(self, Self::ExactFactor)
-+    }
-+
-+    fn required_optimization_level(self) -> u8 {
-+        match self {
-+            Self::ExactFactor => 2,
-+            Self::Identity => 3,
-+        }
-+    }
-+}
-+
-+impl TryFrom<u8> for DirectOutputScale {
-+    type Error = anyhow::Error;
-+
-+    fn try_from(value: u8) -> Result<Self> {
-+        match value {
-+            0 => Ok(Self::ExactFactor),
-+            1 => Ok(Self::Identity),
-+            _ => bail!("unknown direct output scale {value}"),
-+        }
-+    }
-+}
-+
- /// Maps one scalar input of the original Symbolica application.
- #[derive(Clone, Copy, Debug, Eq, PartialEq)]
- pub enum DirectInputBinding {
-@@ -78,6 +120,7 @@ pub enum DirectInputBinding {
- #[derive(Clone, Debug, Eq, PartialEq)]
- pub struct DirectApplicationMetadata {
-     pub destination_operation: DirectDestinationOperation,
-+    pub output_scale: DirectOutputScale,
-     pub state_plane_indices: Vec<u32>,
-     pub parameter_bindings: Vec<DirectInputBinding>,
-     pub input_plane_count: u32,
-@@ -93,9 +136,30 @@ impl DirectApplicationMetadata {
-         input_plane_count: u32,
-         scalar_input_count: u32,
-         output_alias_inputs: Vec<u32>,
-+    ) -> Result<Self> {
-+        Self::new_with_output_scale(
-+            destination_operation,
-+            DirectOutputScale::ExactFactor,
-+            state_plane_indices,
-+            parameter_bindings,
-+            input_plane_count,
-+            scalar_input_count,
-+            output_alias_inputs,
-+        )
-+    }
-+
-+    pub fn new_with_output_scale(
-+        destination_operation: DirectDestinationOperation,
-+        output_scale: DirectOutputScale,
-+        state_plane_indices: Vec<u32>,
-+        parameter_bindings: Vec<DirectInputBinding>,
-+        input_plane_count: u32,
-+        scalar_input_count: u32,
-+        output_alias_inputs: Vec<u32>,
-     ) -> Result<Self> {
-         let metadata = Self {
-             destination_operation,
-+            output_scale,
-             state_plane_indices,
-             parameter_bindings,
-             input_plane_count,
-@@ -110,7 +174,14 @@ impl DirectApplicationMetadata {
-         if self.output_alias_inputs.is_empty() {
-             bail!("direct application must expose at least one output plane");
-         }
--        if self.scalar_input_count < DIRECT_EXACT_FACTOR_SCALAR_COUNT {
-+        if self.output_scale == DirectOutputScale::Identity
-+            && self.destination_operation != DirectDestinationOperation::Initialize
-+        {
-+            bail!("identity-scaled direct outputs require initialize semantics");
-+        }
-+        if self.output_scale.requires_exact_factor()
-+            && self.scalar_input_count < DIRECT_EXACT_FACTOR_SCALAR_COUNT
-+        {
-             bail!(
-                 "direct application must reserve scalar slots 0 and 1 for its exact complex factor"
-             );
-@@ -123,10 +194,13 @@ impl DirectApplicationMetadata {
-             }
-             planes.insert(plane);
-         }
--        let mut scalars = BTreeSet::from([
--            DIRECT_EXACT_FACTOR_REAL_SCALAR,
--            DIRECT_EXACT_FACTOR_IMAG_SCALAR,
--        ]);
-+        let mut scalars = BTreeSet::new();
-+        if self.output_scale.requires_exact_factor() {
-+            scalars.extend([
-+                DIRECT_EXACT_FACTOR_REAL_SCALAR,
-+                DIRECT_EXACT_FACTOR_IMAG_SCALAR,
-+            ]);
-+        }
-         for binding in &self.parameter_bindings {
-             match *binding {
-                 DirectInputBinding::Plane(plane) => {
-@@ -136,7 +210,9 @@ impl DirectApplicationMetadata {
-                     planes.insert(plane);
-                 }
-                 DirectInputBinding::Scalar(scalar) => {
--                    if scalar < DIRECT_EXACT_FACTOR_SCALAR_COUNT {
-+                    if self.output_scale.requires_exact_factor()
-+                        && scalar < DIRECT_EXACT_FACTOR_SCALAR_COUNT
-+                    {
-                         bail!(
-                             "direct source parameter scalar {scalar} overlaps reserved exact-factor slots 0 and 1"
-                         );
-@@ -149,13 +225,23 @@ impl DirectApplicationMetadata {
-             }
-         }
- 
-+        let mut exact_output_aliases = BTreeSet::new();
-         for &alias in &self.output_alias_inputs {
-             if alias == DIRECT_NO_ALIAS {
--                bail!("direct application outputs must alias persistent destination planes");
-+                if self.output_scale != DirectOutputScale::Identity {
-+                    bail!("direct application outputs must alias persistent destination planes");
-+                }
-+                continue;
-+            }
-+            if self.output_scale == DirectOutputScale::Identity {
-+                bail!("identity-scaled direct outputs must not alias input planes");
-             }
-             if alias >= self.input_plane_count {
-                 bail!("direct output alias {alias} is out of bounds");
-             }
-+            if !exact_output_aliases.insert(alias) {
-+                bail!("direct output aliases must identify distinct destination planes");
-+            }
-             planes.insert(alias);
-         }
-         require_dense("input plane", self.input_plane_count, &planes)?;
-@@ -189,12 +275,20 @@ impl DirectApplicationMetadata {
-         if source.count_diffs != 0 {
-             bail!("direct applications do not support differential outputs");
-         }
-+        let required_optimization_level = self.output_scale.required_optimization_level();
-         if source.config.ty != CompilerType::Native
--            || source.config.opt_level() != 2
-+            || source.config.opt_level() != required_optimization_level
-             || !source.config.symbolica()
-             || !source.config.is_complex()
-+            || source.config.direct_arena()
-+            || source.config.direct_arena_identity_output()
-+            || source.config.direct_arena_operation() != 0
-         {
--            bail!("direct applications require a portable native Symbolica complex O2 source");
-+            bail!(
-+                "direct {:?} applications require a portable native Symbolica complex O{} source",
-+                self.output_scale,
-+                required_optimization_level
-+            );
-         }
-         if !source.prog.builder.ft.is_empty() {
-             bail!("direct applications cannot retain external function calls");
-@@ -211,14 +305,20 @@ impl DirectApplicationMetadata {
-         {
-             bail!("stored direct application shape does not match its metadata");
-         }
-+        let required_optimization_level = self.output_scale.required_optimization_level();
-+        let identity_output = self.output_scale == DirectOutputScale::Identity;
-         if application.config.ty != CompilerType::Native
--            || application.config.opt_level() != 2
-+            || application.config.opt_level() != required_optimization_level
-             || application.config.symbolica()
--            || application.config.is_complex()
-+            || application.config.is_complex() != identity_output
-             || !application.config.direct_arena()
-             || application.config.direct_arena_operation() != self.destination_operation as u8
-+            || application.config.direct_arena_identity_output() != identity_output
-         {
--            bail!("stored application does not use the portable direct-arena O2 ABI");
-+            bail!(
-+                "stored application does not use the portable direct-arena O{} ABI",
-+                required_optimization_level
-+            );
-         }
-         if application.compiled.is_none() {
-             bail!("stored direct application has no native scalar callable");
-@@ -228,6 +328,7 @@ impl DirectApplicationMetadata {
- 
-     fn save(&self, stream: &mut impl Write) -> Result<()> {
-         stream.write_all(&[self.destination_operation as u8])?;
-+        stream.write_all(&[self.output_scale as u8])?;
-         write_u32(stream, self.input_plane_count)?;
-         write_u32(stream, self.scalar_input_count)?;
-         write_u32_len(stream, self.state_plane_indices.len())?;
-@@ -254,15 +355,23 @@ impl DirectApplicationMetadata {
-         Ok(())
-     }
- 
--    fn load(stream: &mut impl Read) -> Result<Self> {
-+    fn load_for_source(stream: &mut impl Read, source: &Application) -> Result<Self> {
-         let mut operation = [0_u8; 1];
-         stream.read_exact(&mut operation)?;
-         let destination_operation = DirectDestinationOperation::try_from(operation[0])?;
-+        let mut output_scale = [0_u8; 1];
-+        stream.read_exact(&mut output_scale)?;
-+        let output_scale = DirectOutputScale::try_from(output_scale[0])?;
-         let input_plane_count = read_u32(stream)?;
-         let scalar_input_count = read_u32(stream)?;
--        let state_plane_indices = read_u32_vec(stream)?;
--        let parameter_count = read_u32(stream)? as usize;
--        let mut parameter_bindings = Vec::with_capacity(parameter_count);
-+        let state_plane_indices =
-+            read_source_sized_u32_vec(stream, source.count_states, "state binding")?;
-+        let parameter_count =
-+            read_source_sized_count(stream, source.count_params, "parameter binding")?;
-+        let mut parameter_bindings = Vec::new();
-+        parameter_bindings
-+            .try_reserve_exact(parameter_count)
-+            .context("cannot reserve direct parameter bindings")?;
-         for _ in 0..parameter_count {
-             let mut kind = [0_u8; 1];
-             stream.read_exact(&mut kind)?;
-@@ -273,9 +382,52 @@ impl DirectApplicationMetadata {
-                 other => bail!("unknown direct input binding kind {other}"),
-             });
-         }
--        let output_alias_inputs = read_u32_vec(stream)?;
--        Self::new(
-+        let output_alias_inputs =
-+            read_source_sized_u32_vec(stream, source.count_obs, "output alias")?;
-+        Self::new_with_output_scale(
-             destination_operation,
-+            output_scale,
-+            state_plane_indices,
-+            parameter_bindings,
-+            input_plane_count,
-+            scalar_input_count,
-+            output_alias_inputs,
-+        )
-+    }
-+
-+    /// Load the metadata prefix emitted by direct-application storage v1.
-+    ///
-+    /// V1 predates the explicit output-scale field and was exclusively the
-+    /// exact-factor O2 recurrence ABI. Its metadata precedes the compiled
-+    /// application, so source-derived bounds are unavailable while decoding.
-+    /// Apply a generous fixed safety limit here, then authenticate the exact
-+    /// shape against the loaded application before exposing the callable.
-+    fn load_legacy_v1(stream: &mut impl Read) -> Result<Self> {
-+        let mut operation = [0_u8; 1];
-+        stream.read_exact(&mut operation)?;
-+        let destination_operation = DirectDestinationOperation::try_from(operation[0])?;
-+        let input_plane_count = read_u32(stream)?;
-+        let scalar_input_count = read_u32(stream)?;
-+        let state_plane_indices = read_legacy_v1_u32_vec(stream, "state binding")?;
-+        let parameter_count = read_legacy_v1_count(stream, "parameter binding")?;
-+        let mut parameter_bindings = Vec::new();
-+        parameter_bindings
-+            .try_reserve_exact(parameter_count)
-+            .context("cannot reserve legacy v1 direct parameter bindings")?;
-+        for _ in 0..parameter_count {
-+            let mut kind = [0_u8; 1];
-+            stream.read_exact(&mut kind)?;
-+            let value = read_u32(stream)?;
-+            parameter_bindings.push(match kind[0] {
-+                0 => DirectInputBinding::Plane(value),
-+                1 => DirectInputBinding::Scalar(value),
-+                other => bail!("unknown legacy v1 direct input binding kind {other}"),
-+            });
-+        }
-+        let output_alias_inputs = read_legacy_v1_u32_vec(stream, "output alias")?;
-+        Self::new_with_output_scale(
-+            destination_operation,
-+            DirectOutputScale::ExactFactor,
-             state_plane_indices,
-             parameter_bindings,
-             input_plane_count,
-@@ -307,7 +459,10 @@ pub struct DirectPlane {
- }
- 
- impl DirectPlane {
--    /// The caller must keep `values[0..len]` alive for every call using this descriptor.
-+    /// # Safety
-+    ///
-+    /// The caller must keep `values[0..len]` alive for every call using this
-+    /// descriptor.
-     pub const unsafe fn from_raw_parts(values: *mut f64, len: usize) -> Self {
-         Self { values, len }
-     }
-@@ -321,6 +476,8 @@ pub struct DirectScalar {
- }
- 
- impl DirectScalar {
-+    /// # Safety
-+    ///
-     /// The caller must keep `value` alive for every call using this descriptor.
-     pub const unsafe fn from_raw(value: *const f64) -> Self {
-         Self { value }
-@@ -331,6 +488,12 @@ impl DirectScalar {
- /// never host machine code.
- pub struct DirectApplication {
-     metadata: DirectApplicationMetadata,
-+    /// Portable source retained by the current v3 representation.
-+    ///
-+    /// Accepted recurrence v1 payloads stored only their already-lowered
-+    /// application. They remain executable through the read-only compatibility
-+    /// path, but cannot be rewritten as v3 without regenerating the source.
-+    source: Option<Application>,
-     application: Application,
- }
- 
-@@ -342,11 +505,12 @@ impl DirectApplication {
-         metadata.validate_compiled(&application)?;
-         Ok(Self {
-             metadata,
-+            source: Some(source),
-             application,
-         })
-     }
- 
--    /// Build a direct application from an existing portable O2 application
-+    /// Build a direct application from an existing portable optimized application
-     /// payload. This lets a prepared-model bundle share `application.symjit`
-     /// with its ordinary evaluator instead of storing a duplicate payload.
-     pub fn from_source_storage(
-@@ -354,8 +518,17 @@ impl DirectApplication {
-         config: &Config,
-         metadata: DirectApplicationMetadata,
-     ) -> Result<Self> {
--        let source = Application::load(stream, config)?;
--        Self::new(source, metadata)
-+        match catch_unwind(AssertUnwindSafe(|| {
-+            let source = Application::load(stream, config)
-+                .context("cannot load direct application portable source")?;
-+            Self::new(source, metadata).context("cannot lower stored direct application source")
-+        })) {
-+            Ok(result) => result,
-+            Err(payload) => {
-+                drop(payload);
-+                bail!("direct application source loader panicked")
-+            }
-+        }
-     }
- 
-     pub fn metadata(&self) -> &DirectApplicationMetadata {
-@@ -378,28 +551,69 @@ impl DirectApplication {
- 
- impl Storage for DirectApplication {
-     fn save(&self, stream: &mut impl Write) -> Result<()> {
-+        let source = self.source.as_ref().ok_or_else(|| {
-+            anyhow!(
-+                "legacy direct application storage v1 is read-only; regenerate it before writing v3"
-+            )
-+        })?;
-         stream.write_all(&DIRECT_MAGIC)?;
-         write_u32(stream, DIRECT_VERSION)?;
--        self.metadata.save(stream)?;
--        self.application.save(stream)
-+        source.save(stream)?;
-+        self.metadata.save(stream)
-     }
- 
-     fn load(stream: &mut impl Read, config: &Config) -> Result<Self> {
-+        match catch_unwind(AssertUnwindSafe(|| Self::load_inner(stream, config))) {
-+            Ok(result) => result,
-+            Err(payload) => {
-+                drop(payload);
-+                bail!("direct application storage loader panicked")
-+            }
-+        }
-+    }
-+}
-+
-+impl DirectApplication {
-+    fn load_inner(stream: &mut impl Read, config: &Config) -> Result<Self> {
-         let mut magic = [0_u8; 8];
-         stream.read_exact(&mut magic)?;
--        if magic != DIRECT_MAGIC {
--            bail!("invalid direct application magic");
--        }
-         let version = read_u32(stream)?;
--        if version != DIRECT_VERSION {
--            bail!("unsupported direct application storage version {version}");
-+        match (magic, version) {
-+            (DIRECT_MAGIC, DIRECT_VERSION) => Self::load_v3(stream, config),
-+            (DIRECT_LEGACY_V1_MAGIC, DIRECT_LEGACY_V1_VERSION) => {
-+                Self::load_legacy_v1(stream, config)
-+            }
-+            (DIRECT_MAGIC, other) => {
-+                bail!("unsupported direct application storage version {other}")
-+            }
-+            (DIRECT_LEGACY_V1_MAGIC, other) => {
-+                bail!("unsupported legacy direct application storage version {other}")
-+            }
-+            _ => bail!("invalid direct application magic"),
-         }
-+    }
-+
-+    fn load_v3(stream: &mut impl Read, config: &Config) -> Result<Self> {
-         ensure_supported_host()?;
--        let metadata = DirectApplicationMetadata::load(stream)?;
--        let application = Application::load(stream, config)?;
--        metadata.validate_compiled(&application)?;
-+        let source = Application::load(stream, config)
-+            .context("cannot load direct application portable source")?;
-+        let metadata = DirectApplicationMetadata::load_for_source(stream, &source)
-+            .context("cannot load direct application metadata")?;
-+        Self::new(source, metadata).context("cannot lower stored direct application source")
-+    }
-+
-+    fn load_legacy_v1(stream: &mut impl Read, config: &Config) -> Result<Self> {
-+        ensure_supported_host()?;
-+        let metadata = DirectApplicationMetadata::load_legacy_v1(stream)
-+            .context("cannot load legacy v1 direct application metadata")?;
-+        let application = Application::load(stream, config)
-+            .context("cannot load legacy v1 compiled direct application")?;
-+        metadata
-+            .validate_compiled(&application)
-+            .context("invalid legacy v1 compiled direct application")?;
-         Ok(Self {
-             metadata,
-+            source: None,
-             application,
-         })
-     }
-@@ -469,7 +683,7 @@ impl DirectApplet {
-             .ok_or_else(|| anyhow!("direct point range overflows"))?;
-         let mut point = point_start;
- 
--        while point < point_end && point % lane_width != 0 {
-+        while point < point_end && !point.is_multiple_of(lane_width) {
-             call_machine(scalar, planes, scalars, point)?;
-             point += 1;
-         }
-@@ -634,13 +848,15 @@ fn lower_direct_application(
- ) -> Result<Application> {
-     let mut config = source.config.clone();
-     config.set_symbolica(false);
--    config.set_complex(false);
-+    let identity_output = metadata.output_scale == DirectOutputScale::Identity;
-+    config.set_complex(identity_output);
-     config.set_fast_complex(false);
-     config.set_dicect(false);
-     config.set_direct_arena(true);
-     config.set_direct_arena_operation(metadata.destination_operation as u8);
-+    config.set_direct_arena_identity_output(identity_output);
-     config.set_threads(false);
--    config.set_opt_level(2);
-+    config.set_opt_level(metadata.output_scale.required_optimization_level());
- 
-     let mut program = source.prog.clone();
-     program.builder.config = config.clone();
-@@ -668,7 +884,11 @@ fn lower_direct_application(
-         mir = snapshot_finalization_inputs(mir, snapshot_start, metadata.input_plane_count)?;
-         program.builder.count_stack = Some(snapshot_stop as usize);
-     }
--    let mut application = Application::with_mir(program, HashSet::new(), mir)?;
-+    let mut application = if identity_output {
-+        Application::with_precomplexified_mir(program, HashSet::new(), mir)?
-+    } else {
-+        Application::with_mir(program, HashSet::new(), mir)?
-+    };
-     application.prepare_simd();
-     Ok(application)
- }
-@@ -881,12 +1101,21 @@ pub(crate) fn emit_direct_complex_destination(
-     ys: Reg,
-     destination: u32,
-     operation: u8,
-+    identity_output: bool,
- ) -> Result<()> {
-     let operation = DirectDestinationOperation::try_from(operation)?;
-     if !matches!(xs, Reg::Gen(_)) || !matches!(ys, Reg::Gen(_)) {
-         bail!("direct complex destination operands must use general registers");
-     }
- 
-+    if identity_output {
-+        if operation != DirectDestinationOperation::Initialize {
-+            bail!("identity-scaled direct output requires initialize semantics");
-+        }
-+        generator.save_mem_complex(xs, ys, destination);
-+        return Ok(());
-+    }
-+
-     // Keep the original x/y values live while forming
-     // (x + i y) * (factor_re + i factor_im).
-     generator.load_param(Reg::Ret, DIRECT_EXACT_FACTOR_REAL_SCALAR);
-@@ -985,10 +1214,29 @@ fn validate_call(
-         }
-     }
-     for (output, &alias) in metadata.output_alias_inputs.iter().enumerate() {
-+        let output_plane = &planes[metadata.input_plane_count as usize + output];
-         if alias == DIRECT_NO_ALIAS {
-+            for input in &planes[..metadata.input_plane_count as usize] {
-+                if plane_ranges_overlap(input, output_plane)? {
-+                    bail!("identity-scaled direct output {output} overlaps an input plane");
-+                }
-+            }
-+            for (scalar, descriptor) in scalars.iter().enumerate() {
-+                if scalar_plane_ranges_overlap(descriptor, output_plane)? {
-+                    bail!(
-+                        "identity-scaled direct output {output} overlaps scalar descriptor {scalar}"
-+                    );
-+                }
-+            }
-+            for previous in &planes
-+                [metadata.input_plane_count as usize..metadata.input_plane_count as usize + output]
-+            {
-+                if plane_ranges_overlap(previous, output_plane)? {
-+                    bail!("identity-scaled direct outputs overlap each other");
-+                }
-+            }
-             continue;
-         }
--        let output_plane = &planes[metadata.input_plane_count as usize + output];
-         let input_plane = &planes[alias as usize];
-         if output_plane.values != input_plane.values || output_plane.len != input_plane.len {
-             bail!("direct output {output} does not satisfy alias input {alias}");
-@@ -997,6 +1245,60 @@ fn validate_call(
-     Ok(())
- }
- 
-+#[derive(Clone, Copy)]
-+struct DirectAddressRange {
-+    start: usize,
-+    end: usize,
-+}
-+
-+impl DirectAddressRange {
-+    fn overlaps(self, other: Self) -> bool {
-+        self.start < other.end && other.start < self.end
-+    }
-+}
-+
-+fn checked_direct_address_range(
-+    name: &str,
-+    pointer: *const u8,
-+    count: usize,
-+    element_bytes: usize,
-+) -> Result<DirectAddressRange> {
-+    let bytes = count
-+        .checked_mul(element_bytes)
-+        .ok_or_else(|| anyhow!("direct {name} byte range overflows"))?;
-+    if bytes > isize::MAX as usize {
-+        bail!("direct {name} byte range exceeds isize");
-+    }
-+    let start = pointer as usize;
-+    let end = start
-+        .checked_add(bytes)
-+        .ok_or_else(|| anyhow!("direct {name} address range overflows"))?;
-+    Ok(DirectAddressRange { start, end })
-+}
-+
-+fn plane_address_range(plane: &DirectPlane) -> Result<DirectAddressRange> {
-+    checked_direct_address_range(
-+        "plane",
-+        plane.values.cast(),
-+        plane.len,
-+        std::mem::size_of::<f64>(),
-+    )
-+}
-+
-+fn plane_ranges_overlap(left: &DirectPlane, right: &DirectPlane) -> Result<bool> {
-+    Ok(plane_address_range(left)?.overlaps(plane_address_range(right)?))
-+}
-+
-+fn scalar_plane_ranges_overlap(scalar: &DirectScalar, plane: &DirectPlane) -> Result<bool> {
-+    let scalar = checked_direct_address_range(
-+        "scalar descriptor",
-+        scalar.value.cast(),
-+        1,
-+        std::mem::size_of::<f64>(),
-+    )?;
-+    Ok(scalar.overlaps(plane_address_range(plane)?))
-+}
-+
- fn call_machine(
-     function: crate::utils::CompiledFunc<f64>,
-     planes: &[DirectPlane],
-@@ -1050,9 +1352,49 @@ fn read_u32(stream: &mut impl Read) -> Result<u32> {
-     Ok(u32::from_le_bytes(bytes))
- }
- 
--fn read_u32_vec(stream: &mut impl Read) -> Result<Vec<u32>> {
-+fn read_source_sized_count(stream: &mut impl Read, expected: usize, label: &str) -> Result<usize> {
-+    let encoded = read_u32(stream)?;
-+    let expected_u32 =
-+        u32::try_from(expected).with_context(|| format!("direct {label} count exceeds u32"))?;
-+    if encoded != expected_u32 {
-+        bail!("direct {label} count {encoded} does not match source count {expected_u32}");
-+    }
-+    Ok(expected)
-+}
-+
-+fn read_source_sized_u32_vec(
-+    stream: &mut impl Read,
-+    expected: usize,
-+    label: &str,
-+) -> Result<Vec<u32>> {
-+    let count = read_source_sized_count(stream, expected, label)?;
-+    let mut result = Vec::new();
-+    result
-+        .try_reserve_exact(count)
-+        .with_context(|| format!("cannot reserve direct {label} values"))?;
-+    for _ in 0..count {
-+        result.push(read_u32(stream)?);
-+    }
-+    Ok(result)
-+}
-+
-+fn read_legacy_v1_count(stream: &mut impl Read, label: &str) -> Result<usize> {
-     let count = read_u32(stream)? as usize;
--    let mut result = Vec::with_capacity(count);
-+    if count > DIRECT_LEGACY_V1_MAX_BINDINGS {
-+        bail!(
-+            "legacy v1 direct {label} count {count} exceeds safety limit {}",
-+            DIRECT_LEGACY_V1_MAX_BINDINGS
-+        );
-+    }
-+    Ok(count)
-+}
-+
-+fn read_legacy_v1_u32_vec(stream: &mut impl Read, label: &str) -> Result<Vec<u32>> {
-+    let count = read_legacy_v1_count(stream, label)?;
-+    let mut result = Vec::new();
-+    result
-+        .try_reserve_exact(count)
-+        .with_context(|| format!("cannot reserve legacy v1 direct {label} values"))?;
-     for _ in 0..count {
-         result.push(read_u32(stream)?);
-     }
-@@ -1096,6 +1438,120 @@ mod tests {
-         .unwrap()
-     }
- 
-+    fn compiled_source_application() -> Application {
-+        let mut config = Config::default();
-+        config.set_opt_level(3);
-+        config.set_complex(true);
-+        config.set_symbolica(true);
-+        config.set_simd(true);
-+        config.set_fast_complex(false);
-+        config.set_compress(true);
-+        let instructions = r#"[[{"Mul":[{"Out":0},[{"Param":0},{"Param":1}],0]},{"Add":[{"Out":1},[{"Param":0},{"Param":1}],0]}],2,[]]"#;
-+        Compiler::with_config(config)
-+            .translate(instructions.to_owned(), 2)
-+            .unwrap()
-+    }
-+
-+    fn compiled_metadata(source: &Application) -> DirectApplicationMetadata {
-+        assert_eq!(source.count_states, 0);
-+        DirectApplicationMetadata::new_with_output_scale(
-+            DirectDestinationOperation::Initialize,
-+            DirectOutputScale::Identity,
-+            vec![],
-+            (0..source.count_params as u32)
-+                .map(DirectInputBinding::Plane)
-+                .collect(),
-+            source.count_params as u32,
-+            0,
-+            vec![DIRECT_NO_ALIAS; source.count_obs],
-+        )
-+        .unwrap()
-+    }
-+
-+    fn machine_code_contains_call(application: &Application) -> bool {
-+        let bytes = application
-+            .compiled
-+            .as_ref()
-+            .expect("compiled fixture must have scalar machine code")
-+            .dumps();
-+        #[cfg(target_arch = "aarch64")]
-+        {
-+            bytes.chunks_exact(4).any(|instruction| {
-+                let word = u32::from_le_bytes(instruction.try_into().unwrap());
-+                word & 0xfc00_0000 == 0x9400_0000
-+            })
-+        }
-+        #[cfg(target_arch = "x86_64")]
-+        {
-+            bytes.contains(&0xe8)
-+        }
-+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-+        {
-+            false
-+        }
-+    }
-+
-+    fn assert_storage_load_fails_without_panic(bytes: &[u8], expected: &str) {
-+        let mut stored = bytes;
-+        let attempt = catch_unwind(AssertUnwindSafe(|| {
-+            DirectApplication::load(&mut stored, &Config::default())
-+        }));
-+        let result = attempt.expect("malformed direct storage must not unwind");
-+        let error = result
-+            .err()
-+            .expect("malformed direct storage must fail closed");
-+        let message = format!("{error:#}");
-+        assert!(
-+            message.contains(expected),
-+            "unexpected direct storage error: {message}"
-+        );
-+    }
-+
-+    fn stored_metadata_offset(direct: &DirectApplication) -> usize {
-+        let mut source = Vec::new();
-+        direct.source.as_ref().unwrap().save(&mut source).unwrap();
-+        DIRECT_MAGIC.len() + std::mem::size_of::<u32>() + source.len()
-+    }
-+
-+    fn write_legacy_v1_metadata(stream: &mut impl Write, metadata: &DirectApplicationMetadata) {
-+        assert_eq!(metadata.output_scale, DirectOutputScale::ExactFactor);
-+        stream
-+            .write_all(&[metadata.destination_operation as u8])
-+            .unwrap();
-+        write_u32(stream, metadata.input_plane_count).unwrap();
-+        write_u32(stream, metadata.scalar_input_count).unwrap();
-+        write_u32_len(stream, metadata.state_plane_indices.len()).unwrap();
-+        for &value in &metadata.state_plane_indices {
-+            write_u32(stream, value).unwrap();
-+        }
-+        write_u32_len(stream, metadata.parameter_bindings.len()).unwrap();
-+        for binding in &metadata.parameter_bindings {
-+            match *binding {
-+                DirectInputBinding::Plane(value) => {
-+                    stream.write_all(&[0]).unwrap();
-+                    write_u32(stream, value).unwrap();
-+                }
-+                DirectInputBinding::Scalar(value) => {
-+                    stream.write_all(&[1]).unwrap();
-+                    write_u32(stream, value).unwrap();
-+                }
-+            }
-+        }
-+        write_u32_len(stream, metadata.output_alias_inputs.len()).unwrap();
-+        for &value in &metadata.output_alias_inputs {
-+            write_u32(stream, value).unwrap();
-+        }
-+    }
-+
-+    fn legacy_v1_storage(direct: &DirectApplication) -> Vec<u8> {
-+        let mut stream = Vec::new();
-+        stream.write_all(&DIRECT_LEGACY_V1_MAGIC).unwrap();
-+        write_u32(&mut stream, DIRECT_LEGACY_V1_VERSION).unwrap();
-+        write_legacy_v1_metadata(&mut stream, &direct.metadata);
-+        direct.application.save(&mut stream).unwrap();
-+        stream
-+    }
-+
-     #[test]
-     fn contribution_and_closure_calls_accumulate_nonunit_complex_factors() {
-         for operation in [
-@@ -1172,6 +1628,7 @@ mod tests {
-     }
- 
-     #[test]
-+    #[allow(clippy::needless_range_loop)]
-     fn initialize_overwrites_destination_after_factor_scaling() {
-         let metadata = metadata(DirectDestinationOperation::Initialize);
-         let callable = DirectApplication::new(source_application(2), metadata)
-@@ -1218,6 +1675,7 @@ mod tests {
-     }
- 
-     #[test]
-+    #[allow(clippy::cloned_ref_to_slice_refs)]
-     fn finalization_transforms_aliased_current_in_place_with_complex_factor() {
-         let mut config = Config::default();
-         config.set_opt_level(2);
-@@ -1359,16 +1817,623 @@ mod tests {
-     }
- 
-     #[test]
--    fn direct_application_rejects_nonportable_optimization_level() {
-+    fn compiled_portable_source_payload_can_be_transformed_without_duplicate_storage() {
-+        let source = compiled_source_application();
-+        let metadata = compiled_metadata(&source);
-+        let mut source_bytes = Vec::new();
-+        source.save(&mut source_bytes).unwrap();
-+        let direct = DirectApplication::from_source_storage(
-+            &mut source_bytes.as_slice(),
-+            &Config::default(),
-+            metadata.clone(),
-+        )
-+        .unwrap();
-+        assert_eq!(direct.metadata(), &metadata);
-+        assert_eq!(direct.source.as_ref().unwrap().config.opt_level(), 3);
-+        assert!(direct.source.as_ref().unwrap().config.compress());
-+        assert!(machine_code_contains_call(&direct.application));
-+    }
-+
-+    #[test]
-+    fn direct_application_rejects_unoptimized_source_level() {
-+        let error = DirectApplication::new(
-+            source_application(1),
-+            metadata(DirectDestinationOperation::Add),
-+        )
-+        .err()
-+        .expect("O1 must be rejected");
-+        assert!(error.to_string().contains("O2 source"));
-+    }
-+
-+    #[test]
-+    fn exact_factor_direct_application_rejects_o3_source_level() {
-         let error = DirectApplication::new(
-             source_application(3),
-             metadata(DirectDestinationOperation::Add),
-         )
-         .err()
--        .expect("O3 must be rejected");
-+        .expect("exact-factor applications must remain O2");
-         assert!(error.to_string().contains("O2 source"));
-     }
- 
-+    #[test]
-+    fn exact_factor_outputs_require_distinct_destination_aliases() {
-+        let error = DirectApplicationMetadata::new(
-+            DirectDestinationOperation::Add,
-+            vec![],
-+            vec![
-+                DirectInputBinding::Plane(0),
-+                DirectInputBinding::Plane(1),
-+                DirectInputBinding::Plane(2),
-+                DirectInputBinding::Plane(3),
-+            ],
-+            5,
-+            2,
-+            vec![4, 4],
-+        )
-+        .unwrap_err();
-+        assert!(
-+            error.to_string().contains("distinct destination planes"),
-+            "unexpected duplicate-alias error: {error:#}"
-+        );
-+    }
-+
-+    #[test]
-+    fn compiled_identity_overwrite_accepts_real_o3_funclets_and_preserves_odd_tails() {
-+        let source = compiled_source_application();
-+        assert_eq!(source.config.opt_level(), 3);
-+        assert!(source.config.compress());
-+        assert!(
-+            source
-+                .bytecode
-+                .mir
-+                .code
-+                .iter()
-+                .any(|instruction| matches!(instruction, Instruction::ComplexBi { .. })),
-+            "the compiled Direct-Arena fixture must contain compressible complex multiplication"
-+        );
-+        assert!(
-+            machine_code_contains_call(&source),
-+            "the O3 source must emit an out-of-line compressed funclet call"
-+        );
-+        let metadata = compiled_metadata(&source);
-+        let mut direct = DirectApplication::new(source, metadata.clone()).unwrap();
-+        assert_eq!(direct.application.config.opt_level(), 3);
-+        assert!(direct.application.config.compress());
-+        assert!(direct.application.config.is_complex());
-+        assert!(
-+            machine_code_contains_call(&direct.application),
-+            "direct lowering must preserve compressed O3 funclet generation"
-+        );
-+        let mut storage = Vec::new();
-+        direct.save(&mut storage).unwrap();
-+        let mut stored = storage.as_slice();
-+        let loaded = catch_unwind(AssertUnwindSafe(|| {
-+            DirectApplication::load(&mut stored, &Config::default())
-+        }))
-+        .expect("valid v3 identity/O3 storage must not unwind")
-+        .expect("valid v3 identity/O3 storage must load");
-+        assert_eq!(loaded.metadata(), &metadata);
-+        let loaded_source = loaded.source.as_ref().unwrap();
-+        assert_eq!(loaded_source.config.opt_level(), 3);
-+        assert!(loaded_source.config.symbolica());
-+        assert!(loaded_source.config.is_complex());
-+        assert!(loaded_source.config.compress());
-+        assert!(!loaded_source.config.direct_arena());
-+        assert_eq!(loaded.application.config.opt_level(), 3);
-+        assert!(loaded.application.config.direct_arena());
-+        assert!(loaded.application.config.direct_arena_identity_output());
-+        assert!(machine_code_contains_call(&loaded.application));
-+        direct = loaded;
-+        direct.prepare_simd();
-+        let callable = direct.seal().unwrap().into_callable();
-+
-+        for point_count in [1_usize, 2, 3, 127, 128, 129] {
-+            let mut dense_source = compiled_source_application();
-+            dense_source.prepare_simd();
-+            let dense = dense_source.seal().unwrap();
-+            let mut row_major = vec![0.0; point_count * dense.count_params];
-+            let mut input_planes = vec![vec![0.0; point_count]; dense.count_params];
-+            for point in 0..point_count {
-+                let values = [
-+                    0.25 + point as f64 * 0.03125,
-+                    if point % 2 == 0 { -0.0 } else { 0.5 },
-+                    1.5 - point as f64 * 0.0078125,
-+                    if point % 3 == 0 { 0.0 } else { -0.25 },
-+                ];
-+                for (parameter, value) in values.into_iter().enumerate() {
-+                    row_major[point * dense.count_params + parameter] = value;
-+                    input_planes[parameter][point] = value;
-+                }
-+            }
-+            let mut expected = vec![f64::NAN; point_count * dense.count_obs];
-+            dense.evaluate_matrix(&row_major, &mut expected, point_count);
-+
-+            let mut output_planes = vec![vec![f64::NAN; point_count]; dense.count_obs];
-+            let mut planes = input_planes
-+                .iter_mut()
-+                .chain(output_planes.iter_mut())
-+                .map(|values| unsafe {
-+                    DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len())
-+                })
-+                .collect::<Vec<_>>();
-+            let status = unsafe {
-+                callable
-+                    .handle()
-+                    .invoke(&planes, &[], 0, point_count as u32)
-+            };
-+            assert_eq!(status, DIRECT_STATUS_OK);
-+            for point in 0..point_count {
-+                for output in 0..dense.count_obs {
-+                    assert_eq!(
-+                        output_planes[output][point].to_bits(),
-+                        expected[point * dense.count_obs + output].to_bits(),
-+                        "compiled Direct-Arena mismatch at point {point}, output {output}, count {point_count}"
-+                    );
-+                }
-+            }
-+            planes.clear();
-+        }
-+    }
-+
-+    #[test]
-+    fn compiled_identity_overwrite_is_factor_free_and_preserves_output_bits() {
-+        let mut config = Config::default();
-+        config.set_opt_level(3);
-+        config.set_complex(true);
-+        config.set_symbolica(true);
-+        config.set_simd(true);
-+        config.set_fast_complex(false);
-+        let instructions = r#"[[{"Assign":[{"Out":0},{"Param":0}]}],1,[]]"#;
-+        let source = Compiler::with_config(config)
-+            .translate(instructions.to_owned(), 1)
-+            .unwrap();
-+        let metadata = compiled_metadata(&source);
-+        assert_eq!(metadata.scalar_input_count, 0);
-+        let callable = DirectApplication::new(source, metadata)
-+            .unwrap()
-+            .seal()
-+            .unwrap()
-+            .into_callable();
-+        let edge_bits = [
-+            0_u64,
-+            (-0.0_f64).to_bits(),
-+            1_u64,
-+            (f64::MIN_POSITIVE).to_bits(),
-+            0x7ff8_0000_0000_1234,
-+            0xfff8_0000_0000_5678,
-+        ];
-+        let mut input_re = edge_bits.map(f64::from_bits).to_vec();
-+        let mut input_im = edge_bits
-+            .into_iter()
-+            .rev()
-+            .map(f64::from_bits)
-+            .collect::<Vec<_>>();
-+        let mut output_re = vec![1.0; input_re.len()];
-+        let mut output_im = vec![1.0; input_re.len()];
-+        let mut planes = vec![
-+            unsafe { DirectPlane::from_raw_parts(input_re.as_mut_ptr(), input_re.len()) },
-+            unsafe { DirectPlane::from_raw_parts(input_im.as_mut_ptr(), input_im.len()) },
-+            unsafe { DirectPlane::from_raw_parts(output_re.as_mut_ptr(), output_re.len()) },
-+            unsafe { DirectPlane::from_raw_parts(output_im.as_mut_ptr(), output_im.len()) },
-+        ];
-+        assert_eq!(
-+            unsafe {
-+                callable
-+                    .handle()
-+                    .invoke(&planes, &[], 0, input_re.len() as u32)
-+            },
-+            DIRECT_STATUS_OK
-+        );
-+        assert_eq!(
-+            output_re
-+                .iter()
-+                .map(|value| value.to_bits())
-+                .collect::<Vec<_>>(),
-+            input_re
-+                .iter()
-+                .map(|value| value.to_bits())
-+                .collect::<Vec<_>>()
-+        );
-+        assert_eq!(
-+            output_im
-+                .iter()
-+                .map(|value| value.to_bits())
-+                .collect::<Vec<_>>(),
-+            input_im
-+                .iter()
-+                .map(|value| value.to_bits())
-+                .collect::<Vec<_>>()
-+        );
-+        planes.clear();
-+    }
-+
-+    #[test]
-+    fn compiled_identity_overwrite_rejects_input_output_aliasing() {
-+        let source = compiled_source_application();
-+        let metadata = compiled_metadata(&source);
-+        let callable = DirectApplication::new(source, metadata)
-+            .unwrap()
-+            .seal()
-+            .unwrap()
-+            .into_callable();
-+        let mut storage = vec![0.0; 8];
-+        let mut planes = (0..8)
-+            .map(|_| unsafe { DirectPlane::from_raw_parts(storage.as_mut_ptr(), storage.len()) })
-+            .collect::<Vec<_>>();
-+        assert_eq!(
-+            unsafe { callable.handle().invoke(&planes, &[], 0, 1) },
-+            DIRECT_STATUS_EXECUTION_FAILED
-+        );
-+        planes.clear();
-+
-+        let mut inputs = vec![vec![0.0; 8]; 4];
-+        let mut distinct_outputs = vec![vec![0.0; 8]; 3];
-+        let mut partially_overlapping = inputs
-+            .iter_mut()
-+            .map(|values| unsafe { DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len()) })
-+            .collect::<Vec<_>>();
-+        partially_overlapping.push(unsafe {
-+            DirectPlane::from_raw_parts(inputs[0].as_mut_ptr().add(1), inputs[0].len() - 1)
-+        });
-+        partially_overlapping.extend(distinct_outputs.iter_mut().map(|values| unsafe {
-+            DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len())
-+        }));
-+        assert_eq!(
-+            unsafe { callable.handle().invoke(&partially_overlapping, &[], 0, 4) },
-+            DIRECT_STATUS_EXECUTION_FAILED
-+        );
-+        partially_overlapping.clear();
-+
-+        // The active [0, 4) tiles do not overlap, but output 0 points into the
-+        // future [8, 16) portion of input 0's declared plane. A later tile
-+        // would otherwise read values already overwritten by this call.
-+        let mut future_input = vec![0.0; 16];
-+        let mut other_inputs = vec![vec![0.0; 16]; 3];
-+        let mut future_outputs = vec![vec![0.0; 16]; 3];
-+        let mut future_overlap = vec![unsafe {
-+            DirectPlane::from_raw_parts(future_input.as_mut_ptr(), future_input.len())
-+        }];
-+        future_overlap.extend(other_inputs.iter_mut().map(|values| unsafe {
-+            DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len())
-+        }));
-+        future_overlap
-+            .push(unsafe { DirectPlane::from_raw_parts(future_input.as_mut_ptr().add(8), 8) });
-+        future_overlap.extend(future_outputs.iter_mut().map(|values| unsafe {
-+            DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len())
-+        }));
-+        assert_eq!(
-+            unsafe { callable.handle().invoke(&future_overlap, &[], 0, 4) },
-+            DIRECT_STATUS_EXECUTION_FAILED
-+        );
-+        future_overlap.clear();
-+
-+        // Likewise, output planes must not overlap anywhere in their declared
-+        // ranges even when the active tiles happen to be disjoint.
-+        let mut output_overlap_inputs = vec![vec![0.0; 16]; 4];
-+        let mut output_backing = vec![0.0; 24];
-+        let mut output_tail = vec![vec![0.0; 16]; 2];
-+        let mut output_overlap = output_overlap_inputs
-+            .iter_mut()
-+            .map(|values| unsafe { DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len()) })
-+            .collect::<Vec<_>>();
-+        output_overlap
-+            .push(unsafe { DirectPlane::from_raw_parts(output_backing.as_mut_ptr(), 16) });
-+        output_overlap
-+            .push(unsafe { DirectPlane::from_raw_parts(output_backing.as_mut_ptr().add(8), 16) });
-+        output_overlap.extend(output_tail.iter_mut().map(|values| unsafe {
-+            DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len())
-+        }));
-+        assert_eq!(
-+            unsafe { callable.handle().invoke(&output_overlap, &[], 0, 4) },
-+            DIRECT_STATUS_EXECUTION_FAILED
-+        );
-+        output_overlap.clear();
-+    }
-+
-+    #[test]
-+    fn compiled_identity_overwrite_rejects_scalar_output_aliasing() {
-+        let mut config = Config::default();
-+        config.set_opt_level(3);
-+        config.set_complex(true);
-+        config.set_symbolica(true);
-+        config.set_simd(true);
-+        config.set_fast_complex(false);
-+        let instructions = r#"[[{"Assign":[{"Out":0},{"Param":0}]}],1,[]]"#;
-+        let source = Compiler::with_config(config)
-+            .translate(instructions.to_owned(), 1)
-+            .unwrap();
-+        assert_eq!(source.count_params, 2);
-+        assert_eq!(source.count_obs, 2);
-+        let metadata = DirectApplicationMetadata::new_with_output_scale(
-+            DirectDestinationOperation::Initialize,
-+            DirectOutputScale::Identity,
-+            vec![],
-+            vec![DirectInputBinding::Scalar(0), DirectInputBinding::Scalar(1)],
-+            0,
-+            2,
-+            vec![DIRECT_NO_ALIAS, DIRECT_NO_ALIAS],
-+        )
-+        .unwrap();
-+        let callable = DirectApplication::new(source, metadata)
-+            .unwrap()
-+            .seal()
-+            .unwrap()
-+            .into_callable();
-+
-+        let mut output_re = vec![-7.0; 16];
-+        let mut output_im = vec![11.0; 16];
-+        let planes = vec![
-+            unsafe { DirectPlane::from_raw_parts(output_re.as_mut_ptr(), output_re.len()) },
-+            unsafe { DirectPlane::from_raw_parts(output_im.as_mut_ptr(), output_im.len()) },
-+        ];
-+        let input_re = 0.25;
-+        let input_im = -0.5;
-+        let valid_scalars = [
-+            unsafe { DirectScalar::from_raw(ptr::from_ref(&input_re)) },
-+            unsafe { DirectScalar::from_raw(ptr::from_ref(&input_im)) },
-+        ];
-+        assert_eq!(
-+            unsafe { callable.handle().invoke(&planes, &valid_scalars, 0, 4) },
-+            DIRECT_STATUS_OK
-+        );
-+
-+        // Pointer equality at the start of an output plane must fail closed.
-+        let exact_overlap = [
-+            unsafe { DirectScalar::from_raw(output_re.as_ptr()) },
-+            unsafe { DirectScalar::from_raw(ptr::from_ref(&input_im)) },
-+        ];
-+        assert_eq!(
-+            unsafe { callable.handle().invoke(&planes, &exact_overlap, 0, 4) },
-+            DIRECT_STATUS_EXECUTION_FAILED
-+        );
-+
-+        // The active tile is [0, 4), but scalar 1 points into the future tail
-+        // of output 1's complete declared [0, 16) range.
-+        let future_partial_overlap = [
-+            unsafe { DirectScalar::from_raw(ptr::from_ref(&input_re)) },
-+            unsafe { DirectScalar::from_raw(output_im.as_ptr().add(8)) },
-+        ];
-+        assert_eq!(
-+            unsafe {
-+                callable
-+                    .handle()
-+                    .invoke(&planes, &future_partial_overlap, 0, 4)
-+            },
-+            DIRECT_STATUS_EXECUTION_FAILED
-+        );
-+    }
-+
-+    #[test]
-+    fn legacy_v1_exact_factor_storage_loads_executes_and_remains_read_only() {
-+        assert_eq!(
-+            DIRECT_APPLICATION_STORAGE_ABI,
-+            "symjit-direct-application-storage-v3"
-+        );
-+        assert_eq!(
-+            DIRECT_APPLICATION_LEGACY_V1_STORAGE_ABI,
-+            "symjit-direct-application-storage-v1"
-+        );
-+        let metadata = metadata(DirectDestinationOperation::Initialize);
-+        let mut original = DirectApplication::new(source_application(2), metadata.clone()).unwrap();
-+        original.prepare_simd();
-+        let storage = legacy_v1_storage(&original);
-+
-+        let loaded = DirectApplication::load(&mut storage.as_slice(), &Config::default()).unwrap();
-+        assert_eq!(loaded.metadata(), &metadata);
-+        assert_eq!(loaded.metadata.output_scale, DirectOutputScale::ExactFactor);
-+        assert!(loaded.source.is_none());
-+
-+        let mut rewritten = Vec::new();
-+        let rewrite_error = loaded
-+            .save(&mut rewritten)
-+            .expect_err("legacy v1 payloads must not be synthesized into v3");
-+        assert!(
-+            rewrite_error.to_string().contains("read-only"),
-+            "unexpected legacy rewrite error: {rewrite_error:#}"
-+        );
-+        assert!(rewritten.is_empty());
-+
-+        let callable = loaded.seal().unwrap().into_callable();
-+        let mut storage = [
-+            vec![2.0, 3.0, -1.0],
-+            vec![1.0, -1.0, 0.5],
-+            vec![4.0, 0.5, 2.0],
-+            vec![-2.0, 1.0, -0.25],
-+            vec![999.0; 3],
-+            vec![-999.0; 3],
-+        ];
-+        let mut planes = storage
-+            .iter_mut()
-+            .map(|values| unsafe { DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len()) })
-+            .collect::<Vec<_>>();
-+        planes.push(planes[4]);
-+        planes.push(planes[5]);
-+        let factor_re = -0.5;
-+        let factor_im = 0.25;
-+        let scalars = [
-+            unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_re)) },
-+            unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_im)) },
-+        ];
-+
-+        assert_eq!(
-+            unsafe { callable.handle().invoke(&planes, &scalars, 0, 3) },
-+            DIRECT_STATUS_OK
-+        );
-+        for point in 0..3 {
-+            let product_re =
-+                storage[0][point] * storage[2][point] - storage[1][point] * storage[3][point];
-+            let product_im =
-+                storage[0][point] * storage[3][point] + storage[1][point] * storage[2][point];
-+            assert!(
-+                (storage[4][point] - (factor_re * product_re - factor_im * product_im)).abs()
-+                    < 1.0e-12
-+            );
-+            assert!(
-+                (storage[5][point] - (factor_re * product_im + factor_im * product_re)).abs()
-+                    < 1.0e-12
-+            );
-+        }
-+        planes.clear();
-+    }
-+
-+    #[test]
-+    fn legacy_v1_storage_rejects_oversized_metadata_and_non_direct_payloads_without_unwinding() {
-+        let metadata = metadata(DirectDestinationOperation::Add);
-+        let direct = DirectApplication::new(source_application(2), metadata.clone()).unwrap();
-+        let mut oversized = legacy_v1_storage(&direct);
-+        let state_count_offset =
-+            DIRECT_LEGACY_V1_MAGIC.len() + std::mem::size_of::<u32>() + 1 + 4 + 4;
-+        oversized[state_count_offset..state_count_offset + 4]
-+            .copy_from_slice(&u32::MAX.to_le_bytes());
-+        assert_storage_load_fails_without_panic(
-+            &oversized,
-+            "legacy v1 direct state binding count 4294967295 exceeds safety limit",
-+        );
-+
-+        let mut invalid_application = Vec::new();
-+        invalid_application
-+            .write_all(&DIRECT_LEGACY_V1_MAGIC)
-+            .unwrap();
-+        write_u32(&mut invalid_application, DIRECT_LEGACY_V1_VERSION).unwrap();
-+        write_legacy_v1_metadata(&mut invalid_application, &metadata);
-+        source_application(2)
-+            .save(&mut invalid_application)
-+            .unwrap();
-+        assert_storage_load_fails_without_panic(
-+            &invalid_application,
-+            "invalid legacy v1 compiled direct application",
-+        );
-+
-+        let mut mismatched_header = legacy_v1_storage(&direct);
-+        mismatched_header[8..12].copy_from_slice(&3_u32.to_le_bytes());
-+        assert_storage_load_fails_without_panic(
-+            &mismatched_header,
-+            "unsupported legacy direct application storage version 3",
-+        );
-+    }
-+
-+    #[test]
-+    fn direct_storage_v3_rejects_malformed_and_nonportable_sources_without_unwinding() {
-+        let source = compiled_source_application();
-+        let metadata = compiled_metadata(&source);
-+        let mut direct = DirectApplication::new(source, metadata).unwrap();
-+        let metadata_offset = stored_metadata_offset(&direct);
-+        let mut valid = Vec::new();
-+        direct.save(&mut valid).unwrap();
-+
-+        let mut legacy_magic = valid.clone();
-+        legacy_magic[..8].copy_from_slice(b"SJDA0001");
-+        assert_storage_load_fails_without_panic(
-+            &legacy_magic,
-+            "unsupported legacy direct application storage version 3",
-+        );
-+
-+        let mut legacy_version = valid.clone();
-+        legacy_version[8..12].copy_from_slice(&1_u32.to_le_bytes());
-+        assert_storage_load_fails_without_panic(
-+            &legacy_version,
-+            "unsupported direct application storage version 1",
-+        );
-+        let mut superseded_v2 = valid.clone();
-+        superseded_v2[8..12].copy_from_slice(&2_u32.to_le_bytes());
-+        assert_storage_load_fails_without_panic(
-+            &superseded_v2,
-+            "unsupported direct application storage version 2",
-+        );
-+
-+        let mut unknown_scale = valid.clone();
-+        unknown_scale[metadata_offset + 1] = u8::MAX;
-+        assert_storage_load_fails_without_panic(&unknown_scale, "unknown direct output scale");
-+
-+        let mut truncated = valid.clone();
-+        truncated.truncate(metadata_offset + 1);
-+        assert_storage_load_fails_without_panic(&truncated, "failed to fill whole buffer");
-+
-+        let mut oversized_state_count = valid.clone();
-+        oversized_state_count[metadata_offset + 10..metadata_offset + 14]
-+            .copy_from_slice(&u32::MAX.to_le_bytes());
-+        assert_storage_load_fails_without_panic(
-+            &oversized_state_count,
-+            "state binding count 4294967295 does not match source count 0",
-+        );
-+
-+        direct
-+            .source
-+            .as_mut()
-+            .unwrap()
-+            .prog
-+            .builder
-+            .config
-+            .set_direct_arena(true);
-+        let mut invalid_config = Vec::new();
-+        direct.save(&mut invalid_config).unwrap();
-+        assert_storage_load_fails_without_panic(&invalid_config, "portable native Symbolica");
-+
-+        let source = compiled_source_application();
-+        let metadata = compiled_metadata(&source);
-+        let mut source_storage = Vec::new();
-+        source.save(&mut source_storage).unwrap();
-+        source_storage.truncate(source_storage.len() / 2);
-+        let mut stored_source = source_storage.as_slice();
-+        let source_attempt = catch_unwind(AssertUnwindSafe(|| {
-+            DirectApplication::from_source_storage(&mut stored_source, &Config::default(), metadata)
-+        }));
-+        let source_result =
-+            source_attempt.expect("malformed shared source storage must not unwind");
-+        assert!(
-+            source_result.is_err(),
-+            "malformed shared source storage must fail closed"
-+        );
-+    }
-+
-+    #[test]
-+    fn warmed_compiled_plane_calls_perform_zero_allocations() {
-+        let source = compiled_source_application();
-+        let metadata = compiled_metadata(&source);
-+        let callable = DirectApplication::new(source, metadata)
-+            .unwrap()
-+            .seal()
-+            .unwrap()
-+            .into_callable();
-+        let mut storage = vec![vec![0.0; 129]; 8];
-+        let planes = storage
-+            .iter_mut()
-+            .map(|values| unsafe { DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len()) })
-+            .collect::<Vec<_>>();
-+        let handle = callable.handle();
-+
-+        assert_eq!(
-+            unsafe { handle.invoke(&planes, &[], 0, 129) },
-+            DIRECT_STATUS_OK
-+        );
-+        assert_eq!(
-+            unsafe { callable.invoke_unchecked(&planes, &[], 0, 129) },
-+            DIRECT_STATUS_OK
-+        );
-+
-+        let (checked_status, checked_allocations) =
-+            crate::direct_table::allocation_probe::count_allocations(|| {
-+                let mut status = DIRECT_STATUS_OK;
-+                for _ in 0..128 {
-+                    status |= unsafe { handle.invoke(&planes, &[], 0, 129) };
-+                }
-+                status
-+            });
-+        let (unchecked_status, unchecked_allocations) =
-+            crate::direct_table::allocation_probe::count_allocations(|| {
-+                let mut status = DIRECT_STATUS_OK;
-+                for _ in 0..128 {
-+                    status |= unsafe { callable.invoke_unchecked(&planes, &[], 0, 129) };
-+                }
-+                status
-+            });
-+        assert_eq!(checked_status, DIRECT_STATUS_OK);
-+        assert_eq!(unchecked_status, DIRECT_STATUS_OK);
-+        assert_eq!(checked_allocations, 0);
-+        assert_eq!(unchecked_allocations, 0);
-+    }
-+
-     #[test]
-     fn direct_callable_rejects_wrong_destination_alias() {
-         let callable = DirectApplication::new(
 diff --git a/rust/direct_table.rs b/rust/direct_table.rs
 new file mode 100644
-index 0000000..846d0f9
+index 0000000..2df4832
 --- /dev/null
 +++ b/rust/direct_table.rs
-@@ -0,0 +1,4608 @@
-+//! Portable descriptors and AArch64 execution for table-aware Direct-Arena.
+@@ -0,0 +1,4712 @@
++//! Portable descriptors and native execution for table-aware Direct-Arena.
 +//!
 +//! This is an additive ABI: the existing per-row [`crate::DirectCallable`]
 +//! remains unchanged. A table callable receives opaque fixed-width invocation
@@ -2420,7 +1021,7 @@ index 0000000..846d0f9
 +//! and attachment loops, while the source MIR body is emitted exactly once
 +//! inside the point loop. Descriptor construction, serialization, and checked
 +//! call-view validation are architecture-neutral. Sealing and invoking the
-+//! generated callable currently require AArch64.
++//! generated callable currently require AArch64 or x86-64.
 +
 +use std::collections::BTreeSet;
 +use std::ffi::c_void;
@@ -2430,7 +1031,10 @@ index 0000000..846d0f9
 +
 +use anyhow::{anyhow, bail, Context, Result};
 +
-+use crate::arm::{ArmGenerator, ArmSimdGenerator, DirectTableCodegen};
++#[cfg(target_arch = "x86_64")]
++use crate::amd::{AmdScalarGenerator, AmdVectorF64x4Generator};
++#[cfg(target_arch = "aarch64")]
++use crate::arm::{ArmGenerator, ArmSimdGenerator};
 +use crate::config::SPILL_AREA;
 +use crate::direct::{
 +    DirectPlane, DirectScalar, DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT,
@@ -2444,15 +1048,20 @@ index 0000000..846d0f9
 +use crate::serializer::MirWriter;
 +use crate::symbol::Loc;
 +
-+pub const DIRECT_TABLE_BINDING_ABI: &str = "symjit-direct-table-binding-v2";
++pub const DIRECT_TABLE_BINDING_ABI: &str = "symjit-direct-table-binding-v1";
 +pub const DIRECT_TABLE_DESCRIPTOR_ABI: &str = "symjit-direct-table-descriptor-v1";
 +pub const DIRECT_TABLE_DESCRIPTOR_MAX_BYTES: usize = 16 * 1024;
 +
-+const AARCH64_SIMD_LANES: u32 = 2;
++#[cfg(target_arch = "aarch64")]
++const DIRECT_TABLE_SIMD_LANES: u32 = 2;
++#[cfg(target_arch = "x86_64")]
++const DIRECT_TABLE_SIMD_LANES: u32 = 4;
++#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
++const DIRECT_TABLE_SIMD_LANES: u32 = 1;
 +const MAX_ROW_STRIDE: u32 = 16_384;
 +const MAX_INPUT_PLANES: usize = 256;
 +const MAX_PARAMETER_BINDINGS: usize = 256;
-+const MAX_OUTPUT_COMPONENTS: usize = 256;
++const MAX_OUTPUT_COMPONENTS: usize = 1024;
 +const DIRECT_TABLE_DESCRIPTOR_MAGIC: [u8; 8] = *b"SJTD0001";
 +const DIRECT_TABLE_DESCRIPTOR_VERSION: u32 = 1;
 +
@@ -2460,8 +1069,8 @@ index 0000000..846d0f9
 +#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 +#[repr(u32)]
 +pub enum DirectTableDestinationOperation {
-+    Initialize = 0,
-+    Add = 1,
++    Overwrite = 0,
++    Accumulate = 1,
 +}
 +
 +/// Maps one source parameter into the table invocation ABI.
@@ -2542,7 +1151,7 @@ index 0000000..846d0f9
 +    /// Split destination-plane fields in source output order:
 +    /// `[output0.re, output0.im, output1.re, output1.im, ...]`.
 +    pub destination_plane_offsets: Vec<u32>,
-+    pub factor_offset: u32,
++    pub scale_offset: u32,
 +    pub operation_offset: u32,
 +}
 +
@@ -2551,13 +1160,13 @@ index 0000000..846d0f9
 +        row_stride: u32,
 +        destination_real_offset: u32,
 +        destination_imag_offset: u32,
-+        factor_offset: u32,
++        scale_offset: u32,
 +        operation_offset: u32,
 +    ) -> Result<Self> {
 +        Self::new_with_destination_plane_offsets(
 +            row_stride,
 +            vec![destination_real_offset, destination_imag_offset],
-+            factor_offset,
++            scale_offset,
 +            operation_offset,
 +        )
 +    }
@@ -2565,13 +1174,13 @@ index 0000000..846d0f9
 +    pub fn new_with_destination_plane_offsets(
 +        row_stride: u32,
 +        destination_plane_offsets: Vec<u32>,
-+        factor_offset: u32,
++        scale_offset: u32,
 +        operation_offset: u32,
 +    ) -> Result<Self> {
 +        let layout = Self {
 +            row_stride,
 +            destination_plane_offsets,
-+            factor_offset,
++            scale_offset,
 +            operation_offset,
 +        };
 +        layout.validate()?;
@@ -2596,7 +1205,7 @@ index 0000000..846d0f9
 +        for (component, &offset) in self.destination_plane_offsets.iter().enumerate() {
 +            validate_u32_field("attachment destination", component, offset, self.row_stride)?;
 +        }
-+        validate_u32_field("attachment factor", 0, self.factor_offset, self.row_stride)?;
++        validate_u32_field("attachment scale", 0, self.scale_offset, self.row_stride)?;
 +        validate_u32_field(
 +            "attachment operation",
 +            0,
@@ -2608,7 +1217,7 @@ index 0000000..846d0f9
 +            self.destination_plane_offsets
 +                .iter()
 +                .copied()
-+                .chain([self.factor_offset, self.operation_offset]),
++                .chain([self.scale_offset, self.operation_offset]),
 +        )?;
 +        Ok(())
 +    }
@@ -2752,7 +1361,7 @@ index 0000000..846d0f9
 +        for &offset in &self.attachment.destination_plane_offsets {
 +            push_descriptor_u32(&mut bytes, offset);
 +        }
-+        push_descriptor_u32(&mut bytes, self.attachment.factor_offset);
++        push_descriptor_u32(&mut bytes, self.attachment.scale_offset);
 +        push_descriptor_u32(&mut bytes, self.attachment.operation_offset);
 +        push_descriptor_u32(&mut bytes, self.scalar_input_count);
 +        push_descriptor_u32(
@@ -2828,7 +1437,7 @@ index 0000000..846d0f9
 +        for _ in 0..output_component_count {
 +            destination_plane_offsets.push(reader.read_u32()?);
 +        }
-+        let factor_offset = reader.read_u32()?;
++        let scale_offset = reader.read_u32()?;
 +        let operation_offset = reader.read_u32()?;
 +        let scalar_input_count = reader.read_u32()?;
 +
@@ -2864,7 +1473,7 @@ index 0000000..846d0f9
 +        let attachment = DirectTableAttachmentLayout::new_with_destination_plane_offsets(
 +            attachment_stride,
 +            destination_plane_offsets,
-+            factor_offset,
++            scale_offset,
 +            operation_offset,
 +        )?;
 +        let metadata = Self::new_with_parameter_bindings(
@@ -2895,7 +1504,8 @@ index 0000000..846d0f9
 +
 +    fn validate_source(&self, source: &Application) -> Result<()> {
 +        self.validate()?;
-+        if source.config.ty != CompilerType::Native
++        if (!matches!(source.config.ty, CompilerType::Native)
++            && !(cfg!(target_arch = "x86_64") && matches!(source.config.ty, CompilerType::AmdAVX)))
 +            || !matches!(source.config.opt_level(), 2 | 3)
 +            || !source.config.symbolica()
 +            || !source.config.is_complex()
@@ -3191,9 +1801,9 @@ index 0000000..846d0f9
 +    pub scalar_count: u32,
 +
 +    pub scalars: *const DirectScalar,
-+    pub factor_re: *const f64,
-+    pub factor_im: *const f64,
-+    pub factor_count: u32,
++    pub scale_re: *const f64,
++    pub scale_im: *const f64,
++    pub scale_count: u32,
 +
 +    pub point_start: u32,
 +    pub point_count: u32,
@@ -3262,7 +1872,7 @@ index 0000000..846d0f9
 +        let (simd_mir_stack_bytes, simd_dynamic_stack_bytes) = codegen_stack_sizes(
 +            self.stack_slots,
 +            self.metadata.invocation.input_plane_offsets.len(),
-+            16,
++            DIRECT_TABLE_SIMD_LANES * 8,
 +        )?;
 +        let stack_limit = self.program.config().stack_limit();
 +        for (kind, dynamic_bytes) in [
@@ -3286,27 +1896,7 @@ index 0000000..846d0f9
 +            simd_dynamic_stack_bytes,
 +        };
 +
-+        let mut scalar_config = self.mir.config.clone();
-+        scalar_config.set_simd(false);
-+        scalar_config.set_direct_arena(true);
-+        let scalar = compile_table_machine(
-+            &self.program,
-+            &self.mir,
-+            ArmGenerator::new(scalar_config),
-+            &layout,
-+            1,
-+        )?;
-+
-+        let mut simd_config = self.mir.config.clone();
-+        simd_config.set_simd(true);
-+        simd_config.set_direct_arena(true);
-+        let simd = compile_table_machine(
-+            &self.program,
-+            &self.mir,
-+            ArmSimdGenerator::new(simd_config),
-+            &layout,
-+            AARCH64_SIMD_LANES,
-+        )?;
++        let (scalar, simd) = compile_host_table_machines(&self.program, &self.mir, &layout)?;
 +
 +        Ok(DirectTableApplet {
 +            metadata: self.metadata,
@@ -3316,7 +1906,7 @@ index 0000000..846d0f9
 +    }
 +}
 +
-+/// Loaded owner of the scalar and AArch64 SIMD table machine functions.
++/// Loaded owner of the scalar and native SIMD table machine functions.
 +pub struct DirectTableApplet {
 +    metadata: DirectTableApplicationMetadata,
 +    scalar: DirectTableMachineCode,
@@ -3379,7 +1969,8 @@ index 0000000..846d0f9
 +
 +            let mut start = view.point_start;
 +            let mut remaining = view.point_count;
-+            let head = ((AARCH64_SIMD_LANES - start % AARCH64_SIMD_LANES) % AARCH64_SIMD_LANES)
++            let head = ((DIRECT_TABLE_SIMD_LANES - start % DIRECT_TABLE_SIMD_LANES)
++                % DIRECT_TABLE_SIMD_LANES)
 +                .min(remaining);
 +            if head != 0 {
 +                call_generated(&self.scalar, &row_view, start, head)?;
@@ -3390,7 +1981,7 @@ index 0000000..846d0f9
 +                remaining -= head;
 +            }
 +
-+            let middle = remaining / AARCH64_SIMD_LANES * AARCH64_SIMD_LANES;
++            let middle = remaining / DIRECT_TABLE_SIMD_LANES * DIRECT_TABLE_SIMD_LANES;
 +            if middle != 0 {
 +                call_generated(&self.simd, &row_view, start, middle)?;
 +                calls = calls
@@ -3433,7 +2024,7 @@ index 0000000..846d0f9
 +    ) -> Result<Self> {
 +        let machine_code_bytes = machine_code.len();
 +        let branch_and_link_instructions =
-+            count_aarch64_branch_and_link(&machine_code[..executable_instruction_bytes]);
++            count_out_of_line_calls(&machine_code[..executable_instruction_bytes]);
 +        let mut code = Memory::new(BranchProtection::None, huge);
 +        let pages = code
 +            .allocate(machine_code.len(), 4096)
@@ -3482,7 +2073,7 @@ index 0000000..846d0f9
 +    }
 +}
 +
-+/// Owns the generated AArch64 scalar and SIMD table functions.
++/// Owns the generated native scalar and SIMD table functions.
 +pub struct DirectTableCallable {
 +    context: Box<DirectTableApplet>,
 +}
@@ -3559,6 +2150,14 @@ index 0000000..846d0f9
 +    simd_dynamic_stack_bytes: u32,
 +}
 +
++pub(crate) trait DirectTableCodegen {
++    fn direct_table_prologue(&mut self, layout: &DirectTableCodegenLayout);
++    fn direct_table_begin_loops(&mut self, layout: &DirectTableCodegenLayout);
++    fn direct_table_end_loops(&mut self, layout: &DirectTableCodegenLayout);
++    fn direct_table_epilogue(&mut self, layout: &DirectTableCodegenLayout);
++    fn direct_table_ip(&self) -> usize;
++}
++
 +impl DirectTableCodegenLayout {
 +    pub fn mir_stack_bytes(&self, simd: bool) -> u32 {
 +        if simd {
@@ -3616,11 +2215,80 @@ index 0000000..846d0f9
 +    )
 +}
 +
++#[cfg(target_arch = "aarch64")]
++fn compile_host_table_machines(
++    program: &Program,
++    mir: &Mir,
++    layout: &DirectTableCodegenLayout,
++) -> Result<(DirectTableMachineCode, DirectTableMachineCode)> {
++    let mut scalar_config = mir.config.clone();
++    scalar_config.set_simd(false);
++    scalar_config.set_direct_arena(true);
++    let scalar = compile_table_machine(program, mir, ArmGenerator::new(scalar_config), layout, 1)?;
++
++    let mut simd_config = mir.config.clone();
++    simd_config.set_simd(true);
++    simd_config.set_direct_arena(true);
++    let simd = compile_table_machine(
++        program,
++        mir,
++        ArmSimdGenerator::new(simd_config),
++        layout,
++        DIRECT_TABLE_SIMD_LANES,
++    )?;
++    Ok((scalar, simd))
++}
++
++#[cfg(target_arch = "x86_64")]
++fn compile_host_table_machines(
++    program: &Program,
++    mir: &Mir,
++    layout: &DirectTableCodegenLayout,
++) -> Result<(DirectTableMachineCode, DirectTableMachineCode)> {
++    let mut scalar_config = mir.config.clone();
++    scalar_config.set_simd(false);
++    scalar_config.set_direct_arena(true);
++    let scalar = compile_table_machine(
++        program,
++        mir,
++        AmdScalarGenerator::new(scalar_config),
++        layout,
++        1,
++    )?;
++
++    let mut simd_config = mir.config.clone();
++    simd_config.set_simd(true);
++    simd_config.set_direct_arena(true);
++    let simd = compile_table_machine(
++        program,
++        mir,
++        AmdVectorF64x4Generator::new(simd_config),
++        layout,
++        DIRECT_TABLE_SIMD_LANES,
++    )?;
++    Ok((scalar, simd))
++}
++
++#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
++fn compile_host_table_machines(
++    _program: &Program,
++    _mir: &Mir,
++    _layout: &DirectTableCodegenLayout,
++) -> Result<(DirectTableMachineCode, DirectTableMachineCode)> {
++    bail!("direct-table callable code generation is unsupported on this architecture")
++}
++
 +fn lower_table_application(
 +    source: &Application,
 +    metadata: &DirectTableApplicationMetadata,
 +) -> Result<(Program, Mir, u32, u32)> {
 +    let mut config = source.config.clone();
++    #[cfg(target_arch = "x86_64")]
++    {
++        // The x86 table envelope has a fixed AVX4 middle loop. An explicit
++        // target keeps that ABI stable for cross-builds as well as native JITs.
++        config.ty = crate::CompilerType::AmdAVX;
++    }
 +    config.set_symbolica(false);
 +    config.set_complex(false);
 +    config.set_fast_complex(false);
@@ -3865,17 +2533,17 @@ index 0000000..846d0f9
 +            mem::align_of::<DirectScalar>(),
 +        )?;
 +    }
-+    if view.factor_count == 0 || view.factor_re.is_null() || view.factor_im.is_null() {
-+        bail!("direct-table factor catalog is empty or null");
++    if view.scale_count == 0 || view.scale_re.is_null() || view.scale_im.is_null() {
++        bail!("direct-table scale catalog is empty or null");
 +    }
 +    require_aligned(
-+        "real factor catalog",
-+        view.factor_re.cast(),
++        "real scale catalog",
++        view.scale_re.cast(),
 +        mem::align_of::<f64>(),
 +    )?;
 +    require_aligned(
-+        "imaginary factor catalog",
-+        view.factor_im.cast(),
++        "imaginary scale catalog",
++        view.scale_im.cast(),
 +        mem::align_of::<f64>(),
 +    )?;
 +
@@ -3942,17 +2610,17 @@ index 0000000..846d0f9
 +                );
 +            }
 +        }
-+        let factor = unsafe { read_row_u32(row, metadata.attachment.factor_offset) };
-+        if factor >= view.factor_count {
++        let scale = unsafe { read_row_u32(row, metadata.attachment.scale_offset) };
++        if scale >= view.scale_count {
 +            bail!(
-+                "direct-table attachment {attachment_index} factor {factor} exceeds {}",
-+                view.factor_count
++                "direct-table attachment {attachment_index} scale {scale} exceeds {}",
++                view.scale_count
 +            );
 +        }
 +        let operation = unsafe { read_row_u32(row, metadata.attachment.operation_offset) };
 +        if operation > 1 {
 +            bail!(
-+                "direct-table attachment {attachment_index} operation {operation} is not Initialize(0) or Add(1)"
++                "direct-table attachment {attachment_index} operation {operation} is not Overwrite(0) or Accumulate(1)"
 +            );
 +        }
 +    }
@@ -4080,7 +2748,7 @@ index 0000000..846d0f9
 +        }
 +    }
 +
-+    // Scalars, factors, and table/catalog storage remain live for every row.
++    // Scalars, scales, and table/catalog storage remain live for every row.
 +    // No destination in any row may overwrite any part of those global inputs.
 +    let global_buffers = [
 +        (
@@ -4120,20 +2788,20 @@ index 0000000..846d0f9
 +            )?,
 +        ),
 +        (
-+            "real factor catalog",
++            "real scale catalog",
 +            checked_address_range(
-+                "real factor catalog",
-+                view.factor_re.cast(),
-+                view.factor_count as usize,
++                "real scale catalog",
++                view.scale_re.cast(),
++                view.scale_count as usize,
 +                mem::size_of::<f64>(),
 +            )?,
 +        ),
 +        (
-+            "imaginary factor catalog",
++            "imaginary scale catalog",
 +            checked_address_range(
-+                "imaginary factor catalog",
-+                view.factor_im.cast(),
-+                view.factor_count as usize,
++                "imaginary scale catalog",
++                view.scale_im.cast(),
++                view.scale_count as usize,
 +                mem::size_of::<f64>(),
 +            )?,
 +        ),
@@ -4242,11 +2910,11 @@ index 0000000..846d0f9
 +}
 +
 +fn ensure_table_callable_host() -> Result<()> {
-+    if cfg!(target_arch = "aarch64") {
++    if cfg!(any(target_arch = "aarch64", target_arch = "x86_64")) {
 +        Ok(())
 +    } else {
 +        bail!(
-+            "direct-table descriptors and validation are portable, but generated callable execution is not implemented on x86-64 or other non-AArch64 hosts"
++            "direct-table descriptors and validation are portable, but generated callable execution is only implemented on AArch64 and x86-64 hosts"
 +        )
 +    }
 +}
@@ -4264,12 +2932,17 @@ index 0000000..846d0f9
 +        .ok()
 +        .and_then(|count| count.checked_mul(16))
 +        .ok_or_else(|| anyhow!("direct-table descriptor stack size overflows u32"))?;
++    #[cfg(target_arch = "x86_64")]
++    let envelope_scratch_bytes = 16;
++    #[cfg(not(target_arch = "x86_64"))]
++    let envelope_scratch_bytes = 0;
 +    let dynamic_bytes = mir_bytes
 +        .checked_add(descriptor_bytes)
++        .and_then(|bytes| bytes.checked_add(envelope_scratch_bytes))
 +        .and_then(checked_align_16)
 +        .ok_or_else(|| anyhow!("direct-table dynamic stack size overflows u32"))?;
 +    if dynamic_bytes >= 1 << 24 {
-+        bail!("direct-table dynamic stack exceeds AArch64 immediate range");
++        bail!("direct-table dynamic stack exceeds generated-code immediate range");
 +    }
 +    Ok((mir_bytes, dynamic_bytes))
 +}
@@ -4285,7 +2958,8 @@ index 0000000..846d0f9
 +    Ok(())
 +}
 +
-+fn count_aarch64_branch_and_link(bytes: &[u8]) -> u32 {
++#[cfg(target_arch = "aarch64")]
++fn count_out_of_line_calls(bytes: &[u8]) -> u32 {
 +    bytes
 +        .chunks_exact(4)
 +        .filter(|chunk| {
@@ -4296,63 +2970,12 @@ index 0000000..846d0f9
 +        .count() as u32
 +}
 +
-+#[cfg(test)]
-+pub(crate) mod allocation_probe {
-+    use std::alloc::{GlobalAlloc, Layout, System};
-+    use std::cell::Cell;
-+
-+    thread_local! {
-+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
-+        static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
-+    }
-+
-+    struct CountingSystem;
-+
-+    impl CountingSystem {
-+        fn record_allocation() {
-+            if ACTIVE.try_with(Cell::get).unwrap_or(false) {
-+                let _ = ALLOCATIONS.try_with(|count| count.set(count.get() + 1));
-+            }
-+        }
-+    }
-+
-+    unsafe impl GlobalAlloc for CountingSystem {
-+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-+            let pointer = unsafe { System.alloc(layout) };
-+            Self::record_allocation();
-+            pointer
-+        }
-+
-+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-+            let pointer = unsafe { System.alloc_zeroed(layout) };
-+            Self::record_allocation();
-+            pointer
-+        }
-+
-+        unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-+            let pointer = unsafe { System.realloc(pointer, layout, size) };
-+            Self::record_allocation();
-+            pointer
-+        }
-+
-+        unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
-+            unsafe { System.dealloc(pointer, layout) };
-+        }
-+    }
-+
-+    #[global_allocator]
-+    static TEST_ALLOCATOR: CountingSystem = CountingSystem;
-+
-+    pub(crate) fn count_allocations<R>(run: impl FnOnce() -> R) -> (R, usize) {
-+        ALLOCATIONS.with(|count| count.set(0));
-+        ACTIVE.with(|active| {
-+            assert!(!active.replace(true), "allocation probe cannot be nested");
-+        });
-+        let result = run();
-+        ACTIVE.with(|active| active.set(false));
-+        let allocations = ALLOCATIONS.with(Cell::get);
-+        (result, allocations)
-+    }
++#[cfg(not(target_arch = "aarch64"))]
++fn count_out_of_line_calls(_bytes: &[u8]) -> u32 {
++    // The x86 table envelope emits no calls. Any source-level external calls
++    // are validated separately by the MIR contract and are not dense-kernel
++    // fallbacks. Keep this legacy AArch64-shaped statistic at zero on x86.
++    0
 +}
 +
 +#[cfg(test)]
@@ -4464,8 +3087,8 @@ index 0000000..846d0f9
 +            .iter_mut()
 +            .map(|plane| unsafe { DirectPlane::from_raw_parts(plane.as_mut_ptr(), plane.len()) })
 +            .collect::<Vec<_>>();
-+        let factor_re = [1.0];
-+        let factor_im = [0.0];
++        let scale_re = [1.0];
++        let scale_im = [0.0];
 +        let view = DirectTableCallViewV1 {
 +            invocations: invocation.as_ptr().cast(),
 +            invocation_count: 1,
@@ -4477,9 +3100,9 @@ index 0000000..846d0f9
 +            plane_count: planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: 1,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: 1,
 +            point_start: 0,
 +            point_count: 1,
 +        };
@@ -4572,9 +3195,9 @@ index 0000000..846d0f9
 +            plane_count: 0,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: ptr::null(),
-+            factor_im: ptr::null(),
-+            factor_count: 0,
++            scale_re: ptr::null(),
++            scale_im: ptr::null(),
++            scale_count: 0,
 +            point_start: 0,
 +            point_count: 1,
 +        };
@@ -4616,9 +3239,9 @@ index 0000000..846d0f9
 +        );
 +    }
 +
-+    #[cfg(not(target_arch = "aarch64"))]
++    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 +    #[test]
-+    fn non_aarch64_can_decode_and_validate_but_cannot_seal_callable() {
++    fn unsupported_host_can_decode_and_validate_but_cannot_seal_callable() {
 +        let source = portable_source();
 +        let descriptor = portable_metadata().encode_descriptor(&source).unwrap();
 +        let application = DirectTableApplication::from_descriptor(source, &descriptor).unwrap();
@@ -4626,37 +3249,21 @@ index 0000000..846d0f9
 +            Ok(_) => panic!("non-AArch64 direct-table sealing must fail"),
 +            Err(error) => error.to_string(),
 +        };
-+        assert!(error.contains("not implemented on x86-64"));
++        assert!(error.contains("only implemented on AArch64 and x86-64"));
 +    }
 +}
 +
-+#[cfg(all(test, target_arch = "aarch64"))]
++#[cfg(all(test, any(target_arch = "aarch64", target_arch = "x86_64")))]
 +mod tests {
 +    use super::*;
-+    use sha2::{Digest, Sha256};
 +    use std::rc::Rc;
 +
 +    use crate::direct::{
 +        DirectApplication, DirectApplicationMetadata, DirectDestinationOperation,
-+        DirectInputBinding, DIRECT_STATUS_OK,
++        DirectInputBinding, DirectInputSnapshot, DirectOutputScale, DIRECT_STATUS_OK,
 +    };
 +    use crate::expr::Expr;
-+    use crate::utils::Storage;
 +    use crate::{Compiler, Config};
-+
-+    // Byte-for-byte copy of kernel 000006 in the pinned recurrence-canary
-+    // built-in-SM prepared checkpoint:
-+    // `.artifacts/recurrence-canary/built-in-sm-jit-o3.pyamplicol-model`.
-+    // The archive manifest records size 360 and SHA-256
-+    // 558b681aab77670552237c3ca544cc618a23851586c244e873188921b48d73ab.
-+    // Its prepared contract is six complex inputs and two complex outputs.
-+    const PREPARED_CLOSURE_000006: &[u8; 360] =
-+        include_bytes!("../tests/fixtures/builtin-sm-recurrence-canary-kernel-000006.symjit");
-+    const PREPARED_CLOSURE_000006_SHA256: [u8; 32] = [
-+        0x55, 0x8b, 0x68, 0x1a, 0xab, 0x77, 0x67, 0x05, 0x52, 0x23, 0x7c, 0x3c, 0xa5, 0x44, 0xcc,
-+        0x61, 0x8a, 0x23, 0x85, 0x15, 0x86, 0xc2, 0x44, 0xe8, 0x73, 0x18, 0x89, 0x21, 0xb4, 0x8d,
-+        0x73, 0xab,
-+    ];
 +
 +    #[derive(Clone, Copy)]
 +    #[repr(C)]
@@ -4682,7 +3289,7 @@ index 0000000..846d0f9
 +    struct AttachmentRow {
 +        destination_re: u32,
 +        destination_im: u32,
-+        factor: u32,
++        scale: u32,
 +        operation: u32,
 +    }
 +
@@ -4693,7 +3300,7 @@ index 0000000..846d0f9
 +        output_0_im: u32,
 +        output_1_re: u32,
 +        output_1_im: u32,
-+        factor: u32,
++        scale: u32,
 +        operation: u32,
 +    }
 +
@@ -4729,11 +3336,103 @@ index 0000000..846d0f9
 +    }
 +
 +    fn prepared_checkpoint_application() -> Application {
-+        let mut bytes = PREPARED_CLOSURE_000006.as_slice();
-+        Application::load(&mut bytes, &Config::default()).unwrap()
++        let mut config = Config::default();
++        if cfg!(target_arch = "x86_64") {
++            config.ty = crate::CompilerType::AmdAVX;
++        }
++        config.set_opt_level(3);
++        config.set_complex(true);
++        config.set_symbolica(true);
++        config.set_simd(true);
++        config.set_fast_complex(false);
++        config.set_cse(true);
++        config.set_compact(true);
++        config.set_parallel_mul(true);
++
++        let parameters = (0..6)
++            .map(|index| Expr::var(&format!("p{index}")))
++            .collect::<Vec<_>>();
++        let scale = Expr::from(0.707106781186547_f64);
++        let i_scale = Expr::binary("complex", &Expr::from(0.0), &scale);
++        let minus_i_scale = Expr::binary("complex", &Expr::from(0.0), &-&scale);
++        let a = &parameters[3] * &minus_i_scale;
++        let b = &(&parameters[2] * &i_scale) + &(&parameters[5] * &minus_i_scale);
++        let output_0 =
++            &(&parameters[0] * &b) + &(&parameters[1] * &(&(&parameters[4] * &scale) + &a));
++        let output_1 = &(&parameters[1] * &(&(&parameters[2] + &parameters[5]) * &i_scale))
++            + &(&parameters[0] * &(&(&parameters[4] * &-&scale) + &a));
++
++        let mut application = Compiler::with_config(config)
++            .compile_params(&[], &[output_0, output_1], &parameters)
++            .unwrap();
++        application.prepare_simd();
++        application
 +    }
 +
-+    fn prepared_closure_application() -> Application {
++    fn evaluate_source_with_table_partition(
++        application: &Application,
++        input_planes: &[Vec<f64>],
++        plane_len: usize,
++        point_start: usize,
++        point_count: usize,
++    ) -> Vec<f64> {
++        #[cfg(not(target_arch = "x86_64"))]
++        {
++            let _ = (point_start, point_count);
++            let mut inputs = Vec::with_capacity(plane_len * input_planes.len());
++            for point in 0..plane_len {
++                inputs.extend(input_planes.iter().map(|plane| plane[point]));
++            }
++            let mut outputs = vec![f64::NAN; plane_len * application.count_obs];
++            application.evaluate_matrix(&inputs, &mut outputs, plane_len);
++            return outputs;
++        }
++
++        #[cfg(target_arch = "x86_64")]
++        {
++            // Mirror the table callable's scalar-head/AVX4-middle/scalar-tail
++            // partition so strict bitwise comparisons exercise like-for-like
++            // arithmetic schedules rather than a whole-matrix oracle.
++            let mut outputs = vec![f64::NAN; plane_len * application.count_obs];
++            let lanes = DIRECT_TABLE_SIMD_LANES as usize;
++            let head = ((lanes - point_start % lanes) % lanes).min(point_count);
++            let remaining = point_count - head;
++            let middle = remaining / lanes * lanes;
++
++            let evaluate_scalar = |point: usize, outputs: &mut [f64]| {
++                let inputs = input_planes
++                    .iter()
++                    .map(|plane| plane[point])
++                    .collect::<Vec<_>>();
++                let mut point_outputs = vec![f64::NAN; application.count_obs];
++                application.evaluate(&inputs, &mut point_outputs);
++                outputs[point * application.count_obs..(point + 1) * application.count_obs]
++                    .copy_from_slice(&point_outputs);
++            };
++
++            for point in point_start..point_start + head {
++                evaluate_scalar(point, &mut outputs);
++            }
++            if middle != 0 {
++                let middle_start = point_start + head;
++                let mut inputs = Vec::with_capacity(middle * input_planes.len());
++                for point in middle_start..middle_start + middle {
++                    inputs.extend(input_planes.iter().map(|plane| plane[point]));
++                }
++                let mut middle_outputs = vec![f64::NAN; middle * application.count_obs];
++                application.evaluate_matrix(&inputs, &mut middle_outputs, middle);
++                outputs[middle_start * application.count_obs
++                    ..(middle_start + middle) * application.count_obs]
++                    .copy_from_slice(&middle_outputs);
++            }
++            for point in point_start + head + middle..point_start + point_count {
++                evaluate_scalar(point, &mut outputs);
++            }
++            outputs
++        }
++    }
++
++    fn prepared_multi_output_application() -> Application {
 +        let mut application = prepared_checkpoint_application();
 +        let mut code = MirWriter::new();
 +        for instruction in application.bytecode.mir.code.iter() {
@@ -4760,12 +3459,7 @@ index 0000000..846d0f9
 +    }
 +
 +    #[test]
-+    fn prepared_checkpoint_fixture_size_and_sha256_are_pinned() {
-+        assert_eq!(PREPARED_CLOSURE_000006.len(), 360);
-+        assert_eq!(
-+            Sha256::digest(PREPARED_CLOSURE_000006).as_slice(),
-+            PREPARED_CLOSURE_000006_SHA256
-+        );
++    fn prepared_application_has_expected_shape() {
 +        let application = prepared_checkpoint_application();
 +        assert_eq!(application.count_states, 0);
 +        assert_eq!(application.count_params, 12);
@@ -4833,7 +3527,7 @@ index 0000000..846d0f9
 +            mem::size_of::<AttachmentRow>() as u32,
 +            mem::offset_of!(AttachmentRow, destination_re) as u32,
 +            mem::offset_of!(AttachmentRow, destination_im) as u32,
-+            mem::offset_of!(AttachmentRow, factor) as u32,
++            mem::offset_of!(AttachmentRow, scale) as u32,
 +            mem::offset_of!(AttachmentRow, operation) as u32,
 +        )
 +        .unwrap()
@@ -4848,7 +3542,7 @@ index 0000000..846d0f9
 +                mem::offset_of!(MultiOutputAttachmentRow, output_1_re) as u32,
 +                mem::offset_of!(MultiOutputAttachmentRow, output_1_im) as u32,
 +            ],
-+            mem::offset_of!(MultiOutputAttachmentRow, factor) as u32,
++            mem::offset_of!(MultiOutputAttachmentRow, scale) as u32,
 +            mem::offset_of!(MultiOutputAttachmentRow, operation) as u32,
 +        )
 +        .unwrap()
@@ -4910,7 +3604,7 @@ index 0000000..846d0f9
 +                    mem::offset_of!(MultiOutputAttachmentRow, output_1_re) as u32,
 +                    mem::offset_of!(MultiOutputAttachmentRow, output_1_im) as u32,
 +                ],
-+                mem::offset_of!(MultiOutputAttachmentRow, factor) as u32,
++                mem::offset_of!(MultiOutputAttachmentRow, scale) as u32,
 +                mem::offset_of!(MultiOutputAttachmentRow, operation) as u32,
 +            )
 +            .unwrap(),
@@ -4936,6 +3630,8 @@ index 0000000..846d0f9
 +    fn oracle_callable(operation: DirectDestinationOperation) -> crate::DirectCallable {
 +        let metadata = DirectApplicationMetadata::new(
 +            operation,
++            DirectInputSnapshot::Live,
++            DirectOutputScale::ComplexScalar,
 +            vec![0, 1, 2, 3],
 +            Vec::new(),
 +            6,
@@ -4953,6 +3649,8 @@ index 0000000..846d0f9
 +    fn scalar_oracle_callable(operation: DirectDestinationOperation) -> crate::DirectCallable {
 +        let metadata = DirectApplicationMetadata::new(
 +            operation,
++            DirectInputSnapshot::Live,
++            DirectOutputScale::ComplexScalar,
 +            vec![0, 1, 2, 3],
 +            vec![DirectInputBinding::Scalar(2), DirectInputBinding::Scalar(3)],
 +            6,
@@ -4970,6 +3668,8 @@ index 0000000..846d0f9
 +    fn prepared_oracle_callable(operation: DirectDestinationOperation) -> crate::DirectCallable {
 +        let metadata = DirectApplicationMetadata::new(
 +            operation,
++            DirectInputSnapshot::Live,
++            DirectOutputScale::ComplexScalar,
 +            Vec::new(),
 +            vec![
 +                DirectInputBinding::Plane(0),
@@ -4990,10 +3690,9 @@ index 0000000..846d0f9
 +            vec![12, 13],
 +        )
 +        .unwrap();
-+        // The pinned prepared payload is O3 and remains O3 for the table-aware
-+        // callable. Its exact-factor per-row oracle uses the same retained MIR
-+        // under the deliberately separate O2 recurrence-style ABI.
-+        let mut oracle_source = prepared_closure_application();
++        // The table path keeps the prepared source at O3. Its per-row oracle
++        // lowers the same retained MIR through the O2 complex-scale path.
++        let mut oracle_source = prepared_multi_output_application();
 +        oracle_source.config.set_opt_level(2);
 +        DirectApplication::new(oracle_source, metadata)
 +            .unwrap()
@@ -5005,6 +3704,8 @@ index 0000000..846d0f9
 +    fn mixed_oracle_callable(operation: DirectDestinationOperation) -> crate::DirectCallable {
 +        let metadata = DirectApplicationMetadata::new(
 +            operation,
++            DirectInputSnapshot::Live,
++            DirectOutputScale::ComplexScalar,
 +            vec![0, 1, 2, 3],
 +            vec![DirectInputBinding::Plane(0), DirectInputBinding::Scalar(2)],
 +            6,
@@ -5054,14 +3755,14 @@ index 0000000..846d0f9
 +        invocations: &[InvocationRow],
 +        attachments: &[AttachmentRow],
 +        values: &mut [Vec<f64>],
-+        factor_re: &[f64],
-+        factor_im: &[f64],
++        scale_re: &[f64],
++        scale_im: &[f64],
 +        point_start: usize,
 +        point_count: usize,
 +        input_plane_count: usize,
 +    ) {
-+        let initialize = oracle_factory(DirectDestinationOperation::Initialize);
-+        let add = oracle_factory(DirectDestinationOperation::Add);
++        let overwrite = oracle_factory(DirectDestinationOperation::Overwrite);
++        let accumulate = oracle_factory(DirectDestinationOperation::Accumulate);
 +
 +        for invocation in invocations {
 +            for attachment_index in invocation.attachment_start
@@ -5098,16 +3799,16 @@ index 0000000..846d0f9
 +                planes.push(planes[input_plane_count]);
 +                planes.push(planes[input_plane_count + 1]);
 +
-+                let factor_real = factor_re[attachment.factor as usize];
-+                let factor_imag = factor_im[attachment.factor as usize];
++                let scale_real = scale_re[attachment.scale as usize];
++                let scale_imag = scale_im[attachment.scale as usize];
 +                let scalars = [
-+                    unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_real)) },
-+                    unsafe { DirectScalar::from_raw(ptr::from_ref(&factor_imag)) },
++                    unsafe { DirectScalar::from_raw(ptr::from_ref(&scale_real)) },
++                    unsafe { DirectScalar::from_raw(ptr::from_ref(&scale_imag)) },
 +                ];
 +                let callable = if attachment.operation == 0 {
-+                    &initialize
++                    &overwrite
 +                } else {
-+                    &add
++                    &accumulate
 +                };
 +                assert_eq!(
 +                    unsafe {
@@ -5139,6 +3840,16 @@ index 0000000..846d0f9
 +            expected_generated_calls,
 +            None,
 +        );
++    }
++
++    fn expected_generated_calls(row_count: usize, point_start: usize, point_count: usize) -> u32 {
++        let lanes = DIRECT_TABLE_SIMD_LANES as usize;
++        let head = ((lanes - point_start % lanes) % lanes).min(point_count);
++        let remaining = point_count - head;
++        let middle = remaining / lanes * lanes;
++        let tail = remaining - middle;
++        let segments = usize::from(head != 0) + usize::from(middle != 0) + usize::from(tail != 0);
++        u32::try_from(row_count * segments).unwrap()
 +    }
 +
 +    fn run_case_with_stack(
@@ -5176,8 +3887,8 @@ index 0000000..846d0f9
 +    ) {
 +        const PLANE_LEN: usize = 9;
 +
-+        let factor_re = [0.75, -1.25, 0.5];
-+        let factor_im = [-0.5, 0.25, 1.5];
++        let scale_re = [0.75, -1.25, 0.5];
++        let scale_im = [-0.5, 0.25, 1.5];
 +        let table_metadata = metadata_factory();
 +        let input_plane_count = table_metadata.invocation.input_plane_offsets.len();
 +        let mut table_values = Vec::<Vec<f64>>::new();
@@ -5207,7 +3918,7 @@ index 0000000..846d0f9
 +                attachments.push(AttachmentRow {
 +                    destination_re,
 +                    destination_im,
-+                    factor: ((row + output) % factor_re.len()) as u32,
++                    scale: ((row + output) % scale_re.len()) as u32,
 +                    operation: ((row + output) & 1) as u32,
 +                });
 +            }
@@ -5234,8 +3945,8 @@ index 0000000..846d0f9
 +            &invocations,
 +            &attachments,
 +            &mut oracle_values,
-+            &factor_re,
-+            &factor_im,
++            &scale_re,
++            &scale_im,
 +            point_start,
 +            point_count,
 +            input_plane_count,
@@ -5256,9 +3967,9 @@ index 0000000..846d0f9
 +            plane_count: plane_descriptors.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: factor_re.len() as u32,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: scale_re.len() as u32,
 +            point_start: point_start as u32,
 +            point_count: point_count as u32,
 +        };
@@ -5310,24 +4021,20 @@ index 0000000..846d0f9
 +                    .collect::<Vec<_>>()
 +            })
 +            .collect::<Vec<_>>();
-+        let mut row_major = Vec::with_capacity(PLANE_LEN * input_planes.len());
-+        for point in 0..PLANE_LEN {
-+            for plane in &input_planes {
-+                row_major.push(plane[point]);
-+            }
-+        }
-+
 +        // Evaluate the untouched 360-byte O3 payload, retaining both of its
 +        // complex outputs. The table source below independently derives only
 +        // the first complex store from that same pinned payload.
 +        let mut untouched_o3 = prepared_checkpoint_application();
-+        assert_eq!(untouched_o3.config.opt_level(), 3);
 +        untouched_o3.prepare_simd();
-+        let untouched_o3 = untouched_o3.seal().unwrap();
 +        assert_eq!(untouched_o3.count_params, 12);
 +        assert_eq!(untouched_o3.count_obs, 4);
-+        let mut untouched_outputs = vec![f64::NAN; PLANE_LEN * untouched_o3.count_obs];
-+        untouched_o3.evaluate_matrix(&row_major, &mut untouched_outputs, PLANE_LEN);
++        let untouched_outputs = evaluate_source_with_table_partition(
++            &untouched_o3,
++            &input_planes,
++            PLANE_LEN,
++            POINT_START,
++            POINT_COUNT,
++        );
 +
 +        let mut table_values = input_planes;
 +        let destination_re = table_values.len() as u32;
@@ -5353,13 +4060,13 @@ index 0000000..846d0f9
 +        let attachments = [AttachmentRow {
 +            destination_re,
 +            destination_im,
-+            factor: 0,
-+            operation: DirectTableDestinationOperation::Initialize as u32,
++            scale: 0,
++            operation: DirectTableDestinationOperation::Overwrite as u32,
 +        }];
-+        // A single unit-factor attachment exposes the retained kernel output
++        // A single unit-scale attachment exposes the retained kernel output
 +        // before any multi-destination fanout can obscure source fidelity.
-+        let factor_re = [1.0];
-+        let factor_im = [0.0];
++        let scale_re = [1.0];
++        let scale_im = [0.0];
 +        let mut plane_descriptors = table_values
 +            .iter_mut()
 +            .map(|values| unsafe { DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len()) })
@@ -5375,14 +4082,13 @@ index 0000000..846d0f9
 +            plane_count: plane_descriptors.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: factor_re.len() as u32,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: scale_re.len() as u32,
 +            point_start: POINT_START as u32,
 +            point_count: POINT_COUNT as u32,
 +        };
-+        let table_source = prepared_closure_application();
-+        assert_eq!(table_source.config.opt_level(), 3);
++        let table_source = prepared_multi_output_application();
 +        let callable = DirectTableApplication::new(table_source, prepared_table_metadata())
 +            .unwrap()
 +            .seal()
@@ -5434,17 +4140,15 @@ index 0000000..846d0f9
 +                    .collect::<Vec<_>>()
 +            })
 +            .collect::<Vec<_>>();
-+        let mut row_major = Vec::with_capacity(PLANE_LEN * input_planes.len());
-+        for point in 0..PLANE_LEN {
-+            for plane in &input_planes {
-+                row_major.push(plane[point]);
-+            }
-+        }
 +        let mut untouched = prepared_checkpoint_application();
 +        untouched.prepare_simd();
-+        let untouched = untouched.seal().unwrap();
-+        let mut source_outputs = vec![f64::NAN; PLANE_LEN * 4];
-+        untouched.evaluate_matrix(&row_major, &mut source_outputs, PLANE_LEN);
++        let source_outputs = evaluate_source_with_table_partition(
++            &untouched,
++            &input_planes,
++            PLANE_LEN,
++            0,
++            POINT_COUNT,
++        );
 +
 +        let mut table_values = input_planes;
 +        let mut destination_sets = [[0_u32; 4]; 2];
@@ -5475,11 +4179,11 @@ index 0000000..846d0f9
 +            output_0_im: destination[1],
 +            output_1_re: destination[2],
 +            output_1_im: destination[3],
-+            factor: 0,
-+            operation: DirectTableDestinationOperation::Initialize as u32,
++            scale: 0,
++            operation: DirectTableDestinationOperation::Overwrite as u32,
 +        });
-+        let factor_re = [1.0];
-+        let factor_im = [0.0];
++        let scale_re = [1.0];
++        let scale_im = [0.0];
 +        let planes = table_values
 +            .iter_mut()
 +            .map(|values| unsafe { DirectPlane::from_raw_parts(values.as_mut_ptr(), values.len()) })
@@ -5495,9 +4199,9 @@ index 0000000..846d0f9
 +            plane_count: planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: 1,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: 1,
 +            point_start: 0,
 +            point_count: POINT_COUNT as u32,
 +        };
@@ -5541,8 +4245,8 @@ index 0000000..846d0f9
 +    #[test]
 +    fn multiple_complex_outputs_preserve_row_attachment_and_output_order() {
 +        const POINT_COUNT: usize = 7;
-+        let factor_re = [1.0, 0.5];
-+        let factor_im = [0.0, 0.0];
++        let scale_re = [1.0, 0.5];
++        let scale_im = [0.0, 0.0];
 +        let mut values = Vec::<Vec<f64>>::new();
 +        for row in 0..2 {
 +            for component in 0..4 {
@@ -5597,7 +4301,7 @@ index 0000000..846d0f9
 +                output_0_im: 9,
 +                output_1_re: 10,
 +                output_1_im: 11,
-+                factor: 0,
++                scale: 0,
 +                operation: 0,
 +            },
 +            MultiOutputAttachmentRow {
@@ -5605,7 +4309,7 @@ index 0000000..846d0f9
 +                output_0_im: 13,
 +                output_1_re: 14,
 +                output_1_im: 15,
-+                factor: 1,
++                scale: 1,
 +                operation: 1,
 +            },
 +            MultiOutputAttachmentRow {
@@ -5613,7 +4317,7 @@ index 0000000..846d0f9
 +                output_0_im: 9,
 +                output_1_re: 10,
 +                output_1_im: 11,
-+                factor: 1,
++                scale: 1,
 +                operation: 1,
 +            },
 +            MultiOutputAttachmentRow {
@@ -5621,7 +4325,7 @@ index 0000000..846d0f9
 +                output_0_im: 13,
 +                output_1_re: 14,
 +                output_1_im: 15,
-+                factor: 0,
++                scale: 0,
 +                operation: 0,
 +            },
 +        ];
@@ -5650,10 +4354,10 @@ index 0000000..846d0f9
 +                    for output in 0..2 {
 +                        let real = outputs[2 * output];
 +                        let imag = outputs[2 * output + 1];
-+                        let factor = attachment.factor as usize;
++                        let scale = attachment.scale as usize;
 +                        let scaled = [
-+                            real * factor_re[factor] - imag * factor_im[factor],
-+                            real * factor_im[factor] + imag * factor_re[factor],
++                            real * scale_re[scale] - imag * scale_im[scale],
++                            real * scale_im[scale] + imag * scale_re[scale],
 +                        ];
 +                        for component in 0..2 {
 +                            let destination = destinations[2 * output + component] as usize;
@@ -5683,9 +4387,9 @@ index 0000000..846d0f9
 +            plane_count: planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: factor_re.len() as u32,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: scale_re.len() as u32,
 +            point_start: 0,
 +            point_count: POINT_COUNT as u32,
 +        };
@@ -5706,8 +4410,8 @@ index 0000000..846d0f9
 +    }
 +
 +    #[test]
-+    fn packaged_prepared_eager_closure_matches_per_row_oracle_through_table_callable() {
-+        let prepared = prepared_closure_application();
++    fn generated_multi_output_application_matches_per_row_oracle() {
++        let prepared = prepared_multi_output_application();
 +        assert_eq!(prepared.count_states, 0);
 +        assert_eq!(prepared.count_params, 12);
 +        assert_eq!(prepared.count_obs, 2);
@@ -5731,7 +4435,7 @@ index 0000000..846d0f9
 +            7,
 +            6,
 +            None,
-+            prepared_closure_application,
++            prepared_multi_output_application,
 +            prepared_table_metadata,
 +            prepared_oracle_callable,
 +        );
@@ -5742,7 +4446,7 @@ index 0000000..846d0f9
 +            5,
 +            6,
 +            None,
-+            prepared_closure_application,
++            prepared_multi_output_application,
 +            prepared_table_metadata,
 +            prepared_oracle_callable,
 +        );
@@ -5798,26 +4502,26 @@ index 0000000..846d0f9
 +            AttachmentRow {
 +                destination_re: 4,
 +                destination_im: 5,
-+                factor: 0,
-+                operation: DirectTableDestinationOperation::Initialize as u32,
++                scale: 0,
++                operation: DirectTableDestinationOperation::Overwrite as u32,
 +            },
 +            AttachmentRow {
 +                destination_re: 6,
 +                destination_im: 7,
-+                factor: 1,
-+                operation: DirectTableDestinationOperation::Add as u32,
++                scale: 1,
++                operation: DirectTableDestinationOperation::Accumulate as u32,
 +            },
 +        ];
-+        let factor_re = [1.0, -0.5];
-+        let factor_im = [0.0, 0.25];
++        let scale_re = [1.0, -0.5];
++        let scale_im = [0.0, 0.25];
 +
 +        run_oracle(
 +            oracle_callable,
 +            &invocations,
 +            &attachments,
 +            &mut oracle_values,
-+            &factor_re,
-+            &factor_im,
++            &scale_re,
++            &scale_im,
 +            0,
 +            point_count,
 +            4,
@@ -5838,9 +4542,9 @@ index 0000000..846d0f9
 +            plane_count: planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: factor_re.len() as u32,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: scale_re.len() as u32,
 +            point_start: 0,
 +            point_count: point_count as u32,
 +        };
@@ -5856,7 +4560,7 @@ index 0000000..846d0f9
 +        assert_eq!(table_values[4][1].to_bits(), (-0.0_f64).to_bits());
 +        // These points introduce one quiet NaN payload and otherwise only
 +        // finite/zero operands, so the AArch64 non-default-NaN path preserves
-+        // that payload through the kernel and unit-factor attachment.
++        // that payload through the kernel and unit-scale attachment.
 +        assert_eq!(table_values[4][10].to_bits(), QNAN_A);
 +        assert_eq!(table_values[4][11].to_bits(), QNAN_B);
 +    }
@@ -5865,8 +4569,8 @@ index 0000000..846d0f9
 +    fn scalar_descriptors_broadcast_and_match_per_row_oracle() {
 +        const POINT_COUNT: usize = 7;
 +
-+        let factor_re = [0.75, -1.25];
-+        let factor_im = [-0.5, 0.25];
++        let scale_re = [0.75, -1.25];
++        let scale_im = [-0.5, 0.25];
 +        let parameter_re = 0.375;
 +        let parameter_im = -0.625;
 +        let invocations = [InvocationRow {
@@ -5889,13 +4593,13 @@ index 0000000..846d0f9
 +            AttachmentRow {
 +                destination_re: 4,
 +                destination_im: 5,
-+                factor: 0,
++                scale: 0,
 +                operation: 0,
 +            },
 +            AttachmentRow {
 +                destination_re: 6,
 +                destination_im: 7,
-+                factor: 1,
++                scale: 1,
 +                operation: 1,
 +            },
 +        ];
@@ -5915,8 +4619,8 @@ index 0000000..846d0f9
 +        ];
 +        let mut oracle_values = table_values.clone();
 +
-+        let initialize = scalar_oracle_callable(DirectDestinationOperation::Initialize);
-+        let add = scalar_oracle_callable(DirectDestinationOperation::Add);
++        let overwrite = scalar_oracle_callable(DirectDestinationOperation::Overwrite);
++        let accumulate = scalar_oracle_callable(DirectDestinationOperation::Accumulate);
 +        for attachment in attachments {
 +            let mut planes = Vec::with_capacity(8);
 +            for index in [
@@ -5935,8 +4639,8 @@ index 0000000..846d0f9
 +            planes.push(planes[4]);
 +            planes.push(planes[5]);
 +
-+            let exact_re = factor_re[attachment.factor as usize];
-+            let exact_im = factor_im[attachment.factor as usize];
++            let exact_re = scale_re[attachment.scale as usize];
++            let exact_im = scale_im[attachment.scale as usize];
 +            let scalars = [
 +                unsafe { DirectScalar::from_raw(ptr::from_ref(&exact_re)) },
 +                unsafe { DirectScalar::from_raw(ptr::from_ref(&exact_im)) },
@@ -5944,9 +4648,9 @@ index 0000000..846d0f9
 +                unsafe { DirectScalar::from_raw(ptr::from_ref(&parameter_im)) },
 +            ];
 +            let callable = if attachment.operation == 0 {
-+                &initialize
++                &overwrite
 +            } else {
-+                &add
++                &accumulate
 +            };
 +            assert_eq!(
 +                unsafe {
@@ -5977,9 +4681,9 @@ index 0000000..846d0f9
 +            plane_count: plane_descriptors.len() as u32,
 +            scalar_count: scalar_descriptors.len() as u32,
 +            scalars: scalar_descriptors.as_ptr(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: factor_re.len() as u32,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: scale_re.len() as u32,
 +            point_start: 0,
 +            point_count: POINT_COUNT as u32,
 +        };
@@ -5999,8 +4703,8 @@ index 0000000..846d0f9
 +    fn plane_and_scalar_parameter_bindings_can_be_mixed_in_one_source() {
 +        const POINT_COUNT: usize = 7;
 +
-+        let factor_re = [0.75, -1.25];
-+        let factor_im = [-0.5, 0.25];
++        let scale_re = [0.75, -1.25];
++        let scale_im = [-0.5, 0.25];
 +        let parameter_im = -0.625;
 +        let invocations = [InvocationRow {
 +            input_re_0: 0,
@@ -6022,13 +4726,13 @@ index 0000000..846d0f9
 +            AttachmentRow {
 +                destination_re: 4,
 +                destination_im: 5,
-+                factor: 0,
++                scale: 0,
 +                operation: 0,
 +            },
 +            AttachmentRow {
 +                destination_re: 6,
 +                destination_im: 7,
-+                factor: 1,
++                scale: 1,
 +                operation: 1,
 +            },
 +        ];
@@ -6048,8 +4752,8 @@ index 0000000..846d0f9
 +        ];
 +        let mut oracle_values = table_values.clone();
 +
-+        let initialize = mixed_oracle_callable(DirectDestinationOperation::Initialize);
-+        let add = mixed_oracle_callable(DirectDestinationOperation::Add);
++        let overwrite = mixed_oracle_callable(DirectDestinationOperation::Overwrite);
++        let accumulate = mixed_oracle_callable(DirectDestinationOperation::Accumulate);
 +        for attachment in attachments {
 +            let mut planes = Vec::with_capacity(8);
 +            for index in [
@@ -6068,17 +4772,17 @@ index 0000000..846d0f9
 +            planes.push(planes[4]);
 +            planes.push(planes[5]);
 +
-+            let exact_re = factor_re[attachment.factor as usize];
-+            let exact_im = factor_im[attachment.factor as usize];
++            let exact_re = scale_re[attachment.scale as usize];
++            let exact_im = scale_im[attachment.scale as usize];
 +            let scalars = [
 +                unsafe { DirectScalar::from_raw(ptr::from_ref(&exact_re)) },
 +                unsafe { DirectScalar::from_raw(ptr::from_ref(&exact_im)) },
 +                unsafe { DirectScalar::from_raw(ptr::from_ref(&parameter_im)) },
 +            ];
 +            let callable = if attachment.operation == 0 {
-+                &initialize
++                &overwrite
 +            } else {
-+                &add
++                &accumulate
 +            };
 +            assert_eq!(
 +                unsafe {
@@ -6106,9 +4810,9 @@ index 0000000..846d0f9
 +            plane_count: plane_descriptors.len() as u32,
 +            scalar_count: scalar_descriptors.len() as u32,
 +            scalars: scalar_descriptors.as_ptr(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: factor_re.len() as u32,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: scale_re.len() as u32,
 +            point_start: 0,
 +            point_count: POINT_COUNT as u32,
 +        };
@@ -6128,7 +4832,7 @@ index 0000000..846d0f9
 +
 +    #[test]
 +    fn unaligned_range_dispatches_scalar_head_simd_middle_and_scalar_tail() {
-+        run_case(2, 2, 1, 4, 6);
++        run_case(2, 2, 1, 4, expected_generated_calls(2, 1, 4));
 +    }
 +
 +    #[test]
@@ -6176,11 +4880,11 @@ index 0000000..846d0f9
 +            output_0_im: 13,
 +            output_1_re: 14,
 +            output_1_im: 15,
-+            factor: 0,
-+            operation: DirectTableDestinationOperation::Initialize as u32,
++            scale: 0,
++            operation: DirectTableDestinationOperation::Overwrite as u32,
 +        };
-+        let factor_re = [0.75];
-+        let factor_im = [-0.5];
++        let scale_re = [0.75];
++        let scale_im = [-0.5];
 +        let view = DirectTableCallViewV1 {
 +            invocations: ptr::from_ref(&invocation).cast(),
 +            invocation_count: 1,
@@ -6192,9 +4896,9 @@ index 0000000..846d0f9
 +            plane_count: planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: factor_re.len() as u32,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: scale_re.len() as u32,
 +            point_start: 0,
 +            point_count: input_values[0].len() as u32,
 +        };
@@ -6215,7 +4919,7 @@ index 0000000..846d0f9
 +        );
 +
 +        let (checked_status, checked_allocations) =
-+            super::allocation_probe::count_allocations(|| {
++            crate::allocation_probe::count_allocations(|| {
 +                let mut status = DIRECT_STATUS_OK;
 +                for _ in 0..128 {
 +                    status |= unsafe { handle.invoke(&view) };
@@ -6223,7 +4927,7 @@ index 0000000..846d0f9
 +                status
 +            });
 +        let (unchecked_status, unchecked_allocations) =
-+            super::allocation_probe::count_allocations(|| {
++            crate::allocation_probe::count_allocations(|| {
 +                let mut status = DIRECT_STATUS_OK;
 +                for _ in 0..128 {
 +                    status |= unsafe { callable.invoke_unchecked(&view) };
@@ -6393,24 +5097,24 @@ index 0000000..846d0f9
 +            AttachmentRow {
 +                destination_re: 4,
 +                destination_im: 5,
-+                factor: 0,
-+                operation: DirectTableDestinationOperation::Add as u32,
++                scale: 0,
++                operation: DirectTableDestinationOperation::Accumulate as u32,
 +            },
 +            AttachmentRow {
 +                destination_re: 10,
 +                destination_im: 11,
-+                factor: 0,
-+                operation: DirectTableDestinationOperation::Initialize as u32,
++                scale: 0,
++                operation: DirectTableDestinationOperation::Overwrite as u32,
 +            },
 +            AttachmentRow {
 +                destination_re: 0,
 +                destination_im: 1,
-+                factor: 0,
-+                operation: DirectTableDestinationOperation::Initialize as u32,
++                scale: 0,
++                operation: DirectTableDestinationOperation::Overwrite as u32,
 +            },
 +        ];
-+        let factor_re = [1.0];
-+        let factor_im = [0.0];
++        let scale_re = [1.0];
++        let scale_im = [0.0];
 +        let view = DirectTableCallViewV1 {
 +            invocations: invocations.as_ptr().cast(),
 +            invocation_count: invocations.len() as u32,
@@ -6422,9 +5126,9 @@ index 0000000..846d0f9
 +            plane_count: planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: 1,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: 1,
 +            point_start: POINT_START as u32,
 +            point_count: POINT_COUNT as u32,
 +        };
@@ -6436,7 +5140,7 @@ index 0000000..846d0f9
 +        unsafe { callable.metadata().validate_call_view(&view) }.unwrap();
 +        assert_eq!(
 +            unsafe { callable.context.dispatch_table_unchecked(&view).unwrap() },
-+            12
++            expected_generated_calls(invocations.len(), POINT_START, POINT_COUNT,)
 +        );
 +        for (actual, expected) in [
 +            (&row0_x_re, &expected_row0_x_re),
@@ -6459,8 +5163,8 @@ index 0000000..846d0f9
 +            .seal()
 +            .unwrap()
 +            .into_callable();
-+        let factor_re = [1.0];
-+        let factor_im = [0.0];
++        let scale_re = [1.0];
++        let scale_im = [0.0];
 +        let invocation = InvocationRow {
 +            input_re_0: 0,
 +            input_im_0: 1,
@@ -6486,7 +5190,7 @@ index 0000000..846d0f9
 +        let exact_attachment = AttachmentRow {
 +            destination_re: 0,
 +            destination_im: 5,
-+            factor: 0,
++            scale: 0,
 +            operation: 0,
 +        };
 +        let mut view = DirectTableCallViewV1 {
@@ -6500,9 +5204,9 @@ index 0000000..846d0f9
 +            plane_count: exact_planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: 1,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: 1,
 +            point_start: 0,
 +            point_count: 2,
 +        };
@@ -6534,7 +5238,7 @@ index 0000000..846d0f9
 +        let normal_attachment = AttachmentRow {
 +            destination_re: 4,
 +            destination_im: 5,
-+            factor: 0,
++            scale: 0,
 +            operation: 0,
 +        };
 +        view.attachments = ptr::from_ref(&normal_attachment).cast();
@@ -6611,7 +5315,7 @@ index 0000000..846d0f9
 +    }
 +
 +    #[test]
-+    fn checked_calls_reject_destination_overlap_with_global_scalar_factor_and_table_buffers() {
++    fn checked_calls_reject_destination_overlap_with_global_scalar_scale_and_table_buffers() {
 +        let callable = DirectTableApplication::new(source_application(), table_metadata())
 +            .unwrap()
 +            .seal()
@@ -6636,19 +5340,19 @@ index 0000000..846d0f9
 +        let attachment = AttachmentRow {
 +            destination_re: 4,
 +            destination_im: 5,
-+            factor: 0,
++            scale: 0,
 +            operation: 0,
 +        };
 +        let mut inputs = [[1.0; 2]; 4];
 +        let mut destination_im = [0.0; 2];
-+        let mut factor_re = [1.0, 0.0];
-+        let factor_im = [0.0, 0.0];
++        let mut scale_re = [1.0, 0.0];
++        let scale_im = [0.0, 0.0];
 +        let mut planes = [
 +            unsafe { DirectPlane::from_raw_parts(inputs[0].as_mut_ptr(), 2) },
 +            unsafe { DirectPlane::from_raw_parts(inputs[1].as_mut_ptr(), 2) },
 +            unsafe { DirectPlane::from_raw_parts(inputs[2].as_mut_ptr(), 2) },
 +            unsafe { DirectPlane::from_raw_parts(inputs[3].as_mut_ptr(), 2) },
-+            unsafe { DirectPlane::from_raw_parts(factor_re.as_mut_ptr(), 2) },
++            unsafe { DirectPlane::from_raw_parts(scale_re.as_mut_ptr(), 2) },
 +            unsafe { DirectPlane::from_raw_parts(destination_im.as_mut_ptr(), 2) },
 +        ];
 +        let mut view = DirectTableCallViewV1 {
@@ -6662,9 +5366,9 @@ index 0000000..846d0f9
 +            plane_count: planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor_re.as_ptr(),
-+            factor_im: factor_im.as_ptr(),
-+            factor_count: 1,
++            scale_re: scale_re.as_ptr(),
++            scale_im: scale_im.as_ptr(),
++            scale_count: 1,
 +            point_start: 0,
 +            point_count: 2,
 +        };
@@ -6684,10 +5388,10 @@ index 0000000..846d0f9
 +        };
 +        view.attachments = ptr::from_ref(&table_storage.0).cast();
 +        view.planes = planes.as_ptr();
-+        let independent_factor_re = [1.0];
-+        let independent_factor_im = [0.0];
-+        view.factor_re = independent_factor_re.as_ptr();
-+        view.factor_im = independent_factor_im.as_ptr();
++        let independent_scale_re = [1.0];
++        let independent_scale_im = [0.0];
++        view.scale_re = independent_scale_re.as_ptr();
++        view.scale_im = independent_scale_im.as_ptr();
 +        assert_eq!(
 +            unsafe { callable.handle().invoke(&view) },
 +            DIRECT_STATUS_INVALID_ARGUMENT
@@ -6780,15 +5484,15 @@ index 0000000..846d0f9
 +    }
 +
 +    #[test]
-+    fn call_view_layout_is_stable_on_the_aarch64_mre_host() {
++    fn call_view_layout_is_stable_on_supported_64_bit_hosts() {
 +        assert_eq!(mem::align_of::<DirectTableCallViewV1>(), 8);
 +        assert_eq!(mem::size_of::<DirectTableCallViewV1>(), 88);
 +        assert_eq!(mem::offset_of!(DirectTableCallViewV1, invocations), 0);
 +        assert_eq!(mem::offset_of!(DirectTableCallViewV1, attachments), 16);
 +        assert_eq!(mem::offset_of!(DirectTableCallViewV1, planes), 32);
 +        assert_eq!(mem::offset_of!(DirectTableCallViewV1, scalars), 48);
-+        assert_eq!(mem::offset_of!(DirectTableCallViewV1, factor_re), 56);
-+        assert_eq!(mem::offset_of!(DirectTableCallViewV1, factor_im), 64);
++        assert_eq!(mem::offset_of!(DirectTableCallViewV1, scale_re), 56);
++        assert_eq!(mem::offset_of!(DirectTableCallViewV1, scale_im), 64);
 +        assert_eq!(mem::offset_of!(DirectTableCallViewV1, point_start), 76);
 +        assert_eq!(mem::offset_of!(DirectTableCallViewV1, point_count), 80);
 +    }
@@ -6829,7 +5533,8 @@ index 0000000..846d0f9
 +        )
 +        .unwrap();
 +        assert!(
-+            DirectTableApplication::new(prepared_closure_application(), too_few_bindings).is_err()
++            DirectTableApplication::new(prepared_multi_output_application(), too_few_bindings)
++                .is_err()
 +        );
 +
 +        let uncovered_invocation_plane =
@@ -6846,7 +5551,7 @@ index 0000000..846d0f9
 +            )
 +            .unwrap();
 +        assert!(DirectTableApplication::new(
-+            prepared_closure_application(),
++            prepared_multi_output_application(),
 +            uncovered_invocation_plane,
 +        )
 +        .is_err());
@@ -6862,7 +5567,7 @@ index 0000000..846d0f9
 +            .seal()
 +            .unwrap()
 +            .into_callable();
-+        let factor = [1.0];
++        let scale = [1.0];
 +        let mut plane = vec![0.0; 4];
 +        let descriptor = unsafe { DirectPlane::from_raw_parts(plane.as_mut_ptr(), plane.len()) };
 +        let mut view = DirectTableCallViewV1 {
@@ -6876,9 +5581,9 @@ index 0000000..846d0f9
 +            plane_count: 1,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor.as_ptr(),
-+            factor_im: factor.as_ptr(),
-+            factor_count: 1,
++            scale_re: scale.as_ptr(),
++            scale_im: scale.as_ptr(),
++            scale_count: 1,
 +            point_start: 0,
 +            point_count: 1,
 +        };
@@ -6911,7 +5616,7 @@ index 0000000..846d0f9
 +        let attachment = AttachmentRow {
 +            destination_re: 4,
 +            destination_im: 5,
-+            factor: 0,
++            scale: 0,
 +            operation: 0,
 +        };
 +        let mut values = [[1.0; 4]; 6];
@@ -6930,9 +5635,9 @@ index 0000000..846d0f9
 +            plane_count: planes.len() as u32,
 +            scalar_count: 0,
 +            scalars: ptr::null(),
-+            factor_re: factor.as_ptr(),
-+            factor_im: factor.as_ptr(),
-+            factor_count: 1,
++            scale_re: scale.as_ptr(),
++            scale_im: scale.as_ptr(),
++            scale_count: 1,
 +            point_start: 0,
 +            point_count: 1,
 +        };
@@ -6978,11 +5683,11 @@ index 0000000..846d0f9
 +        );
 +        view.attachments = ptr::from_ref(&attachment).cast();
 +
-+        let bad_factor = AttachmentRow {
-+            factor: 1,
++        let bad_scale = AttachmentRow {
++            scale: 1,
 +            ..attachment
 +        };
-+        view.attachments = ptr::from_ref(&bad_factor).cast();
++        view.attachments = ptr::from_ref(&bad_scale).cast();
 +        assert_eq!(
 +            unsafe { callable.handle().invoke(&view) },
 +            DIRECT_STATUS_INVALID_ARGUMENT
@@ -7021,7 +5726,7 @@ index 0000000..846d0f9
 +    }
 +}
 diff --git a/rust/lib.rs b/rust/lib.rs
-index b367e58..247d028 100644
+index d0db505..88adb76 100644
 --- a/rust/lib.rs
 +++ b/rust/lib.rs
 @@ -311,6 +311,7 @@ mod composer;
@@ -7032,18 +5737,9 @@ index b367e58..247d028 100644
  pub mod expr;
  mod generator;
  pub mod instruction;
-@@ -341,12 +342,20 @@ pub use config::Config;
- pub use defuns::Defuns;
- pub use direct::{
-     DirectApplet, DirectApplication, DirectApplicationMetadata, DirectCallFunction, DirectCallable,
--    DirectCallableHandle, DirectDestinationOperation, DirectInputBinding, DirectPlane,
--    DirectScalar, DIRECT_APPLICATION_STORAGE_ABI, DIRECT_EXACT_FACTOR_IMAG_SCALAR,
-+    DirectCallableHandle, DirectDestinationOperation, DirectInputBinding, DirectOutputScale,
-+    DirectPlane, DirectScalar, DIRECT_APPLICATION_LEGACY_V1_STORAGE_ABI,
-+    DIRECT_APPLICATION_STORAGE_ABI, DIRECT_EXACT_FACTOR_IMAG_SCALAR,
-     DIRECT_EXACT_FACTOR_REAL_SCALAR, DIRECT_EXACT_FACTOR_SCALAR_COUNT, DIRECT_NO_ALIAS,
-     DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT, DIRECT_STATUS_INVALID_CONTEXT,
-     DIRECT_STATUS_OK,
+@@ -347,6 +348,13 @@ pub use direct::{
+     DIRECT_COMPLEX_SCALE_SCALAR_COUNT, DIRECT_NO_ALIAS, DIRECT_STATUS_EXECUTION_FAILED,
+     DIRECT_STATUS_INVALID_ARGUMENT, DIRECT_STATUS_INVALID_CONTEXT, DIRECT_STATUS_OK,
  };
 +pub use direct_table::{
 +    DirectTableApplet, DirectTableApplication, DirectTableApplicationMetadata,
@@ -7055,130 +5751,3 @@ index b367e58..247d028 100644
  pub use expr::{double, int, var, Expr};
  pub use instruction::{BuiltinSymbol, Instruction, Slot, SymbolicaModel};
  pub use num_complex::{Complex, ComplexFloat};
-diff --git a/rust/mir.rs b/rust/mir.rs
-index 8eec525..682f9ea 100644
---- a/rust/mir.rs
-+++ b/rust/mir.rs
-@@ -1822,6 +1822,7 @@ impl Mir {
-                                     *ys,
-                                     *idx,
-                                     self.config.direct_arena_operation(),
-+                                    self.config.direct_arena_identity_output(),
-                                 )?;
-                             } else {
-                                 // ir.save_mem(*xs, *idx);
-diff --git a/rust/runnable.rs b/rust/runnable.rs
-index 0b96839..70ee877 100644
---- a/rust/runnable.rs
-+++ b/rust/runnable.rs
-@@ -87,7 +87,32 @@ impl Application {
-         Self::with_mir(prog, reals, mir)
-     }
- 
--    pub fn with_mir(mut prog: Program, reals: HashSet<Loc>, mut mir: Mir) -> Result<Application> {
-+    pub fn with_mir(prog: Program, reals: HashSet<Loc>, mir: Mir) -> Result<Application> {
-+        Self::with_mir_kind(prog, reals, mir, false)
-+    }
-+
-+    /// Builds an application from MIR that has already passed through the
-+    /// complexifier. Direct-Arena lowering uses this to preserve complex O3
-+    /// funclets without complexifying the fused stage a second time.
-+    pub(crate) fn with_precomplexified_mir(
-+        prog: Program,
-+        reals: HashSet<Loc>,
-+        mir: Mir,
-+    ) -> Result<Application> {
-+        if !prog.config().is_complex() {
-+            return Err(anyhow!(
-+                "precomplexified MIR requires a complex application configuration"
-+            ));
-+        }
-+        Self::with_mir_kind(prog, reals, mir, true)
-+    }
-+
-+    fn with_mir_kind(
-+        mut prog: Program,
-+        reals: HashSet<Loc>,
-+        mut mir: Mir,
-+        precomplexified: bool,
-+    ) -> Result<Application> {
-         let first_state = 0;
-         let first_param = 0;
-         let first_obs = first_state + prog.count_states;
-@@ -104,7 +129,7 @@ impl Application {
-         let mut original: Option<Mir> = None;
-         let compiled: Option<MachineCode<f64>>;
- 
--        if config.is_complex() {
-+        if config.is_complex() && !precomplexified {
-             original = Some(mir.clone());
-             let complexified = Complexifier::new(&reals, config.clone()).complexify(&mir)?;
- 
-diff --git a/tests/arm_compress.rs b/tests/arm_compress.rs
-index ba94f38..20e7332 100644
---- a/tests/arm_compress.rs
-+++ b/tests/arm_compress.rs
-@@ -30,8 +30,15 @@ fn config(fast_complex: bool, use_simd: bool, compress: bool) -> Config {
- }
- 
- fn compile(fast_complex: bool, use_simd: bool, compress: bool) -> Result<symjit::Application> {
--    let (states, output) = expression();
--    Compiler::with_config(config(fast_complex, use_simd, compress)).compile(&states, &[output])
-+    let (params, output) = expression();
-+    // `Application::evaluate` passes `args` through the parameter pointer.
-+    // State-backed applications instead require the state/memory execution API.
-+    let application = Compiler::with_config(config(fast_complex, use_simd, compress))
-+        .compile_params(&[], &[output], &params)?;
-+    assert_eq!(application.count_states, 0);
-+    assert_eq!(application.count_params, 6);
-+    assert_eq!(application.count_obs, 2);
-+    Ok(application)
- }
- 
- #[test]
-@@ -50,6 +57,7 @@ fn compressed_scalar_and_fast_complex_match_expanded() -> Result<()> {
-         expanded.evaluate(&args, &mut expanded_out);
-         compressed.evaluate(&args, &mut compressed_out);
-         assert_eq!(expanded_out, compressed_out);
-+        assert_ne!(expanded_out, [Complex::default()]);
-         assert!(
-             compressed.compiled.as_ref().unwrap().dumps().len()
-                 < expanded.compiled.as_ref().unwrap().dumps().len()
-@@ -75,6 +83,7 @@ fn compressed_vector_matches_expanded() -> Result<()> {
-     expanded.evaluate(&args, &mut expanded_out);
-     compressed.evaluate(&args, &mut compressed_out);
-     assert_eq!(expanded_out, compressed_out);
-+    assert_ne!(expanded_out, [Complex::default()]);
-     assert!(
-         compressed.compiled_simd.as_ref().unwrap().dumps().len()
-             < expanded.compiled_simd.as_ref().unwrap().dumps().len()
-@@ -118,6 +127,7 @@ fn compressed_storage_v3_roundtrip_is_exact_and_stable() -> Result<()> {
-     expanded.evaluate(&scalar_args, &mut expanded_scalar);
-     loaded.evaluate(&scalar_args, &mut loaded_scalar);
-     assert_eq!(expanded_scalar, loaded_scalar);
-+    assert_ne!(expanded_scalar, [Complex::default()]);
- 
-     let vector_args = [
-         Complex::new(f64x2::new([1.25, -0.25]), f64x2::new([-0.75, 0.5])),
-@@ -129,6 +139,7 @@ fn compressed_storage_v3_roundtrip_is_exact_and_stable() -> Result<()> {
-     expanded.evaluate(&vector_args, &mut expanded_vector);
-     loaded.evaluate(&vector_args, &mut loaded_vector);
-     assert_eq!(expanded_vector, loaded_vector);
-+    assert_ne!(expanded_vector, [Complex::default()]);
- 
-     assert_eq!(
-         compressed.compiled.as_ref().unwrap().dumps(),
-diff --git a/tests/fixtures/builtin-sm-recurrence-canary-kernel-000006.symjit b/tests/fixtures/builtin-sm-recurrence-canary-kernel-000006.symjit
-new file mode 100644
-index 0000000000000000000000000000000000000000..32d03146fc4ba203d7b4ab8e57fea61d0a84fec0
-GIT binary patch
-literal 360
-zcmaFK!Rt7+J<Nfb0Rm!u`+l!;*>tEt&*^x%jZQ=EWCf@UgyMnnSWrX}oIUE#R;$W=
-z5`u{+F+x}{^I_sAtn1U}EqG=RrT4?cS)q)1JR6jgXJ@s~fbv-#7#Ua{8JYSV92}V)
-z8`+v1935C34ozTSbplE_Gcxu$IXN>sH?lN2IXkhs0L5H^id|e>nOz&X6r5aLoS0o2
-z8Je7cv|A$wt2-kj^Fg3)1$Q_1gUlX{ObSjO?oKRDjtoF423Aj?dG79>4W7=fO+dQI
-c-NPLy#styg>E?M*!QI8voyFaeiCBLD02|Oqz5oCK
-
-literal 0
-HcmV?d00001
-

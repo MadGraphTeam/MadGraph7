@@ -314,7 +314,7 @@ def _selftest_arena_stage(
         "compiled_plane_arena": {
             "schema_version": 1,
             "kind": "compiled-plane-arena-stage",
-            "application_abi": "symjit-direct-application-storage-v3",
+            "application_abi": "symjit-direct-application-storage-v1",
             "source_application_abi": "symjit-application-storage-v3",
             "element_layout": "split-complex-component-major",
             "output_operation": "overwrite",

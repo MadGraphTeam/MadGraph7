@@ -25,9 +25,9 @@ performance claim.
 
 - Ordinary source application: `symjit-application-storage-v3`.
 - Compiled fused-stage application:
-  `symjit-direct-application-storage-v3`.
+  `symjit-direct-application-storage-v1`.
 - Eager table descriptor: `symjit-direct-table-descriptor-v1`.
-- Eager table binding: `symjit-direct-table-binding-v2`.
+- Eager table binding: `symjit-direct-table-binding-v1`.
 
 Compiled applications retain O3 compressed funclets, use identity overwrite
 with no output factor, reject input/output and output/output aliasing, support

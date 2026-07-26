@@ -318,6 +318,7 @@ for backend in (
         generation=GenerationConfig(workers=1, emit_api_bundle=False),
         evaluator=EvaluatorConfig(
             backend=backend,
+            execution_mode=EvaluatorExecutionMode.COMPILED,
             optimization=EvaluatorOptimizationConfig(cores=1),
             jit=JITConfig(optimization_level=3),
         ),

@@ -169,7 +169,7 @@ SQRT_S = 1_000.0
 RELATIVE_TOLERANCE = 1.0e-12
 ABSOLUTE_TOLERANCE = 1.0e-15
 COMPILED_PLANE_ARENA_CAPABILITY = "compiled-plane-arena-v1"
-COMPILED_PLANE_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v3"
+COMPILED_PLANE_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
 NATIVE_COMPILED_DIRECT_APPLICATION_ABI = (
     "pyamplicol-native-compiled-direct-application-v1"
 )

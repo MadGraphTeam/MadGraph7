@@ -24,9 +24,9 @@ NATIVE_COMPILED_DIRECT_APPLICATION_ABI = (
     "pyamplicol-native-compiled-direct-application-v1"
 )
 NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI = "pyamplicol-eager-native-direct-table-v1"
-COMPILED_PLANE_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v3"
+COMPILED_PLANE_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
 EAGER_DIRECT_TABLE_DESCRIPTOR_ABI = "symjit-direct-table-descriptor-v1"
-EAGER_DIRECT_TABLE_BINDING_ABI = "symjit-direct-table-binding-v2"
+EAGER_DIRECT_TABLE_BINDING_ABI = "symjit-direct-table-binding-v1"
 
 SYMJIT_F64_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY = (

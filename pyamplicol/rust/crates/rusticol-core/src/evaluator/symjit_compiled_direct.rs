@@ -20,7 +20,7 @@ use std::ptr;
 use symjit::{
     Config, DIRECT_APPLICATION_STORAGE_ABI, DIRECT_NO_ALIAS, DIRECT_STATUS_OK, Defuns,
     DirectApplication, DirectApplicationMetadata, DirectCallable, DirectDestinationOperation,
-    DirectInputBinding, DirectOutputScale, DirectPlane, DirectScalar, Storage,
+    DirectInputBinding, DirectInputSnapshot, DirectOutputScale, DirectPlane, DirectScalar, Storage,
 };
 
 use crate::direct_arena::{
@@ -130,8 +130,9 @@ impl LoadedSymjitCompiledDirectStage {
                 }
             })
             .collect::<Vec<_>>();
-        let direct_metadata = DirectApplicationMetadata::new_with_output_scale(
-            DirectDestinationOperation::Initialize,
+        let direct_metadata = DirectApplicationMetadata::new(
+            DirectDestinationOperation::Overwrite,
+            DirectInputSnapshot::Live,
             DirectOutputScale::Identity,
             Vec::new(),
             direct_inputs,
@@ -167,7 +168,7 @@ impl LoadedSymjitCompiledDirectStage {
                 display_path.display()
             ))
         })?;
-        if direct.source_optimization_level() != Some(source_optimization_level) {
+        if direct.source_optimization_level() != source_optimization_level {
             return Err(RusticolError::integrity(format!(
                 "compiled source application {} declares optimization level \
                  {source_optimization_level} but stores optimization level {:?}",
@@ -249,7 +250,8 @@ impl LoadedSymjitCompiledDirectStage {
         output_bindings: Vec<CompiledDirectOutputBinding>,
     ) -> RusticolResult<Self> {
         let metadata = application.metadata();
-        if metadata.destination_operation != DirectDestinationOperation::Initialize
+        if metadata.destination_operation != DirectDestinationOperation::Overwrite
+            || metadata.input_snapshot != DirectInputSnapshot::Live
             || metadata.output_scale != DirectOutputScale::Identity
             || metadata
                 .output_alias_inputs
@@ -756,8 +758,9 @@ mod tests {
         assert_eq!(source.count_states, 0);
         assert_eq!(source.count_params, 4);
         assert_eq!(source.count_obs, 4);
-        let metadata = DirectApplicationMetadata::new_with_output_scale(
-            DirectDestinationOperation::Initialize,
+        let metadata = DirectApplicationMetadata::new(
+            DirectDestinationOperation::Overwrite,
+            DirectInputSnapshot::Live,
             DirectOutputScale::Identity,
             vec![],
             (0..source.count_params as u32)
@@ -791,8 +794,9 @@ mod tests {
             .unwrap();
         assert_eq!(source.count_params, 2);
         assert_eq!(source.count_obs, 2);
-        let metadata = DirectApplicationMetadata::new_with_output_scale(
-            DirectDestinationOperation::Initialize,
+        let metadata = DirectApplicationMetadata::new(
+            DirectDestinationOperation::Overwrite,
+            DirectInputSnapshot::Live,
             DirectOutputScale::Identity,
             vec![],
             vec![DirectInputBinding::Scalar(0), DirectInputBinding::Scalar(1)],

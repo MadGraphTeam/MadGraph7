@@ -1049,9 +1049,18 @@ def _runtime_requirements_text() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _venv_bootstrap_python() -> Path:
+    """Return an interpreter that remains available if this venv is reset."""
+
+    base_executable = getattr(sys, "_base_executable", None)
+    if isinstance(base_executable, str) and base_executable:
+        return Path(base_executable)
+    return Path(sys.executable)
+
+
 def _ensure_venv(runner: Runner, payload: dict[str, Any]) -> None:
     if not _venv_python().is_file():
-        runner.run([sys.executable, "-m", "venv", VENV])
+        runner.run([_venv_bootstrap_python(), "-m", "venv", VENV])
     python = _venv_python()
     if runner.dry_run:
         print(f"# ensure pip is available in {VENV}")

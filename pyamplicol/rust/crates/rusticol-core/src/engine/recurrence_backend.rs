@@ -30,7 +30,7 @@ use std::path::PathBuf;
 #[cfg(feature = "f64-symjit")]
 use symjit::{
     DirectApplicationMetadata, DirectDestinationOperation as SymjitDestinationOperation,
-    DirectInputBinding,
+    DirectInputBinding, DirectInputSnapshot as SymjitInputSnapshot, DirectOutputScale,
 };
 
 #[cfg(feature = "f64-symjit")]
@@ -482,7 +482,7 @@ fn load_symjit_executor(
         )));
     }
     let role = direct_role(&template.role)?;
-    let operation = direct_destination_operation(&template.destination_operation)?;
+    let (operation, input_snapshot) = direct_destination_policy(&template.destination_operation)?;
     let parameter_bindings = binding
         .parameter_bindings
         .iter()
@@ -497,6 +497,8 @@ fn load_symjit_executor(
         .collect();
     let metadata = DirectApplicationMetadata::new(
         operation,
+        input_snapshot,
+        DirectOutputScale::ComplexScalar,
         binding.state_plane_indices.clone(),
         parameter_bindings,
         binding.input_plane_count,
@@ -613,12 +615,26 @@ fn direct_role(role: &str) -> RusticolResult<DirectExecutorRole> {
 }
 
 #[cfg(feature = "f64-symjit")]
-fn direct_destination_operation(value: &str) -> RusticolResult<SymjitDestinationOperation> {
+fn direct_destination_policy(
+    value: &str,
+) -> RusticolResult<(SymjitDestinationOperation, SymjitInputSnapshot)> {
     match value {
-        "initialize" => Ok(SymjitDestinationOperation::Initialize),
-        "add" => Ok(SymjitDestinationOperation::Add),
-        "finalize-in-place" => Ok(SymjitDestinationOperation::FinalizeInPlace),
-        "closure-add" => Ok(SymjitDestinationOperation::ClosureAdd),
+        "initialize" => Ok((
+            SymjitDestinationOperation::Overwrite,
+            SymjitInputSnapshot::Live,
+        )),
+        "add" => Ok((
+            SymjitDestinationOperation::Accumulate,
+            SymjitInputSnapshot::Live,
+        )),
+        "finalize-in-place" => Ok((
+            SymjitDestinationOperation::Overwrite,
+            SymjitInputSnapshot::BeforeWrite,
+        )),
+        "closure-add" => Ok((
+            SymjitDestinationOperation::Accumulate,
+            SymjitInputSnapshot::BeforeWrite,
+        )),
         other => Err(RusticolError::compatibility(format!(
             "unsupported Direct-Arena destination operation {other:?}"
         ))),

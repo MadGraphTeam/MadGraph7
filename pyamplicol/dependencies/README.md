@@ -26,19 +26,20 @@ and are not eligible for PyPI publication.
 The contributor build uses the checksummed upstream source archive for SymJIT
 2.21.1 at revision `48197f32536c894b51ef25b2cf05ddd05c22675f`.
 The installer verifies and applies the ordered, individually checksummed
-SymJIT patch set before changing the crate target from `cdylib` to `rlib` so
-Symbolica can consume it as a Rust dependency. It then verifies the complete
-configured tree against the lock. The first patch provides deterministic
-AArch64 compressed funclets and the recurrence Direct-Arena application. The
-second adds the fused compiled DirectApplication storage-v3 contract and the
-table-aware eager DirectTableApplication contract. It also retains bounded,
-read-only loading of the accepted recurrence storage-v1 payloads; v3 is the
-only writer and v2 remains rejected. The fifth patch accepts authenticated
-compiled identity-overwrite sources at JIT O0 through O3 while retaining the
-fixed O3 direct callable; recurrence exact-factor sources remain O2. The build
-uses Symbolica and symbolica-community at the immutable planned-release
-revisions recorded in the lock. GammaLoop is pinned to the merged main revision
-that provides Spenso's
+generic SymJIT patch set before changing the crate target from `cdylib` to
+`rlib` so Symbolica can consume it as a Rust dependency. It then verifies the
+complete configured tree against the lock. The patches provide deterministic
+AArch64 compressed funclets, generic direct split-plane applications, and a
+generic table-driven direct application on AArch64 and x86-64. The direct
+contracts expose overwrite/accumulate, live/before-write input, and
+identity/complex-scalar policies; Rusticol owns the mapping from pyAmpliCol
+recurrence roles to those policies. The previously unreleased direct contracts
+are reset to storage v1 and table binding v1, with no pyAmpliCol-specific
+compatibility loader. Direct bytecode is trusted input rather than a hostile
+payload, while ordinary shape, range, and alias checks remain part of the safe
+calling contract. The build uses Symbolica and symbolica-community at the
+immutable planned-release revisions recorded in the lock. GammaLoop is pinned
+to the merged main revision that provides Spenso's
 cached symbolic-parallelism policy. Spynso3 initializes that policy in `Auto`
 mode, checking the license once and keeping symbolic tensor reductions serial
 for restricted users or parallel for licensed users. The matching Symbolica,
@@ -46,12 +47,12 @@ symbolica-community, and SymJIT versions must be published with the required
 extensions before a strict PyPI build can replace the currently verified
 release pins.
 
-The contributor-only SymJIT patch and planned Symbolica revision remain
-upstream release blockers. The Symbolica revision also has a blocker for
-pyAmpliCol's compiled-complex C++/CUDA path: complex constants can be emitted
-with nested scalar wrappers that do not compile as `std::complex<double>`.
-Publication requires upstream fixes or an explicit exclusion of the affected
-capabilities; the release dependency gate remains unchanged and fails closed.
+The contributor-only SymJIT series remains an upstream release blocker until a
+published crates.io version contains the generic APIs. A Git dependency is not
+used as a publication workaround. The planned Symbolica revision must likewise
+be represented by compatible published Python and Rust releases before the
+strict gate can be updated. The release dependency gate remains unchanged and
+fails closed until that published pair is verified.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. The pinned

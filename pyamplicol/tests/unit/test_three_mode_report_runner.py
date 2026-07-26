@@ -1165,7 +1165,7 @@ def test_artifact_contract_rejects_generation_specialization(
                 Workload.SELECTED_FLOW,
             ),
             "eager-direct-arena-v1",
-            "symjit-direct-table-binding-v2",
+            "symjit-direct-table-binding-v1",
             {"source_jit_optimization_level": 2},
         ),
         (
@@ -1175,7 +1175,7 @@ def test_artifact_contract_rejects_generation_specialization(
                 if cell.variant == "jit_o1" and cell.workload is Workload.SELECTED_FLOW
             ),
             "compiled-plane-arena-v1",
-            "symjit-direct-application-storage-v3",
+            "symjit-direct-application-storage-v1",
             {
                 "source_jit_optimization_level": 1,
                 "direct_codegen_optimization_level": 3,

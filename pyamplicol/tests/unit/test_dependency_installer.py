@@ -67,17 +67,28 @@ def test_legacy_oracle_uses_the_pinned_remote_branch_without_local_patches() -> 
     )
 
 
+def test_venv_reset_bootstraps_with_the_unmoved_base_interpreter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    base_python = tmp_path / "base-python"
+    active_venv_python = tmp_path / ".venv" / "bin" / "python"
+    monkeypatch.setattr(module.sys, "_base_executable", str(base_python))
+    monkeypatch.setattr(module.sys, "executable", str(active_venv_python))
+
+    assert module._venv_bootstrap_python() == base_python
+
+
 def test_symjit_patch_set_is_revision_digest_and_tree_pinned() -> None:
     module = _module()
     payload = module._lock()
     patches = module._contributor_patches(payload)
 
     assert [patch.name for patch in patches] == [
-        "symjit-aarch64-compression-and-direct-arena",
-        "symjit-eager-and-compiled-direct-arena",
-        "symjit-x86-direct-table",
-        "symjit-expand-direct-table-output-cap",
-        "symjit-compiled-direct-arena-all-jit-levels",
+        "symjit-aarch64-compressed-funclets",
+        "symjit-generic-direct-applications",
+        "symjit-generic-direct-table-applications",
     ]
     assert all(patch.target == "symjit" for patch in patches)
     assert all(
@@ -140,10 +151,7 @@ def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> 
         applied.append(patch.name)
 
     assert applied == [
-        "symjit-aarch64-compression-and-direct-arena",
-        "symjit-eager-and-compiled-direct-arena",
-        "symjit-x86-direct-table",
-        "symjit-compiled-direct-arena-all-jit-levels",
+        "symjit-generic-direct-applications",
     ]
     direct = target / "rust" / "direct.rs"
     digest = subprocess.run(
@@ -152,7 +160,7 @@ def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> 
         text=True,
         check=True,
     ).stdout.strip()
-    assert digest == "94ea8fb2b80c03f2266b6be1f82b705e9b96fa04"
+    assert digest == "e0575ed72913a692ba2c946fa6a5ec740da458a2"
 
 
 def test_contributor_patch_application_is_exact_idempotent_and_fails_on_drift(

@@ -75,11 +75,8 @@ _PATCH_KEYS = {
 _CANDIDATE_ABIS = {
     "symbolica_serialization": "symbolica-bincode2-v1",
     "symjit_application": "symjit-application-storage-v3",
-    "symjit_direct_application": "symjit-direct-application-storage-v3",
-    "symjit_direct_application_legacy_recurrence": (
-        "symjit-direct-application-storage-v1"
-    ),
-    "symjit_direct_table_binding": "symjit-direct-table-binding-v2",
+    "symjit_direct_application": "symjit-direct-application-storage-v1",
+    "symjit_direct_table_binding": "symjit-direct-table-binding-v1",
     "symjit_direct_table_descriptor": "symjit-direct-table-descriptor-v1",
 }
 

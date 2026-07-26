@@ -5,9 +5,8 @@ schema_version = 1
 [abis]
 symbolica_serialization = "symbolica-bincode2-v1"
 symjit_application = "symjit-application-storage-v3"
-symjit_direct_application = "symjit-direct-application-storage-v3"
-symjit_direct_application_legacy_recurrence = "symjit-direct-application-storage-v1"
-symjit_direct_table_binding = "symjit-direct-table-binding-v2"
+symjit_direct_application = "symjit-direct-application-storage-v1"
+symjit_direct_table_binding = "symjit-direct-table-binding-v1"
 symjit_direct_table_descriptor = "symjit-direct-table-descriptor-v1"
 
 [symbolica]
@@ -25,8 +24,8 @@ archive_prefix = "symjit-48197f32536c894b51ef25b2cf05ddd05c22675f"
 archive_sha256 = "876930348cc06761ca780570fb282d009f143f4a469e321e3b5039c5ee217424"
 candidate_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
 application_storage_version = 3
-patched_tree_sha256 = "97e1a50b9e82e9c7f0062fa8c5e7c92507c932dfd7ab27bd23e3809a88db95f5"
-candidate_tree_sha256 = "d680d5fbe2d2e7a00594c4c64b28c7efde5ef2950173f3bee7e2db6a8bb33a6a"
+patched_tree_sha256 = "e530b43c47df2eebbda1d35f996126d6f18e3c067dff7823663aed6e0aeae735"
+candidate_tree_sha256 = "820675246517cd49198495936327768da7a7a1d25f8bf20749c21aad1c2f56da"
 release_status = "patched-candidate"
 license = "MIT"
 
@@ -51,36 +50,22 @@ redistributed = false
 license_evidence = "No LICENSE or COPYING file exists at the pinned branch revision"
 
 [[patches]]
-name = "symjit-aarch64-compression-and-direct-arena"
+name = "symjit-aarch64-compressed-funclets"
 target = "symjit"
-path = "patches/symjit/0001-aarch64-compression-and-direct-arena.patch"
-sha256 = "6d456e69fc160ec5361188f60f994d10fb2dd3360eb47a91c4979a1bde69626e"
+path = "patches/symjit/upstream/0002-Support-compressed-funclets-on-AArch64.patch"
+sha256 = "e0b9c7b0215b40f5defe2fa5dc65a4bd129f0e548c740d700f52af643278fdf1"
 applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
 
 [[patches]]
-name = "symjit-eager-and-compiled-direct-arena"
+name = "symjit-generic-direct-applications"
 target = "symjit"
-path = "patches/symjit/0002-eager-and-compiled-direct-arena.patch"
-sha256 = "3c5e07f6e47e42bb7c51a53ed16fdca402ecae05fceea1bcfcff8b4145bbb299"
+path = "patches/symjit/upstream/0003-Add-generic-direct-plane-applications.patch"
+sha256 = "7a8f5161e93c04fff8f3a04d770d78b272e7367d1083b020d519758e5b9a8238"
 applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
 
 [[patches]]
-name = "symjit-x86-direct-table"
+name = "symjit-generic-direct-table-applications"
 target = "symjit"
-path = "patches/symjit/0003-x86-direct-table.patch"
-sha256 = "003b843766291c1ba96114d7f23b149b0c7074a9bb7244b782f70197e925d087"
-applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
-
-[[patches]]
-name = "symjit-expand-direct-table-output-cap"
-target = "symjit"
-path = "patches/symjit/0004-expand-direct-table-output-cap.patch"
-sha256 = "0579c51149acae37bbbcf2964a2080dccb300b1d61e28daf0180edb8d7895bf1"
-applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"
-
-[[patches]]
-name = "symjit-compiled-direct-arena-all-jit-levels"
-target = "symjit"
-path = "patches/symjit/0005-compiled-direct-arena-all-jit-levels.patch"
-sha256 = "90707c1efbbfcfb9ebe8c4efb638337f622a1d0aa00623df54559c85182238e0"
+path = "patches/symjit/upstream/0004-Add-generic-table-driven-direct-applications.patch"
+sha256 = "34792f5e42298961d1df67d3ed16e66489e380ac3f0c4249119d2ff297a13606"
 applies_to_revision = "48197f32536c894b51ef25b2cf05ddd05c22675f"

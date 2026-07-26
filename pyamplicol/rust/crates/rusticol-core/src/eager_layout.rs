@@ -17,7 +17,7 @@ pub const EAGER_DIRECT_SOURCE_APPLICATION_ABI: &str = "symjit-application-storag
 pub const EAGER_NATIVE_DIRECT_TABLE_APPLICATION_ABI: &str =
     "pyamplicol-eager-native-direct-table-v1";
 pub const EAGER_DIRECT_TABLE_DESCRIPTOR_ABI: &str = "symjit-direct-table-descriptor-v1";
-pub const EAGER_DIRECT_TABLE_BINDING_ABI: &str = "symjit-direct-table-binding-v2";
+pub const EAGER_DIRECT_TABLE_BINDING_ABI: &str = "symjit-direct-table-binding-v1";
 pub const EAGER_RUNTIME_CONTAINER_KIND: &str = "pyamplicol-eager-runtime-container";
 pub const EAGER_RUNTIME_CONTAINER_SCHEMA: u16 = 1;
 pub const EAGER_SECTION_SCHEMA: u16 = 1;

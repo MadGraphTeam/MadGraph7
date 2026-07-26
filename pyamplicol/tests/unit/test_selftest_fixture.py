@@ -17,7 +17,7 @@ SCRIPT = ROOT / "tools/release/prepare_selftest_fixture.py"
 FIXTURE = ROOT / "src/pyamplicol/assets/selftest/portable-64le"
 ARENA_CAPABILITY = "compiled-plane-arena-v1"
 SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
-DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v3"
+DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
 SYMJIT_CAPABILITY = "symjit.application.complex-f64.v1"
 
 

@@ -210,8 +210,7 @@ Create a portable copy, including raw data, TeX, and the reviewed PDF, from a
 source checkout with:
 
 ```bash
-python3 {CANONICAL_REPORT_ENTRYPOINT.as_posix()} export-profile \\
-  {profile} /absolute/output/path
+python3 {CANONICAL_REPORT_ENTRYPOINT.as_posix()} export-profile {profile} /absolute/output/path
 ```
 
 The copied entry point selects this profile automatically. Measurements still

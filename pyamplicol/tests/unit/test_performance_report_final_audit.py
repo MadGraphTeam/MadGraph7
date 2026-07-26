@@ -357,7 +357,7 @@ def _compiled_stage(
         else "pyamplicol-native-compiled-direct-application-v1"
     )
     application_abi = (
-        "symjit-direct-application-storage-v3"
+        "symjit-direct-application-storage-v1"
         if backend == "jit"
         else "pyamplicol-native-compiled-direct-application-v1"
     )
@@ -580,7 +580,7 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
                     "direct_table": {
                         "capability": "eager-direct-arena-v1",
                         "descriptor_abi": ("symjit-direct-table-descriptor-v1"),
-                        "binding_abi": "symjit-direct-table-binding-v2",
+                        "binding_abi": "symjit-direct-table-binding-v1",
                         "source_application_abi": ("symjit-application-storage-v3"),
                     },
                 },
@@ -664,7 +664,7 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
         {"nested": [{"direct_table": None}]},
         {"nested": {"capability": "eager-direct-arena-v1"}},
         {"nested": {"descriptor_abi": "symjit-direct-table-descriptor-v1"}},
-        {"nested": {"binding_abi": "symjit-direct-table-binding-v2"}},
+        {"nested": {"binding_abi": "symjit-direct-table-binding-v1"}},
         {"nested": {"application_abi": "pyamplicol-eager-native-direct-table-v1"}},
     ):
         corrupted = deepcopy(pack_payload)
@@ -1939,7 +1939,7 @@ def test_runtime_identity_audit_distinguishes_source_and_direct_codegen_levels(
             "execution_mode": "compiled",
             "loaded_execution_mode": "compiled",
             "required_arena_capability": "compiled-plane-arena-v1",
-            "expected_evaluator_abi": "symjit-direct-application-storage-v3",
+            "expected_evaluator_abi": "symjit-direct-application-storage-v1",
             "expected_source_evaluator_abi": "symjit-application-storage-v3",
             "source_jit_optimization_level": 1,
             "direct_codegen_optimization_level": 3,

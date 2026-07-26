@@ -142,7 +142,7 @@ Suggested public identities are:
 
 ```text
 symjit-direct-table-descriptor-v1
-symjit-direct-table-binding-v2
+symjit-direct-table-binding-v1
 ```
 
 The existing Direct-Arena API remains available to accepted recurrence

@@ -354,9 +354,9 @@ impl EagerDirectTableWorkspace {
             } else {
                 self.scalars.as_ptr()
             },
-            factor_re: self.factor_re.as_ptr(),
-            factor_im: self.factor_im.as_ptr(),
-            factor_count: u32::try_from(self.factor_re.len()).map_err(|_| {
+            scale_re: self.factor_re.as_ptr(),
+            scale_im: self.factor_im.as_ptr(),
+            scale_count: u32::try_from(self.factor_re.len()).map_err(|_| {
                 RusticolError::internal("eager direct-table factor catalog exceeds u32")
             })?,
             point_start,

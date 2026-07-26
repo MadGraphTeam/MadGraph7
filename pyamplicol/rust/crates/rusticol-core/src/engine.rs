@@ -178,7 +178,7 @@ pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
 pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
-pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "symjit-direct-application-storage-v3";
+pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "symjit-direct-application-storage-v1";
 pub const COMPILED_PLANE_SOURCE_APPLICATION_ABI: &str = "symjit-application-storage-v3";
 pub const COMPILED_HELICITY_DUAL_LANE_CAPABILITY: &str = "rusticol.compiled.helicity-dual-lane.v1";
 pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =

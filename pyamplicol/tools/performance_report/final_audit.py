@@ -150,13 +150,13 @@ _ARENA_CAPABILITY = {
     ExecutionMode.EAGER: "eager-direct-arena-v1",
     ExecutionMode.RECURRENCE: ("rusticol.recurrence-direct-arena.complex-f64.v1"),
 }
-_COMPILED_DIRECT_ABI = "symjit-direct-application-storage-v3"
+_COMPILED_DIRECT_ABI = "symjit-direct-application-storage-v1"
 _NATIVE_COMPILED_DIRECT_ABI = "pyamplicol-native-compiled-direct-application-v1"
 _SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
 _EAGER_NATIVE_APPLICATION_ABI = "pyamplicol-eager-native-direct-table-v1"
 _EAGER_DIRECT_CAPABILITY = "eager-direct-arena-v1"
 _EAGER_DIRECT_DESCRIPTOR_ABI = "symjit-direct-table-descriptor-v1"
-_EAGER_DIRECT_BINDING_ABI = "symjit-direct-table-binding-v2"
+_EAGER_DIRECT_BINDING_ABI = "symjit-direct-table-binding-v1"
 _RECURRENCE_DIRECT_TEMPLATE_ABI = "pyamplicol-recurrence-direct-template-v1"
 _RECURRENCE_DIRECT_BACKEND_ABI = "rusticol.recurrence-direct-backend.v1"
 _RECURRENCE_DIRECT_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
@@ -1851,7 +1851,7 @@ def _expected_evaluator_abis(cell: CellSpec) -> tuple[str, str]:
             if cell.measurement.backend == "jit"
             else _EAGER_NATIVE_APPLICATION_ABI
         )
-        return "symjit-direct-table-binding-v2", source
+        return "symjit-direct-table-binding-v1", source
     source = (
         _SYMJIT_APPLICATION_ABI
         if cell.measurement.backend == "jit"
