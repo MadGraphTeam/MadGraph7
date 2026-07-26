@@ -221,6 +221,7 @@ def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
     assert "create-manifest" in runtime_job
     assert "verify" in runtime_job
     assert "if-no-files-found: error" in runtime_job
+    assert runtime_job.count("include-hidden-files: true") == 1
 
     shard_job = workflow.split(
         "  x86-performance-matrix-shard:\n",

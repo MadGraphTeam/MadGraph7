@@ -263,6 +263,7 @@ jobs:
           name: pyamplicol-x86-performance-runtime-${{ github.run_id }}
           path: ${{ env.PERFORMANCE_BUNDLE_ROOT }}/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
 
   x86-performance-matrix-shard:
