@@ -221,37 +221,13 @@ jobs:
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_vegas_reproducibility_mg7 -pA -t0 -l INFO
 
-  acceptancetest_mg7_madnis_reproducibility:
-    needs: build_madspace
-    # mg7 seeded-generation reproducibility for a full survey + madnis
-    # training + generate run (p p > t t~, no gridpack export): the same
-    # run_card seed must give a byte-identical LHE file across independent
-    # runs, including the training phase itself, a different seed must not.
-    # Companion to acceptancetest_mg7_gridpack_reproducibility, which only
-    # covers a frozen gridpack's own regeneration. Self-skips if the madspace
-    # + LHAPDF(NNPDF23) stack is unavailable.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/install_madspace
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools
-      - name: test one of the test test_madnis_reproducibility_mg7
-        run: |
-            cd $GITHUB_WORKSPACE
-            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
-            ./tests/test_manager.py test_madnis_reproducibility_mg7 -pA -t0 -l INFO
-
   acceptancetest_mg7_madnis_reproducible_mode:
     needs: build_madspace
-    # mg7 madnis.reproducible = True (p p > t t~): unlike
-    # acceptancetest_mg7_madnis_reproducibility, this requires madnis training
-    # itself to be byte-identical for the same seed independent of the cpu
-    # thread pool size, both with online-only training and with buffered
-    # (off-policy replay) training enabled. Self-skips if the madspace +
-    # LHAPDF(NNPDF23) stack is unavailable.
+    # mg7 madnis.reproducible = True (p p > t t~): madnis training itself must be
+    # byte-identical for the same seed independent of the cpu thread pool size,
+    # both with online-only training and with buffered (off-policy replay)
+    # training enabled. Self-skips if the madspace + LHAPDF(NNPDF23) stack is
+    # unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:

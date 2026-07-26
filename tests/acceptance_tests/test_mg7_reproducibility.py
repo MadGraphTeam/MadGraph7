@@ -20,18 +20,12 @@ sha256); a different seed must change the result. Covers:
 
   * ``test_vegas_reproducibility_mg7`` -- a plain survey (VEGAS-optimized)
     + generate run, through ``bin/generate_events``.
-  * ``test_madnis_reproducibility_mg7`` -- a full survey + madnis training +
+  * ``test_madnis_reproducible_mode_mg7`` -- a full survey + madnis training +
     generate run, through ``bin/generate_events`` (no gridpack export), with
-    ``madnis.reproducible`` left at its default (off). Unlike the gridpack
-    test below, this exercises the training phase's own seeding
-    (single-channel CPU sample generation only); training's own round
-    scheduling is not required to be deterministic in this mode, so this test
-    may occasionally be flaky (see test_madnis_reproducible_mode_mg7).
-  * ``test_madnis_reproducible_mode_mg7`` -- same, but with
     ``madnis.reproducible = True``: training is required to be
     thread-count-independent and byte-identical for the same seed, both with
     online-only training and with buffered (off-policy replay) training
-    enabled. GPU multi-channel batches are still not covered by this mode.
+    enabled. GPU multi-channel batches are not covered by this mode.
   * ``test_gridpack_reproducibility_mg7`` -- a gridpack trained with madnis,
     then standalone event generation from that gridpack (its own
     ``bin/generate_events --seed``), which is the normal way a gridpack is
@@ -45,7 +39,7 @@ test_check_xsec_processes_mg7.py).
 
 Run locally with e.g.::
 
-    ./tests/test_manager.py test_.*_reproducibility_mg7 -pA -t0 -l INFO
+    ./tests/test_manager.py test_.*reproducib.*_mg7 -pA -t0 -l INFO
 
 One knob is read from the environment so the CI can dial it without touching
 the code:
@@ -228,46 +222,6 @@ class MG7ReproducibilityTest(unittest.TestCase):
         self.assertEqual(hash_a1, hash_a_single,
                          'same seed produced different LHE content with a '
                          'single-threaded cpu thread pool')
-
-        hash_b = self._generate_and_hash(
-            run_dir, datadir, _SEED_B, 'b', **{'run.cpu_thread_pool_size': -1})
-        self.assertNotEqual(hash_a1, hash_b,
-                            'different seeds produced identical LHE content')
-
-    def test_madnis_reproducibility_mg7(self):
-        """Two full survey + madnis training + generate runs (no gridpack
-        export) with the same seed produce byte-identical LHE files; a
-        different seed changes the result. Unlike
-        test_gridpack_reproducibility_mg7, training is re-run from scratch
-        each time here (not frozen into a gridpack first), so this is the
-        test that actually exercises MultiMadnisTraining's own seeding
-        (single-channel CPU sample generation, see salt::job_kind_madnis_train
-        in random.hpp). madnis.reproducible is left at its default (off) here,
-        so -- per the known limitation documented at
-        MadnisTraining::start_generator_jobs -- this is not expected to be
-        thread-count independent and may occasionally be flaky; see
-        test_madnis_reproducible_mode_mg7 for the mode that guarantees it."""
-        datadir = _mg7_datadir_or_skip(self)
-        run_dir = self._output_process('madnis')
-        toml = pjoin(run_dir, 'Cards', 'run_card.toml')
-        self._set_run_card(
-            toml,
-            **{
-                'generation.events': _EVENTS,
-                'postprocessing.systematics': False,
-                'madnis.enable': True,
-                'madnis.train_batches': 100,
-            }
-        )
-
-        # Every call sets 'run.cpu_thread_pool_size' explicitly so it never
-        # leaks from a previous call via the run_card left on disk.
-        hash_a1 = self._generate_and_hash(
-            run_dir, datadir, _SEED_A, 'a1', **{'run.cpu_thread_pool_size': -1})
-        hash_a2 = self._generate_and_hash(
-            run_dir, datadir, _SEED_A, 'a2', **{'run.cpu_thread_pool_size': -1})
-        self.assertEqual(hash_a1, hash_a2,
-                         'same seed produced different LHE content')
 
         hash_b = self._generate_and_hash(
             run_dir, datadir, _SEED_B, 'b', **{'run.cpu_thread_pool_size': -1})
