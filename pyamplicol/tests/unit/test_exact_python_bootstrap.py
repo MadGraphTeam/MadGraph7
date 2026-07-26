@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 
 import pytest
@@ -88,3 +90,77 @@ def test_direct_entrypoint_imports_repo_code_only_after_isolated_reexec(
 
     assert completed.returncode != 0
     assert sentinel.read_text(encoding="ascii").splitlines() == ["1,1,1,1,0"]
+
+
+def test_result_tables_preauthenticates_staged_source_native(
+    tmp_path: Path,
+) -> None:
+    repository = Path(__file__).resolve().parents[2]
+    script = tmp_path / "docs/arxiv/result_tables.py"
+    script.parent.mkdir(parents=True)
+    shutil.copy2(repository / "docs/arxiv/result_tables.py", script)
+
+    source_package = tmp_path / "src/pyamplicol"
+    source_package.mkdir(parents=True)
+    native_name = f"_rusticol{EXTENSION_SUFFIXES[0]}"
+    (source_package / native_name).write_bytes(b"source native")
+    installed_site = tmp_path / "installed"
+    installed_package = installed_site / "pyamplicol"
+    installed_package.mkdir(parents=True)
+    (installed_package / native_name).write_bytes(b"installed native")
+
+    package = tmp_path / "tools/performance_report"
+    package.mkdir(parents=True)
+    sentinel = tmp_path / "preimport.json"
+    (package / "runtime_evidence.py").write_text(
+        "\n".join(
+            (
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "class RuntimeEvidenceError(RuntimeError):",
+                "    pass",
+                "def source_only_bytecode_policy():",
+                "    return {}",
+                "def native_extension_in_package(package):",
+                f"    return Path(package) / {native_name!r}",
+                "def preimport_python_runtime_identity(roots, *, native_extension):",
+                "    payload = {",
+                "        'roots': [str(Path(root)) for root in roots],",
+                "        'native_extension': str(Path(native_extension)),",
+                "    }",
+                "    Path(os.environ['PYAMPLICOL_PREIMPORT_SENTINEL']).write_text(",
+                "        json.dumps(payload), encoding='ascii'",
+                "    )",
+                "    raise RuntimeError('stop after preimport capture')",
+                "",
+            )
+        ),
+        encoding="ascii",
+    )
+
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(installed_site)
+    environment["PYAMPLICOL_PREIMPORT_SENTINEL"] = str(sentinel)
+    for name in (
+        "PYAMPLICOL_EXACT_PYTHON_REEXEC",
+        "PYAMPLICOL_EXACT_IMPORT_PATHS",
+        "PYTHONPYCACHEPREFIX",
+        "PYTHONDONTWRITEBYTECODE",
+    ):
+        environment.pop(name, None)
+    completed = subprocess.run(
+        (sys.executable, str(script), "--help"),
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=30,
+    )
+
+    assert completed.returncode != 0
+    assert json.loads(sentinel.read_text(encoding="ascii")) == {
+        "roots": [str(source_package)],
+        "native_extension": str(source_package / native_name),
+    }

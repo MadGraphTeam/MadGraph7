@@ -192,10 +192,10 @@ def _bootstrap_exact_python(arguments: list[str]) -> None:
 if __name__ == "__main__":
     _bootstrap_exact_python(ARGUMENTS)
 
-NATIVE_PACKAGE_DIR = _native_package_dir()
 for source_root in (REPOSITORY_ROOT / "src", REPOSITORY_ROOT):
     if str(source_root) not in sys.path:
         sys.path.insert(0, str(source_root))
+NATIVE_PACKAGE_DIR = _native_package_dir()
 
 if __name__ == "__main__":
     from tools.performance_report.runtime_evidence import (
@@ -217,9 +217,11 @@ if __name__ == "__main__" and RUNTIME_REQUIRED:
     )
 
     if NATIVE_PACKAGE_DIR is not None:
+        _EXACT_SOURCE_PACKAGE = REPOSITORY_ROOT / "src" / "pyamplicol"
         _EXACT_PACKAGE_ROOTS = (
-            REPOSITORY_ROOT / "src" / "pyamplicol",
-            NATIVE_PACKAGE_DIR,
+            (_EXACT_SOURCE_PACKAGE,)
+            if NATIVE_PACKAGE_DIR == _EXACT_SOURCE_PACKAGE
+            else (_EXACT_SOURCE_PACKAGE, NATIVE_PACKAGE_DIR)
         )
         _EXACT_NATIVE_EXTENSION = native_extension_in_package(NATIVE_PACKAGE_DIR)
         preimport_python_runtime_identity(
