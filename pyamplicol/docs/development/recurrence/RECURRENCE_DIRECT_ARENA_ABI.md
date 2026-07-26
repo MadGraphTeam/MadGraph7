@@ -157,5 +157,6 @@ and zero warmed allocations are required. After that gate, all-flow union is
 added for `Zgg`, followed by the complete `Z+1g` through `Z+6g` ladder.
 
 An independent review against
-`docs/development/RECURRENCE_AMPLICOL_ARCHITECTURE_AUDIT.md` is required after
+`docs/development/recurrence/RECURRENCE_AMPLICOL_ARCHITECTURE_AUDIT.md` is
+required after
 each layout milestone.

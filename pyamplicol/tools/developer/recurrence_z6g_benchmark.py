@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: 0BSD
 """Benchmark compiled, eager, and recurrence execution for qq_Zng.
 
-This is a developer harness, independent of ``docs/result_tables.py``. Run the
-whole command behind ``tools/ci/memory_watchdog.py`` when generating the large
-artifacts. Generation and profiling run in isolated worker processes so each
-phase has a meaningful process-level ``resource.getrusage`` peak-RSS record.
+This is a developer harness, independent of
+``docs/arxiv/result_tables.py``. Run the whole command behind
+``tools/ci/memory_watchdog.py`` when generating the large artifacts.
+Generation and profiling run in isolated worker processes so each phase has a
+meaningful process-level ``resource.getrusage`` peak-RSS record.
 
 One invocation captures one LC layout. Its result embeds a fail-closed
 milestone-0 evidence manifest, but cannot certify milestone 0 by itself: a
@@ -6111,7 +6112,8 @@ def _milestone0_acceptance_manifest(
             "topology-replay and all-flow-union captures with pinned AmpliCol "
             "selected-flow and all-flow raw evidence containing at least seven "
             "paired interleaved subprocess samples, as specified by "
-            "docs/development/EAGER_AND_COMPILED_ARENA_M0_EVIDENCE.md, before "
+            "docs/development/arena/EAGER_AND_COMPILED_ARENA_M0_EVIDENCE.md, "
+            "before "
             "milestone 0 can be accepted."
         ),
     }

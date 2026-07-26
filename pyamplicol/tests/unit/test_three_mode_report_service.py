@@ -24,7 +24,7 @@ from tools.performance_report.service import (
 
 def _service(tmp_path: Path) -> ReportService:
     repo = tmp_path / "repo"
-    (repo / "docs/results").mkdir(parents=True)
+    (repo / "docs/arxiv/results").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "report-tests@example.invalid"),

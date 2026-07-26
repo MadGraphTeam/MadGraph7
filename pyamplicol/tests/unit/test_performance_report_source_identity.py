@@ -36,9 +36,12 @@ def _repository(tmp_path: Path) -> Path:
     _git(repo, "config", "user.name", "Report Test")
     (repo / "src").mkdir()
     (repo / "src/evaluator.py").write_text("VALUE = 1\n", encoding="utf-8")
-    (repo / "docs/results").mkdir(parents=True)
-    (repo / "docs/results/cache.json").write_text("{}\n", encoding="ascii")
-    (repo / "docs/result_example_table.tex").write_text(
+    (repo / "docs/arxiv/results").mkdir(parents=True)
+    (repo / "docs/arxiv/results/cache.json").write_text(
+        "{}\n",
+        encoding="ascii",
+    )
+    (repo / "docs/arxiv/result_example_table.tex").write_text(
         "% generated\n",
         encoding="ascii",
     )
@@ -76,8 +79,10 @@ def test_generated_report_outputs_do_not_dirty_measurement_source(
     tmp_path: Path,
 ) -> None:
     repo = _repository(tmp_path)
-    (repo / "docs/results/cache.json").write_text('{"measured":true}\n')
-    (repo / "docs/result_example_table.tex").write_text("% refreshed\n")
+    (repo / "docs/arxiv/results/cache.json").write_text(
+        '{"measured":true}\n'
+    )
+    (repo / "docs/arxiv/result_example_table.tex").write_text("% refreshed\n")
     profile = repo / "docs/performance_reports/macbook_M3"
     (profile / "results/cache.json").write_text('{"measured":true}\n')
     (profile / "result_example_table.tex").write_text("% generated\n")

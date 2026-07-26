@@ -1,0 +1,26 @@
+<!-- SPDX-License-Identifier: 0BSD -->
+# Eager and Compiled Direct-Arena Records
+
+This directory groups the design, implementation, and validation record for
+the eager and compiled Direct-Arena work.
+
+## Architecture and optimization
+
+- [`COMPILED_DAG_DIRECT_ARENA_FEASIBILITY.md`](COMPILED_DAG_DIRECT_ARENA_FEASIBILITY.md)
+- [`COMPILED_DAG_OPTIMIZATION_LEDGER.md`](COMPILED_DAG_OPTIMIZATION_LEDGER.md)
+- [`EAGER_AND_COMPILED_ARENA_ABI_PROTOTYPE.md`](EAGER_AND_COMPILED_ARENA_ABI_PROTOTYPE.md)
+- [`NATIVE_COMPILED_DIRECT_APPLICATION_PROTOTYPE.md`](NATIVE_COMPILED_DIRECT_APPLICATION_PROTOTYPE.md)
+
+## Milestone and diagnostic evidence
+
+- [`EAGER_AND_COMPILED_ARENA_M0_EVIDENCE.md`](EAGER_AND_COMPILED_ARENA_M0_EVIDENCE.md)
+- [`EAGER_AND_COMPILED_ARENA_M3_EVIDENCE.md`](EAGER_AND_COMPILED_ARENA_M3_EVIDENCE.md)
+- [`SYMJIT_ARM64_DIRECT_ARENA_SCALAR_STATUS_MRE.md`](SYMJIT_ARM64_DIRECT_ARENA_SCALAR_STATUS_MRE.md)
+
+## Historical coordination
+
+- [`EAGER_AND_COMPILED_ARENA_PLAN.md`](EAGER_AND_COMPILED_ARENA_PLAN.md)
+- [`EAGER_AND_COMPILED_ARENA_SESSION_HANDOFF.md`](EAGER_AND_COMPILED_ARENA_SESSION_HANDOFF.md)
+
+The plan and session handoff are retained as historical context. They are not
+current operating instructions.

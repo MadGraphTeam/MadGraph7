@@ -41,7 +41,7 @@ authoritative over prose in the older sections below.
 The next implementation session must begin by:
 
 1. Reading this file and
-   `docs/development/EAGER_AND_COMPILED_ARENA_PLAN.md` completely.
+   `docs/development/arena/EAGER_AND_COMPILED_ARENA_PLAN.md` completely.
 2. Fetching remote state and treating the current repository, not remembered
    chat context, as authoritative.
 3. Assigning completion of **every unfinished item in this handoff** as its

@@ -206,7 +206,7 @@ renice 19 -p "$$"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 EXPORT_DIR=".artifacts/hourly-x86-EPYC-$STAMP"
 test ! -e "$EXPORT_DIR"
-.venv/bin/python docs/result_tables.py export-profile \
+.venv/bin/python docs/arxiv/result_tables.py export-profile \
   x86_EPYC "$EXPORT_DIR"
 PROFILE_OUT="$CHECKPOINT_TREE/docs/performance_reports/x86_EPYC"
 cp "$EXPORT_DIR"/results/*.json "$PROFILE_OUT/results/"
@@ -462,7 +462,7 @@ worktree.
 
 ```bash
 set -euo pipefail
-python3 docs/result_tables.py export-profile x86_EPYC /absolute/output/path
+python3 docs/arxiv/result_tables.py export-profile x86_EPYC /absolute/output/path
 cd /absolute/output/path
 python3 build_pdf.py
 ```

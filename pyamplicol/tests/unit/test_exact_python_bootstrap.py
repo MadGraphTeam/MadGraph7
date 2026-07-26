@@ -13,7 +13,7 @@ import pytest
 @pytest.mark.parametrize(
     "script_relative",
     (
-        Path("docs/result_tables.py"),
+        Path("docs/arxiv/result_tables.py"),
         Path("tools/developer/compiled_all_jit_arena_gate.py"),
         Path("tools/developer/four_quark_compiled_gate.py"),
     ),
@@ -29,7 +29,7 @@ def test_direct_entrypoint_imports_repo_code_only_after_isolated_reexec(
 
     package = tmp_path / "tools" / "performance_report"
     package.mkdir(parents=True, exist_ok=True)
-    if script_relative == Path("docs/result_tables.py"):
+    if script_relative == Path("docs/arxiv/result_tables.py"):
         (tmp_path / "src/pyamplicol").mkdir(parents=True)
     sentinel = tmp_path / "repo-imports.txt"
     (package / "runtime_evidence.py").write_text(

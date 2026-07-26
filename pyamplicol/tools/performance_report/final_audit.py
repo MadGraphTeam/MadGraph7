@@ -1179,8 +1179,9 @@ def _publication_relative_member(path: str) -> PurePosixPath | None:
     ):
         return None
     parts = logical.parts
-    root_length = 1
-    if len(parts) >= 2 and parts[1] == "performance_reports":
+    if len(parts) >= 2 and parts[1] == "arxiv":
+        root_length = 2
+    elif len(parts) >= 2 and parts[1] == "performance_reports":
         if (
             len(parts) < 4
             or _REPORT_PROFILE_RE.fullmatch(parts[2]) is None
@@ -1188,6 +1189,8 @@ def _publication_relative_member(path: str) -> PurePosixPath | None:
         ):
             return None
         root_length = 3
+    else:
+        return None
     relative = PurePosixPath(*parts[root_length:])
     relative_parts = relative.parts
     if not relative_parts:
@@ -1404,9 +1407,10 @@ def _report_publication_lineage(
         "changed_paths": list(changes),
         "changed_paths_sha256": digest_json(list(changes)),
         "allowed_path_contract": (
-            "docs report roots: results/*.json, generated table TeX, report "
-            "TeX/Markdown/PDF, architecture metadata, and report manifests; "
-            "regular non-executable blobs only"
+            "docs/arxiv or docs/performance_reports/PROFILE roots: "
+            "results/*.json, generated table TeX, report TeX/Markdown/PDF, "
+            "architecture metadata, and report manifests; regular "
+            "non-executable blobs only"
         ),
         "executable_source_unchanged": True,
     }
@@ -1726,7 +1730,7 @@ def _audit_pdf(service: ReportService) -> dict[str, object]:
         raise FinalAuditError("latexmk is required for the final PDF audit")
     published = service.paths.docs_dir / "pyAmpliCol.pdf"
     if not published.is_file() or published.stat().st_size == 0:
-        raise FinalAuditError("published docs/pyAmpliCol.pdf is missing or empty")
+        raise FinalAuditError("published report pyAmpliCol.pdf is missing or empty")
     rendered_tables = render_all_tables(
         service.load_caches(),
         catalog=service.catalog,
@@ -4733,8 +4737,8 @@ def _ensure_exact_cli_python(
         raise FinalAuditError(
             "direct tools.performance_report.final_audit was imported before "
             "source-only Python isolation; invoke "
-            "'python docs/result_tables.py final-audit ...' or start the module "
-            "under an already isolated -I -S -B bootstrap"
+            "'python docs/arxiv/result_tables.py final-audit ...' or start "
+            "the module under an already isolated -I -S -B bootstrap"
         ) from error
 
 

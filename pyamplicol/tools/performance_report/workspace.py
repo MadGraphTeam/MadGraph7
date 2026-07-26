@@ -24,7 +24,14 @@ from .campaign_policy import (
     validate_policy_profile,
 )
 from .publication import publication_absolute_paths
-from .service import ReportPaths, ReportService, validate_profile_name
+from .service import (
+    CANONICAL_REPORT_ENTRYPOINT,
+    CANONICAL_REPORT_ROOT,
+    PROFILE_REPORT_ROOT,
+    ReportPaths,
+    ReportService,
+    validate_profile_name,
+)
 from .source_identity import (
     SOURCE_IDENTITY_SCHEMA,
     ReportSourceIdentityError,
@@ -39,7 +46,7 @@ ENVIRONMENT_JSON = "report_environment.json"
 ENVIRONMENT_TEX = "report_environment.tex"
 STANDALONE_BUILDER = "build_pdf.py"
 TABLE_FILLING_RUNBOOK = "TABLE_FILLING.md"
-PROFILE_PARENT = Path("docs/performance_reports")
+PROFILE_PARENT = PROFILE_REPORT_ROOT
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _PENDING_RUNTIME = "pending exact-source runtime authentication"
 
@@ -72,7 +79,7 @@ def _source_docs_dir(
     source_profile: str | None,
 ) -> Path:
     if source_profile is None:
-        return repo_root / "docs"
+        return repo_root / CANONICAL_REPORT_ROOT
     return profile_docs_dir(repo_root, source_profile)
 
 
@@ -203,7 +210,8 @@ Create a portable copy, including raw data, TeX, and the reviewed PDF, from a
 source checkout with:
 
 ```bash
-python3 docs/result_tables.py export-profile {profile} /absolute/output/path
+python3 {CANONICAL_REPORT_ENTRYPOINT.as_posix()} export-profile \\
+  {profile} /absolute/output/path
 ```
 
 The copied entry point selects this profile automatically. Measurements still
@@ -501,7 +509,7 @@ def _workspace_manifest(
         "report_source_tree": source_record["tree"],
         "initialized_source_identity": source_record,
         "initialized_from": (
-            "docs"
+            CANONICAL_REPORT_ROOT.as_posix()
             if source_profile is None
             else f"docs/performance_reports/{source_profile}"
         ),

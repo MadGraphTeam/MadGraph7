@@ -125,7 +125,7 @@ dev-install: _source-checkout
 dev-build: _source-checkout
     just dev-install
     {{dev_python}} -c 'import pyamplicol; import pyamplicol.api'
-    {{dev_python}} docs/result_tables.py validate
+    {{dev_python}} docs/arxiv/result_tables.py validate
 
 dev-test: _source-checkout
     PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just source-gate

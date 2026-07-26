@@ -8,7 +8,7 @@ decision.
 
 The orchestrator cannot promote one layout capture, a generation-fixed
 diagnostic, a report cache row, or a hand-entered timing number. In particular,
-the existing adaptive `docs/result_tables.py measure-cell` AmpliCol result has
+the existing adaptive `docs/arxiv/result_tables.py measure-cell` AmpliCol result has
 only one measurement subprocess and is not sufficient for this gate.
 
 ## Required evidence

@@ -7,7 +7,8 @@
 
 At implementation start:
 
-- Save this approved plan verbatim to `/Users/vjhirsch/HEP_programs/pyAmpliCol/PREPARE_STANDALONE_PYAMPLICOL/pyamplicol_eager_and_compiled_arena/docs/development/EAGER_AND_COMPILED_ARENA_PLAN.md`.
+- Retain this approved plan at
+  `docs/development/arena/EAGER_AND_COMPILED_ARENA_PLAN.md`.
 - Assign the exact quoted goal statement using the goal tool before changing implementation code.
 - Ask the recurrence agent for its newest coherent, buildable pushed checkpoint, exact SHA, validation state, and caveats. Treat intermediate checkpoints as reference-only unless explicitly declared accepted and source-frozen.
 - Use the latest accepted, source-frozen recurrence SHA—not `24519b2` or a dirty snapshot:

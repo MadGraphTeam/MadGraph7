@@ -15,7 +15,7 @@ from tools.performance_report.service import ReportPaths, ReportService
 
 
 def _initialize_git_repo(repo: Path) -> None:
-    (repo / "docs/results").mkdir(parents=True)
+    (repo / "docs/arxiv/results").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "report-tests@example.invalid"),
@@ -302,7 +302,10 @@ def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:
 
     assert main(("--repo-root", str(repo), "reset")) == 0
     reset_output = capsys.readouterr().out
-    assert "docs/result_matrix_recurrence_builtin_sm_lc_table.tex" in reset_output
+    assert (
+        "docs/arxiv/result_matrix_recurrence_builtin_sm_lc_table.tex"
+        in reset_output
+    )
 
     assert main(("--repo-root", str(repo), "validate")) == 0
     payload = json.loads(capsys.readouterr().out)

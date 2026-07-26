@@ -92,10 +92,10 @@ def test_source_revision_rejects_source_dirt_but_allows_report_outputs(
     revision = source_revision(repo, require_clean=True)
     assert len(revision) == 40
 
-    cache = repo / "docs/results/z_builtin_sm.json"
+    cache = repo / "docs/arxiv/results/z_builtin_sm.json"
     cache.parent.mkdir(parents=True)
     cache.write_text("{}\n", encoding="ascii")
-    table = repo / "docs/result_z_builtin_sm_table.tex"
+    table = repo / "docs/arxiv/result_z_builtin_sm_table.tex"
     table.write_text("% generated\n", encoding="ascii")
     assert source_revision(repo, require_clean=True) == revision
 

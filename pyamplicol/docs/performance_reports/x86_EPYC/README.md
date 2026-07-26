@@ -31,7 +31,7 @@ Create a portable copy, including raw data, TeX, and the reviewed PDF, from a
 source checkout with:
 
 ```bash
-python3 docs/result_tables.py export-profile x86_EPYC /absolute/output/path
+python3 docs/arxiv/result_tables.py export-profile x86_EPYC /absolute/output/path
 ```
 
 The copied entry point selects this profile automatically. Measurements still

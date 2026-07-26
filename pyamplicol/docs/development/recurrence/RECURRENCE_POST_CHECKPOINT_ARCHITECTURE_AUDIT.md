@@ -25,7 +25,8 @@ Evidence:
   component join and inheritance code.
 - `rust/crates/rusticol-core/src/recurrence/construct.rs` around closure color
   construction.
-- `docs/development/RECURRENCE_EXECUTION_ABI.md`, ordered-forest contract.
+- `docs/development/recurrence/RECURRENCE_EXECUTION_ABI.md`, ordered-forest
+  contract.
 - `dependencies/checkouts/legacy-amplicol/amplitude_QCD.f03`, three-line
   current and closure partner handling.
 

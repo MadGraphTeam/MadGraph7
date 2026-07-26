@@ -584,7 +584,7 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     source = tmp_path / "archive"
     retained = {
         Path("build_backend/backend.py"): "archive = True\n",
-        Path("docs/pyAmpliCol.tex"): "maintained TeX\n",
+        Path("docs/arxiv/pyAmpliCol.tex"): "maintained TeX\n",
         Path("src/pyamplicol/_sdk/config.py"): "maintained SDK config\n",
         Path("tests/fixtures/candidate-Cargo.lock"): "fixture lock\n",
     }
@@ -599,9 +599,9 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         Path("build_backend/python_lock.py"),
         Path("docs/.result_outputs/cache.json"),
         Path("docs/archive/retired.md"),
-        Path("docs/pyAmpliCol.aux"),
-        Path("docs/pyAmpliCol.synctex.gz"),
-        Path("docs/pyAmpliCol.toc"),
+        Path("docs/arxiv/pyAmpliCol.aux"),
+        Path("docs/arxiv/pyAmpliCol.synctex.gz"),
+        Path("docs/performance_reports/macbook_M3/pyAmpliCol.toc"),
         Path("src/pyamplicol.egg-info/PKG-INFO"),
         Path("src/pyamplicol/_rusticol.abi3.so"),
         Path("src/pyamplicol/_rusticol.dylib"),
@@ -637,9 +637,10 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     assert not (destination / "build_backend" / "__pycache__").exists()
 
     copy_ignore = backend._copy_ignore(source)
-    assert copy_ignore(str(source / "docs"), ["pyAmpliCol.aux", "pyAmpliCol.tex"]) == {
-        "pyAmpliCol.aux"
-    }
+    assert copy_ignore(
+        str(source / "docs" / "arxiv"),
+        ["pyAmpliCol.aux", "pyAmpliCol.tex"],
+    ) == {"pyAmpliCol.aux"}
     assert copy_ignore(
         str(source / "src" / "pyamplicol" / "_sdk"),
         ["config.py", "lib", "metadata.json"],

@@ -51,7 +51,7 @@ from .resources import (
     supervise_worker,
 )
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
-from .service import ReportService
+from .service import CANONICAL_REPORT_ENTRYPOINT, ReportService
 from .source_identity import require_eligible_report_source
 
 
@@ -738,7 +738,9 @@ class CampaignScheduler:
                 "-I",
                 "-S",
                 "-B",
-                os.fspath(self.service.paths.repo_root / "docs/result_tables.py"),
+                os.fspath(
+                    self.service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
+                ),
                 "--repo-root",
                 os.fspath(self.service.paths.repo_root),
                 *self._service_path_arguments(),
@@ -954,7 +956,10 @@ class CampaignScheduler:
                     "-I",
                     "-S",
                     "-B",
-                    os.fspath(self.service.paths.repo_root / "docs/result_tables.py"),
+                    os.fspath(
+                        self.service.paths.repo_root
+                        / CANONICAL_REPORT_ENTRYPOINT
+                    ),
                     "--repo-root",
                     os.fspath(self.service.paths.repo_root),
                     *self._service_path_arguments(),

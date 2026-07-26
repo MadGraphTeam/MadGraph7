@@ -353,7 +353,7 @@ def _is_excluded(relative: Path) -> bool:
         and relative.name.endswith(_NATIVE_EXTENSION_SUFFIXES)
     ):
         return True
-    return relative.parent == Path("docs") and relative.name.endswith(
+    return relative.is_relative_to(Path("docs")) and relative.name.endswith(
         _TEX_BUILD_SUFFIXES
     )
 

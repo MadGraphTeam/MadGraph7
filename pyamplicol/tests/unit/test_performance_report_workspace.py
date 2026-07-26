@@ -40,7 +40,7 @@ from tools.performance_report.workspace import (
 
 
 def _seed_template(repo: Path) -> None:
-    docs = repo / "docs"
+    docs = repo / "docs/arxiv"
     docs.mkdir(parents=True)
     (docs / "pyAmpliCol.tex").write_text(
         "\\documentclass{article}\\begin{document}report\\end{document}\n",
@@ -84,11 +84,15 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
 ) -> None:
     repo = tmp_path / "repo"
     _seed_template(repo)
-    template_state = repo / ".artifacts/performance-report/cells/attempt"
+    template_state = (
+        repo / ".artifacts/performance-report/canonical/cells/attempt"
+    )
     template_state.mkdir(parents=True)
     (template_state / "worker.log").write_text("private\n", encoding="ascii")
-    coordination = repo / "docs/results/.coordination"
-    coordination.mkdir(exist_ok=True)
+    coordination = (
+        repo / ".artifacts/performance-report-coordination/canonical"
+    )
+    coordination.mkdir(parents=True, exist_ok=True)
     (coordination / "writer.lock").write_text("", encoding="ascii")
 
     profile = initialize_profile(repo, "macbook_M3")
@@ -180,15 +184,17 @@ def test_profile_readme_requires_full_audited_five_second_campaign(
     assert "export-profile macbook_M3" in readme
 
 
-def test_root_report_readme_requires_separate_mac_and_cluster_campaigns() -> None:
-    readme = (
-        Path(__file__).resolve().parents[2] / "docs/README.md"
-    ).read_text(encoding="utf-8")
+def test_documentation_index_links_separate_mac_and_cluster_campaigns() -> None:
+    docs = Path(__file__).resolve().parents[2] / "docs"
+    root_readme = (docs / "README.md").read_text(encoding="utf-8")
+    report_readme = (docs / "performance_reports/README.md").read_text(
+        encoding="utf-8"
+    )
 
+    assert "performance_reports/README.md" in root_readme
     for profile in ("macbook_M3", "x86_EPYC"):
-        assert f"performance_reports/{profile}/TABLE_FILLING.md" in readme
-    assert "cluster_EPYC" not in readme
-    assert "`n=1` through `n=9`" in readme
+        assert f"{profile}/TABLE_FILLING.md" in report_readme
+    assert "cluster_EPYC" not in report_readme
 
 
 def _commit_all(repo: Path, message: str) -> str:

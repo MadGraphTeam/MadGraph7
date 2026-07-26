@@ -564,7 +564,10 @@ target-compatible ASM/C++ f64 artifacts. See the
 
 ## Documentation And License
 
+- [Documentation Index](docs/README.md)
 - [User Guide](docs/user/index.md)
+- [arXiv Paper and Reproducible Tables](docs/arxiv/README.md)
+- [Architecture Performance Reports](docs/performance_reports/README.md)
 - [Examples](examples/README.md)
 - [Configuration](docs/user/configuration.md)
 - [Native SDK](docs/user/native-sdk.md)

@@ -409,7 +409,10 @@ def _section_evidence() -> Any:
 
 
 def test_default_output_and_parser_require_all_evidence_pins() -> None:
-    assert Path("docs/QQ_Z6G_ARENA_COMPARISON.md") == comparison.DEFAULT_OUTPUT
+    assert (
+        Path("docs/development/arena/QQ_Z6G_ARENA_COMPARISON.md")
+        == comparison.DEFAULT_OUTPUT
+    )
     option_destinations = {
         action.dest for action in comparison.parser()._actions if action.required
     }

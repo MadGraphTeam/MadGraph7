@@ -39,9 +39,12 @@ def _repository(tmp_path: Path) -> tuple[Path, str]:
     _git(repo, "config", "core.fileMode", "true")
     (repo / "src").mkdir()
     (repo / "src/evaluator.py").write_text("VALUE = 1\n", encoding="utf-8")
-    (repo / "docs/results").mkdir(parents=True)
-    (repo / "docs/results/cache.json").write_text("{}\n", encoding="ascii")
-    (repo / "docs/pyAmpliCol.tex").write_text(
+    (repo / "docs/arxiv/results").mkdir(parents=True)
+    (repo / "docs/arxiv/results/cache.json").write_text(
+        "{}\n",
+        encoding="ascii",
+    )
+    (repo / "docs/arxiv/pyAmpliCol.tex").write_text(
         "\\documentclass{article}\n",
         encoding="ascii",
     )
@@ -64,7 +67,7 @@ def test_report_only_descendant_accepts_canonical_and_profile_outputs(
     tmp_path: Path,
 ) -> None:
     repo, measurement_revision = _repository(tmp_path)
-    (repo / "docs/results/cache.json").write_text(
+    (repo / "docs/arxiv/results/cache.json").write_text(
         '{"measured":true}\n',
         encoding="ascii",
     )
@@ -90,7 +93,7 @@ def test_report_only_descendant_accepts_canonical_and_profile_outputs(
     changed = result["changed_paths"]
     assert isinstance(changed, list)
     assert {entry["path"] for entry in changed} == {
-        "docs/results/cache.json",
+        "docs/arxiv/results/cache.json",
         "docs/performance_reports/macbook_M3/README.md",
         "docs/performance_reports/macbook_M3/architecture-profile.json",
         "docs/performance_reports/macbook_M3/pyAmpliCol.pdf",
@@ -136,7 +139,7 @@ def test_publication_descendant_rejects_executable_allowed_member(
     tmp_path: Path,
 ) -> None:
     repo, measurement_revision = _repository(tmp_path)
-    readme = repo / "docs/README.md"
+    readme = repo / "docs/arxiv/README.md"
     readme.write_text("# report\n", encoding="utf-8")
     readme.chmod(readme.stat().st_mode | 0o111)
     _commit(repo, "executable report")
@@ -149,7 +152,7 @@ def test_publication_descendant_rejects_symlink_allowed_member(
     tmp_path: Path,
 ) -> None:
     repo, measurement_revision = _repository(tmp_path)
-    readme = repo / "docs/README.md"
+    readme = repo / "docs/arxiv/README.md"
     os.symlink("../src/evaluator.py", readme)
     _commit(repo, "symlink report")
 
@@ -159,7 +162,7 @@ def test_publication_descendant_rejects_symlink_allowed_member(
 
 def test_publication_lineage_rejects_dirty_report_output(tmp_path: Path) -> None:
     repo, measurement_revision = _repository(tmp_path)
-    (repo / "docs/results/cache.json").write_text(
+    (repo / "docs/arxiv/results/cache.json").write_text(
         '{"uncommitted":true}\n',
         encoding="ascii",
     )

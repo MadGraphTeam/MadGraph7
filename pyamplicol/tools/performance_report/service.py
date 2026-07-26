@@ -31,6 +31,9 @@ class ReportServiceError(RuntimeError):
 
 
 _PROFILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+CANONICAL_REPORT_ROOT = Path("docs/arxiv")
+PROFILE_REPORT_ROOT = Path("docs/performance_reports")
+CANONICAL_REPORT_ENTRYPOINT = CANONICAL_REPORT_ROOT / "result_tables.py"
 
 
 def validate_profile_name(value: str) -> str:
@@ -67,16 +70,15 @@ class ReportPaths:
             profile = validate_profile_name(profile)
         if profile is not None and docs_dir is not None:
             raise ValueError("profile and docs_dir are mutually exclusive")
-        docs = (
-            root / "docs"
+        docs = root / (
+            CANONICAL_REPORT_ROOT
             if profile is None
-            else root / "docs" / "performance_reports" / profile
+            else PROFILE_REPORT_ROOT / profile
         )
         if docs_dir is not None:
             docs = docs_dir.expanduser().resolve(strict=False)
-        default_artifacts = root / ".artifacts/performance-report"
-        if profile is not None:
-            default_artifacts /= profile
+        identity = "canonical" if profile is None else profile
+        default_artifacts = root / ".artifacts/performance-report" / identity
         artifacts = (
             default_artifacts
             if artifact_root is None
@@ -84,11 +86,9 @@ class ReportPaths:
         )
         coordination = (
             (
-                docs / "results/.coordination"
-                if profile is None
-                else root
+                root
                 / ".artifacts/performance-report-coordination"
-                / profile
+                / identity
             )
             if coordination_root is None
             else coordination_root.expanduser().resolve(strict=False)

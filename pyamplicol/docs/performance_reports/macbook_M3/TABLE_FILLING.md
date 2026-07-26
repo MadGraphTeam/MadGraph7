@@ -468,7 +468,7 @@ worktree.
 
 ```bash
 set -euo pipefail
-python3 docs/result_tables.py export-profile macbook_M3 /absolute/output/path
+python3 docs/arxiv/result_tables.py export-profile macbook_M3 /absolute/output/path
 cd /absolute/output/path
 python3 build_pdf.py
 ```

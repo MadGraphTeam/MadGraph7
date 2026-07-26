@@ -617,7 +617,7 @@ def test_legacy_workers_receive_distinct_pinned_shared_object_clones(
         FakeLegacyApi,
     )
     repo = tmp_path / "repo"
-    (repo / "docs").mkdir(parents=True)
+    (repo / "docs/arxiv").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
@@ -656,7 +656,7 @@ def test_scheduler_publishes_authenticated_generation_censor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
-    (repo / "docs").mkdir(parents=True)
+    (repo / "docs/arxiv").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
@@ -744,7 +744,7 @@ def test_scheduler_uses_mac_memory_limit_without_generation_channel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
-    (repo / "docs").mkdir(parents=True)
+    (repo / "docs/arxiv").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
@@ -806,7 +806,7 @@ def test_scheduler_never_launches_above_authenticated_resource_frontier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
-    (repo / "docs").mkdir(parents=True)
+    (repo / "docs/arxiv").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
