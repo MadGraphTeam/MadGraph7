@@ -332,6 +332,98 @@ def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> 
     assert requirements.count("--hash=sha256:") > 20
 
 
+def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    venv = tmp_path / ".venv"
+    checkouts = tmp_path / "checkouts"
+    wheelhouse = tmp_path / "wheelhouse"
+    symbolica_wheels = wheelhouse / "symbolica"
+    symbolica_wheels.mkdir(parents=True)
+    wheel = symbolica_wheels / "symbolica-2.2.0-test.whl"
+    wheel.touch()
+    calls: list[tuple[list[str], Path | None, dict[str, str] | None]] = []
+
+    class FakeRunner:
+        dry_run = False
+
+        def run(self, command, *, cwd=None, env=None, **_kwargs):
+            rendered = [str(item) for item in command]
+            calls.append((rendered, cwd, env))
+            return subprocess.CompletedProcess(rendered, 0, "", "")
+
+    monkeypatch.setattr(module, "VENV", venv)
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
+    monkeypatch.setattr(module, "WHEELHOUSE", wheelhouse)
+
+    module._build_candidate_dependency_wheels(
+        FakeRunner(),
+        {"symbolica": {"candidate_version": "2.2.0"}},
+    )
+
+    python = str(venv / "bin" / "python")
+    assert calls[0][0][:4] == [python, "-m", "maturin", "build"]
+    assert calls[0][1] == checkouts / "symbolica-community"
+    assert calls[1][0] == [
+        python,
+        "-m",
+        "pip",
+        "install",
+        "--force-reinstall",
+        "--no-deps",
+        str(wheel),
+    ]
+    assert calls[2][0][:3] == [python, "-I", "-c"]
+    assert calls[2][0][-1] == "2.2.0"
+    assert "from symbolica import Expression" in calls[2][0][3]
+    assert "from symbolica.community.idenso import simplify_color" in calls[2][0][3]
+    assert "from symbolica.community.spenso import TensorNetwork" in calls[2][0][3]
+    assert calls[2][2]["SYMBOLICA_HIDE_BANNER"] == "1"
+
+
+def test_dependency_only_and_no_build_are_mutually_exclusive() -> None:
+    module = _module()
+    with pytest.raises(SystemExit):
+        module._parser().parse_args(["--dependencies-only", "--no-build"])
+
+
+def test_dependency_only_cli_skips_the_project_wheel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    payload: dict[str, object] = {}
+    monkeypatch.setattr(module, "_lock", lambda: payload)
+    monkeypatch.setattr(module, "_sources", lambda *_args, **_kwargs: ())
+    for name in (
+        "_ensure_just",
+        "_ensure_venv",
+        "_materialize_symjit",
+        "_apply_contributor_patches",
+        "_configure_sources",
+        "_verify_symjit_tree",
+        "_write_cargo_config",
+        "_write_candidate_lock",
+        "_write_state",
+    ):
+        monkeypatch.setattr(module, name, lambda *_args, **_kwargs: None)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        module,
+        "_build_candidate_dependency_wheels",
+        lambda *_args: calls.append("dependencies"),
+    )
+    monkeypatch.setattr(
+        module,
+        "_build_candidate_wheels",
+        lambda *_args: calls.append("dependencies-and-project"),
+    )
+
+    assert module.main(["--dry-run", "--dependencies-only"]) == 0
+    assert calls == ["dependencies"]
+
+
 def test_toml_section_replacement_is_idempotent() -> None:
     module = _module()
     original = '[package]\nname = "x"\n\n[dependencies]\na = "1"\n'

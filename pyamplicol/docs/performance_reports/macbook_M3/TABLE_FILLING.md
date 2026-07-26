@@ -137,7 +137,7 @@ test ! -e .artifacts/performance-report/macbook_M3
 test ! -e .artifacts/performance-report-coordination/macbook_M3
 test ! -e .venv
 python3 tools/ci/memory_watchdog.py --limit-gib 27.9 -- \
-  python3 dependencies/install_dependencies.py --reset --no-build
+  python3 dependencies/install_dependencies.py --reset --dependencies-only
 python3 docs/performance_reports/macbook_M3/result_tables.py validate
 python3 - <<'PY'
 import json

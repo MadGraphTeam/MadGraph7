@@ -1137,14 +1137,43 @@ def _archive_candidate_wheels(directory: Path, prefix: str) -> None:
         shutil.move(str(wheel), str(destination / wheel.name))
 
 
-def _build_candidate_wheels(runner: Runner) -> None:
+def _verify_candidate_python_dependencies(
+    runner: Runner,
+    payload: dict[str, Any],
+) -> None:
+    expected_version = str(payload["symbolica"]["candidate_version"])
+    probe = "\n".join(
+        (
+            "from importlib.metadata import version",
+            "import sys",
+            "import symbolica",
+            "from symbolica import Expression",
+            "from symbolica.community.idenso import simplify_color",
+            "from symbolica.community.spenso import TensorNetwork",
+            'actual = version("symbolica")',
+            "if actual != sys.argv[1]:",
+            "    raise SystemExit(",
+            '        "symbolica version mismatch: expected %s, got %s"',
+            "        % (sys.argv[1], actual)",
+            "    )",
+        )
+    )
+    environment = dict(_venv_environment(), SYMBOLICA_HIDE_BANNER="1")
+    runner.run(
+        [_venv_python(), "-I", "-c", probe, expected_version],
+        env=environment,
+    )
+
+
+def _build_candidate_dependency_wheels(
+    runner: Runner,
+    payload: dict[str, Any],
+) -> None:
     python = _venv_python()
     environment = _venv_environment()
     symbolica_wheels = WHEELHOUSE / "symbolica"
-    project_wheels = ARTIFACTS
-    for directory in (symbolica_wheels, project_wheels):
-        if not runner.dry_run:
-            directory.mkdir(parents=True, exist_ok=True)
+    if not runner.dry_run:
+        symbolica_wheels.mkdir(parents=True, exist_ok=True)
 
     runner.run(
         [
@@ -1175,6 +1204,15 @@ def _build_candidate_wheels(runner: Runner) -> None:
             ],
             env=environment,
         )
+        _verify_candidate_python_dependencies(runner, payload)
+
+
+def _build_candidate_project_wheel(runner: Runner) -> None:
+    python = _venv_python()
+    environment = _venv_environment()
+    project_wheels = ARTIFACTS
+    if not runner.dry_run:
+        project_wheels.mkdir(parents=True, exist_ok=True)
 
     build_environment = dict(
         environment,
@@ -1207,6 +1245,14 @@ def _build_candidate_wheels(runner: Runner) -> None:
             ],
             env=environment,
         )
+
+
+def _build_candidate_wheels(
+    runner: Runner,
+    payload: dict[str, Any],
+) -> None:
+    _build_candidate_dependency_wheels(runner, payload)
+    _build_candidate_project_wheel(runner)
 
 
 def _write_state(
@@ -1266,7 +1312,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--update", action="store_true")
     parser.add_argument("--without-legacy-amplicol", action="store_true")
-    parser.add_argument("--no-build", action="store_true")
+    build_mode = parser.add_mutually_exclusive_group()
+    build_mode.add_argument("--no-build", action="store_true")
+    build_mode.add_argument(
+        "--dependencies-only",
+        action="store_true",
+        help="build and install pinned candidate Python dependencies, not pyamplicol",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -1294,8 +1346,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     _write_cargo_config(runner)
     _write_candidate_lock(runner)
     _write_state(runner, payload, sources)
-    if not args.no_build:
-        _build_candidate_wheels(runner)
+    if args.dependencies_only:
+        _build_candidate_dependency_wheels(runner, payload)
+    elif not args.no_build:
+        _build_candidate_wheels(runner, payload)
     print(f"Contributor environment ready at {VENV}")
     return 0
 

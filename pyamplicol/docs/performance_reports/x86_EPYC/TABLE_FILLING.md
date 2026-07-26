@@ -89,7 +89,7 @@ test ! -e .artifacts/performance-report/x86_EPYC
 test ! -e .artifacts/performance-report-coordination/x86_EPYC
 test ! -e .venv
 python3 tools/ci/memory_watchdog.py --limit-gib 93.1 -- \
-  python3 dependencies/install_dependencies.py --reset --no-build
+  python3 dependencies/install_dependencies.py --reset --dependencies-only
 python3 docs/performance_reports/x86_EPYC/result_tables.py validate
 python3 - <<'PY'
 import json
