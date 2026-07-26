@@ -116,13 +116,13 @@
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       fptype_sv MEs_ighel2[ncomb] = {}; // sum of MEs for all good helicities up to ighel (for the second neppV page)
 #endif
-      for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+      for( int ighel = 0; ighel < %(sigmakin_hel_bound)s; ighel++ )
       {
-        const int ihel = cGoodHel[ighel];
+%(sigmakin_perlane_decl)s        const int ihel = %(sigmakin_ihel_expr)s;
         cxtype_sv jamp_sv[nParity * ncolor] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
         // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
         bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-        calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+        calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00%(calc_jamps_ihlane_arg)s );
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
         MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
@@ -134,14 +134,14 @@
       {
         const int ievt = ievt00 + ieppV;
         //printf( "sigmaKin: ievt=%%4d rndhel=%%f\n", ievt, allrndhel[ievt] );
-        for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+        for( int ighel = 0; ighel < %(sigmakin_hel_bound)s; ighel++ )
         {
 #if defined MGONGPU_CPPSIMD
           //printf( "sigmaKin: ievt=%%4d ighel=%%d MEs_ighel=%%f\n", ievt, ighel, MEs_ighel[ighel][ieppV] );
-          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel][ieppV] / MEs_ighel[cNGoodHel - 1][ieppV] );
+          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel][ieppV] / MEs_ighel[%(sigmakin_hel_bound)s - 1][ieppV] );
 #else
           //printf( "sigmaKin: ievt=%%4d ighel=%%d MEs_ighel=%%f\n", ievt, ighel, MEs_ighel[ighel] );
-          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel] / MEs_ighel[cNGoodHel - 1] );
+          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel] / MEs_ighel[%(sigmakin_hel_bound)s - 1] );
 #endif
           if( okhel )
           {
@@ -154,10 +154,10 @@
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         const int ievt2 = ievt00 + ieppV + neppV;
         //printf( "sigmaKin: ievt=%%4d rndhel=%%f\n", ievt2, allrndhel[ievt2] );
-        for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+        for( int ighel = 0; ighel < %(sigmakin_hel_bound)s; ighel++ )
         {
           //printf( "sigmaKin: ievt=%%4d ighel=%%d MEs_ighel=%%f\n", ievt2, ighel, MEs_ighel2[ighel][ieppV] );
-          if( allrndhel[ievt2] < ( MEs_ighel2[ighel][ieppV] / MEs_ighel2[cNGoodHel - 1][ieppV] ) )
+          if( allrndhel[ievt2] < ( MEs_ighel2[ighel][ieppV] / MEs_ighel2[%(sigmakin_hel_bound)s - 1][ieppV] ) )
           {
             const int ihelF = %(selected_hel_code_2)s; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
             allselhel[ievt2] = ihelF;

@@ -1945,7 +1945,16 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             file_extend.append( file )
             assert i == 0, "more than one ME in get_all_sigmaKin_lines" # AV sanity check (added for color_sum.cc but valid independently)
         ret_lines.extend( file_extend )
-        return '\n'.join(ret_lines)
+        result = '\n'.join(ret_lines)
+        if getattr(self, 'use_crossing', False):
+            # (A) Per-lane crossing: calculate_jamps takes the per-lane helicity
+            # rows (host only), read by the external block. Gated so a
+            # non-crossing build keeps the historical signature byte-for-byte.
+            result = result.replace(
+                'const int ievt00                   // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)\n#endif',
+                'const int ievt00,                  // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)\n'
+                '                   const int _ighel = -1              // crossing: good-hel index; the external block derives the per-lane helicity per page (>=0 = crossing, -1 = scalar ihel)\n#endif', 1)
+        return result
 
     # AV - modify export_cpp.OneProcessExporterCPP method (replace '# Process' by '// Process')
     def get_process_info_lines(self, matrix_element):
@@ -2288,6 +2297,15 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             # No crossing: the selected helicity is the base row, unchanged.
             'selected_hel_code_1': 'cGoodHel[ighel] + 1',
             'selected_hel_code_2': 'cGoodHel[ighel] + 1',
+            # No crossing: union good-hel loop, scalar helicity (historical).
+            'goodhel_percross_statics': '',
+            'goodhel_percross_decl': '',
+            'goodhel_percross_record': '',
+            'goodhel_percross_build': '',
+            'sigmakin_hel_bound': 'cNGoodHel',
+            'sigmakin_perlane_decl': '',
+            'sigmakin_ihel_expr': 'cGoodHel[ighel]',
+            'calc_jamps_ihlane_arg': '',
         }
         if not getattr(self, 'use_crossing', False):
             return plain
@@ -2472,6 +2490,40 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 'selected_hel_code( cGoodHel[ighel], iflavorVec[ievt] )',
             'selected_hel_code_2':
                 'selected_hel_code( cGoodHel[ighel], iflavorVec[ievt2] )',
+            # (A) Per-lane helicity: the C++ good-hel loop runs once over the
+            # per-crossing good-hel count; each lane uses its crossing's ighel-th
+            # good helicity (the union is never materialised on the hot path).
+            # Host only -- GPU + mixed-precision stay on the union (untested here).
+            # Validated byte-identical on sse4 with divergent lanes (see
+            # [[mg7-perlane-helicity]]).
+            'goodhel_percross_statics':
+                '#ifndef MGONGPUCPP_GPUIMPL\n'
+                '  static constexpr int cNcross = ( npar + 1 ) * ( npar + 1 );\n'
+                '  static int cGoodHelOfCross[cNcross][ncomb]; // per-crossing good-hel rows\n'
+                '  static int cNGoodPerCross[cNcross];         // #good hel per crossing\n'
+                '  static int cNGoodMaxCross;                  // max over crossings\n'
+                '#endif',
+            'goodhel_percross_decl':
+                '    static bool _gpc[cNcross][ncomb];\n'
+                '    for( int _c = 0; _c < cNcross; _c++ ) for( int _h = 0; _h < ncomb; _h++ ) _gpc[_c][_h] = false;\n',
+            'goodhel_percross_record':
+                '            _gpc[iflav / nmaxflavor][ihel] = true;\n',
+            'goodhel_percross_build':
+                '    for( int _c = 0; _c < cNcross; _c++ ) {\n'
+                '      int _n = 0;\n'
+                '      for( int _h = 0; _h < ncomb; _h++ ) if( _gpc[_c][_h] ) { cGoodHelOfCross[_c][_n] = _h; _n++; }\n'
+                '      cNGoodPerCross[_c] = _n;\n'
+                '    }\n'
+                '    cNGoodMaxCross = 0;\n'
+                '    for( int _c = 0; _c < cNcross; _c++ ) if( cNGoodPerCross[_c] > cNGoodMaxCross ) cNGoodMaxCross = cNGoodPerCross[_c];\n',
+            'sigmakin_hel_bound': 'cNGoodMaxCross',
+            # No per-page precompute in sigmaKin: pass the good-hel index ighel
+            # and let the external block derive the per-lane helicity per page
+            # (so mixed precision's second page is handled). The scalar ihel arg
+            # is unused when crossing (a dummy 0).
+            'sigmakin_perlane_decl': '',
+            'sigmakin_ihel_expr': '0',
+            'calc_jamps_ihlane_arg': ', ighel',
         }
 
 #------------------------------------------------------------------------------------
@@ -2961,15 +3013,34 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
 #endif
 """ % {'perm': perm, 'ic': ic}
 
+    @staticmethod
+    def _hel_state_values(spin, mass):
+        """Helicity values of an external leg (matching Particle.get_helicity_
+        states) so the per-lane blend can loop over exactly the states cHel
+        holds. Scalars (spin 1) have none. Massive vectors add the 0 state."""
+        massless = mass in ('ZERO', 'zero')
+        if spin == 2:                     # fermion
+            return [-1, 1]
+        if spin == 3:                     # vector
+            return [-1, 1] if massless else [-1, 0, 1]
+        if spin == 5:                     # spin-2
+            return [-2, 2] if massless else [-2, -1, 0, 1, 2]
+        return None                       # spin 1 scalar (no helicity)
+
     def _crossing_external_block(self, wf, argument):
         """External HELAS call under crossing symmetry (C++/SIMD).
 
         Reads the per-event permuted momenta (xmom, in crossed slot order) and
         applies the per-event NSF sign flip by computing the wavefunction twice
-        (nsf = +base and -base) and blending lane-wise through icsign. The
-        helicity is taken from the destination slot (cHel[ihel][s]); summing
-        over the good-helicity UNION then reproduces the crossed |M|^2 (the
-        helicity permutation is absorbed by the sum). GPU is unchanged."""
+        (nsf = +base and -base) and blending lane-wise through icsign.
+
+        Helicity is PER-LANE: each lane's helicity row is _ihlane[lane] (set by
+        sigmaKin from the event's crossing; nullptr -> the scalar ihel, used by
+        getGoodHel). For a helicity-carrying leg the wavefunction is built for
+        each of the leg's helicity states and accumulated weighted by a per-lane
+        mask (does this lane want state _v?), so a single pass computes each
+        lane's own good helicity. get_amp downstream stays fully SIMD. Scalars
+        carry no helicity, so their block is the plain NSF blend. GPU unchanged."""
         routine = helas_call_writers.HelasCallWriter.mother_dict[
             argument.get_spin_state_number()].lower()
         routine = routine + 'x' * (6 - len(routine))
@@ -2984,29 +3055,56 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
         else:
             nsf = - (-1) ** wf.get_with_flow('is_part')
         mass = wf.get('mass')
+        states = self._hel_state_values(spin, mass)
 
-        def one_call(sign, obj):
+        def one_call(sign, obj, hel=None):
             if spin == 1:
                 call = '%s( xmom, %+d, cFlavors[iflavor][%d], %s, %d );' % \
                        (routine, sign, s, obj, s)
             else:
-                call = '%s( xmom, m_pars->%s, cHel[ihel][%d], %+d, cFlavors[iflavor][%d], %s, %d );' % \
-                       (routine, mass, s, sign, s, obj, s)
+                call = '%s( xmom, m_pars->%s, %s, %+d, cFlavors[iflavor][%d], %s, %d );' % \
+                       (routine, mass, hel, sign, s, obj, s)
             return self.format_coupling(call)
 
         lines = ['#ifndef MGONGPUCPP_GPUIMPL']
-        lines.append('      ' + one_call(nsf, 'aloha_x[0]'))
-        lines.append('      ' + one_call(-nsf, 'aloha_x[1]'))
-        # Lane-wise blend: icsign[s]==+1 -> nsf=+base (aloha_x[0]); -1 -> aloha_x[1].
-        lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
-        lines.append('        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
-        lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
-        lines.append('        for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _sp * w_x[0][_k] + _sm * w_x[1][_k];' % me)
-        # The flavor index is the same in both scratch calls; copy it onto the
-        # real object (both scratch calls set it, but the blended target keeps
-        # its default -1 otherwise, which the flavor-masked vertices treat as
-        # "vanishing" and zero the amplitude).
-        lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
+        if states is None:
+            # Scalar: no helicity, plain NSF blend (unchanged).
+            lines.append('      ' + one_call(nsf, 'aloha_x[0]'))
+            lines.append('      ' + one_call(-nsf, 'aloha_x[1]'))
+            lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
+            lines.append('        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
+            lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
+            lines.append('        for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _sp * w_x[0][_k] + _sm * w_x[1][_k];' % me)
+            lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
+        else:
+            stlist = ', '.join(str(v) for v in states)
+            lines.append('      { static const int _st%d[%d] = { %s };' % (s, len(states), stlist))
+            lines.append('        bool _first%d = true;' % s)
+            lines.append('        for( int _vi = 0; _vi < %d; _vi++ ) {' % len(states))
+            lines.append('          const int _v = _st%d[_vi];' % s)
+            lines.append('          ' + one_call(nsf, 'aloha_x[0]', '_v'))
+            lines.append('          ' + one_call(-nsf, 'aloha_x[1]', '_v'))
+            lines.append('          const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
+            lines.append('          const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
+            lines.append('          fptype_sv _hm{};')
+            # Per-lane helicity row, derived PER PAGE (ievt0 = this iParity page's
+            # first event) so mixed precision (nParity=2) picks the right page.
+            # _ighel<0 -> scalar ihel (getGoodHel scan / non-crossing).
+            lines.append('          for( int _ie = 0; _ie < neppV; _ie++ ) {')
+            lines.append('            int _hr;')
+            lines.append('            if( _ighel < 0 ) { _hr = ihel; }')
+            lines.append('            else { const int _cr = (int)( iflavorVec[ievt0 + _ie] / nmaxflavor ); _hr = ( _ighel < cNGoodPerCross[_cr] ) ? cGoodHelOfCross[_cr][_ighel] : -1; }')
+            lines.append('            reinterpret_cast<fptype*>( &_hm )[_ie] = ( _hr >= 0 && (int)cHel[_hr][%d] == _v ) ? (fptype)1. : (fptype)0.;' % s)
+            lines.append('          }')
+            lines.append('          if( _first%d ) {' % s)
+            lines.append('            for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _hm * ( _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k] );' % me)
+            lines.append('            for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _hm * ( _sp * w_x[0][_k] + _sm * w_x[1][_k] );' % me)
+            lines.append('            _first%d = false;' % s)
+            lines.append('          } else {')
+            lines.append('            for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] += _hm * ( _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k] );' % me)
+            lines.append('            for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] += _hm * ( _sp * w_x[0][_k] + _sm * w_x[1][_k] );' % me)
+            lines.append('          } }')
+            lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
         lines.append('#else')
         # GPU: crossing not implemented; emit the plain (identity) external call
         # so the file still compiles for GPU (only CPU/SIMD is validated).
