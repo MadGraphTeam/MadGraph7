@@ -829,7 +829,101 @@ def test_exact_executor_replays_physical_helicities_and_selectors() -> None:
     assert selected.values == (((Decimal(18),),),)
 
 
-def test_exact_executor_reuses_noncomputed_helicity_representative() -> None:
+def test_exact_executor_replays_retained_amplitude_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution, physics = _quotient_metadata()
+    runtime_schema = execution["runtime_schema"]
+    assert isinstance(runtime_schema, dict)
+    recurrence = runtime_schema["helicity_recurrence"]
+    assert isinstance(recurrence, dict)
+    materialization = recurrence["materialization"]
+    assert isinstance(materialization, dict)
+    amplitude_routes = materialization["amplitude_routes"]
+    assert isinstance(amplitude_routes, list)
+    amplitude_routes[0]["selector_domain_ids"] = [0, 2]
+    del amplitude_routes[1]
+    helicities = physics["helicities"]
+    assert isinstance(helicities, list)
+    helicities[0].update(
+        {
+            "computed": True,
+            "representative_id": "h:-1",
+        }
+    )
+    helicities[1].update(
+        {
+            "computed": False,
+            "representative_id": "h:+0",
+        }
+    )
+    helicities[2].update(
+        {
+            "computed": False,
+            "representative_id": "h:-1",
+        }
+    )
+    executor = _synthetic_quotient_executor()
+    executor._physics = physics
+    executor._helicity_plan = _exact_helicity_plan(execution, physics, None)
+    evaluate_point = executor._evaluate_point
+    evaluation_count = 0
+
+    def counted_evaluate_point(
+        _self: SymbolicaExactExecutor,
+        point: object,
+        parameters: object,
+        precision: int,
+        source_states: object = None,
+    ) -> tuple[tuple[Decimal, Decimal], ...]:
+        nonlocal evaluation_count
+        evaluation_count += 1
+        return evaluate_point(point, parameters, precision, source_states)
+
+    executor._evaluate_point = MethodType(counted_evaluate_point, executor)
+    reduction_indices: list[int] = []
+
+    def recording_reduce(*args: object, **kwargs: object) -> tuple[Decimal, ...]:
+        reduction_indices.append(args[4])
+        return _reduce_materialized_helicity(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "pyamplicol.runtime.symbolica_exact._reduce_materialized_helicity",
+        recording_reduce,
+    )
+
+    result = executor.evaluate_resolved(
+        (((1.0, 0.0, 0.0, 0.0),),),
+        helicities=None,
+        color_flows=None,
+        precision=40,
+    )
+
+    assert result.values == (
+        (
+            (Decimal(8),),
+            (Decimal(0),),
+            (Decimal(8),),
+        ),
+    )
+    assert evaluation_count == 1
+    assert reduction_indices == [0, 0]
+
+    evaluation_count = 0
+    reduction_indices.clear()
+    selected = executor.evaluate_resolved(
+        (((1.0, 0.0, 0.0, 0.0),),),
+        helicities=("h:+1",),
+        color_flows=None,
+        precision=40,
+    )
+    assert selected.helicity_ids == ("h:+1",)
+    assert selected.values == (((Decimal(8),),),)
+    assert evaluation_count == 1
+    assert reduction_indices == [0]
+
+
+def test_exact_executor_does_not_treat_physics_representative_as_execution() -> None:
     execution, physics = _quotient_metadata()
     helicities = physics["helicities"]
     assert isinstance(helicities, list)
@@ -881,21 +975,10 @@ def test_exact_executor_reuses_noncomputed_helicity_representative() -> None:
         (
             (Decimal(8),),
             (Decimal(0),),
-            (Decimal(8),),
+            (Decimal(18),),
         ),
     )
-    assert evaluation_count == 1
-
-    evaluation_count = 0
-    selected = executor.evaluate_resolved(
-        (((1.0, 0.0, 0.0, 0.0),),),
-        helicities=("h:+1",),
-        color_flows=None,
-        precision=40,
-    )
-    assert selected.helicity_ids == ("h:+1",)
-    assert selected.values == (((Decimal(8),),),)
-    assert evaluation_count == 1
+    assert evaluation_count == 2
 
 
 def test_exact_helicity_plan_rejects_reduction_representative_drift() -> None:
@@ -1299,6 +1382,63 @@ def test_exact_helicity_plan_fails_closed_on_inconsistent_routes() -> None:
     recurrence["materialization"]["amplitude_routes"][0]["selector_domain_ids"] = [2]
 
     with pytest.raises(ArtifactError, match="do not match active roots"):
+        _exact_helicity_plan(malformed, physics, None)
+
+
+@pytest.mark.parametrize(
+    ("domain_ids", "message"),
+    [
+        ([2, 0], "distinct ordered complete selector domains"),
+        ([0, 0], "selector domains are invalid"),
+        ([0, 3], "distinct ordered complete selector domains"),
+    ],
+)
+def test_exact_helicity_plan_requires_ordered_complete_amplitude_route_domains(
+    domain_ids: list[int],
+    message: str,
+) -> None:
+    execution, physics = _quotient_metadata()
+    malformed = copy.deepcopy(execution)
+    recurrence = malformed["runtime_schema"]["helicity_recurrence"]
+    materialization = recurrence["materialization"]
+    materialization["amplitude_routes"][0]["selector_domain_ids"] = domain_ids
+
+    with pytest.raises(ArtifactError, match=message):
+        _exact_helicity_plan(malformed, physics, None)
+
+
+def test_exact_helicity_plan_rejects_conflicting_execution_domains() -> None:
+    execution, physics = _quotient_metadata()
+    malformed = copy.deepcopy(execution)
+    recurrence = malformed["runtime_schema"]["helicity_recurrence"]
+    materialization = recurrence["materialization"]
+    materialization["amplitude_routes"] = [
+        {
+            "materialized_root_id": 0,
+            "selector_domain_ids": [0, 2],
+            "factor": [1.0, 0.0],
+            "residual": False,
+        },
+        {
+            "materialized_root_id": 0,
+            "selector_domain_ids": [1, 2],
+            "factor": [1.0, 0.0],
+            "residual": False,
+        },
+    ]
+
+    with pytest.raises(ArtifactError, match="inconsistent execution domains"):
+        _exact_helicity_plan(malformed, physics, None)
+
+
+def test_exact_helicity_plan_rejects_primary_that_is_replay_only() -> None:
+    execution, physics = _quotient_metadata()
+    malformed = copy.deepcopy(execution)
+    recurrence = malformed["runtime_schema"]["helicity_recurrence"]
+    materialization = recurrence["materialization"]
+    materialization["amplitude_routes"][0]["selector_domain_ids"] = [0, 2]
+
+    with pytest.raises(ArtifactError, match="both a primary and replay-only domain"):
         _exact_helicity_plan(malformed, physics, None)
 
 

@@ -87,7 +87,7 @@ class _ExactRuntimeSourceState:
 @dataclass(frozen=True, slots=True)
 class _ExactHelicitySchedule:
     physical_helicity_index: int
-    representative_helicity_index: int
+    execution_helicity_index: int
     selector_domain_id: int
     structural_zero: bool
     source_states: tuple[_ExactRuntimeSourceState | None, ...]
@@ -629,7 +629,7 @@ class SymbolicaExactExecutor:
         full_points: list[tuple[tuple[Decimal, ...], ...]] = []
         for point in points:
             full = [[_ZERO for _color in color_ids] for _helicity in helicity_ids]
-            representative_amplitudes: dict[int, tuple[_ComplexDecimal, ...]] = {}
+            execution_amplitudes: dict[int, tuple[_ComplexDecimal, ...]] = {}
             for schedule in self._helicity_plan.schedules:
                 helicity_index = schedule.physical_helicity_index
                 if (
@@ -637,25 +637,25 @@ class SymbolicaExactExecutor:
                     or schedule.structural_zero
                 ):
                     continue
-                representative_index = schedule.representative_helicity_index
-                representative = self._helicity_plan.schedules[representative_index]
-                amplitudes = representative_amplitudes.get(representative_index)
+                execution_index = schedule.execution_helicity_index
+                execution_schedule = self._helicity_plan.schedules[execution_index]
+                amplitudes = execution_amplitudes.get(execution_index)
                 if amplitudes is None:
                     amplitudes = self._evaluate_point(
                         point,
                         model_parameters,
                         precision,
-                        representative.source_states,
+                        execution_schedule.source_states,
                     )
-                    representative_amplitudes[representative_index] = amplitudes
+                    execution_amplitudes[execution_index] = amplitudes
                 full[helicity_index] = list(
                     _reduce_materialized_helicity(
                         amplitudes,
                         self._execution,
                         self._physics,
                         normalization,
-                        helicity_index,
-                        representative.root_factors,
+                        execution_index,
+                        execution_schedule.root_factors,
                     )
                 )
             full_points.append(
@@ -766,7 +766,6 @@ def _parse_exact_helicity_plan(
                 "physical helicity metadata has invalid or duplicate IDs"
             )
         physical_by_id[raw_identifier] = index
-    representative_by_physical: list[int] = []
     for index, helicity in enumerate(physical):
         identifier = str(helicity["id"])
         computed = helicity.get("computed", True)
@@ -817,7 +816,6 @@ def _parse_exact_helicity_plan(
                     f"physical helicity {identifier!r} and its representative "
                     "have different reduction coefficients"
                 )
-        representative_by_physical.append(representative_index)
     reduction = physics.get("reduction")
     if isinstance(reduction, Mapping):
         raw_groups = reduction.get("groups")
@@ -942,6 +940,9 @@ def _parse_exact_helicity_plan(
 
     source_routes = _exact_source_routes(materialization, domains, sources)
     amplitude_routes = _exact_amplitude_routes(materialization, domains, len(roots))
+    execution_domain_by_domain = _exact_helicity_execution_domains(
+        domains, amplitude_routes
+    )
     raw_schedules = materialization.get("selector_schedules")
     if isinstance(raw_schedules, str | bytes) or not isinstance(
         raw_schedules, Sequence
@@ -1025,7 +1026,7 @@ def _parse_exact_helicity_plan(
             )
         schedules_by_physical[physical_index] = _ExactHelicitySchedule(
             physical_helicity_index=physical_index,
-            representative_helicity_index=representative_by_physical[physical_index],
+            execution_helicity_index=physical_index,
             selector_domain_id=domain_id,
             structural_zero=structural_zero,
             source_states=schedule_source_states,
@@ -1035,8 +1036,32 @@ def _parse_exact_helicity_plan(
         raise ArtifactError(
             "helicity materialization does not cover every physical helicity"
         )
+    physical_by_domain = {
+        schedule.selector_domain_id: physical_index
+        for physical_index, schedule in schedules_by_physical.items()
+    }
+    resolved_schedules = []
+    for physical_index in range(len(physical)):
+        schedule = schedules_by_physical[physical_index]
+        execution_domain = execution_domain_by_domain[schedule.selector_domain_id]
+        execution_index = physical_by_domain.get(execution_domain)
+        if execution_index is None:
+            raise ArtifactError(
+                f"helicity selector domain {schedule.selector_domain_id} maps to "
+                f"absent execution domain {execution_domain}"
+            )
+        resolved_schedules.append(
+            _ExactHelicitySchedule(
+                physical_helicity_index=schedule.physical_helicity_index,
+                execution_helicity_index=execution_index,
+                selector_domain_id=schedule.selector_domain_id,
+                structural_zero=schedule.structural_zero,
+                source_states=schedule.source_states,
+                root_factors=schedule.root_factors,
+            )
+        )
     return _ExactHelicityPlan(
-        schedules=tuple(schedules_by_physical[index] for index in range(len(physical)))
+        schedules=tuple(resolved_schedules)
     )
 
 
@@ -1115,7 +1140,7 @@ def _exact_amplitude_routes(
     materialization: Mapping[str, object],
     domains: Mapping[int, tuple[bool, frozenset[tuple[int, int]]]],
     root_count: int,
-) -> tuple[tuple[int, frozenset[int], _ComplexDecimal], ...]:
+) -> tuple[tuple[int, tuple[int, ...], _ComplexDecimal], ...]:
     raw_routes = materialization.get("amplitude_routes")
     if isinstance(raw_routes, str | bytes) or not isinstance(raw_routes, Sequence):
         raise ArtifactError("helicity materialization amplitude routes are invalid")
@@ -1130,15 +1155,20 @@ def _exact_amplitude_routes(
         )
         if root_id >= root_count:
             raise ArtifactError("amplitude route references an unknown root")
-        domain_ids = frozenset(
-            _strict_integer_sequence(
-                raw_route.get("selector_domain_ids"),
-                max(domains, default=-1) + 1,
-                "amplitude-route selector domains",
-            )
+        domain_ids = _strict_integer_sequence(
+            raw_route.get("selector_domain_ids"),
+            max(domains, default=-1) + 1,
+            "amplitude-route selector domains",
         )
-        if not domain_ids or any(domain_id not in domains for domain_id in domain_ids):
-            raise ArtifactError("amplitude route references an unknown selector domain")
+        if (
+            not domain_ids
+            or any(domain_id not in domains for domain_id in domain_ids)
+            or any(not domains[domain_id][0] for domain_id in domain_ids)
+            or any(left >= right for left, right in pairwise(domain_ids))
+        ):
+            raise ArtifactError(
+                "amplitude route requires distinct ordered complete selector domains"
+            )
         parsed.append(
             (
                 root_id,
@@ -1149,6 +1179,35 @@ def _exact_amplitude_routes(
             )
         )
     return tuple(parsed)
+
+
+def _exact_helicity_execution_domains(
+    domains: Mapping[int, tuple[bool, frozenset[tuple[int, int]]]],
+    routes: Sequence[tuple[int, tuple[int, ...], _ComplexDecimal]],
+) -> dict[int, int]:
+    """Mirror the native retained-route mapping for global-flip aliases."""
+
+    execution_by_domain = {domain_id: domain_id for domain_id in domains}
+    primary_domains: set[int] = set()
+    for _root_id, route_domain_ids, _factor in routes:
+        primary_domain, *replay_domains = route_domain_ids
+        primary_domains.add(primary_domain)
+        for replay_domain in replay_domains:
+            previous = execution_by_domain[replay_domain]
+            if previous not in (replay_domain, primary_domain):
+                raise ArtifactError(
+                    f"helicity replay domain {replay_domain} maps to inconsistent "
+                    f"execution domains {previous} and {primary_domain}"
+                )
+            execution_by_domain[replay_domain] = primary_domain
+    for primary_domain in primary_domains:
+        execution_domain = execution_by_domain[primary_domain]
+        if execution_domain != primary_domain:
+            raise ArtifactError(
+                f"helicity selector domain {primary_domain} is both a primary "
+                "and replay-only domain"
+            )
+    return execution_by_domain
 
 
 def _source_states_for_active_closure(
