@@ -615,6 +615,18 @@ def test_contracted_uses_raw_library_and_direct_oracle_value(
     assert api.color_calls == [(accuracy.value, None)]
     flattened = [" ".join(command) for command in executor.commands]
     assert any("--library=create-raw" in command for command in flattened)
+    probe_build = (
+        "make",
+        "-j1",
+        "amplicol_color_library_probe",
+        "amplicol_color_probe",
+    )
+    assert probe_build in executor.commands
+    assert executor.commands.index(probe_build) < next(
+        index
+        for index, command in enumerate(executor.commands)
+        if command[0] == "./amplicol_color_library_probe"
+    )
 
 
 def test_more_than_three_open_quark_lines_is_preserved_as_unsupported(

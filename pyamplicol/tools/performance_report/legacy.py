@@ -1383,7 +1383,12 @@ class LegacyMeasurementAdapter:
             log_path=log_path,
         )
         self._run(
-            ("make", f"-j{settings.jobs}", "amplicol_color_library_probe"),
+            (
+                "make",
+                f"-j{settings.jobs}",
+                "amplicol_color_library_probe",
+                "amplicol_color_probe",
+            ),
             cwd=repository,
             commands=commands,
             log_path=log_path,
