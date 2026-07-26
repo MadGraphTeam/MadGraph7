@@ -67,12 +67,12 @@ def _git_tree(repo_root: Path, revision: str) -> str:
 def _generated_report_path(value: str) -> bool:
     """Return whether a dirty path is a generated report output.
 
-    Benchmark caches, rendered tables, PDFs, local evaluator attempts, and the
-    corresponding generated files inside one architecture-profile workspace are
-    outputs of a report campaign. They do not alter the evaluator source being
-    measured and therefore do not make the source checkout ineligible. Profile
-    prose, manifests, entry points, nested files, and all other tracked or
-    untracked changes do.
+    Benchmark caches, rendered tables, authenticated environment metadata,
+    PDFs, local evaluator attempts, and the corresponding generated files
+    inside one architecture-profile workspace are outputs of a report campaign.
+    They do not alter the evaluator source being measured and therefore do not
+    make the source checkout ineligible. Profile prose, manifests, entry points,
+    nested files, and all other tracked or untracked changes do.
     """
 
     path = PurePosixPath(value)
@@ -90,7 +90,11 @@ def _generated_report_path(value: str) -> bool:
     ):
         return True
     if len(parts) == 2 and parts[0] == "docs":
-        return _generated_publication_member(parts[1], allow_auxiliary=True)
+        return _generated_publication_member(
+            parts[1],
+            allow_auxiliary=True,
+            allow_environment=False,
+        )
     if (
         len(parts) == 5
         and parts[:2] == ("docs", "performance_reports")
@@ -99,12 +103,26 @@ def _generated_report_path(value: str) -> bool:
     ):
         return True
     if len(parts) == 4 and parts[:2] == ("docs", "performance_reports"):
-        return _generated_publication_member(parts[3], allow_auxiliary=True)
+        return _generated_publication_member(
+            parts[3],
+            allow_auxiliary=True,
+            allow_environment=True,
+        )
     return False
 
 
-def _generated_publication_member(name: str, *, allow_auxiliary: bool) -> bool:
+def _generated_publication_member(
+    name: str,
+    *,
+    allow_auxiliary: bool,
+    allow_environment: bool,
+) -> bool:
     if name == "pyAmpliCol.pdf":
+        return True
+    if allow_environment and name in {
+        "report_environment.json",
+        "report_environment.tex",
+    }:
         return True
     if name == "result_validation_summary.tex":
         return True
@@ -134,8 +152,8 @@ def _architecture_report_path(value: str, profile: str) -> bool:
     particular, executables, arbitrary nested files, evaluator tools, profile
     prose, and manifests are not report-only changes.  A measurement commit can
     therefore be published from a descendant commit only when every intervening
-    path is raw result JSON, a generated table or validation summary, or the
-    reviewed PDF.
+    path is raw result JSON, authenticated generated environment metadata, a
+    generated table or validation summary, or the reviewed PDF.
     """
 
     path = PurePosixPath(value)
@@ -148,6 +166,7 @@ def _architecture_report_path(value: str, profile: str) -> bool:
         return _generated_publication_member(
             relative[0],
             allow_auxiliary=False,
+            allow_environment=True,
         )
     if len(relative) == 2 and relative[0] == "results":
         return relative[1].endswith(".json")

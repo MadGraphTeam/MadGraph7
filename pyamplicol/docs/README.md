@@ -46,15 +46,16 @@ Publication measurements live in isolated, tracked workspaces under
 `docs/performance_reports/<profile>/`. A profile contains everything needed to
 review or compile one report: the main and section TeX sources, generated table
 TeX, canonical raw JSON caches and schema, a workspace manifest, an operator
-README, generated `report_environment.tex` metadata, and the reviewed PDF when
-available. Evaluator artifacts, logs, locks, and campaign coordination state
-never enter that directory; they are kept in profile-specific ignored roots
-below `.artifacts/`. Publication replaces only explicitly unhashed locator
-fields with portable roots. Authenticated runtime identities remain
-byte-for-byte unchanged, so their digests stay valid. Any unexpected absolute
-path outside those reviewed fields stops publication. Initialization does not
-copy the template PDF because the profile metadata changes the document;
-compile and review a fresh PDF in the new workspace.
+README, generated `report_environment.json` and `report_environment.tex`
+metadata, and the reviewed PDF when available. Evaluator artifacts, logs,
+locks, and campaign coordination state never enter that directory; they are
+kept in profile-specific ignored roots below `.artifacts/`. Publication
+replaces only explicitly unhashed locator fields with portable roots.
+Authenticated runtime identities remain byte-for-byte unchanged, so their
+digests stay valid. Any unexpected absolute path outside those reviewed fields
+stops publication. Initialization does not copy the template PDF because the
+profile metadata changes the document; compile and review a fresh PDF in the
+new workspace.
 
 Create the first Mac workspace from the publication sources and an empty
 measurement grid:
@@ -67,16 +68,47 @@ git push origin HEAD
 ```
 
 That pushed commit is the measured-source checkpoint. From a clean checkout of
-that exact commit, run the project's clean build and native-install gate, then
-populate and audit:
+that exact commit, run the project's clean build and native-install gate.
+Initialization records the runtime as pending rather than guessing from
+possibly unavailable distribution metadata. After the build, authenticate the
+installed runtime against the checkpoint and replace the pending generated
+metadata:
+
+```bash
+python3 docs/performance_reports/macbook_M3/result_tables.py \
+  refresh-profile-environment \
+  --expected-source-revision "$(git rev-parse HEAD)"
+```
+
+The refresh changes only generated environment JSON/TeX and therefore leaves
+the measured evaluator source identity at the checkpoint. Populate one
+multiplicity at a time with artifact reuse and the five-second policy:
 
 ```bash
 python3 docs/performance_reports/macbook_M3/result_tables.py populate \
-  --n-final 1..4 --missing-only --artifact-policy regenerate \
-  --workers 1 --cell-cores 1 --refresh-pdf end
-python3 docs/performance_reports/macbook_M3/result_tables.py render --compile
+  --n-final 1 --missing-only --artifact-policy reuse \
+  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end
+python3 docs/performance_reports/macbook_M3/result_tables.py audit
+
+python3 docs/performance_reports/macbook_M3/result_tables.py populate \
+  --n-final 2 --missing-only --artifact-policy reuse \
+  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end
+python3 docs/performance_reports/macbook_M3/result_tables.py audit
+
+python3 docs/performance_reports/macbook_M3/result_tables.py populate \
+  --n-final 3 --missing-only --artifact-policy reuse \
+  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end
+python3 docs/performance_reports/macbook_M3/result_tables.py audit
+
+python3 docs/performance_reports/macbook_M3/result_tables.py populate \
+  --n-final 4 --missing-only --artifact-policy reuse \
+  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end
 python3 docs/performance_reports/macbook_M3/result_tables.py audit
 ```
+
+Inspect the audit result and visually review the refreshed PDF after every
+multiplicity before continuing. Do not replace the four invocations with one
+combined `1..4` campaign.
 
 Create an independent cluster workspace from the same publication sources but
 with empty measurement caches:
@@ -90,15 +122,37 @@ git commit -m "Initialize cluster_EPYC performance report"
 git push origin HEAD
 ```
 
-Again, clean-build and install that exact pushed checkpoint before measuring:
+Again, clean-build and install that exact pushed checkpoint, authenticate its
+runtime, and measure one multiplicity at a time:
 
 ```bash
+python3 docs/performance_reports/cluster_EPYC/result_tables.py \
+  refresh-profile-environment \
+  --expected-source-revision "$(git rev-parse HEAD)"
+
 python3 docs/performance_reports/cluster_EPYC/result_tables.py populate \
-  --n-final 1..4 --missing-only --artifact-policy regenerate \
-  --workers 1 --cell-cores 1 --refresh-pdf end
-python3 docs/performance_reports/cluster_EPYC/result_tables.py render --compile
+  --n-final 1 --missing-only --artifact-policy reuse \
+  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end
+python3 docs/performance_reports/cluster_EPYC/result_tables.py audit
+
+python3 docs/performance_reports/cluster_EPYC/result_tables.py populate \
+  --n-final 2 --missing-only --artifact-policy reuse \
+  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end
+python3 docs/performance_reports/cluster_EPYC/result_tables.py audit
+
+python3 docs/performance_reports/cluster_EPYC/result_tables.py populate \
+  --n-final 3 --missing-only --artifact-policy reuse \
+  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end
+python3 docs/performance_reports/cluster_EPYC/result_tables.py audit
+
+python3 docs/performance_reports/cluster_EPYC/result_tables.py populate \
+  --n-final 4 --missing-only --artifact-policy reuse \
+  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end
 python3 docs/performance_reports/cluster_EPYC/result_tables.py audit
 ```
+
+Inspect the audit result and visually review the refreshed cluster PDF after
+every multiplicity before continuing.
 
 The copied `result_tables.py` detects its enclosing profile automatically.
 Every coordinator and child worker uses that profile's raw caches, artifact
@@ -116,10 +170,10 @@ python3 build_pdf.py
 
 Generating new measurements still requires a matching pyAmpliCol source
 checkout and native runtime. After audit and visual review, the report-only
-descendant commit may contain only the profile's raw JSON caches, generated
-table and validation-summary TeX, and reviewed PDF; do not change profile
-prose, entry points, manifests, or evaluator source between the checkpoint and
-publication commits.
+descendant commit may contain only the profile's authenticated generated
+environment JSON/TeX, raw JSON caches, generated table and validation-summary
+TeX, and reviewed PDF; do not change profile prose, entry points, manifests, or
+evaluator source between the checkpoint and publication commits.
 
 ## Data Contract
 

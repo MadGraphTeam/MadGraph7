@@ -102,7 +102,6 @@ def test_generated_report_outputs_do_not_dirty_measurement_source(
         "docs/performance_reports/macbook_M3/section_scope.tex",
         "docs/performance_reports/macbook_M3/README.md",
         "docs/performance_reports/macbook_M3/report-workspace.json",
-        "docs/performance_reports/macbook_M3/report_environment.tex",
         "docs/performance_reports/macbook_M3/arbitrary.txt",
         "docs/performance_reports/macbook_M3/results/nested/raw.json",
     ),
@@ -141,6 +140,26 @@ def test_tracked_or_untracked_source_changes_are_ineligible(
         match=r"dirty source paths: src/evaluator\.py, tools/untracked\.py",
     ):
         require_eligible_report_source(repo)
+
+
+def test_generated_profile_environment_is_a_report_output(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    profile = repo / "docs/performance_reports/macbook_M3"
+    (profile / "report_environment.json").write_text(
+        '{"status":"authenticated"}\n',
+        encoding="ascii",
+    )
+    (profile / "report_environment.tex").write_text(
+        "% authenticated environment\n",
+        encoding="ascii",
+    )
+
+    identity = require_eligible_report_source(repo)
+
+    assert identity.eligible
+    assert identity.dirty_paths == ()
 
 
 def _commit_path(repo: Path, path: str, content: str) -> str:
@@ -199,6 +218,37 @@ def test_publication_descendant_authenticates_both_shas_and_report_paths(
             f"docs/performance_reports/{profile}/results/raw.json",
         ],
     }
+
+
+def test_publication_descendant_allows_authenticated_environment_outputs(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    measured = _git(repo, "rev-parse", "HEAD")
+    profile = "macbook_M3"
+    _commit_path(
+        repo,
+        f"docs/performance_reports/{profile}/report_environment.json",
+        '{"status":"authenticated"}\n',
+    )
+    publication = _commit_path(
+        repo,
+        f"docs/performance_reports/{profile}/report_environment.tex",
+        "% authenticated environment\n",
+    )
+
+    identity = require_report_only_publication(
+        repo,
+        measured_revision=measured,
+        profile=profile,
+        publication_revision=publication,
+    )
+
+    assert identity.eligible
+    assert identity.changed_paths == (
+        f"docs/performance_reports/{profile}/report_environment.json",
+        f"docs/performance_reports/{profile}/report_environment.tex",
+    )
 
 
 @pytest.mark.parametrize(

@@ -943,6 +943,7 @@ def _publication_relative_member(path: str) -> PurePosixPath | None:
         "pyAmpliCol.tex",
         "report-manifest.json",
         "report-workspace.json",
+        "report_environment.json",
         "report_environment.tex",
     }:
         return relative
@@ -1225,8 +1226,8 @@ def _profile_publication_lineage(
         "changed_paths_sha256": digest_json(changes),
         "allowed_path_contract": (
             f"docs/performance_reports/{profile}/results/*.json, generated "
-            "table/summary TeX, and pyAmpliCol.pdf; regular non-executable "
-            "blobs only"
+            "environment JSON/TeX, table/summary TeX, and pyAmpliCol.pdf; "
+            "regular non-executable blobs only"
         ),
         "executable_source_unchanged": True,
     }

@@ -27,7 +27,12 @@ from .scheduler import (
 from .service import ReportPaths, ReportService, validate_profile_name
 from .source_identity import require_eligible_report_source
 from .worker import write_cell_result
-from .workspace import export_profile, initialize_profile
+from .workspace import (
+    export_profile,
+    initialize_profile,
+    refresh_profile_environment,
+    require_active_profile_environment,
+)
 
 
 def _repo_root() -> Path:
@@ -86,6 +91,12 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="replace copied measurements with canonical N/A caches and tables",
     )
+
+    refresh_environment = subparsers.add_parser(
+        "refresh-profile-environment",
+        help="authenticate and record the exact installed measurement runtime",
+    )
+    refresh_environment.add_argument("--expected-source-revision", required=True)
 
     export = subparsers.add_parser(
         "export-profile",
@@ -358,11 +369,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "audit":
         print(json.dumps(service.audit(), sort_keys=True))
         return 0
+    if args.command == "refresh-profile-environment":
+        if args.report_profile is None:
+            parser.error("refresh-profile-environment requires --report-profile")
+        environment = refresh_profile_environment(
+            repo_root,
+            args.report_profile,
+            expected_source_revision=args.expected_source_revision,
+        )
+        print(json.dumps(environment, allow_nan=False, sort_keys=True))
+        return 0
     if args.command == "final-audit":
         from .final_audit import audit_final_report
 
         if args.report_profile is None:
             parser.error("final-audit requires --report-profile")
+        require_active_profile_environment(
+            repo_root,
+            args.report_profile,
+            expected_source_revision=args.expected_source_revision,
+        )
         result = audit_final_report(
             repo_root,
             expected_source_revision=args.expected_source_revision,
@@ -399,11 +425,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except ValueError as error:
             parser.error(str(error))
+        expected_revision = source_revision(repo_root, require_clean=True)
         planned = plan_campaign(
             requested,
             store=service.store,
             settings=settings,
-            expected_revision=source_revision(repo_root, require_clean=True),
+            expected_revision=expected_revision,
         )
         if args.dry_run:
             print(
@@ -425,6 +452,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
             return 0
+        if args.report_profile is not None:
+            require_active_profile_environment(
+                repo_root,
+                args.report_profile,
+                expected_source_revision=expected_revision,
+            )
         require_eligible_report_source(repo_root)
         result = CampaignScheduler(service, settings=settings).run(planned)
         if args.refresh_pdf == "end":

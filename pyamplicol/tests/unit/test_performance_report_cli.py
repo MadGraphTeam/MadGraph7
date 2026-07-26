@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -89,6 +90,7 @@ def test_final_audit_receives_the_bound_architecture_profile_service(
     expected_paths = ReportPaths.from_repo(repo, profile=profile)
     expected_service = ReportService(expected_paths)
     observed: dict[str, object] = {}
+    environment_checks: list[tuple[Path, str, str]] = []
 
     def construct_service(paths: ReportPaths) -> ReportService:
         assert paths == expected_paths
@@ -105,6 +107,13 @@ def test_final_audit_receives_the_bound_architecture_profile_service(
     monkeypatch.setattr(
         "tools.performance_report.cli.ReportService",
         construct_service,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.require_active_profile_environment",
+        lambda root, active_profile, *, expected_source_revision: (
+            environment_checks.append((root, active_profile, expected_source_revision))
+            or {}
+        ),
     )
     monkeypatch.setattr(final_audit, "audit_final_report", fake_audit)
 
@@ -142,7 +151,65 @@ def test_final_audit_receives_the_bound_architecture_profile_service(
     assert observed["max_n_final"] == 4
     assert observed["expected_cell_count"] == 742
     assert observed["replay"] is False
+    assert environment_checks == [(repo.resolve(), profile, "a" * 40)]
     assert json.loads(capsys.readouterr().out)["final_gate_complete"] is True
+
+
+def test_refresh_environment_is_routed_to_the_active_profile(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = tmp_path / "repo"
+    observed: dict[str, object] = {}
+
+    def fake_refresh(
+        root: Path,
+        profile: str,
+        *,
+        expected_source_revision: str,
+    ) -> dict[str, str]:
+        observed.update(
+            {
+                "root": root,
+                "profile": profile,
+                "expected_source_revision": expected_source_revision,
+            }
+        )
+        return {
+            "status": "authenticated",
+            "source_revision": expected_source_revision,
+        }
+
+    monkeypatch.setattr(
+        "tools.performance_report.cli.refresh_profile_environment",
+        fake_refresh,
+    )
+
+    assert (
+        main(
+            (
+                "--repo-root",
+                str(repo),
+                "--report-profile",
+                "macbook_M3",
+                "refresh-profile-environment",
+                "--expected-source-revision",
+                "a" * 40,
+            )
+        )
+        == 0
+    )
+
+    assert observed == {
+        "root": repo.resolve(),
+        "profile": "macbook_M3",
+        "expected_source_revision": "a" * 40,
+    }
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "authenticated",
+        "source_revision": "a" * 40,
+    }
 
 
 def test_final_audit_requires_an_architecture_profile(
@@ -222,3 +289,73 @@ def test_populate_dry_run_supports_exact_filters_and_dependencies(
     assert payload["requested"] == 1
     assert payload["scheduled"] == 3
     assert [cell["rank"] for cell in payload["cells"]] == [0, 1, 2]
+
+
+def test_profile_population_requires_the_active_authenticated_environment(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = tmp_path / "repo"
+    _initialize_git_repo(repo)
+    expected_revision = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    checked: list[tuple[Path, str, str]] = []
+
+    def require_environment(
+        root: Path,
+        profile: str,
+        *,
+        expected_source_revision: str,
+    ) -> dict[str, str]:
+        checked.append((root, profile, expected_source_revision))
+        return {}
+
+    class FakeScheduler:
+        def __init__(self, _service, *, settings) -> None:
+            self.settings = settings
+
+        def run(self, planned):
+            return SimpleNamespace(
+                planned=planned,
+                outcomes=(),
+                failed=(),
+            )
+
+    monkeypatch.setattr(
+        "tools.performance_report.cli.require_active_profile_environment",
+        require_environment,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.CampaignScheduler",
+        FakeScheduler,
+    )
+
+    assert (
+        main(
+            (
+                "--repo-root",
+                str(repo),
+                "--report-profile",
+                "macbook_M3",
+                "populate",
+                "--dataset",
+                "matrix_compiled_builtin_sm_lc",
+                "--process-key",
+                "dd_z_jets",
+                "--n-final",
+                "1",
+                "--workload",
+                "selected-flow",
+            )
+        )
+        == 0
+    )
+
+    assert checked == [(repo.resolve(), "macbook_M3", expected_revision)]
+    assert json.loads(capsys.readouterr().out)["planned"] == 3
