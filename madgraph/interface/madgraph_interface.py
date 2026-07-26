@@ -10003,16 +10003,17 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     # regeneration). The normal grouping + crossing routing then
                     # handles them exactly as an unmerged (merge_crossing=False)
                     # generation would.
-                    # The plain fortran 'standalone' exporter consumes the
-                    # crossed_processes metadata directly -- it folds the crossings
-                    # into the base directory and reaches them through the base's
-                    # crossing-aware SMATRIX (see write_check_sa), so it must NOT
+                    # The standalone exporters ('standalone' fortran and
+                    # 'standalone_mg7' cudacpp) consume the crossed_processes
+                    # metadata directly -- they fold the crossings into the base
+                    # directory and reach them through the base's crossing-aware
+                    # SMATRIX/sigmaKin (extended flavor id), so they must NOT
                     # reconstruct. Every other (summation / event-generation)
                     # backend needs the crossings back as integration units, and
                     # reconstructing is also the safe default for any format that
                     # does not implement folding (it just reproduces the complete
                     # unmerged output).
-                    if self._export_format != 'standalone' and \
+                    if self._export_format not in ('standalone', 'standalone_mg7') and \
                             any(amp.get('crossed_processes')
                                 for amp in non_dc_amps):
                         if self.options['group_subprocesses'] == 'Auto':
