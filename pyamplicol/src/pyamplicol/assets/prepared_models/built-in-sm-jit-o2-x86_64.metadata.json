@@ -10,8 +10,8 @@
     }
   },
   "bundle": "built-in-sm-jit-o2-x86_64.pyamplicol-model",
-  "bundle_sha256": "439fdf5b1d8449098278467df059b6bb0b9f33de58cfb183313be520870f54f2",
-  "bundle_size": 7427856,
+  "bundle_sha256": "46e11dba9904f9350731e38958b2a28301a44e62df6cf8d8d81d982271614eb9",
+  "bundle_size": 7427705,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
     "symbolica_version": "2.2.0",
@@ -27,11 +27,11 @@
   "prepared_model_bundle_schema": 1,
   "producer": {
     "compiled_model_schema": 9,
-    "model_compiler_sha256": "002ddc8d299adaf817414ee40987fe5e418878cdf21c67b0367d621b16b2d575",
+    "model_compiler_sha256": "230dbc4dca1c55c1287f26d8d31b02f6215e1a7ee0af7ea9b00734bbbfe205b7",
     "model_compiler_version": 13,
     "model_source_digest": "277a81bb700a430f930d7973f44fa13d204e4884e6b29040948a2cbeeb8426f8",
     "package_version": "0.1.0.dev0+candidate.b05ec7308a8b",
-    "prepared_pack_compiler_sha256": "6e993ee1e92ef5460e660dc70f1934f4ee9f51609e7bfc1c618f6ec18c775faa"
+    "prepared_pack_compiler_sha256": "b3f45f59736d0b0979a0bd55d74b04658f52d3c2817a1b2b6996db4b9376a56b"
   },
   "schema_version": 1,
   "target": {
