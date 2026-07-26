@@ -325,7 +325,7 @@ def render_validation_summary(
             r"\end{tabular}",
             r"\end{center}",
             (
-                r"\ReportTableNote{Display accounting through \(n=9\): "
+                r"\ReportTableNote{Full-catalog display accounting through \(n=9\): "
                 f"{display.required_measurement_count} required measured cells; "
                 f"{display.structurally_not_applicable_display_slot_count} "
                 r"matrix process/multiplicity positions marked "

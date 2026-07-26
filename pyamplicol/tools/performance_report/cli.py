@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .campaign_policy import (
+    MACBOOK_M3_POLICY_NAME,
     STRICT_POLICY,
     STRICT_POLICY_NAME,
     X86_EPYC_POLICY_NAME,
@@ -100,10 +101,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     initialize.add_argument(
         "--measurement-policy",
-        choices=(STRICT_POLICY_NAME, X86_EPYC_POLICY_NAME),
+        choices=(
+            STRICT_POLICY_NAME,
+            MACBOOK_M3_POLICY_NAME,
+            X86_EPYC_POLICY_NAME,
+        ),
         help=(
-            "bind a canonical completion/resource policy; defaults to x86 EPYC "
-            "for x86_EPYC and strict completion for every other profile"
+            "bind a canonical completion/resource policy; defaults to the "
+            "matching architecture policy for macbook_M3 or x86_EPYC and "
+            "strict completion for every other profile"
         ),
     )
 

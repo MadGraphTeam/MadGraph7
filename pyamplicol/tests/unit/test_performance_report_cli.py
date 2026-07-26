@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from tools.performance_report import final_audit
-from tools.performance_report.campaign_policy import STRICT_POLICY
+from tools.performance_report.campaign_policy import MACBOOK_M3_POLICY
 from tools.performance_report.cli import _compile_pdf, _parser, main
 from tools.performance_report.service import ReportPaths, ReportService
 
@@ -108,6 +108,7 @@ def test_final_audit_is_routed_through_the_isolated_result_tables_entrypoint() -
     assert arguments.report_profile == "macbook_M3"
     assert arguments.expected_source_revision == "a" * 40
     assert arguments.publication_revision == "b" * 40
+    assert arguments.max_n_final == 9
     assert arguments.expected_cell_count == 1646
     assert arguments.structural_only is True
 
@@ -391,7 +392,7 @@ def test_profile_population_requires_the_active_authenticated_environment(
     )
     monkeypatch.setattr(
         "tools.performance_report.cli.load_profile_campaign_policy",
-        lambda *_args, **_kwargs: STRICT_POLICY,
+        lambda *_args, **_kwargs: MACBOOK_M3_POLICY,
     )
     monkeypatch.setattr(
         "tools.performance_report.cli.CampaignScheduler",
@@ -416,8 +417,6 @@ def test_profile_population_requires_the_active_authenticated_environment(
                 "selected-flow",
                 "--max-ram-gb",
                 "30",
-                "--campaign-max-ram-gb",
-                "30",
             )
         )
         == 0
@@ -426,5 +425,5 @@ def test_profile_population_requires_the_active_authenticated_environment(
     assert checked == [(repo.resolve(), "macbook_M3", expected_revision)]
     assert len(scheduler_settings) == 1
     assert scheduler_settings[0].max_rss_bytes == 30_000_000_000
-    assert scheduler_settings[0].campaign_max_rss_bytes == 30_000_000_000
+    assert scheduler_settings[0].campaign_max_rss_bytes is None
     assert json.loads(capsys.readouterr().out)["planned"] == 3

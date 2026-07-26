@@ -43,12 +43,17 @@ from .agreements import (
 )
 from .cache import digest_json, reset_entry
 from .campaign_policy import (
+    MACBOOK_M3_POLICY,
+    MACBOOK_M3_PROFILE,
     STRICT_POLICY,
+    X86_EPYC_POLICY,
     X86_EPYC_PROFILE,
     CampaignPolicy,
     CampaignPolicyError,
     PolicyMeasurementState,
     dependency_reference,
+    resource_frontier_reference,
+    resource_lane_identity,
     validate_policy_measurement,
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
@@ -97,15 +102,21 @@ from .workspace import load_profile_campaign_policy
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_MAX_PUBLICATION_MULTIPLICITY = 9
-_EXPECTED_PUBLICATION_CELL_COUNT = 1646
-_EXPECTED_PUBLICATION_DIRECT_AGREEMENT_COUNT = 1571
+_FULL_CATALOG_MAX_N_FINAL = 9
+_EXPECTED_FULL_CATALOG_CELL_COUNT = 1646
+_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1571
 _EXPECTED_N4_CELL_COUNT = 742
 _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 136,
     Z_RECURRENCE_CROSS_MODE: 80,
     LC_CROSS_LAYOUT_COMPONENT: 208,
     LC_LEGACY_PYAMPLICOL_COMPONENT: 176,
+}
+_EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS = {
+    BUILTIN_UFO_RECURRENCE: 302,
+    Z_RECURRENCE_CROSS_MODE: 180,
+    LC_CROSS_LAYOUT_COMPONENT: 593,
+    LC_LEGACY_PYAMPLICOL_COMPONENT: 496,
 }
 _FULLY_REPLAYED_PYAMPLICOL = "fully-replayed-pyamplicol"
 _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY = (
@@ -121,6 +132,11 @@ _EXPECTED_N4_DIRECT_REPLAY_COUNTS = {
     _FULLY_REPLAYED_PYAMPLICOL: 392,
     _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 176,
     _AUTHENTICATED_STORED_LEGACY_LAYOUT: 32,
+}
+_EXPECTED_FULL_DIRECT_REPLAY_COUNTS = {
+    _FULLY_REPLAYED_PYAMPLICOL: 978,
+    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 496,
+    _AUTHENTICATED_STORED_LEGACY_LAYOUT: 97,
 }
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
     {
@@ -3878,8 +3894,8 @@ def audit_final_report(
     *,
     expected_source_revision: str,
     expected_publication_revision: str | None = None,
-    max_n_final: int = _MAX_PUBLICATION_MULTIPLICITY,
-    expected_cell_count: int | None = _EXPECTED_PUBLICATION_CELL_COUNT,
+    max_n_final: int = _FULL_CATALOG_MAX_N_FINAL,
+    expected_cell_count: int | None = _EXPECTED_FULL_CATALOG_CELL_COUNT,
     replay: bool = True,
     catalog: ReportCatalog = REPORT_CATALOG,
     service: ReportService | None = None,
@@ -3924,8 +3940,8 @@ def _audit_final_report_locked(
     *,
     expected_source_revision: str,
     expected_publication_revision: str | None = None,
-    max_n_final: int = _MAX_PUBLICATION_MULTIPLICITY,
-    expected_cell_count: int | None = _EXPECTED_PUBLICATION_CELL_COUNT,
+    max_n_final: int = _FULL_CATALOG_MAX_N_FINAL,
+    expected_cell_count: int | None = _EXPECTED_FULL_CATALOG_CELL_COUNT,
     replay: bool = True,
     catalog: ReportCatalog = REPORT_CATALOG,
     service: ReportService | None = None,
@@ -3988,9 +4004,13 @@ def _audit_final_report_locked(
         )
         expected_source_tree = None
     policy_profile = report_profile or (
-        X86_EPYC_PROFILE
-        if active_policy.allow_terminal_censors
-        else ""
+        MACBOOK_M3_PROFILE
+        if active_policy is MACBOOK_M3_POLICY
+        else (
+            X86_EPYC_PROFILE
+            if active_policy is X86_EPYC_POLICY
+            else ""
+        )
     )
     publication_lineage = _validated_publication_lineage(
         raw_publication_lineage,
@@ -4118,8 +4138,62 @@ def _audit_final_report_locked(
             f"({len(errors)}):\n{rendered}{suffix}"
         )
 
+    def resource_lane(cell: CellSpec) -> tuple[object, ...]:
+        return tuple(resource_lane_identity(cell).items())
+
+    resource_sources: dict[tuple[object, ...], list[CellSpec]] = defaultdict(list)
+    for source_cell in cells:
+        if measurement_states[source_cell.cell_id] in {
+            PolicyMeasurementState.GENERATION_LIMIT,
+            PolicyMeasurementState.MEMORY_LIMIT,
+        }:
+            resource_sources[resource_lane(source_cell)].append(source_cell)
+    for lane_sources in resource_sources.values():
+        lane_sources.sort(key=lambda item: item.n_final)
+
     dependency_errors: list[str] = []
     for cell in cells:
+        lower_resource_sources = tuple(
+            source
+            for source in resource_sources.get(resource_lane(cell), ())
+            if source.n_final < cell.n_final
+        )
+        frontier_source = (
+            lower_resource_sources[0] if lower_resource_sources else None
+        )
+        state = measurement_states[cell.cell_id]
+        if frontier_source is not None:
+            expected_frontier = resource_frontier_reference(
+                cell,
+                frontier_source,
+                measurements[frontier_source.cell_id],
+            )
+            if state is not PolicyMeasurementState.RESOURCE_FRONTIER:
+                dependency_errors.append(
+                    f"{cell.cell_id}: higher multiplicity is not bound to "
+                    f"resource frontier {frontier_source.cell_id}"
+                )
+                continue
+            provenance = _mapping(
+                measurements[cell.cell_id].get("provenance"),
+                f"{cell.cell_id}.provenance",
+            )
+            censor = _mapping(
+                provenance.get("policy_censor"),
+                f"{cell.cell_id}.policy_censor",
+            )
+            if censor.get("frontier") != expected_frontier:
+                dependency_errors.append(
+                    f"{cell.cell_id}: resource frontier does not exactly bind "
+                    f"the first lower hard censor {frontier_source.cell_id}"
+                )
+            continue
+        if state is PolicyMeasurementState.RESOURCE_FRONTIER:
+            dependency_errors.append(
+                f"{cell.cell_id}: resource frontier has no current lower hard "
+                "resource censor in the same lane"
+            )
+            continue
         baseline_cell = catalog.baseline_cell(cell)
         dependency_cells = {
             dependency.cell_id: dependency
@@ -4146,7 +4220,6 @@ def _audit_final_report_locked(
                 key=lambda item: str(item["cell_id"]),
             )
         )
-        state = measurement_states[cell.cell_id]
         if state is PolicyMeasurementState.SUCCESS and terminal_dependencies:
             dependency_errors.append(
                 f"{cell.cell_id}: successful measurement depends on a "
@@ -4292,6 +4365,18 @@ def _audit_final_report_locked(
             f"expected={_EXPECTED_N4_DIRECT_AGREEMENT_COUNTS}, "
             f"observed={direct_agreement_counts}"
         )
+    if (
+        catalog is REPORT_CATALOG
+        and max_n_final == _FULL_CATALOG_MAX_N_FINAL
+        and len(cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
+        and active_policy is STRICT_POLICY
+        and direct_agreement_counts != _EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS
+    ):
+        raise FinalAuditError(
+            "canonical full-catalog direct-agreement edge counts differ: "
+            f"expected={_EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS}, "
+            f"observed={direct_agreement_counts}"
+        )
 
     legacy_cells = successful_legacy_cells
     legacy_ids = {cell.cell_id for cell in legacy_cells}
@@ -4423,6 +4508,19 @@ def _audit_final_report_locked(
                 f"expected={_EXPECTED_N4_DIRECT_REPLAY_COUNTS}, "
                 f"observed={replayed_direct_agreement_counts}"
             )
+        if (
+            catalog is REPORT_CATALOG
+            and max_n_final == _FULL_CATALOG_MAX_N_FINAL
+            and len(cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
+            and active_policy is STRICT_POLICY
+            and replayed_direct_agreement_counts
+            != _EXPECTED_FULL_DIRECT_REPLAY_COUNTS
+        ):
+            raise FinalAuditError(
+                "canonical full-catalog direct-agreement replay categories "
+                f"differ: expected={_EXPECTED_FULL_DIRECT_REPLAY_COUNTS}, "
+                f"observed={replayed_direct_agreement_counts}"
+            )
         if len(replayed) != len(pyamplicol_cells):
             raise FinalAuditError(
                 "final report replay did not cover every pyAmpliCol measurement: "
@@ -4475,9 +4573,9 @@ def _audit_final_report_locked(
 
     canonical_publication_scope = (
         catalog is REPORT_CATALOG
-        and max_n_final == _MAX_PUBLICATION_MULTIPLICITY
-        and expected_cell_count == _EXPECTED_PUBLICATION_CELL_COUNT
-        and len(cells) == _EXPECTED_PUBLICATION_CELL_COUNT
+        and max_n_final == _FULL_CATALOG_MAX_N_FINAL
+        and expected_cell_count == _EXPECTED_FULL_CATALOG_CELL_COUNT
+        and len(cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
     )
     final_gate_complete = (
         replay and verify_render and verify_pdf and canonical_publication_scope
@@ -4493,11 +4591,11 @@ def _audit_final_report_locked(
     if (
         canonical_publication_scope
         and len(catalog_direct_edges)
-        != _EXPECTED_PUBLICATION_DIRECT_AGREEMENT_COUNT
+        != _EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
     ):
         raise FinalAuditError(
             "canonical publication direct-agreement catalog count differs: "
-            f"expected={_EXPECTED_PUBLICATION_DIRECT_AGREEMENT_COUNT}, "
+            f"expected={_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT}, "
             f"observed={len(catalog_direct_edges)}"
         )
     modes: dict[str, int] = defaultdict(int)
@@ -4522,6 +4620,13 @@ def _audit_final_report_locked(
         "cryptographic_audit_source": "immutable-current-result",
         "policy_state_counts": dict(sorted(state_counts.items())),
         "policy_complete_cell_count": len(measurement_states),
+        "hard_resource_censor_count": (
+            state_counts[PolicyMeasurementState.GENERATION_LIMIT.value]
+            + state_counts[PolicyMeasurementState.MEMORY_LIMIT.value]
+        ),
+        "resource_frontier_cell_count": state_counts[
+            PolicyMeasurementState.RESOURCE_FRONTIER.value
+        ],
         "numerically_evidenced_cell_count": len(successful_cells),
         "pyamplicol_measurement_count": len(pyamplicol_cells),
         "legacy_fresh_oracle_count": len(legacy_cells),
@@ -4588,12 +4693,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-n-final",
         type=int,
-        default=_MAX_PUBLICATION_MULTIPLICITY,
+        default=_FULL_CATALOG_MAX_N_FINAL,
     )
     parser.add_argument(
         "--expected-cell-count",
         type=int,
-        default=_EXPECTED_PUBLICATION_CELL_COUNT,
+        default=_EXPECTED_FULL_CATALOG_CELL_COUNT,
     )
     replay = parser.add_mutually_exclusive_group()
     replay.add_argument(

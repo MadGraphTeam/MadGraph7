@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -19,7 +20,6 @@ from .artifacts import ArtifactAction, ArtifactStore, CurrentRecord
 from .cache import validate_measurement
 from .campaign_policy import (
     STRICT_POLICY,
-    X86_EPYC_POLICY,
     CampaignPolicy,
     CampaignPolicyError,
     PolicyCensorKind,
@@ -27,6 +27,8 @@ from .campaign_policy import (
     dependency_reference,
     generation_limit_for_cell,
     policy_censor_measurement,
+    resource_frontier_reference,
+    resource_lane_identity,
     validate_campaign_settings,
     validate_policy_measurement,
     validate_policy_profile,
@@ -159,6 +161,7 @@ class CampaignResult:
                 PolicyMeasurementState.GENERATION_LIMIT.value,
                 PolicyMeasurementState.MEMORY_LIMIT.value,
                 PolicyMeasurementState.DEPENDENCY.value,
+                PolicyMeasurementState.RESOURCE_FRONTIER.value,
             }
         )
 
@@ -248,6 +251,88 @@ def _policy_current(
     return current, state
 
 
+def _resource_lane_key(cell: CellSpec) -> tuple[object, ...]:
+    """Identify one monotone multiplicity lane across the report catalog."""
+
+    return tuple(resource_lane_identity(cell).items())
+
+
+def _resource_lane_lock_name(cell: CellSpec) -> str:
+    encoded = json.dumps(
+        resource_lane_identity(cell),
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return f"campaign-resource-lane-{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _resource_frontier_source(
+    store: ArtifactStore,
+    cell: CellSpec,
+    *,
+    settings: CampaignSettings,
+    catalog: ReportCatalog,
+    expected_revision: str | None,
+    expected_tree: str | None,
+    lane_cells: Sequence[CellSpec] | None = None,
+) -> tuple[CellSpec, CurrentRecord, PolicyMeasurementState] | None:
+    """Return the first authenticated lower-multiplicity hard resource censor."""
+
+    if not settings.campaign_policy.allow_terminal_censors:
+        return None
+    lane = _resource_lane_key(cell)
+    sources: list[tuple[CellSpec, CurrentRecord, PolicyMeasurementState]] = []
+    candidates = (
+        catalog.measurement_cells()
+        if lane_cells is None
+        else lane_cells
+    )
+    for candidate in candidates:
+        if (
+            candidate.n_final >= cell.n_final
+            or _resource_lane_key(candidate) != lane
+        ):
+            continue
+        current = _policy_current(
+            store,
+            candidate,
+            settings=settings,
+            expected_revision=expected_revision,
+            expected_tree=expected_tree,
+        )
+        if current is None:
+            continue
+        record, state = current
+        if state in {
+            PolicyMeasurementState.GENERATION_LIMIT,
+            PolicyMeasurementState.MEMORY_LIMIT,
+        }:
+            sources.append((candidate, record, state))
+    return min(sources, key=lambda item: item[0].n_final) if sources else None
+
+
+def _frontier_reference(
+    source: tuple[CellSpec, CurrentRecord, PolicyMeasurementState],
+    cell: CellSpec,
+) -> dict[str, object]:
+    source_cell, record, _state = source
+    return resource_frontier_reference(cell, source_cell, record.result)
+
+
+def _measurement_frontier(
+    measurement: Mapping[str, object],
+) -> object:
+    provenance = measurement.get("provenance")
+    censor = (
+        provenance.get("policy_censor")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    return censor.get("frontier") if isinstance(censor, Mapping) else None
+
+
 def _fresh_equivalent_current(
     store: ArtifactStore,
     cell: CellSpec,
@@ -282,6 +367,13 @@ def plan_campaign(
     needed: dict[str, CellSpec] = {}
     force_recompare_ids: set[str] = set()
     visiting: set[str] = set()
+    resource_lanes: dict[tuple[object, ...], list[CellSpec]] = {}
+    if settings.campaign_policy.allow_terminal_censors:
+        for catalog_cell in catalog.measurement_cells():
+            resource_lanes.setdefault(
+                _resource_lane_key(catalog_cell),
+                [],
+            ).append(catalog_cell)
 
     def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
         baseline = catalog.baseline_cell(cell)
@@ -335,10 +427,30 @@ def plan_campaign(
             expected_revision=expected_revision,
             expected_tree=expected_tree,
         )
+        frontier_source = _resource_frontier_source(
+            store,
+            cell,
+            settings=settings,
+            catalog=catalog,
+            expected_revision=expected_revision,
+            expected_tree=expected_tree,
+            lane_cells=resource_lanes.get(_resource_lane_key(cell), ()),
+        )
+        expected_frontier = (
+            None
+            if frontier_source is None
+            else _frontier_reference(frontier_source, cell)
+        )
         fresh_requested = False
         if settings.missing_only and explicitly_requested and current is not None:
             _record, state = current
-            if state is PolicyMeasurementState.SUCCESS:
+            if frontier_source is not None:
+                fresh_requested = (
+                    state is PolicyMeasurementState.RESOURCE_FRONTIER
+                    and _measurement_frontier(_record.result)
+                    == expected_frontier
+                )
+            elif state is PolicyMeasurementState.SUCCESS:
                 fresh_requested = (
                     not missing_dependencies and not terminal_dependencies
                 )
@@ -365,6 +477,8 @@ def plan_campaign(
                         )
                     )
                 )
+            elif state is PolicyMeasurementState.RESOURCE_FRONTIER:
+                fresh_requested = False
             else:
                 fresh_requested = True
         if fresh_requested:
@@ -382,13 +496,30 @@ def plan_campaign(
                 f"report comparison dependency cycle reaches {cell.cell_id!r}"
             )
         visiting.add(cell.cell_id)
-        for dependency in missing_dependencies:
-            include(dependency, explicitly_requested=False)
+        if frontier_source is None:
+            for dependency in missing_dependencies:
+                include(dependency, explicitly_requested=False)
         visiting.remove(cell.cell_id)
         needed[cell.cell_id] = cell
 
     for cell in requested:
         include(cell, explicitly_requested=True)
+
+    if settings.campaign_policy.allow_terminal_censors:
+        scheduled = tuple(needed.values())
+        for cell in requested:
+            if cell.cell_id in needed:
+                continue
+            if any(
+                predecessor.n_final < cell.n_final
+                and _resource_lane_key(predecessor)
+                == _resource_lane_key(cell)
+                for predecessor in scheduled
+            ):
+                # The lower cell will run in this campaign. Retain the higher
+                # fresh current for a post-wave frontier rescan; _run_cell
+                # returns without launching it when the lower cell succeeds.
+                needed[cell.cell_id] = cell
 
     ranks: dict[str, int] = {}
 
@@ -400,6 +531,19 @@ def plan_campaign(
             scheduled = needed.get(dependency.cell_id)
             if scheduled is not None:
                 rank = max(rank, planned_rank(scheduled) + 1)
+        if settings.campaign_policy.allow_terminal_censors:
+            predecessors = tuple(
+                candidate
+                for candidate in needed.values()
+                if candidate.n_final < cell.n_final
+                and _resource_lane_key(candidate) == _resource_lane_key(cell)
+            )
+            if predecessors:
+                predecessor = max(
+                    predecessors,
+                    key=lambda item: item.n_final,
+                )
+                rank = max(rank, planned_rank(predecessor) + 1)
         ranks[cell.cell_id] = rank
         return rank
 
@@ -487,6 +631,15 @@ class CampaignScheduler:
         self.source_revision = self.source_identity.revision
         self.source_tree = self.source_identity.tree
         self._prepared_model_paths: dict[ModelKey, Path] = {}
+        self._resource_lanes: dict[tuple[object, ...], tuple[CellSpec, ...]] = {}
+        if settings.campaign_policy.allow_terminal_censors:
+            grouped: dict[tuple[object, ...], list[CellSpec]] = {}
+            for cell in catalog.measurement_cells():
+                grouped.setdefault(_resource_lane_key(cell), []).append(cell)
+            self._resource_lanes = {
+                lane: tuple(sorted(cells, key=lambda item: item.n_final))
+                for lane, cells in grouped.items()
+            }
 
     def _current(
         self,
@@ -651,19 +804,57 @@ class CampaignScheduler:
         )
 
     def _run_cell(self, planned: PlannedCell) -> CellOutcome:
+        with self.service.store.named_lock(
+            _resource_lane_lock_name(planned.cell)
+        ):
+            return self._run_cell_in_lane(planned)
+
+    def _run_cell_in_lane(self, planned: PlannedCell) -> CellOutcome:
         cell = planned.cell
         with self.service.store.named_lock(f"campaign-cell-{cell.cell_id}"):
             fresh = self._current(cell)
+            frontier_source = _resource_frontier_source(
+                self.service.store,
+                cell,
+                settings=self.settings,
+                catalog=self.catalog,
+                expected_revision=self.source_revision,
+                expected_tree=self.source_tree,
+                lane_cells=self._resource_lanes.get(
+                    _resource_lane_key(cell),
+                    (),
+                ),
+            )
             if (
                 self.settings.missing_only
                 and not planned.force_recompare
                 and fresh is not None
+                and frontier_source is None
             ):
                 return CellOutcome(cell.cell_id, "skipped-current", "already complete")
+            if frontier_source is not None:
+                expected_frontier = _frontier_reference(frontier_source, cell)
+                if (
+                    fresh is not None
+                    and fresh[1] is PolicyMeasurementState.RESOURCE_FRONTIER
+                    and _measurement_frontier(fresh[0].result)
+                    == expected_frontier
+                ):
+                    return CellOutcome(
+                        cell.cell_id,
+                        "skipped-current",
+                        "resource frontier already authenticated",
+                    )
             decision = self.service.store.decide(
                 cell.cell_id,
                 self.settings.artifact_policy,
             )
+            if frontier_source is not None:
+                return self._publish_resource_frontier(
+                    cell,
+                    _frontier_reference(frontier_source, cell),
+                    current=decision.current,
+                )
             current_is_fresh = fresh is not None
             if (
                 decision.action is ArtifactAction.REUSE_CURRENT
@@ -810,7 +1001,7 @@ class CampaignScheduler:
                 if prepared_model is not None:
                     command.extend(("--prepared-model", os.fspath(prepared_model)))
                 if (
-                    self.settings.campaign_policy is X86_EPYC_POLICY
+                    self.settings.campaign_policy.allow_terminal_censors
                     and cell.measurement.execution_mode is ExecutionMode.AMPLICOL
                 ):
                     legacy_repository = self._prepare_legacy_workspace(
@@ -852,7 +1043,7 @@ class CampaignScheduler:
                 if (
                     supervised.reason == "generation_timeout"
                     and generation_timeout is not None
-                    and self.settings.campaign_policy is X86_EPYC_POLICY
+                    and self.settings.campaign_policy.allow_terminal_censors
                 ):
                     phase_evidence = (
                         None
@@ -890,7 +1081,7 @@ class CampaignScheduler:
                         )
                 elif (
                     supervised.reason == "memory_limit"
-                    and self.settings.campaign_policy is X86_EPYC_POLICY
+                    and self.settings.campaign_policy.allow_terminal_censors
                 ):
                     peak = resources.get("peak_rss_bytes")
                     if isinstance(peak, int) and not isinstance(peak, bool):
@@ -1022,6 +1213,35 @@ class CampaignScheduler:
             return CellOutcome(
                 cell.cell_id,
                 PolicyMeasurementState.DEPENDENCY.value,
+                record.attempt_id,
+            )
+
+    def _publish_resource_frontier(
+        self,
+        cell: CellSpec,
+        frontier: Mapping[str, object],
+        *,
+        current: CurrentRecord | None,
+    ) -> CellOutcome:
+        with self.service.store.new_attempt(
+            cell.cell_id,
+            self.settings.artifact_policy,
+            based_on=current,
+        ) as attempt:
+            result = policy_censor_measurement(
+                self.settings.campaign_policy,
+                self.settings.report_profile or "",
+                cell,
+                kind=PolicyCensorKind.RESOURCE_FRONTIER,
+                source_identity=self.source_identity,
+                resources=None,
+                frontier=frontier,
+            )
+            validate_measurement(result, expected_cell=cell)
+            record = attempt.publish(result)
+            return CellOutcome(
+                cell.cell_id,
+                PolicyMeasurementState.RESOURCE_FRONTIER.value,
                 record.attempt_id,
             )
 

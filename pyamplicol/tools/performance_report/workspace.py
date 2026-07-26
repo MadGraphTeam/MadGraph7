@@ -14,6 +14,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from .campaign_policy import (
+    MACBOOK_M3_POLICY,
     X86_EPYC_POLICY,
     CampaignPolicy,
     CampaignPolicyError,
@@ -31,12 +32,13 @@ from .source_identity import (
 )
 from .standalone_build import compile_report
 
-WORKSPACE_SCHEMA = "pyamplicol-performance-report-workspace-v3"
+WORKSPACE_SCHEMA = "pyamplicol-performance-report-workspace-v4"
 WORKSPACE_MANIFEST = "report-workspace.json"
 ENVIRONMENT_SCHEMA = "pyamplicol-performance-report-environment-v1"
 ENVIRONMENT_JSON = "report_environment.json"
 ENVIRONMENT_TEX = "report_environment.tex"
 STANDALONE_BUILDER = "build_pdf.py"
+TABLE_FILLING_RUNBOOK = "TABLE_FILLING.md"
 PROFILE_PARENT = Path("docs/performance_reports")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _PENDING_RUNTIME = "pending exact-source runtime authentication"
@@ -138,19 +140,25 @@ def _assert_portable_results(docs_dir: Path) -> None:
             )
 
 
-def _workspace_readme(profile: str, policy: CampaignPolicy) -> str:
-    populate_options = (
-        "  --workers 10 --cell-cores 1 --target-runtime 5 \\\n"
-        "  --max-ram-gb 100 --allow-symbolica-parallel --refresh-pdf end"
-        if policy is X86_EPYC_POLICY
-        else (
+def _campaign_commands(profile: str, policy: CampaignPolicy) -> str:
+    if policy is X86_EPYC_POLICY:
+        populate_options = (
+            "  --workers 10 --cell-cores 1 --target-runtime 5 \\\n"
+            "  --max-ram-gb 100 --allow-symbolica-parallel --refresh-pdf end"
+        )
+    elif policy is MACBOOK_M3_POLICY:
+        populate_options = (
+            "  --workers 1 --cell-cores 1 --target-runtime 5 \\\n"
+            "  --max-ram-gb 30 --refresh-pdf end"
+        )
+    else:
+        populate_options = (
             "  --workers 1 --cell-cores 1 --target-runtime 5 "
             "--refresh-pdf end"
         )
-    )
-    campaign = "\n".join(
+    return "\n".join(
         line
-        for multiplicity in range(1, 5)
+        for multiplicity in range(1, 10)
         for line in (
             f"python3 docs/performance_reports/{profile}/result_tables.py populate \\",
             f"  --n-final {multiplicity} --missing-only --artifact-policy reuse \\",
@@ -159,6 +167,10 @@ def _workspace_readme(profile: str, policy: CampaignPolicy) -> str:
             "",
         )
     ).rstrip()
+
+
+def _workspace_readme(profile: str, policy: CampaignPolicy) -> str:
+    campaign = _campaign_commands(profile, policy)
     return f"""<!-- SPDX-License-Identifier: 0BSD -->
 # pyAmpliCol performance report: `{profile}`
 
@@ -220,9 +232,9 @@ policy:
 
 After each populate command, inspect its audit result and visually review the
 newly refreshed PDF before continuing to the next multiplicity. Do not replace
-these four invocations with one combined `1..4` campaign.
+these nine invocations with one combined `1..9` campaign.
 
-After all four audits and visual reviews pass, stage only the allowed
+After all nine audits and visual reviews pass, stage only the allowed
 publication outputs, create the report-only descendant, save its identity, and
 run the complete profile-scoped audit:
 
@@ -243,12 +255,58 @@ python3 docs/performance_reports/{profile}/result_tables.py final-audit \\
 git push origin HEAD
 ```
 
-The copied entry point selects this profile automatically. It still requires a
+The copied entry point selects this profile automatically. Detailed execution
+and review requirements are recorded in `{TABLE_FILLING_RUNBOOK}`. It still requires a
 pyAmpliCol source checkout and installed native extension because measurements
-exercise the public runtime APIs. Never stage profile prose, entry points,
-manifests, evaluator source, `.artifacts/`, worker attempts, logs, locks,
-coordination state, or LaTeX auxiliary files. Push the publication commit only
-after `final-audit` succeeds.
+exercise the public runtime APIs. During measurement, do not modify the
+already-committed profile prose, entry points, or manifest, and never stage
+evaluator source, `.artifacts/`, worker attempts, logs, locks, coordination
+state, or LaTeX auxiliary files. Push the publication commit only after
+`final-audit` succeeds.
+"""
+
+
+def _table_filling_runbook(profile: str, policy: CampaignPolicy) -> str:
+    if policy is X86_EPYC_POLICY:
+        resources = (
+            "Run up to ten independent workers, with one core and a decimal "
+            "100 GB hard RSS ceiling per worker. The authenticated generation "
+            "phase is capped at two hours except for original AmpliCol and "
+            "compiled/recurrence LC selected-flow cells, which must finish."
+        )
+    elif policy is MACBOOK_M3_POLICY:
+        resources = (
+            "Run exactly one worker on one core with a decimal 30 GB hard RSS "
+            "ceiling. No generation timeout is authorized for this profile."
+        )
+    else:
+        resources = "Run one worker on one core without policy censors."
+    return f"""<!-- SPDX-License-Identifier: 0BSD -->
+# Complete table-filling campaign for `{profile}`
+
+Start from a clean checkout of the exact committed measurement SHA and a clean
+native build authenticated by `refresh-profile-environment`. Populate the full
+catalog in increasing final-state multiplicity from `n=1` through `n=9`.
+{resources}
+
+Every successful pyAmpliCol result must pass the configured numerical
+comparison. A direct hard-resource boundary is recorded canonically; higher
+multiplicities in the same execution lane receive authenticated frontier
+markers and are not launched. Do not replace failures with hand-written table
+text.
+
+Run each multiplicity separately:
+
+```bash
+{_campaign_commands(profile, policy)}
+```
+
+After every populate step, rebuild the PDF, inspect every refreshed page and
+table visually, and confirm that values, ratios, status markers, and summary
+rows are plausible. Investigate and fix any numerical mismatch before
+continuing. Publish only canonical JSON results, generated table TeX,
+environment metadata, and the reviewed PDF; never publish evaluator artifacts,
+logs, locks, or worker checkouts.
 """
 
 
@@ -309,8 +367,15 @@ def _host_environment_payload(profile: str) -> dict[str, str]:
 
 
 def _pending_environment_payload(profile: str) -> dict[str, str]:
+    pending_host = "pending measurement-host authentication"
     return {
-        **_host_environment_payload(profile),
+        "schema": ENVIRONMENT_SCHEMA,
+        "profile": profile,
+        "platform": pending_host,
+        "machine": pending_host,
+        "processor": pending_host,
+        "python": pending_host,
+        "python_implementation": pending_host,
         "status": "pending_exact_runtime",
         "source_revision": "pending",
         "pyamplicol": _PENDING_RUNTIME,
@@ -512,6 +577,7 @@ def _workspace_manifest(
             ENVIRONMENT_JSON,
             "results/*.json",
             "README.md",
+            TABLE_FILLING_RUNBOOK,
             WORKSPACE_MANIFEST,
             STANDALONE_BUILDER,
             "pyAmpliCol.pdf (when compiled and reviewed)",
@@ -611,6 +677,10 @@ def initialize_profile(
         )
         (staging / "README.md").write_text(
             _workspace_readme(validated, policy),
+            encoding="utf-8",
+        )
+        (staging / TABLE_FILLING_RUNBOOK).write_text(
+            _table_filling_runbook(validated, policy),
             encoding="utf-8",
         )
         manifest = _workspace_manifest(
@@ -938,6 +1008,11 @@ def _validate_workspace(
         raise ReportWorkspaceError(
             f"workspace manifest does not identify profile {profile!r}"
         )
+    if not (path / TABLE_FILLING_RUNBOOK).is_file():
+        raise ReportWorkspaceError(
+            f"workspace table-filling runbook is missing: "
+            f"{path / TABLE_FILLING_RUNBOOK}"
+        )
     try:
         policy_from_manifest(manifest.get("campaign_policy"), profile=profile)
     except CampaignPolicyError as error:
@@ -1008,7 +1083,11 @@ def export_profile(
                 service=source_service,
             )
             _copy_publication_members(source, staging)
-            for name in ("README.md", WORKSPACE_MANIFEST):
+            for name in (
+                "README.md",
+                TABLE_FILLING_RUNBOOK,
+                WORKSPACE_MANIFEST,
+            ):
                 shutil.copy2(source / name, staging / name)
         _install_standalone_builder(staging)
         service = ReportService(
@@ -1053,6 +1132,7 @@ __all__ = [
     "ENVIRONMENT_TEX",
     "PROFILE_PARENT",
     "STANDALONE_BUILDER",
+    "TABLE_FILLING_RUNBOOK",
     "WORKSPACE_MANIFEST",
     "WORKSPACE_SCHEMA",
     "ReportWorkspaceError",

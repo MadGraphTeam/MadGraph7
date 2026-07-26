@@ -16,14 +16,21 @@ from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus, Workload
 from .source_identity import SOURCE_IDENTITY_SCHEMA, ReportSourceIdentity
 
 CAMPAIGN_POLICY_SCHEMA = "pyamplicol-report-campaign-policy-v1"
-POLICY_CENSOR_ABI = "pyamplicol-report-policy-censor-v1"
+POLICY_CENSOR_ABI = "pyamplicol-report-policy-censor-v2"
+RESOURCE_FRONTIER_ABI = "pyamplicol-report-resource-frontier-v1"
 GENERATION_PHASE_EVIDENCE_ABI = (
     "pyamplicol-report-generation-phase-evidence-v1"
 )
 WORKER_PHASE_STATE_ABI = "pyamplicol-report-worker-phase-state-v1"
 STRICT_POLICY_NAME = "strict-complete-v1"
+MACBOOK_M3_POLICY_NAME = "macbook-m3-v1"
 X86_EPYC_POLICY_NAME = "x86-epyc-v1"
+MACBOOK_M3_PROFILE = "macbook_M3"
 X86_EPYC_PROFILE = "x86_EPYC"
+MACBOOK_M3_WORKERS = 1
+MACBOOK_M3_CELL_CORES = 1
+MACBOOK_M3_TARGET_RUNTIME_SECONDS = 5.0
+MACBOOK_M3_MEMORY_LIMIT_BYTES = 30_000_000_000
 X86_EPYC_WORKERS = 10
 X86_EPYC_CELL_CORES = 1
 X86_EPYC_TARGET_RUNTIME_SECONDS = 5.0
@@ -54,9 +61,32 @@ _CENSOR_FIELDS = frozenset(
         "observed_rss_bytes",
         "phase_evidence",
         "dependencies",
+        "frontier",
     }
 )
 _DEPENDENCY_FIELDS = frozenset({"cell_id", "status", "censor_sha256"})
+_FRONTIER_FIELDS = frozenset({"abi", "lane", "root"})
+_FRONTIER_LANE_FIELDS = frozenset(
+    {
+        "process_key",
+        "execution_mode",
+        "model",
+        "accuracy",
+        "backend",
+        "jit_optimization_level",
+        "workload",
+        "variant",
+    }
+)
+_FRONTIER_ROOT_FIELDS = frozenset(
+    {
+        "cell_id",
+        "n_final",
+        "kind",
+        "status",
+        "censor_sha256",
+    }
+)
 _GENERATION_PHASE_FIELDS = frozenset(
     {
         "abi",
@@ -85,6 +115,7 @@ class PolicyCensorKind(StrEnum):
     GENERATION_LIMIT = "generation_limit"
     MEMORY_LIMIT = "memory_limit"
     DEPENDENCY = "dependency"
+    RESOURCE_FRONTIER = "resource_frontier"
 
 
 class PolicyMeasurementState(StrEnum):
@@ -92,6 +123,7 @@ class PolicyMeasurementState(StrEnum):
     GENERATION_LIMIT = "generation_limit"
     MEMORY_LIMIT = "memory_limit"
     DEPENDENCY = "dependency"
+    RESOURCE_FRONTIER = "resource_frontier"
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +150,7 @@ class CampaignPolicy:
             "generation_limit_exemptions": (
                 "all original-AmpliCol cells and pyAmpliCol compiled/recurrence "
                 "LC selected-flow cells"
-                if self.allow_terminal_censors
+                if self.generation_limit_seconds is not None
                 else "none"
             ),
             "require_symbolica_parallel": self.require_symbolica_parallel,
@@ -128,6 +160,14 @@ class CampaignPolicy:
 STRICT_POLICY = CampaignPolicy(
     name=STRICT_POLICY_NAME,
     allow_terminal_censors=False,
+)
+MACBOOK_M3_POLICY = CampaignPolicy(
+    name=MACBOOK_M3_POLICY_NAME,
+    allow_terminal_censors=True,
+    workers=MACBOOK_M3_WORKERS,
+    cell_cores=MACBOOK_M3_CELL_CORES,
+    target_runtime_seconds=MACBOOK_M3_TARGET_RUNTIME_SECONDS,
+    memory_limit_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
 )
 X86_EPYC_POLICY = CampaignPolicy(
     name=X86_EPYC_POLICY_NAME,
@@ -144,16 +184,27 @@ X86_EPYC_POLICY = CampaignPolicy(
 def campaign_policy(name: str) -> CampaignPolicy:
     if name == STRICT_POLICY_NAME:
         return STRICT_POLICY
+    if name == MACBOOK_M3_POLICY_NAME:
+        return MACBOOK_M3_POLICY
     if name == X86_EPYC_POLICY_NAME:
         return X86_EPYC_POLICY
     raise CampaignPolicyError(f"unsupported report campaign policy {name!r}")
 
 
 def default_campaign_policy(profile: str) -> CampaignPolicy:
-    return X86_EPYC_POLICY if profile == X86_EPYC_PROFILE else STRICT_POLICY
+    if profile == MACBOOK_M3_PROFILE:
+        return MACBOOK_M3_POLICY
+    if profile == X86_EPYC_PROFILE:
+        return X86_EPYC_POLICY
+    return STRICT_POLICY
 
 
 def validate_policy_profile(policy: CampaignPolicy, profile: str) -> None:
+    if policy is MACBOOK_M3_POLICY and profile != MACBOOK_M3_PROFILE:
+        raise CampaignPolicyError(
+            f"{MACBOOK_M3_POLICY_NAME} is reserved for profile "
+            f"{MACBOOK_M3_PROFILE!r}"
+        )
     if policy is X86_EPYC_POLICY and profile != X86_EPYC_PROFILE:
         raise CampaignPolicyError(
             f"{X86_EPYC_POLICY_NAME} is reserved for profile "
@@ -162,6 +213,11 @@ def validate_policy_profile(policy: CampaignPolicy, profile: str) -> None:
     if profile == X86_EPYC_PROFILE and policy is not X86_EPYC_POLICY:
         raise CampaignPolicyError(
             f"profile {X86_EPYC_PROFILE!r} requires {X86_EPYC_POLICY_NAME}"
+        )
+    if profile == MACBOOK_M3_PROFILE and policy is not MACBOOK_M3_POLICY:
+        raise CampaignPolicyError(
+            f"profile {MACBOOK_M3_PROFILE!r} requires "
+            f"{MACBOOK_M3_POLICY_NAME}"
         )
 
 
@@ -230,7 +286,7 @@ def validate_campaign_settings(policy: CampaignPolicy, settings: object) -> None
         ),
         (
             getattr(settings, "allow_symbolica_parallel", None),
-            True,
+            policy.require_symbolica_parallel,
             "allow_symbolica_parallel",
         ),
     )
@@ -300,6 +356,78 @@ def dependency_reference(
     }
 
 
+def resource_lane_identity(cell: CellSpec) -> dict[str, object]:
+    """Return the canonical multiplicity-independent resource lane."""
+
+    measurement = cell.measurement
+    return {
+        "process_key": cell.process_key,
+        "execution_mode": measurement.execution_mode.value,
+        "model": None if measurement.model is None else measurement.model.value,
+        "accuracy": measurement.accuracy.value,
+        "backend": measurement.backend,
+        "jit_optimization_level": measurement.jit_optimization_level,
+        "workload": cell.workload.value,
+        "variant": cell.variant,
+    }
+
+
+def resource_frontier_reference(
+    cell: CellSpec,
+    source_cell: CellSpec,
+    source_measurement: Mapping[str, object],
+) -> dict[str, object]:
+    """Bind a higher cell directly to its first lower hard-resource censor."""
+
+    if (
+        source_cell.n_final >= cell.n_final
+        or resource_lane_identity(source_cell) != resource_lane_identity(cell)
+    ):
+        raise CampaignPolicyError(
+            "resource-frontier source is not lower in the same lane"
+        )
+    provenance = source_measurement.get("provenance")
+    censor = (
+        provenance.get("policy_censor")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    digest = (
+        provenance.get("policy_censor_sha256")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    if (
+        not isinstance(censor, Mapping)
+        or censor.get("kind")
+        not in {
+            PolicyCensorKind.GENERATION_LIMIT.value,
+            PolicyCensorKind.MEMORY_LIMIT.value,
+        }
+        or source_measurement.get("status")
+        not in {
+            ResultStatus.TIMEOUT.value,
+            ResultStatus.MEMORY_LIMIT.value,
+        }
+        or not isinstance(digest, str)
+        or _SHA256_RE.fullmatch(digest) is None
+    ):
+        raise CampaignPolicyError(
+            "resource-frontier source is not a direct hard-resource censor"
+        )
+    return {
+        "abi": RESOURCE_FRONTIER_ABI,
+        "lane": resource_lane_identity(cell),
+        "root": {
+            "cell_id": source_cell.cell_id,
+            "n_final": source_cell.n_final,
+            "kind": censor["kind"],
+            "status": source_measurement["status"],
+            "censor_sha256": digest,
+        },
+    }
+
+
 def policy_censor_measurement(
     policy: CampaignPolicy,
     profile: str,
@@ -312,15 +440,21 @@ def policy_censor_measurement(
     observed_rss_bytes: int | None = None,
     phase_evidence: Mapping[str, object] | None = None,
     dependencies: Sequence[Mapping[str, object]] = (),
+    frontier: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    if policy is not X86_EPYC_POLICY or not policy.allow_terminal_censors:
-        raise CampaignPolicyError("terminal censors require the x86 EPYC policy")
+    if not policy.allow_terminal_censors:
+        raise CampaignPolicyError(
+            "terminal censors require an architecture campaign policy"
+        )
     validate_policy_profile(policy, profile)
     if kind is PolicyCensorKind.GENERATION_LIMIT:
         status = ResultStatus.TIMEOUT
     elif kind is PolicyCensorKind.MEMORY_LIMIT:
         status = ResultStatus.MEMORY_LIMIT
-    elif kind is PolicyCensorKind.DEPENDENCY:
+    elif kind in {
+        PolicyCensorKind.DEPENDENCY,
+        PolicyCensorKind.RESOURCE_FRONTIER,
+    }:
         status = ResultStatus.SKIP
     else:  # pragma: no cover - exhaustive StrEnum defense
         raise CampaignPolicyError(f"unsupported policy censor kind {kind!r}")
@@ -338,6 +472,7 @@ def policy_censor_measurement(
             None if phase_evidence is None else dict(phase_evidence)
         ),
         "dependencies": [dict(item) for item in dependencies],
+        "frontier": None if frontier is None else dict(frontier),
     }
     provenance = {
         **_source_provenance(source_identity),
@@ -356,9 +491,19 @@ def policy_censor_measurement(
                     "process generation exceeded two hours"
                     if kind is PolicyCensorKind.GENERATION_LIMIT
                     else (
-                        "worker process tree exceeded 100 GB RSS"
+                        "worker process tree exceeded "
+                        f"{int(policy.memory_limit_bytes or 0) / 1_000_000_000:g} "
+                        "GB RSS"
                         if kind is PolicyCensorKind.MEMORY_LIMIT
-                        else "required numerical-agreement dependency was censored"
+                        else (
+                            "higher multiplicity omitted after a lower-multiplicity "
+                            "resource ceiling"
+                            if kind is PolicyCensorKind.RESOURCE_FRONTIER
+                            else (
+                                "required numerical-agreement dependency was "
+                                "censored"
+                            )
+                        )
                     )
                 ),
             },
@@ -436,7 +581,9 @@ def _validate_resources(
 ) -> Mapping[str, object]:
     resources = measurement.get("resources")
     if not isinstance(resources, Mapping):
-        raise CampaignPolicyError("x86 EPYC measurement has no resource evidence")
+        raise CampaignPolicyError(
+            "architecture-policy measurement has no resource evidence"
+        )
     peak = resources.get("peak_rss_bytes")
     if (
         resources.get("available") is not True
@@ -446,9 +593,10 @@ def _validate_resources(
         or peak < 0
     ):
         raise CampaignPolicyError(
-            "x86 EPYC resource monitoring is unavailable or incomplete"
+            "architecture-policy resource monitoring is unavailable or incomplete"
         )
-    assert policy.memory_limit_bytes is not None
+    if policy.memory_limit_bytes is None:
+        raise CampaignPolicyError("architecture policy has no memory ceiling")
     return resources
 
 
@@ -566,13 +714,13 @@ def validate_policy_measurement(
             raise CampaignPolicyError(
                 "successful measurement source tree does not match"
             )
-        if policy is X86_EPYC_POLICY:
+        if policy.allow_terminal_censors:
             resources = _validate_resources(measurement, policy)
             peak = int(resources["peak_rss_bytes"])
             assert policy.memory_limit_bytes is not None
             if peak > policy.memory_limit_bytes:
                 raise CampaignPolicyError(
-                    "successful x86 EPYC measurement exceeded its RSS ceiling"
+                    "successful architecture measurement exceeded its RSS ceiling"
                 )
             generation = _finite_number(
                 measurement.get("generation_seconds"),
@@ -581,7 +729,8 @@ def validate_policy_measurement(
             limit = generation_limit_for_cell(policy, cell)
             if limit is not None and generation > limit:
                 raise CampaignPolicyError(
-                    "successful x86 EPYC measurement exceeded its generation ceiling"
+                    "successful architecture measurement exceeded its "
+                    "generation ceiling"
                 )
             if limit is not None:
                 _validate_generation_phase(
@@ -629,9 +778,14 @@ def validate_policy_measurement(
     dependencies = record.get("dependencies")
     if not isinstance(dependencies, list):
         raise CampaignPolicyError("policy_censor dependencies must be an array")
+    frontier = record.get("frontier")
 
     if kind is PolicyCensorKind.GENERATION_LIMIT:
-        if status != ResultStatus.TIMEOUT.value or generation_limit_exempt(cell):
+        if (
+            policy.generation_limit_seconds is None
+            or status != ResultStatus.TIMEOUT.value
+            or generation_limit_exempt(cell)
+        ):
             raise CampaignPolicyError(
                 "generation censor status or exemption is invalid"
             )
@@ -639,7 +793,6 @@ def validate_policy_measurement(
             record.get("observed_generation_seconds"),
             "observed_generation_seconds",
         )
-        assert policy.generation_limit_seconds is not None
         if observed < policy.generation_limit_seconds:
             raise CampaignPolicyError(
                 "generation censor did not reach the two-hour ceiling"
@@ -660,7 +813,11 @@ def validate_policy_measurement(
             raise CampaignPolicyError(
                 "generation censor phase evidence differs from resources"
             )
-        if record.get("observed_rss_bytes") is not None or dependencies:
+        if (
+            record.get("observed_rss_bytes") is not None
+            or dependencies
+            or frontier is not None
+        ):
             raise CampaignPolicyError("generation censor fields are inconsistent")
         return PolicyMeasurementState.GENERATION_LIMIT
 
@@ -676,20 +833,84 @@ def validate_policy_measurement(
             or observed <= policy.memory_limit_bytes
             or observed != resources.get("peak_rss_bytes")
             or record.get("observed_generation_seconds") is not None
+            or record.get("phase_evidence") is not None
             or dependencies
+            or frontier is not None
         ):
             raise CampaignPolicyError("memory censor evidence is inconsistent")
         return PolicyMeasurementState.MEMORY_LIMIT
 
     if status != ResultStatus.SKIP.value:
-        raise CampaignPolicyError("dependency censor status is invalid")
+        raise CampaignPolicyError("derived censor status is invalid")
     if (
         record.get("observed_generation_seconds") is not None
         or record.get("observed_rss_bytes") is not None
         or record.get("phase_evidence") is not None
         or measurement.get("resources") is not None
-        or not dependencies
     ):
+        raise CampaignPolicyError("derived censor fields are inconsistent")
+    if kind is PolicyCensorKind.RESOURCE_FRONTIER:
+        if dependencies or not isinstance(frontier, Mapping):
+            raise CampaignPolicyError(
+                "resource-frontier censor fields are inconsistent"
+            )
+        if set(frontier) != _FRONTIER_FIELDS:
+            raise CampaignPolicyError(
+                "resource-frontier reference is malformed"
+            )
+        lane = frontier.get("lane")
+        root = frontier.get("root")
+        if (
+            frontier.get("abi") != RESOURCE_FRONTIER_ABI
+            or not isinstance(lane, Mapping)
+            or set(lane) != _FRONTIER_LANE_FIELDS
+            or dict(lane) != resource_lane_identity(cell)
+            or not isinstance(root, Mapping)
+            or set(root) != _FRONTIER_ROOT_FIELDS
+        ):
+            raise CampaignPolicyError(
+                "resource-frontier identity is invalid"
+            )
+        cell_id = root.get("cell_id")
+        digest = root.get("censor_sha256")
+        root_n = root.get("n_final")
+        root_kind = root.get("kind")
+        root_status = root.get("status")
+        if (
+            not isinstance(cell_id, str)
+            or not cell_id
+            or isinstance(root_n, bool)
+            or not isinstance(root_n, int)
+            or root_n < 1
+            or root_n >= cell.n_final
+            or root_kind
+            not in {
+                PolicyCensorKind.GENERATION_LIMIT.value,
+                PolicyCensorKind.MEMORY_LIMIT.value,
+            }
+            or root_status
+            not in {
+                ResultStatus.TIMEOUT.value,
+                ResultStatus.MEMORY_LIMIT.value,
+            }
+            or not isinstance(digest, str)
+            or _SHA256_RE.fullmatch(digest) is None
+        ):
+            raise CampaignPolicyError(
+                "resource-frontier reference is invalid"
+            )
+        if (
+            root_kind == PolicyCensorKind.GENERATION_LIMIT.value
+            and root_status != ResultStatus.TIMEOUT.value
+        ) or (
+            root_kind == PolicyCensorKind.MEMORY_LIMIT.value
+            and root_status != ResultStatus.MEMORY_LIMIT.value
+        ):
+            raise CampaignPolicyError(
+                "resource-frontier kind and status differ"
+            )
+        return PolicyMeasurementState.RESOURCE_FRONTIER
+    if frontier is not None or not dependencies:
         raise CampaignPolicyError("dependency censor fields are inconsistent")
     seen: set[str] = set()
     for dependency in dependencies:
@@ -727,9 +948,31 @@ def policy_status_label(measurement: Mapping[str, object]) -> str | None:
     if kind == PolicyCensorKind.GENERATION_LIMIT.value:
         return ">2h"
     if kind == PolicyCensorKind.MEMORY_LIMIT.value:
-        return ">100GB"
-    if kind == PolicyCensorKind.DEPENDENCY.value:
-        dependencies = record.get("dependencies")
+        memory_limit = record.get("memory_limit_bytes")
+        if (
+            isinstance(memory_limit, bool)
+            or not isinstance(memory_limit, int)
+            or memory_limit <= 0
+            or memory_limit % 1_000_000_000
+        ):
+            return None
+        return f">{memory_limit // 1_000_000_000}GB"
+    if kind in {
+        PolicyCensorKind.DEPENDENCY.value,
+        PolicyCensorKind.RESOURCE_FRONTIER.value,
+    }:
+        if kind == PolicyCensorKind.RESOURCE_FRONTIER.value:
+            raw_frontier = record.get("frontier")
+            root = (
+                raw_frontier.get("root")
+                if isinstance(raw_frontier, Mapping)
+                else None
+            )
+            dependencies = (
+                [root] if isinstance(root, Mapping) else []
+            )
+        else:
+            dependencies = record.get("dependencies")
         labels: set[str] = set()
         if isinstance(dependencies, list):
             for dependency in dependencies:
@@ -739,7 +982,18 @@ def policy_status_label(measurement: Mapping[str, object]) -> str | None:
                 if status == ResultStatus.TIMEOUT.value:
                     labels.add(">2h")
                 elif status == ResultStatus.MEMORY_LIMIT.value:
-                    labels.add(">100GB")
+                    memory_limit = record.get("memory_limit_bytes")
+                    if (
+                        isinstance(memory_limit, int)
+                        and not isinstance(memory_limit, bool)
+                        and memory_limit > 0
+                        and memory_limit % 1_000_000_000 == 0
+                    ):
+                        labels.add(
+                            f">{memory_limit // 1_000_000_000}GB"
+                        )
+                    else:
+                        labels.add("blocked")
                 else:
                     labels.add("blocked")
         detail = "/".join(sorted(labels)) if labels else "blocked"
@@ -750,7 +1004,15 @@ def policy_status_label(measurement: Mapping[str, object]) -> str | None:
 __all__ = [
     "CAMPAIGN_POLICY_SCHEMA",
     "GENERATION_PHASE_EVIDENCE_ABI",
+    "MACBOOK_M3_CELL_CORES",
+    "MACBOOK_M3_MEMORY_LIMIT_BYTES",
+    "MACBOOK_M3_POLICY",
+    "MACBOOK_M3_POLICY_NAME",
+    "MACBOOK_M3_PROFILE",
+    "MACBOOK_M3_TARGET_RUNTIME_SECONDS",
+    "MACBOOK_M3_WORKERS",
     "POLICY_CENSOR_ABI",
+    "RESOURCE_FRONTIER_ABI",
     "STRICT_POLICY",
     "STRICT_POLICY_NAME",
     "WORKER_PHASE_STATE_ABI",
@@ -774,6 +1036,8 @@ __all__ = [
     "policy_censor_measurement",
     "policy_from_manifest",
     "policy_status_label",
+    "resource_frontier_reference",
+    "resource_lane_identity",
     "validate_campaign_settings",
     "validate_policy_measurement",
     "validate_policy_profile",

@@ -10,7 +10,7 @@ import pytest
 from tools.performance_report import workspace as workspace_module
 from tools.performance_report.artifacts import LockTimeoutError
 from tools.performance_report.campaign_policy import (
-    STRICT_POLICY,
+    MACBOOK_M3_POLICY,
     X86_EPYC_POLICY,
 )
 from tools.performance_report.catalog import REPORT_CATALOG
@@ -28,6 +28,7 @@ from tools.performance_report.workspace import (
     ENVIRONMENT_SCHEMA,
     ENVIRONMENT_TEX,
     STANDALONE_BUILDER,
+    TABLE_FILLING_RUNBOOK,
     WORKSPACE_MANIFEST,
     ReportWorkspaceError,
     export_profile,
@@ -107,13 +108,16 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
     assert environment["schema"] == ENVIRONMENT_SCHEMA
     assert environment["status"] == "pending_exact_runtime"
     assert environment["source_revision"] == "pending"
+    assert environment["platform"] == "pending measurement-host authentication"
+    assert environment["machine"] == "pending measurement-host authentication"
     assert "source checkout" not in environment["pyamplicol"]
     assert (profile / "results/report-cache.schema.json").is_file()
     assert not (profile / ".artifacts").exists()
     assert not (profile / "results/.coordination").exists()
     manifest = json.loads((profile / WORKSPACE_MANIFEST).read_text())
     assert manifest["profile"] == "macbook_M3"
-    assert manifest["campaign_policy"] == STRICT_POLICY.as_manifest()
+    assert manifest["campaign_policy"] == MACBOOK_M3_POLICY.as_manifest()
+    assert (profile / TABLE_FILLING_RUNBOOK).is_file()
     assert manifest["measurement_state"] == "copied"
     assert manifest["initialized_environment"]["profile"] == "macbook_M3"
     assert (
@@ -150,11 +154,11 @@ def test_initialize_x86_epyc_profile_binds_parallel_resource_policy(
     readme = (profile / "README.md").read_text(encoding="utf-8")
 
     assert manifest["campaign_policy"] == X86_EPYC_POLICY.as_manifest()
-    assert readme.count("--workers 10 --cell-cores 1 --target-runtime 5") == 4
-    assert readme.count("--max-ram-gb 100 --allow-symbolica-parallel") == 4
+    assert readme.count("--workers 10 --cell-cores 1 --target-runtime 5") == 9
+    assert readme.count("--max-ram-gb 100 --allow-symbolica-parallel") == 9
 
 
-def test_profile_readme_requires_four_audited_five_second_campaigns(
+def test_profile_readme_requires_full_audited_five_second_campaign(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -163,13 +167,14 @@ def test_profile_readme_requires_four_audited_five_second_campaigns(
     profile = initialize_profile(repo, "macbook_M3")
     readme = (profile / "README.md").read_text(encoding="utf-8")
 
-    for multiplicity in range(1, 5):
+    for multiplicity in range(1, 10):
         assert f"--n-final {multiplicity} --missing-only --artifact-policy reuse" in (
             readme
         )
-    assert readme.count("--target-runtime 5 --refresh-pdf end") == 4
-    assert readme.count("result_tables.py audit") == 5
-    assert "1..4" in readme
+    assert readme.count("--workers 1 --cell-cores 1 --target-runtime 5") == 9
+    assert readme.count("--max-ram-gb 30 --refresh-pdf end") == 9
+    assert readme.count("result_tables.py audit") == 10
+    assert "1..9" in readme
     assert "--artifact-policy regenerate" not in readme
     assert "visually review" in readme
     assert 'MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"' in readme
@@ -541,6 +546,7 @@ def test_export_profile_contains_only_fresh_publication_workspace(
     assert (profile / "pyAmpliCol.pdf").read_bytes() == stale_pdf
     assert len(compiled) == 1
     assert (exported / STANDALONE_BUILDER).is_file()
+    assert (exported / TABLE_FILLING_RUNBOOK).is_file()
     assert (exported / WORKSPACE_MANIFEST).is_file()
     assert (exported / ENVIRONMENT_JSON).is_file()
     assert (exported / ENVIRONMENT_TEX).is_file()

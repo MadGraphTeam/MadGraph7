@@ -153,6 +153,7 @@ class BestModeWorkload:
     baseline: Measurement
     candidate: Measurement
     mode: ExecutionMode | None
+    terminal_label: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -327,7 +328,7 @@ class BaselineCandidateAdapter:
         )
         if not applicable:
             joined = tuple(
-                BestModeWorkload(workload, _NA, _NA, None)
+                BestModeWorkload(workload, _NA, _NA, None, None)
                 for workload in workloads
             )
             return BestModeMatrixCell(
@@ -372,14 +373,19 @@ class BaselineCandidateAdapter:
                         _BEST_MODE_ORDER.index(item[0]),
                     ),
                 )
+                terminal_label = None
             else:
                 winner_mode, winner = None, _NA
+                terminal_label = _best_mode_terminal_label(
+                    tuple(measurement for _mode, measurement in candidates)
+                )
             joined_workloads.append(
                 BestModeWorkload(
                     workload,
                     baseline,
                     winner,
                     winner_mode,
+                    terminal_label,
                 )
             )
         return BestModeMatrixCell(
@@ -1041,16 +1047,84 @@ def _best_mode_code(mode: ExecutionMode | None) -> str:
     return rf"\bestmodecode{{{_BEST_MODE_CODES[mode]}}}"
 
 
+def _canonical_best_mode_terminal_label(
+    labels: Sequence[str | None],
+) -> str | None:
+    """Return one concise label only when every represented outcome is terminal."""
+
+    if not labels:
+        return None
+    canonical: list[str] = []
+    for label in labels:
+        if label is None:
+            return None
+        if label.startswith("dependency"):
+            normalized = ("dependency",)
+        else:
+            normalized = tuple(label.split("/"))
+            if not normalized or any(
+                item not in {">2h", "dependency"}
+                and not (
+                    item.startswith(">")
+                    and item.endswith("GB")
+                    and item[1:-2].isdigit()
+                )
+                for item in normalized
+            ):
+                return None
+        for item in normalized:
+            if item not in canonical:
+                canonical.append(item)
+    def order(item: str) -> tuple[int, int]:
+        if item == ">2h":
+            return (0, 0)
+        if item.endswith("GB"):
+            return (1, int(item[1:-2]))
+        return (2, 0)
+
+    return "/".join(sorted(canonical, key=order)) or None
+
+
+def _best_mode_terminal_label(
+    measurements: Sequence[Measurement],
+) -> str | None:
+    """Return one fail-closed summary of an all-terminal candidate set."""
+
+    return _canonical_best_mode_terminal_label(
+        tuple(policy_status_label(measurement) for measurement in measurements)
+    )
+
+
+def _best_mode_terminal_status(joined: BestModeWorkload) -> str:
+    if joined.terminal_label is None:
+        return _status(joined.candidate)
+    return (
+        r"\matrixstatus{ReportOrange}{"
+        + _tex_escape(joined.terminal_label)
+        + "}"
+    )
+
+
 def _best_mode_ratio(
     joined: BestModeWorkload,
     field: str,
 ) -> str:
     if joined.mode is None:
-        return _status(joined.candidate)
+        return _best_mode_terminal_status(joined)
     if not _ok(joined.baseline):
         return _status(joined.baseline)
     return _ratio(joined.candidate, joined.baseline, field) + _best_mode_code(
         joined.mode
+    )
+
+
+def _best_mode_runtime_ratio(joined: BestModeWorkload) -> str:
+    if joined.mode is None:
+        return _best_mode_terminal_status(joined)
+    return _ratio(
+        joined.candidate,
+        joined.baseline,
+        "wall_seconds_per_point",
     )
 
 
@@ -1073,8 +1147,8 @@ def _best_mode_lc_cell(view: BestModeMatrixCell) -> str:
         f"{{{_best_mode_ratio(selected, 'generation_seconds')}}}"
         f"{{{_best_mode_ratio(all_flow, 'generation_seconds')}}}"
         f"{{{baseline_runtime}}}"
-        f"{{{_ratio(selected.candidate, selected.baseline, 'wall_seconds_per_point')}}}"
-        f"{{{_ratio(all_flow.candidate, all_flow.baseline, 'wall_seconds_per_point')}}}"
+        f"{{{_best_mode_runtime_ratio(selected)}}}"
+        f"{{{_best_mode_runtime_ratio(all_flow)}}}"
     )
 
 
@@ -1085,7 +1159,7 @@ def _best_mode_contracted_cell(view: BestModeMatrixCell) -> str:
         f"{{{_metric(joined.baseline, 'generation_seconds')}}}"
         f"{{{_best_mode_ratio(joined, 'generation_seconds')}}}"
         f"{{{_metric(joined.baseline, 'wall_seconds_per_point', microseconds=True)}}}"
-        f"{{{_ratio(joined.candidate, joined.baseline, 'wall_seconds_per_point')}}}"
+        f"{{{_best_mode_runtime_ratio(joined)}}}"
     )
 
 
@@ -1120,6 +1194,15 @@ def _best_mode_summary_pair(
             for measurement in (item.baseline, item.candidate)
         ):
             return _not_exposed()
+        terminal_label = _canonical_best_mode_terminal_label(
+            tuple(item.terminal_label for item in joined)
+        )
+        if terminal_label is not None:
+            return (
+                r"\matrixstatus{ReportOrange}{"
+                + _tex_escape(terminal_label)
+                + "}"
+            )
         return r"\matrixna{ReportMuted}"
     baseline_sum = math.fsum(float(item.baseline[field]) for item in valid)
     candidate_sum = math.fsum(float(item.candidate[field]) for item in valid)
@@ -1846,6 +1929,14 @@ def summarize_visible_completeness(
                 f"{status!r}, expected {ResultStatus.OK.value!r}"
             )
 
+    def inspect(
+        location: str,
+        fragments: Sequence[str],
+    ) -> None:
+        for index, fragment in enumerate(fragments):
+            if _renders_na(fragment):
+                na_slots.append(f"{location}[{index}]")
+
     def record(
         cell: CellSpec,
         location: str,
@@ -1854,9 +1945,10 @@ def summarize_visible_completeness(
         if cell.n_final > max_n_final:
             return
         rendered_cell_ids.add(cell.cell_id)
-        for index, fragment in enumerate(fragments):
-            if _renders_na(fragment):
-                na_slots.append(f"{location}[{index}] ({cell.cell_id})")
+        inspect(
+            f"{location} ({cell.cell_id})",
+            fragments,
+        )
 
     def locate(
         dataset_id: str,
@@ -1964,6 +2056,52 @@ def summarize_visible_completeness(
             ):
                 if _renders_na(fragment):
                     na_slots.append(f"{dataset.table_name}/n{n_final}/{label}")
+
+    for accuracy in Accuracy:
+        table_name = _BEST_MODE_TABLE_NAMES[accuracy]
+        multiplicities = tuple(range(1, 10 if accuracy is Accuracy.LC else 6))
+        views_by_n: dict[int, list[BestModeMatrixCell]] = {}
+        for family in process_families:
+            for n_final in multiplicities:
+                if n_final > max_n_final:
+                    continue
+                view = adapter.best_mode_cell(accuracy, family, n_final)
+                views_by_n.setdefault(n_final, []).append(view)
+                if not view.applicable:
+                    continue
+                for joined in view.workloads:
+                    inspect(
+                        (
+                            f"{table_name}/n{n_final}/{family.key}/"
+                            f"{joined.workload.value}"
+                        ),
+                        (
+                            _metric(
+                                joined.baseline,
+                                "generation_seconds",
+                            ),
+                            _best_mode_ratio(
+                                joined,
+                                "generation_seconds",
+                            ),
+                            _metric(
+                                joined.baseline,
+                                "wall_seconds_per_point",
+                                microseconds=True,
+                            ),
+                            _best_mode_runtime_ratio(joined),
+                        ),
+                    )
+        for n_final, views in views_by_n.items():
+            if not any(view.applicable for view in views):
+                continue
+            inspect(
+                f"{table_name}/n{n_final}/best-mode-summaries",
+                (
+                    _best_mode_generation_summary(views, accuracy),
+                    _best_mode_wall_summary(views, accuracy),
+                ),
+            )
 
     not_exposed_seen = 0
     if getattr(catalog, "z_variants", ()):

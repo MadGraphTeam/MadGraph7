@@ -16,7 +16,15 @@ from tools.performance_report.arena_profile import (
     build_arena_profile_evidence,
     digest_arena_profile_value,
 )
-from tools.performance_report.cache import build_reset_caches
+from tools.performance_report.cache import build_reset_caches, empty_measurement
+from tools.performance_report.campaign_policy import (
+    X86_EPYC_GENERATION_LIMIT_SECONDS,
+    X86_EPYC_MEMORY_LIMIT_BYTES,
+    X86_EPYC_POLICY,
+    PolicyCensorKind,
+    dependency_reference,
+    policy_censor_measurement,
+)
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.models import (
     Accuracy,
@@ -38,6 +46,7 @@ from tools.performance_report.render import (
     render_z_ladder,
     summarize_visible_completeness,
 )
+from tools.performance_report.source_identity import ReportSourceIdentity
 from tools.performance_report.validation_summary import (
     render_validation_summary,
     summarize_validation,
@@ -220,6 +229,84 @@ def _fill_visible_n4_scope(caches: dict[str, dict[str, object]]) -> None:
             }
 
 
+_POLICY_IDENTITY = ReportSourceIdentity("1" * 40, "2" * 40, ())
+
+
+def _entry(
+    cache: dict[str, object],
+    *,
+    process_key: str,
+    n_final: int,
+    workload: Workload,
+) -> dict[str, object]:
+    entries = cache["entries"]
+    assert isinstance(entries, list)
+    return next(
+        item
+        for item in entries
+        if item["process_key"] == process_key
+        and item["n_final"] == n_final
+        and item["workload"] == workload.value
+        and item["variant"] is None
+    )
+
+
+def _policy_resources(peak: int) -> dict[str, object]:
+    return {
+        "available": True,
+        "current_rss_bytes": peak,
+        "peak_rss_bytes": peak,
+        "child_count": 1,
+        "cpu_seconds": 1.0,
+        "wall_seconds": 2.0,
+        "probe_error": None,
+    }
+
+
+def _generation_censor(cell) -> dict[str, object]:
+    phase = {
+        "abi": "pyamplicol-report-generation-phase-evidence-v1",
+        "phase_state_abi": "pyamplicol-report-worker-phase-state-v1",
+        "configured_timeout_seconds": X86_EPYC_GENERATION_LIMIT_SECONDS,
+        "supervisor_reason": "generation_timeout",
+        "authenticated": True,
+        "run_id": "render-policy-test",
+        "worker_pid": 123,
+        "final_sequence": 1,
+        "final_phase": "generation",
+        "generation_started_monotonic_ns": 1,
+        "generation_finished_monotonic_ns": None,
+        "generation_elapsed_seconds": X86_EPYC_GENERATION_LIMIT_SECONDS,
+        "final_state_sha256": "3" * 64,
+        "error": None,
+    }
+    resources = _policy_resources(1_000_000)
+    resources["generation_phase"] = phase
+    return policy_censor_measurement(
+        X86_EPYC_POLICY,
+        "x86_EPYC",
+        cell,
+        kind=PolicyCensorKind.GENERATION_LIMIT,
+        source_identity=_POLICY_IDENTITY,
+        resources=resources,
+        observed_generation_seconds=X86_EPYC_GENERATION_LIMIT_SECONDS,
+        phase_evidence=phase,
+    )
+
+
+def _memory_censor(cell) -> dict[str, object]:
+    peak = X86_EPYC_MEMORY_LIMIT_BYTES + 1
+    return policy_censor_measurement(
+        X86_EPYC_POLICY,
+        "x86_EPYC",
+        cell,
+        kind=PolicyCensorKind.MEMORY_LIMIT,
+        source_identity=_POLICY_IDENTITY,
+        resources=_policy_resources(peak),
+        observed_rss_bytes=peak,
+    )
+
+
 def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
     rendered = render_all_matrix_tables(reset_caches)
     expected = [dataset.table_name for dataset in REPORT_CATALOG.matrix_datasets]
@@ -338,6 +425,187 @@ def test_best_mode_summary_tie_breaks_in_documented_mode_order(reset_caches) -> 
     ]
 
 
+def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _set_ok(
+        _cache_by_dataset(caches, "reference_amplicol_nlc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=10.0,
+        wall=10.0e-6,
+        execution=None,
+    )
+    candidate_entries = {
+        mode: _entry(
+            _cache_by_dataset(
+                caches,
+                f"matrix_{mode.value}_builtin_sm_nlc",
+            ),
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.CONTRACTED,
+        )
+        for mode in (
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+        )
+    }
+    recurrence_cell = REPORT_CATALOG.cell(
+        str(candidate_entries[ExecutionMode.RECURRENCE]["cell_id"])
+    )
+    recurrence_censor = _generation_censor(recurrence_cell)
+    candidate_entries[ExecutionMode.RECURRENCE]["measurement"] = recurrence_censor
+    compiled_cell = REPORT_CATALOG.cell(
+        str(candidate_entries[ExecutionMode.COMPILED]["cell_id"])
+    )
+    candidate_entries[ExecutionMode.COMPILED]["measurement"] = _memory_censor(
+        compiled_cell
+    )
+    eager_cell = REPORT_CATALOG.cell(
+        str(candidate_entries[ExecutionMode.EAGER]["cell_id"])
+    )
+    candidate_entries[ExecutionMode.EAGER]["measurement"] = (
+        policy_censor_measurement(
+            X86_EPYC_POLICY,
+            "x86_EPYC",
+            eager_cell,
+            kind=PolicyCensorKind.DEPENDENCY,
+            source_identity=_POLICY_IDENTITY,
+            resources=None,
+            dependencies=(
+                dependency_reference(
+                    recurrence_cell.cell_id,
+                    recurrence_censor,
+                ),
+            ),
+        )
+    )
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+    row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
+
+    marker = r"\matrixstatus{ReportOrange}{>2h/>100GB/dependency}"
+    assert row.count(marker) == 2
+    assert r"\bestmodecode{" not in row
+    assert r"\matrixna{ReportMuted}" not in row
+
+
+def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_n4_scope(caches)
+    recurrence = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_nlc",
+    )
+    compiled = _cache_by_dataset(
+        caches,
+        "matrix_compiled_builtin_sm_nlc",
+    )
+    eager = _cache_by_dataset(caches, "matrix_eager_builtin_sm_nlc")
+    recurrence_entries = recurrence["entries"]
+    assert isinstance(recurrence_entries, list)
+    for recurrence_entry in recurrence_entries:
+        if recurrence_entry["n_final"] != 1:
+            continue
+        process_key = str(recurrence_entry["process_key"])
+        recurrence_cell = REPORT_CATALOG.cell(
+            str(recurrence_entry["cell_id"])
+        )
+        recurrence_censor = _generation_censor(recurrence_cell)
+        recurrence_entry["measurement"] = recurrence_censor
+        compiled_entry = _entry(
+            compiled,
+            process_key=process_key,
+            n_final=1,
+            workload=Workload.CONTRACTED,
+        )
+        compiled_entry["measurement"] = _memory_censor(
+            REPORT_CATALOG.cell(str(compiled_entry["cell_id"]))
+        )
+        eager_entry = _entry(
+            eager,
+            process_key=process_key,
+            n_final=1,
+            workload=Workload.CONTRACTED,
+        )
+        eager_entry["measurement"] = policy_censor_measurement(
+            X86_EPYC_POLICY,
+            "x86_EPYC",
+            REPORT_CATALOG.cell(str(eager_entry["cell_id"])),
+            kind=PolicyCensorKind.DEPENDENCY,
+            source_identity=_POLICY_IDENTITY,
+            resources=None,
+            dependencies=(
+                dependency_reference(
+                    recurrence_cell.cell_id,
+                    recurrence_censor,
+                ),
+            ),
+        )
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+    generation_summary = next(
+        line
+        for line in tex.splitlines()
+        if r"\textbf{summary: generation}" in line
+    )
+    wall_summary = next(
+        line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
+    )
+    marker = r"\matrixstatus{ReportOrange}{>2h/>100GB/dependency}"
+    assert generation_summary.count(marker) == 1
+    assert wall_summary.count(marker) == 1
+
+    completeness = summarize_visible_completeness(
+        caches,
+        max_n_final=4,
+        policy=X86_EPYC_POLICY,
+    )
+    assert completeness.complete
+    assert not completeness.applicable_na_display_slots
+
+
+def test_best_mode_missing_candidates_remain_incomplete_under_strict_policy(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_n4_scope(caches)
+    for mode in (
+        ExecutionMode.RECURRENCE,
+        ExecutionMode.COMPILED,
+        ExecutionMode.EAGER,
+    ):
+        entry = _entry(
+            _cache_by_dataset(
+                caches,
+                f"matrix_{mode.value}_builtin_sm_nlc",
+            ),
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.CONTRACTED,
+        )
+        entry["measurement"] = empty_measurement()
+
+    completeness = summarize_visible_completeness(
+        caches,
+        max_n_final=4,
+    )
+
+    assert not completeness.complete
+    assert any(
+        "result_matrix_best_builtin_sm_nlc_table.tex/n1/"
+        "dd_z_jets/contracted"
+        in slot
+        for slot in completeness.applicable_na_display_slots
+    )
+
+
 def test_matrix_baseline_labels_follow_dataset_contract(reset_caches) -> None:
     rendered = render_all_matrix_tables(reset_caches)
 
@@ -421,7 +689,7 @@ def test_visible_completeness_rejects_na_in_applicable_slot(reset_caches) -> Non
     assert isinstance(measurement, dict)
     measurement["generation_seconds"] = None
 
-    summary = summarize_visible_completeness(caches)
+    summary = summarize_visible_completeness(caches, max_n_final=4)
 
     assert not summary.complete
     assert any(entry["cell_id"] in slot for slot in summary.applicable_na_display_slots)
@@ -450,7 +718,7 @@ def test_visible_completeness_rejects_missing_candidate_generation_ratio(
     assert isinstance(measurement, dict)
     measurement["generation_seconds"] = None
 
-    summary = summarize_visible_completeness(caches)
+    summary = summarize_visible_completeness(caches, max_n_final=4)
 
     assert not summary.complete
     assert any(
@@ -476,7 +744,7 @@ def test_visible_completeness_rejects_non_ok_required_status(reset_caches) -> No
     assert isinstance(measurement, dict)
     measurement["status"] = ResultStatus.TIMEOUT.value
 
-    summary = summarize_visible_completeness(caches)
+    summary = summarize_visible_completeness(caches, max_n_final=4)
 
     assert not summary.complete
     assert not any(

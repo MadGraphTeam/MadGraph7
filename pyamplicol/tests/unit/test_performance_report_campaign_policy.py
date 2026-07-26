@@ -11,6 +11,8 @@ import pytest
 from tools.performance_report.artifacts import ArtifactStore
 from tools.performance_report.cache import build_reset_caches
 from tools.performance_report.campaign_policy import (
+    MACBOOK_M3_MEMORY_LIMIT_BYTES,
+    MACBOOK_M3_POLICY,
     STRICT_POLICY,
     X86_EPYC_GENERATION_LIMIT_SECONDS,
     X86_EPYC_MEMORY_LIMIT_BYTES,
@@ -22,11 +24,13 @@ from tools.performance_report.campaign_policy import (
     generation_limit_exempt,
     policy_censor_measurement,
     policy_status_label,
+    resource_frontier_reference,
+    resource_lane_identity,
     validate_policy_measurement,
 )
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.cli import _gb_bytes, _parser
-from tools.performance_report.final_audit import audit_final_report
+from tools.performance_report.final_audit import FinalAuditError, audit_final_report
 from tools.performance_report.models import ArtifactPolicy, Workload
 from tools.performance_report.publication import portable_publication_value
 from tools.performance_report.render import _status
@@ -81,6 +85,19 @@ def _x86_settings(**changes: object) -> CampaignSettings:
     return CampaignSettings(**values)  # type: ignore[arg-type]
 
 
+def _mac_settings(**changes: object) -> CampaignSettings:
+    values: dict[str, object] = {
+        "workers": 1,
+        "cell_cores": 1,
+        "target_runtime_seconds": 5.0,
+        "max_rss_bytes": MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        "campaign_policy": MACBOOK_M3_POLICY,
+        "report_profile": "macbook_M3",
+    }
+    values.update(changes)
+    return CampaignSettings(**values)  # type: ignore[arg-type]
+
+
 def _memory_censor(cell, *, peak: int) -> dict[str, object]:
     return policy_censor_measurement(
         X86_EPYC_POLICY,
@@ -111,6 +128,9 @@ def test_x86_policy_has_the_exact_canonical_n4_split() -> None:
         )
         for cell in exempt
     )
+    full = REPORT_CATALOG.measurement_cells()
+    assert len(full) == 1646
+    assert sum(generation_limit_exempt(cell) for cell in full) == 665
 
 
 def test_x86_settings_are_exact_and_use_decimal_100_gb() -> None:
@@ -134,6 +154,48 @@ def test_x86_settings_are_exact_and_use_decimal_100_gb() -> None:
         )
     )
     assert parsed.max_ram_gb == 100.0
+
+
+def test_macbook_policy_is_exact_memory_only_decimal_30_gb() -> None:
+    settings = _mac_settings()
+
+    assert settings.workers == 1
+    assert settings.cell_cores == 1
+    assert settings.target_runtime_seconds == 5.0
+    assert settings.max_rss_bytes == 30_000_000_000
+    assert settings.generation_time_limit_seconds is None
+    assert settings.timeout_seconds is None
+    assert settings.allow_symbolica_parallel is False
+    with pytest.raises(CampaignPolicyError, match="max_rss_bytes"):
+        _mac_settings(max_rss_bytes=30 * 1024**3)
+    with pytest.raises(CampaignPolicyError, match="generation_time_limit"):
+        _mac_settings(generation_time_limit_seconds=7200.0)
+
+    cell = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+    result = policy_censor_measurement(
+        MACBOOK_M3_POLICY,
+        "macbook_M3",
+        cell,
+        kind=PolicyCensorKind.MEMORY_LIMIT,
+        source_identity=_IDENTITY,
+        resources=_resources(peak),
+        observed_rss_bytes=peak,
+    )
+    assert policy_status_label(result) == ">30GB"
+    assert (
+        validate_policy_measurement(
+            MACBOOK_M3_POLICY,
+            "macbook_M3",
+            cell,
+            result,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+        is PolicyMeasurementState.MEMORY_LIMIT
+    )
 
 
 def test_policy_censors_are_canonical_and_tamper_evident() -> None:
@@ -280,6 +342,165 @@ def test_rendered_policy_markers_are_explicit() -> None:
 
     assert policy_status_label(result) == ">100GB"
     assert ">100GB" in _status(result)
+
+
+def test_resource_frontier_is_lane_bound_and_tamper_evident() -> None:
+    source = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    target = REPORT_CATALOG.cell(
+        "scalar-contact-n3-scalar-contact-contracted"
+    )
+    root = _memory_censor(
+        source,
+        peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
+    )
+    frontier = resource_frontier_reference(target, source, root)
+    result = policy_censor_measurement(
+        X86_EPYC_POLICY,
+        "x86_EPYC",
+        target,
+        kind=PolicyCensorKind.RESOURCE_FRONTIER,
+        source_identity=_IDENTITY,
+        resources=None,
+        frontier=frontier,
+    )
+
+    assert policy_status_label(result) == "dependency >100GB"
+    assert (
+        validate_policy_measurement(
+            X86_EPYC_POLICY,
+            "x86_EPYC",
+            target,
+            result,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+        is PolicyMeasurementState.RESOURCE_FRONTIER
+    )
+    assert frontier["lane"] == resource_lane_identity(target)
+    assert frontier["root"] == {
+        "cell_id": source.cell_id,
+        "n_final": 2,
+        "kind": PolicyCensorKind.MEMORY_LIMIT.value,
+        "status": "memory_limit",
+        "censor_sha256": root["provenance"]["policy_censor_sha256"],
+    }
+
+    other_lane = REPORT_CATALOG.cell(
+        "scalar-gravity-n3-scalar-gravity-contracted"
+    )
+    with pytest.raises(CampaignPolicyError, match="same lane"):
+        resource_frontier_reference(other_lane, source, root)
+
+
+def test_full_catalog_resource_lanes_are_unique_and_monotone(
+    tmp_path: Path,
+) -> None:
+    cells = REPORT_CATALOG.measurement_cells()
+    identities = tuple(
+        (tuple(resource_lane_identity(cell).items()), cell.n_final)
+        for cell in cells
+    )
+    assert len(cells) == 1646
+    assert len(set(identities)) == len(identities)
+    assert len({lane for lane, _n_final in identities}) == 296
+
+    selected = tuple(
+        REPORT_CATALOG.cell(cell_id)
+        for cell_id in (
+            "scalar-contact-n2-scalar-contact-contracted",
+            "scalar-contact-n3-scalar-contact-contracted",
+            "scalar-gravity-n2-scalar-gravity-contracted",
+            "scalar-gravity-n3-scalar-gravity-contracted",
+        )
+    )
+    planned = plan_campaign(
+        selected,
+        store=ArtifactStore(
+            artifact_root=tmp_path / "artifacts",
+            lock_root=tmp_path / "locks",
+        ),
+        settings=_x86_settings(),
+        expected_revision=_REVISION,
+        expected_tree=_TREE,
+    )
+    ranks = {item.cell.cell_id: item.rank for item in planned}
+    assert (
+        ranks["scalar-contact-n3-scalar-contact-contracted"]
+        > ranks["scalar-contact-n2-scalar-contact-contracted"]
+    )
+    assert (
+        ranks["scalar-gravity-n3-scalar-gravity-contracted"]
+        > ranks["scalar-gravity-n2-scalar-gravity-contracted"]
+    )
+    assert (
+        ranks["scalar-contact-n2-scalar-contact-contracted"]
+        == ranks["scalar-gravity-n2-scalar-gravity-contracted"]
+    )
+
+
+def test_missing_only_reuses_and_rebinds_resource_frontier(
+    tmp_path: Path,
+) -> None:
+    store = ArtifactStore(
+        artifact_root=tmp_path / "artifacts",
+        lock_root=tmp_path / "locks",
+    )
+    source = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    target = REPORT_CATALOG.cell(
+        "scalar-contact-n3-scalar-contact-contracted"
+    )
+    first = _memory_censor(
+        source,
+        peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
+    )
+    store.new_attempt(
+        source.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(first)
+    frontier = policy_censor_measurement(
+        X86_EPYC_POLICY,
+        "x86_EPYC",
+        target,
+        kind=PolicyCensorKind.RESOURCE_FRONTIER,
+        source_identity=_IDENTITY,
+        resources=None,
+        frontier=resource_frontier_reference(target, source, first),
+    )
+    store.new_attempt(
+        target.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(frontier)
+    settings = _x86_settings(missing_only=True)
+
+    assert plan_campaign(
+        (target,),
+        store=store,
+        settings=settings,
+        expected_revision=_REVISION,
+        expected_tree=_TREE,
+    ) == ()
+
+    second = _memory_censor(
+        source,
+        peak=X86_EPYC_MEMORY_LIMIT_BYTES + 2,
+    )
+    store.new_attempt(
+        source.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(second)
+    planned = plan_campaign(
+        (target,),
+        store=store,
+        settings=settings,
+        expected_revision=_REVISION,
+        expected_tree=_TREE,
+    )
+    assert tuple(item.cell.cell_id for item in planned) == (target.cell_id,)
+    assert planned[0].force_recompare is True
 
 
 def test_workspace_policy_is_bound_to_the_exact_measured_commit(
@@ -518,6 +739,150 @@ def test_scheduler_publishes_authenticated_generation_censor(
     )
 
 
+def test_scheduler_uses_mac_memory_limit_without_generation_channel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "test@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Test"),
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "."), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
+    service = ReportService(
+        ReportPaths.from_repo(
+            repo,
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "locks",
+        )
+    )
+    cell = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+
+    def fake_supervise(_command, **arguments):
+        assert arguments["generation_timeout_seconds"] is None
+        assert arguments["phase_channel"] is None
+        assert arguments["max_rss_bytes"] == MACBOOK_M3_MEMORY_LIMIT_BYTES
+        peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+        return SupervisedResult(
+            returncode=-15,
+            reason="memory_limit",
+            usage=ResourceUsage(True, peak, peak, 0, 1.0, 2.0),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler = CampaignScheduler(service, settings=_mac_settings())
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            cell=cell,
+            dependency=False,
+            baseline_cell_id=None,
+            rank=0,
+        )
+    )
+
+    assert outcome.status == PolicyMeasurementState.MEMORY_LIMIT.value
+    current = service.store.load_current(cell.cell_id)
+    assert current is not None
+    assert policy_status_label(current.result) == ">30GB"
+
+
+def test_scheduler_never_launches_above_authenticated_resource_frontier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "test@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Test"),
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "."), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
+    service = ReportService(
+        ReportPaths.from_repo(
+            repo,
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "locks",
+        )
+    )
+    scheduler = CampaignScheduler(service, settings=_x86_settings())
+    source = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    target = REPORT_CATALOG.cell(
+        "scalar-contact-n3-scalar-contact-contracted"
+    )
+    peak = X86_EPYC_MEMORY_LIMIT_BYTES + 1
+    root = policy_censor_measurement(
+        X86_EPYC_POLICY,
+        "x86_EPYC",
+        source,
+        kind=PolicyCensorKind.MEMORY_LIMIT,
+        source_identity=scheduler.source_identity,
+        resources=_resources(peak),
+        observed_rss_bytes=peak,
+    )
+    service.store.new_attempt(
+        source.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(root)
+
+    def forbidden_supervisor(*_args, **_kwargs):
+        raise AssertionError("frontier target must not launch a worker")
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        forbidden_supervisor,
+    )
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            cell=target,
+            dependency=False,
+            baseline_cell_id=None,
+            rank=1,
+        )
+    )
+
+    assert outcome.status == PolicyMeasurementState.RESOURCE_FRONTIER.value
+    current = service.store.load_current(target.cell_id)
+    assert current is not None
+    assert policy_status_label(current.result) == "dependency >100GB"
+    assert (
+        validate_policy_measurement(
+            X86_EPYC_POLICY,
+            "x86_EPYC",
+            target,
+            current.result,
+            expected_source_revision=scheduler.source_revision,
+            expected_source_tree=scheduler.source_tree,
+        )
+        is PolicyMeasurementState.RESOURCE_FRONTIER
+    )
+
+
 def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -590,3 +955,120 @@ def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
     visible = result["visible_completeness"]
     assert isinstance(visible, dict)
     assert visible["status"] == "ok"
+
+
+def test_final_audit_requires_exact_monotone_resource_frontier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    target = REPORT_CATALOG.cell(
+        "scalar-contact-n3-scalar-contact-contracted"
+    )
+
+    class TwoCellCatalog:
+        matrix_datasets = ()
+        process_families = ()
+        scalar_datasets = ()
+        z_variants = ()
+        models: ClassVar[dict[object, object]] = {}
+
+        def measurement_cells(self):
+            return (source, target)
+
+        def baseline_cell(self, _cell):
+            return None
+
+    catalog = TwoCellCatalog()
+    paths = ReportPaths.from_repo(
+        tmp_path,
+        artifact_root=tmp_path / "artifacts",
+        coordination_root=tmp_path / "locks",
+    )
+    service = ReportService(paths, catalog=catalog)  # type: ignore[arg-type]
+    root = _memory_censor(
+        source,
+        peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
+    )
+    frontier = policy_censor_measurement(
+        X86_EPYC_POLICY,
+        "x86_EPYC",
+        target,
+        kind=PolicyCensorKind.RESOURCE_FRONTIER,
+        source_identity=_IDENTITY,
+        resources=None,
+        frontier=resource_frontier_reference(target, source, root),
+    )
+
+    def publish(measurements: tuple[dict[str, object], ...]) -> None:
+        for cell, measurement in zip(
+            (source, target),
+            measurements,
+            strict=True,
+        ):
+            service.store.new_attempt(
+                cell.cell_id,
+                ArtifactPolicy.REGENERATE,
+            ).publish(measurement)
+        caches = build_reset_caches(catalog)  # type: ignore[arg-type]
+        for payload in caches.values():
+            entries = payload["entries"]
+            assert isinstance(entries, list)
+            for entry in entries:
+                cell_id = str(entry["cell_id"])
+                measurement = measurements[
+                    0 if cell_id == source.cell_id else 1
+                ]
+                entry["measurement"] = portable_publication_value(
+                    measurement,
+                    paths,
+                )
+        paths.results_dir.mkdir(parents=True, exist_ok=True)
+        for name, payload in caches.items():
+            (paths.results_dir / name).write_text(
+                json.dumps(payload),
+                encoding="ascii",
+            )
+
+    publish((root, frontier))
+    monkeypatch.setattr(
+        service,
+        "audit",
+        lambda: {"cache_render_match": True},
+    )
+    result = audit_final_report(
+        tmp_path,
+        expected_source_revision=_REVISION,
+        max_n_final=3,
+        expected_cell_count=2,
+        catalog=catalog,  # type: ignore[arg-type]
+        service=service,
+        source_auditor=lambda *_args: None,
+        pdf_auditor=lambda _service: {"status": "ok"},
+        campaign_policy=X86_EPYC_POLICY,
+    )
+    assert result["hard_resource_censor_count"] == 1
+    assert result["resource_frontier_cell_count"] == 1
+
+    second_root = _memory_censor(
+        target,
+        peak=X86_EPYC_MEMORY_LIMIT_BYTES + 2,
+    )
+    publish((root, second_root))
+    with pytest.raises(
+        FinalAuditError,
+        match="higher multiplicity is not bound to resource frontier",
+    ):
+        audit_final_report(
+            tmp_path,
+            expected_source_revision=_REVISION,
+            max_n_final=3,
+            expected_cell_count=2,
+            catalog=catalog,  # type: ignore[arg-type]
+            service=service,
+            source_auditor=lambda *_args: None,
+            pdf_auditor=lambda _service: {"status": "ok"},
+            campaign_policy=X86_EPYC_POLICY,
+        )
