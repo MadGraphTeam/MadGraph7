@@ -7,9 +7,12 @@ mode-owned JSON caches in `results/`; measured values must never be edited into
 TeX directly.
 
 The checked-in release state is deliberately empty. Every cache entry has
-status `not_available`, every measurement field is `null`, and every rendered
-cell is `N/A`. The process families and multiplicity grids remain present so a
-future campaign cannot silently change coverage.
+status `not_available`, every measurement field is `null`, and every applicable
+measured cell is `N/A`. Structural process/multiplicity positions are marked
+`not applicable`, while original-AmpliCol execution-only fields that have no
+public timing boundary are marked `not exposed`. The process families and
+multiplicity grids remain present so a future campaign cannot silently change
+coverage.
 
 ## Commands
 

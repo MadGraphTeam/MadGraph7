@@ -9,8 +9,10 @@ from dataclasses import dataclass
 
 from .cache import empty_measurement
 from .catalog import REPORT_CATALOG, ReportCatalog, z_dataset_id
+from .display_contract import report_display_accounting
 from .models import (
     Accuracy,
+    CellSpec,
     ExecutionMode,
     MatrixDataset,
     ModelKey,
@@ -127,6 +129,56 @@ class JoinedMatrixCell:
     n_final: int
     applicable: bool
     workloads: tuple[JoinedWorkload, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class VisibleCompleteness:
+    """Render-level evidence for the publication's measured-cell contract."""
+
+    maximum_n_final: int
+    required_measurement_count: int
+    rendered_required_measurement_count: int
+    structurally_not_applicable_display_slot_count: int
+    not_exposed_display_slot_count: int
+    applicable_na_display_slots: tuple[str, ...]
+    missing_rendered_cell_ids: tuple[str, ...]
+    contract_errors: tuple[str, ...]
+
+    @property
+    def complete(self) -> bool:
+        return not (
+            self.applicable_na_display_slots
+            or self.missing_rendered_cell_ids
+            or self.contract_errors
+        )
+
+    def as_dict(self) -> dict[str, object]:
+        """Return compact, JSON-safe final-audit evidence."""
+
+        preview_limit = 50
+        return {
+            "kind": "pyamplicol-report-visible-completeness",
+            "schema_version": 1,
+            "status": "ok" if self.complete else "incomplete",
+            "maximum_n_final": self.maximum_n_final,
+            "required_measurement_count": self.required_measurement_count,
+            "rendered_required_measurement_count": (
+                self.rendered_required_measurement_count
+            ),
+            "structurally_not_applicable_display_slot_count": (
+                self.structurally_not_applicable_display_slot_count
+            ),
+            "not_exposed_display_slot_count": self.not_exposed_display_slot_count,
+            "applicable_na_display_slot_count": len(self.applicable_na_display_slots),
+            "applicable_na_display_slots": list(
+                self.applicable_na_display_slots[:preview_limit]
+            ),
+            "missing_rendered_cell_count": len(self.missing_rendered_cell_ids),
+            "missing_rendered_cell_ids": list(
+                self.missing_rendered_cell_ids[:preview_limit]
+            ),
+            "contract_errors": list(self.contract_errors[:preview_limit]),
+        }
 
 
 class BaselineCandidateAdapter:
@@ -401,6 +453,14 @@ def _matrix_macros() -> list[str]:
             r"\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}"
         ),
         r"\providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}",
+        (
+            r"\providecommand{\matrixnotapplicable}[1]{"
+            r"\textcolor{#1}{\textsc{not applicable}}}"
+        ),
+        (
+            r"\providecommand{\matrixnotexposed}[1]{"
+            r"\textcolor{#1}{\textsc{not exposed}}}"
+        ),
         r"\providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}",
         (
             r"\providecommand{\matrixnaratio}[1]{\matrixpunct{(}"
@@ -428,6 +488,14 @@ def _matrix_macros() -> list[str]:
             r"\end{tabular}\endgroup}"
         ),
     ]
+
+
+def _not_applicable() -> str:
+    return r"\matrixnotapplicable{ReportMuted}"
+
+
+def _not_exposed() -> str:
+    return r"\matrixnotexposed{ReportMuted}"
 
 
 def _lc_cell(view: JoinedMatrixCell) -> str:
@@ -595,7 +663,7 @@ def _matrix_block(
             view = adapter.matrix_cell(dataset, family, n_final)
             views_by_n[n_final].append(view)
             if not view.applicable:
-                row.append(r"\matrixna{ReportMuted}")
+                row.append(_not_applicable())
             elif dataset.candidate.accuracy is Accuracy.LC:
                 row.append(_lc_cell(view))
             else:
@@ -733,6 +801,11 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + _tex_escape(candidate)
         + ". "
         + _tex_escape(detail)
+        + " "
+        + _tex_escape(
+            "Not applicable marks a process/multiplicity combination outside "
+            "the process-family definition; it is not an unfilled measurement."
+        )
         + "}"
     )
 
@@ -905,7 +978,7 @@ def _z_block(
                     microseconds=True,
                 ),
                 (
-                    r"\matrixna{ReportMuted}"
+                    _not_exposed()
                     if reference
                     else _z_value(
                         selected,
@@ -927,7 +1000,7 @@ def _z_block(
                     microseconds=True,
                 ),
                 (
-                    r"\matrixna{ReportMuted}"
+                    _not_exposed()
                     if reference
                     else _z_value(
                         all_flow,
@@ -952,7 +1025,9 @@ def _z_block(
                 r"Parenthesized values are candidate/reference ratios. "
                 r"All-flow generation shows the absolute pyAmpliCol value "
                 r"marked n.c. because its setup boundary differs from the "
-                r"reference.}"
+                r"reference. In the reference rows, not exposed means that "
+                r"the original interface provides no separate native-execution "
+                r"timing; it is not a missing measurement.}"
             ),
             r"\end{minipage}",
         ]
@@ -1144,6 +1219,354 @@ def render_all_scalar_ladders(
     }
 
 
+def _renders_na(value: str) -> bool:
+    return r"\matrixna{" in value or "{N/A}" in value
+
+
+def _measurements_by_cell_id(
+    caches: Mapping[str, CachePayload] | Iterable[CachePayload],
+) -> dict[str, Measurement]:
+    payloads = caches.values() if isinstance(caches, Mapping) else caches
+    measurements: dict[str, Measurement] = {}
+    for payload in payloads:
+        entries = payload.get("entries")
+        if not isinstance(entries, list):
+            raise ValueError("report cache has no entries list")
+        for entry in entries:
+            if not isinstance(entry, Mapping):
+                raise ValueError("report cache contains a non-object entry")
+            cell_id = entry.get("cell_id")
+            measurement = entry.get("measurement")
+            if not isinstance(cell_id, str) or not isinstance(measurement, Mapping):
+                raise ValueError("report cache entry is missing its measurement")
+            if cell_id in measurements:
+                raise ValueError(f"duplicate report cell {cell_id!r}")
+            measurements[cell_id] = measurement
+    return measurements
+
+
+def summarize_visible_completeness(
+    caches: Mapping[str, CachePayload] | Iterable[CachePayload],
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+    max_n_final: int = 4,
+) -> VisibleCompleteness:
+    """Audit every logical table slot that represents a required measurement.
+
+    The check invokes the same field-level rendering helpers as the tables. It
+    therefore catches an ``ok`` cache record whose missing submetric would still
+    appear as ``N/A`` in TeX, as well as an applicable reset record. Structural
+    matrix positions and reference-only execution fields are counted separately
+    and are required to use their dedicated visible markers.
+    """
+
+    if max_n_final < 1:
+        raise ValueError("max_n_final must be positive")
+    cache_source = caches if isinstance(caches, Mapping) else tuple(caches)
+    measurements = _measurements_by_cell_id(cache_source)
+    required_cells = tuple(
+        cell for cell in catalog.measurement_cells() if cell.n_final <= max_n_final
+    )
+    required_by_id = {cell.cell_id: cell for cell in required_cells}
+    if len(required_by_id) != len(required_cells):
+        raise ValueError("report catalog contains duplicate required cell IDs")
+    cell_index = {
+        (
+            cell.dataset_id,
+            cell.process_key,
+            cell.n_final,
+            cell.workload,
+            cell.variant,
+        ): cell
+        for cell in catalog.measurement_cells()
+    }
+    rendered_cell_ids: set[str] = set()
+    na_slots: list[str] = []
+    contract_errors: list[str] = []
+
+    def record(
+        cell: CellSpec,
+        location: str,
+        fragments: Sequence[str],
+    ) -> None:
+        if cell.n_final > max_n_final:
+            return
+        rendered_cell_ids.add(cell.cell_id)
+        for index, fragment in enumerate(fragments):
+            if _renders_na(fragment):
+                na_slots.append(f"{location}[{index}] ({cell.cell_id})")
+
+    def locate(
+        dataset_id: str,
+        process_key: str | None,
+        n_final: int,
+        workload: Workload,
+        variant: str | None = None,
+    ) -> CellSpec | None:
+        cell = cell_index.get((dataset_id, process_key, n_final, workload, variant))
+        if cell is None:
+            contract_errors.append(
+                f"renderer has no catalog cell for {dataset_id}/n{n_final}/"
+                f"{process_key}/{variant}/{workload.value}"
+            )
+        return cell
+
+    adapter = BaselineCandidateAdapter(cache_source, catalog=catalog)
+    structural_seen = 0
+    matrix_datasets = getattr(catalog, "matrix_datasets", ())
+    process_families = getattr(catalog, "process_families", ())
+    for dataset in matrix_datasets:
+        views_by_n: dict[int, list[JoinedMatrixCell]] = {}
+        for family in process_families:
+            for n_final in dataset.multiplicities:
+                if n_final > max_n_final:
+                    continue
+                view = adapter.matrix_cell(dataset, family, n_final)
+                views_by_n.setdefault(n_final, []).append(view)
+                if not view.applicable:
+                    structural_seen += 1
+                    if _renders_na(_not_applicable()):
+                        contract_errors.append(
+                            f"{dataset.table_name}/n{n_final}/{family.key}: "
+                            "structural slot uses the missing-measurement marker"
+                        )
+                    continue
+                for joined in view.workloads:
+                    candidate = locate(
+                        dataset.dataset_id,
+                        family.key,
+                        n_final,
+                        joined.workload,
+                    )
+                    if candidate is None:
+                        continue
+                    baseline = catalog.baseline_cell(candidate)
+                    if baseline is None:
+                        contract_errors.append(
+                            f"{candidate.cell_id}: matrix baseline is missing"
+                        )
+                        continue
+                    record(
+                        baseline,
+                        (
+                            f"{dataset.table_name}/n{n_final}/{family.key}/"
+                            f"{joined.workload.value}/baseline"
+                        ),
+                        (
+                            _metric(joined.baseline, "generation_seconds"),
+                            _metric(
+                                joined.baseline,
+                                "wall_seconds_per_point",
+                                microseconds=True,
+                            ),
+                        ),
+                    )
+                    candidate_generation = (
+                        _metric(joined.candidate, "generation_seconds")
+                        if (
+                            joined.workload is Workload.ALL_FLOW
+                            and dataset.candidate.execution_mode
+                            is ExecutionMode.RECURRENCE
+                            and dataset.baseline.execution_mode
+                            is ExecutionMode.AMPLICOL
+                        )
+                        else _ratio(
+                            joined.candidate,
+                            joined.baseline,
+                            "generation_seconds",
+                        )
+                    )
+                    record(
+                        candidate,
+                        (
+                            f"{dataset.table_name}/n{n_final}/{family.key}/"
+                            f"{joined.workload.value}/candidate"
+                        ),
+                        (
+                            candidate_generation,
+                            _ratio_pair(joined.candidate, joined.baseline),
+                        ),
+                    )
+        for n_final, views in views_by_n.items():
+            if not any(view.applicable for view in views):
+                continue
+            for label, fragment in (
+                (
+                    "generation-summary",
+                    _matrix_generation_summary(views, dataset),
+                ),
+                (
+                    "wall-summary",
+                    _matrix_wall_summary(views, dataset.candidate.accuracy),
+                ),
+            ):
+                if _renders_na(fragment):
+                    na_slots.append(f"{dataset.table_name}/n{n_final}/{label}")
+
+    not_exposed_seen = 0
+    if getattr(catalog, "z_variants", ()):
+        for model in (ModelKey.BUILTIN_SM, ModelKey.UFO_SM):
+            if model not in getattr(catalog, "models", {}):
+                continue
+            for n_final in range(1, min(max_n_final, 9) + 1):
+                for variant in catalog.z_variants:
+                    for workload in (
+                        Workload.SELECTED_FLOW,
+                        Workload.ALL_FLOW,
+                    ):
+                        joined = adapter.z_workload(
+                            model=model,
+                            n_final=n_final,
+                            variant=variant,
+                            workload=workload,
+                        )
+                        reference = variant.execution_mode is ExecutionMode.AMPLICOL
+                        if reference:
+                            cell = locate(
+                                "reference_amplicol_lc",
+                                "dd_z_jets",
+                                n_final,
+                                workload,
+                            )
+                            if cell is None:
+                                continue
+                            fragments = (
+                                _z_value(
+                                    joined,
+                                    "generation_seconds",
+                                    reference=True,
+                                    comparable=workload is not Workload.ALL_FLOW,
+                                ),
+                                _z_value(
+                                    joined,
+                                    "wall_seconds_per_point",
+                                    reference=True,
+                                    microseconds=True,
+                                ),
+                            )
+                            not_exposed_seen += 1
+                            if _renders_na(_not_exposed()):
+                                contract_errors.append(
+                                    "reference execution slot uses the "
+                                    "missing-measurement marker"
+                                )
+                        else:
+                            cell = locate(
+                                z_dataset_id(model),
+                                "dd_z_jets",
+                                n_final,
+                                workload,
+                                variant.key,
+                            )
+                            if cell is None:
+                                continue
+                            fragments = (
+                                _z_value(
+                                    joined,
+                                    "generation_seconds",
+                                    reference=False,
+                                    comparable=workload is not Workload.ALL_FLOW,
+                                ),
+                                _z_value(
+                                    joined,
+                                    "wall_seconds_per_point",
+                                    reference=False,
+                                    microseconds=True,
+                                ),
+                                _z_value(
+                                    joined,
+                                    "execution_seconds_per_point",
+                                    reference=False,
+                                    microseconds=True,
+                                ),
+                            )
+                        record(
+                            cell,
+                            (
+                                f"result_z_{model.value}/n{n_final}/"
+                                f"{variant.key}/{workload.value}"
+                            ),
+                            fragments,
+                        )
+
+    for dataset in getattr(catalog, "scalar_datasets", ()):
+        for n_final in dataset.multiplicities:
+            if n_final > max_n_final:
+                continue
+            cell = locate(
+                dataset.dataset_id,
+                dataset.dataset_id,
+                n_final,
+                Workload.CONTRACTED,
+            )
+            if cell is None:
+                continue
+            measurement = measurements.get(cell.cell_id, _NA)
+            record(
+                cell,
+                f"{dataset.table_name}/n{n_final}",
+                (
+                    _scalar_value(measurement, "generation_seconds"),
+                    _scalar_value(measurement, "wall_seconds_per_point"),
+                    _scalar_value(measurement, "execution_seconds_per_point"),
+                    _scalar_value(measurement, "matrix_element"),
+                    _scalar_relative_difference(measurement),
+                ),
+            )
+
+    if not (matrix_datasets or getattr(catalog, "scalar_datasets", ())):
+        # Small injected catalogs used by the final-audit unit boundary do not
+        # carry renderer metadata. Their cells still receive the core field-level
+        # visibility check, while the canonical catalog exercises every table.
+        for cell in required_cells:
+            measurement = measurements.get(cell.cell_id, _NA)
+            fragments = [
+                _metric(measurement, "generation_seconds"),
+                _metric(
+                    measurement,
+                    "wall_seconds_per_point",
+                    microseconds=True,
+                ),
+            ]
+            if cell.measurement.execution_mode is not ExecutionMode.AMPLICOL:
+                fragments.append(
+                    _metric(
+                        measurement,
+                        "execution_seconds_per_point",
+                        microseconds=True,
+                    )
+                )
+            record(cell, f"injected-catalog/{cell.cell_id}", fragments)
+
+    accounting = report_display_accounting(
+        catalog=catalog,
+        max_n_final=max_n_final,
+    )
+    if structural_seen != (accounting.structurally_not_applicable_display_slot_count):
+        contract_errors.append(
+            "structural display-slot enumeration differs from the catalog: "
+            f"{structural_seen}/"
+            f"{accounting.structurally_not_applicable_display_slot_count}"
+        )
+    if not_exposed_seen != accounting.not_exposed_display_slot_count:
+        contract_errors.append(
+            "not-exposed display-slot enumeration differs from the catalog: "
+            f"{not_exposed_seen}/{accounting.not_exposed_display_slot_count}"
+        )
+    required_ids = set(required_by_id)
+    missing = tuple(sorted(required_ids - rendered_cell_ids))
+    return VisibleCompleteness(
+        maximum_n_final=max_n_final,
+        required_measurement_count=accounting.required_measurement_count,
+        rendered_required_measurement_count=len(rendered_cell_ids & required_ids),
+        structurally_not_applicable_display_slot_count=structural_seen,
+        not_exposed_display_slot_count=not_exposed_seen,
+        applicable_na_display_slots=tuple(sorted(set(na_slots))),
+        missing_rendered_cell_ids=missing,
+        contract_errors=tuple(sorted(set(contract_errors))),
+    )
+
+
 def render_all_tables(
     caches: Mapping[str, CachePayload] | Iterable[CachePayload],
     *,
@@ -1166,6 +1589,7 @@ __all__ = [
     "JoinedMatrixCell",
     "JoinedWorkload",
     "MeasurementIndex",
+    "VisibleCompleteness",
     "render_all_matrix_tables",
     "render_all_scalar_ladders",
     "render_all_tables",
@@ -1174,4 +1598,5 @@ __all__ = [
     "render_scalar_ladder",
     "render_validation_summary",
     "render_z_ladder",
+    "summarize_visible_completeness",
 ]

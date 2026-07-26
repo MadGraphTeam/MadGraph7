@@ -9,6 +9,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from .catalog import REPORT_CATALOG, ReportCatalog
+from .display_contract import report_display_accounting
 from .models import CellSpec, ResultStatus
 
 Measurement = Mapping[str, object]
@@ -243,6 +244,10 @@ def render_validation_summary(
     """Render a compact summary immediately before the performance tables."""
 
     summary = summarize_validation(caches, catalog=catalog)
+    display = report_display_accounting(
+        catalog=catalog,
+        max_n_final=MAX_PUBLICATION_MULTIPLICITY,
+    )
     passed_by_n = dict(summary.passed_by_n)
     lines = [
         "% SPDX-License-Identifier: 0BSD",
@@ -282,6 +287,17 @@ def render_validation_summary(
             r"\bottomrule",
             r"\end{tabular}",
             r"\end{center}",
+            (
+                r"\ReportTableNote{Display accounting through \(n=4\): "
+                f"{display.required_measurement_count} required measured cells; "
+                f"{display.structurally_not_applicable_display_slot_count} "
+                r"matrix process/multiplicity positions marked "
+                r"\textsc{not applicable}; and "
+                f"{display.not_exposed_display_slot_count} "
+                r"reference execution fields marked \textsc{not exposed}. "
+                r"The latter two categories are intentional table structure, "
+                r"not unfilled measurements.}"
+            ),
             r"\begin{center}",
             r"\small",
             r"\begin{tabular}{@{}L{3.65in}r R{1.45in}@{}}",

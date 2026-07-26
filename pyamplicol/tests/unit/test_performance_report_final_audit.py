@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import tools.performance_report.final_audit as final_audit_module
 from tools.performance_report.cache import (
     build_reset_caches,
     digest_json,
@@ -52,6 +53,7 @@ from tools.performance_report.models import (
     Workload,
 )
 from tools.performance_report.publication import portable_publication_value
+from tools.performance_report.render import VisibleCompleteness
 from tools.performance_report.service import ReportPaths, ReportService
 
 _REVISION = "a" * 40
@@ -2164,6 +2166,21 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     assert result["audit_scope"] == "diagnostic-incomplete"
     assert result["pyamplicol_replay_count"] == 1
     assert result["replayed_measurement_count"] == 1
+    assert result["visible_completeness"] == {
+        "kind": "pyamplicol-report-visible-completeness",
+        "schema_version": 1,
+        "status": "ok",
+        "maximum_n_final": 1,
+        "required_measurement_count": 2,
+        "rendered_required_measurement_count": 2,
+        "structurally_not_applicable_display_slot_count": 0,
+        "not_exposed_display_slot_count": 0,
+        "applicable_na_display_slot_count": 0,
+        "applicable_na_display_slots": [],
+        "missing_rendered_cell_count": 0,
+        "missing_rendered_cell_ids": [],
+        "contract_errors": [],
+    }
 
     def wrong_runtime_loader(_path: Path, _process: str) -> _Runtime:
         assert_locked()
@@ -2227,3 +2244,37 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     assert no_pdf["final_gate_complete"] is False
     assert no_pdf["pdf_audit"] == {"status": "incomplete", "skipped": True}
     assert lock_state == {"held": False, "entries": 4}
+
+    with monkeypatch.context() as local_patch:
+        local_patch.setattr(
+            final_audit_module,
+            "summarize_visible_completeness",
+            lambda *_args, **_kwargs: VisibleCompleteness(
+                maximum_n_final=1,
+                required_measurement_count=2,
+                rendered_required_measurement_count=2,
+                structurally_not_applicable_display_slot_count=0,
+                not_exposed_display_slot_count=0,
+                applicable_na_display_slots=("synthetic applicable N/A",),
+                missing_rendered_cell_ids=(),
+                contract_errors=(),
+            ),
+        )
+        with pytest.raises(
+            FinalAuditError,
+            match=r"visible-completeness.*applicable_NA=1",
+        ):
+            audit_final_report(
+                tmp_path,
+                expected_source_revision=_REVISION,
+                max_n_final=1,
+                expected_cell_count=2,
+                replay=False,
+                catalog=catalog,  # type: ignore[arg-type]
+                service=service,
+                active_runtime=_active_runtime(),
+                source_auditor=source_auditor,
+                runtime_auditor=runtime_auditor,
+                verify_pdf=False,
+            )
+    assert lock_state == {"held": False, "entries": 5}

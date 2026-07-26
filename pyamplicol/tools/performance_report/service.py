@@ -22,7 +22,7 @@ from .cache import (
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import source_revision
 from .publication import portable_publication_value
-from .render import render_all_tables
+from .render import render_all_tables, summarize_visible_completeness
 from .report_policy import publication_measurement_policy_issues
 
 
@@ -338,6 +338,10 @@ class ReportService:
         caches = self.load_caches()
         self.validate_publication_policy(caches)
         rendered = render_all_tables(caches, catalog=self.catalog)
+        visible_completeness = summarize_visible_completeness(
+            caches,
+            catalog=self.catalog,
+        )
         expected_cache_files = {
             *caches,
             "report-cache.schema.json",
@@ -365,6 +369,7 @@ class ReportService:
         return {
             **result,
             "cache_render_match": True,
+            "visible_completeness": visible_completeness.as_dict(),
         }
 
 

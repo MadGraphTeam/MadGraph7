@@ -5,6 +5,8 @@
 \providecommand{\matrixratio}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}
 \providecommand{\matrixratiopair}[4]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}
 \providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}
+\providecommand{\matrixnotapplicable}[1]{\textcolor{#1}{\textsc{not applicable}}}
+\providecommand{\matrixnotexposed}[1]{\textcolor{#1}{\textsc{not exposed}}}
 \providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}
 \providecommand{\matrixnaratio}[1]{\matrixpunct{(}\matrixna{#1}\matrixpunct{)}}
 \providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}
@@ -25,7 +27,7 @@
 & & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} \\
 \midrule
 \rowcolor{refblue}
-1 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+1 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 1 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 1 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 1 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -37,7 +39,7 @@
 1 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-2 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+2 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 2 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 2 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 2 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -49,7 +51,7 @@
 2 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-3 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+3 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 3 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 3 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 3 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -62,7 +64,7 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference. In the reference rows, not exposed means that the original interface provides no separate native-execution timing; it is not a missing measurement.}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -77,7 +79,7 @@
 & & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} \\
 \midrule
 \rowcolor{refblue}
-4 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+4 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 4 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 4 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 4 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -89,7 +91,7 @@
 4 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-5 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+5 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 5 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 5 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 5 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -101,7 +103,7 @@
 5 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-6 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+6 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 6 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 6 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 6 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -114,7 +116,7 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference. In the reference rows, not exposed means that the original interface provides no separate native-execution timing; it is not a missing measurement.}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -129,7 +131,7 @@
 & & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} \\
 \midrule
 \rowcolor{refblue}
-7 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+7 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 7 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 7 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 7 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -141,7 +143,7 @@
 7 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-8 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+8 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 8 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 8 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 8 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -153,7 +155,7 @@
 8 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-9 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixna{ReportMuted} \\
+9 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
 9 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 9 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 9 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
@@ -166,5 +168,5 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference. In the reference rows, not exposed means that the original interface provides no separate native-execution timing; it is not a missing measurement.}
 \end{minipage}

@@ -23,6 +23,7 @@ from tools.performance_report.render import (
     render_matrix_table,
     render_scalar_ladder,
     render_z_ladder,
+    summarize_visible_completeness,
 )
 from tools.performance_report.validation_summary import (
     render_validation_summary,
@@ -123,6 +124,37 @@ def _mark_below_resolution(measurement: dict[str, object]) -> None:
     }
 
 
+def _fill_visible_n4_scope(caches: dict[str, dict[str, object]]) -> None:
+    for payload in caches.values():
+        entries = payload["entries"]
+        assert isinstance(entries, list)
+        for entry in entries:
+            if entry["n_final"] > 4:
+                continue
+            entry["measurement"] = {
+                "status": ResultStatus.OK.value,
+                "generation_seconds": 1.0,
+                "wall_seconds_per_point": 2.0e-6,
+                "execution_seconds_per_point": 1.0e-6,
+                "matrix_element": 1.0,
+                "sample_count": 5,
+                "standard_error_seconds_per_point": 1.0e-9,
+                "relative_standard_error": 0.01,
+                "artifact": {"digest": "artifact"},
+                "selector_contract": {"digest": "selector"},
+                "validation": {
+                    "status": ResultStatus.OK.value,
+                    "high_precision": {
+                        "status": ResultStatus.OK.value,
+                        "relative_difference": 0.0,
+                    },
+                },
+                "resources": {"peak_rss_gib": 1.0},
+                "provenance": {"source": "test"},
+                "failure": None,
+            }
+
+
 def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
     rendered = render_all_matrix_tables(reset_caches)
     expected = [dataset.table_name for dataset in REPORT_CATALOG.matrix_datasets]
@@ -161,12 +193,63 @@ def test_matrix_tables_are_fixed_nonsplittable_blocks(reset_caches) -> None:
         )
 
 
-def test_inapplicable_and_reset_cells_render_explicit_na(reset_caches) -> None:
+def test_inapplicable_and_reset_cells_use_distinct_markers(reset_caches) -> None:
     dataset = REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_lc")
     tex = render_matrix_table(dataset, reset_caches)
 
-    assert r"\matrixna{ReportMuted}" in tex
+    assert r"\matrixnotapplicable{ReportMuted}" in tex
     assert r"\matrixstatus{ReportMuted}{N/A}" in tex
+    assert "not an unfilled measurement" in tex
+
+
+def test_z_reference_execution_is_explicitly_not_exposed(reset_caches) -> None:
+    tex = render_z_ladder(ModelKey.BUILTIN_SM, reset_caches)
+    reference_rows = [line for line in tex.splitlines() if r"\AC{} reference" in line]
+
+    assert len(reference_rows) == 9
+    for row in reference_rows:
+        assert row.count(r"\matrixnotexposed{ReportMuted}") == 2
+        assert r"\matrixna{ReportMuted}" not in row
+    assert "not a missing measurement" in tex
+
+
+def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_n4_scope(caches)
+
+    summary = summarize_visible_completeness(caches)
+    evidence = summary.as_dict()
+
+    assert summary.complete
+    assert evidence["required_measurement_count"] == 742
+    assert evidence["rendered_required_measurement_count"] == 742
+    assert evidence["structurally_not_applicable_display_slot_count"] == 288
+    assert evidence["not_exposed_display_slot_count"] == 16
+    assert evidence["applicable_na_display_slot_count"] == 0
+    assert evidence["missing_rendered_cell_count"] == 0
+
+
+def test_visible_completeness_rejects_na_in_applicable_slot(reset_caches) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_n4_scope(caches)
+    cache = _cache_by_dataset(caches, "z_builtin_sm")
+    entries = cache["entries"]
+    assert isinstance(entries, list)
+    entry = next(
+        item
+        for item in entries
+        if item["n_final"] == 1
+        and item["variant"] == "jit_o3"
+        and item["workload"] == Workload.SELECTED_FLOW.value
+    )
+    measurement = entry["measurement"]
+    assert isinstance(measurement, dict)
+    measurement["generation_seconds"] = None
+
+    summary = summarize_visible_completeness(caches)
+
+    assert not summary.complete
+    assert any(entry["cell_id"] in slot for slot in summary.applicable_na_display_slots)
 
 
 def test_adapter_joins_recurrence_baseline_without_copying_timing(
@@ -690,4 +773,7 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
     assert "742 & 4" in tex
+    assert "742 required measured cells" in tex
+    assert "288 matrix process/multiplicity positions" in tex
+    assert "16 reference execution fields" in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

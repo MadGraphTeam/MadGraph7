@@ -37,7 +37,7 @@ from .models import (
     Workload,
 )
 from .publication import publication_measurement_matches_current
-from .render import render_all_tables
+from .render import render_all_tables, summarize_visible_completeness
 from .report_policy import publication_measurement_policy_issues
 from .runner import (
     ABSOLUTE_TOLERANCE,
@@ -3603,6 +3603,25 @@ def _audit_final_report_locked(
         raise FinalAuditError(
             f"catalog selected {len(cells)} cells, expected {expected_cell_count}"
         )
+    visible_completeness = summarize_visible_completeness(
+        caches,
+        catalog=catalog,
+        max_n_final=max_n_final,
+    )
+    if (
+        visible_completeness.required_measurement_count != len(cells)
+        or not visible_completeness.complete
+    ):
+        evidence = visible_completeness.as_dict()
+        raise FinalAuditError(
+            "final report visible-completeness audit failed: "
+            f"required={evidence['required_measurement_count']}, "
+            f"rendered={evidence['rendered_required_measurement_count']}, "
+            f"applicable_NA={evidence['applicable_na_display_slot_count']}, "
+            f"missing={evidence['missing_rendered_cell_count']}, "
+            f"errors={evidence['contract_errors']}, "
+            f"slots={evidence['applicable_na_display_slots']}"
+        )
     pyamplicol_cells = tuple(
         cell
         for cell in cells
@@ -3951,6 +3970,7 @@ def _audit_final_report_locked(
         ),
         "pyamplicol_replay_count": len(replayed),
         "replayed_measurement_count": len(replayed),
+        "visible_completeness": visible_completeness.as_dict(),
         "render_audit": render_result,
         "pdf_audit": dict(pdf_result),
         "report_snapshot_lock": "report-writer",
