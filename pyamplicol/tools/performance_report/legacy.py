@@ -432,6 +432,100 @@ class _ProcessContext:
     selector_contract: SelectorContract
 
 
+def _initial_state_count(process: str) -> int:
+    initial, separator, final = process.partition(">")
+    initial_count = len(initial.split())
+    final_count = len(final.split())
+    if (
+        separator != ">"
+        or process.count(">") != 1
+        or initial_count < 1
+        or final_count < 1
+    ):
+        raise LegacyAdapterError(
+            f"cannot identify initial and final legs in process {process!r}"
+        )
+    return initial_count
+
+
+def _canonical_mapped_color_word(
+    source_pdgs: Sequence[int],
+    mapped_color_order: Sequence[int],
+    *,
+    initial_state_count: int,
+) -> tuple[int, ...]:
+    """Project a generated-library row onto the canonical public LC axis."""
+
+    pdgs = tuple(int(pdg) for pdg in source_pdgs)
+    mapped = tuple(int(label) for label in mapped_color_order)
+    expected_labels = tuple(range(1, len(pdgs) + 1))
+    if tuple(sorted(mapped)) != expected_labels:
+        raise LegacyAdapterError(
+            "legacy mapped color row must be a permutation of source labels "
+            f"1..{len(pdgs)}, got {mapped}"
+        )
+    if not 0 < initial_state_count < len(pdgs):
+        raise LegacyAdapterError(
+            "legacy selector canonicalization requires nonempty initial and "
+            "final states"
+        )
+
+    roles: dict[int, str] = {}
+    for label, physical_pdg in enumerate(pdgs, start=1):
+        absolute = abs(physical_pdg)
+        if absolute == 21:
+            roles[label] = "adjoint"
+            continue
+        if not 1 <= absolute <= 6:
+            continue
+        outgoing_pdg = -physical_pdg if label <= initial_state_count else physical_pdg
+        roles[label] = "fundamental" if outgoing_pdg > 0 else "antifundamental"
+
+    word = tuple(label for label in mapped if label in roles)
+    if not word:
+        raise LegacyAdapterError("selected legacy LC row has no colored word")
+    if len(word) != len(roles) or len(set(word)) != len(word):
+        raise LegacyAdapterError(
+            "legacy mapped color word must contain every colored source label "
+            "exactly once"
+        )
+
+    fundamental_count = sum(role == "fundamental" for role in roles.values())
+    antifundamental_count = sum(role == "antifundamental" for role in roles.values())
+    if fundamental_count == antifundamental_count == 0:
+        return word
+    if fundamental_count != antifundamental_count:
+        raise LegacyAdapterError(
+            "legacy mapped color word has unbalanced fundamental endpoints"
+        )
+
+    blocks: list[tuple[int, ...]] = []
+    cursor = 0
+    while cursor < len(word):
+        first = word[cursor]
+        if roles[first] != "fundamental":
+            raise LegacyAdapterError(
+                "legacy mapped color word is not a concatenation of "
+                "[fundamental, adjoints..., antifundamental] blocks"
+            )
+        block = [first]
+        cursor += 1
+        while cursor < len(word) and roles[word[cursor]] == "adjoint":
+            block.append(word[cursor])
+            cursor += 1
+        if cursor >= len(word) or roles[word[cursor]] != "antifundamental":
+            raise LegacyAdapterError(
+                "legacy mapped color word is not a concatenation of "
+                "[fundamental, adjoints..., antifundamental] blocks"
+            )
+        block.append(word[cursor])
+        cursor += 1
+        blocks.append(tuple(block))
+
+    blocks.sort(key=lambda block: block[0])
+    return tuple(label for block in blocks for label in block)
+
+
 def adaptive_profile_points(
     warmup_seconds: float,
     *,
@@ -715,6 +809,10 @@ class LegacyMeasurementAdapter:
                 "exact-external-pdg-order-then-process-file-order-v1"
             ),
             "matching_row_count": context.matching_rows,
+            "raw_mapped_color_order": list(context.mapped_color_order),
+            "selector_color_word_policy": (
+                "outgoing-open-string-blocks-by-fundamental-source-label-v1"
+            ),
             "commands": commands,
             "target_runtime_seconds": settings.target_runtime_seconds,
             "warmup_points": settings.warmup_points,
@@ -787,14 +885,11 @@ class LegacyMeasurementAdapter:
             entry,
             source_pdgs=source_pdgs,
         )
-        colored_labels = {
-            index
-            for index, pdg in enumerate(source_pdgs, start=1)
-            if abs(int(pdg)) == 21 or 1 <= abs(int(pdg)) <= 6
-        }
-        color_word = tuple(label for label in mapped if label in colored_labels)
-        if not color_word:
-            raise LegacyAdapterError("selected legacy LC row has no colored word")
+        color_word = _canonical_mapped_color_word(
+            source_pdgs,
+            mapped,
+            initial_state_count=_initial_state_count(cell.process),
+        )
         helicities = _fixed_helicity(source_pdgs)
         contract = SelectorContract(
             selected_color_flow_ids=(

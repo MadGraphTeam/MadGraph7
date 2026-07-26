@@ -15,6 +15,7 @@ from tools.performance_report.legacy import (
     LegacyMeasurementAdapter,
     LegacySettings,
     TimingRow,
+    _canonical_mapped_color_word,
     adaptive_profile_points,
 )
 from tools.performance_report.models import Accuracy, ExecutionMode, Workload
@@ -237,6 +238,96 @@ def test_adaptive_profile_points_are_bounded() -> None:
     ) == 1_000
 
 
+@pytest.mark.parametrize(
+    ("source_pdgs", "raw_word", "canonical_word"),
+    (
+        (
+            (1, -1, 6, -6),
+            (3, 1, 2, 4),
+            (2, 4, 3, 1),
+        ),
+        (
+            (1, -1, 6, -6, 21),
+            (3, 1, 2, 5, 4),
+            (2, 5, 4, 3, 1),
+        ),
+        (
+            (1, -1, 6, -6, 21, 21),
+            (3, 1, 2, 5, 6, 4),
+            (2, 5, 6, 4, 3, 1),
+        ),
+        (
+            (21, 21, 6, -6),
+            (3, 1, 2, 4),
+            (3, 1, 2, 4),
+        ),
+    ),
+)
+def test_legacy_open_string_blocks_match_canonical_public_selector_axis(
+    source_pdgs: tuple[int, ...],
+    raw_word: tuple[int, ...],
+    canonical_word: tuple[int, ...],
+) -> None:
+    word = _canonical_mapped_color_word(
+        source_pdgs,
+        raw_word,
+        initial_state_count=2,
+    )
+
+    assert word == canonical_word
+    helicities = tuple(-1 if label % 2 else 1 for label in range(1, len(word) + 1))
+    helicity_id = "h:" + ",".join(f"{value:+d}" for value in helicities)
+    source_helicities = tuple(enumerate(helicities, start=1))
+    legacy_contract = SelectorContract(
+        selected_color_flow_ids=("flow:" + ",".join(str(label) for label in word),),
+        selected_color_words=(word,),
+        all_flow_helicity_ids=(helicity_id,),
+        all_flow_source_helicities=source_helicities,
+        point_digest="a" * 64,
+    )
+    candidate_contract = SelectorContract(
+        selected_color_flow_ids=(
+            "flow:" + ",".join(str(label) for label in canonical_word),
+        ),
+        selected_color_words=(canonical_word,),
+        all_flow_helicity_ids=(helicity_id,),
+        all_flow_source_helicities=source_helicities,
+        point_digest="a" * 64,
+    )
+    assert legacy_contract == candidate_contract
+
+
+def test_legacy_closed_adjoint_word_keeps_generated_row_order() -> None:
+    assert _canonical_mapped_color_word(
+        (21, 21, 21, 21),
+        (1, 3, 2, 4),
+        initial_state_count=2,
+    ) == (1, 3, 2, 4)
+
+
+@pytest.mark.parametrize(
+    "raw_word",
+    (
+        (3, 2, 1, 4),
+        (1, 3, 2, 4),
+        (3, 1, 4, 2),
+        (3, 1, 2, 2),
+    ),
+)
+def test_legacy_selector_canonicalization_rejects_non_block_rows(
+    raw_word: tuple[int, ...],
+) -> None:
+    with pytest.raises(
+        LegacyAdapterError,
+        match=r"permutation|concatenation",
+    ):
+        _canonical_mapped_color_word(
+            (1, -1, 6, -6),
+            raw_word,
+            initial_state_count=2,
+        )
+
+
 def test_profile_rejects_exactly_identical_bounded_chunk_rates(
     tmp_path: Path,
 ) -> None:
@@ -362,6 +453,11 @@ def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(
     assert measurement["wall_seconds_per_point"] == pytest.approx(1.0e-3)
     provenance = measurement["provenance"]
     assert provenance["generation_timing_is_workload_specific"] is True
+    assert provenance["raw_mapped_color_order"] == [2, 4, 1, 3]
+    assert (
+        provenance["selector_color_word_policy"]
+        == "outgoing-open-string-blocks-by-fundamental-source-label-v1"
+    )
     assert (
         provenance["generation_source"] == "direct-imode2-generation-setup"
     )
