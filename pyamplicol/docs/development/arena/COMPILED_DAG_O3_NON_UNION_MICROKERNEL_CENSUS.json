@@ -1,208 +1,231 @@
 {
-  "active_evaluation_group_count": 203,
-  "active_interaction_count": 203,
-  "active_repeated_evaluation_group_count": 0,
-  "candidate_attachment_count": 8,
-  "candidate_invocation_count": 8,
-  "candidate_kernel_count": 8,
-  "candidate_projected_replaced_text_bytes": 26104,
-  "candidate_projected_table_text_bytes": 26104,
-  "candidate_projected_text_ratio_basis_points": 10000,
-  "candidate_semantic_row_bytes": 960,
-  "decision": "repeated-group-coverage-below-threshold,projected-text-ratio-above-threshold",
-  "eligible_current_count": 8,
-  "exact_normalization": {
-    "active_interaction_count": 203,
-    "eligible_current_count": 6,
-    "eligible_interaction_count": 8,
-    "eligible_interaction_coverage_basis_points": 394,
-    "eligible_source_bytes": 19278,
-    "input_limit": 16,
-    "motif_digest_excluded_from_source_digest": true,
-    "normalized_sources": [
-      {
-        "current_id": 11,
-        "eligible": true,
-        "expression_bytes": [
-          1417,
-          1421
-        ],
-        "input_count": 11,
-        "source_digest": "2801b15a200d6175ded1b4be48f82e1ec5fe1d82d95b56cb5e1b4da7e848404a"
-      },
-      {
-        "current_id": 12,
-        "eligible": true,
-        "expression_bytes": [
-          1415,
-          1413
-        ],
-        "input_count": 11,
-        "source_digest": "6b1acc43c5bd10e459448eba684b49866a850f5e1ec2455af99c27f13f9a26b3"
-      },
-      {
-        "current_id": 13,
-        "eligible": true,
-        "expression_bytes": [
-          1303,
-          1307
-        ],
-        "input_count": 10,
-        "source_digest": "642f19620be7b033e0ca09a8934444eb085cb86b8aa681173b315878b9ec0750"
-      },
-      {
-        "current_id": 14,
-        "eligible": true,
-        "expression_bytes": [
-          1301,
-          1299
-        ],
-        "input_count": 10,
-        "source_digest": "d09c4c2be70e0d06a0587b50c14a5a5aa04454937ab12b9b945de0f5632e2532"
-      },
-      {
-        "current_id": 25,
-        "eligible": false,
-        "expression_bytes": [
-          2217,
-          2221
-        ],
-        "input_count": 17,
-        "source_digest": "ca0386ad0151c22e01c41c21ca2cfcaf2caccecbe17acd589d73a3b5425d3f3d"
-      },
-      {
-        "current_id": 26,
-        "eligible": false,
-        "expression_bytes": [
-          2211,
-          2209
-        ],
-        "input_count": 17,
-        "source_digest": "45cc895827d3999407acf6b936b2d0da012efaa63618f338db9c8faf2c8492a7"
-      },
-      {
-        "current_id": 27,
-        "eligible": true,
-        "expression_bytes": [
-          2103,
-          2107
-        ],
-        "input_count": 16,
-        "source_digest": "b4cf9f3ccf98a0f120ebe9d6094f4be9d96382f316cbd4f1fd33d0834f9bcc03"
-      },
-      {
-        "current_id": 28,
-        "eligible": true,
-        "expression_bytes": [
-          2097,
-          2095
-        ],
-        "input_count": 16,
-        "source_digest": "11fbefd403daa2076c6939b227bdf0b9ec5916cb50ef031198427c9b3bc2c151"
-      }
-    ],
-    "projected_replaced_source_bytes": 19278,
-    "projected_table_source_bytes": 19278,
-    "projected_text_ratio_basis_points": 10000,
-    "two_component_interaction_count": 98,
-    "two_component_interaction_coverage_basis_points": 816,
-    "unique_normalized_source_count": 6
+  "schema_version": 2,
+  "source_revision": "f4606fa9be52355b4a66efcfa2b7072d489205eb",
+  "process": {
+    "definition": "u u~ > Z + 6g",
+    "flow": "flow:2,4,5,6,7,8,9,1",
+    "mode": "compiled-dag-jit-o3",
+    "flow_strategy": "selected-flow-non-union"
   },
-  "materialized": {
-    "amplitude_root_count": 2,
+  "materialized_schedule": {
+    "stage_count": 7,
     "current_count_including_sources": 66,
-    "interaction_count": 203,
-    "non_source_current_slot_count": 55,
-    "result_dimension_counts": {
+    "non_source_current_destination_count": 55,
+    "active_interaction_evaluation_occurrence_count": 203,
+    "result_dimension_occurrences": {
       "2": 98,
       "4": 75,
       "6": 30
     },
-    "stage_count": 7
+    "amplitude_root_count": 2
   },
-  "motifs": [
+  "profitability_denominator": {
+    "kind": "global-occurrences-with-repeated-canonical-prepared-kernel-motif",
+    "count": 203,
+    "rationale": "Every one of the five canonical prepared-kernel motifs occurs more than once. Counting global materialized occurrences preserves the cost weighting of the active compiled schedule and does not restrict the denominator to the family selected for optimization.",
+    "forbidden_alternatives": [
+      "proof-only helicity recurrence nodes",
+      "literal evaluation_group_id fanout",
+      "selected vector-Weyl family only",
+      "unweighted destination identities"
+    ]
+  },
+  "vector_weyl_slice": {
+    "complete_current_ownership": true,
+    "eligible_destination_count": 26,
+    "eligible_destination_ids": [
+      11,
+      12,
+      13,
+      14,
+      25,
+      26,
+      27,
+      28,
+      37,
+      38,
+      39,
+      40,
+      47,
+      48,
+      49,
+      50,
+      55,
+      56,
+      57,
+      58,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65
+    ],
+    "contribution_count_distribution": {
+      "1": 4,
+      "2": 4,
+      "3": 4,
+      "4": 4,
+      "5": 4,
+      "6": 4,
+      "7": 2
+    },
+    "invocation_count": 98,
+    "attachment_count": 98,
+    "overwrite_attachment_count": 26,
+    "accumulate_attachment_count": 72,
+    "vertex_kernel_count": 2,
+    "finalizer_class_count": 4,
+    "vertex_kernels": [
+      {
+        "prepared_kernel_id": 7,
+        "chirality": 1,
+        "signature_sha256": "1c354d68456394cdeec541fa291f268b9cb5887253232787bf6581fb1875fd72",
+        "invocation_count": 49,
+        "complex_input_count": 6,
+        "complex_output_count": 2,
+        "source_bytes": 1634
+      },
+      {
+        "prepared_kernel_id": 24,
+        "chirality": -1,
+        "signature_sha256": "5181921162f2679160b5beaf84a81f73c8ef352dd080c5b3669785b013d1fa92",
+        "invocation_count": 49,
+        "complex_input_count": 6,
+        "complex_output_count": 2,
+        "source_bytes": 1632
+      }
+    ],
+    "finalizer_classes": [
+      {
+        "kind": "propagator",
+        "chirality": 1,
+        "prepared_kernel_id": 0,
+        "signature_sha256": "00b173a496b9571e24c9a33b340832fd02b249410e954a221109f7183e6fe5bf"
+      },
+      {
+        "kind": "propagator",
+        "chirality": -1,
+        "prepared_kernel_id": 34,
+        "signature_sha256": "953b242f601dc91fce23005759486e72e4118818fe9f8602e8db86a4faaef19a"
+      },
+      {
+        "kind": "identity",
+        "chirality": 1
+      },
+      {
+        "kind": "identity",
+        "chirality": -1
+      }
+    ]
+  },
+  "patchless_code_shape_probe": {
+    "purpose": "profitability upper bound only",
+    "representation": "four chirality-by-propagation contribution sources with the linear massless finalizer distributed into each source",
+    "accepted_execution_order": false,
+    "reason_not_accepted_as_execution_order": "The approved implementation requires the ordinary propagator/finalizer after ordered contribution accumulation.",
+    "source_class_count": 4,
+    "serialized_source_bytes": 1790,
+    "descriptor_bytes": 1104,
+    "direct_table_scalar_code_bytes": 5592,
+    "direct_table_simd_code_bytes": 5992,
+    "direct_table_total_code_bytes": 11584,
+    "projected_replaced_scalar_code_bytes": 43480,
+    "projected_replaced_simd_code_bytes": 49056,
+    "projected_replaced_total_code_bytes": 92536,
+    "projected_ratio_basis_points": 1252,
+    "projected_reduction_basis_points": 8748,
+    "estimated_invocation_and_attachment_row_bytes": 10528,
+    "branch_and_link_call_count": 0,
+    "gather_count": 0,
+    "scatter_count": 0
+  },
+  "proceed_gates": {
+    "coverage": {
+      "required_basis_points": 5000,
+      "observed_numerator": 98,
+      "observed_denominator": 203,
+      "observed_basis_points": 4828,
+      "minimum_passing_occurrences": 102,
+      "shortfall_occurrences": 4,
+      "passed": false
+    },
+    "projected_source_compression": {
+      "maximum_basis_points": 2500,
+      "unique_table_source_bytes": 3266,
+      "occurrence_expanded_replaced_source_bytes": 160034,
+      "observed_basis_points": 204,
+      "passed": true
+    },
+    "projected_machine_code": {
+      "maximum_basis_points": 2500,
+      "direct_table_code_bytes": 11584,
+      "projected_replaced_code_bytes": 92536,
+      "observed_basis_points": 1252,
+      "passed": true,
+      "qualification": "standalone profitability probe; the accepted implementation would retain post-accumulation finalization"
+    },
+    "hard_bounds": {
+      "maximum_kernel_identities": 8,
+      "observed_vertex_kernel_identities": 2,
+      "observed_patchless_probe_kernel_identities": 4,
+      "maximum_complex_inputs": 16,
+      "observed_maximum_complex_inputs": 6,
+      "maximum_complex_outputs": 2,
+      "observed_maximum_complex_outputs": 2,
+      "maximum_source_payload_bytes": 65536,
+      "observed_maximum_source_payload_bytes": 1634,
+      "maximum_semantic_table_bytes": 4194304
+    }
+  },
+  "denominator_sensitivity": [
     {
-      "current_id": 11,
-      "digest": "b328f45a8c5a41e607bae9d4ec6fb595a884f6971dd069e0b0b01556b992564f",
-      "frequency": 1,
-      "input_count": 6,
-      "result_chirality": 1,
-      "contribution_count": 1,
-      "coupling_class": "Z"
+      "kind": "global-repeated-prepared-kernel-identities",
+      "numerator": 2,
+      "denominator": 5,
+      "basis_points": 4000,
+      "accepted": false
     },
     {
-      "current_id": 12,
-      "digest": "b37812df45fad7eed9fff616ca6dbdddad3b72b01887eaa88bf06d880f93d95f",
-      "frequency": 1,
-      "input_count": 6,
-      "result_chirality": -1,
-      "contribution_count": 1,
-      "coupling_class": "Z"
+      "kind": "all-active-current-destinations",
+      "numerator": 26,
+      "denominator": 55,
+      "basis_points": 4727,
+      "accepted": false
     },
     {
-      "current_id": 13,
-      "digest": "4f7d803ea9b93da0bceb47c7b227ca31bf30ce496dced01c6baec94c01dc8f04",
-      "frequency": 1,
-      "input_count": 6,
-      "result_chirality": 1,
-      "contribution_count": 1,
-      "coupling_class": "gluon"
+      "kind": "multi-contribution-occurrences",
+      "numerator": 94,
+      "denominator": 189,
+      "basis_points": 4974,
+      "accepted": false
     },
     {
-      "current_id": 14,
-      "digest": "f18561d66896625fb71679b17ba43e6b6254799a6e6f53ccced277bfe586aab3",
-      "frequency": 1,
-      "input_count": 6,
-      "result_chirality": -1,
-      "contribution_count": 1,
-      "coupling_class": "gluon"
+      "kind": "selected-vector-weyl-family-only",
+      "numerator": 98,
+      "denominator": 98,
+      "basis_points": 10000,
+      "accepted": false,
+      "reason": "tautological family-restricted denominator"
     },
     {
-      "current_id": 25,
-      "digest": "291a1b4cf4a779f6db88cd015cb24391d6ca41c08e90c8e5cd9b6229299a816a",
-      "frequency": 1,
-      "input_count": 12,
-      "result_chirality": 1,
-      "contribution_count": 2,
-      "coupling_class": "Z+gluon"
-    },
-    {
-      "current_id": 26,
-      "digest": "3c7ff053b7ba885010b488cbd59cd5fce058f8fe9d392ca9067328bb6982e4f0",
-      "frequency": 1,
-      "input_count": 12,
-      "result_chirality": -1,
-      "contribution_count": 2,
-      "coupling_class": "Z+gluon"
-    },
-    {
-      "current_id": 27,
-      "digest": "5e277b8535e2abab77f87dde2954f4ae90763ef4c96d318d658ea81cc8979c7a",
-      "frequency": 1,
-      "input_count": 12,
-      "result_chirality": 1,
-      "contribution_count": 2,
-      "coupling_class": "gluon+gluon"
-    },
-    {
-      "current_id": 28,
-      "digest": "9fd196a436ccf2718a1dcd17f5147984c1fda363fc2bf3ac388dc50742c25a61",
-      "frequency": 1,
-      "input_count": 12,
-      "result_chirality": -1,
-      "contribution_count": 2,
-      "coupling_class": "gluon+gluon"
+      "kind": "literal-repeated-evaluation-group-id",
+      "numerator": 0,
+      "denominator": 0,
+      "accepted": false,
+      "reason": "all 203 materialized evaluation_group_id values have fanout one"
     }
   ],
-  "proof_only": {
-    "amplitude_root_count": 384,
-    "current_count": 1425
+  "symjit_observability": {
+    "pinned_revision": "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2",
+    "direct_table_exact_code_shape_available": true,
+    "executed_direct_application_exact_code_shape_available": false,
+    "reason": "The pinned public API exposes DirectTable scalar/SIMD code shapes but not the privately lowered DirectApplication/DirectApplet machine-code size."
   },
-  "rejections": {
-    "complex-input-limit": 18,
-    "result-is-not-two-component-weyl": 29
-  },
-  "selected_attachment_count": 0,
-  "selected_invocation_count": 0,
-  "selected_kernel_count": 0
+  "decision": {
+    "proceed": false,
+    "reason": "mandatory-global-repeated-active-group-coverage-below-50-percent",
+    "implementation_started": false,
+    "candidate_may_land": false
+  }
 }

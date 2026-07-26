@@ -84,59 +84,74 @@ capture and does not reuse these medians.
 ### Mandatory pre-code census outcome
 
 The exact materialized `f4606fa` `u u~ > Z+6g` schedule was censused on
-2026-07-26 before integrating the candidate. The immutable proceed gates do
-not pass:
+2026-07-26 before integrating the candidate. An initial audit incorrectly
+treated one fully fused current as the source-motif unit. A second independent
+audit corrected that interpretation: the approved design tableizes canonical
+interaction contributions while retaining all-or-nothing ownership of each
+selected current. The first contribution overwrites, later contributions
+accumulate in original order, and the ordinary propagator/finalizer runs last.
+No selected destination is split between table and residual execution.
+
+Under that corrected interpretation, all 26 two-component destinations are
+wholly eligible. Their 98 contributions collapse to two canonical
+vector--Weyl vertex kernels, used 49 times per chirality:
+
+| Prepared kernel | Chirality | Calls | Complex inputs | Complex outputs | Source bytes |
+|---:|---:|---:|---:|---:|---:|
+| 7 | +1 | 49 | 6 | 2 | 1,634 |
+| 24 | -1 | 49 | 6 | 2 | 1,632 |
+
+The contribution-count distribution is four destinations at each width one
+through six and two destinations at width seven. It yields 26 overwrite and
+72 ordered-accumulate attachments, followed by four propagator/identity
+finalizer classes. The corrected slice is therefore structurally compact and
+fits every hard arity, output, kernel-count, and source-size bound.
+
+The immutable profitability gate nevertheless does not pass. The only
+non-tautological cost-weighted denominator is every materialized interaction
+occurrence whose canonical prepared-kernel motif repeats in the active
+compiled schedule. All five prepared motifs repeat, so the denominator is all
+203 interactions. The vector--Weyl slice covers 98, or `48.276%`, four
+occurrences short of the required 102:
 
 The captured census JSON is
 `COMPILED_DAG_O3_NON_UNION_MICROKERNEL_CENSUS.json`, with SHA-256
-`8c4fb66f671e11256f7168b523653066273b39195d59bd2e49ef5ab013654372`.
+`b862ba91fa7789d8c38eb9ec72f3d484f533a39a5ddd5f1bb53c28bfcc432c9e`.
 It was produced from the clean generation worktree by constructing the
 existing unit-test `u u~ > Z g g g g g g` evaluator process and calling
-`build_compiled_microkernel_selection` directly; no evaluator compilation or
-native build participated in the census.
+the materialized-stage and prepared-kernel catalog builders directly; no
+pyAmpliCol native rebuild participated in the structural census.
 
 | Census quantity | Required | Observed |
 |---|---:|---:|
-| Active materialized interactions/evaluation groups | exact denominator | 203 / 203 |
-| Repeated evaluation-group IDs | non-empty, with at least 50% covered | 0 |
-| Exactly eligible complete currents | within all hard bounds | 6 |
-| Interactions covered by exactly eligible currents | diagnostic | 8 / 203 (3.94%) |
-| Two-component interactions covered | diagnostic | 8 / 98 (8.16%) |
-| Reused exact normalized source motifs | required for compression | 0 |
-| Projected table/replaced source bytes | at most 25% | 19,278 / 19,278 (100%) |
+| Active repeated prepared-kernel occurrences | exact denominator | 203 |
+| Wholly owned vector--Weyl destinations | diagnostic | 26 / 55 (47.273%) |
+| Eligible contribution occurrences | at least 50% | 98 / 203 (48.276%) |
+| Canonical vertex kernel identities | at most 8 | 2 |
+| Maximum complex input/output width | at most 16 / 2 | 6 / 2 |
+| Projected DirectTable/replaced code | at most 25% | 11,584 / 92,536 (12.518%) |
+| Unique/occurrence-expanded vertex source | diagnostic | 3,266 / 160,034 (2.041%) |
 | Projected semantic rows | at most 4 MiB | below the cap |
 
-The initial structural pass found eight candidate currents. Exact expression
-normalization, with the structural motif digest deliberately excluded from
-the hash subject, proved that all eight sources are distinct. Their current
-IDs and normalized source SHA-256 prefixes are:
+Alternative denominators do not provide a defensible pass. Counting canonical
+identities yields `2/5 = 40%`; counting all current destinations yields
+`26/55 = 47.273%`; counting only multi-contribution occurrences yields
+`94/189 = 49.735%`. Restricting the denominator to vector--Weyl contributions
+would report `98/98`, but merely defines the selected family as its own
+denominator and weakens the explicit pre-code gate. Literal
+`evaluation_group_id` fanout is also unusable: all 203 materialized IDs have
+fanout one.
 
-| Current | Exact complex inputs | Contributions | Source SHA-256 prefix | Result |
-|---:|---:|---:|---|---|
-| 11 | 11 | 1 | `2801b15a` | eligible, unique |
-| 12 | 11 | 1 | `6b1acc43` | eligible, unique |
-| 13 | 10 | 1 | `642f1962` | eligible, unique |
-| 14 | 10 | 1 | `d09c4c2b` | eligible, unique |
-| 25 | 17 | 2 | `ca0386ad` | rejected by the 16-input cap |
-| 26 | 17 | 2 | `45cc8958` | rejected by the 16-input cap |
-| 27 | 16 | 2 | `b4cf9f3c` | eligible, unique |
-| 28 | 16 | 2 | `11fbefd4` | eligible, unique |
-
-This is not fragmentation from current IDs, selector IDs, evaluation-group
-IDs, or the motif digest. Z and gluon rows have genuinely different normalized
-expressions and input widths because the Z coupling is a mutable model scalar
-while the fixed gluon coupling is baked into the source. Opposite chirality
-and one- versus two-contribution currents are also distinct. Merging them would
-require a different parameterized kernel representation, beyond the approved
-complete-current motif slice.
-
-An independent read-only reconstruction reproduced these counts and source
-classes. It also tested an unrealistically favourable externalized-coupling
-classification: that leaves four chirality/contribution shapes, each used
-twice, so its best possible projected ratio is still 50%. The prepared
-interaction kernels do repeat 49+49 times, but exploiting that repetition
-would tableize contributions rather than complete currents and therefore
-violate this slice's ownership rule.
+A standalone Rust probe compiled four patchless SymJIT O3 source classes
+(propagated/unpropagated crossed with chirality) using only DirectTable
+binding-v1 and descriptor-v1. Their scalar plus SIMD DirectTable code was
+11,584 bytes, versus 92,536 bytes for 26 isolated complete-current O3
+applications, a projected 87.482% reduction. Descriptor payload was 1,104
+bytes and invocation plus attachment rows were estimated at 10,528 bytes.
+The emitted table kernels contained no branch-and-link calls, gathers, or
+scatters. For this upper-bound probe the linear massless finalizer was
+distributed into each contribution source; that is code-size evidence only,
+not authorization to change the approved post-accumulation finalizer order.
 
 There is a second independent acceptance limitation in the pinned SymJIT API.
 `DirectTableCallable` exposes exact scalar and SIMD code shapes, but
