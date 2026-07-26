@@ -383,6 +383,67 @@ boundaries attached. It also records the eight mandatory compiled/recurrence
 ceiling cells described above. A rejected decision never contains partial
 headline comparisons.
 
+## Final qq_Z6g comparison document
+
+`tools/developer/qq_z6g_final_comparison.py` renders the final detailed
+comparison at `docs/QQ_Z6G_ARENA_COMPARISON.md`. It accepts only the accepted
+combined M0 request/decision plus the frozen AArch64 pre-Arena matrix evidence.
+It re-runs the complete M0 validation and authenticates the 24 primary
+`qq_Z6g` result JSONs against their passing 168-cell matrix aggregate before
+rendering any value.
+
+The pre-Arena evidence request has kind
+`pyamplicol-qq-z6g-pre-arena-evidence-request`, schema 1, and exactly this
+shape:
+
+```json
+{
+  "kind": "pyamplicol-qq-z6g-pre-arena-evidence-request",
+  "schema_version": 1,
+  "matrix_aggregate": {
+    "path": "matrix/matrix-result.json",
+    "size_bytes": 0,
+    "sha256": "<raw file SHA-256>"
+  },
+  "primary_results": [
+    {
+      "cell_id": "<one exact frozen primary cell id>",
+      "path": "matrix/cells/<cell id>/result.json",
+      "size_bytes": 0,
+      "sha256": "<raw file SHA-256>"
+    }
+  ]
+}
+```
+
+`primary_results` must contain exactly the built-in/UFO × topology/union ×
+eager/compiled × batch 1/128/1024 Cartesian product. Unknown fields, missing
+cells, duplicate cells, changed bytes, stale aggregate digests, non-AArch64
+evidence, stale medians/MADs, failed numerical gates, or changed runtime/build
+identities reject the whole document.
+
+Run the renderer with every identity pinned explicitly:
+
+```sh
+.venv/bin/python tools/developer/qq_z6g_final_comparison.py \
+  --request "$REQUEST" \
+  --request-sha256 "$REQUEST_SHA256" \
+  --acceptance "$DECISION" \
+  --acceptance-sha256 "$DECISION_SHA256" \
+  --expected-source-revision "$FINAL_ARENA_SOURCE_REVISION" \
+  --expected-runtime-provenance-sha256 "$FINAL_ARENA_RUNTIME_SHA256" \
+  --pre-arena-manifest "$PRE_ARENA_MANIFEST" \
+  --pre-arena-manifest-sha256 "$PRE_ARENA_MANIFEST_SHA256" \
+  --expected-pre-arena-source-revision "$PRE_ARENA_SOURCE_REVISION" \
+  --expected-pre-arena-build-sha256 "$PRE_ARENA_BUILD_SHA256" \
+  --expected-pre-arena-runtime-sha256 "$PRE_ARENA_RUNTIME_SHA256"
+```
+
+The renderer binds the evidence to the measured source and runtime identities;
+it deliberately does not require the publication checkout's `HEAD` to equal
+the measured Arena revision. This permits a later report-only publication
+descendant without weakening any measured identity.
+
 ## Frozen accepted-base inputs
 
 The immutable local baseline root is
