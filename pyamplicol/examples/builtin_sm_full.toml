@@ -21,6 +21,9 @@ emit_api_bundle = true
 
 [evaluator]
 backend = "cpp"
+# The C++ example intentionally selects process-local compiled execution;
+# the default recurrence mode uses the packaged portable JIT O2 kernel pack.
+execution_mode = "compiled"
 
 [evaluator.cpp]
 optimization = "O3"

@@ -33,6 +33,9 @@ accuracy = "lc"
 [generation]
 output = "artifacts/pp_zjj"
 emit_api_bundle = true
+
+[evaluator]
+execution_mode = "compiled"
 ```
 
 Run it and override fields without editing the card:
@@ -95,8 +98,13 @@ pyamplicol generate "p p > Z j j" artifacts/pp_zjj \
   --multiparticle 'p=d,d~,g' \
   --multiparticle 'j=d,d~,g' \
   --flavor-scheme 2 \
-  --max-quark-lines 2
+  --max-quark-lines 2 \
+  --execution-mode compiled
 ```
+
+The external-model example is explicit because raw model IR is not a prepared
+recurrence bundle. Omitting the execution mode selects recurrence and therefore
+requires `built-in-sm` or a compatible `.pyamplicol-model` source.
 
 The command families are:
 
@@ -170,9 +178,9 @@ Execution mode and evaluator backend are independent choices:
 
 | Execution mode | Process artifact |
 | --- | --- |
-| `compiled` | Default. Compiles process-wide stage evaluators during generation. |
+| `recurrence` | Default. Uses prepared local kernels through compact current-recursion schedules. |
+| `compiled` | Compiles process-wide stage evaluators during generation. |
 | `eager` | Uses a prepared model's local kernels and writes compact DAG invocation tables. |
-| `recurrence` | Uses prepared local kernels through compact recurrence schedules. |
 
 | Backend | Use |
 | --- | --- |
@@ -180,7 +188,7 @@ Execution mode and evaluator backend are independent choices:
 | `asm` | Symbolica assembly evaluator |
 | `cpp` | Generated/compiled C++ evaluator with `[evaluator.cpp]` options |
 
-Eager and recurrence modes normally require a `.pyamplicol-model` bundle
+Recurrence and eager modes normally require a `.pyamplicol-model` bundle
 already prepared for exactly one backend. The `built-in-sm` source is the
 exception: installed wheels carry the portable `built-in-sm-jit-o2` pack.
 Generation never compiles missing prepared kernels. The prepared backend and
@@ -209,12 +217,16 @@ runtime reduces it as needed to keep reusable storage within
 `evaluator.eager.workspace_mib`, which defaults to 256 MiB. Arbitrarily large
 input batches are processed through those fixed-size tiles.
 
-Recurrence is opt-in and can be selected through the schema-aware CLI override:
+Cards that omit `evaluator.execution_mode` now resolve to recurrence. A card
+that intentionally uses process-local compiled DAGs must say so explicitly:
 
 ```console
 pyamplicol generate --card run.toml \
-  --set evaluator.execution_mode=recurrence
+  --execution-mode compiled
 ```
+
+There is no fallback from recurrence to compiled execution when a prepared
+kernel pack is unavailable; prepare the model or select `compiled` explicitly.
 
 `evaluator.recurrence.point_tile_size` defaults to 1024, and
 `evaluator.recurrence.workspace_mib` defaults to 256 MiB. As with eager mode,

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-# Built-in Standard Model generation with next-to-leading-color contraction.
+# Built-in Standard Model default-recurrence generation with NLC contraction.
 # Resolved runtime output has one contracted color entry per helicity.
 
 schema_version = 1
@@ -21,6 +21,10 @@ emit_api_bundle = true
 
 [evaluator]
 backend = "jit"
+
+[evaluator.jit]
+optimization_level = 2
+compress = true
 
 [output]
 progress = "log"

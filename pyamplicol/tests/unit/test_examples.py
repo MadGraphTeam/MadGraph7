@@ -81,12 +81,17 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
         assert payload["model"] == {"source": "built-in-sm"}
         assert payload["color"]["accuracy"] == accuracy  # type: ignore[index]
         assert payload["process"]["entries"][0]["expression"] == "u u~ > g g"  # type: ignore[index]
+        mode = resolve_config(EXAMPLES / name).effective.evaluator.execution_mode
+        if name == "builtin_sm_full.toml":
+            assert mode.value == "compiled"
+        else:
+            assert mode.value == "recurrence"
 
     eager = resolve_config(EXAMPLES / "builtin_sm_eager.toml").effective
     assert eager.model.source == "built-in-sm"
     assert eager.evaluator.execution_mode.value == "eager"
     assert eager.evaluator.backend.value == "jit"
-    assert eager.evaluator.jit.optimization_level == 3
+    assert eager.evaluator.jit.optimization_level == 2
 
     process_set = resolve_config(EXAMPLES / "process_set_mixed_multiplicity.toml")
     assert process_set.effective.process.entries == (
@@ -118,6 +123,10 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
         assert source == expected
         assert not Path(str(source)).is_absolute()
         assert ".." not in Path(str(source)).parts
+        assert (
+            resolve_config(EXAMPLES / name).effective.evaluator.execution_mode.value
+            == "compiled"
+        )
 
     total = resolve_config(EXAMPLES / "evaluate_total.toml").effective
     resolved = resolve_config(EXAMPLES / "evaluate_resolved.toml").effective
@@ -165,6 +174,32 @@ def test_z6g_benchmark_examples_encode_reusable_runtime_selectors() -> None:
     assert all_flows.benchmark.helicity_ids == (
         "h:-1,+1,-1,+1,-1,+1,-1,+1,-1",
     )
+
+
+def test_qq_z6g_examples_cover_the_three_public_execution_modes() -> None:
+    cards = {
+        "qq_z6g_recurrence_jit_o2.toml": ("recurrence", 2),
+        "qq_z6g_compiled_jit_o3.toml": ("compiled", 3),
+        "qq_z6g_eager_jit_o2.toml": ("eager", 2),
+    }
+    outputs: set[Path] = set()
+
+    for name, (mode, jit_level) in cards.items():
+        config = resolve_config(EXAMPLES / name).effective
+        assert config.process.entries[0].expression == "u u~ > Z g g g g g g"
+        assert config.model.source == "built-in-sm"
+        assert config.color.accuracy.value == "lc"
+        assert config.color.lc_flow_layout.value == "topology-replay"
+        assert config.evaluator.execution_mode.value == mode
+        assert config.evaluator.backend.value == "jit"
+        assert config.evaluator.jit.optimization_level == jit_level
+        assert config.benchmark.target_runtime == 5.0
+        assert config.benchmark.color_flow_ids == ("1",)
+        assert config.benchmark.helicity_ids == ()
+        assert config.generation.output is not None
+        outputs.add(config.generation.output)
+
+    assert len(outputs) == len(cards)
 
 
 def test_example_data_has_finite_momenta_and_scalar_parameters() -> None:

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-# Built-in Standard Model generation with prepared eager JIT O3 kernels.
+# Built-in Standard Model generation with prepared eager-DAG JIT O2 kernels.
 # Uses the wheel's automatically selected x86_64 or aarch64 prepared pack.
 
 schema_version = 1
@@ -25,7 +25,7 @@ backend = "jit"
 batch_size = 128
 
 [evaluator.jit]
-optimization_level = 3
+optimization_level = 2
 compress = true
 
 [evaluator.eager]

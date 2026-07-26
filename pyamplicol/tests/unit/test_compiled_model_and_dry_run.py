@@ -128,13 +128,16 @@ def test_injected_license_plan_avoids_symbolica_and_model_compilers() -> None:
             "-c",
             "\n".join(
                 (
-                    "import sys",
-                    "import pyamplicol.licensing as licensing",
-                    "from pyamplicol import Generator",
-                    "licensing.detect_symbolica_license = lambda **kwargs: "
-                    "licensing.SymbolicaLicenseState(False, True)",
-                    "assert 'symbolica' not in sys.modules",
-                    "Generator().plan('d d~ > z')",
+                        "import sys",
+                        "import pyamplicol.licensing as licensing",
+                        "from pyamplicol import Generator",
+                        "from pyamplicol.config import EvaluatorConfig, RunConfig",
+                        "licensing.detect_symbolica_license = lambda **kwargs: "
+                        "licensing.SymbolicaLicenseState(False, True)",
+                        "assert 'symbolica' not in sys.modules",
+                        "Generator(RunConfig(action='generate', evaluator="
+                        "EvaluatorConfig(execution_mode='compiled'))).plan("
+                        "'d d~ > z')",
                     "assert 'symbolica' not in sys.modules",
                     "assert not any(name.startswith("
                     "'pyamplicol.models.compiler') for name in sys.modules)",
@@ -225,7 +228,10 @@ def test_generator_plan_is_strictly_non_writing_and_does_not_compile(
         action=Action.GENERATE,
         model=ModelConfig(cache_dir=cache),
         generation=GenerationConfig(output=output, workers=4),
-        evaluator=EvaluatorConfig(optimization=EvaluatorOptimizationConfig(cores=8)),
+        evaluator=EvaluatorConfig(
+            execution_mode="compiled",
+            optimization=EvaluatorOptimizationConfig(cores=8),
+        ),
     )
     before = _snapshot(sandbox)
 
@@ -313,6 +319,8 @@ def test_cli_generate_dry_run_preserves_the_filesystem_snapshot(
             "d d~ > z",
             str(output),
             "--dry-run",
+            "--execution-mode",
+            "compiled",
             "--workers",
             "4",
             "--cores",
@@ -368,6 +376,7 @@ def test_plan_reads_an_existing_external_model_cache_without_modifying_it(
         action=Action.GENERATE,
         model=ModelConfig(cache_dir=cache),
         generation=GenerationConfig(output=output),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
 
     monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
@@ -413,7 +422,12 @@ def test_plan_uses_licensed_concrete_process_resource_partition(
         _forbidden("model compilation"),
     )
 
-    plan = Generator(RunConfig(action=Action.GENERATE)).plan("p p > z")
+    plan = Generator(
+        RunConfig(
+            action=Action.GENERATE,
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    ).plan("p p > z")
 
     assert len(plan.concrete_processes) == 5
     assert plan.requested_settings.generation.workers == "auto"

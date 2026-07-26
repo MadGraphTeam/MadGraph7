@@ -258,6 +258,7 @@ def test_licensed_multiparticle_expansion_drives_workers_and_provenance(
                 ),
             ),
             evaluator=EvaluatorConfig(
+                execution_mode="compiled",
                 optimization=EvaluatorOptimizationConfig(cores="auto")
             ),
         ),

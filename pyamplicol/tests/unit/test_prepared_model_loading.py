@@ -159,10 +159,33 @@ def test_eager_plan_uses_packaged_builtin_model(
         "pyamplicol.assets.prepared_models.materialize_packaged_prepared_model",
         lambda: bundle_path,
     )
-
     plan = Generator(_eager_config()).plan("d d~ > z")
 
     assert len(plan.concrete_processes) == 1
+    assert plan.estimated_coverage["model_kind"] == "prepared"
+
+
+def test_default_recurrence_plan_uses_packaged_builtin_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    bundle_path = _prepared_builtin_sm(tmp_path)
+    monkeypatch.setattr(
+        "pyamplicol.assets.prepared_models.materialize_packaged_prepared_model",
+        lambda: bundle_path,
+    )
+    # The small loading fixture predates the recurrence catalog; this test
+    # isolates default source selection, while recurrence-pack validation has
+    # dedicated bundle/preflight coverage.
+    monkeypatch.setattr(
+        "pyamplicol.generation.service.GenerationBackend._require_eager_kernel_pack",
+        lambda _self, _resolved: None,
+    )
+
+    plan = Generator(RunConfig(action=Action.GENERATE)).plan("d d~ > z")
+
+    assert plan.effective_settings.evaluator.execution_mode == "recurrence"
     assert plan.estimated_coverage["model_kind"] == "prepared"
 
 
@@ -206,7 +229,12 @@ def test_compiled_plan_does_not_materialize_packaged_model(
         fail,
     )
 
-    plan = Generator(RunConfig(action=Action.GENERATE)).plan("d d~ > z")
+    plan = Generator(
+        RunConfig(
+            action=Action.GENERATE,
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    ).plan("d d~ > z")
 
     assert plan.estimated_coverage["model_kind"] == "built-in-sm"
 

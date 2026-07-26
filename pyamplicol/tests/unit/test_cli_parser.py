@@ -44,6 +44,11 @@ def test_generate_accepts_eager_execution_mode_override() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.EAGER
 
 
+def test_generate_defaults_to_recurrence_execution() -> None:
+    config = parse_cli(("generate",)).resolve().effective
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
+
+
 @pytest.mark.parametrize(
     ("flag", "expected"),
     (("--jit-compress", True), ("--no-jit-compress", False)),

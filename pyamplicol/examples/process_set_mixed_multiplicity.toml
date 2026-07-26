@@ -32,4 +32,5 @@ seed = 12345
 
 [evaluator]
 backend = "jit"
+execution_mode = "compiled"
 batch_size = 128

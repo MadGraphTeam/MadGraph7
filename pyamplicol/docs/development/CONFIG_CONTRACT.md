@@ -60,7 +60,7 @@ runtime-mutable.
 ## Evaluator
 
 - `backend: jit | asm | cpp = jit`
-- `execution_mode: compiled | eager | recurrence = compiled`
+- `execution_mode: compiled | eager | recurrence = recurrence`
 - `batch_size: int = 128`
 - `output_chunk_size: int | null = 512`
 - Stage-local parameter layout is mandatory and is not a public toggle.
@@ -90,10 +90,12 @@ target-native.
 - `point_tile_size: int = 1024`
 - `workspace_mib: int = 256`
 
-Recurrence mode is opt-in; compiled execution remains the global default. The
-runtime may reduce `point_tile_size` to honor the recurrence workspace limit,
-but never increases it. Recurrence JIT kernels use the same portable prepared
-O2 contract as eager execution.
+Recurrence is the global default. The runtime may reduce `point_tile_size` to
+honor the recurrence workspace limit, but never increases it. Recurrence JIT
+kernels use the same portable prepared O2 contract as eager execution. A
+missing prepared pack fails closed; configuration resolution never falls back
+to compiled execution. Cards that require process-local compiled DAGs must set
+`execution_mode = "compiled"` explicitly.
 
 ### Evaluator Optimization
 

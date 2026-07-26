@@ -28,6 +28,9 @@ emit_api_bundle = true
 
 [evaluator]
 backend = "jit"
+# Raw portable model IR has no prepared recurrence pack. This example
+# intentionally demonstrates process-local compiled DAG generation.
+execution_mode = "compiled"
 
 [evaluator.jit]
 optimization_level = 3

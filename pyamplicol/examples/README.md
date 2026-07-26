@@ -32,6 +32,9 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 | `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
 | `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
 | `benchmark.toml` | Short benchmark of the same selected subprocess |
+| `qq_z6g_recurrence_jit_o2.toml` | `u u~ > Z + 6g` through the default recurrence schedule and prepared JIT O2 kernels |
+| `qq_z6g_compiled_jit_o3.toml` | The same `Z + 6g` workload through process-local compiled-DAG JIT O3 execution |
+| `qq_z6g_eager_jit_o2.toml` | The same `Z + 6g` workload through eager-DAG execution and prepared JIT O2 kernels |
 | `benchmark_z6g_single_flow_helicity_sum.toml` | Profile the default topology-replay layout for runtime flow selection with a helicity sum in `u u~ > Z + 6g` |
 | `benchmark_z6g_all_flows_single_helicity.toml` | Profile the explicit all-flow-union layout for an all-flow sum at one runtime-selected helicity in `u u~ > Z + 6g` |
 | `benchmark_z6g_generation_specialized_flow_helicity_sum.toml` | Generation-specialized flow baseline for the reusable-selector comparison |
@@ -40,11 +43,32 @@ parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 | `external_ufo_sm.toml` | Trusted UFO execution path |
 | `external_json_scalars.toml` | Scalar contact model and repeated particles |
 | `external_json_scalar_gravity.toml` | Proven massless spin-2 model path |
-| `builtin_sm_lc.toml` | Built-in compatibility SM, `u u~ > g g`, LC |
-| `builtin_sm_nlc.toml` | Built-in compatibility SM, contracted NLC |
-| `builtin_sm_full.toml` | Built-in compatibility SM, contracted full color |
-| `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O3 pack |
+| `builtin_sm_lc.toml` | Built-in compatibility SM, default recurrence JIT O2, `u u~ > g g`, LC |
+| `builtin_sm_nlc.toml` | Built-in compatibility SM, default recurrence JIT O2, contracted NLC |
+| `builtin_sm_full.toml` | Built-in compatibility SM, explicit compiled C++, contracted full color |
+| `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O2 pack |
 | `all_options.toml` | Every current schema field, active and commented |
+
+## Run `q q~ > Z + 6g` In Three Modes
+
+Each matched card generates and profiles the same complete-selector,
+topology-replay LC workload:
+
+```console
+pyamplicol generate --card qq_z6g_recurrence_jit_o2.toml
+pyamplicol profile --card qq_z6g_recurrence_jit_o2.toml
+
+pyamplicol generate --card qq_z6g_compiled_jit_o3.toml
+pyamplicol profile --card qq_z6g_compiled_jit_o3.toml
+
+pyamplicol generate --card qq_z6g_eager_jit_o2.toml
+pyamplicol profile --card qq_z6g_eager_jit_o2.toml
+```
+
+Recurrence JIT O2 is the default current-schedule lane, compiled JIT O3 builds
+process-local DAG evaluators, and eager-DAG JIT O2 applies prepared kernels to
+compact process tables. The explicit settings in these cards make the
+three-way comparison stable if project defaults change again.
 
 ## Reproduce The Z-Ladder Workloads
 

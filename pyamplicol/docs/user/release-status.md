@@ -26,10 +26,11 @@ published on PyPI.
   through `rusticol-config`.
 - Symbolica-independent f64 execution for direct SymJIT applications and
   target-compatible ASM/C++ compiled evaluators.
-- Opt-in prepared-model eager execution with the portable, wheel-owned
+- Default prepared-model recurrence execution and opt-in eager execution with
+  the portable, wheel-owned
   built-in-SM `built-in-sm-jit-o2` kernel pack, compact process invocation
-  tables, runtime flow/helicity selectors,
-  fixed reusable workspaces, and the unchanged default compiled lane.
+  tables or recurrence schedules, runtime flow/helicity selectors, and fixed
+  reusable workspaces. Compiled DAG execution remains an explicit mode.
 - `examples list|copy|run`, `config template|resolve`, `doctor`, and installed
   `self-test` utilities.
 - Artifact `inspect` with stable-ID or exact-expression process selection, and

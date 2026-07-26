@@ -678,7 +678,7 @@ class EvaluatorConfig:
         metadata=_setting("str", choices=tuple(EvaluatorBackend)),
     )
     execution_mode: EvaluatorExecutionMode = field(
-        default=EvaluatorExecutionMode.COMPILED,
+        default=EvaluatorExecutionMode.RECURRENCE,
         metadata=_setting("str", choices=tuple(EvaluatorExecutionMode)),
     )
     batch_size: int = field(default=128, metadata=_setting("int"))

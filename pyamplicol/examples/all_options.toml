@@ -92,7 +92,7 @@ post_build_validation = true
 # evaluator.backend: "jit", "asm", or "cpp". Default jit.
 backend = "jit"
 # evaluator.execution_mode: "compiled", "eager", or "recurrence". Default
-# compiled. Eager and recurrence built-in-sm use the wheel-owned JIT O3 pack;
+# recurrence. Eager and recurrence built-in-sm use the wheel-owned JIT O2 pack;
 # other packs need an explicit .pyamplicol-model source.
 execution_mode = "compiled"
 # evaluator.batch_size: Positive evaluation batch size. Default 128.

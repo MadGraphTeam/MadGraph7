@@ -126,7 +126,11 @@ def test_contracted_color_coverage_has_no_lc_layout_provenance(
     model = BuiltinSMModel()
     process = build_process_ir("d d~ > z g g", color_accuracy=accuracy)
     backend = GenerationBackend(
-        RunConfig(action="generate", color=ColorConfig(accuracy=accuracy)),
+        RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy=accuracy),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        ),
         None,
     )
 
@@ -143,6 +147,7 @@ def test_compiled_all_flow_union_is_the_only_materialized_execution_lane() -> No
         RunConfig(
             action="generate",
             color=ColorConfig(lc_flow_layout="all-flow-union"),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
         ),
         None,
     )

@@ -79,15 +79,16 @@ expression, such as `d d~ > z g g`. The profiler warms the selected runtime,
 calibrates independent timed blocks and repetitions per block toward the target
 duration, and reports the mean time per point with standard deviation, standard
 error, and relative standard error (standard error divided by the mean). The
-result identifies the compiled/eager mode and whether color and helicity axes
-are complete or selected. In a terminal it uses a colored progress bar with
-live elapsed-time, sampling, and uncertainty metadata, followed by
-colorized PrettyTables. Pressing `Ctrl-C` stops sampling and reports a clearly
-marked partial result from every fully completed block. Native Rusticol
-profiling is a separate paired pass over the same batch and repetition count as
-the ordinary wall-time block. It reports exclusive native input, state, source,
-momentum, model, stage, amplitude, reduction, materialization, output-copy, and
-selector phases; internal leaf-gather/backend/output-gather attribution; and
+result identifies the recurrence, compiled, or eager mode and whether color
+and helicity axes are complete or selected. In a terminal it uses a colored
+progress bar with live elapsed-time, sampling, and uncertainty metadata,
+followed by colorized PrettyTables. Pressing `Ctrl-C` stops sampling and
+reports a clearly marked partial result from every fully completed block.
+Native Rusticol profiling is a separate paired pass over the same batch and
+repetition count as the ordinary wall-time block. It reports exclusive native
+input, state, source, momentum, model, stage, amplitude, reduction,
+materialization, output-copy, and selector phases; internal
+leaf-gather/backend/output-gather attribution; and
 per-stage detail. Internal attribution is non-additive: full-stage evaluator
 envelopes own leaf gathering, while composed selected-chunk input-pack
 envelopes own it. A second `Native Work Counters` table reports data movement
@@ -101,7 +102,28 @@ timings and counters; progress and diagnostics remain on stderr.
 output. TOML run cards continue to use `action = "benchmark"`, and the Python
 interface remains `BenchmarkRunner`/`BenchmarkResult`.
 
-### Reproduce the `q q~ > Z + 6g` benchmark workloads
+### Run `q q~ > Z + 6g` in all three execution modes
+
+The copied examples contain one matched card per execution strategy:
+
+```console
+pyamplicol generate --card qq_z6g_recurrence_jit_o2.toml
+pyamplicol profile --card qq_z6g_recurrence_jit_o2.toml
+
+pyamplicol generate --card qq_z6g_compiled_jit_o3.toml
+pyamplicol profile --card qq_z6g_compiled_jit_o3.toml
+
+pyamplicol generate --card qq_z6g_eager_jit_o2.toml
+pyamplicol profile --card qq_z6g_eager_jit_o2.toml
+```
+
+Recurrence JIT O2 is the default and evaluates compact current schedules;
+compiled JIT O3 builds process-local DAG evaluators; eager-DAG JIT O2 executes
+compact process tables through prepared model kernels. The three cards use the
+same `u u~ > Z g g g g g g` process, LC topology-replay layout, runtime-selected
+first color flow, and helicity sum, with distinct artifact paths.
+
+### Compare the two `q q~ > Z + 6g` LC workloads
 
 The packaged examples include the two independent LC workloads used for the
 corresponding performance-PDF measurements. Copy the examples, enter that
@@ -224,6 +246,9 @@ accuracy = "lc"
 [generation]
 output = "artifacts/pp_zjj"
 emit_api_bundle = true
+
+[evaluator]
+execution_mode = "compiled"
 ```
 
 Paths in a card are resolved relative to that card. Equivalent direct steering
@@ -238,9 +263,14 @@ pyamplicol generate "p p > Z j j" artifacts/pp_zjj \
   --flavor-scheme 2 \
   --max-quark-lines 2 \
   --color-accuracy lc \
+  --execution-mode compiled \
   --jit-optimization-level 3 \
   --jit-compress
 ```
+
+This external-model example selects compiled mode explicitly because raw
+portable model IR does not contain a prepared recurrence kernel pack. Built-in
+SM commands use the default recurrence JIT O2 lane.
 
 Configuration precedence is defaults, TOML, dedicated command flags, ordered
 `--set dotted.path=value` overrides, then recorded license/resource clamps.
@@ -270,12 +300,13 @@ pyamplicol doctor
 pyamplicol self-test
 ```
 
-## Prepared Eager Execution
+## Prepared Recurrence And Eager Execution
 
-The default `compiled` execution mode builds process-wide stage evaluators.
-The opt-in `eager` mode prepares model-local kernels once and lets Rusticol
-execute compact process DAG tables. Wheels include the portable built-in-SM
-`built-in-sm-jit-o2` prepared pack, so the common path needs no
+The default `recurrence` mode executes compact current schedules through
+prepared model-local kernels. Explicit `compiled` mode builds process-wide
+stage evaluators, while `eager` executes compact process DAG tables through the
+same prepared-kernel boundary. Wheels include the portable built-in-SM
+`built-in-sm-jit-o2` pack, so the common recurrence and eager paths need no
 model-preparation command:
 
 ```console
@@ -295,12 +326,15 @@ pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_cpp_eager \
 ```
 
 The `.pyamplicol-model` bundle is self-contained and retains exact expressions
-alongside one prepared JIT, ASM, or C++ kernel pack. Eager generation requires
-a matching pack and fails with the exact preparation command when one is
-absent; it never silently compiles kernels. The pack's backend and optimization
-settings are authoritative and any requested adjustment is recorded.
-Consequently, `--model built-in-sm` in eager mode resolves to the wheel-owned
-JIT O2 pack; pass an explicitly prepared path to select another backend.
+alongside one prepared JIT, ASM, or C++ kernel pack. Recurrence and eager
+generation require a matching pack and fail with the exact preparation command
+when one is absent; they never silently compile kernels. The pack's backend and
+optimization settings are authoritative and any requested adjustment is
+recorded.
+Consequently, `--model built-in-sm` in recurrence or eager mode resolves to the
+wheel-owned JIT O2 pack; pass an explicitly prepared path to select another
+backend. A missing prepared pack is an error: pyAmpliCol never changes the
+requested execution mode as a compatibility fallback.
 
 Portable model IR and prepared executable state have different compatibility
 contracts. `.pyAmplicol-model.json` IR is architecture-independent, whereas a

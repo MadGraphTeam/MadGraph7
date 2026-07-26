@@ -5,7 +5,7 @@ import pytest
 
 from pyamplicol.api import Generator, ProcessAlias, ProcessRequest, ProcessSet
 from pyamplicol.api.errors import GenerationError
-from pyamplicol.config import ProcessConfig, RunConfig
+from pyamplicol.config import EvaluatorConfig, ProcessConfig, RunConfig
 from pyamplicol.generation.dag_algorithms import infer_minimal_coupling_order_limits
 from pyamplicol.generation.dag_types import ColorState, CurrentIndex
 from pyamplicol.generation.runtime_schema import build_runtime_expression_schema
@@ -48,7 +48,12 @@ def test_generation_current_identity_keeps_every_physics_field() -> None:
 
 
 def test_generation_plan_defers_dag_compilation() -> None:
-    plan = Generator().plan("d d~ > z")
+    plan = Generator(
+        RunConfig(
+            action="generate",
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    ).plan("d d~ > z")
     process = plan.estimated_coverage["processes"][0]
 
     assert process["key"] == "d_dbar_to_z"
@@ -64,6 +69,7 @@ def test_generation_plan_and_physics_preserve_selected_coverage() -> None:
             selected_color_sector_ids=(0,),
             selected_source_helicities={"1": 1},
         ),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
     generator = Generator(config)
     plan = generator.plan("d d~ > z g g")
@@ -92,6 +98,7 @@ def test_generation_plan_rejects_missing_selected_sector() -> None:
     config = RunConfig(
         action="generate",
         process=ProcessConfig(selected_color_sector_ids=(999,)),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
 
     with pytest.raises(GenerationError, match="did not materialize requested"):
@@ -111,7 +118,11 @@ def test_generation_plan_uses_production_alias_validation() -> None:
         ),
     )
 
-    plan = Generator().plan(valid)
+    compiled_config = RunConfig(
+        action="generate",
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+    )
+    plan = Generator(compiled_config).plan(valid)
 
     assert plan.estimated_coverage["alias_count"] == 1
     assert plan.concrete_processes == (request,)
@@ -127,7 +138,7 @@ def test_generation_plan_uses_production_alias_validation() -> None:
         ),
     )
     with pytest.raises(GenerationError, match="permutation has length"):
-        Generator().plan(invalid)
+        Generator(compiled_config).plan(invalid)
 
 
 def test_minimal_coupling_limits_zero_nonminimal_model_orders() -> None:

@@ -52,6 +52,10 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         EvaluatorExecutionMode.EAGER,
         EvaluatorExecutionMode.RECURRENCE,
     )
+    assert (
+        FIELD_REGISTRY["evaluator.execution_mode"].default
+        is EvaluatorExecutionMode.RECURRENCE
+    )
     assert FIELD_REGISTRY["color.lc_flow_layout"].default == (
         LCFlowLayout.TOPOLOGY_REPLAY
     )
@@ -149,7 +153,7 @@ def test_contract_defaults_are_typed() -> None:
     assert config.color.accuracy is ColorAccuracy.LC
     assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
-    assert config.evaluator.execution_mode is EvaluatorExecutionMode.COMPILED
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
     assert config.evaluator.jit.compress is True
     assert config.evaluator.eager == EagerEvaluatorConfig()
     assert config.evaluator.recurrence == RecurrenceEvaluatorConfig()

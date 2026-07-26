@@ -25,7 +25,12 @@ from pyamplicol._internal.versions import (
 )
 from pyamplicol.api import ModelSource, ProcessRequest
 from pyamplicol.artifacts import load_manifest
-from pyamplicol.config import ColorConfig, GenerationConfig, RunConfig
+from pyamplicol.config import (
+    ColorConfig,
+    EvaluatorConfig,
+    GenerationConfig,
+    RunConfig,
+)
 from pyamplicol.generation.artifact_writer import (
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
@@ -385,6 +390,7 @@ def test_all_flow_union_artifact_omits_duplicate_execution_lanes(
         config=RunConfig(
             action="generate",
             color=ColorConfig(lc_flow_layout="all-flow-union"),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
             generation=GenerationConfig(
                 emit_api_bundle=False,
             ),
