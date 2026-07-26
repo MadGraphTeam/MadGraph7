@@ -239,6 +239,13 @@ def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
     assert "--rerun-results" in shard_job
     assert "--regenerate-artifacts" in shard_job
     assert "runtime-bundle.json" in shard_job
+    raw_ufo_model = "src/pyamplicol/assets/models/json/sm/sm.json"
+    prepared_ufo_model = (
+        "$PERFORMANCE_BUNDLE_ROOT/prepared-models/"
+        "ufo-sm-jit-o2.pyamplicol-model"
+    )
+    assert raw_ufo_model in shard_job
+    assert prepared_ufo_model not in shard_job
 
     capture_job = workflow.split(
         "  x86-qq-recurrence-capture:\n",
@@ -275,6 +282,8 @@ def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
         '"$QQ_UPLOAD_ROOT/${{ matrix.role }}.json"'
         in capture_job
     )
+    assert prepared_ufo_model in capture_job
+    assert raw_ufo_model not in capture_job
 
     aggregate_job = workflow.split(
         "  x86-performance-matrix-aggregate:\n",
@@ -284,6 +293,11 @@ def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
     assert "--shard-count 8" in aggregate_job
     assert "merge-multiple: true" in aggregate_job
     assert "compiled-mode-matrix-x86-aggregate.json" in aggregate_job
+    assert raw_ufo_model in aggregate_job
+    assert prepared_ufo_model not in aggregate_job
+
+    assert workflow.count(raw_ufo_model) == 2
+    assert workflow.count(prepared_ufo_model) == 2
 
     qq_job = workflow.split(
         "  x86-qq-recurrence-acceptance:\n",
