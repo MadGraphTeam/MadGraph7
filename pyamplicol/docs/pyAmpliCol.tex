@@ -61,7 +61,7 @@
 \newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
 \newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
 \newcommand{\ReportMatrixLegend}{\ReportTableNote{The table heading names the baseline and candidate. LC reports the selected-flow, summed-helicity workload and the all-flow, selected-helicity workload separately. NLC and full colour report one contracted workload. Parenthesized values are candidate-to-baseline ratios; an execution attribution is shown only when both measurements expose it.}}
-\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload reports process-generation time in seconds and native wall time in microseconds per phase-space point, together with a separately measured execution attribution when exposed. Compiled rows use the labelled JIT, ASM, or C++ backend; eager and recurrence rows use portable JIT O2 prepared models. Parenthesized runtime values and selected-flow generation values compare each pyAmpliCol row with the corresponding AmpliCol reference workload. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}}
+\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload reports process-generation time in seconds and native wall time in microseconds per phase-space point, together with a separately measured execution attribution when exposed. Compiled rows use the labelled JIT, ASM, or C++ backend; eager and recurrence rows use portable JIT O2 prepared models. Parenthesized wall-time and selected-flow generation values compare each pyAmpliCol row with the corresponding AmpliCol workload. Execution attribution is reported separately when exposed and has no AmpliCol reference ratio. All-flow generation is shown absolutely and marked n.c. because its setup boundary differs from the reference.}}
 \newcommand{\ReportLandscapeFooter}{}
 \newcommand{\ReportProfileName}{unpopulated}
 \newcommand{\ReportPlatformSummary}{specified by the architecture profile}
@@ -115,7 +115,7 @@ specializes a shared-current directed acyclic graph (DAG) to a process. Eager
 mode evaluates the same graph with reusable model kernels. Recurrence mode
 constructs a compact current schedule directly. The three modes implement the
 same physics normalization, colour treatment, helicity sums, and resolved
-observables. The original \AC{} program and its event-generation setting are
+observables. The original \AC{} program and its use in event generation are
 described in Ref.~\cite{FrederixVitos2026}.
 
 The report has three purposes:
@@ -131,7 +131,7 @@ In each architecture-specific report, an \ReportNA{} entry denotes a
 process/multiplicity combination outside the declared scope or an observable
 that does not apply. Every applicable cell across the complete declared
 multiplicity range must instead contain a validated measurement or an
-authenticated resource-limit status. A measurement that does not pass
+documented resource-limit status. A measurement that does not pass
 numerical validation is labelled explicitly and never replaced by a timing
 value. No value is copied, interpolated, or estimated from a neighbouring
 cell.
@@ -159,12 +159,13 @@ share one node. A topological sweep therefore evaluates each retained current
 once per phase-space point and reuses it in all dependent amplitudes.
 This is a Berends--Giele-type construction~\cite{BerendsGiele1988}.
 
-The Universal FeynRules Output (UFO) format describes particles, parameters,
-interactions, Lorentz tensors, colour tensors, and propagators
-in a model-independent form~\cite{UFO2012,UFO2023}. \PAC{} normalizes a trusted
-UFO Python module, or its own serialized JSON representation of that model, to
-the same canonical representation used by process generation. The UFO module
-is executable Python; the corresponding serialized JSON form is data-only.
+The Universal Feynman Output format (UFO; originally Universal FeynRules
+Output) describes particles, parameters, interactions, Lorentz tensors,
+colour tensors, and propagators in a model-independent
+form~\cite{UFO2012,UFO2023}. \PAC{} normalizes a trusted UFO Python module, or
+its own serialized JSON representation of that model, to the same canonical
+representation used by process generation. The UFO module is executable
+Python; the corresponding serialized JSON form is data-only.
 
 Optimizations of imported models are based on exact colour, Lorentz,
 propagator, and coupling identities rather than particle names or numerical
@@ -247,9 +248,9 @@ values have one contracted colour component per helicity. Summing all
 non-point axes must reproduce the directly evaluated total. Selectors refer to
 physical helicities and flows.
 
-All binary64 interfaces use the same native numerical core. Cross-interface
-agreement therefore checks data conventions, while a separately generated
-value is required for an independent physics comparison.
+All \PAC{} binary64 interfaces use the same native numerical core.
+Cross-interface agreement therefore checks data conventions, while a
+separately generated value is required for an independent physics comparison.
 
 The JIT backend stores a portable SymJIT application for binary64 evaluation;
 the receiving host creates code appropriate for its processor. ASM and C++
@@ -299,12 +300,12 @@ five-second sampling target.
 
 For each Standard-Model process, all compared execution modes and the original
 \AC{} reference are evaluated at the same deterministic phase-space point with
-the same parameter card. Cross-mode comparisons use relative tolerance
-$10^{-12}$ and absolute tolerance $10^{-15}$; comparisons with the independent
-\AC{} result use relative tolerance $10^{-8}$. Scalar-model ladders instead
-compare binary64 evaluation with higher precision and, where applicable,
-direct contact-tensor contraction. Every result must reproduce its resolved
-sum and preserve expected structural zeros.
+identical numerical parameters. Cross-mode comparisons use relative tolerance
+$10^{-12}$ and absolute tolerance $10^{-15}$; comparisons with the
+independent \AC{} result use relative tolerance $10^{-8}$. Scalar-model
+ladders instead compare binary64 evaluation with higher precision and, where
+applicable, direct contact-tensor contraction. Every result must reproduce its
+resolved sum and preserve expected structural zeros.
 
 Timing and numerical validation are separate requirements: a timing is
 reported only when the corresponding matrix element passes all validation
@@ -401,11 +402,12 @@ performance ratio.
 Performance comparisons are meaningful only for a baseline measured with the
 same observables, parameters, selectors, and hardware profile. The result
 tables therefore present validated, architecture-local comparisons; they do
-not combine measurements from different machines. An \ReportNA{} entry is
-outside this edition's measured scope or not applicable and must not be
-interpreted as zero. Numerical agreement, timing uncertainty, and source
-identity remain part of the published result set even when a compact table
-shows only the central timing.
+not combine measurements from different machines. An \ReportNA{} entry denotes
+only a structurally inapplicable cell or observable; every applicable cell
+contains a validated measurement or documented resource-limit status.
+Numerical agreement, timing uncertainty, and software revision remain part of
+the published result set even when a compact table shows only the central
+timing.
 
 \clearpage
 \input{section_zgg_example.tex}

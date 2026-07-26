@@ -17,7 +17,7 @@ multiplicity stated by the process definition.  NLC and full-colour grids
 retain \(n=1,\ldots,5\).  A process/multiplicity combination outside its family
 definition is marked \textsc{not applicable}; this is table structure, not an
 unfilled measurement.  A complete edition accounts for every applicable cell
-across the full declared range.  Resource-limited cells carry an authenticated
+across the full declared range.  Resource-limited cells carry a documented
 status; every successful cell is numerical and validated.  An in-scope result
 that does not pass numerical validation is identified by a status and does
 not carry a timing ratio.
@@ -25,7 +25,7 @@ not carry a timing ratio.
 The UFO-SM recurrence matrices use the same process definitions, colour
 contracts, numerical parameters, selectors, and validation points as the
 built-in-SM recurrence matrices. Their source is the packaged Standard Model
-loaded through the UFO/JSON interface. This comparison verifies that the
+loaded through the serialized-JSON interface. This comparison verifies that the
 imported and built-in model routes implement the same requested physics.
 Compiled and eager process matrices are built-in-only, isolating differences
 between execution modes from differences in model loading.
@@ -74,15 +74,14 @@ followed by the candidate generation and runtime ratios. No per-flow scalar is
 defined for these contracted colour accuracies.
 
 The wall quantity is the repeated native evaluation time after caller-language
-input conversion and is the primary runtime observable. When available, the
-execution quantity is a separately measured, mode-specific attribution within
-that wall boundary. It is divided by the matching baseline wall time because
-the implementations do not expose a common narrower timing boundary. An
-unavailable attribution is reported as such rather than estimated.
+input conversion and is the primary runtime observable. A separately measured
+execution attribution is supplementary. Its ratio is shown only when candidate
+and baseline expose compatible attribution boundaries; otherwise it is marked
+\textsc{not exposed}.
 
-Preparing reusable model-level kernels is excluded from process-generation
-time and reported separately.  Compiled generation still includes
-process-specific evaluator construction and backend compilation.
+Preparation of reusable model-level kernels is excluded from
+process-generation time. Compiled generation still includes process-specific
+evaluator construction and backend compilation.
 
 A timing is shown only after recurrence agrees with original \AC{} at the
 independent-reference tolerance and compiled and eager results agree with
@@ -122,9 +121,9 @@ NLC/full, lower
 Summary rows report the baseline mean over valid candidate--baseline pairs and
 the ratio of sums
 \(\sum_i T_{\mathrm{candidate},i}/\sum_i T_{\mathrm{baseline},i}\).
-LC summaries remain separate for topology replay and all-flow union.  Missing,
-unsupported, and validation-failed cells do not contribute to a ratio-of-sums
-summary.
+LC summaries remain separate for topology replay and all-flow union.
+Structurally inapplicable, resource-limited, unsupported, and
+validation-failed cells do not contribute to a ratio-of-sums summary.
 
 The first three matrices provide a built-in-SM overview against original
 \AC{}.  For each process, multiplicity, colour treatment, and LC workload,

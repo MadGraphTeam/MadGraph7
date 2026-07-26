@@ -10,6 +10,8 @@ currents, contributions, and closures directly. These choices change the
 balance between process-generation cost and runtime work, but not the
 observable being evaluated.
 
+Recurrence JIT O2 is the default execution mode.
+
 \begin{center}
 \small
 \begin{tabular}{@{}L{0.72in}L{1.85in}L{2.00in}L{1.40in}@{}}
@@ -63,10 +65,10 @@ recurrence JIT O2 measurements reuse this model-level preparation and add only
 the process-dependent schedule. Compiled JIT O3 measurements instead include
 construction and compilation of their process-specific evaluators.
 
-Prepared-model creation is measured separately and excluded from the
-process-generation times in the comparison tables. This boundary is important:
-the reported eager and recurrence generation times describe adding a process
-to an already prepared model, not importing and compiling the model itself.
+Prepared-model creation occurs outside the process-generation timer. The
+reported eager and recurrence generation times therefore describe adding a
+process to an already prepared model, not importing and compiling the model
+itself.
 
 \subsection{Batches, selectors, and portability}
 
