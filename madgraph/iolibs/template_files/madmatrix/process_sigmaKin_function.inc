@@ -145,7 +145,7 @@
 #endif
           if( okhel )
           {
-            const int ihelF = cGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+            const int ihelF = %(selected_hel_code_1)s; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
             allselhel[ievt] = ihelF;
             //printf( "sigmaKin: ievt=%%4d ihel=%%4d\n", ievt, ihelF );
             break;
@@ -159,7 +159,7 @@
           //printf( "sigmaKin: ievt=%%4d ighel=%%d MEs_ighel=%%f\n", ievt2, ighel, MEs_ighel2[ighel][ieppV] );
           if( allrndhel[ievt2] < ( MEs_ighel2[ighel][ieppV] / MEs_ighel2[cNGoodHel - 1][ieppV] ) )
           {
-            const int ihelF = cGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+            const int ihelF = %(selected_hel_code_2)s; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
             allselhel[ievt2] = ihelF;
             //printf( "sigmaKin: ievt=%%4d ihel=%%4d\n", ievt2, ihelF );
             break;

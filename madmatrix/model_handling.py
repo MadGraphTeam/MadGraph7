@@ -2285,6 +2285,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             'sigmakin_denominator':
                 '      MEs_sv = MEs_sv * broken_symmetry_factor(iflavorVec[ievt0]) / helcolDenominators[0];',
             'flavorpdg_body': '    return flavorPDGs[iflavor][ipar];',
+            # No crossing: the selected helicity is the base row, unchanged.
+            'selected_hel_code_1': 'cGoodHel[ighel] + 1',
+            'selected_hel_code_2': 'cGoodHel[ighel] + 1',
         }
         if not getattr(self, 'use_crossing', False):
             return plain
@@ -2363,6 +2366,66 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
              'ncrossN': ncross * nexternal, 'basepid': arr(basepid),
              'source': arr(source), 'ninitial': ninitial}
 
+        # Per-leg helicity states in the cHel (allow_reverse=False) order, used
+        # to re-encode a crossed helicity config into its canonical code.
+        pdict = me.get('processes')[0].get('model').get('particle_dict')
+        hstates = [pdict[wf.get('pdg_code')].get_helicity_states(False)
+                   for wf in me.get_external_wavefunctions()]
+        hnstate = [len(s) for s in hstates]
+        maxhel = max(hnstate) if hnstate else 1
+        states_flat = []
+        for k in range(nexternal):
+            states_flat.extend(hstates[k][i] if i < hnstate[k] else 0
+                               for i in range(maxhel))
+        # Crossed-event selected helicity (allselhel). See the CAUTION below:
+        # this transform is compile-checked only, NOT validated at runtime.
+        crossing_decl = crossing_decl + (
+            "  // ---- Crossed-event selected helicity code (allselhel) ----\n"
+            "  // For a crossed event the reported per-event helicity must be the\n"
+            "  // CROSSED code, not the base row: mirror the fortran\n"
+            "  // APPLY_CROSSING_TABLE, which permutes the base NHEL config by the\n"
+            "  // crossing slot permutation (NHEL(k)=NHEL_IN(perm(k)), no sign flip\n"
+            "  // -- the NSF sign lives in IC), then ENCODE_HEL it into the\n"
+            "  // canonical mixed-radix code over the base per-leg helicity states.\n"
+            "  // cross 0 is the identity (base row+1), so the non-crossing path is\n"
+            "  // unchanged.\n"
+            "  //\n"
+            "  // !!! CAUTION: COMPILE-CHECKED ONLY, NOT VALIDATED AT RUNTIME. The\n"
+            "  // |M|^2 path evaluates each row with the helicity read by\n"
+            "  // DESTINATION slot (cHel[ihel][s]) and the permutation absorbed by\n"
+            "  // the good-helicity union sum, so whether the SELECTED row needs\n"
+            "  // this perm digit-permute, an NSF sign flip, both, or nothing must\n"
+            "  // be confirmed by a cudacpp event-level run that checks the reported\n"
+            "  // crossed-event helicity against the fortran backend. Until then do\n"
+            "  // NOT rely on allselhel for crossed events (the |M|^2 is correct).\n"
+            "  __device__ inline int selected_hel_code( int base_ihel, unsigned int flavor_id )\n"
+            "  {\n"
+            "    const int xcross = (int)( flavor_id / nmaxflavor );\n"
+            "    if ( xcross == 0 ) return base_ihel + 1;\n"
+            "    constexpr int maxhel = %(maxhel)d;\n"
+            "    static const int xhel_perm[( npar + 1 ) * ( npar + 1 ) * npar] = %(xperm)s;\n"
+            "    static const int xhel_nhstate[npar] = %(xnhstate)s;\n"
+            "    static const int xhel_states[npar * maxhel] = %(xstates)s;\n"
+            "    int code = 0;\n"
+            "    for ( int k = 0; k < npar; k++ )\n"
+            "    {\n"
+            "      const int val = (int)cHel[base_ihel][xhel_perm[xcross * npar + k]];\n"
+            "      int d = 0;\n"
+            "      for ( int dd = 0; dd < xhel_nhstate[k]; dd++ )\n"
+            "      {\n"
+            "        if ( xhel_states[k * maxhel + dd] == val )\n"
+            "        {\n"
+            "          d = dd;\n"
+            "          break;\n"
+            "        }\n"
+            "      }\n"
+            "      code = code * xhel_nhstate[k] + d;\n"
+            "    }\n"
+            "    return code + 1;\n"
+            "  }\n"
+        ) % {'xperm': arr(perm), 'xnhstate': arr(hnstate),
+             'maxhel': maxhel, 'xstates': arr(states_flat)}
+
         sigmakin_denominator = (
             "      // Per-event crossing-aware denominator: cross may differ per event.\n"
             "      // cross==0 keeps the historical IDEN/BROKEN_SYM path; a genuine\n"
@@ -2403,6 +2466,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '      if ( spincol_cross[iflav / nmaxflavor] == 0 ) continue;\n    ',
             'sigmakin_denominator': sigmakin_denominator,
             'flavorpdg_body': flavorpdg_body,
+            # Reported per-event helicity: the crossed code for the event's
+            # crossing (unvalidated at runtime, see selected_hel_code).
+            'selected_hel_code_1':
+                'selected_hel_code( cGoodHel[ighel], iflavorVec[ievt] )',
+            'selected_hel_code_2':
+                'selected_hel_code( cGoodHel[ighel], iflavorVec[ievt2] )',
         }
 
 #------------------------------------------------------------------------------------
