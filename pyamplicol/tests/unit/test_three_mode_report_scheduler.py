@@ -510,7 +510,7 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
         captured.update(arguments)
         result_path = Path(command[command.index("--result-json") + 1])
         result_path.write_text(
-            json.dumps(_ok_measurement(revision=revision)) + "\n",
+            json.dumps(_ok_measurement(target, revision=revision)) + "\n",
             encoding="ascii",
         )
         return SupervisedResult(

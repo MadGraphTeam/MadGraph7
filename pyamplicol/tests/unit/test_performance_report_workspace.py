@@ -9,6 +9,10 @@ import pytest
 
 from tools.performance_report import workspace as workspace_module
 from tools.performance_report.artifacts import LockTimeoutError
+from tools.performance_report.campaign_policy import (
+    STRICT_POLICY,
+    X86_EPYC_POLICY,
+)
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.service import (
     ReportPaths,
@@ -109,6 +113,7 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
     assert not (profile / "results/.coordination").exists()
     manifest = json.loads((profile / WORKSPACE_MANIFEST).read_text())
     assert manifest["profile"] == "macbook_M3"
+    assert manifest["campaign_policy"] == STRICT_POLICY.as_manifest()
     assert manifest["measurement_state"] == "copied"
     assert manifest["initialized_environment"]["profile"] == "macbook_M3"
     assert (
@@ -132,6 +137,21 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
 
     with pytest.raises(ReportWorkspaceError, match="already exists"):
         initialize_profile(repo, "macbook_M3")
+
+
+def test_initialize_x86_epyc_profile_binds_parallel_resource_policy(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _seed_template(repo)
+
+    profile = initialize_profile(repo, "x86_EPYC", reset_measurements=True)
+    manifest = json.loads((profile / WORKSPACE_MANIFEST).read_text())
+    readme = (profile / "README.md").read_text(encoding="utf-8")
+
+    assert manifest["campaign_policy"] == X86_EPYC_POLICY.as_manifest()
+    assert readme.count("--workers 10 --cell-cores 1 --target-runtime 5") == 4
+    assert readme.count("--max-ram-gb 100 --allow-symbolica-parallel") == 4
 
 
 def test_profile_readme_requires_four_audited_five_second_campaigns(

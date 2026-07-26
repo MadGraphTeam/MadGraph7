@@ -13,6 +13,15 @@ import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from .campaign_policy import (
+    X86_EPYC_POLICY,
+    CampaignPolicy,
+    CampaignPolicyError,
+    campaign_policy,
+    default_campaign_policy,
+    policy_from_manifest,
+    validate_policy_profile,
+)
 from .publication import publication_absolute_paths
 from .service import ReportPaths, ReportService, validate_profile_name
 from .source_identity import (
@@ -22,7 +31,7 @@ from .source_identity import (
 )
 from .standalone_build import compile_report
 
-WORKSPACE_SCHEMA = "pyamplicol-performance-report-workspace-v2"
+WORKSPACE_SCHEMA = "pyamplicol-performance-report-workspace-v3"
 WORKSPACE_MANIFEST = "report-workspace.json"
 ENVIRONMENT_SCHEMA = "pyamplicol-performance-report-environment-v1"
 ENVIRONMENT_JSON = "report_environment.json"
@@ -129,14 +138,23 @@ def _assert_portable_results(docs_dir: Path) -> None:
             )
 
 
-def _workspace_readme(profile: str) -> str:
+def _workspace_readme(profile: str, policy: CampaignPolicy) -> str:
+    populate_options = (
+        "  --workers 10 --cell-cores 1 --target-runtime 5 \\\n"
+        "  --max-ram-gb 100 --allow-symbolica-parallel --refresh-pdf end"
+        if policy is X86_EPYC_POLICY
+        else (
+            "  --workers 1 --cell-cores 1 --target-runtime 5 "
+            "--refresh-pdf end"
+        )
+    )
     campaign = "\n".join(
         line
         for multiplicity in range(1, 5)
         for line in (
             f"python3 docs/performance_reports/{profile}/result_tables.py populate \\",
             f"  --n-final {multiplicity} --missing-only --artifact-policy reuse \\",
-            "  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end",
+            populate_options,
             f"python3 docs/performance_reports/{profile}/result_tables.py audit",
             "",
         )
@@ -445,6 +463,7 @@ def _workspace_manifest(
     source_profile: str | None,
     reset_measurements: bool,
     environment: Mapping[str, str],
+    policy: CampaignPolicy,
 ) -> dict[str, object]:
     paths = ReportPaths.from_repo(repo_root, profile=profile)
     try:
@@ -476,6 +495,7 @@ def _workspace_manifest(
             else f"docs/performance_reports/{source_profile}"
         ),
         "measurement_state": "reset" if reset_measurements else "copied",
+        "campaign_policy": policy.as_manifest(),
         "document": "pyAmpliCol.tex",
         "environment_json": ENVIRONMENT_JSON,
         "environment_tex": ENVIRONMENT_TEX,
@@ -511,6 +531,7 @@ def initialize_profile(
     *,
     source_profile: str | None = None,
     reset_measurements: bool = False,
+    measurement_policy: str | None = None,
 ) -> Path:
     """Create a new tracked report profile atomically.
 
@@ -521,6 +542,12 @@ def initialize_profile(
 
     root = repo_root.expanduser().resolve(strict=False)
     validated = validate_profile_name(profile)
+    policy = (
+        default_campaign_policy(validated)
+        if measurement_policy is None
+        else campaign_policy(measurement_policy)
+    )
+    validate_policy_profile(policy, validated)
     if source_profile is not None:
         source_profile = validate_profile_name(source_profile)
         if source_profile == validated:
@@ -583,7 +610,7 @@ def initialize_profile(
             encoding="utf-8",
         )
         (staging / "README.md").write_text(
-            _workspace_readme(validated),
+            _workspace_readme(validated, policy),
             encoding="utf-8",
         )
         manifest = _workspace_manifest(
@@ -592,6 +619,7 @@ def initialize_profile(
             source_profile=source_profile,
             reset_measurements=reset_measurements,
             environment=environment,
+            policy=policy,
         )
         (staging / WORKSPACE_MANIFEST).write_text(
             _canonical_json(manifest),
@@ -779,6 +807,117 @@ def require_active_profile_environment(
     return recorded
 
 
+def _read_workspace_manifest(path: Path) -> dict[str, object]:
+    try:
+        raw = json.loads(path.read_text(encoding="ascii"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ReportWorkspaceError(
+            f"invalid or missing report workspace manifest: {path}"
+        ) from error
+    if not isinstance(raw, dict):
+        raise ReportWorkspaceError(
+            f"report workspace manifest is not an object: {path}"
+        )
+    return raw
+
+
+def _committed_workspace_manifest(
+    repo_root: Path,
+    profile: str,
+    revision: str,
+) -> dict[str, object]:
+    if _GIT_SHA_RE.fullmatch(revision) is None:
+        raise ReportWorkspaceError(
+            "workspace policy authentication requires a full Git SHA"
+        )
+    relative = (PROFILE_PARENT / profile / WORKSPACE_MANIFEST).as_posix()
+    try:
+        completed = subprocess.run(
+            ("git", "show", f"{revision}:{relative}"),
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ReportWorkspaceError(
+            "cannot read measured-source workspace policy"
+        ) from error
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise ReportWorkspaceError(
+            "measured source does not contain the selected report workspace: "
+            f"{detail or f'exit {completed.returncode}'}"
+        )
+    try:
+        raw = json.loads(completed.stdout.decode("ascii"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ReportWorkspaceError(
+            "measured-source workspace manifest is malformed"
+        ) from error
+    if not isinstance(raw, dict):
+        raise ReportWorkspaceError(
+            "measured-source workspace manifest is not an object"
+        )
+    return raw
+
+
+def load_profile_campaign_policy(
+    repo_root: Path,
+    profile: str,
+    *,
+    expected_source_revision: str | None = None,
+) -> CampaignPolicy:
+    """Load the canonical policy, optionally authenticating its measured SHA."""
+
+    root = repo_root.expanduser().resolve(strict=False)
+    validated = validate_profile_name(profile)
+    manifest = _read_workspace_manifest(
+        profile_docs_dir(root, validated) / WORKSPACE_MANIFEST
+    )
+    if (
+        manifest.get("schema") != WORKSPACE_SCHEMA
+        or manifest.get("profile") != validated
+    ):
+        raise ReportWorkspaceError(
+            f"workspace manifest does not identify profile {validated!r}"
+        )
+    try:
+        policy = policy_from_manifest(
+            manifest.get("campaign_policy"),
+            profile=validated,
+        )
+    except CampaignPolicyError as error:
+        raise ReportWorkspaceError(str(error)) from error
+    if expected_source_revision is not None:
+        committed = _committed_workspace_manifest(
+            root,
+            validated,
+            expected_source_revision,
+        )
+        if (
+            committed.get("schema") != WORKSPACE_SCHEMA
+            or committed.get("profile") != validated
+            or committed.get("campaign_policy") != manifest.get("campaign_policy")
+        ):
+            raise ReportWorkspaceError(
+                "active workspace campaign policy differs from the exact "
+                "measured-source commit"
+            )
+        try:
+            committed_policy = policy_from_manifest(
+                committed.get("campaign_policy"),
+                profile=validated,
+            )
+        except CampaignPolicyError as error:
+            raise ReportWorkspaceError(str(error)) from error
+        if committed_policy is not policy:
+            raise ReportWorkspaceError(
+                "workspace policy identity is not stable at measured source"
+            )
+    return policy
+
+
 def _validate_workspace(
     repo_root: Path,
     profile: str,
@@ -788,12 +927,7 @@ def _validate_workspace(
     root = repo_root.expanduser().resolve(strict=False)
     path = profile_docs_dir(root, profile)
     manifest_path = path / WORKSPACE_MANIFEST
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="ascii"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise ReportWorkspaceError(
-            f"invalid or missing report workspace manifest: {manifest_path}"
-        ) from error
+    manifest = _read_workspace_manifest(manifest_path)
     if (
         not isinstance(manifest, dict)
         or manifest.get("schema") != WORKSPACE_SCHEMA
@@ -804,6 +938,10 @@ def _validate_workspace(
         raise ReportWorkspaceError(
             f"workspace manifest does not identify profile {profile!r}"
         )
+    try:
+        policy_from_manifest(manifest.get("campaign_policy"), profile=profile)
+    except CampaignPolicyError as error:
+        raise ReportWorkspaceError(str(error)) from error
     environment = _read_environment_payload(path / ENVIRONMENT_JSON)
     if (
         environment["schema"] != ENVIRONMENT_SCHEMA
@@ -920,6 +1058,7 @@ __all__ = [
     "ReportWorkspaceError",
     "export_profile",
     "initialize_profile",
+    "load_profile_campaign_policy",
     "profile_docs_dir",
     "refresh_profile_environment",
     "require_active_profile_environment",

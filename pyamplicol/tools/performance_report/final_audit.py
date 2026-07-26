@@ -39,8 +39,18 @@ from .agreements import (
     AgreementEdge,
     agreement_edges,
     evaluate_lc_common_component,
+    incoming_agreement_edges,
 )
 from .cache import digest_json, reset_entry
+from .campaign_policy import (
+    STRICT_POLICY,
+    X86_EPYC_PROFILE,
+    CampaignPolicy,
+    CampaignPolicyError,
+    PolicyMeasurementState,
+    dependency_reference,
+    validate_policy_measurement,
+)
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import shared_validation_points
 from .models import (
@@ -79,6 +89,7 @@ from .source_identity import (
     require_report_only_publication,
 )
 from .standalone_build import StandaloneBuildError, validate_latex_log
+from .workspace import load_profile_campaign_policy
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -3902,6 +3913,7 @@ def audit_final_report(
     verify_render: bool = True,
     verify_pdf: bool = True,
     pdf_auditor: PdfAuditor = _audit_pdf,
+    campaign_policy: CampaignPolicy | None = None,
 ) -> dict[str, object]:
     """Audit one cooperative report snapshot under the publication lock."""
 
@@ -3925,6 +3937,7 @@ def audit_final_report(
             verify_render=verify_render,
             verify_pdf=verify_pdf,
             pdf_auditor=pdf_auditor,
+            campaign_policy=campaign_policy,
         )
 
 
@@ -3946,6 +3959,7 @@ def _audit_final_report_locked(
     verify_render: bool = True,
     verify_pdf: bool = True,
     pdf_auditor: PdfAuditor = _audit_pdf,
+    campaign_policy: CampaignPolicy | None = None,
 ) -> dict[str, object]:
     """Audit every selected record while the report-writer lock is held."""
 
@@ -3965,6 +3979,20 @@ def _audit_final_report_locked(
     )
     if using_production_source_auditor:
         report_profile = _active_report_profile(root, report)
+        try:
+            active_policy = load_profile_campaign_policy(
+                root,
+                report_profile,
+                expected_source_revision=expected_source_revision,
+            )
+        except Exception as error:
+            raise FinalAuditError(
+                f"cannot authenticate report campaign policy: {error}"
+            ) from error
+        if campaign_policy is not None and campaign_policy is not active_policy:
+            raise FinalAuditError(
+                "caller-supplied campaign policy differs from the measured profile"
+            )
         raw_publication_lineage = _profile_publication_lineage(
             root,
             expected_source_revision,
@@ -3975,11 +4003,17 @@ def _audit_final_report_locked(
         )
     else:
         report_profile = None
+        active_policy = campaign_policy or STRICT_POLICY
         raw_publication_lineage = source_auditor(
             root,
             expected_source_revision,
         )
         expected_source_tree = None
+    policy_profile = report_profile or (
+        X86_EPYC_PROFILE
+        if active_policy.allow_terminal_censors
+        else ""
+    )
     publication_lineage = _validated_publication_lineage(
         raw_publication_lineage,
         measurement_source_revision=expected_source_revision,
@@ -4007,45 +4041,9 @@ def _audit_final_report_locked(
         raise FinalAuditError(
             f"catalog selected {len(cells)} cells, expected {expected_cell_count}"
         )
-    visible_completeness = summarize_visible_completeness(
-        caches,
-        catalog=catalog,
-        max_n_final=max_n_final,
-    )
-    if (
-        visible_completeness.required_measurement_count != len(cells)
-        or not visible_completeness.complete
-    ):
-        evidence = visible_completeness.as_dict()
-        raise FinalAuditError(
-            "final report visible-completeness audit failed: "
-            f"required={evidence['required_measurement_count']}, "
-            f"rendered={evidence['rendered_required_measurement_count']}, "
-            f"applicable_NA={evidence['applicable_na_display_slot_count']}, "
-            f"missing={evidence['missing_rendered_cell_count']}, "
-            f"errors={evidence['contract_errors']}, "
-            f"slots={evidence['applicable_na_display_slots']}"
-        )
-    pyamplicol_cells = tuple(
-        cell
-        for cell in cells
-        if cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
-    )
-    expected_legacy_revision = (
-        _expected_legacy_revision(root)
-        if any(
-            cell.measurement.execution_mode is ExecutionMode.AMPLICOL for cell in cells
-        )
-        else ""
-    )
-    if pyamplicol_cells and active_runtime is None:
-        active_runtime = runtime_auditor(
-            expected_source_revision,
-            root,
-        )
-
     published_measurements: dict[str, Mapping[str, object]] = {}
     measurements: dict[str, Mapping[str, object]] = {}
+    measurement_states: dict[str, PolicyMeasurementState] = {}
     errors: list[str] = []
     for cell in cells:
         entry = entries.get(cell.cell_id)
@@ -4093,6 +4091,30 @@ def _audit_final_report_locked(
         if policy_errors:
             errors.extend(policy_errors)
             continue
+        try:
+            published_state = validate_policy_measurement(
+                active_policy,
+                policy_profile,
+                cell,
+                published,
+                expected_source_revision=expected_source_revision,
+                expected_source_tree=expected_source_tree,
+            )
+            current_state = validate_policy_measurement(
+                active_policy,
+                policy_profile,
+                cell,
+                current_measurement,
+                expected_source_revision=expected_source_revision,
+                expected_source_tree=expected_source_tree,
+            )
+            if published_state is not current_state:
+                raise FinalAuditError(
+                    "published and current policy states differ"
+                )
+        except (CampaignPolicyError, FinalAuditError) as error:
+            errors.append(f"{cell.cell_id}: {error}")
+            continue
         if not publication_measurement_matches_current(
             published,
             current_measurement,
@@ -4105,6 +4127,7 @@ def _audit_final_report_locked(
             continue
         published_measurements[cell.cell_id] = published
         measurements[cell.cell_id] = current_measurement
+        measurement_states[cell.cell_id] = current_state
     if errors:
         rendered = "\n".join(f"- {message}" for message in errors[:50])
         suffix = (
@@ -4117,9 +4140,114 @@ def _audit_final_report_locked(
             f"({len(errors)}):\n{rendered}{suffix}"
         )
 
+    dependency_errors: list[str] = []
+    for cell in cells:
+        baseline_cell = catalog.baseline_cell(cell)
+        dependency_cells = {
+            dependency.cell_id: dependency
+            for dependency in (
+                *((baseline_cell,) if baseline_cell is not None else ()),
+                *(
+                    edge.baseline
+                    for edge in incoming_agreement_edges(cell, catalog=catalog)
+                ),
+            )
+            if dependency.cell_id in measurements
+        }
+        terminal_dependencies = tuple(
+            sorted(
+                (
+                    dependency_reference(
+                        dependency.cell_id,
+                        measurements[dependency.cell_id],
+                    )
+                    for dependency in dependency_cells.values()
+                    if measurement_states[dependency.cell_id]
+                    is not PolicyMeasurementState.SUCCESS
+                ),
+                key=lambda item: str(item["cell_id"]),
+            )
+        )
+        state = measurement_states[cell.cell_id]
+        if state is PolicyMeasurementState.SUCCESS and terminal_dependencies:
+            dependency_errors.append(
+                f"{cell.cell_id}: successful measurement depends on a "
+                "policy-censored comparison endpoint"
+            )
+            continue
+        if state is not PolicyMeasurementState.DEPENDENCY:
+            continue
+        provenance = _mapping(
+            measurements[cell.cell_id].get("provenance"),
+            f"{cell.cell_id}.provenance",
+        )
+        censor = _mapping(
+            provenance.get("policy_censor"),
+            f"{cell.cell_id}.policy_censor",
+        )
+        observed = censor.get("dependencies")
+        if observed != list(terminal_dependencies):
+            dependency_errors.append(
+                f"{cell.cell_id}: dependency censor does not exactly bind its "
+                "current required terminal dependencies"
+            )
+    if dependency_errors:
+        rendered = "\n".join(
+            f"- {message}" for message in dependency_errors[:50]
+        )
+        raise FinalAuditError(
+            "final report policy-dependency audit failed "
+            f"({len(dependency_errors)}):\n{rendered}"
+        )
+
+    visible_completeness = summarize_visible_completeness(
+        caches,
+        catalog=catalog,
+        max_n_final=max_n_final,
+        policy=active_policy,
+    )
+    if (
+        visible_completeness.required_measurement_count != len(cells)
+        or not visible_completeness.complete
+    ):
+        evidence = visible_completeness.as_dict()
+        raise FinalAuditError(
+            "final report visible-completeness audit failed: "
+            f"required={evidence['required_measurement_count']}, "
+            f"rendered={evidence['rendered_required_measurement_count']}, "
+            f"applicable_NA={evidence['applicable_na_display_slot_count']}, "
+            f"missing={evidence['missing_rendered_cell_count']}, "
+            f"errors={evidence['contract_errors']}, "
+            f"slots={evidence['applicable_na_display_slots']}"
+        )
+
+    successful_cells = tuple(
+        cell
+        for cell in cells
+        if measurement_states[cell.cell_id] is PolicyMeasurementState.SUCCESS
+    )
+    pyamplicol_cells = tuple(
+        cell
+        for cell in successful_cells
+        if cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+    )
+    successful_legacy_cells = tuple(
+        cell
+        for cell in successful_cells
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+    )
+    expected_legacy_revision = (
+        _expected_legacy_revision(root) if successful_legacy_cells else ""
+    )
+    if pyamplicol_cells and active_runtime is None:
+        active_runtime = runtime_auditor(
+            expected_source_revision,
+            root,
+        )
+
     references: list[_ArtifactReference] = []
     errors = []
-    for cell in cells:
+    for cell in successful_cells:
         measurement = measurements[cell.cell_id]
         baseline_cell = catalog.baseline_cell(cell)
         try:
@@ -4170,7 +4298,7 @@ def _audit_final_report_locked(
         )
 
     direct_edges, direct_agreement_counts = _audit_direct_agreements(
-        cells,
+        successful_cells,
         measurements,
         catalog=catalog,
     )
@@ -4178,6 +4306,7 @@ def _audit_final_report_locked(
         catalog is REPORT_CATALOG
         and max_n_final == 4
         and len(cells) == _EXPECTED_N4_CELL_COUNT
+        and active_policy is STRICT_POLICY
         and direct_agreement_counts != _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS
     ):
         raise FinalAuditError(
@@ -4186,20 +4315,21 @@ def _audit_final_report_locked(
             f"observed={direct_agreement_counts}"
         )
 
-    legacy_cells = tuple(
-        cell
-        for cell in cells
-        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
-    )
+    legacy_cells = successful_legacy_cells
     legacy_ids = {cell.cell_id for cell in legacy_cells}
     legacy_agreement_edges: list[tuple[str, str]] = []
-    for candidate in cells:
+    successful_ids = {cell.cell_id for cell in successful_cells}
+    for candidate in successful_cells:
         baseline = catalog.baseline_cell(candidate)
-        if baseline is not None and baseline.cell_id in legacy_ids:
+        if (
+            baseline is not None
+            and baseline.cell_id in legacy_ids
+            and candidate.cell_id in successful_ids
+        ):
             legacy_agreement_edges.append((baseline.cell_id, candidate.cell_id))
     covered_legacy_ids = {baseline for baseline, _candidate in legacy_agreement_edges}
     missing_legacy_agreement = sorted(legacy_ids - covered_legacy_ids)
-    if missing_legacy_agreement:
+    if missing_legacy_agreement and active_policy is STRICT_POLICY:
         preview = ", ".join(missing_legacy_agreement[:20])
         suffix = (
             ""
@@ -4306,6 +4436,7 @@ def _audit_final_report_locked(
             catalog is REPORT_CATALOG
             and max_n_final == 4
             and len(cells) == _EXPECTED_N4_CELL_COUNT
+            and active_policy is STRICT_POLICY
             and replayed_direct_agreement_counts
             != _EXPECTED_N4_DIRECT_REPLAY_COUNTS
         ):
@@ -4373,18 +4504,27 @@ def _audit_final_report_locked(
     final_gate_complete = (
         replay and verify_render and verify_pdf and canonical_publication_scope
     )
+    state_counts = Counter(state.value for state in measurement_states.values())
+    selected_ids = {cell.cell_id for cell in cells}
+    catalog_direct_edges = tuple(
+        edge
+        for edge in agreement_edges(catalog=catalog)
+        if edge.candidate.cell_id in selected_ids
+        and edge.baseline.cell_id in selected_ids
+    )
     modes: dict[str, int] = defaultdict(int)
     for cell in cells:
         modes[cell.measurement.execution_mode.value] += 1
     return {
         "kind": "pyamplicol-final-report-audit",
-        "schema_version": 3,
+        "schema_version": 4,
         "status": (ResultStatus.OK.value if final_gate_complete else "incomplete"),
         "expected_source_revision": expected_source_revision,
         "measurement_source_revision": expected_source_revision,
         "publication_revision": publication_lineage["publication_revision"],
         "publication_lineage": publication_lineage,
         "report_profile": report_profile,
+        "campaign_policy": active_policy.as_manifest(),
         "maximum_n_final": max_n_final,
         "selected_cell_count": len(cells),
         "mode_counts": dict(sorted(modes.items())),
@@ -4392,12 +4532,18 @@ def _audit_final_report_locked(
         "portable_publication_projection_count": len(published_measurements),
         "publication_cache_role": "portable-projection-of-current-result",
         "cryptographic_audit_source": "immutable-current-result",
-        "numerically_evidenced_cell_count": len(cells),
+        "policy_state_counts": dict(sorted(state_counts.items())),
+        "policy_complete_cell_count": len(measurement_states),
+        "numerically_evidenced_cell_count": len(successful_cells),
         "pyamplicol_measurement_count": len(pyamplicol_cells),
         "legacy_fresh_oracle_count": len(legacy_cells),
         "legacy_oracles_with_inbound_agreement": len(covered_legacy_ids),
         "legacy_pointwise_agreement_edge_count": len(legacy_agreement_edges),
         "direct_agreement_edge_count": len(direct_edges),
+        "direct_agreement_catalog_edge_count": len(catalog_direct_edges),
+        "direct_agreement_policy_unavailable_edge_count": (
+            len(catalog_direct_edges) - len(direct_edges)
+        ),
         "direct_agreement_edge_counts": direct_agreement_counts,
         "replayed_direct_agreement_edge_count": (
             sum(replayed_direct_agreement_counts.values()) if replay else 0

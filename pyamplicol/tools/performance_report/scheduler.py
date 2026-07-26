@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import subprocess
 import sys
 import uuid
 from collections.abc import Mapping, Sequence
@@ -16,8 +17,22 @@ from pathlib import Path
 from .agreements import incoming_agreement_edges
 from .artifacts import ArtifactAction, ArtifactStore, CurrentRecord
 from .cache import validate_measurement
+from .campaign_policy import (
+    STRICT_POLICY,
+    X86_EPYC_POLICY,
+    CampaignPolicy,
+    CampaignPolicyError,
+    PolicyCensorKind,
+    PolicyMeasurementState,
+    dependency_reference,
+    generation_limit_for_cell,
+    policy_censor_measurement,
+    validate_campaign_settings,
+    validate_policy_measurement,
+    validate_policy_profile,
+)
 from .catalog import REPORT_CATALOG, ReportCatalog
-from .measurement import failure_measurement, source_revision
+from .measurement import failure_measurement
 from .models import (
     Accuracy,
     ArtifactPolicy,
@@ -35,6 +50,7 @@ from .resources import (
 )
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .service import ReportService
+from .source_identity import require_eligible_report_source
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +97,8 @@ class CampaignSettings:
     missing_only: bool = False
     rerun: bool = False
     allow_symbolica_parallel: bool = False
+    campaign_policy: CampaignPolicy = STRICT_POLICY
+    report_profile: str | None = None
 
     def __post_init__(self) -> None:
         if self.workers < 1 or self.cell_cores < 1:
@@ -100,6 +118,10 @@ class CampaignSettings:
             raise ValueError("campaign_max_rss_bytes must be positive")
         if self.missing_only and self.rerun:
             raise ValueError("--missing-only and --rerun are mutually exclusive")
+        profile = self.report_profile or ""
+        if self.campaign_policy is not STRICT_POLICY or self.report_profile is not None:
+            validate_policy_profile(self.campaign_policy, profile)
+        validate_campaign_settings(self.campaign_policy, self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +151,15 @@ class CampaignResult:
         return tuple(
             outcome
             for outcome in self.outcomes
-            if outcome.status not in {"ok", "reused", "skipped-current"}
+            if outcome.status
+            not in {
+                "ok",
+                "reused",
+                "skipped-current",
+                PolicyMeasurementState.GENERATION_LIMIT.value,
+                PolicyMeasurementState.MEMORY_LIMIT.value,
+                PolicyMeasurementState.DEPENDENCY.value,
+            }
         )
 
 
@@ -180,6 +210,44 @@ def _successful_current(
     return current
 
 
+def _policy_current(
+    store: ArtifactStore,
+    cell: CellSpec,
+    *,
+    settings: CampaignSettings,
+    expected_revision: str | None,
+    expected_tree: str | None = None,
+) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
+    if settings.campaign_policy is STRICT_POLICY:
+        current = _successful_current(
+            store,
+            cell.cell_id,
+            expected_revision=expected_revision,
+            expected_cell=cell,
+        )
+        return (
+            None
+            if current is None
+            else (current, PolicyMeasurementState.SUCCESS)
+        )
+    current = store.load_current(cell.cell_id, missing_ok=True)
+    if current is None or expected_revision is None:
+        return None
+    try:
+        validate_measurement(current.result, expected_cell=cell)
+        state = validate_policy_measurement(
+            settings.campaign_policy,
+            settings.report_profile or "",
+            cell,
+            current.result,
+            expected_source_revision=expected_revision,
+            expected_source_tree=expected_tree,
+        )
+    except (CampaignPolicyError, ValueError):
+        return None
+    return current, state
+
+
 def _fresh_equivalent_current(
     store: ArtifactStore,
     cell: CellSpec,
@@ -208,6 +276,7 @@ def plan_campaign(
     settings: CampaignSettings,
     catalog: ReportCatalog = REPORT_CATALOG,
     expected_revision: str | None = None,
+    expected_tree: str | None = None,
 ) -> tuple[PlannedCell, ...]:
     requested_ids = {cell.cell_id for cell in requested}
     needed: dict[str, CellSpec] = {}
@@ -231,32 +300,80 @@ def plan_campaign(
         )
 
     def include(cell: CellSpec, *, explicitly_requested: bool) -> None:
-        fresh_requested = (
-            settings.missing_only
-            and explicitly_requested
-            and _successful_current(
-                store,
-                cell.cell_id,
-                expected_revision=expected_revision,
-                expected_cell=cell,
-            )
-            is not None
-        )
         cell_dependencies = dependencies(cell)
+        dependency_currents = {
+            dependency.cell_id: _policy_current(
+                store,
+                dependency,
+                settings=settings,
+                expected_revision=expected_revision,
+                expected_tree=expected_tree,
+            )
+            for dependency in cell_dependencies
+        }
         missing_dependencies = tuple(
             dependency
             for dependency in cell_dependencies
-            if _successful_current(
-                store,
-                dependency.cell_id,
-                expected_revision=expected_revision,
-                expected_cell=dependency,
-            )
-            is None
+            if dependency_currents[dependency.cell_id] is None
         )
-        if fresh_requested and not missing_dependencies:
+        terminal_dependencies = tuple(
+            dependency_reference(
+                dependency.cell_id,
+                dependency_currents[dependency.cell_id][0].result,  # type: ignore[index]
+            )
+            for dependency in cell_dependencies
+            if (
+                dependency_currents[dependency.cell_id] is not None
+                and dependency_currents[dependency.cell_id][1]  # type: ignore[index]
+                is not PolicyMeasurementState.SUCCESS
+            )
+        )
+        current = _policy_current(
+            store,
+            cell,
+            settings=settings,
+            expected_revision=expected_revision,
+            expected_tree=expected_tree,
+        )
+        fresh_requested = False
+        if settings.missing_only and explicitly_requested and current is not None:
+            _record, state = current
+            if state is PolicyMeasurementState.SUCCESS:
+                fresh_requested = (
+                    not missing_dependencies and not terminal_dependencies
+                )
+            elif state is PolicyMeasurementState.DEPENDENCY:
+                provenance = _record.result.get("provenance")
+                censor = (
+                    provenance.get("policy_censor")
+                    if isinstance(provenance, Mapping)
+                    else None
+                )
+                observed = (
+                    censor.get("dependencies")
+                    if isinstance(censor, Mapping)
+                    else None
+                )
+                fresh_requested = (
+                    not missing_dependencies
+                    and bool(terminal_dependencies)
+                    and observed
+                    == list(
+                        sorted(
+                            terminal_dependencies,
+                            key=lambda item: str(item["cell_id"]),
+                        )
+                    )
+                )
+            else:
+                fresh_requested = True
+        if fresh_requested:
             return
-        if fresh_requested and missing_dependencies:
+        if (
+            settings.missing_only
+            and explicitly_requested
+            and current is not None
+        ):
             force_recompare_ids.add(cell.cell_id)
         if cell.cell_id in needed:
             return
@@ -364,11 +481,78 @@ class CampaignScheduler:
         self.service = service
         self.settings = settings
         self.catalog = catalog
-        self.source_revision = source_revision(
-            service.paths.repo_root,
-            require_clean=True,
+        self.source_identity = require_eligible_report_source(
+            service.paths.repo_root
         )
+        self.source_revision = self.source_identity.revision
+        self.source_tree = self.source_identity.tree
         self._prepared_model_paths: dict[ModelKey, Path] = {}
+
+    def _current(
+        self,
+        cell: CellSpec,
+    ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
+        return _policy_current(
+            self.service.store,
+            cell,
+            settings=self.settings,
+            expected_revision=self.source_revision,
+            expected_tree=self.source_tree,
+        )
+
+    def _prepare_legacy_workspace(self, attempt_id: str) -> Path:
+        """Create one pinned writable legacy checkout for one worker only."""
+
+        from .legacy import MaintainedLegacyApi
+
+        api = MaintainedLegacyApi()
+        source = api.default_repository.expanduser().resolve(strict=True)
+        api.validate_checkout(source)
+        destination = (
+            self.service.paths.artifact_root
+            / "legacy-workspaces"
+            / attempt_id
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            raise RuntimeError(
+                f"legacy worker workspace already exists: {destination}"
+            )
+        commands = (
+            (
+                "git",
+                "clone",
+                "--shared",
+                "--no-checkout",
+                "--",
+                os.fspath(source),
+                os.fspath(destination),
+            ),
+            (
+                "git",
+                "-C",
+                os.fspath(destination),
+                "checkout",
+                "--detach",
+                api.expected_revision(),
+            ),
+        )
+        for command in commands:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if completed.returncode != 0:
+                detail = completed.stderr.strip() or completed.stdout.strip()
+                raise RuntimeError(
+                    "cannot prepare isolated legacy worker checkout: "
+                    f"{detail or f'exit {completed.returncode}'}"
+                )
+        api.validate_checkout(destination)
+        return destination
 
     def _service_path_arguments(self) -> tuple[str, ...]:
         paths = self.service.paths
@@ -469,38 +653,24 @@ class CampaignScheduler:
     def _run_cell(self, planned: PlannedCell) -> CellOutcome:
         cell = planned.cell
         with self.service.store.named_lock(f"campaign-cell-{cell.cell_id}"):
+            fresh = self._current(cell)
             if (
                 self.settings.missing_only
                 and not planned.force_recompare
-                and _successful_current(
-                    self.service.store,
-                    cell.cell_id,
-                    expected_revision=self.source_revision,
-                    expected_cell=cell,
-                )
-                is not None
+                and fresh is not None
             ):
                 return CellOutcome(cell.cell_id, "skipped-current", "already complete")
             decision = self.service.store.decide(
                 cell.cell_id,
                 self.settings.artifact_policy,
             )
-            current_is_fresh = (
-                _successful_current(
-                    self.service.store,
-                    cell.cell_id,
-                    expected_revision=self.source_revision,
-                    expected_cell=cell,
-                )
-                is not None
-            )
+            current_is_fresh = fresh is not None
             if (
                 decision.action is ArtifactAction.REUSE_CURRENT
                 and decision.current is not None
                 and current_is_fresh
                 and not self.settings.rerun
                 and not planned.force_recompare
-                and decision.current.result.get("status") == ResultStatus.OK.value
             ):
                 return CellOutcome(cell.cell_id, "reused", decision.current.attempt_id)
 
@@ -519,42 +689,50 @@ class CampaignScheduler:
                 else None
             )
             baseline = self.catalog.baseline_cell(cell)
+            dependency_cells = {
+                dependency.cell_id: dependency
+                for dependency in (
+                    *((baseline,) if baseline is not None else ()),
+                    *(
+                        self.catalog.cell(peer_cell_id)
+                        for peer_cell_id in planned.comparison_peer_ids
+                    ),
+                )
+            }
+            dependency_records: dict[str, CurrentRecord] = {}
+            terminal_dependencies: list[dict[str, object]] = []
+            for dependency in dependency_cells.values():
+                current_dependency = self._current(dependency)
+                if current_dependency is None:
+                    return self._publish_skip(
+                        cell,
+                        f"required dependency {dependency.cell_id!r} is unavailable",
+                        current=decision.current,
+                    )
+                dependency_record, dependency_state = current_dependency
+                if dependency_state is PolicyMeasurementState.SUCCESS:
+                    dependency_records[dependency.cell_id] = dependency_record
+                else:
+                    terminal_dependencies.append(
+                        dependency_reference(
+                            dependency.cell_id,
+                            dependency_record.result,
+                        )
+                    )
+            if terminal_dependencies:
+                return self._publish_dependency_censor(
+                    cell,
+                    terminal_dependencies,
+                    current=decision.current,
+                )
             baseline_record = (
                 None
                 if baseline is None
-                else _successful_current(
-                    self.service.store,
-                    baseline.cell_id,
-                    expected_revision=self.source_revision,
-                    expected_cell=baseline,
-                )
+                else dependency_records[baseline.cell_id]
             )
-            if baseline is not None and baseline_record is None:
-                return self._publish_skip(
-                    cell,
-                    f"required baseline {baseline.cell_id!r} is unavailable",
-                    current=decision.current,
-                )
             peer_records: dict[str, CurrentRecord] = {}
             for peer_cell_id in planned.comparison_peer_ids:
-                peer_cell = next(
-                    candidate
-                    for candidate in self.catalog.measurement_cells()
-                    if candidate.cell_id == peer_cell_id
-                )
-                peer_record = _successful_current(
-                    self.service.store,
-                    peer_cell_id,
-                    expected_revision=self.source_revision,
-                    expected_cell=peer_cell,
-                )
-                if peer_record is None:
-                    return self._publish_skip(
-                        cell,
-                        f"required comparison peer {peer_cell_id!r} is unavailable",
-                        current=decision.current,
-                    )
-                peer_records[peer_cell_id] = peer_record
+                peer_records[peer_cell_id] = dependency_records[peer_cell_id]
 
             with self.service.store.new_attempt(
                 cell.cell_id,
@@ -563,9 +741,17 @@ class CampaignScheduler:
             ) as attempt:
                 worker_result = attempt.path("worker-result.json")
                 worker_log = attempt.path("worker.log")
+                generation_timeout = (
+                    self.settings.generation_time_limit_seconds
+                    if self.settings.campaign_policy is STRICT_POLICY
+                    else generation_limit_for_cell(
+                        self.settings.campaign_policy,
+                        cell,
+                    )
+                )
                 phase_channel = (
                     None
-                    if self.settings.generation_time_limit_seconds is None
+                    if generation_timeout is None
                     else WorkerPhaseChannel.create(
                         attempt.path("worker-phase-state.json")
                     )
@@ -623,6 +809,16 @@ class CampaignScheduler:
                 )
                 if prepared_model is not None:
                     command.extend(("--prepared-model", os.fspath(prepared_model)))
+                if (
+                    self.settings.campaign_policy is X86_EPYC_POLICY
+                    and cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+                ):
+                    legacy_repository = self._prepare_legacy_workspace(
+                        attempt.attempt_id
+                    )
+                    command.extend(
+                        ("--legacy-repository", os.fspath(legacy_repository))
+                    )
                 reusable_record = (
                     decision.current
                     if (
@@ -643,17 +839,78 @@ class CampaignScheduler:
                 supervised = supervise_worker(
                     command,
                     timeout_seconds=self.settings.timeout_seconds,
-                    generation_timeout_seconds=(
-                        self.settings.generation_time_limit_seconds
-                    ),
+                    generation_timeout_seconds=generation_timeout,
                     phase_channel=phase_channel,
                     max_rss_bytes=self._effective_cell_rss_limit(),
                 )
+                generation_phase = supervised.generation_phase
                 resources = _resource_payload(
                     supervised.usage,
-                    supervised.generation_phase,
+                    generation_phase,
                 )
-                if supervised.reason != "completed":
+                policy_state: PolicyMeasurementState | None = None
+                if (
+                    supervised.reason == "generation_timeout"
+                    and generation_timeout is not None
+                    and self.settings.campaign_policy is X86_EPYC_POLICY
+                ):
+                    phase_evidence = (
+                        None
+                        if generation_phase is None
+                        else generation_phase.as_dict()
+                    )
+                    observed_generation = (
+                        phase_evidence.get("generation_elapsed_seconds")
+                        if isinstance(phase_evidence, Mapping)
+                        else None
+                    )
+                    if (
+                        isinstance(phase_evidence, Mapping)
+                        and isinstance(observed_generation, (int, float))
+                        and not isinstance(observed_generation, bool)
+                    ):
+                        result = policy_censor_measurement(
+                            self.settings.campaign_policy,
+                            self.settings.report_profile or "",
+                            cell,
+                            kind=PolicyCensorKind.GENERATION_LIMIT,
+                            source_identity=self.source_identity,
+                            resources=resources,
+                            observed_generation_seconds=float(
+                                observed_generation
+                            ),
+                            phase_evidence=phase_evidence,
+                        )
+                        policy_state = PolicyMeasurementState.GENERATION_LIMIT
+                    else:
+                        result = failure_measurement(
+                            ResultStatus.ERROR,
+                            "generation timeout lacked authenticated phase evidence",
+                            resources=resources,
+                        )
+                elif (
+                    supervised.reason == "memory_limit"
+                    and self.settings.campaign_policy is X86_EPYC_POLICY
+                ):
+                    peak = resources.get("peak_rss_bytes")
+                    if isinstance(peak, int) and not isinstance(peak, bool):
+                        result = policy_censor_measurement(
+                            self.settings.campaign_policy,
+                            self.settings.report_profile or "",
+                            cell,
+                            kind=PolicyCensorKind.MEMORY_LIMIT,
+                            source_identity=self.source_identity,
+                            resources=resources,
+                            observed_rss_bytes=peak,
+                        )
+                        policy_state = PolicyMeasurementState.MEMORY_LIMIT
+                    else:
+                        result = failure_measurement(
+                            ResultStatus.ERROR,
+                            "memory limit lacked authenticated RSS evidence",
+                            resources=resources,
+                        )
+                elif supervised.reason != "completed":
                     status = {
                         "timeout": ResultStatus.TIMEOUT,
                         "generation_timeout": ResultStatus.TIMEOUT,
@@ -678,11 +935,45 @@ class CampaignScheduler:
                     result = dict(raw)
                     result["resources"] = resources
                 validate_measurement(result, expected_cell=cell)
+                if result["status"] == ResultStatus.OK.value:
+                    policy_state = (
+                        PolicyMeasurementState.SUCCESS
+                        if self.settings.campaign_policy is STRICT_POLICY
+                        else validate_policy_measurement(
+                            self.settings.campaign_policy,
+                            self.settings.report_profile or "",
+                            cell,
+                            result,
+                            expected_source_revision=self.source_revision,
+                            expected_source_tree=self.source_tree,
+                        )
+                    )
+                elif policy_state is not None:
+                    validated_state = validate_policy_measurement(
+                        self.settings.campaign_policy,
+                        self.settings.report_profile or "",
+                        cell,
+                        result,
+                        expected_source_revision=self.source_revision,
+                        expected_source_tree=self.source_tree,
+                    )
+                    if validated_state is not policy_state:
+                        raise RuntimeError(
+                            "policy censor state changed during validation"
+                        )
                 _write_json(worker_result, result)
                 paths = _attempt_files(attempt.root)
-                if result["status"] == ResultStatus.OK.value:
+                if policy_state is not None:
                     record = attempt.publish(result, artifact_paths=paths)
-                    return CellOutcome(cell.cell_id, "ok", record.attempt_id)
+                    return CellOutcome(
+                        cell.cell_id,
+                        (
+                            "ok"
+                            if policy_state is PolicyMeasurementState.SUCCESS
+                            else policy_state.value
+                        ),
+                        record.attempt_id,
+                    )
                 if decision.current is None:
                     record = attempt.publish(result, artifact_paths=paths)
                     return CellOutcome(
@@ -699,6 +990,40 @@ class CampaignScheduler:
                     str(result["status"]),
                     "previous valid current preserved",
                 )
+
+    def _publish_dependency_censor(
+        self,
+        cell: CellSpec,
+        dependencies: Sequence[Mapping[str, object]],
+        *,
+        current: CurrentRecord | None,
+    ) -> CellOutcome:
+        with self.service.store.new_attempt(
+            cell.cell_id,
+            self.settings.artifact_policy,
+            based_on=current,
+        ) as attempt:
+            result = policy_censor_measurement(
+                self.settings.campaign_policy,
+                self.settings.report_profile or "",
+                cell,
+                kind=PolicyCensorKind.DEPENDENCY,
+                source_identity=self.source_identity,
+                resources=None,
+                dependencies=tuple(
+                    sorted(
+                        (dict(item) for item in dependencies),
+                        key=lambda item: str(item["cell_id"]),
+                    )
+                ),
+            )
+            validate_measurement(result, expected_cell=cell)
+            record = attempt.publish(result)
+            return CellOutcome(
+                cell.cell_id,
+                PolicyMeasurementState.DEPENDENCY.value,
+                record.attempt_id,
+            )
 
     def _effective_cell_rss_limit(self) -> int | None:
         limits = [

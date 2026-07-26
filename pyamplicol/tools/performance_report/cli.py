@@ -12,8 +12,12 @@ import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
+from .campaign_policy import (
+    STRICT_POLICY,
+    STRICT_POLICY_NAME,
+    X86_EPYC_POLICY_NAME,
+)
 from .catalog import REPORT_CATALOG
-from .measurement import source_revision
 from .models import Accuracy, ArtifactPolicy, ExecutionMode, ModelKey, Workload
 from .prepared import ensure_report_prepared_model
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
@@ -29,8 +33,10 @@ from .source_identity import require_eligible_report_source
 from .standalone_build import StandaloneBuildError, validate_latex_log
 from .worker import write_cell_result
 from .workspace import (
+    ReportWorkspaceError,
     export_profile,
     initialize_profile,
+    load_profile_campaign_policy,
     refresh_profile_environment,
     require_active_profile_environment,
 )
@@ -92,6 +98,14 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="replace copied measurements with canonical N/A caches and tables",
     )
+    initialize.add_argument(
+        "--measurement-policy",
+        choices=(STRICT_POLICY_NAME, X86_EPYC_POLICY_NAME),
+        help=(
+            "bind a canonical completion/resource policy; defaults to x86 EPYC "
+            "for x86_EPYC and strict completion for every other profile"
+        ),
+    )
 
     refresh_environment = subparsers.add_parser(
         "refresh-profile-environment",
@@ -147,6 +161,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     worker.add_argument("--prepared-model", type=Path)
     worker.add_argument("--reused-measurement-json", type=Path)
+    worker.add_argument("--legacy-repository", type=Path, help=argparse.SUPPRESS)
     worker.add_argument(
         "--target-runtime",
         type=float,
@@ -224,6 +239,11 @@ def _parser() -> argparse.ArgumentParser:
         help="limit only the authenticated Generator.generate phase",
     )
     populate.add_argument("--max-ram-gib", type=float)
+    populate.add_argument(
+        "--max-ram-gb",
+        type=float,
+        help="decimal GB ceiling for each worker process tree",
+    )
     populate.add_argument("--campaign-max-ram-gib", type=float)
     populate.add_argument(
         "--limit-gib",
@@ -289,6 +309,14 @@ def _gib_bytes(value: float | None) -> int | None:
     if value <= 0.0:
         raise ValueError("RAM limits must be positive")
     return int(value * 1024**3)
+
+
+def _gb_bytes(value: float | None) -> int | None:
+    if value is None:
+        return None
+    if value <= 0.0:
+        raise ValueError("RAM limits must be positive")
+    return int(value * 1_000_000_000)
 
 
 def _compile_pdf(service: ReportService) -> Path:
@@ -368,6 +396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.profile,
             source_profile=args.source_profile,
             reset_measurements=args.reset_measurements,
+            measurement_policy=args.measurement_policy,
         )
         print(output.relative_to(repo_root))
         return 0
@@ -433,11 +462,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             requested = select_cells(_selection(args))
             if not requested:
                 parser.error("cell filters select no report cells")
+            if args.max_ram_gib is not None and args.max_ram_gb is not None:
+                parser.error("--max-ram-gib and --max-ram-gb are mutually exclusive")
             campaign_limit = (
                 args.campaign_max_ram_gib
                 if args.campaign_max_ram_gib is not None
                 else args.limit_gib
             )
+            source_identity = require_eligible_report_source(repo_root)
+            expected_revision = source_identity.revision
+            if args.report_profile is None:
+                campaign_policy = STRICT_POLICY
+            else:
+                campaign_policy = load_profile_campaign_policy(
+                    repo_root,
+                    args.report_profile,
+                    expected_source_revision=expected_revision,
+                )
             settings = CampaignSettings(
                 workers=args.workers,
                 cell_cores=args.cell_cores,
@@ -445,21 +486,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 batch_size=args.batch_size,
                 timeout_seconds=args.timeout_seconds,
                 generation_time_limit_seconds=args.generation_time_limit_seconds,
-                max_rss_bytes=_gib_bytes(args.max_ram_gib),
+                max_rss_bytes=(
+                    _gb_bytes(args.max_ram_gb)
+                    if args.max_ram_gb is not None
+                    else _gib_bytes(args.max_ram_gib)
+                ),
                 campaign_max_rss_bytes=_gib_bytes(campaign_limit),
                 artifact_policy=ArtifactPolicy(args.artifact_policy),
                 missing_only=args.missing_only,
                 rerun=args.rerun,
                 allow_symbolica_parallel=args.allow_symbolica_parallel,
+                campaign_policy=campaign_policy,
+                report_profile=args.report_profile,
             )
-        except ValueError as error:
+        except (ValueError, ReportWorkspaceError) as error:
             parser.error(str(error))
-        expected_revision = source_revision(repo_root, require_clean=True)
         planned = plan_campaign(
             requested,
             store=service.store,
             settings=settings,
             expected_revision=expected_revision,
+            expected_tree=source_identity.tree,
         )
         if args.dry_run:
             print(
@@ -490,7 +537,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.report_profile,
                 expected_source_revision=expected_revision,
             )
-        require_eligible_report_source(repo_root)
         result = CampaignScheduler(service, settings=settings).run(planned)
         if args.refresh_pdf == "end":
             _compile_pdf(service)
@@ -545,6 +591,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             phase_state_path=args.phase_state_path,
             phase_state_run_id=args.phase_state_run_id,
             phase_state_authentication_key=args.phase_state_authentication_key,
+            legacy_repository=args.legacy_repository,
             log_path=args.log_path,
         )
         return 0

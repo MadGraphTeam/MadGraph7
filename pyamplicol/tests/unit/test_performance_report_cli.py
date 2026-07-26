@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from tools.performance_report import final_audit
+from tools.performance_report.campaign_policy import STRICT_POLICY
 from tools.performance_report.cli import _compile_pdf, _parser, main
 from tools.performance_report.service import ReportPaths, ReportService
 
@@ -373,6 +374,10 @@ def test_profile_population_requires_the_active_authenticated_environment(
     monkeypatch.setattr(
         "tools.performance_report.cli.require_active_profile_environment",
         require_environment,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.load_profile_campaign_policy",
+        lambda *_args, **_kwargs: STRICT_POLICY,
     )
     monkeypatch.setattr(
         "tools.performance_report.cli.CampaignScheduler",

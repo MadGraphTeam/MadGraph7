@@ -8,6 +8,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from .cache import empty_measurement
+from .campaign_policy import (
+    STRICT_POLICY,
+    CampaignPolicy,
+    policy_status_label,
+)
 from .catalog import REPORT_CATALOG, ReportCatalog, z_dataset_id
 from .display_contract import report_display_accounting
 from .models import (
@@ -431,6 +436,13 @@ def _below_resolution_time(
 
 def _status(measurement: Measurement) -> str:
     status = str(measurement.get("status", ResultStatus.NOT_AVAILABLE.value))
+    policy_label = policy_status_label(measurement)
+    if policy_label is not None:
+        return (
+            r"\matrixstatus{ReportOrange}{"
+            + _tex_escape(policy_label)
+            + "}"
+        )
     labels = {
         ResultStatus.NOT_AVAILABLE.value: "N/A",
         ResultStatus.TIMEOUT.value: "t/o",
@@ -716,6 +728,11 @@ def _summary_pair(
         and below_resolution_record(item.candidate, field) is None
     ]
     if not valid:
+        for item in joined:
+            if not _ok(item.candidate) and policy_status_label(item.candidate):
+                return _status(item.candidate)
+            if not _ok(item.baseline) and policy_status_label(item.baseline):
+                return _status(item.baseline)
         return r"\matrixna{ReportMuted}"
     baseline_sum = sum(float(item.baseline[field]) for item in valid)
     candidate_sum = sum(float(item.candidate[field]) for item in valid)
@@ -1739,6 +1756,7 @@ def summarize_visible_completeness(
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
     max_n_final: int = 4,
+    policy: CampaignPolicy = STRICT_POLICY,
 ) -> VisibleCompleteness:
     """Audit every logical table slot that represents a required measurement.
 
@@ -1775,7 +1793,11 @@ def summarize_visible_completeness(
     for cell in required_cells:
         measurement = measurements.get(cell.cell_id, _NA)
         status = measurement.get("status", ResultStatus.NOT_AVAILABLE.value)
-        if status != ResultStatus.OK.value:
+        policy_terminal = (
+            policy.allow_terminal_censors
+            and policy_status_label(measurement) is not None
+        )
+        if status != ResultStatus.OK.value and not policy_terminal:
             contract_errors.append(
                 f"{cell.cell_id}: required measurement status is "
                 f"{status!r}, expected {ResultStatus.OK.value!r}"

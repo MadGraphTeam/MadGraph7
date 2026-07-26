@@ -2177,7 +2177,7 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
 
     assert lock_state == {"held": False, "entries": 1}
     assert result["status"] == "incomplete"
-    assert result["schema_version"] == 3
+    assert result["schema_version"] == 4
     assert result["measurement_source_revision"] == _REVISION
     assert result["publication_revision"] == _REVISION
     assert result["publication_lineage"]["relationship"] == "same-commit"

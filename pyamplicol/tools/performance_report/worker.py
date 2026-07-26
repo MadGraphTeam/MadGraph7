@@ -64,6 +64,7 @@ def measure_cell(
     prepared_model_path: Path | None = None,
     reused_measurement_json: Path | None = None,
     phase_reporter: WorkerPhaseReporter | None = None,
+    legacy_repository: Path | None = None,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
     source_identity = require_eligible_report_source(repo_root)
@@ -91,6 +92,7 @@ def measure_cell(
             settings=LegacySettings(
                 target_runtime_seconds=target_runtime_seconds,
                 jobs=worker_cores,
+                repository=legacy_repository,
             ),
         )
     else:
