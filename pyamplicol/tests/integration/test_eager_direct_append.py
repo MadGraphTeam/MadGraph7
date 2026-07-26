@@ -28,6 +28,9 @@ def test_compiled_append_preserves_existing_direct_eager_process(
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
 
+    # A stale developer environment must never revive the removed plan-v2
+    # writer. Eager generation is unconditionally plan-v3.
+    monkeypatch.setenv("PYAMPLICOL_EAGER_PLAN_VERSION", "v2")
     eager_evaluator = EvaluatorConfig(
         execution_mode="eager",
         jit=JITConfig(optimization_level=0),
@@ -75,6 +78,16 @@ def test_compiled_append_preserves_existing_direct_eager_process(
 
     original_manifest = load_manifest(artifact)
     original_process_id = str(original_manifest.processes[0]["id"])
+    original_execution = json.loads(
+        (artifact / f"processes/{original_process_id}/execution.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert original_execution["eager_plan_abi"] == "pyamplicol-eager-plan-v3"
+    assert original_execution["required_runtime_capabilities"] == [
+        "eager-direct-arena-v1",
+        "rusticol.eager-runtime-layout.complex-f64.v1",
+    ]
     point = (
         (45.594, 0.0, 0.0, 45.594),
         (45.594, 0.0, 0.0, -45.594),

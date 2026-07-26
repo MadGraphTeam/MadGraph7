@@ -46,7 +46,6 @@ from .._internal.versions import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
     EAGER_DIRECT_TABLE_BINDING_ABI,
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
-    EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
     EVALUATOR_RUNTIME_CAPABILITIES,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
     PROCESS_ARTIFACT_SCHEMA_VERSION,
@@ -74,8 +73,8 @@ from ..evaluators.execution_schema import evaluator_runtime_capabilities
 from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
 from .contracts import RuntimeExpressionSchema
 from .eager_columnar import EAGER_LOWERING_INPUT_ABI
-from .eager_lowering import EAGER_RUNTIME_KIND, EagerExecutionTables
-from .eager_tables import EAGER_KERNEL_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY
+from .eager_lowering import EAGER_RUNTIME_KIND
+from .eager_tables import EAGER_KERNEL_ABI, EAGER_RUNTIME_CAPABILITY
 from .evaluator_container import (
     PacbinIndex,
     PacbinMemberKind,
@@ -202,22 +201,6 @@ class CompiledProcessArtifact:
 
 
 @dataclass(frozen=True, slots=True)
-class EagerProcessArtifact:
-    process_id: str
-    expression: str
-    color_accuracy: str
-    external_pdgs: tuple[int, ...]
-    aliases: tuple[Mapping[str, object], ...]
-    runtime_schema: RuntimeExpressionSchema | Mapping[str, object]
-    eager_tables: EagerExecutionTables
-    point_tile_size: int
-    workspace_mib: int
-    dag_summary: Mapping[str, object]
-    validation_point: ValidationPointRecord
-    generation_filters: Mapping[str, object]
-
-
-@dataclass(frozen=True, slots=True)
 class EagerPlanV3ProcessArtifact:
     """One Rust-lowered eager runtime plus its bounded publication metadata."""
 
@@ -278,10 +261,7 @@ class RecurrenceProcessArtifact:
 
 
 ProcessArtifact = (
-    CompiledProcessArtifact
-    | EagerProcessArtifact
-    | EagerPlanV3ProcessArtifact
-    | RecurrenceProcessArtifact
+    CompiledProcessArtifact | EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact
 )
 
 
@@ -581,6 +561,8 @@ def write_schema_v3_artifact(
         raise ValueError("schema-v3 generation requires at least one concrete process")
     output = Path(destination).expanduser().resolve(strict=False)
     existing = load_manifest(output) if mode == "append" else None
+    if existing is not None:
+        _reject_legacy_eager_append(existing)
     hook = api_bundle_hook or _default_api_bundle_hook()
     requested_config = _config_payload(configuration.requested)
     effective_config = _config_payload(configuration.effective)
@@ -1237,7 +1219,7 @@ def _eager_prepared_pack_identity(
 def _is_prepared_kernel_process(process: ProcessArtifact) -> bool:
     return isinstance(
         process,
-        EagerProcessArtifact | EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact,
+        EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact,
     )
 
 
@@ -1248,8 +1230,6 @@ def _prepared_referenced_kernel_ids(
         return process.referenced_kernel_ids
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return process.referenced_kernel_ids
-    if isinstance(process, EagerProcessArtifact):
-        return process.eager_tables.referenced_kernel_ids
     raise TypeError("compiled process has no prepared-kernel references")
 
 
@@ -1390,15 +1370,7 @@ def _write_process_payloads(
         role="validation-momenta",
         process_id=process.process_id,
     )
-    if isinstance(process, EagerProcessArtifact):
-        for relative, content in sorted(process.eager_tables.binary_payloads().items()):
-            evaluator_payloads.add_bytes(
-                f"{prefix}/{relative}",
-                content,
-                media_type="application/octet-stream",
-                process_id=process.process_id,
-            )
-    elif isinstance(process, CompiledProcessArtifact):
+    if isinstance(process, CompiledProcessArtifact):
         _copy_evaluator_payloads(
             evaluator_payloads,
             process.evaluator_root,
@@ -1754,37 +1726,6 @@ def _execution_manifest(
         )
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return _eager_plan_v3_execution_manifest(process)
-    if isinstance(process, EagerProcessArtifact):
-        topology_replay = compiler_schema.get("lc_topology_replay")
-        required_runtime_capabilities = _eager_process_runtime_capabilities(process)
-        plan = process.eager_tables.to_metadata()
-        plan["required_runtime_capabilities"] = list(required_runtime_capabilities)
-        return {
-            "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
-            "kind": EAGER_RUNTIME_KIND,
-            "required_runtime_capabilities": list(required_runtime_capabilities),
-            "process": process.expression,
-            "key": process.process_id,
-            "color_accuracy": process.color_accuracy,
-            "external_pdg_order": list(process.external_pdgs),
-            "eager_plan_abi": EAGER_PLAN_ABI,
-            "kernel_pack": {
-                "manifest_path": _EAGER_KERNEL_PACK_PATH,
-                "payload_root": _EAGER_KERNEL_PAYLOAD_ROOT,
-            },
-            "runtime_options": {
-                "point_tile_size": process.point_tile_size,
-                "workspace_mib": process.workspace_mib,
-            },
-            "plan": plan,
-            "dag_summary": _dag_summary(process.dag_summary),
-            "runtime_schema": _execution_plan(compiler_schema),
-            **(
-                {}
-                if topology_replay is None
-                else {"lc_topology_replay": _plain_mapping(_mapping(topology_replay))}
-            ),
-        }
     primary = _compiled_execution_lane_manifest(
         runtime_schema=compiler_schema,
         stage_manifest=process.stage_manifest,
@@ -3280,10 +3221,10 @@ def _validate_append_compatibility(
 ) -> None:
     if existing is None:
         return
+    _reject_legacy_eager_append(existing)
     existing_capabilities = _required_runtime_capabilities(existing.runtime)
     existing_uses_eager = (
-        EAGER_RUNTIME_CAPABILITY in existing_capabilities
-        or EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY in existing_capabilities
+        EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY in existing_capabilities
         or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
     )
     existing_identity = existing.extensions.get(_EAGER_PACK_IDENTITY_EXTENSION)
@@ -3326,6 +3267,19 @@ def _validate_append_compatibility(
     if duplicates:
         raise ValueError(
             "append process IDs already exist: " + ", ".join(sorted(duplicates))
+        )
+
+
+def _reject_legacy_eager_append(existing: ArtifactManifest) -> None:
+    raw_capabilities = existing.runtime.get("required_runtime_capabilities", ())
+    if (
+        not isinstance(raw_capabilities, str | bytes)
+        and isinstance(raw_capabilities, Sequence)
+        and EAGER_RUNTIME_CAPABILITY in raw_capabilities
+    ):
+        raise ValueError(
+            "legacy eager plan-v2 artifacts cannot be extended; regenerate the "
+            "artifact with the current eager plan-v3 runtime or use replace mode"
         )
 
 
@@ -3503,8 +3457,6 @@ def _process_runtime_capabilities(
         return _recurrence_process_runtime_capabilities(process)
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return _EAGER_PLAN_V3_RUNTIME_CAPABILITIES
-    if isinstance(process, EagerProcessArtifact):
-        return _eager_process_runtime_capabilities(process)
     return _compiled_process_runtime_capabilities(process)
 
 
@@ -3524,16 +3476,6 @@ def _recurrence_process_runtime_capabilities(
             }
         )
     )
-
-
-def _eager_process_runtime_capabilities(
-    process: EagerProcessArtifact,
-) -> tuple[str, ...]:
-    capabilities = {EAGER_RUNTIME_CAPABILITY}
-    runtime_schema = _runtime_schema_mapping(process.runtime_schema)
-    if runtime_schema.get("lc_topology_replay") is not None:
-        capabilities.add(EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY)
-    return tuple(sorted(capabilities))
 
 
 def _required_runtime_capabilities(
@@ -4182,7 +4124,6 @@ __all__ = [
     "CompiledExecutionArtifact",
     "CompiledProcessArtifact",
     "EagerPlanV3ProcessArtifact",
-    "EagerProcessArtifact",
     "ProcessArtifact",
     "RecurrenceProcessArtifact",
     "build_api_validation_points",

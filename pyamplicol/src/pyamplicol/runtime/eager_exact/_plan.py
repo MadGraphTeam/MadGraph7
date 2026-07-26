@@ -212,14 +212,11 @@ class _EagerExactPlan:
                 exact_payloads=exact_payloads,
                 native_sections_loader=native_sections_loader,
             )
-        return cls.load(
-            artifact_root=artifact_root,
-            process_root=process_root,
-            process_id=process_id,
-            execution=execution,
-            manifest=manifest,
-            kernel_loader=kernel_loader,
-            exact_payloads=exact_payloads,
+        del process_root
+        raise CompatibilityError(
+            "eager exact execution requires a compact plan-v3 artifact; "
+            f"found eager plan ABI {execution.get('eager_plan_abi')!r}. "
+            "Regenerate the artifact with the current `pyamplicol generate`."
         )
 
     @classmethod

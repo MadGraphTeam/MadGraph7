@@ -138,6 +138,19 @@ fn compiled_direct_profile_snapshot(
     Ok(snapshot)
 }
 
+fn ensure_selected_runtime_capabilities_supported(capabilities: &[String]) -> RusticolResult<()> {
+    if capabilities.iter().any(|capability| {
+        capability == EAGER_DAG_RUNTIME_CAPABILITY
+            || capability == EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY
+    }) {
+        return Err(RusticolError::compatibility(
+            "legacy eager plan-v2 artifacts are no longer executable; regenerate the artifact \
+             with the current `pyamplicol generate` before loading it",
+        ));
+    }
+    ensure_runtime_capabilities_supported(capabilities.iter().map(String::as_str))
+}
+
 impl NativeRuntime {
     pub const ABI_VERSION: u32 = crate::C_ABI_VERSION;
 
@@ -160,12 +173,8 @@ impl NativeRuntime {
     ) -> Result<Value, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
             let selection = manifest.select_process(Some(process_id))?;
-            ensure_runtime_capabilities_supported(
-                selection
-                    .process
-                    .required_runtime_capabilities
-                    .iter()
-                    .map(String::as_str),
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
@@ -223,12 +232,8 @@ impl NativeRuntime {
     ) -> Result<NativeEagerExactSections, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
             let selection = manifest.select_process(Some(process_id))?;
-            ensure_runtime_capabilities_supported(
-                selection
-                    .process
-                    .required_runtime_capabilities
-                    .iter()
-                    .map(String::as_str),
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
@@ -284,12 +289,8 @@ impl NativeRuntime {
     ) -> Result<NativeRecurrenceExactSections, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
             let selection = manifest.select_process(Some(process_id))?;
-            ensure_runtime_capabilities_supported(
-                selection
-                    .process
-                    .required_runtime_capabilities
-                    .iter()
-                    .map(String::as_str),
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
@@ -337,12 +338,8 @@ impl NativeRuntime {
     ) -> Result<Self, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
             let selection = manifest.select_process(process_id)?;
-            ensure_runtime_capabilities_supported(
-                selection
-                    .process
-                    .required_runtime_capabilities
-                    .iter()
-                    .map(String::as_str),
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
             )
         })?;
         let artifact_id = artifact.manifest().artifact_id.clone();
@@ -2192,9 +2189,10 @@ where
 #[cfg(feature = "symbolica-runtime")]
 fn eager_parity_pending(feature: &str) -> RusticolError {
     RusticolError::unsupported_runtime_capability(
-        EAGER_DAG_RUNTIME_CAPABILITY,
+        EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         format!(
-            "eager {feature} is not available in the initial f64-total runtime slice; use compiled execution for this operation"
+            "eager {feature} is not provided by the native f64 Direct-Arena ABI; \
+             use the public Python Runtime exact-evaluation path for precision above 16 digits"
         ),
     )
 }
@@ -2207,4 +2205,23 @@ fn recurrence_parity_pending(feature: &str) -> RusticolError {
             "recurrence {feature} is not available in the initial f64 runtime slice; use compiled execution for this operation"
         ),
     )
+}
+
+#[cfg(test)]
+mod runtime_capability_cutover_tests {
+    use super::*;
+
+    #[test]
+    fn retired_eager_v2_capabilities_fail_with_regeneration_guidance() {
+        for capability in [
+            EAGER_DAG_RUNTIME_CAPABILITY,
+            EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
+        ] {
+            let error = ensure_selected_runtime_capabilities_supported(&[capability.to_string()])
+                .expect_err("retired eager capability must fail before generic preflight");
+            assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+            assert!(error.to_string().contains("legacy eager plan-v2"));
+            assert!(error.to_string().contains("regenerate"));
+        }
+    }
 }

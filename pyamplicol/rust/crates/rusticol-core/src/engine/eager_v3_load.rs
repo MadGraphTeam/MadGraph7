@@ -186,7 +186,6 @@ pub(super) fn load_eager_v3_native_runtime(
                 )));
             }
         }
-        #[cfg(not(test))]
         let lane = EagerNativeRuntime::new_direct(
             direct,
             pack.manifest.backend,
@@ -194,33 +193,6 @@ pub(super) fn load_eager_v3_native_runtime(
             raw_sum_groups,
             color_contraction,
         );
-        #[cfg(test)]
-        let lane = {
-            let mode = super::eager_lane::EagerDirectValidationMode::from_environment()?;
-            if mode == super::eager_lane::EagerDirectValidationMode::Direct {
-                EagerNativeRuntime::new_direct(
-                    direct,
-                    pack.manifest.backend,
-                    parameter_projection,
-                    raw_sum_groups,
-                    color_contraction,
-                )
-            } else {
-                let plan = crate::EagerExecutionPlan::from_plan_v3_sections(sections)?;
-                let scheduler = crate::EagerExecutionRuntime::new(plan, runtime_options)?;
-                let backend =
-                    PreparedEvaluatorBackend::load_from_store(&pack.manifest, &kernel_payloads)?;
-                EagerNativeRuntime::new(
-                    scheduler,
-                    backend,
-                    pack.manifest.backend,
-                    parameter_projection,
-                    raw_sum_groups,
-                    color_contraction,
-                )
-                .with_direct_validation(direct, mode)
-            }
-        };
         Ok(LoadedEagerV3Runtime { common, lane })
     }
 }

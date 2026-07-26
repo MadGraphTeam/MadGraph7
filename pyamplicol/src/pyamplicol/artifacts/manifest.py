@@ -14,7 +14,7 @@ from types import MappingProxyType
 from typing import Any, Literal, cast
 
 from pyamplicol._internal.versions import (
-    EVALUATOR_RUNTIME_CAPABILITIES,
+    KNOWN_EVALUATOR_RUNTIME_CAPABILITIES,
     verify_native_module,
 )
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
@@ -117,7 +117,7 @@ def _runtime_capabilities(value: object, context: str) -> tuple[str, ...]:
         raise ArtifactError(f"{context} must contain at least one capability")
     if result != tuple(sorted(result)):
         raise ArtifactError(f"{context} must be sorted")
-    unknown = set(result) - EVALUATOR_RUNTIME_CAPABILITIES
+    unknown = set(result) - KNOWN_EVALUATOR_RUNTIME_CAPABILITIES
     if unknown:
         raise ArtifactError(
             f"{context} contains unsupported capabilities: "

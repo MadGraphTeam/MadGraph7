@@ -619,9 +619,9 @@ def test_fixed_helicity_complete_lc_attaches_color_lanes_to_primary(
     )
 
 
-def test_eager_process_artifacts_have_no_compiled_selector_union_lane() -> None:
+def test_eager_plan_v3_artifacts_have_no_compiled_selector_union_lane() -> None:
     assert "helicity_selector_executions" not in (
-        service_module.EagerProcessArtifact.__dataclass_fields__
+        service_module.EagerPlanV3ProcessArtifact.__dataclass_fields__
     )
 
 

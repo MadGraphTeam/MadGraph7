@@ -27,7 +27,6 @@ from pyamplicol.generation.artifact_writer import (
     EAGER_RUNTIME_LAYOUT_ABI,
     EAGER_RUNTIME_STORAGE_ABI,
     EagerPlanV3ProcessArtifact,
-    EagerProcessArtifact,
 )
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.eager_columnar import (
@@ -182,15 +181,14 @@ def test_plan_v3_builds_columnar_input_without_schema_or_evaluator_compilation(
         return _binding_result(lowering_input)
 
     _patch_binding(monkeypatch, binding)
-    monkeypatch.setenv(generation_service._EAGER_PLAN_VERSION_ENV, "v3")
     monkeypatch.setattr(
         generation_service,
         "PreparedCatalogEagerKernelResolver",
         lambda *_args: resolver,
     )
+    assert not hasattr(generation_service, "lower_fused_eager_execution")
     for name in (
         "build_runtime_expression_schema",
-        "lower_fused_eager_execution",
         "build_and_write_generic_stage_evaluator_artifacts",
         "write_model_parameter_evaluator_artifact",
     ):
@@ -316,12 +314,12 @@ def test_plan_v3_binding_failure_is_closed_and_removes_partial_output(
     assert not destination.exists()
 
 
-def test_plan_v3_is_default_v2_is_explicit_and_compiled_mode_ignores_gate(
+def test_eager_generation_is_v3_only_and_compiled_mode_ignores_legacy_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model, compiled, resolved, resolver = _service_case()
-    monkeypatch.delenv(generation_service._EAGER_PLAN_VERSION_ENV, raising=False)
+    monkeypatch.delenv("PYAMPLICOL_EAGER_PLAN_VERSION", raising=False)
     monkeypatch.setattr(
         generation_service,
         "PreparedCatalogEagerKernelResolver",
@@ -353,35 +351,17 @@ def test_plan_v3_is_default_v2_is_explicit_and_compiled_mode_ignores_gate(
     assert isinstance(eager, EagerPlanV3ProcessArtifact)
     assert len(captured) == 1
 
-    monkeypatch.setenv(generation_service._EAGER_PLAN_VERSION_ENV, "v2")
-
-    class V2Tables:
-        referenced_kernel_ids = frozenset({100})
-
-    monkeypatch.setattr(
-        generation_service,
-        "lower_fused_eager_execution",
-        lambda **_kwargs: (
-            {
-                "physics": {
-                    "schema_version": 1,
-                    "kind": "pyamplicol-resolved-physics",
-                    "process_id": _PROCESS_ID,
-                }
-            },
-            cast(object, V2Tables()),
-        ),
-    )
-    explicit_v2 = eager_backend._construct_eager_artifact(
+    monkeypatch.setenv("PYAMPLICOL_EAGER_PLAN_VERSION", "v2")
+    with_legacy_environment = eager_backend._construct_eager_artifact(
         compiled,
         model,
         resolved,
-        tmp_path / "v2",
-        PhaseHandle("v2", None, 1),
+        tmp_path / "legacy-environment",
+        PhaseHandle("legacy-environment", None, 1),
     )
-    assert isinstance(explicit_v2, EagerProcessArtifact)
+    assert isinstance(with_legacy_environment, EagerPlanV3ProcessArtifact)
+    assert len(captured) == 2
 
-    monkeypatch.setenv(generation_service._EAGER_PLAN_VERSION_ENV, "v2")
     compiled_backend = generation_service.GenerationBackend(
         RunConfig(action=Action.GENERATE),
         None,
@@ -499,16 +479,22 @@ def test_eager_direct_descriptor_verifies_native_module_once(
         verify_native_module,
     )
     try:
-        assert artifact_writer._derive_eager_direct_descriptor(
-            b"first",
-            input_complex_count=3,
-            output_complex_count=2,
-        ) == b"first\x03\x02"
-        assert artifact_writer._derive_eager_direct_descriptor(
-            b"second",
-            input_complex_count=4,
-            output_complex_count=1,
-        ) == b"second\x04\x01"
+        assert (
+            artifact_writer._derive_eager_direct_descriptor(
+                b"first",
+                input_complex_count=3,
+                output_complex_count=2,
+            )
+            == b"first\x03\x02"
+        )
+        assert (
+            artifact_writer._derive_eager_direct_descriptor(
+                b"second",
+                input_complex_count=4,
+                output_complex_count=1,
+            )
+            == b"second\x04\x01"
+        )
     finally:
         artifact_writer._eager_direct_descriptor_operation.cache_clear()
     assert calls == {"import": 1, "verify": 1, "descriptor": 2}
