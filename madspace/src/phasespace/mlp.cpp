@@ -3,6 +3,8 @@
 #include <format>
 #include <random>
 
+#include "madspace/driver/random.hpp"
+
 using namespace madspace;
 
 namespace {
@@ -51,11 +53,9 @@ void initialize_layer(
     std::size_t output_dim,
     const std::string& prefix,
     int layer_index,
-    std::mt19937& rand_gen,
+    std::uint64_t seed,
     bool zeros
 ) {
-    double bound = 1 / std::sqrt(input_dim);
-    std::uniform_real_distribution<double> rand_dist(-bound, bound);
     auto weight_name =
         prefixed_name(prefix, std::format("layer{}.weight", layer_index));
     auto bias_name = prefixed_name(prefix, std::format("layer{}.bias", layer_index));
@@ -75,14 +75,30 @@ void initialize_layer(
     }
 
     auto weight_view = weight_tensor.view<double, 3>()[0];
-    for (std::size_t i = 0; i < output_dim; ++i) {
-        for (std::size_t j = 0; j < input_dim; ++j) {
-            weight_view[i][j] = zeros ? 0. : rand_dist(rand_gen);
-        }
-    }
     auto bias_view = bias_tensor.view<double, 2>()[0];
-    for (std::size_t i = 0; i < output_dim; ++i) {
-        bias_view[i] = zeros ? 0. : rand_dist(rand_gen);
+    if (zeros) {
+        for (std::size_t i = 0; i < output_dim; ++i) {
+            for (std::size_t j = 0; j < input_dim; ++j) {
+                weight_view[i][j] = 0.;
+            }
+            bias_view[i] = 0.;
+        }
+    } else {
+        double bound = 1 / std::sqrt(input_dim);
+        std::uniform_real_distribution<double> rand_dist(-bound, bound);
+        // Independently seeded per tensor (keyed by its own global name), so
+        // e.g. reordering layers or adding new ones doesn't shift any other
+        // tensor's initialized values.
+        auto weight_rand_gen = seeded_rng(global_init_seed(seed, weight_name));
+        for (std::size_t i = 0; i < output_dim; ++i) {
+            for (std::size_t j = 0; j < input_dim; ++j) {
+                weight_view[i][j] = rand_dist(weight_rand_gen);
+            }
+        }
+        auto bias_rand_gen = seeded_rng(global_init_seed(seed, bias_name));
+        for (std::size_t i = 0; i < output_dim; ++i) {
+            bias_view[i] = rand_dist(bias_rand_gen);
+        }
     }
 
     if (!is_cpu) {
@@ -133,15 +149,13 @@ MLP::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) co
     };
 }
 
-void MLP::initialize_globals(ContextPtr context) const {
-    std::random_device rand_device;
-    std::mt19937 rand_gen(rand_device());
+void MLP::initialize_globals(ContextPtr context, std::uint64_t seed) const {
     std::size_t dim = _input_dim;
     for (std::size_t i = 1; i < _layers; ++i) {
-        initialize_layer(context, dim, _hidden_dim, _prefix, i, rand_gen, false);
+        initialize_layer(context, dim, _hidden_dim, _prefix, i, seed, false);
         dim = _hidden_dim;
     }
-    initialize_layer(context, dim, _output_dim, _prefix, _layers, rand_gen, true);
+    initialize_layer(context, dim, _output_dim, _prefix, _layers, seed, true);
 }
 
 std::vector<std::string> MLP::global_names() const {

@@ -557,6 +557,12 @@ class MadgraphProcess:
             config=config,
             integrands=integrands,
             cwnets=cwnets,
+            # Reuses the run_card's own seed (also used by build_event_generator());
+            # MultiMadnisTraining derives an independent, non-colliding stream from it
+            # (see salt::job_kind_madnis_train in random.hpp). Only the single-channel
+            # CPU sample-generation path is currently seeded -- buffered training and
+            # GPU multi-channel batches are still non-deterministic.
+            seed=run_args["seed"],
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
@@ -1299,6 +1305,12 @@ class MadgraphSubprocess:
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
+        # Shared across all networks below: each one's global names are
+        # already unique (per-channel/per-component prefixes), so
+        # initialize_globals() derives an independent, non-colliding stream
+        # per tensor from this one base seed (see global_init_seed in
+        # random.hpp) -- no extra indices need to be threaded through here.
+        seed = self.process.run_card["run"]["seed"]
         channels = []
         for channel_id, channel in enumerate(phasespace.channels):
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -1316,7 +1328,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_before.initialize_globals(self.process.contexts[0])
+                discrete_before.initialize_globals(self.process.contexts[0], seed)
                 cond_dim += perm_count
 
             flow_dim = channel.phasespace_mapping.random_dim()
@@ -1331,10 +1343,11 @@ class MadgraphSubprocess:
                 invert_spline=madnis_args["flow_invert_spline"],
             )
             if channel.adaptive_mapping is None:
-                flow.initialize_globals(self.process.contexts[0])
+                flow.initialize_globals(self.process.contexts[0], seed)
             else:
                 flow.initialize_from_vegas(
-                    self.process.contexts[0], channel.adaptive_mapping.grid_name()
+                    self.process.contexts[0], channel.adaptive_mapping.grid_name(),
+                    seed
                 )
             cond_dim += flow_dim
 
@@ -1349,7 +1362,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_after.initialize_globals(self.process.contexts[0])
+                discrete_after.initialize_globals(self.process.contexts[0], seed)
 
             channels.append(Channel(
                 phasespace_mapping = channel.phasespace_mapping,
@@ -1418,7 +1431,9 @@ class MadgraphSubprocess:
             activation=self.activation(madnis_args["cwnet_activation"]),
             prefix=f"subproc{self.subproc_id}.cwnet",
         )
-        cwnet.initialize_globals(self.process.contexts[0])
+        cwnet.initialize_globals(
+            self.process.contexts[0], self.process.run_card["run"]["seed"]
+        )
         return cwnet
 
     def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:

@@ -36,4 +36,18 @@ seeded_rng(std::uint64_t seed, std::initializer_list<std::uint32_t> salts) {
     return std::mt19937(seq);
 }
 
+std::uint64_t hash_string(std::string_view s) {
+    // FNV-1a, 64-bit.
+    std::uint64_t h = 0xcbf29ce484222325ull;
+    for (unsigned char c : s) {
+        h ^= c;
+        h *= 0x100000001b3ull;
+    }
+    return h;
+}
+
+std::uint64_t global_init_seed(std::uint64_t seed, std::string_view name) {
+    return mix_seed(seed, {salt::global_init, hash_string(name)});
+}
+
 } // namespace madspace

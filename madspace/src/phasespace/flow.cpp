@@ -211,17 +211,17 @@ Flow::Flow(
     }
 }
 
-void Flow::initialize_globals(ContextPtr context) const {
+void Flow::initialize_globals(ContextPtr context, std::uint64_t seed) const {
     for (auto& block : _coupling_blocks) {
-        block.subnet1.initialize_globals(context);
-        block.subnet2.initialize_globals(context);
+        block.subnet1.initialize_globals(context, seed);
+        block.subnet2.initialize_globals(context, seed);
     }
 }
 
 void Flow::initialize_from_vegas(
-    ContextPtr context, const std::string& grid_name
+    ContextPtr context, const std::string& grid_name, std::uint64_t seed
 ) const {
-    initialize_globals(context);
+    initialize_globals(context, seed);
     auto& last_block = _coupling_blocks.at(_coupling_blocks.size() - 1);
     vegas_init(
         context,

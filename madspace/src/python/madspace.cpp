@@ -842,7 +842,12 @@ PYBIND11_MODULE(_madspace_py, m) {
     )
         .def("input_dim", &MLP::input_dim)
         .def("output_dim", &MLP::output_dim)
-        .def("initialize_globals", &MLP::initialize_globals, py::arg("context"));
+        .def(
+            "initialize_globals",
+            &MLP::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = 0
+        );
 
     py::classh<Flow, Mapping>(m, "Flow")
         .def(
@@ -866,12 +871,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("input_dim", &Flow::input_dim)
         .def("condition_dim", &Flow::condition_dim)
-        .def("initialize_globals", &Flow::initialize_globals, py::arg("context"))
+        .def(
+            "initialize_globals",
+            &Flow::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = 0
+        )
         .def(
             "initialize_from_vegas",
             &Flow::initialize_from_vegas,
             py::arg("context"),
-            py::arg("grid_name")
+            py::arg("grid_name"),
+            py::arg("seed") = 0
         );
 
     py::classh<PropagatorChannelWeights, FunctionGenerator>(
@@ -927,7 +938,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "initialize_globals",
             &ChannelWeightNetwork::initialize_globals,
-            py::arg("context")
+            py::arg("context"),
+            py::arg("seed") = 0
         );
 
     py::classh<DiscreteHistogram, FunctionGenerator>(m, "DiscreteHistogram")
@@ -972,7 +984,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("option_counts", &DiscreteFlow::option_counts)
         .def("condition_dim", &DiscreteFlow::condition_dim)
         .def(
-            "initialize_globals", &DiscreteFlow::initialize_globals, py::arg("context")
+            "initialize_globals",
+            &DiscreteFlow::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = 0
         );
 
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
@@ -1372,12 +1387,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 ContextPtr,
                 const MadnisTraining::Config&,
                 const std::vector<std::shared_ptr<Integrand>>&,
-                const std::optional<ChannelWeightNetwork>&>(),
+                const std::optional<ChannelWeightNetwork>&,
+                std::uint64_t>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("config"),
             py::arg("integrands"),
-            py::arg("cwnet")
+            py::arg("cwnet"),
+            py::arg("seed") = 0
         )
         .def("train_step", &MadnisTraining::train_step, py::arg("batch_index"))
         .def("active_channels", &MadnisTraining::active_channels)
@@ -1390,12 +1407,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 ContextPtr,
                 const MadnisTraining::Config&,
                 const nested_vector2<std::shared_ptr<Integrand>>&,
-                const std::vector<std::optional<ChannelWeightNetwork>>&>(),
+                const std::vector<std::optional<ChannelWeightNetwork>>&,
+                std::uint64_t>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("config"),
             py::arg("integrands"),
-            py::arg("cwnets")
+            py::arg("cwnets"),
+            py::arg("seed") = 0
         )
         .def("train", &MultiMadnisTraining::train)
         .def("active_channels", &MultiMadnisTraining::active_channels);

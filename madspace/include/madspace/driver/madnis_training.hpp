@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/adam_optimizer.hpp"
@@ -47,7 +48,8 @@ public:
         ContextPtr optimizer_context,
         const Config& config,
         const std::vector<std::shared_ptr<Integrand>>& integrands,
-        const std::optional<ChannelWeightNetwork>& cwnet
+        const std::optional<ChannelWeightNetwork>& cwnet,
+        std::uint64_t seed = 0
     );
     void train_step(std::size_t batch_index);
     std::vector<std::size_t> active_channels() const;
@@ -65,6 +67,10 @@ private:
     struct SampleJob {
         SampleBatch samples;
         SampleBatch unweighted_samples;
+        // Per-channel dispatch sequence number (see start_single_job), used to commit
+        // results in dispatch order regardless of completion order. Unused (left at
+        // 0) for multi-channel GPU jobs, which are committed on completion instead.
+        std::size_t channel_seq = 0;
     };
     struct ChannelData {
         std::size_t index;
@@ -77,6 +83,13 @@ private:
         RuntimePtr generator_runtime = nullptr;
         RuntimePtr unweighter_runtime = nullptr;
         SampleBatch buffer;
+        // Commit-ordering state for single-channel (CPU) generator jobs: each
+        // dispatched job gets the next channel-local sequence number, and results are
+        // applied (see process_job_results) only once all earlier-numbered jobs for
+        // this channel have already been applied.
+        std::size_t next_dispatch_seq = 0;
+        std::size_t commit_cursor = 0;
+        std::unordered_map<std::size_t, std::size_t> ready_job_ids;
     };
 
     inline static std::function<void(void)> _abort_check_function = [] {};
@@ -115,6 +128,7 @@ private:
     std::vector<std::size_t> _arg_permutation;
     bool _buffer_ready = false;
     std::vector<std::size_t> _active_flavors_count;
+    std::uint64_t _seed;
 };
 
 class MultiMadnisTraining {
@@ -124,7 +138,8 @@ public:
         ContextPtr optimizer_context,
         const MadnisTraining::Config& config,
         const nested_vector2<std::shared_ptr<Integrand>>& integrands,
-        const std::vector<std::optional<ChannelWeightNetwork>>& cwnets
+        const std::vector<std::optional<ChannelWeightNetwork>>& cwnets,
+        std::uint64_t seed = 0
     );
     void train();
     nested_vector2<std::size_t> active_channels() const;

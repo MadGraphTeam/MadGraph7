@@ -7,16 +7,6 @@ using json = nlohmann::json;
 
 namespace {
 
-// Phase salts keeping the phase-space/matrix-element stream of a job independent
-// from its unweighting stream while both derive from the same per-job base seed.
-constexpr std::uint64_t kPhaseGenerate = 1;
-constexpr std::uint64_t kPhaseUnweight = 2;
-
-// Salts keeping a job's base-seed derivation (see start_job) independent between
-// survey and generate calls.
-constexpr std::uint64_t kJobKindSurvey = 1;
-constexpr std::uint64_t kJobKindGenerate = 2;
-
 int event_extra_flags(const std::unordered_map<std::string, std::size_t>& index_map) {
     int flags = 0;
     if (index_map.contains("fact_scale1")) {
@@ -415,11 +405,13 @@ void ChannelEventGenerator::start_job(
         job.rng_seed = 0;
     } else if (is_survey) {
         job.rng_seed = mix_seed(
-            seed, {job.channel_index, kJobKindSurvey, survey_pass, _survey_rng_seq++}
+            seed,
+            {job.channel_index, salt::job_kind_survey, survey_pass, _survey_rng_seq++}
         );
     } else {
-        job.rng_seed =
-            mix_seed(seed, {job.channel_index, kJobKindGenerate, _generate_rng_seq++});
+        job.rng_seed = mix_seed(
+            seed, {job.channel_index, salt::job_kind_generate, _generate_rng_seq++}
+        );
     }
     _contexts.at(job.context_index)
         ->thread_pool()
@@ -432,7 +424,7 @@ void ChannelEventGenerator::start_job(
                 if (job.rng_seed == 0) {
                     return std::nullopt;
                 }
-                return mix_seed(job.rng_seed, {kPhaseGenerate, rng_call_index++});
+                return mix_seed(job.rng_seed, {salt::phase_generate, rng_call_index++});
             };
             std::size_t max_batch_size =
                 context->device()->device_type() == DeviceType::cpu
@@ -538,7 +530,7 @@ void ChannelEventGenerator::submit_unweight_job(
             auto& context = _contexts.at(job.context_index);
             std::optional<std::uint64_t> seed = job.rng_seed == 0
                 ? std::nullopt
-                : std::optional(mix_seed(job.rng_seed, {kPhaseUnweight}));
+                : std::optional(mix_seed(job.rng_seed, {salt::phase_unweight}));
             std::vector<Tensor> unweighter_args(
                 job.events.begin(), job.events.begin() + _field_indices.random
             );

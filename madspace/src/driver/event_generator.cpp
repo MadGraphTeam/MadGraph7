@@ -14,15 +14,6 @@
 
 using namespace madspace;
 
-namespace {
-
-// salts to derive seeds for different generation phases
-constexpr std::uint32_t salt_combine_select = 1;
-constexpr std::uint32_t salt_lhe_complete = 2;
-constexpr std::uint32_t salt_unweight = 3;
-
-} // namespace
-
 const GeneratorConfig EventGenerator::default_config = {};
 
 EventGenerator::EventGenerator(
@@ -699,7 +690,7 @@ void EventGenerator::update_counts() {
 
 void EventGenerator::combine_to_compact_npy(const std::string& file_name) {
     reset_start_time();
-    std::mt19937 select_rng = seeded_rng(_seed, {salt_combine_select});
+    std::mt19937 select_rng = seeded_rng(_seed, {salt::combine_select});
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout layout(
         EventRecord::layout(
@@ -737,8 +728,8 @@ void EventGenerator::combine_to_lhe_npy(
 ) {
     reset_start_time();
     std::uint64_t seed = _seed;
-    std::mt19937 select_rng = seeded_rng(seed, {salt_combine_select});
-    std::mt19937 rand_gen = seeded_rng(seed, {salt_lhe_complete});
+    std::mt19937 select_rng = seeded_rng(seed, {salt::combine_select});
+    std::mt19937 rand_gen = seeded_rng(seed, {salt::lhe_complete});
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout in_layout(
         EventRecord::layout(
@@ -801,7 +792,7 @@ void EventGenerator::combine_to_lhe(
 ) {
     reset_start_time();
     std::uint64_t seed = _seed;
-    std::mt19937 select_rng = seeded_rng(seed, {salt_combine_select});
+    std::mt19937 select_rng = seeded_rng(seed, {salt::combine_select});
     ThreadPool pool(_config.combine_thread_count);
     auto [channel_data, particle_count, norm_factor] = init_combine();
     std::vector<std::pair<EventBuffer, std::string>> buffers;
@@ -847,7 +838,8 @@ void EventGenerator::combine_to_lhe(
             pool.submit(
                 [slot, batch_seq, seed, this, &in_buffer, &out_buffer, &lhe_completer] {
                     std::mt19937 rand_gen = seeded_rng(
-                        seed, {salt_lhe_complete, static_cast<std::uint32_t>(batch_seq)}
+                        seed,
+                        {salt::lhe_complete, static_cast<std::uint32_t>(batch_seq)}
                     );
                     LHEEvent lhe_event;
                     out_buffer.clear();
@@ -910,7 +902,7 @@ void EventGenerator::unweight_all() {
     for (std::size_t channel_index = 0; auto& channel : _channels) {
         std::mt19937 rand_gen = seeded_rng(
             _seed,
-            {salt_unweight,
+            {salt::unweight_pass,
              static_cast<std::uint32_t>(call_index),
              static_cast<std::uint32_t>(channel_index)}
         );

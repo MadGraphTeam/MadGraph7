@@ -32,7 +32,8 @@ public:
 
     const MLP& mlp() const { return _mlp; }
     const MomentumPreprocessing& preprocessing() const { return _preprocessing; }
-    void initialize_globals(ContextPtr context) const;
+    // seed == 0 (the default) initializes non-deterministically.
+    void initialize_globals(ContextPtr context, std::uint64_t seed = 0) const;
     const std::string& mask_name() const { return _mask_name; }
 
 private:

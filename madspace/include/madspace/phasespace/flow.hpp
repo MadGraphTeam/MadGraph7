@@ -19,8 +19,11 @@ public:
     );
     std::size_t input_dim() const { return _input_dim; }
     std::size_t condition_dim() const { return _condition_dim; }
-    void initialize_globals(ContextPtr context) const;
-    void initialize_from_vegas(ContextPtr context, const std::string& grid_name) const;
+    // seed == 0 (the default) initializes non-deterministically.
+    void initialize_globals(ContextPtr context, std::uint64_t seed = 0) const;
+    void initialize_from_vegas(
+        ContextPtr context, const std::string& grid_name, std::uint64_t seed = 0
+    ) const;
 
 private:
     Result build_forward_impl(
