@@ -165,17 +165,20 @@ python3 docs/performance_reports/{profile}/result_tables.py render --compile
 python3 docs/performance_reports/{profile}/result_tables.py audit
 ```
 
-Before measuring, commit this complete initialized workspace and save its exact
-identity. Do not push yet:
+Before measuring, commit this complete initialized workspace, save and verify
+its exact identity, and push the measured-source checkpoint:
 
 ```bash
 git add docs/performance_reports/{profile}
 git commit -m "Initialize {profile} performance report"
 MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
+test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION" &&
+git push origin HEAD
 ```
 
-Keep `MEASURED_SOURCE_REVISION` unchanged for the rest of the campaign. Perform
-the project's clean build and native-install gate for that exact commit, then
+That first push must complete before any build or measurement. Keep
+`MEASURED_SOURCE_REVISION` unchanged for the rest of the campaign. Perform the
+project's clean build and native-install gate for that exact commit, then
 authenticate and record the installed measurement runtime:
 
 ```bash
@@ -226,8 +229,8 @@ The copied entry point selects this profile automatically. It still requires a
 pyAmpliCol source checkout and installed native extension because measurements
 exercise the public runtime APIs. Never stage profile prose, entry points,
 manifests, evaluator source, `.artifacts/`, worker attempts, logs, locks,
-coordination state, or LaTeX auxiliary files. Push only after `final-audit`
-succeeds.
+coordination state, or LaTeX auxiliary files. Push the publication commit only
+after `final-audit` succeeds.
 """
 
 

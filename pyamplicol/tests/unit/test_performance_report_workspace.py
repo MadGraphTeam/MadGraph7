@@ -164,8 +164,18 @@ def test_profile_readme_requires_four_audited_five_second_campaigns(
         "git push origin HEAD"
     ) in readme
     assert "python3 docs/result_tables.py final-audit" not in readme
-    assert readme.count("git push origin HEAD") == 1
-    assert readme.index("git push origin HEAD") > readme.index(" final-audit \\")
+    assert readme.count("git push origin HEAD") == 2
+    checkpoint_push = readme.index("git push origin HEAD")
+    publication_push = readme.index("git push origin HEAD", checkpoint_push + 1)
+    assert readme.index("MEASURED_SOURCE_REVISION=") < readme.index(
+        'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"'
+    )
+    assert readme.index(
+        'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"'
+    ) < checkpoint_push
+    assert checkpoint_push < readme.index("refresh-profile-environment")
+    assert readme.index("PUBLICATION_REVISION=") < readme.index(" final-audit \\")
+    assert publication_push > readme.index(" final-audit \\")
     for path in (
         "report_environment.json",
         "report_environment.tex",
@@ -204,6 +214,11 @@ def test_root_report_readme_requires_separate_mac_and_cluster_campaigns() -> Non
         '--publication-revision "$PUBLICATION_REVISION" &&\n'
         "git push origin HEAD"
     ) == 2
+    assert readme.count(
+        'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION" &&\n'
+        "git push origin HEAD"
+    ) == 2
+    assert readme.count("git push origin HEAD") == 4
 
     mac_start = readme.index("Create the first Mac workspace")
     cluster_start = readme.index("Create an independent cluster workspace")
@@ -216,16 +231,26 @@ def test_root_report_readme_requires_separate_mac_and_cluster_campaigns() -> Non
             "final-audit \\"
         )
         assert final_command in lifecycle
-        assert lifecycle.count("git push origin HEAD") == 1
-        assert lifecycle.index("git push origin HEAD") > lifecycle.index(
-            final_command
+        assert lifecycle.count("git push origin HEAD") == 2
+        checkpoint_push = lifecycle.index("git push origin HEAD")
+        publication_push = lifecycle.index(
+            "git push origin HEAD",
+            checkpoint_push + 1,
         )
         assert lifecycle.index("MEASURED_SOURCE_REVISION=") < lifecycle.index(
-            "refresh-profile-environment"
+            'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"'
         )
+        assert lifecycle.index(
+            'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"'
+        ) < checkpoint_push
+        assert checkpoint_push < lifecycle.index("refresh-profile-environment")
         assert lifecycle.index("PUBLICATION_REVISION=") > lifecycle.index(
             f'git commit -m "Publish {profile} performance report"'
         )
+        assert lifecycle.index("PUBLICATION_REVISION=") < lifecycle.index(
+            final_command
+        )
+        assert publication_push > lifecycle.index(final_command)
         for path in (
             "report_environment.json",
             "report_environment.tex",

@@ -68,15 +68,17 @@ python3 docs/result_tables.py init-profile macbook_M3 --reset-measurements
 git add docs/performance_reports/macbook_M3
 git commit -m "Initialize macbook_M3 performance report"
 MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
+test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION" &&
+git push origin HEAD
 ```
 
-That commit is the measured-source checkpoint. Keep
-`MEASURED_SOURCE_REVISION` unchanged for the rest of the campaign. From a clean
-checkout of that exact commit, run the project's clean build and native-install
-gate. Initialization records the runtime as pending rather than guessing from
-possibly unavailable distribution metadata. After the build, authenticate the
-installed runtime against the checkpoint and replace the pending generated
-metadata:
+That first push publishes the complete measured-source checkpoint before any
+build or measurement. Keep `MEASURED_SOURCE_REVISION` unchanged for the rest of
+the campaign. From a clean checkout of that exact commit, run the project's
+clean build and native-install gate. Initialization records the runtime as
+pending rather than guessing from possibly unavailable distribution metadata.
+After the build, authenticate the installed runtime against the checkpoint and
+replace the pending generated metadata:
 
 ```bash
 python3 docs/performance_reports/macbook_M3/result_tables.py \
@@ -137,7 +139,7 @@ git push origin HEAD
 
 Do not stage profile prose, entry points, manifests, evaluator source,
 `.artifacts/`, logs, locks, coordination state, or LaTeX auxiliary files.
-`git push` must run only after `final-audit` succeeds.
+The second, publication push must run only after `final-audit` succeeds.
 
 Create an independent cluster workspace from the same publication sources but
 with empty measurement caches:
@@ -149,11 +151,14 @@ python3 docs/result_tables.py init-profile cluster_EPYC \
 git add docs/performance_reports/cluster_EPYC
 git commit -m "Initialize cluster_EPYC performance report"
 MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
+test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION" &&
+git push origin HEAD
 ```
 
-Again, keep `MEASURED_SOURCE_REVISION` unchanged, clean-build and install that
-exact checkpoint, authenticate its runtime, and measure one multiplicity at a
-time:
+Again, the first push publishes the complete cluster checkpoint before any
+build or measurement. Keep `MEASURED_SOURCE_REVISION` unchanged, clean-build
+and install that exact checkpoint, authenticate its runtime, and measure one
+multiplicity at a time:
 
 ```bash
 python3 docs/performance_reports/cluster_EPYC/result_tables.py \
@@ -204,8 +209,8 @@ python3 docs/performance_reports/cluster_EPYC/result_tables.py final-audit \
 git push origin HEAD
 ```
 
-Do not stage any other path, and do not push until the profile-scoped
-`final-audit` completes successfully.
+Do not stage any other path. Push the publication commit only after the
+profile-scoped `final-audit` completes successfully.
 
 The copied `result_tables.py` detects its enclosing profile automatically.
 Every coordinator and child worker uses that profile's raw caches, artifact
