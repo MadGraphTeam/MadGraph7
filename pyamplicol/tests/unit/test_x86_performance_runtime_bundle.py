@@ -39,6 +39,24 @@ def test_embedded_frozen_install_state_has_accepted_digest() -> None:
     )
 
 
+def test_frozen_cargo_config_keeps_exact_path_dependent_digest() -> None:
+    assert Path("/private/tmp/pyamplicol-eager-compiled-arena-base-src") == (
+        bundle.FROZEN_SOURCE_ROOT
+    )
+    encoded = bundle.frozen_cargo_config_bytes()
+    assert hashlib.sha256(encoded).hexdigest() == (
+        bundle.FROZEN_CARGO_CONFIG_SHA256
+    )
+    assert encoded.count(bytes(bundle.FROZEN_SOURCE_ROOT)) == 4
+    relocated = encoded.replace(
+        bytes(bundle.FROZEN_SOURCE_ROOT),
+        b"/tmp/pyamplicol-eager-compiled-arena-base-src",
+    )
+    assert hashlib.sha256(relocated).hexdigest() == (
+        "f8aa48f1643251904cd1268d648a5741b4909f678fc4964e0538594165064d29"
+    )
+
+
 def test_freeze_baseline_requires_exact_path_revision_and_generated_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -68,6 +86,7 @@ def test_freeze_baseline_requires_exact_path_revision_and_generated_inputs(
         "FROZEN_CARGO_CONFIG_SHA256",
         hashlib.sha256(b"config").hexdigest(),
     )
+    monkeypatch.setattr(bundle, "frozen_cargo_config_bytes", lambda: b"config")
     frozen = dict(bundle.FROZEN_INSTALL_STATE)
     frozen["candidate_lock_sha256"] = bundle.FROZEN_CANDIDATE_LOCK_SHA256
     frozen["cargo_config_sha256"] = bundle.FROZEN_CARGO_CONFIG_SHA256
@@ -140,6 +159,14 @@ def _baseline_attestation() -> dict[str, object]:
         ),
         "dependencies/install-state.json": bundle.FROZEN_INSTALL_STATE_SHA256,
     }
+    ignored_paths = sorted(
+        (
+            *bundle._BASELINE_GENERATED_FILES,
+            ".venv/bin/python",
+            "dependencies/checkouts/symbolica/file",
+            "dependencies/wheelhouse/dependency.whl",
+        )
+    )
     return bundle._attach_content_identity(
         {
             "kind": bundle.BASELINE_ATTESTATION_KIND,
@@ -154,7 +181,15 @@ def _baseline_attestation() -> dict[str, object]:
             "install_state_sha256": bundle.FROZEN_INSTALL_STATE_SHA256,
             "source_inventory": {
                 "tracked_and_untracked_status_clean": True,
-                "ignored_file_count": 6,
+                "ignored_entry_count": len(ignored_paths),
+                "ignored_relative_paths": ignored_paths,
+                "ignored_paths_sha256": bundle._canonical_sha256(ignored_paths),
+                "ignored_entries_by_bootstrap_root": {
+                    relative.rstrip("/"): sum(
+                        path.startswith(relative) for path in ignored_paths
+                    )
+                    for relative in bundle._BASELINE_BOOTSTRAP_ROOTS
+                },
                 "allowed_generated_files": list(bundle._BASELINE_GENERATED_FILES),
                 "allowed_bootstrap_roots": list(bundle._BASELINE_BOOTSTRAP_ROOTS),
                 "unexpected_ignored_files": [],
@@ -182,6 +217,21 @@ def _baseline_attestation() -> dict[str, object]:
             "passes": True,
         }
     )
+
+
+def _set_ignored_inventory(
+    body: dict[str, object],
+    paths: list[str],
+) -> None:
+    inventory = body["source_inventory"]
+    assert isinstance(inventory, dict)
+    inventory["ignored_entry_count"] = len(paths)
+    inventory["ignored_relative_paths"] = paths
+    inventory["ignored_paths_sha256"] = bundle._canonical_sha256(paths)
+    inventory["ignored_entries_by_bootstrap_root"] = {
+        relative.rstrip("/"): sum(path.startswith(relative) for path in paths)
+        for relative in bundle._BASELINE_BOOTSTRAP_ROOTS
+    }
 
 
 def _manifest_arguments(tmp_path: Path) -> argparse.Namespace:
@@ -354,7 +404,7 @@ def test_baseline_attestation_rejects_inexact_allowed_inventories(
         bundle._baseline_attestation_inventory(root)
 
 
-def test_baseline_attestation_rejects_wrong_ignored_file_count(
+def test_baseline_attestation_rejects_wrong_ignored_entry_count(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "bundle"
@@ -362,13 +412,107 @@ def test_baseline_attestation_rejects_wrong_ignored_file_count(
     payload = _baseline_attestation()
     body = copy.deepcopy(payload)
     body.pop("content_identity")
-    body["source_inventory"]["ignored_file_count"] += 1
+    body["source_inventory"]["ignored_entry_count"] += 1
     _write(
         root / "frozen-baseline-attestation.json",
         bundle._attach_content_identity(body),
     )
     with pytest.raises(bundle.BundleError, match="attestation is invalid"):
         bundle._baseline_attestation_inventory(root)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "digest",
+        "unsorted",
+        "duplicate",
+        "outside",
+        "missing-generated",
+        "root-count",
+    ],
+)
+def test_baseline_attestation_rejects_inexact_ignored_path_inventory(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    root = tmp_path / "bundle"
+    root.mkdir()
+    payload = _baseline_attestation()
+    body = copy.deepcopy(payload)
+    body.pop("content_identity")
+    inventory = body["source_inventory"]
+    paths = list(inventory["ignored_relative_paths"])
+    if mutation == "digest":
+        inventory["ignored_paths_sha256"] = "0" * 64
+    elif mutation == "unsorted":
+        _set_ignored_inventory(body, list(reversed(paths)))
+    elif mutation == "duplicate":
+        _set_ignored_inventory(body, [*paths, paths[-1]])
+    elif mutation == "outside":
+        _set_ignored_inventory(body, sorted((*paths, "src/unexpected.py")))
+    elif mutation == "missing-generated":
+        _set_ignored_inventory(
+            body,
+            [path for path in paths if path != bundle._BASELINE_GENERATED_FILES[0]],
+        )
+    else:
+        counts = inventory["ignored_entries_by_bootstrap_root"]
+        first_root = next(iter(counts))
+        counts[first_root] += 1
+    _write(
+        root / "frozen-baseline-attestation.json",
+        bundle._attach_content_identity(body),
+    )
+    with pytest.raises(bundle.BundleError, match="attestation is invalid"):
+        bundle._baseline_attestation_inventory(root)
+
+
+def test_baseline_attestation_keeps_git_and_tree_counts_independent(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bundle"
+    root.mkdir()
+    payload = _baseline_attestation()
+    body = copy.deepcopy(payload)
+    body.pop("content_identity")
+    ignored_paths = sorted(
+        (
+            *bundle._BASELINE_GENERATED_FILES,
+            ".venv/bin/python",
+            "dependencies/checkouts/gammaloop/",
+            *(
+                f"dependencies/checkouts/entry-{index:03d}"
+                for index in range(175)
+            ),
+            "dependencies/wheelhouse/dependency.whl",
+        )
+    )
+    _set_ignored_inventory(body, ignored_paths)
+    body["generated_identity"]["bootstrap_trees"][
+        "dependencies/checkouts"
+    ]["file_count"] = 6631
+    _write(
+        root / "frozen-baseline-attestation.json",
+        bundle._attach_content_identity(body),
+    )
+    result = bundle._baseline_attestation_inventory(root)
+    assert result["content_sha256"]
+
+
+def test_ignored_inventory_path_normalization_allows_directory_markers() -> None:
+    assert bundle._valid_ignored_relative_path(
+        "dependencies/checkouts/gammaloop/"
+    )
+    for invalid in (
+        "dependencies/checkouts/gammaloop//",
+        "dependencies/./checkouts/gammaloop/",
+        "dependencies/../checkouts/gammaloop/",
+        "/dependencies/checkouts/gammaloop/",
+        ".",
+        "../",
+    ):
+        assert not bundle._valid_ignored_relative_path(invalid)
 
 
 @pytest.mark.parametrize(
@@ -489,6 +633,11 @@ def test_freeze_baseline_rejects_dirty_source(
     source = tmp_path / "baseline"
     source.mkdir()
     monkeypatch.setattr(bundle, "FROZEN_SOURCE_ROOT", source.resolve())
+    monkeypatch.setattr(
+        bundle,
+        "FROZEN_CARGO_CONFIG_SHA256",
+        hashlib.sha256(bundle.frozen_cargo_config_bytes()).hexdigest(),
+    )
 
     def git_output(_root: Path, *arguments: str) -> str:
         if arguments[:2] == ("rev-parse", "--verify"):

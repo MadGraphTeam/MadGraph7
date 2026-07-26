@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
-      BASELINE_SOURCE_ROOT: /tmp/pyamplicol-eager-compiled-arena-base-src
+      BASELINE_SOURCE_ROOT: /private/tmp/pyamplicol-eager-compiled-arena-base-src
       PERFORMANCE_BUNDLE_ROOT: /tmp/pyamplicol-arena-x86-runtime-bundle-${{ github.run_id }}
       PERFORMANCE_RUNTIME_ROOT: /tmp/pyamplicol-arena-x86-runtime-${{ github.run_id }}
       PYAMPLICOL_BUILD_MODE: candidate
@@ -164,6 +164,8 @@ jobs:
       - name: Create exact frozen baseline worktree
         run: |
           set -euo pipefail
+          sudo install -d -m 1777 /private/tmp
+          test "$(stat -c '%a' /private/tmp)" = 1777
           test ! -e "$BASELINE_SOURCE_ROOT"
           git fetch --no-tags --depth=1 origin 443f354a467cdda187996bef1a41fbd5a00ae28d
           git worktree add --detach \

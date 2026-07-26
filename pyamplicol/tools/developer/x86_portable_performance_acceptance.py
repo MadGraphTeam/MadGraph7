@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
+import statistics
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -31,6 +33,7 @@ RESULT_KIND = "pyamplicol-x86-portable-candidate-acceptance"
 SCHEMA_VERSION = 1
 CONTENT_IDENTITY_ALGORITHM = "sha256-canonical-json-body-v1"
 _GIT_SHA = re.compile(r"[0-9a-f]{40}")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 class PortableAcceptanceError(RuntimeError):
@@ -39,6 +42,29 @@ class PortableAcceptanceError(RuntimeError):
 
 def _canonical_sha256(value: object) -> str:
     return matrix_x86._canonical_sha256(value)
+
+
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and _SHA256.fullmatch(value) is not None
+
+
+def _positive_finite(value: object) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) > 0.0
+    )
+
+
+def _seven_positive_values(value: object) -> list[float] | None:
+    if (
+        not isinstance(value, list)
+        or len(value) != 7
+        or not all(_positive_finite(item) for item in value)
+    ):
+        return None
+    return [float(item) for item in value]
 
 
 def _attach_content_identity(body: Mapping[str, object]) -> dict[str, object]:
@@ -70,6 +96,7 @@ def _require_content_identity(
     body.pop("content_identity", None)
     if (
         not isinstance(identity, Mapping)
+        or set(identity) != {"algorithm", "sha256"}
         or identity.get("algorithm") != CONTENT_IDENTITY_ALGORITHM
         or identity.get("sha256") != _canonical_sha256(body)
     ):
@@ -161,6 +188,16 @@ def _audit_native(
         if isinstance(audit_runtime, Mapping)
         else None
     )
+    native_build_inputs = (
+        build_payload.get("native_build_inputs_sha256")
+        if isinstance(build_payload, Mapping)
+        else None
+    )
+    native_module_sha256 = (
+        native_extension.get("sha256")
+        if isinstance(native_extension, Mapping)
+        else None
+    )
     if (
         not isinstance(audit_source, Mapping)
         or audit_source.get("revision") != expected_revision
@@ -171,14 +208,18 @@ def _audit_native(
         or not isinstance(native_extension, Mapping)
         or native_extension.get("target") != native.EXPECTED_TARGET
         or native_extension.get("build_inputs_sha256")
-        != build_payload.get("native_build_inputs_sha256")
+        != native_build_inputs
     ):
         raise PortableAcceptanceError("native correctness runtime/source drifted")
+    if not _is_sha256(native_build_inputs) or not _is_sha256(native_module_sha256):
+        raise PortableAcceptanceError(
+            "native correctness identity digests are invalid"
+        )
     return {
         "target": native.EXPECTED_TARGET,
         "point_count": native.EXPECTED_POINT_COUNT,
-        "native_build_inputs_sha256": build_payload["native_build_inputs_sha256"],
-        "native_module_sha256": native_extension.get("sha256"),
+        "native_build_inputs_sha256": native_build_inputs,
+        "native_module_sha256": native_module_sha256,
         "required_evidence": sorted(evidence),
         "passes": True,
     }
@@ -232,20 +273,32 @@ def _audit_matrix(
         if isinstance(expected_builds, Mapping)
         else None
     )
+    current_native_inputs = (
+        current.get("native_build_inputs_sha256")
+        if isinstance(current, Mapping)
+        else None
+    )
+    current_native_module = (
+        current.get("native_module_sha256")
+        if isinstance(current, Mapping)
+        else None
+    )
+    runtime_bundle_sha256 = payload.get("runtime_bundle_sha256")
     if (
         not isinstance(current, Mapping)
         or current.get("source_revision") != expected_revision
+        or not _is_sha256(current_native_inputs)
+        or not _is_sha256(current_native_module)
+        or not _is_sha256(runtime_bundle_sha256)
     ):
         raise PortableAcceptanceError("matrix current build identity drifted")
     return {
         "matrix_contract": matrix.MATRIX_CONTRACT,
         "cell_count": 168,
         "shard_count": matrix_x86.SHARD_COUNT,
-        "runtime_bundle_sha256": payload.get("runtime_bundle_sha256"),
-        "current_native_build_inputs_sha256": current.get(
-            "native_build_inputs_sha256"
-        ),
-        "current_native_module_sha256": current.get("native_module_sha256"),
+        "runtime_bundle_sha256": runtime_bundle_sha256,
+        "current_native_build_inputs_sha256": current_native_inputs,
+        "current_native_module_sha256": current_native_module,
         "gain_gate": {
             "required_relative_gain": gain_gate.get("required_relative_gain"),
             "passes": True,
@@ -271,6 +324,22 @@ def _audit_qq(
 ) -> dict[str, object]:
     captures = payload.get("captures")
     policy = payload.get("policy")
+    expected_policy = {
+        "required_capture_roles": list(qq.CAPTURE_CONTRACTS),
+        "required_modes": list(qq.REQUIRED_MODES),
+        "required_batch_sizes": list(qq.REQUIRED_BATCH_SIZES),
+        "performance_batch_sizes": list(qq.PERFORMANCE_BATCH_SIZES),
+        "minimum_target_runtime_seconds_per_worker": 5.0,
+        "subprocess_samples_per_cell": 7,
+        "native_wall_blocks_per_worker": 7,
+        "warmup_runs": 2,
+        "numerical_validation_samples": 10,
+        "compiled_over_recurrence_ratio_ceiling": (
+            qq.COMPILED_RECURRENCE_RATIO_CEILING
+        ),
+        "ratio_gate": "median-plus-three-raw-mad-at-or-below-ceiling-v1",
+        "diagnostic_shortcuts_allowed": False,
+    }
     if (
         payload.get("kind") != qq.RESULT_KIND
         or payload.get("schema_version") != qq.SCHEMA_VERSION
@@ -281,15 +350,13 @@ def _audit_qq(
         or payload.get("passes") is not True
         or not isinstance(captures, Mapping)
         or set(captures) != set(qq.CAPTURE_CONTRACTS)
-        or not isinstance(policy, Mapping)
-        or policy.get("diagnostic_shortcuts_allowed") is not False
-        or policy.get("compiled_over_recurrence_ratio_ceiling")
-        != qq.COMPILED_RECURRENCE_RATIO_CEILING
+        or policy != expected_policy
     ):
         raise PortableAcceptanceError("qq Z+6g acceptance is incomplete")
     cell_count = 0
     maximum_upper = 0.0
     for role, capture in captures.items():
+        contract = qq.CAPTURE_CONTRACTS[role]
         cells = (
             capture.get("performance_cells")
             if isinstance(capture, Mapping)
@@ -303,12 +370,35 @@ def _audit_qq(
         if (
             not isinstance(capture, Mapping)
             or capture.get("passes") is not True
+            or capture.get("source_revision") != expected_revision
+            or not _is_sha256(capture.get("runtime_provenance_sha256"))
+            or capture.get("layout") != contract["layout"]
+            or capture.get("workload") != contract["workload"]
+            or not isinstance(capture.get("model"), Mapping)
+            or capture["model"].get("kind") != contract["model"]
             or not isinstance(numerical, Mapping)
+            or numerical.get("contract")
+            != "recomputed-recurrence-z6g-pairwise-and-resolved-v1"
             or numerical.get("passes") is not True
             or not isinstance(cells, list)
             or len(cells) != 2
         ):
             raise PortableAcceptanceError(f"qq Z+6g capture {role} is incomplete")
+        batches = [
+            cell.get("batch_size") if isinstance(cell, Mapping) else None
+            for cell in cells
+        ]
+        if (
+            any(
+                isinstance(batch, bool) or not isinstance(batch, int)
+                for batch in batches
+            )
+            or len(set(batches)) != len(batches)
+            or set(batches) != set(qq.PERFORMANCE_BATCH_SIZES)
+        ):
+            raise PortableAcceptanceError(
+                f"qq Z+6g capture {role} batch coverage is incomplete"
+            )
         for cell in cells:
             statistics_record = (
                 cell.get("ratio_statistics")
@@ -320,17 +410,90 @@ def _audit_qq(
                 if isinstance(statistics_record, Mapping)
                 else None
             )
+            compiled = _seven_positive_values(
+                cell.get("compiled_wall_seconds_per_point_by_round")
+                if isinstance(cell, Mapping)
+                else None
+            )
+            recurrence = _seven_positive_values(
+                cell.get("recurrence_wall_seconds_per_point_by_round")
+                if isinstance(cell, Mapping)
+                else None
+            )
+            ratios = _seven_positive_values(
+                cell.get("compiled_over_recurrence_ratios_by_round")
+                if isinstance(cell, Mapping)
+                else None
+            )
             if (
                 not isinstance(cell, Mapping)
                 or cell.get("passes") is not True
                 or cell.get("sample_count") != 7
                 or cell.get("batch_size") not in qq.PERFORMANCE_BATCH_SIZES
-                or not isinstance(upper, (int, float))
-                or isinstance(upper, bool)
+                or cell.get("pairing") != "same-interleaved-schedule-round-v1"
+                or cell.get("ceiling")
+                != qq.COMPILED_RECURRENCE_RATIO_CEILING
+                or compiled is None
+                or recurrence is None
+                or ratios is None
+                or not isinstance(statistics_record, Mapping)
+                or statistics_record.get("contract") != "median-and-raw-mad-v1"
+                or not _positive_finite(statistics_record.get("median"))
+                or not _positive_finite(statistics_record.get("raw_mad"))
+                or not _positive_finite(upper)
                 or float(upper) > qq.COMPILED_RECURRENCE_RATIO_CEILING
             ):
                 raise PortableAcceptanceError(
                     f"qq Z+6g capture {role} performance gate failed"
+                )
+            recomputed_ratios = [
+                compiled_value / recurrence_value
+                for compiled_value, recurrence_value in zip(
+                    compiled,
+                    recurrence,
+                    strict=True,
+                )
+            ]
+            median = statistics.median(recomputed_ratios)
+            raw_mad = statistics.median(
+                abs(value - median) for value in recomputed_ratios
+            )
+            recomputed_upper = median + 3.0 * raw_mad
+            if (
+                any(
+                    not math.isclose(
+                        observed,
+                        expected,
+                        rel_tol=1.0e-15,
+                        abs_tol=0.0,
+                    )
+                    for observed, expected in zip(
+                        ratios,
+                        recomputed_ratios,
+                        strict=True,
+                    )
+                )
+                or not math.isclose(
+                    float(statistics_record["median"]),
+                    median,
+                    rel_tol=1.0e-15,
+                    abs_tol=0.0,
+                )
+                or not math.isclose(
+                    float(statistics_record["raw_mad"]),
+                    raw_mad,
+                    rel_tol=1.0e-15,
+                    abs_tol=0.0,
+                )
+                or not math.isclose(
+                    float(upper),
+                    recomputed_upper,
+                    rel_tol=1.0e-15,
+                    abs_tol=0.0,
+                )
+            ):
+                raise PortableAcceptanceError(
+                    f"qq Z+6g capture {role} ratio evidence changed"
                 )
             cell_count += 1
             maximum_upper = max(maximum_upper, float(upper))
@@ -338,7 +501,7 @@ def _audit_qq(
     if not isinstance(runtime_bundle, Mapping):
         raise PortableAcceptanceError("qq Z+6g runtime bundle identity is absent")
     runtime_bundle_sha256 = runtime_bundle.get("content_sha256")
-    if not isinstance(runtime_bundle_sha256, str):
+    if not _is_sha256(runtime_bundle_sha256):
         raise PortableAcceptanceError("qq Z+6g runtime bundle digest is absent")
     return {
         "capture_count": len(captures),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import statistics
 from pathlib import Path
 
 import pytest
@@ -130,19 +131,52 @@ def _matrix() -> dict[str, object]:
 def _qq() -> dict[str, object]:
     captures = {}
     for role in qq.CAPTURE_CONTRACTS:
-        captures[role] = {
-            "numerical_validation": {"passes": True},
-            "performance_cells": [
+        cells = []
+        for batch_size in qq.PERFORMANCE_BATCH_SIZES:
+            recurrence = [0.001 for _ in range(7)]
+            ratios = [1.0 + index * 0.01 for index in range(7)]
+            compiled = [
+                denominator * ratio
+                for denominator, ratio in zip(
+                    recurrence,
+                    ratios,
+                    strict=True,
+                )
+            ]
+            median = statistics.median(ratios)
+            raw_mad = statistics.median(
+                abs(value - median) for value in ratios
+            )
+            cells.append(
                 {
                     "batch_size": batch_size,
+                    "pairing": "same-interleaved-schedule-round-v1",
                     "sample_count": 7,
+                    "compiled_wall_seconds_per_point_by_round": compiled,
+                    "recurrence_wall_seconds_per_point_by_round": recurrence,
+                    "compiled_over_recurrence_ratios_by_round": ratios,
                     "ratio_statistics": {
-                        "upper_three_raw_mad": 1.10,
+                        "contract": "median-and-raw-mad-v1",
+                        "median": median,
+                        "raw_mad": raw_mad,
+                        "upper_three_raw_mad": median + 3.0 * raw_mad,
                     },
+                    "ceiling": 1.15,
                     "passes": True,
                 }
-                for batch_size in qq.PERFORMANCE_BATCH_SIZES
-            ],
+            )
+        contract = qq.CAPTURE_CONTRACTS[role]
+        captures[role] = {
+            "source_revision": REVISION,
+            "runtime_provenance_sha256": "e" * 64,
+            "model": {"kind": contract["model"]},
+            "layout": contract["layout"],
+            "workload": contract["workload"],
+            "numerical_validation": {
+                "contract": "recomputed-recurrence-z6g-pairwise-and-resolved-v1",
+                "passes": True,
+            },
+            "performance_cells": cells,
             "passes": True,
         }
     return qq._attach_content_identity(
@@ -154,8 +188,20 @@ def _qq() -> dict[str, object]:
             "expected_current_revision": REVISION,
             "runtime_bundle": {"content_sha256": RUNTIME_BUNDLE},
             "policy": {
+                "required_capture_roles": list(qq.CAPTURE_CONTRACTS),
+                "required_modes": list(qq.REQUIRED_MODES),
+                "required_batch_sizes": list(qq.REQUIRED_BATCH_SIZES),
+                "performance_batch_sizes": list(qq.PERFORMANCE_BATCH_SIZES),
+                "minimum_target_runtime_seconds_per_worker": 5.0,
+                "subprocess_samples_per_cell": 7,
+                "native_wall_blocks_per_worker": 7,
+                "warmup_runs": 2,
+                "numerical_validation_samples": 10,
                 "diagnostic_shortcuts_allowed": False,
                 "compiled_over_recurrence_ratio_ceiling": 1.15,
+                "ratio_gate": (
+                    "median-plus-three-raw-mad-at-or-below-ceiling-v1"
+                ),
             },
             "captures": captures,
             "performance_cell_count": 8,
@@ -218,6 +264,61 @@ def test_rejects_different_native_build_inputs(
         _audit((native_path, matrix_path, qq_path))
 
 
+def test_rejects_missing_native_identity_digests(
+    inputs: tuple[Path, Path, Path],
+) -> None:
+    native_path, matrix_path, qq_path = inputs
+    payload = _native()
+    body = dict(payload)
+    body.pop("content_identity")
+    runtime = body["runtime_identity"]["audit"]
+    runtime["active_build_info"]["payload"].pop("native_build_inputs_sha256")
+    runtime["native_extension"].pop("build_inputs_sha256")
+    runtime["native_extension"].pop("sha256")
+    _write(native_path, native._attach_content_identity(body))
+    with pytest.raises(
+        portable.PortableAcceptanceError,
+        match="identity digests are invalid",
+    ):
+        _audit((native_path, matrix_path, qq_path))
+
+
+def test_rejects_missing_matrix_identity_digests(
+    inputs: tuple[Path, Path, Path],
+) -> None:
+    native_path, matrix_path, qq_path = inputs
+    payload = _matrix()
+    body = dict(payload)
+    body.pop("content_identity")
+    current = body["expected_builds"]["current"]
+    current.pop("native_build_inputs_sha256")
+    current.pop("native_module_sha256")
+    body.pop("runtime_bundle_sha256")
+    _write(matrix_path, matrix_x86._attach_content_identity(body))
+    with pytest.raises(
+        portable.PortableAcceptanceError,
+        match="matrix current build identity drifted",
+    ):
+        _audit((native_path, matrix_path, qq_path))
+
+
+def test_rejects_non_lowercase_identity_digest(
+    inputs: tuple[Path, Path, Path],
+) -> None:
+    native_path, matrix_path, qq_path = inputs
+    payload = _native()
+    body = dict(payload)
+    body.pop("content_identity")
+    runtime = body["runtime_identity"]["audit"]
+    runtime["native_extension"]["sha256"] = "A" * 64
+    _write(native_path, native._attach_content_identity(body))
+    with pytest.raises(
+        portable.PortableAcceptanceError,
+        match="identity digests are invalid",
+    ):
+        _audit((native_path, matrix_path, qq_path))
+
+
 def test_rejects_different_performance_runtime_bundles(
     inputs: tuple[Path, Path, Path],
 ) -> None:
@@ -230,6 +331,39 @@ def test_rejects_different_performance_runtime_bundles(
     with pytest.raises(
         portable.PortableAcceptanceError,
         match="different runtime bundles",
+    ):
+        _audit((native_path, matrix_path, qq_path))
+
+
+def test_rejects_missing_qq_runtime_bundle_digest(
+    inputs: tuple[Path, Path, Path],
+) -> None:
+    native_path, matrix_path, qq_path = inputs
+    payload = _qq()
+    body = dict(payload)
+    body.pop("content_identity")
+    body["runtime_bundle"].pop("content_sha256")
+    _write(qq_path, qq._attach_content_identity(body))
+    with pytest.raises(
+        portable.PortableAcceptanceError,
+        match="runtime bundle digest is absent",
+    ):
+        _audit((native_path, matrix_path, qq_path))
+
+
+def test_rejects_duplicate_qq_batch_and_missing_1024(
+    inputs: tuple[Path, Path, Path],
+) -> None:
+    native_path, matrix_path, qq_path = inputs
+    payload = _qq()
+    body = dict(payload)
+    body.pop("content_identity")
+    cells = body["captures"]["builtin-topology"]["performance_cells"]
+    cells[1] = dict(cells[0])
+    _write(qq_path, qq._attach_content_identity(body))
+    with pytest.raises(
+        portable.PortableAcceptanceError,
+        match="batch coverage is incomplete",
     ):
         _audit((native_path, matrix_path, qq_path))
 

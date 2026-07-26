@@ -198,7 +198,17 @@ def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
     assert "runs-on: ubuntu-24.04" in runtime_job
     assert "timeout-minutes: 360" in runtime_job
     assert "needs: release-tool-tests" in runtime_job
-    assert "/tmp/pyamplicol-eager-compiled-arena-base-src" in runtime_job
+    assert (
+        "BASELINE_SOURCE_ROOT: "
+        "/private/tmp/pyamplicol-eager-compiled-arena-base-src"
+        in runtime_job
+    )
+    private_tmp_setup = "sudo install -d -m 1777 /private/tmp"
+    assert private_tmp_setup in runtime_job
+    assert 'test "$(stat -c \'%a\' /private/tmp)" = 1777' in runtime_job
+    assert runtime_job.index(private_tmp_setup) < runtime_job.index(
+        "git worktree add --detach"
+    )
     assert "443f354a467cdda187996bef1a41fbd5a00ae28d" in runtime_job
     assert "freeze-baseline" in runtime_job
     assert "frozen-baseline-attestation.json" in runtime_job
