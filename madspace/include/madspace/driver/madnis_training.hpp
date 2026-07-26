@@ -71,8 +71,9 @@ private:
     struct SampleJob {
         SampleBatch samples;
         SampleBatch unweighted_samples;
-        // per-channel dispatch sequence, used to commit in order; unused for GPU jobs
-        std::size_t channel_seq = 0;
+        // dispatch sequence used to commit in order: per-channel for single-channel
+        // jobs, global (see _multi_job_next_dispatch_seq) for multi-channel jobs
+        std::size_t dispatch_seq = 0;
     };
     struct ChannelData {
         std::size_t index;
@@ -136,6 +137,11 @@ private:
     std::uint64_t _seed;
     // sequence for seeding build_buffered_training_batch's BatchSampler::run() call
     std::size_t _buffered_batch_seq = 0;
+    // commit-ordering state for multi-channel (GPU) generator jobs (see
+    // process_job_results): global, since one job spans multiple channels at once
+    std::size_t _multi_job_next_dispatch_seq = 0;
+    std::size_t _multi_job_commit_cursor = 0;
+    std::unordered_map<std::size_t, std::size_t> _multi_job_ready_job_ids;
 };
 
 class MultiMadnisTraining {

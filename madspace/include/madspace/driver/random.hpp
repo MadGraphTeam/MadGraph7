@@ -54,12 +54,14 @@ inline constexpr std::uint64_t lhe_complete = 2;
 inline constexpr std::uint64_t unweight_pass = 3;
 
 // driver/madnis_training.cpp -- MadnisTraining::start_single_job's per-job
-// base seed: mix_seed(seed, {job_kind_madnis_train, channel_index, channel_seq}).
+// base seed: mix_seed(seed, {job_kind_madnis_train, channel_index, dispatch_seq}).
 inline constexpr std::uint64_t job_kind_madnis_train = 100;
 // build_buffered_training_batch's BatchSampler seed: mix_seed(seed, {..., seq}).
 inline constexpr std::uint64_t buffered_batch_sample = 101;
-// start_single_job's per-job BufferUnweighter seed: mix_seed(job_seed, {...}).
+// per-job BufferUnweighter seed (single- and multi-channel): mix_seed(job_seed, {...}).
 inline constexpr std::uint64_t madnis_train_unweight = 102;
+// start_multi_job's per-job base seed: mix_seed(seed, {..., dispatch_seq}).
+inline constexpr std::uint64_t job_kind_madnis_train_multi = 103;
 
 // phasespace/*.cpp -- random initialization of a named global (MLP weights
 // and biases): see global_init_seed().

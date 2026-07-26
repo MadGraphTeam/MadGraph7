@@ -1,7 +1,5 @@
 #include "madspace/driver/madnis_training.hpp"
 
-#include <limits>
-
 #include "madspace/driver/random.hpp"
 #include "madspace/phasespace/batch_sampler.hpp"
 
@@ -268,7 +266,7 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
         return;
     }
     bool is_gpu = _generator_context->device()->device_type() != DeviceType::cpu;
-    if (_config.reproducible && !is_gpu) {
+    if (_config.reproducible) {
         // flush buffer samples staged since the last round (see process_job_results)
         for (auto& channel : _channels) {
             for (auto& pending : channel.pending_buffer_samples) {
@@ -294,18 +292,29 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
             ? (target_count - channel.sample_count + batch_size - 1) / batch_size
             : 0;
     }
-    // reproducible mode (CPU only): dispatch the full round in one shot, uncapped
-    // by thread count, so round contents don't depend on thread count
-    std::size_t available_jobs = _config.reproducible && !is_gpu
-        ? std::numeric_limits<std::size_t>::max()
-        : _generator_context->thread_pool().thread_count();
-    std::vector<std::size_t> channel_sizes;
     std::size_t gpu_subbatches =
         (_config.gpu_generator_batch_size + _config.gpu_generator_batch_granularity -
          1) /
         _config.gpu_generator_batch_granularity;
+    // reproducible mode: dispatch exactly what this round needs, uncapped by
+    // thread count, so round contents don't depend on thread count
+    std::size_t available_jobs;
+    if (_config.reproducible) {
+        available_jobs = 0;
+        for (auto count : missing_batch_counts) {
+            available_jobs += count;
+        }
+        for (auto count : target_batch_counts) {
+            available_jobs += count;
+        }
+    } else {
+        available_jobs = _generator_context->thread_pool().thread_count();
+        if (is_gpu) {
+            available_jobs *= gpu_subbatches;
+        }
+    }
+    std::vector<std::size_t> channel_sizes;
     if (is_gpu) {
-        available_jobs *= gpu_subbatches;
         channel_sizes.resize(chan_count, 0);
     }
 
@@ -417,7 +426,7 @@ void MadnisTraining::start_single_job(
               mix_seed(_seed, {salt::job_kind_madnis_train, channel_index, channel_seq})
           );
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
-    job.channel_seq = channel_seq;
+    job.dispatch_seq = channel_seq;
     _generator_context->thread_pool().submit(
         [this, channel_index, batch_size, job_id, seed, &job]() {
             auto& channel = _channels.at(channel_index);
@@ -442,18 +451,29 @@ void MadnisTraining::start_single_job(
     );
 }
 
-// TODO: GPU multi-channel batches aren't seeded or commit-ordered, unlike
-// start_single_job.
+// Dispatch sequence is global (not per-channel), since one job spans all channels.
 void MadnisTraining::start_multi_job(const std::vector<std::size_t> batch_sizes) {
     std::size_t job_id = _job_id;
     ++_job_id;
+    std::size_t dispatch_seq = _multi_job_next_dispatch_seq++;
+    std::optional<std::uint64_t> seed = _seed == 0
+        ? std::nullopt
+        : std::optional<std::uint64_t>(
+              mix_seed(_seed, {salt::job_kind_madnis_train_multi, dispatch_seq})
+          );
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
-    _generator_context->thread_pool().submit([this, batch_sizes, job_id, &job]() {
-        auto samples = _multi_channel_generator->run({Tensor(batch_sizes)});
+    job.dispatch_seq = dispatch_seq;
+    _generator_context->thread_pool().submit([this, batch_sizes, job_id, seed, &job]() {
+        auto samples = _multi_channel_generator->run({Tensor(batch_sizes)}, seed);
         job.samples.tensors = permute_tensors(samples);
         job.samples.channel_sizes = samples.back().batch_sizes();
         if (_multi_channel_unweighter) {
-            auto unw_samples = _multi_channel_unweighter->run(samples);
+            std::optional<std::uint64_t> unweight_seed = seed
+                ? std::optional<std::uint64_t>(
+                      mix_seed(*seed, {salt::madnis_train_unweight})
+                  )
+                : std::nullopt;
+            auto unw_samples = _multi_channel_unweighter->run(samples, unweight_seed);
             job.unweighted_samples.tensors = permute_tensors(unw_samples);
             job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
         }
@@ -575,13 +595,45 @@ MadnisTraining::build_buffered_training_batch(const std::vector<size_t>& counts)
 void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids) {
     for (auto job_id : job_ids) {
         auto& job = _running_jobs.at(job_id);
+        // mark ready, committed below strictly in dispatch order
         if (job.samples.channel_sizes.size() == 0) {
-            // single-channel job: mark ready, committed below in dispatch order
             _channels.at(job.samples.channel_index)
-                .ready_job_ids.emplace(job.channel_seq, job_id);
-            continue;
+                .ready_job_ids.emplace(job.dispatch_seq, job_id);
+        } else {
+            _multi_job_ready_job_ids.emplace(job.dispatch_seq, job_id);
         }
-        auto multi_job = std::move(_running_jobs.extract(job_id).mapped());
+    }
+
+    // commit each channel's ready single-channel jobs strictly in dispatch order
+    for (auto& channel : _channels) {
+        for (auto it = channel.ready_job_ids.find(channel.commit_cursor);
+             it != channel.ready_job_ids.end();
+             it = channel.ready_job_ids.find(channel.commit_cursor)) {
+            auto committed_job = std::move(_running_jobs.extract(it->second).mapped());
+            channel.ready_job_ids.erase(it);
+            ++channel.commit_cursor;
+            channel.sample_count += committed_job.samples.size;
+            channel.sample_batches.push_back(std::move(committed_job.samples));
+            if (committed_job.unweighted_samples.size > 0) {
+                if (_config.reproducible) {
+                    // flushed into buffer at the start of the next round instead
+                    channel.pending_buffer_samples.push_back(
+                        std::move(committed_job.unweighted_samples)
+                    );
+                } else {
+                    buffer_store(channel, committed_job.unweighted_samples);
+                }
+            }
+        }
+    }
+
+    // commit ready multi-channel (GPU) jobs strictly in dispatch order
+    for (auto it = _multi_job_ready_job_ids.find(_multi_job_commit_cursor);
+         it != _multi_job_ready_job_ids.end();
+         it = _multi_job_ready_job_ids.find(_multi_job_commit_cursor)) {
+        auto multi_job = std::move(_running_jobs.extract(it->second).mapped());
+        _multi_job_ready_job_ids.erase(it);
+        ++_multi_job_commit_cursor;
         std::size_t offset = 0, unw_offset = 0, chan_index = 0;
         SampleBatch chan_unweighted_samples;
         for (auto [channel, chan_size] :
@@ -607,35 +659,18 @@ void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids
                         tensor.slice(0, unw_offset, unw_offset + unw_chan_size)
                     );
                 }
-                buffer_store(channel, chan_unweighted_samples);
+                if (_config.reproducible) {
+                    channel.pending_buffer_samples.push_back(
+                        std::move(chan_unweighted_samples)
+                    );
+                } else {
+                    buffer_store(channel, chan_unweighted_samples);
+                }
                 unw_offset += unw_chan_size;
             }
             batch.size = chan_size;
             offset += chan_size;
             ++chan_index;
-        }
-    }
-
-    // commit each channel's ready jobs strictly in dispatch order
-    for (auto& channel : _channels) {
-        for (auto it = channel.ready_job_ids.find(channel.commit_cursor);
-             it != channel.ready_job_ids.end();
-             it = channel.ready_job_ids.find(channel.commit_cursor)) {
-            auto committed_job = std::move(_running_jobs.extract(it->second).mapped());
-            channel.ready_job_ids.erase(it);
-            ++channel.commit_cursor;
-            channel.sample_count += committed_job.samples.size;
-            channel.sample_batches.push_back(std::move(committed_job.samples));
-            if (committed_job.unweighted_samples.size > 0) {
-                if (_config.reproducible) {
-                    // flushed into buffer at the start of the next round instead
-                    channel.pending_buffer_samples.push_back(
-                        std::move(committed_job.unweighted_samples)
-                    );
-                } else {
-                    buffer_store(channel, committed_job.unweighted_samples);
-                }
-            }
         }
     }
 }
