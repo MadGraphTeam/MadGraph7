@@ -173,6 +173,7 @@ def _require_content_identity(payload: Mapping[str, object]) -> None:
     body.pop("content_identity", None)
     if (
         not isinstance(identity, Mapping)
+        or set(identity) != {"algorithm", "sha256"}
         or identity.get("algorithm") != CONTENT_IDENTITY_ALGORITHM
         or identity.get("sha256") != _canonical_sha256(body)
     ):
@@ -342,15 +343,20 @@ def _baseline_ignored_inventory(root: Path) -> dict[str, object]:
 
 
 def _baseline_generated_identities(root: Path) -> dict[str, object]:
+    generated_files: dict[str, object] = {}
+    for relative in _BASELINE_GENERATED_FILES:
+        identity = _file_identity(root / relative)
+        identity["relative_path"] = relative
+        generated_files[relative] = identity
+    bootstrap_trees: dict[str, object] = {}
+    for relative in _BASELINE_BOOTSTRAP_ROOTS:
+        logical_path = relative.rstrip("/")
+        identity = regression._tree_identity(root / relative)
+        identity["relative_path"] = logical_path
+        bootstrap_trees[logical_path] = identity
     return {
-        "generated_files": {
-            relative: _file_identity(root / relative)
-            for relative in _BASELINE_GENERATED_FILES
-        },
-        "bootstrap_trees": {
-            relative.rstrip("/"): regression._tree_identity(root / relative)
-            for relative in _BASELINE_BOOTSTRAP_ROOTS
-        },
+        "generated_files": generated_files,
+        "bootstrap_trees": bootstrap_trees,
     }
 
 
@@ -435,7 +441,10 @@ def freeze_baseline(source_root: Path) -> dict[str, object]:
             "passes": _sha256_file(state) == FROZEN_INSTALL_STATE_SHA256,
         }
     )
-    if result["passes"] is not True:
+    if (
+        result["passes"] is not True
+        or not _valid_baseline_attestation_payload(result)
+    ):
         raise BundleError("frozen install state could not be materialized exactly")
     return result
 
@@ -536,13 +545,137 @@ def _prepared_inventory(root: Path) -> dict[str, object]:
     return identity
 
 
+def _nonnegative_integer(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _positive_integer(value: object) -> bool:
+    return _nonnegative_integer(value) and value > 0
+
+
+def _valid_generated_file_identity(
+    value: object,
+    *,
+    relative_path: str,
+    expected_sha256: str,
+) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and set(value) == {"relative_path", "size_bytes", "sha256"}
+        and value.get("relative_path") == relative_path
+        and _positive_integer(value.get("size_bytes"))
+        and value.get("sha256") == expected_sha256
+    )
+
+
+def _valid_bootstrap_tree_identity(
+    value: object,
+    *,
+    relative_path: str,
+) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and set(value)
+        == {
+            "algorithm",
+            "relative_path",
+            "sha256",
+            "file_count",
+            "size_bytes",
+        }
+        and value.get("algorithm") == "sha256-relative-path-size-content-v1"
+        and value.get("relative_path") == relative_path
+        and isinstance(value.get("sha256"), str)
+        and _SHA256.fullmatch(str(value.get("sha256"))) is not None
+        and _positive_integer(value.get("file_count"))
+        and _positive_integer(value.get("size_bytes"))
+    )
+
+
+def _valid_baseline_attestation_payload(payload: Mapping[str, object]) -> bool:
+    source_inventory = payload.get("source_inventory")
+    generated_identity = payload.get("generated_identity")
+    if (
+        not isinstance(source_inventory, Mapping)
+        or set(source_inventory)
+        != {
+            "tracked_and_untracked_status_clean",
+            "ignored_file_count",
+            "allowed_generated_files",
+            "allowed_bootstrap_roots",
+            "unexpected_ignored_files",
+        }
+        or source_inventory.get("tracked_and_untracked_status_clean") is not True
+        or not _positive_integer(source_inventory.get("ignored_file_count"))
+        or source_inventory.get("allowed_generated_files")
+        != list(_BASELINE_GENERATED_FILES)
+        or source_inventory.get("allowed_bootstrap_roots")
+        != list(_BASELINE_BOOTSTRAP_ROOTS)
+        or source_inventory.get("unexpected_ignored_files") != []
+        or not isinstance(generated_identity, Mapping)
+        or set(generated_identity) != {"generated_files", "bootstrap_trees"}
+    ):
+        return False
+    generated_files = generated_identity.get("generated_files")
+    bootstrap_trees = generated_identity.get("bootstrap_trees")
+    expected_file_sha256 = {
+        "dependencies/candidate-Cargo.lock": FROZEN_CANDIDATE_LOCK_SHA256,
+        "dependencies/candidate-cargo-config.toml": FROZEN_CARGO_CONFIG_SHA256,
+        "dependencies/install-state.json": FROZEN_INSTALL_STATE_SHA256,
+    }
+    expected_bootstrap_paths = {
+        relative.rstrip("/") for relative in _BASELINE_BOOTSTRAP_ROOTS
+    }
+    if (
+        not isinstance(generated_files, Mapping)
+        or set(generated_files) != set(_BASELINE_GENERATED_FILES)
+        or not all(
+            _valid_generated_file_identity(
+                generated_files.get(relative),
+                relative_path=relative,
+                expected_sha256=expected_file_sha256[relative],
+            )
+            for relative in _BASELINE_GENERATED_FILES
+        )
+        or not isinstance(bootstrap_trees, Mapping)
+        or set(bootstrap_trees) != expected_bootstrap_paths
+        or not all(
+            _valid_bootstrap_tree_identity(
+                bootstrap_trees.get(relative),
+                relative_path=relative,
+            )
+            for relative in expected_bootstrap_paths
+        )
+    ):
+        return False
+    ignored_file_count = len(_BASELINE_GENERATED_FILES) + sum(
+        int(bootstrap_trees[relative]["file_count"])
+        for relative in expected_bootstrap_paths
+    )
+    return source_inventory.get("ignored_file_count") == ignored_file_count
+
+
 def _baseline_attestation_inventory(root: Path) -> dict[str, object]:
     path = root / "frozen-baseline-attestation.json"
     payload = _checked_json(path, label="frozen baseline source attestation")
     _require_content_identity(payload)
-    source_inventory = payload.get("source_inventory")
     if (
-        payload.get("kind") != BASELINE_ATTESTATION_KIND
+        set(payload)
+        != {
+            "kind",
+            "schema_version",
+            "source_root",
+            "source_revision",
+            "native_build_inputs_sha256",
+            "candidate_lock_sha256",
+            "cargo_config_sha256",
+            "install_state_sha256",
+            "source_inventory",
+            "generated_identity",
+            "passes",
+            "content_identity",
+        }
+        or payload.get("kind") != BASELINE_ATTESTATION_KIND
         or payload.get("schema_version") != SCHEMA_VERSION
         or payload.get("source_root") != str(FROZEN_SOURCE_ROOT)
         or payload.get("source_revision") != matrix.FROZEN_BASELINE_SOURCE_REVISION
@@ -552,9 +685,7 @@ def _baseline_attestation_inventory(root: Path) -> dict[str, object]:
         != FROZEN_CANDIDATE_LOCK_SHA256
         or payload.get("cargo_config_sha256") != FROZEN_CARGO_CONFIG_SHA256
         or payload.get("install_state_sha256") != FROZEN_INSTALL_STATE_SHA256
-        or not isinstance(source_inventory, Mapping)
-        or source_inventory.get("tracked_and_untracked_status_clean") is not True
-        or source_inventory.get("unexpected_ignored_files") != []
+        or not _valid_baseline_attestation_payload(payload)
         or payload.get("passes") is not True
     ):
         raise BundleError("frozen baseline source attestation is invalid")

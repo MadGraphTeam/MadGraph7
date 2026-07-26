@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -12,6 +13,14 @@ import pytest
 
 from tools.developer import compiled_mode_matrix as matrix
 from tools.developer import x86_performance_runtime_bundle as bundle
+
+
+def _write(path: Path, payload: object) -> Path:
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_embedded_frozen_install_state_has_accepted_digest() -> None:
@@ -43,6 +52,11 @@ def test_freeze_baseline_requires_exact_path_revision_and_generated_inputs(
     config.write_bytes(b"config")
     for relative in bundle._BASELINE_BOOTSTRAP_ROOTS:
         (source / relative).mkdir(parents=True)
+    (source / ".venv/bin").mkdir()
+    (source / ".venv/bin/python").write_bytes(b"python")
+    (source / "dependencies/checkouts/symbolica").mkdir(parents=True)
+    (source / "dependencies/checkouts/symbolica/file").write_bytes(b"checkout")
+    (source / "dependencies/wheelhouse/dependency.whl").write_bytes(b"wheel")
     monkeypatch.setattr(bundle, "FROZEN_SOURCE_ROOT", source.resolve())
     monkeypatch.setattr(
         bundle,
@@ -116,16 +130,17 @@ def _installation(source: str, inputs: str, marker: str) -> dict[str, object]:
     }
 
 
-def _manifest_arguments(tmp_path: Path) -> argparse.Namespace:
-    root = tmp_path / "bundle"
-    for lane in ("baseline", "current"):
-        directory = root / "wheels" / lane
-        directory.mkdir(parents=True)
-        (directory / f"{lane}.whl").write_bytes(lane.encode())
-    prepared = root / "prepared-models" / "ufo-sm-jit-o2.pyamplicol-model"
-    prepared.parent.mkdir(parents=True)
-    prepared.write_bytes(b"prepared")
-    attestation = bundle._attach_content_identity(
+def _baseline_attestation() -> dict[str, object]:
+    generated_sha256 = {
+        "dependencies/candidate-Cargo.lock": (
+            bundle.FROZEN_CANDIDATE_LOCK_SHA256
+        ),
+        "dependencies/candidate-cargo-config.toml": (
+            bundle.FROZEN_CARGO_CONFIG_SHA256
+        ),
+        "dependencies/install-state.json": bundle.FROZEN_INSTALL_STATE_SHA256,
+    }
+    return bundle._attach_content_identity(
         {
             "kind": bundle.BASELINE_ATTESTATION_KIND,
             "schema_version": bundle.SCHEMA_VERSION,
@@ -139,12 +154,46 @@ def _manifest_arguments(tmp_path: Path) -> argparse.Namespace:
             "install_state_sha256": bundle.FROZEN_INSTALL_STATE_SHA256,
             "source_inventory": {
                 "tracked_and_untracked_status_clean": True,
+                "ignored_file_count": 6,
+                "allowed_generated_files": list(bundle._BASELINE_GENERATED_FILES),
+                "allowed_bootstrap_roots": list(bundle._BASELINE_BOOTSTRAP_ROOTS),
                 "unexpected_ignored_files": [],
             },
-            "generated_identity": {"test": True},
+            "generated_identity": {
+                "generated_files": {
+                    relative: {
+                        "relative_path": relative,
+                        "size_bytes": 1,
+                        "sha256": generated_sha256[relative],
+                    }
+                    for relative in bundle._BASELINE_GENERATED_FILES
+                },
+                "bootstrap_trees": {
+                    relative.rstrip("/"): {
+                        "algorithm": "sha256-relative-path-size-content-v1",
+                        "relative_path": relative.rstrip("/"),
+                        "sha256": "a" * 64,
+                        "file_count": 1,
+                        "size_bytes": 1,
+                    }
+                    for relative in bundle._BASELINE_BOOTSTRAP_ROOTS
+                },
+            },
             "passes": True,
         }
     )
+
+
+def _manifest_arguments(tmp_path: Path) -> argparse.Namespace:
+    root = tmp_path / "bundle"
+    for lane in ("baseline", "current"):
+        directory = root / "wheels" / lane
+        directory.mkdir(parents=True)
+        (directory / f"{lane}.whl").write_bytes(lane.encode())
+    prepared = root / "prepared-models" / "ufo-sm-jit-o2.pyamplicol-model"
+    prepared.parent.mkdir(parents=True)
+    prepared.write_bytes(b"prepared")
+    attestation = _baseline_attestation()
     (root / "frozen-baseline-attestation.json").write_text(
         json.dumps(attestation, sort_keys=True, allow_nan=False),
         encoding="utf-8",
@@ -243,6 +292,158 @@ def test_content_identity_rejects_manifest_tampering() -> None:
     payload["value"] = 2
     with pytest.raises(bundle.BundleError, match="content identity"):
         bundle._require_content_identity(payload)
+    payload = bundle._attach_content_identity({"passes": True, "value": 1})
+    payload["content_identity"]["unexpected"] = True
+    with pytest.raises(bundle.BundleError, match="content identity"):
+        bundle._require_content_identity(payload)
+
+
+def test_baseline_attestation_rejects_unknown_root_field(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bundle"
+    root.mkdir()
+    payload = _baseline_attestation()
+    body = copy.deepcopy(payload)
+    body.pop("content_identity")
+    body["unexpected"] = True
+    _write(
+        root / "frozen-baseline-attestation.json",
+        bundle._attach_content_identity(body),
+    )
+    with pytest.raises(bundle.BundleError, match="attestation is invalid"):
+        bundle._baseline_attestation_inventory(root)
+
+
+@pytest.mark.parametrize(
+    ("field", "operation"),
+    [
+        ("allowed_generated_files", "missing"),
+        ("allowed_generated_files", "extra"),
+        ("allowed_generated_files", "wrong-type"),
+        ("allowed_bootstrap_roots", "missing"),
+        ("allowed_bootstrap_roots", "extra"),
+        ("allowed_bootstrap_roots", "wrong-type"),
+    ],
+)
+def test_baseline_attestation_rejects_inexact_allowed_inventories(
+    tmp_path: Path,
+    field: str,
+    operation: str,
+) -> None:
+    root = tmp_path / "bundle"
+    root.mkdir()
+    payload = _baseline_attestation()
+    body = copy.deepcopy(payload)
+    body.pop("content_identity")
+    inventory = body["source_inventory"]
+    assert isinstance(inventory, dict)
+    value = inventory[field]
+    assert isinstance(value, list)
+    if operation == "missing":
+        inventory[field] = value[:-1]
+    elif operation == "extra":
+        inventory[field] = [*value, "unexpected/"]
+    else:
+        inventory[field] = "not-a-list"
+    _write(
+        root / "frozen-baseline-attestation.json",
+        bundle._attach_content_identity(body),
+    )
+    with pytest.raises(bundle.BundleError, match="attestation is invalid"):
+        bundle._baseline_attestation_inventory(root)
+
+
+def test_baseline_attestation_rejects_wrong_ignored_file_count(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bundle"
+    root.mkdir()
+    payload = _baseline_attestation()
+    body = copy.deepcopy(payload)
+    body.pop("content_identity")
+    body["source_inventory"]["ignored_file_count"] += 1
+    _write(
+        root / "frozen-baseline-attestation.json",
+        bundle._attach_content_identity(body),
+    )
+    with pytest.raises(bundle.BundleError, match="attestation is invalid"):
+        bundle._baseline_attestation_inventory(root)
+
+
+@pytest.mark.parametrize(
+    ("section", "operation"),
+    [
+        ("generated_files", "missing"),
+        ("generated_files", "extra"),
+        ("generated_files", "wrong-type"),
+        ("bootstrap_trees", "missing"),
+        ("bootstrap_trees", "extra"),
+        ("bootstrap_trees", "wrong-type"),
+    ],
+)
+def test_baseline_attestation_rejects_inexact_generated_identities(
+    tmp_path: Path,
+    section: str,
+    operation: str,
+) -> None:
+    root = tmp_path / "bundle"
+    root.mkdir()
+    payload = _baseline_attestation()
+    body = copy.deepcopy(payload)
+    body.pop("content_identity")
+    generated_identity = body["generated_identity"]
+    assert isinstance(generated_identity, dict)
+    identities = generated_identity[section]
+    assert isinstance(identities, dict)
+    first_key = next(iter(identities))
+    if operation == "missing":
+        identities.pop(first_key)
+    elif operation == "extra":
+        identities["unexpected"] = copy.deepcopy(identities[first_key])
+    else:
+        identities[first_key] = []
+    _write(
+        root / "frozen-baseline-attestation.json",
+        bundle._attach_content_identity(body),
+    )
+    with pytest.raises(bundle.BundleError, match="attestation is invalid"):
+        bundle._baseline_attestation_inventory(root)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("generated_files", "relative_path", "wrong/path"),
+        ("generated_files", "size_bytes", 0),
+        ("generated_files", "sha256", "0" * 64),
+        ("bootstrap_trees", "algorithm", "wrong-algorithm"),
+        ("bootstrap_trees", "relative_path", "wrong/path"),
+        ("bootstrap_trees", "sha256", "not-a-sha256"),
+        ("bootstrap_trees", "file_count", 0),
+        ("bootstrap_trees", "size_bytes", 0),
+    ],
+)
+def test_baseline_attestation_rejects_invalid_identity_fields(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    value: object,
+) -> None:
+    root = tmp_path / "bundle"
+    root.mkdir()
+    payload = _baseline_attestation()
+    body = copy.deepcopy(payload)
+    body.pop("content_identity")
+    identities = body["generated_identity"][section]
+    first_key = next(iter(identities))
+    identities[first_key][field] = value
+    _write(
+        root / "frozen-baseline-attestation.json",
+        bundle._attach_content_identity(body),
+    )
+    with pytest.raises(bundle.BundleError, match="attestation is invalid"):
+        bundle._baseline_attestation_inventory(root)
 
 
 def test_file_identity_rejects_symlink(tmp_path: Path) -> None:
