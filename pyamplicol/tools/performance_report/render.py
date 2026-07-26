@@ -1220,7 +1220,11 @@ def render_all_scalar_ladders(
 
 
 def _renders_na(value: str) -> bool:
-    return r"\matrixna{" in value or "{N/A}" in value
+    return (
+        r"\matrixna{" in value
+        or r"\matrixnaratio{" in value
+        or "{N/A}" in value
+    )
 
 
 def _measurements_by_cell_id(
@@ -1283,6 +1287,14 @@ def summarize_visible_completeness(
     rendered_cell_ids: set[str] = set()
     na_slots: list[str] = []
     contract_errors: list[str] = []
+    for cell in required_cells:
+        measurement = measurements.get(cell.cell_id, _NA)
+        status = measurement.get("status", ResultStatus.NOT_AVAILABLE.value)
+        if status != ResultStatus.OK.value:
+            contract_errors.append(
+                f"{cell.cell_id}: required measurement status is "
+                f"{status!r}, expected {ResultStatus.OK.value!r}"
+            )
 
     def record(
         cell: CellSpec,

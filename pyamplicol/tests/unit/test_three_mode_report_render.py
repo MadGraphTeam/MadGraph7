@@ -252,6 +252,69 @@ def test_visible_completeness_rejects_na_in_applicable_slot(reset_caches) -> Non
     assert any(entry["cell_id"] in slot for slot in summary.applicable_na_display_slots)
 
 
+def test_na_detector_recognizes_ratio_macro() -> None:
+    assert report_render._renders_na(r"\matrixnaratio{ReportMuted}")
+
+
+def test_visible_completeness_rejects_missing_candidate_generation_ratio(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_n4_scope(caches)
+    cache = _cache_by_dataset(caches, "matrix_compiled_builtin_sm_full")
+    entries = cache["entries"]
+    assert isinstance(entries, list)
+    entry = next(
+        item
+        for item in entries
+        if item["process_key"] == "dd_z_jets"
+        and item["n_final"] == 1
+        and item["workload"] == Workload.CONTRACTED.value
+    )
+    measurement = entry["measurement"]
+    assert isinstance(measurement, dict)
+    measurement["generation_seconds"] = None
+
+    summary = summarize_visible_completeness(caches)
+
+    assert not summary.complete
+    assert any(
+        entry["cell_id"] in slot and "/candidate" in slot
+        for slot in summary.applicable_na_display_slots
+    )
+
+
+def test_visible_completeness_rejects_non_ok_required_status(reset_caches) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_n4_scope(caches)
+    cache = _cache_by_dataset(caches, "z_builtin_sm")
+    entries = cache["entries"]
+    assert isinstance(entries, list)
+    entry = next(
+        item
+        for item in entries
+        if item["n_final"] == 1
+        and item["variant"] == "jit_o3"
+        and item["workload"] == Workload.SELECTED_FLOW.value
+    )
+    measurement = entry["measurement"]
+    assert isinstance(measurement, dict)
+    measurement["status"] = ResultStatus.TIMEOUT.value
+
+    summary = summarize_visible_completeness(caches)
+
+    assert not summary.complete
+    assert not any(
+        entry["cell_id"] in slot for slot in summary.applicable_na_display_slots
+    )
+    assert any(
+        entry["cell_id"] in error
+        and repr(ResultStatus.TIMEOUT.value) in error
+        and repr(ResultStatus.OK.value) in error
+        for error in summary.contract_errors
+    )
+
+
 def test_adapter_joins_recurrence_baseline_without_copying_timing(
     reset_caches,
 ) -> None:
