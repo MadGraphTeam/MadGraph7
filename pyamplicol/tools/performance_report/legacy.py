@@ -26,6 +26,11 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from .agreements import (
+    DIRECT_AGREEMENT_FIELD,
+    LC_COMMON_COMPONENT_FIELD,
+    legacy_lc_common_component,
+)
 from .cache import empty_measurement
 from .catalog import REPORT_CATALOG
 from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus, Workload
@@ -783,7 +788,18 @@ class LegacyMeasurementAdapter:
             "status": ResultStatus.OK.value,
             "method": "independent-original-amplicol-oracle",
             "point_digest": context.selector_contract.point_digest,
+            DIRECT_AGREEMENT_FIELD: [],
         }
+        if cell.measurement.accuracy is Accuracy.LC:
+            result["validation"][LC_COMMON_COMPONENT_FIELD] = (
+                self._measure_lc_common_component(
+                    cell,
+                    context=context,
+                    repository=repository,
+                    commands=commands,
+                    log_path=log_path,
+                )
+            )
         result["resources"] = {
             "monitor": "external-cell-supervisor",
             "peak_rss_gib": None,
@@ -824,6 +840,109 @@ class LegacyMeasurementAdapter:
         }
         result["failure"] = None
         return result
+
+    def _measure_lc_common_component(
+        self,
+        cell: CellSpec,
+        *,
+        context: _ProcessContext,
+        repository: Path,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> dict[str, object]:
+        """Probe the fixed-helicity/fixed-flow component common to both lanes."""
+
+        if cell.workload is Workload.SELECTED_FLOW:
+            self._run(
+                ("make", "amplicol_color_probe"),
+                cwd=repository,
+                commands=commands,
+                log_path=log_path,
+            )
+        helicities = tuple(
+            value
+            for _label, value in (
+                context.selector_contract.all_flow_source_helicities
+            )
+        )
+        started = time.perf_counter()
+        probe = self.api.run_color_probe(
+            repository,
+            process_file=context.process_file,
+            entry=context.entry,
+            source_pdgs=context.source_pdgs,
+            momenta=context.momenta,
+            color_accuracy=Accuracy.LC.value,
+            helicities=helicities,
+        )
+        commands.append(
+            {
+                "args": [
+                    "legacy_amplicol.run_color_probe",
+                    Accuracy.LC.value,
+                    "fixed-helicity",
+                    "points=1",
+                ],
+                "cwd": os.fspath(repository),
+                "elapsed_seconds": time.perf_counter() - started,
+                "returncode": 0,
+            }
+        )
+        partitions = tuple(getattr(probe, "lc_row_partitions", ()))
+        if not partitions:
+            raise LegacyAdapterError(
+                "direct LC probe emitted no resolved row partitions"
+            )
+        source_to_row = self.api.source_to_row_permutation(
+            context.source_pdgs,
+            context.entry.process_pdgs,
+        )
+        wanted_word = context.selector_contract.selected_color_words[0]
+        matching: list[object] = []
+        for partition in partitions:
+            raw_permutation = tuple(getattr(partition, "permutation", ()))
+            try:
+                source_word = tuple(
+                    source_to_row[int(position) - 1] + 1
+                    for position in raw_permutation
+                )
+            except (IndexError, TypeError, ValueError) as error:
+                raise LegacyAdapterError(
+                    "direct LC probe emitted an invalid row permutation"
+                ) from error
+            complete_source_order = (
+                *source_word,
+                *(
+                    label
+                    for label in range(1, len(context.source_pdgs) + 1)
+                    if label not in source_word
+                ),
+            )
+            canonical_word = _canonical_mapped_color_word(
+                context.source_pdgs,
+                complete_source_order,
+                initial_state_count=_initial_state_count(cell.process),
+            )
+            if canonical_word == wanted_word:
+                matching.append(partition)
+        if len(matching) != 1:
+            raise LegacyAdapterError(
+                "direct LC probe did not identify exactly one selected physical row"
+            )
+        raw_value = getattr(matching[0], "value", None)
+        if (
+            isinstance(raw_value, bool)
+            or not isinstance(raw_value, (int, float))
+            or not math.isfinite(float(raw_value))
+        ):
+            raise LegacyAdapterError(
+                "direct LC probe selected row has no finite value"
+            )
+        return legacy_lc_common_component(
+            cell,
+            context.selector_contract,
+            float(raw_value),
+        )
 
     def _prepare_process(
         self,

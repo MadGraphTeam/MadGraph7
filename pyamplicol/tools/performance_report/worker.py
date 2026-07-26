@@ -7,10 +7,11 @@ import json
 import os
 import tempfile
 import traceback
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+from .agreements import attach_direct_agreements
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import (
     failure_measurement,
@@ -58,6 +59,7 @@ def measure_cell(
     batch_size: int,
     worker_cores: int,
     baseline_json: Path | None = None,
+    peer_json: Sequence[tuple[str, Path]] = (),
     prepared_model_path: Path | None = None,
     reused_measurement_json: Path | None = None,
     catalog: ReportCatalog = REPORT_CATALOG,
@@ -65,6 +67,12 @@ def measure_cell(
     source_identity = require_eligible_report_source(repo_root)
     cell = catalog.cell(cell_id)
     baseline = None if baseline_json is None else load_measurement(baseline_json)
+    peers = {
+        peer_cell_id: load_measurement(path)
+        for peer_cell_id, path in peer_json
+    }
+    if len(peers) != len(peer_json):
+        raise ValueError("direct-agreement peer cell IDs must be unique")
     reused_artifact = (
         None
         if reused_measurement_json is None
@@ -98,6 +106,12 @@ def measure_cell(
             prepared_model_path=prepared_model_path,
             reused_artifact=reused_artifact,
         )
+    attach_direct_agreements(
+        cell,
+        result,
+        peers,
+        catalog=catalog,
+    )
     source_identity_postflight = require_eligible_report_source(repo_root)
     if source_identity_postflight != source_identity:
         raise RuntimeError(

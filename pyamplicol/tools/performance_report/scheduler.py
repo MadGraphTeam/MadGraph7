@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+from .agreements import incoming_agreement_edges
 from .artifacts import ArtifactAction, ArtifactStore, CurrentRecord
 from .cache import validate_measurement
 from .catalog import REPORT_CATALOG, ReportCatalog
@@ -95,6 +96,7 @@ class PlannedCell:
     dependency: bool
     baseline_cell_id: str | None
     rank: int
+    comparison_peer_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,6 +192,23 @@ def plan_campaign(
 ) -> tuple[PlannedCell, ...]:
     requested_ids = {cell.cell_id for cell in requested}
     needed: dict[str, CellSpec] = {}
+    visiting: set[str] = set()
+
+    def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
+        baseline = catalog.baseline_cell(cell)
+        peers = tuple(
+            edge.baseline
+            for edge in incoming_agreement_edges(cell, catalog=catalog)
+        )
+        return tuple(
+            {
+                dependency.cell_id: dependency
+                for dependency in (
+                    *((baseline,) if baseline is not None else ()),
+                    *peers,
+                )
+            }.values()
+        )
 
     def include(cell: CellSpec, *, explicitly_requested: bool) -> None:
         if (
@@ -205,21 +224,37 @@ def plan_campaign(
             return
         if cell.cell_id in needed:
             return
-        baseline = catalog.baseline_cell(cell)
-        if (
-            baseline is not None
-            and _successful_current(
-                store,
-                baseline.cell_id,
-                expected_revision=expected_revision,
+        if cell.cell_id in visiting:
+            raise ValueError(
+                f"report comparison dependency cycle reaches {cell.cell_id!r}"
             )
-            is None
-        ):
-            include(baseline, explicitly_requested=False)
+        visiting.add(cell.cell_id)
+        for dependency in dependencies(cell):
+            if _successful_current(
+                store,
+                dependency.cell_id,
+                expected_revision=expected_revision,
+            ) is None:
+                include(dependency, explicitly_requested=False)
+        visiting.remove(cell.cell_id)
         needed[cell.cell_id] = cell
 
     for cell in requested:
         include(cell, explicitly_requested=True)
+
+    ranks: dict[str, int] = {}
+
+    def planned_rank(cell: CellSpec) -> int:
+        if cell.cell_id in ranks:
+            return ranks[cell.cell_id]
+        rank = _rank(cell)
+        for dependency in dependencies(cell):
+            scheduled = needed.get(dependency.cell_id)
+            if scheduled is not None:
+                rank = max(rank, planned_rank(scheduled) + 1)
+        ranks[cell.cell_id] = rank
+        return rank
+
     return tuple(
         PlannedCell(
             cell=cell,
@@ -229,11 +264,15 @@ def plan_campaign(
                 if catalog.baseline_cell(cell) is None
                 else catalog.baseline_cell(cell).cell_id  # type: ignore[union-attr]
             ),
-            rank=_rank(cell),
+            rank=planned_rank(cell),
+            comparison_peer_ids=tuple(
+                edge.baseline.cell_id
+                for edge in incoming_agreement_edges(cell, catalog=catalog)
+            ),
         )
         for cell in sorted(
             needed.values(),
-            key=lambda item: (_rank(item), item.cell_id),
+            key=lambda item: (planned_rank(item), item.cell_id),
         )
     )
 
@@ -453,6 +492,20 @@ class CampaignScheduler:
                     f"required baseline {baseline.cell_id!r} is unavailable",
                     current=decision.current,
                 )
+            peer_records: dict[str, CurrentRecord] = {}
+            for peer_cell_id in planned.comparison_peer_ids:
+                peer_record = _successful_current(
+                    self.service.store,
+                    peer_cell_id,
+                    expected_revision=self.source_revision,
+                )
+                if peer_record is None:
+                    return self._publish_skip(
+                        cell,
+                        f"required comparison peer {peer_cell_id!r} is unavailable",
+                        current=decision.current,
+                    )
+                peer_records[peer_cell_id] = peer_record
 
             with self.service.store.new_attempt(
                 cell.cell_id,
@@ -489,6 +542,14 @@ class CampaignScheduler:
                 if baseline_record is not None:
                     command.extend(
                         ("--baseline-json", os.fspath(baseline_record.result_path))
+                    )
+                for peer_cell_id, peer_record in sorted(peer_records.items()):
+                    command.extend(
+                        (
+                            "--peer-json",
+                            peer_cell_id,
+                            os.fspath(peer_record.result_path),
+                        )
                     )
                 prepared_model = self._prepared_model_paths.get(
                     cell.measurement.model  # type: ignore[arg-type]

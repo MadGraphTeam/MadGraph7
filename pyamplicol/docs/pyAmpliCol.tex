@@ -335,8 +335,10 @@ prepared model. Each layout retains complete flow and helicity coverage; the
 selected-flow workload sums helicities, while the all-flow workload selects one
 helicity at runtime. Prepared-model creation is excluded from process-generation
 time. Every displayed \(Z\)-ladder ratio uses the matching original \AC{}
-workload as its denominator, while the \PAC{} modes are also checked against
-one another at the stricter cross-mode tolerance.
+workload as its denominator, while every non-recurrence \PAC{} result is
+compared directly with the matching recurrence result at the stricter
+cross-mode tolerance. Built-in and UFO-SM recurrence results are likewise
+compared directly.
 
 Runtime comparisons between these backends also include their
 vectorization strategy. The SymJIT application evaluates a batch with SIMD

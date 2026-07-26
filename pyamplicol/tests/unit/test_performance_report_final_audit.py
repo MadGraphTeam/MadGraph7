@@ -14,6 +14,11 @@ from types import SimpleNamespace
 import pytest
 
 import tools.performance_report.final_audit as final_audit_module
+from tools.performance_report.agreements import (
+    DIRECT_AGREEMENT_FIELD,
+    LC_COMMON_COMPONENT_ABI,
+    LC_COMMON_COMPONENT_FIELD,
+)
 from tools.performance_report.cache import (
     build_reset_caches,
     digest_json,
@@ -1193,6 +1198,10 @@ class _Particle:
 
 
 class _Resolved:
+    values = (((1.0 + 0.0j,),),)
+    helicity_ids = ("h:-1,+1,-1",)
+    color_ids = ("flow:2,1",)
+
     def total(self) -> tuple[complex, ...]:
         return (1.0 + 0.0j,)
 
@@ -1249,6 +1258,18 @@ def _selector() -> dict[str, object]:
     }
 
 
+def _lc_common_component(cell_id: str) -> dict[str, object]:
+    selector = _selector()
+    return {
+        "abi": LC_COMMON_COMPONENT_ABI,
+        "cell_id": cell_id,
+        "value": 1.0,
+        "point_digest": selector["point_digest"],
+        "helicity_ids": selector["all_flow_helicity_ids"],
+        "color_flow_ids": selector["selected_color_flow_ids"],
+    }
+
+
 def _source_provenance() -> dict[str, object]:
     tree = "c" * 40
     return {
@@ -1261,7 +1282,9 @@ def _source_provenance() -> dict[str, object]:
     }
 
 
-def _baseline_measurement() -> dict[str, object]:
+def _baseline_measurement(
+    cell_id: str = "reference-amplicol-lc-n1-dd-z-selected-flow",
+) -> dict[str, object]:
     result = empty_measurement()
     result.update(
         {
@@ -1279,6 +1302,8 @@ def _baseline_measurement() -> dict[str, object]:
                 "status": "ok",
                 "method": "independent-original-amplicol-oracle",
                 "point_digest": _selector()["point_digest"],
+                DIRECT_AGREEMENT_FIELD: [],
+                LC_COMMON_COMPONENT_FIELD: _lc_common_component(cell_id),
             },
             "resources": {"available": True},
             "provenance": {
@@ -1471,6 +1496,10 @@ def _candidate_measurement(artifact: Path) -> dict[str, object]:
             "selector_contract": _selector(),
             "validation": {
                 "status": "ok",
+                DIRECT_AGREEMENT_FIELD: [],
+                LC_COMMON_COMPONENT_FIELD: _lc_common_component(
+                    "matrix-recurrence-test-n1-dd-z-selected-flow"
+                ),
                 "resolved_sum": {
                     "status": "ok",
                     "maximum_absolute_difference": 0.0,
@@ -2160,6 +2189,13 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     assert result["legacy_fresh_oracle_count"] == 1
     assert result["legacy_oracles_with_inbound_agreement"] == 1
     assert result["legacy_pointwise_agreement_edge_count"] == 1
+    assert result["direct_agreement_edge_count"] == 0
+    assert result["direct_agreement_edge_counts"] == {
+        "builtin-ufo-recurrence": 0,
+        "z-recurrence-cross-mode": 0,
+        "lc-cross-layout-component": 0,
+    }
+    assert result["replayed_direct_agreement_edge_count"] == 0
     assert result["unique_artifact_count"] == 1
     assert result["canonical_publication_scope"] is False
     assert result["final_gate_complete"] is False

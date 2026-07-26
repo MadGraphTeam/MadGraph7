@@ -100,7 +100,12 @@ class FakeApi:
         self.color_calls.append(
             (accuracy, None if helicities is None else tuple(helicities))
         )
-        return SimpleNamespace(value=9.75)
+        return SimpleNamespace(
+            value=9.75,
+            lc_row_partitions=(
+                SimpleNamespace(value=2.5, permutation=(2, 4, 1)),
+            ),
+        )
 
 
 class FakeExecutor:
@@ -417,6 +422,8 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     assert contract.selected_color_flow_ids == ("flow:2,4,1",)
     assert contract.all_flow_helicity_ids == ("h:-1,+1,-1,+1",)
     assert api.selected_calls == [1]
+    common = measurement["validation"]["lc_common_component"]
+    assert common["value"] == 2.5
     flattened = [" ".join(command) for command in executor.commands]
     assert any("--library=create" in command for command in flattened)
     assert any("--amplicol_momenta_probe=10" in command for command in flattened)
@@ -451,6 +458,8 @@ def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(
     assert measurement["matrix_element"] == 12.5
     assert measurement["generation_seconds"] == 2.5
     assert measurement["wall_seconds_per_point"] == pytest.approx(1.0e-3)
+    common = measurement["validation"]["lc_common_component"]
+    assert common["value"] == 2.5
     provenance = measurement["provenance"]
     assert provenance["generation_timing_is_workload_specific"] is True
     assert provenance["raw_mapped_color_order"] == [2, 4, 1, 3]

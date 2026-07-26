@@ -18,13 +18,27 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .agreements import (
+    BUILTIN_UFO_RECURRENCE,
+    DIRECT_AGREEMENT_ABI,
+    DIRECT_AGREEMENT_FIELD,
+    LC_COMMON_COMPONENT_ABI,
+    LC_COMMON_COMPONENT_FIELD,
+    LC_CROSS_LAYOUT_COMPONENT,
+    STRICT_ABSOLUTE_TOLERANCE,
+    STRICT_RELATIVE_TOLERANCE,
+    Z_RECURRENCE_CROSS_MODE,
+    AgreementEdge,
+    agreement_edges,
+    evaluate_lc_common_component,
+)
 from .cache import digest_json, reset_entry
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import shared_validation_points
@@ -68,6 +82,11 @@ from .standalone_build import StandaloneBuildError, validate_latex_log
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _EXPECTED_N4_CELL_COUNT = 742
+_EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
+    BUILTIN_UFO_RECURRENCE: 136,
+    Z_RECURRENCE_CROSS_MODE: 80,
+    LC_CROSS_LAYOUT_COMPONENT: 208,
+}
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
     {
         "observed_module_count",
@@ -165,6 +184,7 @@ class _ReplayObservation:
     matrix_element: float
     resolved_maximum_absolute: float
     resolved_maximum_relative: float
+    lc_common_component: float | None
 
 
 ArtifactAuditor = Callable[[CellSpec, Path, str], ArtifactEvidence]
@@ -644,6 +664,226 @@ def _audit_resolved_sum(raw: object, *, context: str) -> None:
         raise FinalAuditError(
             f"{context} does not satisfy the recomputed resolved-sum contract"
         )
+
+
+def _audit_lc_common_component(
+    cell: CellSpec,
+    measurement: Mapping[str, object],
+    *,
+    context: str,
+) -> float:
+    validation = _mapping(measurement.get("validation"), f"{context}.validation")
+    raw = _mapping(
+        validation.get(LC_COMMON_COMPONENT_FIELD),
+        f"{context}.validation.{LC_COMMON_COMPONENT_FIELD}",
+    )
+    expected_fields = {
+        "abi",
+        "cell_id",
+        "value",
+        "point_digest",
+        "helicity_ids",
+        "color_flow_ids",
+    }
+    if set(raw) != expected_fields:
+        raise FinalAuditError(
+            f"{context} LC common-component fields differ from the contract"
+        )
+    selector = SelectorContract.from_mapping(
+        _mapping(measurement.get("selector_contract"), f"{context}.selector_contract")
+    )
+    if (
+        raw.get("abi") != LC_COMMON_COMPONENT_ABI
+        or raw.get("cell_id") != cell.cell_id
+        or raw.get("point_digest") != selector.point_digest
+        or raw.get("helicity_ids") != list(selector.all_flow_helicity_ids)
+        or raw.get("color_flow_ids") != list(selector.selected_color_flow_ids)
+    ):
+        raise FinalAuditError(
+            f"{context} LC common component is not bound to its selector contract"
+        )
+    return _finite_number(raw.get("value"), f"{context}.lc_common_component")
+
+
+def _agreement_value(
+    edge: AgreementEdge,
+    cell: CellSpec,
+    measurement: Mapping[str, object],
+    *,
+    context: str,
+) -> float:
+    if edge.value_kind == "matrix_element":
+        return _finite_number(
+            measurement.get("matrix_element"),
+            f"{context}.matrix_element",
+        )
+    return _audit_lc_common_component(
+        cell,
+        measurement,
+        context=context,
+    )
+
+
+def _audit_direct_agreements(
+    cells: Sequence[CellSpec],
+    measurements: Mapping[str, Mapping[str, object]],
+    *,
+    catalog: ReportCatalog,
+) -> tuple[tuple[AgreementEdge, ...], dict[str, int]]:
+    """Authenticate every stored direct edge and reject missing or extra ones."""
+
+    selected_ids = {cell.cell_id for cell in cells}
+    edges = tuple(
+        edge
+        for edge in agreement_edges(catalog=catalog)
+        if edge.candidate.cell_id in selected_ids
+        and edge.baseline.cell_id in selected_ids
+    )
+    incoming: dict[str, list[AgreementEdge]] = defaultdict(list)
+    for edge in edges:
+        incoming[edge.candidate.cell_id].append(edge)
+
+    errors: list[str] = []
+    for cell in cells:
+        measurement = measurements[cell.cell_id]
+        validation = _mapping(
+            measurement.get("validation"),
+            f"{cell.cell_id}.validation",
+        )
+        raw_records = validation.get(DIRECT_AGREEMENT_FIELD)
+        if not isinstance(raw_records, list):
+            errors.append(
+                f"{cell.cell_id}: validation.{DIRECT_AGREEMENT_FIELD} is not an array"
+            )
+            continue
+        expected = tuple(
+            sorted(
+                incoming.get(cell.cell_id, ()),
+                key=lambda edge: (edge.kind, edge.baseline.cell_id),
+            )
+        )
+        records_by_key: dict[tuple[str, str], Mapping[str, object]] = {}
+        for index, raw_record in enumerate(raw_records):
+            if not isinstance(raw_record, Mapping):
+                errors.append(
+                    f"{cell.cell_id}: direct agreement {index} is not an object"
+                )
+                continue
+            key = (
+                str(raw_record.get("edge_kind")),
+                str(raw_record.get("baseline_cell_id")),
+            )
+            if key in records_by_key:
+                errors.append(
+                    f"{cell.cell_id}: duplicate direct agreement {key!r}"
+                )
+            records_by_key[key] = raw_record
+        expected_keys = {(edge.kind, edge.baseline.cell_id) for edge in expected}
+        if set(records_by_key) != expected_keys:
+            errors.append(
+                f"{cell.cell_id}: direct agreement edge set differs; "
+                f"expected={sorted(expected_keys)}, "
+                f"observed={sorted(records_by_key)}"
+            )
+            continue
+        for edge in expected:
+            context = (
+                f"{cell.cell_id}.validation.{DIRECT_AGREEMENT_FIELD}"
+                f"[{edge.kind}]"
+            )
+            record = records_by_key[(edge.kind, edge.baseline.cell_id)]
+            expected_fields = {
+                "abi",
+                "edge_kind",
+                "value_kind",
+                "baseline_cell_id",
+                "candidate_cell_id",
+                "status",
+                "candidate",
+                "baseline",
+                "absolute_difference",
+                "relative_difference",
+                "relative_tolerance",
+                "absolute_tolerance",
+            }
+            if set(record) != expected_fields:
+                errors.append(f"{context}: fields differ from the direct-edge ABI")
+                continue
+            baseline_measurement = measurements[edge.baseline.cell_id]
+            if (
+                record.get("abi") != DIRECT_AGREEMENT_ABI
+                or record.get("edge_kind") != edge.kind
+                or record.get("value_kind") != edge.value_kind
+                or record.get("baseline_cell_id") != edge.baseline.cell_id
+                or record.get("candidate_cell_id") != edge.candidate.cell_id
+            ):
+                errors.append(f"{context}: edge identity differs from the catalog")
+                continue
+            if measurement.get("selector_contract") != baseline_measurement.get(
+                "selector_contract"
+            ):
+                errors.append(f"{context}: selector contracts differ")
+                continue
+            try:
+                _audit_pointwise(
+                    record,
+                    context=context,
+                    expected_candidate=_agreement_value(
+                        edge,
+                        edge.candidate,
+                        measurement,
+                        context=edge.candidate.cell_id,
+                    ),
+                    expected_baseline=_agreement_value(
+                        edge,
+                        edge.baseline,
+                        baseline_measurement,
+                        context=edge.baseline.cell_id,
+                    ),
+                    expected_relative_tolerance=STRICT_RELATIVE_TOLERANCE,
+                )
+            except Exception as error:
+                errors.append(f"{context}: {error}")
+
+    for cell in cells:
+        measurement = measurements[cell.cell_id]
+        validation = _mapping(
+            measurement.get("validation"),
+            f"{cell.cell_id}.validation",
+        )
+        if cell.measurement.accuracy is Accuracy.LC:
+            try:
+                _audit_lc_common_component(
+                    cell,
+                    measurement,
+                    context=cell.cell_id,
+                )
+            except Exception as error:
+                errors.append(f"{cell.cell_id}: {error}")
+        elif validation.get(LC_COMMON_COMPONENT_FIELD) is not None:
+            errors.append(
+                f"{cell.cell_id}: contracted-color cell stores an LC component"
+            )
+    if errors:
+        rendered = "\n".join(f"- {message}" for message in errors[:50])
+        suffix = (
+            ""
+            if len(errors) <= 50
+            else f"\n- ... and {len(errors) - 50} additional failures"
+        )
+        raise FinalAuditError(
+            f"final report direct-agreement audit failed ({len(errors)}):\n"
+            f"{rendered}{suffix}"
+        )
+    counts = Counter(edge.kind for edge in edges)
+    return edges, {
+        kind: counts.get(kind, 0)
+        for kind in (
+            BUILTIN_UFO_RECURRENCE,
+            Z_RECURRENCE_CROSS_MODE,
+            LC_CROSS_LAYOUT_COMPONENT,
+        )
+    }
 
 
 def _runtime_namespace_paths(
@@ -3450,10 +3690,40 @@ def _replay_cell(
             expected_baseline=high_value,
             expected_relative_tolerance=RELATIVE_TOLERANCE,
         )
+    common_component: float | None = None
+    if cell.measurement.accuracy is Accuracy.LC:
+        assert raw_selector is not None
+        common_record = evaluate_lc_common_component(
+            runtime,
+            points,
+            cell=cell,
+            contract=SelectorContract.from_mapping(
+                _mapping(raw_selector, f"{context}.selector_contract")
+            ),
+        )
+        common_component = _finite_number(
+            common_record.get("value"),
+            f"{context}.lc_common_component",
+        )
+        stored_component = _audit_lc_common_component(
+            cell,
+            measurement,
+            context=context,
+        )
+        absolute = abs(common_component - stored_component)
+        relative = absolute / max(abs(stored_component), 1.0e-300)
+        if (
+            absolute > STRICT_ABSOLUTE_TOLERANCE
+            and relative > STRICT_RELATIVE_TOLERANCE
+        ):
+            raise FinalAuditError(
+                f"{context} no longer reproduces the stored LC common component"
+            )
     return _ReplayObservation(
         matrix_element=observed_matrix,
         resolved_maximum_absolute=maximum_absolute,
         resolved_maximum_relative=maximum_relative,
+        lc_common_component=common_component,
     )
 
 
@@ -3478,6 +3748,70 @@ def _entry_map(
                 raise FinalAuditError(f"duplicate cache cell {cell_id!r}")
             result[cell_id] = entry
     return result
+
+
+def _replayed_agreement_value(
+    edge: AgreementEdge,
+    cell: CellSpec,
+    measurement: Mapping[str, object],
+    replayed: Mapping[str, _ReplayObservation],
+) -> float:
+    observation = replayed.get(cell.cell_id)
+    if edge.value_kind == "matrix_element":
+        if observation is None:
+            return _finite_number(
+                measurement.get("matrix_element"),
+                f"{cell.cell_id}.matrix_element",
+            )
+        return observation.matrix_element
+    if observation is not None:
+        if observation.lc_common_component is None:
+            raise FinalAuditError(
+                f"{cell.cell_id} replay has no LC common component"
+            )
+        return observation.lc_common_component
+    return _audit_lc_common_component(
+        cell,
+        measurement,
+        context=f"{cell.cell_id}.authenticated",
+    )
+
+
+def _audit_replayed_direct_agreements(
+    edges: Sequence[AgreementEdge],
+    measurements: Mapping[str, Mapping[str, object]],
+    replayed: Mapping[str, _ReplayObservation],
+) -> int:
+    errors: list[str] = []
+    for edge in edges:
+        candidate = _replayed_agreement_value(
+            edge,
+            edge.candidate,
+            measurements[edge.candidate.cell_id],
+            replayed,
+        )
+        baseline = _replayed_agreement_value(
+            edge,
+            edge.baseline,
+            measurements[edge.baseline.cell_id],
+            replayed,
+        )
+        absolute = abs(candidate - baseline)
+        relative = absolute / max(abs(baseline), 1.0e-300)
+        if (
+            absolute > STRICT_ABSOLUTE_TOLERANCE
+            and relative > STRICT_RELATIVE_TOLERANCE
+        ):
+            errors.append(
+                f"{edge.candidate.cell_id}: replayed {edge.kind} direct edge "
+                f"differs from {edge.baseline.cell_id}"
+            )
+    if errors:
+        rendered = "\n".join(f"- {message}" for message in errors[:50])
+        raise FinalAuditError(
+            f"final report direct-edge replay failed ({len(errors)}):\n{rendered}"
+        )
+    return len(edges)
 
 
 def audit_final_report(
@@ -3765,6 +4099,23 @@ def _audit_final_report_locked(
             f"{rendered}{suffix}"
         )
 
+    direct_edges, direct_agreement_counts = _audit_direct_agreements(
+        cells,
+        measurements,
+        catalog=catalog,
+    )
+    if (
+        catalog is REPORT_CATALOG
+        and max_n_final == 4
+        and len(cells) == _EXPECTED_N4_CELL_COUNT
+        and direct_agreement_counts != _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS
+    ):
+        raise FinalAuditError(
+            "canonical n<=4 direct-agreement edge counts differ: "
+            f"expected={_EXPECTED_N4_DIRECT_AGREEMENT_COUNTS}, "
+            f"observed={direct_agreement_counts}"
+        )
+
     legacy_cells = tuple(
         cell
         for cell in cells
@@ -3830,6 +4181,7 @@ def _audit_final_report_locked(
         )
 
     replayed: dict[str, _ReplayObservation] = {}
+    replayed_direct_agreement_count = 0
     if replay:
         errors = []
         for key, group in grouped.items():
@@ -3873,6 +4225,11 @@ def _audit_final_report_locked(
             raise FinalAuditError(
                 f"final report numerical replay failed ({len(errors)}):\n{rendered}"
             )
+        replayed_direct_agreement_count = _audit_replayed_direct_agreements(
+            direct_edges,
+            measurements,
+            replayed,
+        )
         if len(replayed) != len(pyamplicol_cells):
             raise FinalAuditError(
                 "final report replay did not cover every pyAmpliCol measurement: "
@@ -3956,6 +4313,11 @@ def _audit_final_report_locked(
         "legacy_fresh_oracle_count": len(legacy_cells),
         "legacy_oracles_with_inbound_agreement": len(covered_legacy_ids),
         "legacy_pointwise_agreement_edge_count": len(legacy_agreement_edges),
+        "direct_agreement_edge_count": len(direct_edges),
+        "direct_agreement_edge_counts": direct_agreement_counts,
+        "replayed_direct_agreement_edge_count": (
+            replayed_direct_agreement_count if replay else 0
+        ),
         "unique_artifact_count": len(grouped),
         "arena_record_count": sum(
             evidence.arena_record_count for evidence in evidence_by_key.values()

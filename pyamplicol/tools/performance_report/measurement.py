@@ -8,6 +8,11 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from .agreements import (
+    DIRECT_AGREEMENT_FIELD,
+    LC_COMMON_COMPONENT_FIELD,
+    evaluate_lc_common_component,
+)
 from .cache import empty_measurement
 from .models import Accuracy, CellSpec, ModelKey, ResultStatus
 from .runner import (
@@ -297,7 +302,16 @@ def measure_pyamplicol_cell(
     benchmark_evidence = profile.pop("benchmark_evidence")
     validation: dict[str, object] = {
         "resolved_sum": profile.pop("resolved_sum_validation"),
+        DIRECT_AGREEMENT_FIELD: [],
     }
+    if cell.measurement.accuracy is Accuracy.LC:
+        assert contract is not None
+        validation[LC_COMMON_COMPONENT_FIELD] = evaluate_lc_common_component(
+            runtime,
+            points,
+            cell=cell,
+            contract=contract,
+        )
     if cell.measurement.model in {
         ModelKey.SCALAR_CONTACT,
         ModelKey.SCALAR_GRAVITY,

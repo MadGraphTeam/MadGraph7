@@ -137,6 +137,14 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--result-json", type=Path, required=True)
     worker.add_argument("--log-path", type=Path)
     worker.add_argument("--baseline-json", type=Path)
+    worker.add_argument(
+        "--peer-json",
+        action="append",
+        nargs=2,
+        metavar=("CELL_ID", "PATH"),
+        default=[],
+        help=argparse.SUPPRESS,
+    )
     worker.add_argument("--prepared-model", type=Path)
     worker.add_argument("--reused-measurement-json", type=Path)
     worker.add_argument(
@@ -452,6 +460,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                                 "cell_id": item.cell.cell_id,
                                 "dependency": item.dependency,
                                 "baseline_cell_id": item.baseline_cell_id,
+                                "comparison_peer_ids": list(
+                                    item.comparison_peer_ids
+                                ),
                                 "rank": item.rank,
                             }
                             for item in planned
@@ -514,6 +525,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             batch_size=args.batch_size,
             worker_cores=args.cell_cores,
             baseline_json=args.baseline_json,
+            peer_json=tuple(
+                (cell_id, Path(path)) for cell_id, path in args.peer_json
+            ),
             prepared_model_path=args.prepared_model,
             reused_measurement_json=args.reused_measurement_json,
             log_path=args.log_path,
