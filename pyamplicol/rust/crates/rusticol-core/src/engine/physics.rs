@@ -2,6 +2,9 @@
 
 use super::*;
 
+static NEXT_PHYSICS_RUNTIME_BINDING_ID: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
 impl PhysicsRuntime {
     pub(super) fn new(manifest: ProcessPhysicsV1) -> RusticolResult<Self> {
         manifest.validate()?;
@@ -62,6 +65,8 @@ impl PhysicsRuntime {
             }
         }
         Ok(Self {
+            binding_id: NEXT_PHYSICS_RUNTIME_BINDING_ID
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             manifest,
             helicity_index_by_id,
             color_index_by_id,

@@ -945,6 +945,9 @@ fn test_amplitude_runtime(
         resolved_source_row_scratch_f64: Vec::new(),
         resolved_target_row_scratch_f64: Vec::new(),
         routed_reduction_scratch: RoutedReductionScratch::default(),
+        materialized_helicity_direct_total_plans: Vec::new(),
+        materialized_helicity_direct_total_plan_capacity: 0,
+        materialized_helicity_direct_total_next_replacement: 0,
         evaluator_output_order: None,
         evaluator: Some(empty_evaluator_group()),
     }
@@ -1702,6 +1705,80 @@ fn plane_native_nlc_and_full_resolved_match_row_major_odd_tail() {
                     .unwrap()
             });
         assert_resolved_values_equal(&plane_native_materialized, &row_major_materialized);
+
+        let initial = (0..POINT_COUNT)
+            .map(|point| point as f64 * 0.125 - 4.0)
+            .collect::<Vec<_>>();
+        let mut row_major_totals = initial.clone();
+        amplitude
+            .reduce_scratch_f64_for_materialized_helicity_add_into(
+                POINT_COUNT,
+                &physics,
+                2.0,
+                0,
+                &root_factors,
+                None,
+                &mut row_major_totals,
+            )
+            .unwrap();
+        let mut plane_native_totals = initial;
+        with_plane_native_amplitudes(&outputs, POINT_COUNT, 1, |planes| {
+            amplitude
+                .reduce_planes_f64_for_materialized_helicity_add_into(
+                    planes,
+                    &physics,
+                    2.0,
+                    0,
+                    &root_factors,
+                    None,
+                    &mut plane_native_totals,
+                )
+                .unwrap()
+        });
+        assert_eq!(plane_native_totals, row_major_totals);
+        assert_eq!(amplitude.materialized_helicity_direct_total_plans.len(), 1);
+
+        let identity_root_factors = [Some(c64(1.0, 0.0))];
+        let mut identity_row_major = vec![0.25; POINT_COUNT];
+        amplitude
+            .reduce_scratch_f64_for_materialized_helicity_add_into(
+                POINT_COUNT,
+                &physics,
+                2.0,
+                0,
+                &identity_root_factors,
+                None,
+                &mut identity_row_major,
+            )
+            .unwrap();
+        let mut identity_plane_native = vec![0.25; POINT_COUNT];
+        with_plane_native_amplitudes(&outputs, POINT_COUNT, 1, |planes| {
+            amplitude
+                .reduce_planes_f64_for_materialized_helicity_add_into(
+                    planes,
+                    &physics,
+                    2.0,
+                    0,
+                    &identity_root_factors,
+                    None,
+                    &mut identity_plane_native,
+                )
+                .unwrap()
+        });
+        assert_eq!(
+            identity_plane_native
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            identity_row_major
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            amplitude.materialized_helicity_direct_total_plans[1].groups[0].identity_output_index,
+            Some(0)
+        );
     }
 }
 
@@ -1785,7 +1862,181 @@ fn plane_native_materialized_helicity_resolved_and_add_into_match_lc_odd_tail() 
                 .unwrap()
         });
         assert_eq!(plane_native_totals, row_major_totals);
+        let expected_plan_index = usize::from(colors.is_some());
+        assert_eq!(
+            amplitude
+                .bind_materialized_helicity_direct_total_plan(&physics, 0, &root_factors, colors)
+                .unwrap(),
+            expected_plan_index
+        );
+        assert_eq!(
+            amplitude.materialized_helicity_direct_total_plans.len(),
+            expected_plan_index + 1,
+            "equivalent materialized-helicity reductions must reuse their cold binding"
+        );
     }
+}
+
+#[test]
+fn materialized_helicity_direct_total_plan_uses_actual_physics_recipient() {
+    const POINT_COUNT: usize = 17;
+    const OUTPUT_COUNT: usize = 2;
+    let representative_physics = test_physics_runtime("lc");
+    let mut weighted_manifest = representative_physics.manifest.clone();
+    let crate::ColorComponent::LcFlow(weighted_flow) = &mut weighted_manifest.color_components[1]
+    else {
+        panic!("LC test physics must contain physical flows");
+    };
+    weighted_flow.coefficient = 3.0;
+    let parent_physics =
+        PhysicsRuntime::new(weighted_manifest).expect("valid parent-closure test physics");
+    let outputs = (0..POINT_COUNT)
+        .flat_map(|point| {
+            (0..OUTPUT_COUNT).map(move |output| {
+                c64(
+                    (point * 5 + output * 7) as f64 * 0.03125 - 0.75,
+                    (point * 11 + output * 3) as f64 * -0.015625 + 0.5,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let root_factors = [Some(c64(0.75, -0.25)), Some(c64(-0.5, 0.125))];
+    let selected_colors = BTreeSet::from(["flow:0".to_string()]);
+    let mut amplitude = test_amplitude_runtime(outputs.clone(), None);
+    amplitude.output_length = OUTPUT_COUNT;
+    amplitude.raw_sum_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_all_sector_weights = vec![1.0; OUTPUT_COUNT];
+    amplitude.raw_sum_color_sector_ids = vec![None; OUTPUT_COUNT];
+    amplitude.raw_sum_groups[0].indices = vec![0, 1];
+
+    for (expected_plan_index, physics) in [&representative_physics, &parent_physics]
+        .into_iter()
+        .enumerate()
+    {
+        let mut expected = vec![0.0; POINT_COUNT];
+        amplitude
+            .reduce_scratch_f64_for_materialized_helicity_add_into(
+                POINT_COUNT,
+                physics,
+                1.25,
+                0,
+                &root_factors,
+                Some(&selected_colors),
+                &mut expected,
+            )
+            .unwrap();
+        let mut candidate = vec![0.0; POINT_COUNT];
+        with_plane_native_amplitudes(&outputs, POINT_COUNT, OUTPUT_COUNT, |planes| {
+            amplitude
+                .reduce_planes_f64_for_materialized_helicity_add_into(
+                    planes,
+                    physics,
+                    1.25,
+                    0,
+                    &root_factors,
+                    Some(&selected_colors),
+                    &mut candidate,
+                )
+                .unwrap()
+        });
+        assert_eq!(candidate, expected);
+        assert_eq!(
+            amplitude
+                .bind_materialized_helicity_direct_total_plan(
+                    physics,
+                    0,
+                    &root_factors,
+                    Some(&selected_colors)
+                )
+                .unwrap(),
+            expected_plan_index
+        );
+    }
+    assert_eq!(amplitude.materialized_helicity_direct_total_plans.len(), 2);
+}
+
+#[test]
+fn materialized_helicity_direct_total_identity_singleton_is_bitwise_exact() {
+    let physics = test_physics_runtime("lc");
+    let outputs = vec![
+        c64(2.0, -3.0),
+        c64(-0.0, 0.0),
+        c64(0.0, -0.0),
+        c64(-1.25, 4.5),
+    ];
+    let root_factors = [Some(c64(1.0, 0.0))];
+    let mut amplitude = test_amplitude_runtime(outputs.clone(), None);
+    amplitude.output_length = 1;
+    amplitude.raw_sum_weights = vec![1.0];
+    amplitude.raw_sum_all_sector_weights = vec![1.0];
+    amplitude.raw_sum_color_sector_ids = vec![None];
+    amplitude.raw_sum_groups[0].indices = vec![0];
+
+    let mut expected = vec![-0.0, 0.25, -2.0, 7.0];
+    amplitude
+        .reduce_scratch_f64_for_materialized_helicity_add_into(
+            outputs.len(),
+            &physics,
+            1.25,
+            0,
+            &root_factors,
+            None,
+            &mut expected,
+        )
+        .unwrap();
+    let mut candidate = vec![-0.0, 0.25, -2.0, 7.0];
+    with_plane_native_amplitudes(&outputs, outputs.len(), 1, |planes| {
+        amplitude
+            .reduce_planes_f64_for_materialized_helicity_add_into(
+                planes,
+                &physics,
+                1.25,
+                0,
+                &root_factors,
+                None,
+                &mut candidate,
+            )
+            .unwrap()
+    });
+    assert_eq!(
+        candidate
+            .iter()
+            .map(|value| value.to_bits())
+            .collect::<Vec<_>>(),
+        expected
+            .iter()
+            .map(|value| value.to_bits())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        amplitude.materialized_helicity_direct_total_plans[0].groups[0].identity_output_index,
+        Some(0)
+    );
+}
+
+#[test]
+fn materialized_helicity_direct_total_plan_cache_is_artifact_bounded() {
+    let physics = test_physics_runtime("lc");
+    let mut amplitude = test_amplitude_runtime(vec![c64(1.0, 0.0)], None);
+    for index in 0..24 {
+        amplitude
+            .bind_materialized_helicity_direct_total_plan(
+                &physics,
+                0,
+                &[Some(c64(index as f64 + 1.0, 0.0))],
+                None,
+            )
+            .unwrap();
+    }
+    let expected_capacity = physics.manifest.helicities.len().clamp(16, 512);
+    assert_eq!(
+        amplitude.materialized_helicity_direct_total_plan_capacity,
+        expected_capacity
+    );
+    assert_eq!(
+        amplitude.materialized_helicity_direct_total_plans.len(),
+        expected_capacity
+    );
 }
 
 #[test]
@@ -2075,6 +2326,9 @@ fn reduction_test_amplitude(
         resolved_source_row_scratch_f64: Vec::new(),
         resolved_target_row_scratch_f64: Vec::new(),
         routed_reduction_scratch: RoutedReductionScratch::default(),
+        materialized_helicity_direct_total_plans: Vec::new(),
+        materialized_helicity_direct_total_plan_capacity: 0,
+        materialized_helicity_direct_total_next_replacement: 0,
         evaluator_output_order: None,
         evaluator: Some(empty_evaluator_group()),
     }

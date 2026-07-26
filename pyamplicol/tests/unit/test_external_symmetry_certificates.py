@@ -729,7 +729,7 @@ def test_recursive_current_reuse_fails_closed_after_coefficient_deformation(
         for current in dag.currents
         if not current.is_source
         and equivalences[current.id].representative_id != current.id
-        and interactions_by_result.get(current.id)
+        and len(interactions_by_result.get(current.id, ())) >= 2
     )
     interaction = interactions_by_result[target.id][0]
     deformed_interactions = tuple(

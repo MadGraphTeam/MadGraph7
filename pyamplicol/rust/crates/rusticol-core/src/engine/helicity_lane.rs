@@ -766,6 +766,12 @@ impl ExecutionRuntime {
             compiled_direct_color_schedules,
             selected_materialized_sector_ids,
         )?;
+        let direct_total_plan = amplitude.bind_materialized_helicity_direct_total_plan(
+            physics,
+            schedule.physical_helicity_index,
+            &schedule.root_factors,
+            selected_color_ids,
+        )?;
         let tile_capacity = direct.tile_capacity();
         let mut point_start = 0usize;
         while point_start < point_count {
@@ -787,13 +793,10 @@ impl ExecutionRuntime {
                 execute_union,
                 point_stop - point_start,
             )?;
-            amplitude.reduce_planes_f64_for_materialized_helicity_add_into(
+            amplitude.reduce_planes_f64_for_materialized_helicity_plan_add_into(
                 direct.amplitude_planes()?,
-                physics,
                 *normalization_factor,
-                schedule.physical_helicity_index,
-                &schedule.root_factors,
-                selected_color_ids,
+                direct_total_plan,
                 &mut output[point_start..point_stop],
             )?;
             point_start = point_stop;

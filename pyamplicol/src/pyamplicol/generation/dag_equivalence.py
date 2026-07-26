@@ -12,7 +12,8 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from math import fsum
+from fractions import Fraction
+from math import fsum, isfinite
 from typing import TypeAlias
 
 from ..models.base import Model, VertexEvaluationEquivalence
@@ -33,6 +34,23 @@ class _CurrentValueEquivalence:
     factor: _ComplexWeight
 
 
+@dataclass(frozen=True, slots=True)
+class _CanonicalProjectiveTermVector:
+    """A deterministic lookup key and its concrete normalization factor."""
+
+    term_vector: _CurrentTermVector
+    factor: _ComplexWeight
+
+
+@dataclass(frozen=True, slots=True)
+class _ProjectiveExpressionRepresentative:
+    """One concrete current retained as a projective-class representative."""
+
+    representative_id: int
+    term_vector: _CurrentTermVector
+    normalization_factor: _ComplexWeight
+
+
 class RecursiveEvaluationReuseTracker:
     """Certify recursive-current reuse as external subsets are completed."""
 
@@ -45,8 +63,12 @@ class RecursiveEvaluationReuseTracker:
         ] = {}
         self._current_equivalences: list[_CurrentValueEquivalence] = []
         self._source_representative_by_key: dict[tuple[object, ...], int] = {}
-        self._representative_by_expression: dict[
-            tuple[_CurrentContract, _CurrentTermVector], int
+        self._equivalence_by_expression: dict[
+            tuple[_CurrentContract, _CurrentTermVector], _CurrentValueEquivalence
+        ] = {}
+        self._projective_representatives_by_expression: dict[
+            tuple[_CurrentContract, _CurrentTermVector],
+            list[_ProjectiveExpressionRepresentative],
         ] = {}
         self._evaluation_group_by_key: dict[_EvaluationKey, int] = {}
         self._coefficients_by_result: list[
@@ -98,10 +120,12 @@ class RecursiveEvaluationReuseTracker:
             raise ValueError(
                 "online recursive reuse requires completed parent subsets"
             ) from error
-        canonical_inputs, kernel_factor = _canonical_kernel_evaluation(
+        canonical_inputs, evaluation_factor = _canonical_interaction_evaluation(
             kernel_equivalence,
-            left.representative_id,
-            right.representative_id,
+            left_id=left_id,
+            right_id=right_id,
+            left=left,
+            right=right,
         )
         coupling_key = (vertex_kind, vertex_particles, coupling)
         coupling_identity = self._runtime_coupling_identities.get(coupling_key)
@@ -123,10 +147,6 @@ class RecursiveEvaluationReuseTracker:
         evaluation_group_id = self._evaluation_group_by_key.setdefault(
             evaluation_key,
             len(self._evaluation_group_by_key),
-        )
-        evaluation_factor = _complex_weight_mul(
-            kernel_factor,
-            _complex_weight_mul(left.factor, right.factor),
         )
         if result.id >= len(self._coefficients_by_result):
             self._coefficients_by_result.extend(
@@ -165,25 +185,23 @@ class RecursiveEvaluationReuseTracker:
                         _canonical_zero(fsum(value[1] for value in coefficients)),
                     )
                 else:
-                    coefficient = coefficients
+                    coefficient = _canonical_complex_weight(coefficients)
                 if coefficient != (0.0, 0.0):
                     terms.append(((group_id,), coefficient))
             term_vector = tuple(terms)
             contract = _current_evaluation_contract(current)
-            expression_key = (contract, term_vector)
-            representative_id = self._representative_by_expression.get(expression_key)
-            factor: _ComplexWeight = (1.0, 0.0)
-            if representative_id is None:
-                opposite_key = (contract, _negate_term_vector(term_vector))
-                representative_id = self._representative_by_expression.get(opposite_key)
-                if representative_id is not None:
-                    factor = (-1.0, 0.0)
-            if representative_id is None:
-                representative_id = current.id
-                self._representative_by_expression[expression_key] = representative_id
+            equivalence = _classify_current_term_vector(
+                current_id=current.id,
+                contract=contract,
+                term_vector=term_vector,
+                equivalence_by_expression=self._equivalence_by_expression,
+                projective_representatives_by_expression=(
+                    self._projective_representatives_by_expression
+                ),
+            )
             self._append_current_equivalence(
                 current,
-                _CurrentValueEquivalence(representative_id, factor),
+                equivalence,
             )
 
     def _append_current_equivalence(
@@ -223,6 +241,39 @@ def _canonical_kernel_evaluation(
     return canonical_inputs, factor
 
 
+def _canonical_interaction_evaluation(
+    equivalence: VertexEvaluationEquivalence,
+    *,
+    left_id: int,
+    right_id: int,
+    left: _CurrentValueEquivalence,
+    right: _CurrentValueEquivalence,
+) -> tuple[tuple[int, int], _ComplexWeight]:
+    """Compose recursive factors exactly or retain the concrete inputs.
+
+    Projective equivalence is an exact statement about the ideal algebraic
+    current.  Its recursive factor may be moved through another kernel only
+    when both complex products remain finite and exactly representable as
+    binary64.  Otherwise this interaction fails closed to its concrete parent
+    IDs while retaining the pre-existing model-certified kernel symmetry.
+    """
+
+    canonical_inputs, kernel_factor = _canonical_kernel_evaluation(
+        equivalence,
+        left.representative_id,
+        right.representative_id,
+    )
+    parent_factor = _exact_representable_complex_product(left.factor, right.factor)
+    if parent_factor is not None:
+        evaluation_factor = _exact_representable_complex_product(
+            kernel_factor,
+            parent_factor,
+        )
+        if evaluation_factor is not None:
+            return canonical_inputs, evaluation_factor
+    return _canonical_kernel_evaluation(equivalence, left_id, right_id)
+
+
 def assign_recursive_current_evaluation_reuse(
     dag: GenericDAG,
     model: Model,
@@ -232,12 +283,17 @@ def assign_recursive_current_evaluation_reuse(
     The proof is recursive.  Duplicate source wavefunctions form the base
     classes.  A generated current joins an existing class only when its full
     vector of model-certified kernel terms and coefficients is byte-exactly
-    equal or opposite to the representative vector.  The current contract
-    keeps every field consumed by source, kernel, and propagator evaluation;
-    colour bookkeeping, ordering metadata, and ancestry bit allocation are
-    deliberately excluded. Ordering may differ only through the exact
-    model-certified input permutation and reflection factors included in the
-    term signature below.
+    equal, opposite, or algebraically projective through a finite nonzero
+    binary64 factor whose coefficient reconstruction is bit-exact.  Moving a
+    general projective factor changes floating-point association, so runtime
+    parity remains a tolerance-checked numerical contract rather than a claim
+    of bit-identical materialized currents.  Recursive factor products fail
+    closed unless they are finite and exactly representable.  The current
+    contract keeps every field consumed by source, kernel, and propagator
+    evaluation; colour bookkeeping, ordering metadata, and ancestry bit
+    allocation are deliberately excluded. Ordering may differ only through
+    the exact model-certified input permutation and reflection factors
+    included in the term signature below.
 
     This recovers AmpliCol-style reflection fan-out, but also recognizes exact
     reuse across colour sectors and helicity subgraphs.  No approximate
@@ -264,10 +320,12 @@ def assign_recursive_current_evaluation_reuse(
         )
         left = current_equivalences[interaction.left_id]
         right = current_equivalences[interaction.right_id]
-        canonical_inputs, kernel_factor = _canonical_kernel_evaluation(
+        canonical_inputs, evaluation_factor = _canonical_interaction_evaluation(
             kernel_equivalence,
-            left.representative_id,
-            right.representative_id,
+            left_id=interaction.left_id,
+            right_id=interaction.right_id,
+            left=left,
+            right=right,
         )
         result = dag.currents[interaction.result_id]
         evaluation_key = (
@@ -285,11 +343,6 @@ def assign_recursive_current_evaluation_reuse(
         evaluation_group_id = evaluation_group_by_key.setdefault(
             evaluation_key,
             len(evaluation_group_by_key),
-        )
-        input_factor = _complex_weight_mul(left.factor, right.factor)
-        evaluation_factor = _complex_weight_mul(
-            kernel_factor,
-            input_factor,
         )
         interactions.append(
             replace(
@@ -322,8 +375,12 @@ def _derive_current_value_equivalences(
         dag.currents
     )
     source_representative_by_key: dict[tuple[object, ...], int] = {}
-    representative_by_expression: dict[
-        tuple[_CurrentContract, _CurrentTermVector], int
+    equivalence_by_expression: dict[
+        tuple[_CurrentContract, _CurrentTermVector], _CurrentValueEquivalence
+    ] = {}
+    projective_representatives_by_expression: dict[
+        tuple[_CurrentContract, _CurrentTermVector],
+        list[_ProjectiveExpressionRepresentative],
     ] = {}
 
     ordered_currents = sorted(
@@ -360,20 +417,14 @@ def _derive_current_value_equivalences(
             current_equivalences=current_equivalences,
             equivalence_by_kind=kernel_equivalences,
         )
-        expression_key = (contract, term_vector)
-        current_representative_id = representative_by_expression.get(expression_key)
-        factor: _ComplexWeight = (1.0, 0.0)
-        if current_representative_id is None:
-            opposite_key = (contract, _negate_term_vector(term_vector))
-            current_representative_id = representative_by_expression.get(opposite_key)
-            if current_representative_id is not None:
-                factor = (-1.0, 0.0)
-        if current_representative_id is None:
-            current_representative_id = current.id
-            representative_by_expression[expression_key] = current_representative_id
-        current_equivalences[current.id] = _CurrentValueEquivalence(
-            representative_id=current_representative_id,
-            factor=factor,
+        current_equivalences[current.id] = _classify_current_term_vector(
+            current_id=current.id,
+            contract=contract,
+            term_vector=term_vector,
+            equivalence_by_expression=equivalence_by_expression,
+            projective_representatives_by_expression=(
+                projective_representatives_by_expression
+            ),
         )
 
     if any(item is None for item in current_equivalences):
@@ -381,6 +432,320 @@ def _derive_current_value_equivalences(
             "current-value equivalence derivation left an unclassified current"
         )
     return tuple(item for item in current_equivalences if item is not None)
+
+
+def _classify_current_term_vector(
+    *,
+    current_id: int,
+    contract: _CurrentContract,
+    term_vector: _CurrentTermVector,
+    equivalence_by_expression: dict[
+        tuple[_CurrentContract, _CurrentTermVector], _CurrentValueEquivalence
+    ],
+    projective_representatives_by_expression: dict[
+        tuple[_CurrentContract, _CurrentTermVector],
+        list[_ProjectiveExpressionRepresentative],
+    ],
+) -> _CurrentValueEquivalence:
+    """Return the earliest exactly proven representative for one current.
+
+    Exact equality and sign reuse remain the fast paths.  More general
+    projective reuse is accepted only when a finite, nonzero binary64 factor
+    exists exactly and applying it reproduces every coefficient bit-for-bit.
+    """
+
+    identity = _CurrentValueEquivalence(current_id, (1.0, 0.0))
+    expression_key = (contract, term_vector)
+    if not term_vector:
+        exact_zero = equivalence_by_expression.get(expression_key)
+        if exact_zero is not None:
+            return exact_zero
+        equivalence_by_expression[expression_key] = identity
+        return identity
+    if not _term_vector_is_finite_nonzero(term_vector):
+        return identity
+
+    exact = equivalence_by_expression.get(expression_key)
+    if exact is not None:
+        return exact
+
+    opposite = equivalence_by_expression.get(
+        (contract, _negate_term_vector(term_vector))
+    )
+    if opposite is not None:
+        opposite_factor = (
+            _canonical_zero(-opposite.factor[0]),
+            _canonical_zero(-opposite.factor[1]),
+        )
+        representative_vector = _term_vector_divided_by_exact_factor(
+            term_vector,
+            opposite_factor,
+        )
+        if representative_vector is not None and _term_vector_scaled_exactly(
+            representative_vector,
+            opposite_factor,
+            term_vector,
+        ):
+            equivalence = _CurrentValueEquivalence(
+                opposite.representative_id,
+                opposite_factor,
+            )
+            equivalence_by_expression[expression_key] = equivalence
+            return equivalence
+
+    canonical = _canonicalize_projective_term_vector(term_vector)
+    if canonical is None:
+        equivalence_by_expression[expression_key] = identity
+        return identity
+
+    projective_key = (contract, canonical.term_vector)
+    representatives = projective_representatives_by_expression.get(projective_key)
+    matches: list[_CurrentValueEquivalence] = []
+    if representatives is not None:
+        for representative in representatives:
+            factor = _exact_representable_complex_ratio(
+                canonical.factor,
+                representative.normalization_factor,
+            )
+            if factor is None or not _term_vector_scaled_exactly(
+                representative.term_vector,
+                factor,
+                term_vector,
+            ):
+                continue
+            matches.append(
+                _CurrentValueEquivalence(
+                    representative.representative_id,
+                    factor,
+                )
+            )
+
+    if len(matches) == 1:
+        equivalence = matches[0]
+        equivalence_by_expression[expression_key] = equivalence
+        return equivalence
+
+    # Zero matches mean that the normalized lookup key was only a rounded
+    # collision.  Multiple matches make the concrete representative
+    # ambiguous.  Both cases fail closed by retaining this current.
+    projective_representatives_by_expression.setdefault(
+        projective_key,
+        [],
+    ).append(
+        _ProjectiveExpressionRepresentative(
+            representative_id=current_id,
+            term_vector=term_vector,
+            normalization_factor=canonical.factor,
+        )
+    )
+    equivalence_by_expression[expression_key] = identity
+    return identity
+
+
+def _canonicalize_projective_term_vector(
+    term_vector: _CurrentTermVector,
+) -> _CanonicalProjectiveTermVector | None:
+    """Normalize a finite nonzero vector for projective-class lookup.
+
+    The first canonical term is the deterministic pivot.  The normalized
+    binary64 coefficients are only an index: every accepted equivalence is
+    separately proven with an exactly representable factor and bit-exact
+    coefficient reconstruction.
+    """
+
+    if not term_vector or not _term_vector_is_finite_nonzero(term_vector):
+        return None
+    keys = tuple(key for key, _coefficient in term_vector)
+    if len(set(keys)) != len(keys) or keys != tuple(sorted(keys)):
+        return None
+
+    factor = _canonical_complex_weight(term_vector[0][1])
+    normalized_terms: list[tuple[_EvaluationKey, _ComplexWeight]] = []
+    for key, raw_coefficient in term_vector:
+        coefficient = _canonical_complex_weight(raw_coefficient)
+        normalized = _roundtrip_complex_ratio(coefficient, factor)
+        if normalized is None:
+            return None
+        normalized_terms.append((key, normalized))
+    return _CanonicalProjectiveTermVector(
+        term_vector=tuple(normalized_terms),
+        factor=factor,
+    )
+
+
+def _roundtrip_complex_ratio(
+    numerator: _ComplexWeight,
+    denominator: _ComplexWeight,
+) -> _ComplexWeight | None:
+    """Return a finite lookup ratio that reconstructs ``numerator`` exactly."""
+
+    if (
+        not _complex_weight_is_finite(numerator)
+        or not _complex_weight_is_finite(denominator)
+        or denominator == (0.0, 0.0)
+    ):
+        return None
+    try:
+        quotient = complex(*numerator) / complex(*denominator)
+    except (OverflowError, ZeroDivisionError):
+        return None
+    result = _canonical_complex_weight((quotient.real, quotient.imag))
+    if not _complex_weight_is_finite(result):
+        return None
+    reconstructed = _canonical_complex_weight(_complex_weight_mul(denominator, result))
+    if not _complex_weight_bits_equal(reconstructed, numerator):
+        return None
+    return result
+
+
+def _exact_representable_complex_ratio(
+    numerator: _ComplexWeight,
+    denominator: _ComplexWeight,
+) -> _ComplexWeight | None:
+    """Return the exact binary64 complex quotient, or fail closed.
+
+    ``Fraction`` is used only after two vectors collide on their inexpensive
+    normalized key.  It proves that both quotient components are exactly
+    representable rather than merely rounded values that happen to be close.
+    """
+
+    if (
+        not _complex_weight_is_finite(numerator)
+        or not _complex_weight_is_finite(denominator)
+        or denominator == (0.0, 0.0)
+    ):
+        return None
+    numerator_real = Fraction.from_float(numerator[0])
+    numerator_imag = Fraction.from_float(numerator[1])
+    denominator_real = Fraction.from_float(denominator[0])
+    denominator_imag = Fraction.from_float(denominator[1])
+    denominator_norm = (
+        denominator_real * denominator_real + denominator_imag * denominator_imag
+    )
+    if denominator_norm == 0:
+        return None
+    real = (
+        numerator_real * denominator_real + numerator_imag * denominator_imag
+    ) / denominator_norm
+    imaginary = (
+        numerator_imag * denominator_real - numerator_real * denominator_imag
+    ) / denominator_norm
+    real_f64 = _exact_fraction_as_f64(real)
+    imaginary_f64 = _exact_fraction_as_f64(imaginary)
+    if real_f64 is None or imaginary_f64 is None:
+        return None
+    factor = (real_f64, imaginary_f64)
+    reconstructed = _canonical_complex_weight(_complex_weight_mul(denominator, factor))
+    if not _complex_weight_bits_equal(
+        reconstructed,
+        _canonical_complex_weight(numerator),
+    ):
+        return None
+    return factor
+
+
+def _exact_representable_complex_product(
+    left: _ComplexWeight,
+    right: _ComplexWeight,
+) -> _ComplexWeight | None:
+    """Return the exact binary64 complex product, or fail closed."""
+
+    if not _complex_weight_is_finite(left) or not _complex_weight_is_finite(right):
+        return None
+    left_real = Fraction.from_float(left[0])
+    left_imaginary = Fraction.from_float(left[1])
+    right_real = Fraction.from_float(right[0])
+    right_imaginary = Fraction.from_float(right[1])
+    real = left_real * right_real - left_imaginary * right_imaginary
+    imaginary = left_real * right_imaginary + left_imaginary * right_real
+    real_f64 = _exact_fraction_as_f64(real)
+    imaginary_f64 = _exact_fraction_as_f64(imaginary)
+    if real_f64 is None or imaginary_f64 is None:
+        return None
+    product = (real_f64, imaginary_f64)
+    reconstructed = _canonical_complex_weight(_complex_weight_mul(left, right))
+    if not _complex_weight_bits_equal(reconstructed, product):
+        return None
+    return product
+
+
+def _exact_fraction_as_f64(value: Fraction) -> float | None:
+    try:
+        result = float(value)
+    except OverflowError:
+        return None
+    if not isfinite(result) or Fraction.from_float(result) != value:
+        return None
+    return _canonical_zero(result)
+
+
+def _term_vector_scaled_exactly(
+    representative: _CurrentTermVector,
+    factor: _ComplexWeight,
+    candidate: _CurrentTermVector,
+) -> bool:
+    if (
+        not _complex_weight_is_finite(factor)
+        or factor == (0.0, 0.0)
+        or len(representative) != len(candidate)
+    ):
+        return False
+    for (representative_key, representative_value), (
+        candidate_key,
+        candidate_value,
+    ) in zip(representative, candidate, strict=True):
+        if representative_key != candidate_key:
+            return False
+        scaled = _canonical_complex_weight(
+            _complex_weight_mul(factor, representative_value)
+        )
+        if not _complex_weight_bits_equal(
+            scaled,
+            _canonical_complex_weight(candidate_value),
+        ):
+            return False
+    return True
+
+
+def _term_vector_divided_by_exact_factor(
+    candidate: _CurrentTermVector,
+    factor: _ComplexWeight,
+) -> _CurrentTermVector | None:
+    """Recover a representative vector only for the sign fast path."""
+
+    if factor not in ((1.0, 0.0), (-1.0, 0.0)):
+        return None
+    return tuple(
+        (
+            key,
+            value
+            if factor == (1.0, 0.0)
+            else (_canonical_zero(-value[0]), _canonical_zero(-value[1])),
+        )
+        for key, value in candidate
+    )
+
+
+def _term_vector_is_finite_nonzero(term_vector: _CurrentTermVector) -> bool:
+    return bool(term_vector) and all(
+        coefficient != (0.0, 0.0) and _complex_weight_is_finite(coefficient)
+        for _key, coefficient in term_vector
+    )
+
+
+def _complex_weight_is_finite(value: _ComplexWeight) -> bool:
+    return isfinite(value[0]) and isfinite(value[1])
+
+
+def _canonical_complex_weight(value: _ComplexWeight) -> _ComplexWeight:
+    return (_canonical_zero(value[0]), _canonical_zero(value[1]))
+
+
+def _complex_weight_bits_equal(
+    left: _ComplexWeight,
+    right: _ComplexWeight,
+) -> bool:
+    return left[0].hex() == right[0].hex() and left[1].hex() == right[1].hex()
 
 
 def _current_evaluation_contract(current: CurrentNode) -> _CurrentContract:
@@ -425,10 +790,12 @@ def _current_term_vector(
             raise ValueError(
                 "current-value equivalence requires parents from an earlier subset"
             )
-        canonical_inputs, kernel_factor = _canonical_kernel_evaluation(
+        canonical_inputs, evaluation_factor = _canonical_interaction_evaluation(
             kernel_equivalence,
-            left.representative_id,
-            right.representative_id,
+            left_id=interaction.left_id,
+            right_id=interaction.right_id,
+            left=left,
+            right=right,
         )
         term_key = (
             kernel_equivalence.class_id,
@@ -442,10 +809,9 @@ def _current_term_vector(
                 coupling=interaction.coupling,
             ),
         )
-        input_factor = _complex_weight_mul(left.factor, right.factor)
         coefficient = _complex_weight_mul(
             interaction.color_weight,
-            _complex_weight_mul(kernel_factor, input_factor),
+            evaluation_factor,
         )
         coefficients_by_key[term_key].append(coefficient)
 

@@ -2816,6 +2816,7 @@ struct ExecutionRuntime {
 
 #[derive(Clone)]
 struct PhysicsRuntime {
+    binding_id: u64,
     manifest: ProcessPhysicsV1,
     helicity_index_by_id: BTreeMap<String, usize>,
     color_index_by_id: BTreeMap<String, usize>,
@@ -3772,6 +3773,61 @@ struct RoutedReductionScratch {
     direct_totals: Vec<f64>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MaterializedHelicityDirectTotalPlanKey {
+    physics_binding_id: u64,
+    helicity_index: usize,
+    root_factor_bits: Vec<(usize, [u64; 2])>,
+    color_indices: Vec<usize>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MaterializedHelicityDirectTotalRoot {
+    output_index: usize,
+    factor: Complex<f64>,
+}
+
+#[derive(Clone, Debug)]
+struct MaterializedHelicityDirectTotalGroup {
+    root_range: std::ops::Range<usize>,
+    all_sector_weight: f64,
+    identity_output_index: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MaterializedHelicityDirectTotalColorGroup {
+    group_index: usize,
+    weight: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MaterializedHelicityDirectTotalContractionEntry {
+    left_group_index: Option<usize>,
+    right_group_index: Option<usize>,
+    weight_re: f64,
+    weight_im: f64,
+    symmetry_factor: f64,
+}
+
+#[derive(Clone, Debug)]
+enum MaterializedHelicityDirectTotalReduction {
+    Lc {
+        color_group_ranges: Vec<std::ops::Range<usize>>,
+        color_groups: Vec<MaterializedHelicityDirectTotalColorGroup>,
+    },
+    Contracted {
+        entries: Vec<MaterializedHelicityDirectTotalContractionEntry>,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct MaterializedHelicityDirectTotalPlan {
+    key: MaterializedHelicityDirectTotalPlanKey,
+    roots: Vec<MaterializedHelicityDirectTotalRoot>,
+    groups: Vec<MaterializedHelicityDirectTotalGroup>,
+    reduction: MaterializedHelicityDirectTotalReduction,
+}
+
 struct AmplitudeRuntime {
     output_length: usize,
     raw_sum_weights: Vec<f64>,
@@ -3788,6 +3844,9 @@ struct AmplitudeRuntime {
     resolved_source_row_scratch_f64: Vec<f64>,
     resolved_target_row_scratch_f64: Vec<f64>,
     routed_reduction_scratch: RoutedReductionScratch,
+    materialized_helicity_direct_total_plans: Vec<MaterializedHelicityDirectTotalPlan>,
+    materialized_helicity_direct_total_plan_capacity: usize,
+    materialized_helicity_direct_total_next_replacement: usize,
     evaluator_output_order: Option<Vec<usize>>,
     evaluator: Option<EvaluatorGroup>,
 }

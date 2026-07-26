@@ -302,6 +302,9 @@ impl AmplitudeRuntime {
             resolved_source_row_scratch_f64: Vec::new(),
             resolved_target_row_scratch_f64: Vec::new(),
             routed_reduction_scratch: RoutedReductionScratch::default(),
+            materialized_helicity_direct_total_plans: Vec::new(),
+            materialized_helicity_direct_total_plan_capacity: 0,
+            materialized_helicity_direct_total_next_replacement: 0,
             evaluator_output_order,
             evaluator: None,
         })
@@ -2098,17 +2101,205 @@ impl AmplitudeRuntime {
         )
     }
 
-    /// Plane-native counterpart of the materialized-helicity totals accumulator.
-    #[allow(dead_code)]
+    /// Cold-bind the numeric materialized-helicity totals reducer for one
+    /// concrete physics/amplitude recipient.
+    ///
+    /// Parent-closure lanes deliberately pass the parent's physics metadata to
+    /// a child amplitude runtime.  The binding key therefore includes the
+    /// actual `PhysicsRuntime`, rather than assuming the amplitude's owning
+    /// execution runtime supplies the reduction metadata.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn reduce_planes_f64_for_materialized_helicity_add_into(
+    pub(crate) fn bind_materialized_helicity_direct_total_plan(
         &mut self,
-        amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
         physics: &PhysicsRuntime,
-        normalization_factor: f64,
         helicity_index: usize,
         root_factors: &[Option<Complex<f64>>],
         selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<usize> {
+        if root_factors.len() != self.output_length {
+            return Err(RusticolError::integrity(format!(
+                "helicity recurrence route table has {} roots, expected {}",
+                root_factors.len(),
+                self.output_length
+            )));
+        }
+        if helicity_index >= physics.manifest.helicities.len() {
+            return Err(RusticolError::selector(format!(
+                "runtime helicity index {helicity_index} is out of range"
+            )));
+        }
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        let root_factor_bits = root_factors
+            .iter()
+            .enumerate()
+            .filter_map(|(index, factor)| {
+                factor.map(|factor| (index, [factor.re.to_bits(), factor.im.to_bits()]))
+            })
+            .collect::<Vec<_>>();
+        let key = MaterializedHelicityDirectTotalPlanKey {
+            physics_binding_id: physics.binding_id,
+            helicity_index,
+            root_factor_bits,
+            color_indices,
+        };
+        // Common 384-helicity artifacts fit every schedule; 768-helicity
+        // artifacts have at most 384 non-structural/global-flip primaries and
+        // therefore fit as well. Parent-closure lanes use 192 schedules for the
+        // qq_Z6g artifact. Arbitrary dynamic selector/root-factor combinations
+        // remain capped instead of growing the runtime cache indefinitely.
+        let artifact_plan_capacity = physics.manifest.helicities.len().clamp(16, 512);
+        self.materialized_helicity_direct_total_plan_capacity = self
+            .materialized_helicity_direct_total_plan_capacity
+            .max(artifact_plan_capacity);
+        if let Some(index) = self
+            .materialized_helicity_direct_total_plans
+            .iter()
+            .position(|plan| plan.key == key)
+        {
+            return Ok(index);
+        }
+
+        let mut roots = Vec::new();
+        let mut groups = Vec::new();
+        let mut bound_group_by_raw_group = vec![None; self.raw_sum_groups.len()];
+        let mut color_weights_by_group = Vec::new();
+        for (raw_group_index, group) in self.raw_sum_groups.iter().enumerate() {
+            let numeric = physics
+                .numeric_reduction_by_group_id
+                .get(&group.id)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "resolved metadata is missing coherent group {}",
+                        group.id
+                    ))
+                })?;
+            if !numeric.contains_helicity(helicity_index) {
+                continue;
+            }
+            let root_start = roots.len();
+            for output_index in &group.indices {
+                let factor = root_factors.get(*output_index).ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "coherent group {} references missing amplitude root {output_index}",
+                        group.id
+                    ))
+                })?;
+                if let Some(factor) = factor {
+                    roots.push(MaterializedHelicityDirectTotalRoot {
+                        output_index: *output_index,
+                        factor: *factor,
+                    });
+                }
+            }
+            if roots.len() == root_start {
+                continue;
+            }
+            let bound_group_index = groups.len();
+            bound_group_by_raw_group[raw_group_index] = Some(bound_group_index);
+            let root_range = root_start..roots.len();
+            let identity_output_index = match &roots[root_range.clone()] {
+                [root]
+                    if root.factor.re.to_bits() == 1.0f64.to_bits()
+                        && root.factor.im.to_bits() == 0.0f64.to_bits() =>
+                {
+                    Some(root.output_index)
+                }
+                _ => None,
+            };
+            groups.push(MaterializedHelicityDirectTotalGroup {
+                root_range,
+                all_sector_weight: group.all_sector_weight,
+                identity_output_index,
+            });
+            color_weights_by_group.push(numeric.normalized_color_weights.clone());
+        }
+
+        let reduction = if let Some(contraction) = self.color_contraction.as_ref() {
+            if !physics.has_contracted_color_axis() || physics.manifest.color_components.len() != 1
+            {
+                return Err(RusticolError::invalid_argument(
+                    "materialized-helicity color contraction requires one contracted color component",
+                ));
+            }
+            if self.raw_sum_groups.len() != contraction.group_count {
+                return Err(RusticolError::invalid_argument(
+                    "colour contraction group count does not match coherent groups",
+                ));
+            }
+            if selected_color_ids.is_some() && key.color_indices.as_slice() != [0] {
+                return Err(RusticolError::selector(
+                    "materialized-helicity color selection does not match the contracted axis",
+                ));
+            }
+            let entries = contraction
+                .logical_entries()
+                .map(|entry| MaterializedHelicityDirectTotalContractionEntry {
+                    left_group_index: bound_group_by_raw_group[entry.left_group_index],
+                    right_group_index: bound_group_by_raw_group[entry.right_group_index],
+                    weight_re: entry.weight_re,
+                    weight_im: entry.weight_im,
+                    symmetry_factor: entry.symmetry_factor,
+                })
+                .collect();
+            MaterializedHelicityDirectTotalReduction::Contracted { entries }
+        } else {
+            if !self.has_coherent_groups {
+                return Err(RusticolError::invalid_argument(
+                    "materialized helicity reduction requires coherent amplitude-group metadata",
+                ));
+            }
+            let mut color_group_ranges = Vec::with_capacity(key.color_indices.len());
+            let mut color_groups = Vec::new();
+            for color_index in &key.color_indices {
+                let start = color_groups.len();
+                for (group_index, color_weights) in color_weights_by_group.iter().enumerate() {
+                    for (_, weight) in color_weights
+                        .iter()
+                        .filter(|(candidate, _)| candidate == color_index)
+                    {
+                        color_groups.push(MaterializedHelicityDirectTotalColorGroup {
+                            group_index,
+                            weight: *weight,
+                        });
+                    }
+                }
+                color_group_ranges.push(start..color_groups.len());
+            }
+            MaterializedHelicityDirectTotalReduction::Lc {
+                color_group_ranges,
+                color_groups,
+            }
+        };
+        let plan = MaterializedHelicityDirectTotalPlan {
+            key,
+            roots,
+            groups,
+            reduction,
+        };
+        let index = if self.materialized_helicity_direct_total_plans.len()
+            < self.materialized_helicity_direct_total_plan_capacity
+        {
+            let index = self.materialized_helicity_direct_total_plans.len();
+            self.materialized_helicity_direct_total_plans.push(plan);
+            index
+        } else {
+            let index = self.materialized_helicity_direct_total_next_replacement
+                % self.materialized_helicity_direct_total_plans.len();
+            self.materialized_helicity_direct_total_plans[index] = plan;
+            self.materialized_helicity_direct_total_next_replacement =
+                (index + 1) % self.materialized_helicity_direct_total_plans.len();
+            index
+        };
+        Ok(index)
+    }
+
+    /// Plane-native materialized-helicity totals using a cold-bound numeric
+    /// reduction plan.
+    pub(crate) fn reduce_planes_f64_for_materialized_helicity_plan_add_into(
+        &mut self,
+        amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
+        normalization_factor: f64,
+        plan_index: usize,
         output: &mut [f64],
     ) -> RusticolResult<()> {
         let plane_count = usize::try_from(amplitudes.component_count()?)
@@ -2126,204 +2317,170 @@ impl AmplitudeRuntime {
                 output.len()
             )));
         }
-        if root_factors.len() != self.output_length {
-            return Err(RusticolError::integrity(format!(
-                "helicity recurrence route table has {} roots, expected {}",
-                root_factors.len(),
-                self.output_length
-            )));
-        }
-        if helicity_index >= physics.manifest.helicities.len() {
-            return Err(RusticolError::selector(format!(
-                "runtime helicity index {helicity_index} is out of range"
-            )));
-        }
+        let plan = self
+            .materialized_helicity_direct_total_plans
+            .get(plan_index)
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "materialized-helicity direct-total plan {plan_index} is not bound"
+                ))
+            })?;
         let scratch = &mut self.routed_reduction_scratch;
+        scratch.direct_group_re.resize(batch_size, 0.0);
+        scratch.direct_group_im.resize(batch_size, 0.0);
+        scratch.direct_totals.resize(batch_size, 0.0);
 
-        if let Some(contraction) = self.color_contraction.as_mut() {
-            if !physics.has_contracted_color_axis() || physics.manifest.color_components.len() != 1
-            {
-                return Err(RusticolError::invalid_argument(
-                    "materialized-helicity color contraction requires one contracted color component",
-                ));
+        match &plan.reduction {
+            MaterializedHelicityDirectTotalReduction::Lc {
+                color_group_ranges,
+                color_groups,
+            } => {
+                for color_group_range in color_group_ranges {
+                    scratch.direct_totals.fill(0.0);
+                    for color_group in &color_groups[color_group_range.clone()] {
+                        let group = &plan.groups[color_group.group_index];
+                        if let Some(output_index) = group.identity_output_index {
+                            let (plane_re, plane_im) = amplitudes.plane_unchecked(output_index);
+                            for point in 0..batch_size {
+                                let re = plane_re[point];
+                                let im = plane_im[point];
+                                let norm = if re.is_finite() && im.is_finite() {
+                                    re * re + im * im
+                                } else {
+                                    let value = c64(re, im) * c64(1.0, 0.0);
+                                    value.re * value.re + value.im * value.im
+                                };
+                                let contribution =
+                                    normalization_factor * group.all_sector_weight * norm;
+                                scratch.direct_totals[point] += contribution * color_group.weight;
+                            }
+                            continue;
+                        }
+                        scratch.direct_group_re.fill(0.0);
+                        scratch.direct_group_im.fill(0.0);
+                        for root in &plan.roots[group.root_range.clone()] {
+                            let (plane_re, plane_im) =
+                                amplitudes.plane_unchecked(root.output_index);
+                            for point in 0..batch_size {
+                                let value = c64(plane_re[point], plane_im[point]) * root.factor;
+                                scratch.direct_group_re[point] += value.re;
+                                scratch.direct_group_im[point] += value.im;
+                            }
+                        }
+                        for point in 0..batch_size {
+                            let re = scratch.direct_group_re[point];
+                            let im = scratch.direct_group_im[point];
+                            let contribution = normalization_factor
+                                * group.all_sector_weight
+                                * (re * re + im * im);
+                            scratch.direct_totals[point] += contribution * color_group.weight;
+                        }
+                    }
+                    for (target, total) in output.iter_mut().zip(&scratch.direct_totals) {
+                        *target += *total;
+                    }
+                }
             }
-            if self.raw_sum_groups.len() != contraction.group_count {
-                return Err(RusticolError::invalid_argument(
-                    "colour contraction group count does not match coherent groups",
-                ));
-            }
-            if let Some(ids) = selected_color_ids
-                && (ids.len() != 1
-                    || !ids
-                        .iter()
-                        .all(|id| physics.color_index_by_id.contains_key(id)))
-            {
-                return Err(RusticolError::selector(
-                    "materialized-helicity color selection does not match the contracted axis",
-                ));
-            }
-            let group_scalar_count =
-                contraction
-                    .group_count
-                    .checked_mul(batch_size)
-                    .ok_or_else(|| {
+            MaterializedHelicityDirectTotalReduction::Contracted { entries } => {
+                let group_scalar_count =
+                    plan.groups.len().checked_mul(batch_size).ok_or_else(|| {
                         RusticolError::invalid_argument(
                             "materialized-helicity group scratch shape overflows usize",
                         )
                     })?;
-            scratch.direct_group_re.resize(group_scalar_count, 0.0);
-            scratch.direct_group_re.fill(0.0);
-            scratch.direct_group_im.resize(group_scalar_count, 0.0);
-            scratch.direct_group_im.fill(0.0);
-            for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
-                let reduction = physics
-                    .numeric_reduction_by_group_id
-                    .get(&group.id)
-                    .ok_or_else(|| {
-                        RusticolError::invalid_argument(format!(
-                            "resolved metadata is missing coherent group {}",
-                            group.id
-                        ))
-                    })?;
-                let active = reduction.contains_helicity(helicity_index)
-                    && group
-                        .indices
-                        .iter()
-                        .any(|index| root_factors[*index].is_some());
-                if !active {
-                    continue;
-                }
-                let group_start = group_index * batch_size;
-                for index in &group.indices {
-                    let Some(factor) = root_factors[*index] else {
+                scratch.direct_group_re.resize(group_scalar_count, 0.0);
+                scratch.direct_group_re.fill(0.0);
+                scratch.direct_group_im.resize(group_scalar_count, 0.0);
+                scratch.direct_group_im.fill(0.0);
+                for (group_index, group) in plan.groups.iter().enumerate() {
+                    let group_start = group_index * batch_size;
+                    if let Some(output_index) = group.identity_output_index {
+                        let (plane_re, plane_im) = amplitudes.plane_unchecked(output_index);
+                        for point in 0..batch_size {
+                            let re = plane_re[point];
+                            let im = plane_im[point];
+                            if re.is_finite() && im.is_finite() {
+                                scratch.direct_group_re[group_start + point] = re;
+                                scratch.direct_group_im[group_start + point] = im;
+                            } else {
+                                let value = c64(re, im) * c64(1.0, 0.0);
+                                scratch.direct_group_re[group_start + point] = value.re;
+                                scratch.direct_group_im[group_start + point] = value.im;
+                            }
+                        }
                         continue;
-                    };
-                    let (plane_re, plane_im) = amplitudes.plane_unchecked(*index);
-                    for point in 0..batch_size {
-                        let value = c64(plane_re[point], plane_im[point]) * factor;
-                        scratch.direct_group_re[group_start + point] += value.re;
-                        scratch.direct_group_im[group_start + point] += value.im;
+                    }
+                    for root in &plan.roots[group.root_range.clone()] {
+                        let (plane_re, plane_im) = amplitudes.plane_unchecked(root.output_index);
+                        for point in 0..batch_size {
+                            let value = c64(plane_re[point], plane_im[point]) * root.factor;
+                            scratch.direct_group_re[group_start + point] += value.re;
+                            scratch.direct_group_im[group_start + point] += value.im;
+                        }
                     }
                 }
-            }
-            scratch.direct_totals.resize(batch_size, 0.0);
-            scratch.direct_totals.fill(0.0);
-            for entry in contraction.logical_entries() {
-                let left_start = entry.left_group_index * batch_size;
-                let right_start = entry.right_group_index * batch_size;
-                for point in 0..batch_size {
-                    let left = c64(
-                        scratch.direct_group_re[left_start + point],
-                        scratch.direct_group_im[left_start + point],
-                    );
-                    let right = c64(
-                        scratch.direct_group_re[right_start + point],
-                        scratch.direct_group_im[right_start + point],
-                    );
-                    let product = left * right.conj();
-                    scratch.direct_totals[point] += normalization_factor
-                        * entry.symmetry_factor
-                        * (entry.weight_re * product.re - entry.weight_im * product.im);
+                scratch.direct_totals.fill(0.0);
+                for entry in entries {
+                    for point in 0..batch_size {
+                        let left = entry
+                            .left_group_index
+                            .map(|group_index| {
+                                let start = group_index * batch_size;
+                                c64(
+                                    scratch.direct_group_re[start + point],
+                                    scratch.direct_group_im[start + point],
+                                )
+                            })
+                            .unwrap_or_else(|| c64(0.0, 0.0));
+                        let right = entry
+                            .right_group_index
+                            .map(|group_index| {
+                                let start = group_index * batch_size;
+                                c64(
+                                    scratch.direct_group_re[start + point],
+                                    scratch.direct_group_im[start + point],
+                                )
+                            })
+                            .unwrap_or_else(|| c64(0.0, 0.0));
+                        let product = left * right.conj();
+                        scratch.direct_totals[point] += normalization_factor
+                            * entry.symmetry_factor
+                            * (entry.weight_re * product.re - entry.weight_im * product.im);
+                    }
                 }
-            }
-            for (target, total) in output.iter_mut().zip(&scratch.direct_totals) {
-                *target += *total;
-            }
-            return Ok(());
-        }
-        if !self.has_coherent_groups {
-            return Err(RusticolError::invalid_argument(
-                "materialized helicity reduction requires coherent amplitude-group metadata",
-            ));
-        }
-
-        let color_count = physics.manifest.color_components.len();
-        physics.selected_color_indices_into(selected_color_ids, &mut scratch.color_indices)?;
-        scratch.selected_member_weights.clear();
-        scratch.selected_member_weight_ranges.clear();
-        for group in &self.raw_sum_groups {
-            let start = scratch.selected_member_weights.len();
-            let reduction = physics
-                .numeric_reduction_by_group_id
-                .get(&group.id)
-                .ok_or_else(|| {
-                    RusticolError::invalid_argument(format!(
-                        "resolved metadata is missing coherent group {}",
-                        group.id
-                    ))
-                })?;
-            if !reduction.contains_helicity(helicity_index)
-                || !group
-                    .indices
-                    .iter()
-                    .any(|index| root_factors[*index].is_some())
-            {
-                scratch.selected_member_weight_ranges.push(start..start);
-                continue;
-            }
-            for (index, weight) in &reduction.normalized_color_weights {
-                scratch.selected_member_weights.push((0, *index, *weight));
-            }
-            let stop = scratch.selected_member_weights.len();
-            scratch.selected_member_weight_ranges.push(start..stop);
-        }
-
-        let color_scalar_count = color_count.checked_mul(batch_size).ok_or_else(|| {
-            RusticolError::invalid_argument(
-                "materialized-helicity color scratch shape overflows usize",
-            )
-        })?;
-        scratch.direct_group_re.resize(batch_size, 0.0);
-        scratch.direct_group_im.resize(batch_size, 0.0);
-        scratch.direct_totals.resize(batch_size, 0.0);
-        scratch
-            .direct_source_components
-            .resize(color_scalar_count, 0.0);
-        scratch.direct_source_components.fill(0.0);
-        for (group, color_weight_range) in self
-            .raw_sum_groups
-            .iter()
-            .zip(&scratch.selected_member_weight_ranges)
-        {
-            if color_weight_range.is_empty() {
-                continue;
-            }
-            scratch.direct_group_re.fill(0.0);
-            scratch.direct_group_im.fill(0.0);
-            for index in &group.indices {
-                let Some(factor) = root_factors[*index] else {
-                    continue;
-                };
-                let (plane_re, plane_im) = amplitudes.plane_unchecked(*index);
-                for point in 0..batch_size {
-                    let value = c64(plane_re[point], plane_im[point]) * factor;
-                    scratch.direct_group_re[point] += value.re;
-                    scratch.direct_group_im[point] += value.im;
+                for (target, total) in output.iter_mut().zip(&scratch.direct_totals) {
+                    *target += *total;
                 }
-            }
-            for point in 0..batch_size {
-                let re = scratch.direct_group_re[point];
-                let im = scratch.direct_group_im[point];
-                scratch.direct_totals[point] =
-                    normalization_factor * group.all_sector_weight * (re * re + im * im);
-            }
-            for (_, color_index, weight) in
-                &scratch.selected_member_weights[color_weight_range.clone()]
-            {
-                let color_start = *color_index * batch_size;
-                for point in 0..batch_size {
-                    scratch.direct_source_components[color_start + point] +=
-                        scratch.direct_totals[point] * *weight;
-                }
-            }
-        }
-        for color_index in &scratch.color_indices {
-            let color_start = *color_index * batch_size;
-            for (point, target) in output.iter_mut().enumerate() {
-                *target += scratch.direct_source_components[color_start + point];
             }
         }
         Ok(())
+    }
+
+    /// Plane-native counterpart of the materialized-helicity totals accumulator.
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn reduce_planes_f64_for_materialized_helicity_add_into(
+        &mut self,
+        amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        helicity_index: usize,
+        root_factors: &[Option<Complex<f64>>],
+        selected_color_ids: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let plan_index = self.bind_materialized_helicity_direct_total_plan(
+            physics,
+            helicity_index,
+            root_factors,
+            selected_color_ids,
+        )?;
+        self.reduce_planes_f64_for_materialized_helicity_plan_add_into(
+            amplitudes,
+            normalization_factor,
+            plan_index,
+            output,
+        )
     }
 
     /// Route one materialized-helicity tile into persistent public replay
