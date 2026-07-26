@@ -107,16 +107,17 @@ through six and two destinations at width seven. It yields 26 overwrite and
 finalizer classes. The corrected slice is therefore structurally compact and
 fits every hard arity, output, kernel-count, and source-size bound.
 
-The immutable profitability gate nevertheless does not pass. The only
-non-tautological cost-weighted denominator is every materialized interaction
-occurrence whose canonical prepared-kernel motif repeats in the active
-compiled schedule. All five prepared motifs repeat, so the denominator is all
-203 interactions. The vector--Weyl slice covers 98, or `48.276%`, four
-occurrences short of the required 102:
+The immutable profitability gate nevertheless cannot pass. The original plan
+and its pre-census acceptance implementation (`105c00e`) define the
+denominator as the set of unique, active, repeated
+`evaluation_group_id` values in the materialized executable schedule. All 203
+materialized IDs have fanout one, so that authoritative denominator is empty
+and its coverage ratio is undefined. The acceptance contract explicitly
+rejects an empty denominator; it is not a vacuous 100% pass.
 
 The captured census JSON is
 `COMPILED_DAG_O3_NON_UNION_MICROKERNEL_CENSUS.json`, with SHA-256
-`b862ba91fa7789d8c38eb9ec72f3d484f533a39a5ddd5f1bb53c28bfcc432c9e`.
+`cf9c31587c0ecd2519e7c355adc346f67b0125bc0705a0d6dbaddda65deb00ce`.
 It was produced from the clean generation worktree by constructing the
 existing unit-test `u u~ > Z g g g g g g` evaluator process and calling
 the materialized-stage and prepared-kernel catalog builders directly; no
@@ -124,23 +125,34 @@ pyAmpliCol native rebuild participated in the structural census.
 
 | Census quantity | Required | Observed |
 |---|---:|---:|
-| Active repeated prepared-kernel occurrences | exact denominator | 203 |
+| Active materialized evaluation-group IDs | diagnostic | 203 |
+| Repeated evaluation-group IDs | non-empty denominator | 0 |
 | Wholly owned vector--Weyl destinations | diagnostic | 26 / 55 (47.273%) |
-| Eligible contribution occurrences | at least 50% | 98 / 203 (48.276%) |
+| Prepared-motif occurrence proxy | diagnostic | 98 / 203 (48.276%) |
+| Prepared-motif identity proxy | diagnostic | 2 / 5 (40.000%) |
 | Canonical vertex kernel identities | at most 8 | 2 |
 | Maximum complex input/output width | at most 16 / 2 | 6 / 2 |
 | Projected DirectTable/replaced code | at most 25% | 11,584 / 92,536 (12.518%) |
 | Unique/occurrence-expanded vertex source | diagnostic | 3,266 / 160,034 (2.041%) |
 | Projected semantic rows | at most 4 MiB | below the cap |
 
-Alternative denominators do not provide a defensible pass. Counting canonical
-identities yields `2/5 = 40%`; counting all current destinations yields
-`26/55 = 47.273%`; counting only multi-contribution occurrences yields
-`94/189 = 49.735%`. Restricting the denominator to vector--Weyl contributions
-would report `98/98`, but merely defines the selected family as its own
-denominator and weakens the explicit pre-code gate. Literal
-`evaluation_group_id` fanout is also unusable: all 203 materialized IDs have
-fanout one.
+No non-tautological proxy supplies an authorized pass. Counting repeated
+prepared-kernel occurrences gives `98/203 = 48.276%`; counting canonical
+prepared-kernel identities gives `2/5 = 40%`; counting all current
+destinations gives `26/55 = 47.273%`; and counting only multi-contribution
+occurrences gives `94/189 = 49.735%`. Restricting the denominator to
+vector--Weyl contributions reports `98/98`, but merely defines the selected
+family as its own denominator and weakens the explicit pre-code gate.
+
+The smallest structural extension is five singleton four-component gluon
+currents, using prepared three-vector kernel 4 and vector propagator 37. It
+would move the occurrence proxy to `103/203 = 50.739%`, use 1,440 bytes of
+semantic rows, and stay under eight executable kernel identities. It is,
+however, exactly the four-component three-vector extension that the approved
+plan defers until the vector--Weyl candidate first measures a 5--10% gain. It
+also requires four complex outputs, beyond the initial two-output bound.
+Selecting one particular four-contribution current would reach 102
+occurrences but would violate structural, process-independent eligibility.
 
 A standalone Rust probe compiled four patchless SymJIT O3 source classes
 (propagated/unpropagated crossed with chirality) using only DirectTable

@@ -20,15 +20,14 @@
     "amplitude_root_count": 2
   },
   "profitability_denominator": {
-    "kind": "global-occurrences-with-repeated-canonical-prepared-kernel-motif",
-    "count": 203,
-    "rationale": "Every one of the five canonical prepared-kernel motifs occurs more than once. Counting global materialized occurrences preserves the cost weighting of the active compiled schedule and does not restrict the denominator to the family selected for optimization.",
-    "forbidden_alternatives": [
-      "proof-only helicity recurrence nodes",
-      "literal evaluation_group_id fanout",
-      "selected vector-Weyl family only",
-      "unweighted destination identities"
-    ]
+    "contract": "materialized-executable-schedule-repeated-evaluation-groups-v1",
+    "weighting": "unique-evaluation-group-identity",
+    "active_evaluation_group_id_count": 203,
+    "active_repeated_evaluation_group_id_count": 0,
+    "eligible_repeated_evaluation_group_id_count": 0,
+    "coverage": null,
+    "status": "undefined-empty-denominator",
+    "provenance": "The original plan and its pre-census acceptance implementation 105c00e define this identity-weighted contract. Every materialized evaluation_group_id has fanout one."
   },
   "vector_weyl_slice": {
     "complete_current_ownership": true,
@@ -142,12 +141,11 @@
   },
   "proceed_gates": {
     "coverage": {
+      "denominator_contract": "materialized-executable-schedule-repeated-evaluation-groups-v1",
       "required_basis_points": 5000,
-      "observed_numerator": 98,
-      "observed_denominator": 203,
-      "observed_basis_points": 4828,
-      "minimum_passing_occurrences": 102,
-      "shortfall_occurrences": 4,
+      "observed_numerator": 0,
+      "observed_denominator": 0,
+      "observed_basis_points": null,
       "passed": false
     },
     "projected_source_compression": {
@@ -180,6 +178,14 @@
   },
   "denominator_sensitivity": [
     {
+      "kind": "global-repeated-prepared-kernel-occurrences",
+      "numerator": 98,
+      "denominator": 203,
+      "basis_points": 4828,
+      "accepted": false,
+      "reason": "useful cost-weighted proxy, but not the original evaluation-group identity contract"
+    },
+    {
       "kind": "global-repeated-prepared-kernel-identities",
       "numerator": 2,
       "denominator": 5,
@@ -209,13 +215,39 @@
       "reason": "tautological family-restricted denominator"
     },
     {
-      "kind": "literal-repeated-evaluation-group-id",
+      "kind": "materialized-repeated-evaluation-group-identities",
       "numerator": 0,
       "denominator": 0,
-      "accepted": false,
-      "reason": "all 203 materialized evaluation_group_id values have fanout one"
+      "accepted": true,
+      "result": "undefined",
+      "reason": "authoritative contract; all 203 materialized evaluation_group_id values have fanout one"
     }
   ],
+  "smallest_structural_scope_extension": {
+    "authorized_by_current_plan": false,
+    "reason": "This is exactly the four-component three-vector family deferred until after a 5-10% first-slice benchmark.",
+    "current_ids": [
+      15,
+      17,
+      19,
+      21,
+      23
+    ],
+    "additional_interaction_occurrences": 5,
+    "occurrence_proxy_after_extension": {
+      "numerator": 103,
+      "denominator": 203,
+      "basis_points": 5074
+    },
+    "vertex_prepared_kernel_id": 4,
+    "vertex_complex_input_count": 16,
+    "vertex_complex_output_count": 4,
+    "finalizer_prepared_kernel_id": 37,
+    "finalizer_complex_input_count": 8,
+    "finalizer_complex_output_count": 4,
+    "estimated_semantic_row_bytes": 1440,
+    "descriptor_bytes": 776
+  },
   "symjit_observability": {
     "pinned_revision": "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2",
     "direct_table_exact_code_shape_available": true,
@@ -224,7 +256,7 @@
   },
   "decision": {
     "proceed": false,
-    "reason": "mandatory-global-repeated-active-group-coverage-below-50-percent",
+    "reason": "mandatory-repeated-evaluation-group-denominator-is-empty",
     "implementation_started": false,
     "candidate_may_land": false
   }
