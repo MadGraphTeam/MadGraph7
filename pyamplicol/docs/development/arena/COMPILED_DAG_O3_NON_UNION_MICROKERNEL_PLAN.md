@@ -38,6 +38,49 @@ only. Before candidate performance is judged, a fresh immutable baseline
 artifact and runtime identity must be generated from the source revision
 above and recorded in this document.
 
+### Fresh `f4606fa` baseline
+
+The first exact-source baseline capture was generated on 2026-07-26 from the
+clean source revision above. Its authenticated identities are:
+
+- candidate native build-input SHA-256:
+  `e84ab5ea52d1f523c5338e0adb7178fdb4a8cb8dbd41343fe701809ea2a84873`;
+- native extension SHA-256:
+  `f71d40debcb612f34da2e038a4b251a66ef010a27026f90946dee59f37d2ae7b`;
+- artifact ID:
+  `bce2e798113ebe0ff2677c96b0abcfffc65bd58bec065d135747cbc7862a1d8b`;
+- artifact semantic-identity SHA-256:
+  `403cec4e225634be1660d61a821d4ca0052181ae193ad2841b6ae37ffb836caf`;
+- artifact tree SHA-256:
+  `38ab1a323e22393e263b5ce01937d3e0614e8e0021fbc2931445f977dc503f0a`.
+
+Generation took `10.979621 s`, reported a `399,654,912` byte process high-water
+mark, and produced a `23,608,791` byte artifact, including a `7,801,720` byte
+evaluator-state payload. The executable materialized schedule contains seven
+current stages, 55 non-source current destinations, and 203 active
+interactions. Its destination dimensions are 26 two-component, 15
+four-component, and 14 six-component currents. The retained
+1,425-current/8,338-interaction helicity recurrence structure is proof-only
+metadata and is forbidden as the profitability denominator.
+
+The first seven-sample five-second timing pass measured:
+
+| Batch | Median us/point | MAD us/point |
+|---:|---:|---:|
+| 1 | 96.121 | 0.874 |
+| 127 | 42.774 | 0.112 |
+| 128 | 42.993 | 1.245 |
+| 129 | 44.719 | 1.723 |
+| 1023 | 42.575 | 0.811 |
+| 1024 | 42.376 | 0.911 |
+| 1025 | 42.809 | 0.309 |
+
+An unrelated native link overlapped early samples in this pass. The identities,
+artifact metrics, numerical validation, selector contract, and active-schedule
+census are authoritative; these timing values are provisional diagnostic
+anchors. Landing acceptance uses a new quiet, alternating baseline/candidate
+capture and does not reuse these medians.
+
 ## Design
 
 The compiled schedule remains the owner of topology, helicity, selector,
