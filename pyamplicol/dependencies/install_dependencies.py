@@ -436,15 +436,20 @@ def _apply_contributor_patches(runner: Runner, payload: dict[str, Any]) -> None:
     if not destination.is_dir():
         raise SetupError(f"contributor patch target is missing: {patches[0].target}")
     symjit = payload["symjit"]
-    known_complete_trees: set[str] = set()
+    tree_contract: dict[str, str] = {}
     for key in ("source_tree_sha256", "candidate_tree_sha256"):
         digest = symjit.get(key)
         if digest is None:
             continue
         if not isinstance(digest, str) or _SHA256_PATTERN.fullmatch(digest) is None:
             raise SetupError(f"contributor lock has an invalid SymJIT {key}")
-        known_complete_trees.add(digest)
-    if _source_tree_sha256(destination) in known_complete_trees:
+        tree_contract[key] = digest
+    # The pristine source identity is the state to which the patch series must
+    # be applied.  Only the configured candidate identity proves that the
+    # complete contributor patch closure is already present.
+    if _source_tree_sha256(destination) == tree_contract.get(
+        "candidate_tree_sha256"
+    ):
         return
 
     for patch in patches:

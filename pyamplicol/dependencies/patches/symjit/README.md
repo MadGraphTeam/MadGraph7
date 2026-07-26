@@ -26,8 +26,12 @@ The same four commits are published on
    table-driven direct application for repeated row/point execution and
    multi-destination fan-out on AArch64 and x86-64.
 
-All four patches are already present in the locked fork revision. The active
-contributor patch closure is empty.
+All four upstream patches are already present in the locked fork revision.
+The active contributor patch
+`0001-allow-direct-complex-stack-spills.patch` additionally permits internal
+complex stack spills to retain SymJIT scratch registers while keeping the
+allocated-general-register requirement for direct output planes. It is pinned
+by digest and applied only to the exact locked fork revision.
 
 The direct application input format is for trusted bytecode. It is not a
 sandbox or hostile-input parser. Shape, range, and alias checks remain because

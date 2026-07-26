@@ -80,12 +80,19 @@ def test_venv_reset_bootstraps_with_the_unmoved_base_interpreter(
     assert module._venv_bootstrap_python() == base_python
 
 
-def test_symjit_fork_revision_archive_and_tree_are_pinned_without_patches() -> None:
+def test_symjit_fork_revision_archive_tree_and_patch_are_pinned() -> None:
     module = _module()
     payload = module._lock()
     patches = module._contributor_patches(payload)
 
-    assert patches == ()
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch.name == "symjit-allow-direct-complex-stack-spills"
+    assert patch.target == "symjit"
+    assert patch.relative_path == (
+        "patches/symjit/0001-allow-direct-complex-stack-spills.patch"
+    )
+    assert patch.applies_to_revision == payload["symjit"]["candidate_revision"]
     assert len(module._patch_closure_sha256(patches)) == 64
     assert len(payload["symjit"]["candidate_revision"]) == 40
     assert len(payload["symjit"]["archive_sha256"]) == 64
@@ -183,8 +190,13 @@ def test_contributor_patch_application_is_exact_idempotent_and_fails_on_drift(
         encoding="utf-8",
     )
     revision = "a" * 40
+    source_tree_sha256 = module._source_tree_sha256(target)
     payload = {
-        "symjit": {"candidate_revision": revision},
+        "symjit": {
+            "candidate_revision": revision,
+            "source_tree_sha256": source_tree_sha256,
+            "candidate_tree_sha256": "f" * 64,
+        },
         "patches": [
             {
                 "name": "test-patch",
@@ -264,7 +276,7 @@ def test_overlapping_contributor_patch_series_is_idempotent_by_tree_identity(
 
     module._apply_contributor_patches(runner, payload)
     assert source.read_text(encoding="utf-8") == "FIRST\nSECOND\n"
-    payload["symjit"]["source_tree_sha256"] = module._source_tree_sha256(target)
+    payload["symjit"]["candidate_tree_sha256"] = module._source_tree_sha256(target)
     module._apply_contributor_patches(runner, payload)
     assert source.read_text(encoding="utf-8") == "FIRST\nSECOND\n"
 
