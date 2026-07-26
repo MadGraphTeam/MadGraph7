@@ -9,8 +9,9 @@ headline block calls the native ``_benchmark_f64_wall_time`` entry point, whose
 timer starts after it has packed the batch. A separate private warmed-Arena
 profile uses the same borrowed input, preallocated-output boundary, selector
 arguments, and repetition count solely for attribution. Frozen baseline
-runtimes without that private boundary retain their historical
-``profile_repeated`` attribution.
+runtimes are measured only through an explicit ``frozen-pre-arena`` protocol
+that invokes their historical ``profile_repeated`` operation. Automatic
+capability detection and fallback are forbidden.
 """
 
 from __future__ import annotations
@@ -38,11 +39,14 @@ INSTALLATION_IDENTITY_SCHEMA_VERSION = 2
 NATIVE_WALL_TIME_SOURCE = "runtime_core_repeated_wall_time"
 NATIVE_WALL_TIME_SAMPLE_PASS = "runtime._benchmark_f64_wall_time"
 ARENA_PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime._profile_arena_repeated"
-LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
+FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
 ARENA_PROFILE_BOUNDARY = "warmed-direct-arena-borrowed-input-preallocated-output-v1"
-LEGACY_PROFILE_BOUNDARY = "materialized-native-profile-v1"
+FROZEN_BASELINE_PROFILE_BOUNDARY = "materialized-native-profile-v1"
 ARENA_PHASE_TIMING_SCOPE = "coarse-arena-boundary-only-v1"
-LEGACY_PHASE_TIMING_SCOPE = "profiled-evaluator-phases-v1"
+FROZEN_BASELINE_PHASE_TIMING_SCOPE = "profiled-evaluator-phases-v1"
+ARENA_PROFILE_PROTOCOL = "arena"
+FROZEN_BASELINE_PROFILE_PROTOCOL = "frozen-pre-arena"
+PROFILE_PROTOCOLS = (ARENA_PROFILE_PROTOCOL, FROZEN_BASELINE_PROFILE_PROTOCOL)
 PAIRED_TIMING_SAMPLE_CONTRACT = "paired_unprofiled_headline_profiled_attribution_v1"
 MAX_CALIBRATION_BLOCKS = 4
 MAX_REPETITIONS = 1_000_000_000
@@ -1178,9 +1182,11 @@ def _profile_components(
     return wall / evaluated_points, evaluator / evaluated_points
 
 
-def _profile_operation(runtime: object) -> ProfileOperation:
+def _profile_operation(runtime: object, *, protocol: str) -> ProfileOperation:
     arena_profiler = getattr(runtime, "_profile_arena_repeated", None)
-    if callable(arena_profiler):
+    if protocol == ARENA_PROFILE_PROTOCOL:
+        if not callable(arena_profiler):
+            raise SampleError("Arena profile protocol requires _profile_arena_repeated")
         return ProfileOperation(
             operation=arena_profiler,
             sample_pass=ARENA_PROFILE_ATTRIBUTION_SAMPLE_PASS,
@@ -1190,18 +1196,24 @@ def _profile_operation(runtime: object) -> ProfileOperation:
             phase_timing_scope=ARENA_PHASE_TIMING_SCOPE,
             evaluator_timing_available=False,
         )
+    if protocol != FROZEN_BASELINE_PROFILE_PROTOCOL:
+        raise SampleError(f"unsupported profile protocol: {protocol!r}")
+    if callable(arena_profiler):
+        raise SampleError(
+            "frozen pre-Arena profile protocol refuses an Arena-capable runtime"
+        )
     legacy_profiler = getattr(runtime, "profile_repeated", None)
     if callable(legacy_profiler):
         return ProfileOperation(
             operation=legacy_profiler,
-            sample_pass=LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS,
-            boundary=LEGACY_PROFILE_BOUNDARY,
+            sample_pass=FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS,
+            boundary=FROZEN_BASELINE_PROFILE_BOUNDARY,
             borrowed_flat_input=False,
             preallocated_output=False,
-            phase_timing_scope=LEGACY_PHASE_TIMING_SCOPE,
+            phase_timing_scope=FROZEN_BASELINE_PHASE_TIMING_SCOPE,
             evaluator_timing_available=True,
         )
-    raise SampleError("native repeated profiler is unavailable")
+    raise SampleError("frozen pre-Arena profile protocol requires profile_repeated")
 
 
 def _complex_pair(value: object, *, label: str) -> list[float]:
@@ -1361,7 +1373,8 @@ def sample(arguments: argparse.Namespace) -> dict[str, object]:
         )
     runtime_identity["dependency_site"] = dependency_site_identity
     timer = getattr(runtime, "_benchmark_f64_wall_time", None)
-    profile_operation = _profile_operation(runtime)
+    profile_protocol = getattr(arguments, "profile_protocol", None)
+    profile_operation = _profile_operation(runtime, protocol=profile_protocol)
     profiler = profile_operation.operation
     evaluate_once = getattr(runtime, "evaluate", None)
     evaluate_resolved_once = getattr(runtime, "evaluate_resolved", None)
@@ -1518,6 +1531,7 @@ def sample(arguments: argparse.Namespace) -> dict[str, object]:
             "profile_attribution_evaluator_timing_available": (
                 profile_operation.evaluator_timing_available
             ),
+            "profile_protocol": profile_protocol,
             "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
             "profile_attribution_paired_with_headline": True,
             "profile_attribution_identical_batch": True,
@@ -1557,6 +1571,15 @@ def parser() -> argparse.ArgumentParser:
         "--execution-mode",
         choices=EXECUTION_MODES,
         default="compiled",
+    )
+    result.add_argument(
+        "--profile-protocol",
+        choices=PROFILE_PROTOCOLS,
+        required=True,
+        help=(
+            "require the current Arena profiler or explicitly measure the "
+            "frozen pre-Arena baseline; no automatic fallback is allowed"
+        ),
     )
     result.add_argument(
         "--dependency-site",

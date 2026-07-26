@@ -44,11 +44,13 @@ NATIVE_WALL_TIME_SOURCE = "runtime_core_repeated_wall_time"
 NATIVE_WALL_TIME_SAMPLE_PASS = "runtime._benchmark_f64_wall_time"
 PAIRED_TIMING_SAMPLE_CONTRACT = "paired_unprofiled_headline_profiled_attribution_v1"
 PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime._profile_arena_repeated"
-LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
+FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
 ARENA_PROFILE_BOUNDARY = "warmed-direct-arena-borrowed-input-preallocated-output-v1"
-LEGACY_PROFILE_BOUNDARY = "materialized-native-profile-v1"
+FROZEN_BASELINE_PROFILE_BOUNDARY = "materialized-native-profile-v1"
 ARENA_PHASE_TIMING_SCOPE = "coarse-arena-boundary-only-v1"
-LEGACY_PHASE_TIMING_SCOPE = "profiled-evaluator-phases-v1"
+FROZEN_BASELINE_PHASE_TIMING_SCOPE = "profiled-evaluator-phases-v1"
+ARENA_PROFILE_PROTOCOL = "arena"
+FROZEN_BASELINE_PROFILE_PROTOCOL = "frozen-pre-arena"
 NATIVE_SAMPLE_RESULT_KIND = "pyamplicol-compiled-mode-native-sample"
 NATIVE_SAMPLE_SCHEMA_VERSION = 5
 INSTALLATION_IDENTITY_KIND = "pyamplicol-installed-distribution-identity"
@@ -466,6 +468,7 @@ def _profile_command(
     helicities: Sequence[str],
     color_flows: Sequence[str],
     execution_mode: str = "compiled",
+    profile_protocol: str = ARENA_PROFILE_PROTOCOL,
     dependency_site: Path | None = None,
     include_precision32: bool = False,
 ) -> tuple[str, ...]:
@@ -477,6 +480,8 @@ def _profile_command(
         process_id,
         "--execution-mode",
         execution_mode,
+        "--profile-protocol",
+        profile_protocol,
         "--target-runtime",
         str(target_runtime),
         "--batch-size",
@@ -1800,7 +1805,7 @@ def _native_profile_sample(
         if require_arena_profile
         else {
             PROFILE_ATTRIBUTION_SAMPLE_PASS,
-            LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS,
+            FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS,
         }
     )
     if evaluator_sample_pass not in allowed_profile_passes:
@@ -1821,18 +1826,21 @@ def _native_profile_sample(
     profile_attribution_evaluator_timing_available = environment.get(
         "profile_attribution_evaluator_timing_available"
     )
+    profile_protocol = environment.get("profile_protocol")
     if evaluator_sample_pass == PROFILE_ATTRIBUTION_SAMPLE_PASS:
         expected_profile_boundary = ARENA_PROFILE_BOUNDARY
         expected_borrowed_input = True
         expected_preallocated_output = True
         expected_phase_timing_scope = ARENA_PHASE_TIMING_SCOPE
         expected_evaluator_timing_available = False
+        expected_profile_protocol = ARENA_PROFILE_PROTOCOL
     else:
-        expected_profile_boundary = LEGACY_PROFILE_BOUNDARY
+        expected_profile_boundary = FROZEN_BASELINE_PROFILE_BOUNDARY
         expected_borrowed_input = False
         expected_preallocated_output = False
-        expected_phase_timing_scope = LEGACY_PHASE_TIMING_SCOPE
+        expected_phase_timing_scope = FROZEN_BASELINE_PHASE_TIMING_SCOPE
         expected_evaluator_timing_available = True
+        expected_profile_protocol = FROZEN_BASELINE_PROFILE_PROTOCOL
     if (
         profile_attribution_boundary != expected_profile_boundary
         or profile_attribution_borrowed_flat_input is not expected_borrowed_input
@@ -1840,6 +1848,7 @@ def _native_profile_sample(
         or profile_attribution_phase_timing_scope != expected_phase_timing_scope
         or profile_attribution_evaluator_timing_available
         is not expected_evaluator_timing_available
+        or profile_protocol != expected_profile_protocol
     ):
         raise RegressionError(
             "profile attribution boundary metadata does not match its sample pass"
@@ -2102,6 +2111,7 @@ def _native_profile_sample(
         "profile_attribution_evaluator_timing_available": (
             profile_attribution_evaluator_timing_available
         ),
+        "profile_protocol": profile_protocol,
         "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
         "profile_timed_block_count": sample_count,
         "repetitions_per_timed_block": repetitions,
@@ -2714,6 +2724,7 @@ def _arena_profile_gate(
             ("profile_attribution_preallocated_output", True),
             ("profile_attribution_phase_timing_scope", ARENA_PHASE_TIMING_SCOPE),
             ("profile_attribution_evaluator_timing_available", False),
+            ("profile_protocol", ARENA_PROFILE_PROTOCOL),
             ("paired_profile_evaluator_seconds_per_point", None),
             ("paired_profile_evaluator_uncertainty", None),
         ):
@@ -3272,6 +3283,11 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 helicities=arguments.helicity,
                 color_flows=arguments.color_flow,
                 execution_mode=execution_mode,
+                profile_protocol=(
+                    ARENA_PROFILE_PROTOCOL
+                    if lane == "current"
+                    else FROZEN_BASELINE_PROFILE_PROTOCOL
+                ),
                 dependency_site=dependency_sites[lane],
                 include_precision32=request_precision32,
             )
@@ -3478,6 +3494,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 ARENA_PHASE_TIMING_SCOPE
             ),
             "required_current_profile_attribution_evaluator_timing_available": False,
+            "required_current_profile_protocol": ARENA_PROFILE_PROTOCOL,
             "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
             "precision32_correctness_policy": PRECISION32_CORRECTNESS_POLICY,
             "dependency_sites": {

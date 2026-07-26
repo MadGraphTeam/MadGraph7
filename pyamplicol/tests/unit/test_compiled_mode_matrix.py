@@ -118,6 +118,7 @@ def _synthetic_result(
                         regression.ARENA_PHASE_TIMING_SCOPE
                     ),
                     "profile_attribution_evaluator_timing_available": False,
+                    "profile_protocol": regression.ARENA_PROFILE_PROTOCOL,
                     "profile_timed_block_count": 7,
                     "paired_profile_evaluator_seconds_per_point": None,
                     "paired_profile_evaluator_uncertainty": None,
@@ -213,6 +214,7 @@ def _synthetic_result(
                 regression.ARENA_PHASE_TIMING_SCOPE
             ),
             "required_current_profile_attribution_evaluator_timing_available": False,
+            "required_current_profile_protocol": regression.ARENA_PROFILE_PROTOCOL,
             "timing_sample_contract": regression.PAIRED_TIMING_SAMPLE_CONTRACT,
             "helicities": list(cell.helicities),
             "color_flows": list(cell.color_flows),

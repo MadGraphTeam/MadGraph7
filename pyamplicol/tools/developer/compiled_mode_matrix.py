@@ -583,6 +583,7 @@ def _cell_evidence(
                 regression.ARENA_PHASE_TIMING_SCOPE
             ),
             "required_current_profile_attribution_evaluator_timing_available": False,
+            "required_current_profile_protocol": regression.ARENA_PROFILE_PROTOCOL,
             "timing_sample_contract": regression.PAIRED_TIMING_SAMPLE_CONTRACT,
         }
         numeric_minimums = {

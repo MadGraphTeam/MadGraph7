@@ -149,8 +149,9 @@ The benchmark headline now always comes from the warmed native unprofiled
 `_benchmark_f64_wall_time` pass. Current Direct-Arena runtimes use a paired
 private `_profile_arena_repeated` pass over the byte-identical borrowed input,
 preallocated output, selectors, and repetition count only for attribution.
-Frozen baselines without that boundary retain their historical
-`profile_repeated` pass. The current measurement authenticates
+The explicitly selected `frozen-pre-arena` measurement protocol invokes the
+frozen baseline's historical `profile_repeated` pass; there is no automatic
+runtime fallback. The current measurement authenticates
 `warmed-direct-arena-borrowed-input-preallocated-output-v1`; profiled wall time
 is never substituted for the performance headline. Because this coarse Arena
 boundary deliberately has no nested phase clocks, evaluator-only timing and

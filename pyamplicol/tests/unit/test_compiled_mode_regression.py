@@ -25,20 +25,26 @@ def test_native_sample_schema_and_profile_contract_are_cross_module_locked() -> 
     assert compiled_mode_sample.ARENA_PROFILE_ATTRIBUTION_SAMPLE_PASS == (
         regression.PROFILE_ATTRIBUTION_SAMPLE_PASS
     )
-    assert compiled_mode_sample.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS == (
-        regression.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS
+    assert compiled_mode_sample.FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS == (
+        regression.FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS
     )
     assert compiled_mode_sample.ARENA_PROFILE_BOUNDARY == (
         regression.ARENA_PROFILE_BOUNDARY
     )
-    assert compiled_mode_sample.LEGACY_PROFILE_BOUNDARY == (
-        regression.LEGACY_PROFILE_BOUNDARY
+    assert compiled_mode_sample.FROZEN_BASELINE_PROFILE_BOUNDARY == (
+        regression.FROZEN_BASELINE_PROFILE_BOUNDARY
     )
     assert compiled_mode_sample.ARENA_PHASE_TIMING_SCOPE == (
         regression.ARENA_PHASE_TIMING_SCOPE
     )
-    assert compiled_mode_sample.LEGACY_PHASE_TIMING_SCOPE == (
-        regression.LEGACY_PHASE_TIMING_SCOPE
+    assert compiled_mode_sample.FROZEN_BASELINE_PHASE_TIMING_SCOPE == (
+        regression.FROZEN_BASELINE_PHASE_TIMING_SCOPE
+    )
+    assert compiled_mode_sample.ARENA_PROFILE_PROTOCOL == (
+        regression.ARENA_PROFILE_PROTOCOL
+    )
+    assert compiled_mode_sample.FROZEN_BASELINE_PROFILE_PROTOCOL == (
+        regression.FROZEN_BASELINE_PROFILE_PROTOCOL
     )
 
 
@@ -269,6 +275,7 @@ def _profile_payload(
                 regression.ARENA_PHASE_TIMING_SCOPE
             ),
             "profile_attribution_evaluator_timing_available": False,
+            "profile_protocol": regression.ARENA_PROFILE_PROTOCOL,
             "timing_sample_contract": (
                 timing_contract or regression.PAIRED_TIMING_SAMPLE_CONTRACT
             ),
@@ -490,6 +497,9 @@ def test_profile_command_carries_sampling_and_selector_controls() -> None:
     assert command[command.index("--target-runtime") + 1] == "7.5"
     assert command[command.index("--minimum-samples") + 1] == "7"
     assert command[command.index("--warmup-runs") + 1] == "3"
+    assert command[command.index("--profile-protocol") + 1] == (
+        regression.ARENA_PROFILE_PROTOCOL
+    )
     assert command[command.index("--helicity") + 1] == "h:-1,+1"
     assert command[command.index("--color-flow") + 1] == "flow:1,2"
     parsed = compiled_mode_sample.parser().parse_args(command[2:])
@@ -598,18 +608,21 @@ def test_current_profile_requires_authenticated_arena_boundary() -> None:
     environment = legacy_payload["environment"]
     assert isinstance(environment, dict)
     environment["evaluator_time_sample_pass"] = (
-        regression.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS
+        regression.FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS
     )
     environment["timing_breakdown_sample_pass"] = (
-        regression.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS
+        regression.FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS
     )
-    environment["profile_attribution_boundary"] = regression.LEGACY_PROFILE_BOUNDARY
+    environment["profile_attribution_boundary"] = (
+        regression.FROZEN_BASELINE_PROFILE_BOUNDARY
+    )
     environment["profile_attribution_borrowed_flat_input"] = False
     environment["profile_attribution_preallocated_output"] = False
     environment["profile_attribution_phase_timing_scope"] = (
-        regression.LEGACY_PHASE_TIMING_SCOPE
+        regression.FROZEN_BASELINE_PHASE_TIMING_SCOPE
     )
     environment["profile_attribution_evaluator_timing_available"] = True
+    environment["profile_protocol"] = regression.FROZEN_BASELINE_PROFILE_PROTOCOL
     legacy_payload["evaluator_time_per_point"] = 0.5e-6
     legacy_payload["evaluator_uncertainty"] = {"standard_deviation": 0.01e-6}
     timing_breakdown = legacy_payload["timing_breakdown"]
@@ -628,7 +641,7 @@ def test_current_profile_requires_authenticated_arena_boundary() -> None:
         )
 
 
-def test_native_sample_helper_falls_back_to_legacy_profile_operation() -> None:
+def test_native_sample_helper_uses_only_explicit_frozen_baseline_protocol() -> None:
     calls: list[tuple[object, int, dict[str, object]]] = []
 
     class FrozenRuntime:
@@ -646,13 +659,17 @@ def test_native_sample_helper_falls_back_to_legacy_profile_operation() -> None:
                 "amplitude_evaluator_call_time_s": 1.0,
             }
 
-    selected = compiled_mode_sample._profile_operation(FrozenRuntime())
-    assert selected.sample_pass == (
-        compiled_mode_sample.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS
+    runtime = FrozenRuntime()
+    selected = compiled_mode_sample._profile_operation(
+        runtime,
+        protocol=compiled_mode_sample.FROZEN_BASELINE_PROFILE_PROTOCOL,
     )
-    assert selected.boundary == compiled_mode_sample.LEGACY_PROFILE_BOUNDARY
+    assert selected.sample_pass == (
+        compiled_mode_sample.FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS
+    )
+    assert selected.boundary == (compiled_mode_sample.FROZEN_BASELINE_PROFILE_BOUNDARY)
     assert selected.phase_timing_scope == (
-        compiled_mode_sample.LEGACY_PHASE_TIMING_SCOPE
+        compiled_mode_sample.FROZEN_BASELINE_PHASE_TIMING_SCOPE
     )
     assert selected.evaluator_timing_available is True
     raw = selected.operation(("point",), 4, include_values=False)
@@ -665,6 +682,14 @@ def test_native_sample_helper_falls_back_to_legacy_profile_operation() -> None:
     assert wall == 2.0
     assert evaluator == 0.75
     assert calls == [(("point",), 4, {"include_values": False})]
+    with pytest.raises(
+        compiled_mode_sample.SampleError,
+        match="requires _profile_arena_repeated",
+    ):
+        compiled_mode_sample._profile_operation(
+            runtime,
+            protocol=compiled_mode_sample.ARENA_PROFILE_PROTOCOL,
+        )
 
 
 @pytest.mark.parametrize(
@@ -2093,6 +2118,7 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
     arguments = argparse.Namespace(
         artifact=artifact,
         process="d_dbar_to_z",
+        profile_protocol=compiled_mode_sample.ARENA_PROFILE_PROTOCOL,
         target_runtime=0.05,
         batch_size=2,
         minimum_samples=5,
