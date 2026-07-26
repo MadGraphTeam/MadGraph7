@@ -327,15 +327,22 @@ pins. Cleanliness is checked before the original-AmpliCol build with
 preexisting state are both rejected.
 
 The producer builds and snapshots `amplicol_library_benchmark`,
-`amplicol_color_probe`, and the generated `libamp` library. A
-content-addressed launcher invokes the exact Python interpreter with
+`amplicol_color_probe`, the generated `libamp` library, and every regular file
+in the generated `Library/` tree while preserving its runtime-relative path.
+After the build, one real selected-flow probe authenticates the executable's
+emitted group, integral, PDG multiset, and serialized color order. The producer
+adopts that emitted row, recomputes its source permutation and colored physical
+flow, and requires both to match the request rather than trusting the
+pre-generation process-file serialization.
+
+A content-addressed launcher invokes the exact Python interpreter with
 `-I -S -B` and an immutable runtime copy of the producer, its complete imported
 `legacy_amplicol` / `legacy_oracle` helper-module set, and the contributor lock.
 It never imports those helpers from the live checkout or creates untracked
 bytecode beside them. The retained command for every sample additionally pins
 the raw momenta file and digest, source revision, stable flow or helicity ID,
-explicit flow word and helicity values, selected generated row, external-leg
-permutation, workload, round, and evaluated-point count.
+explicit flow word and helicity values, authenticated executable row,
+external-leg permutation, workload, round, and evaluated-point count.
 
 `capture-index.json` contains the two final evidence references. The output
 also retains both authoritative manifests, exactly fourteen raw-sample JSON

@@ -599,6 +599,28 @@ def _copy_sample_runtime_sources(runtime: Path) -> tuple[Path, tuple[Path, ...]]
     return producer, tuple(copied)
 
 
+def _copy_generated_library_tree(
+    repository: Path,
+    runtime: Path,
+) -> tuple[Path, ...]:
+    source_root = repository / "Library"
+    if not source_root.is_dir():
+        _die(f"generated original-AmpliCol Library tree is absent: {source_root}")
+    amplitudes = source_root / "amplitudes.bin"
+    if not amplitudes.is_file():
+        _die(f"generated original-AmpliCol amplitudes payload is absent: {amplitudes}")
+    sources = tuple(sorted(path for path in source_root.rglob("*") if path.is_file()))
+    if not sources:
+        _die(f"generated original-AmpliCol Library tree is empty: {source_root}")
+    copied: list[Path] = []
+    for source in sources:
+        target = runtime / "Library" / source.relative_to(source_root)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied.append(target.resolve())
+    return tuple(copied)
+
+
 def _copy_runtime(repository: Path, output: Path, process_file: Path) -> ProbeContext:
     runtime = output / "runtime"
     runtime.mkdir(parents=True)
@@ -618,6 +640,7 @@ def _copy_runtime(repository: Path, output: Path, process_file: Path) -> ProbeCo
     shutil.copy2(repository / union_binary.name, union_binary)
     runtime_process = runtime / "processes.txt"
     shutil.copy2(process_file, runtime_process)
+    generated_library_files = _copy_generated_library_tree(repository, runtime)
     libraries: list[Path] = []
     for pattern in ("libamp*.so", "libamp*.dylib", "libamp*.a"):
         for source in sorted(repository.glob(pattern)):
@@ -639,6 +662,7 @@ def _copy_runtime(repository: Path, output: Path, process_file: Path) -> ProbeCo
             selected_binary.resolve(),
             union_binary.resolve(),
             runtime_process.resolve(),
+            *generated_library_files,
             *(path.resolve() for path in libraries),
         ),
         group=0,
@@ -648,6 +672,61 @@ def _copy_runtime(repository: Path, output: Path, process_file: Path) -> ProbeCo
         generated_color_order=(),
         permutation=(),
     )
+
+
+def _validated_executable_row(
+    *,
+    requested_entry: Any,
+    emitted_probe: Any,
+    source_pdgs: Sequence[int],
+    expected_flow_word: Sequence[int],
+    expected_permutation: Sequence[int],
+) -> tuple[Any, tuple[int, ...]]:
+    requested_identity = (int(requested_entry.group), int(requested_entry.integral))
+    emitted_identity = (int(emitted_probe.group), int(emitted_probe.integral))
+    if emitted_identity != requested_identity:
+        _die(
+            "generated-library selected-flow probe returned row "
+            f"{emitted_identity}, expected {requested_identity}"
+        )
+    emitted_pdgs = tuple(int(value) for value in emitted_probe.process_pdgs)
+    if sorted(emitted_pdgs) != sorted(
+        int(value) for value in requested_entry.process_pdgs
+    ):
+        _die(
+            "generated-library selected-flow PDG multiset differs from the "
+            "requested generated row"
+        )
+    executable_entry = legacy_amplicol.ProcessEntry(
+        group=emitted_identity[0],
+        integral=emitted_identity[1],
+        process_pdgs=emitted_pdgs,
+        color_order=tuple(int(value) for value in emitted_probe.color_order),
+    )
+    mapped = legacy_amplicol.source_mapped_color_order(
+        executable_entry,
+        source_pdgs=source_pdgs,
+    )
+    colored = {
+        index
+        for index, pdg in enumerate(source_pdgs, start=1)
+        if abs(int(pdg)) == 21 or 1 <= abs(int(pdg)) <= 6
+    }
+    color_word = tuple(label for label in mapped if label in colored)
+    if list(color_word) != list(expected_flow_word):
+        _die(
+            "selected original-AmpliCol executable row differs from the stable "
+            f"M0 flow word: {color_word} != {tuple(expected_flow_word)}"
+        )
+    permutation = tuple(
+        legacy_amplicol._permutation(source_pdgs, executable_entry.process_pdgs)
+    )
+    if list(permutation) != list(expected_permutation):
+        _die(
+            "executable source-to-generated external-leg permutation differs "
+            "from M0 request"
+        )
+    return executable_entry, permutation
 
 
 def _prepare_probes(
@@ -683,24 +762,6 @@ def _prepare_probes(
         generated_process=NORMALIZED_PROCESS,
         wanted_pdgs=source_pdgs,
     )
-    mapped = legacy_amplicol.source_mapped_color_order(
-        entry,
-        source_pdgs=source_pdgs,
-    )
-    colored = {
-        index
-        for index, pdg in enumerate(source_pdgs, start=1)
-        if abs(int(pdg)) == 21 or 1 <= abs(int(pdg)) <= 6
-    }
-    color_word = tuple(label for label in mapped if label in colored)
-    if list(color_word) != list(expected_flow_word):
-        _die(
-            "selected original-AmpliCol generated row differs from the stable "
-            f"M0 flow word: {color_word} != {tuple(expected_flow_word)}"
-        )
-    permutation = tuple(legacy_amplicol._permutation(source_pdgs, entry.process_pdgs))
-    if list(permutation) != list(expected_permutation):
-        _die("source-to-generated external-leg permutation differs from M0 request")
 
     momenta_directory = repository / "Utilities" / "ME_checks"
     momenta_directory.mkdir(parents=True, exist_ok=True)
@@ -738,6 +799,20 @@ def _prepare_probes(
                 log_path=log,
             )
     legacy_amplicol.validate_checkout(repository)
+    emitted_probe = legacy_amplicol.run_selected_flow_library_probe(
+        repository,
+        entry=entry,
+        source_pdgs=source_pdgs,
+        momenta=points[0],
+        points=1,
+    )
+    executable_entry, permutation = _validated_executable_row(
+        requested_entry=entry,
+        emitted_probe=emitted_probe,
+        source_pdgs=source_pdgs,
+        expected_flow_word=expected_flow_word,
+        expected_permutation=expected_permutation,
+    )
     snapshot = _copy_runtime(repository, output, process_file)
     return ProbeContext(
         runtime=snapshot.runtime,
@@ -746,11 +821,11 @@ def _prepare_probes(
         selected_binary=snapshot.selected_binary,
         union_binary=snapshot.union_binary,
         linked_files=snapshot.linked_files,
-        group=int(entry.group),
-        integral=int(entry.integral),
+        group=int(executable_entry.group),
+        integral=int(executable_entry.integral),
         source_pdgs=tuple(source_pdgs),
-        generated_pdgs=tuple(entry.process_pdgs),
-        generated_color_order=tuple(entry.color_order),
+        generated_pdgs=tuple(executable_entry.process_pdgs),
+        generated_color_order=tuple(executable_entry.color_order),
         permutation=permutation,
     )
 

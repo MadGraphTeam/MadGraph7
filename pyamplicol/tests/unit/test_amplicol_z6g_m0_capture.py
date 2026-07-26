@@ -89,6 +89,16 @@ def _git_repository(path: Path) -> tuple[Path, str]:
     return path, revision
 
 
+def _write_generated_library(repository: Path) -> tuple[Path, Path]:
+    amplitudes = repository / "Library" / "amplitudes.bin"
+    data = repository / "Library" / "nested" / "amp_1_lib.data"
+    amplitudes.parent.mkdir(parents=True)
+    data.parent.mkdir(parents=True)
+    amplitudes.write_bytes(b"amplitudes\n")
+    data.write_bytes(b"library-data\n")
+    return amplitudes, data
+
+
 def _contract(tmp_path: Path) -> capture.CaptureContract:
     fixture = _write(tmp_path / "validation-momenta.json", b"fixture\n")
     return capture.CaptureContract(
@@ -272,6 +282,7 @@ def test_generated_manifests_pass_the_real_m0_amplicol_validator(
         path = repository / name
         path.write_bytes(raw)
         path.chmod(0o755)
+    _write_generated_library(repository)
     process_file = tmp_path / "processes.txt"
     process_file.write_text("process\n", encoding="utf-8")
     context = replace(
@@ -508,6 +519,7 @@ def test_runtime_launcher_pins_interpreter_producer_and_probe_inputs(
         path = repository / name
         path.write_bytes(raw)
         path.chmod(0o755)
+    source_amplitudes, source_data = _write_generated_library(repository)
     process_file = tmp_path / "processes.txt"
     process_file.write_text("process\n", encoding="utf-8")
 
@@ -540,6 +552,10 @@ def test_runtime_launcher_pins_interpreter_producer_and_probe_inputs(
     assert context.process_file in context.linked_files
     assert context.selected_binary in context.linked_files
     assert context.union_binary in context.linked_files
+    for source in (source_amplitudes, source_data):
+        copied = (context.runtime / source.relative_to(repository)).resolve()
+        assert copied.read_bytes() == source.read_bytes()
+        assert copied in context.linked_files
     assert len(context.linked_files) == len(set(context.linked_files))
 
     completed = subprocess.run(
@@ -552,6 +568,141 @@ def test_runtime_launcher_pins_interpreter_producer_and_probe_inputs(
     )
     assert completed.returncode == 0, completed.stderr
     assert "usage:" in completed.stdout
+
+
+def test_selected_launcher_uses_snapshotted_generated_library_tree(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    selected = repository / "amplicol_library_benchmark"
+    selected.write_text(
+        """#!/bin/sh
+set -eu
+test "$(cat Library/amplitudes.bin)" = amplitudes
+test "$(cat Library/nested/amp_1_lib.data)" = library-data
+cat <<'EOF'
+AMPICOL_SELECTED_FLOW_PROBE_VALUE 3 1 1.2500000000000000E+00
+AMPICOL_SELECTED_FLOW_PROBE_PDGS 9 2 -2 21 21 21 21 21 21 23
+AMPICOL_SELECTED_FLOW_PROBE_COLOR_ORDER 9 2 3 4 5 6 7 8 9 1
+AMPICOL_SELECTED_FLOW_PROBE_AMPLITUDES 4
+AMPICOL_SELECTED_FLOW_PROBE_COLOR_FACTOR 27
+AMPICOL_SELECTED_FLOW_PROBE_IDENTICAL_FACTOR 36
+AMPICOL_SELECTED_FLOW_PROBE_SINGLET_VERTICES 0
+AMPICOL_SELECTED_FLOW_PROBE_NORMALIZATION 1.0000000000000000E+00
+Timing summary
+amplitude evaluation 0.25
+EOF
+""",
+        encoding="utf-8",
+    )
+    selected.chmod(0o755)
+    union = repository / "amplicol_color_probe"
+    union.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    union.chmod(0o755)
+    (repository / "libamp_1.so").write_bytes(b"library")
+    _write_generated_library(repository)
+    process_file = tmp_path / "processes.txt"
+    process_file.write_text("process\n", encoding="utf-8")
+
+    source_pdgs = (2, -2, 23, 21, 21, 21, 21, 21, 21)
+    generated_pdgs = (2, -2, 21, 21, 21, 21, 21, 21, 23)
+    generated_color_order = (2, 3, 4, 5, 6, 7, 8, 9, 1)
+    context = replace(
+        capture._copy_runtime(repository, tmp_path / "capture", process_file),
+        group=3,
+        integral=1,
+        source_pdgs=source_pdgs,
+        generated_pdgs=generated_pdgs,
+        generated_color_order=generated_color_order,
+        permutation=capture.AMPLICOL_EXTERNAL_LEG_PERMUTATION,
+    )
+    fixture_path = tmp_path / "momenta.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "kind": "pyamplicol-rusticol-validation-momenta",
+                "schema_version": 1,
+                "process": capture.NORMALIZED_PROCESS,
+                "points": [
+                    [
+                        {
+                            "pdg": pdg,
+                            "momentum": [float(index + 1), 0.0, 0.0, 0.0],
+                        }
+                        for index, pdg in enumerate(source_pdgs)
+                    ]
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    parsed_pdgs, points = capture._fixture_points(fixture_path)
+    assert parsed_pdgs == source_pdgs
+    fixture_ref = capture._file_ref(fixture_path)
+    base_contract = _contract(tmp_path / "contract")
+    expected = dict(base_contract.expected)
+    expected["amplicol_source_revision"] = capture.legacy_amplicol.expected_revision()
+    expected["momenta_points_sha256"] = capture._canonical_sha256(points)
+    contract = replace(
+        base_contract,
+        expected=expected,
+        fixture={
+            "path": fixture_path,
+            "file": fixture_ref,
+            "point_count": 1,
+            "points_sha256": expected["momenta_points_sha256"],
+        },
+    )
+
+    completed = subprocess.run(
+        capture._sample_command(
+            role=capture.SELECTED_ROLE,
+            round_index=0,
+            points=5,
+            contract=contract,
+            context=context,
+        ),
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": ""},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["selected_totals"] == [[1.25, 0.0]]
+    assert payload["resolved_sums"] == [[1.25, 0.0]]
+
+
+def test_executable_row_authentication_accepts_serialized_color_reorder() -> None:
+    source_pdgs = (2, -2, 23, 21, 21, 21, 21, 21, 21)
+    generated_pdgs = (2, -2, 21, 21, 21, 21, 21, 21, 23)
+    requested = capture.legacy_amplicol.ProcessEntry(
+        group=3,
+        integral=1,
+        process_pdgs=generated_pdgs,
+        color_order=(2, 3, 4, 5, 6, 7, 8, 1, 9),
+    )
+    emitted = SimpleNamespace(
+        group=3,
+        integral=1,
+        process_pdgs=generated_pdgs,
+        color_order=(2, 3, 4, 5, 6, 7, 8, 9, 1),
+    )
+
+    executable, permutation = capture._validated_executable_row(
+        requested_entry=requested,
+        emitted_probe=emitted,
+        source_pdgs=source_pdgs,
+        expected_flow_word=FLOW_WORD,
+        expected_permutation=capture.AMPLICOL_EXTERNAL_LEG_PERMUTATION,
+    )
+
+    assert executable.color_order == emitted.color_order
+    assert executable.color_order != requested.color_order
+    assert permutation == capture.AMPLICOL_EXTERNAL_LEG_PERMUTATION
 
 
 def test_sample_runtime_inventory_covers_every_imported_legacy_oracle_module() -> None:
@@ -573,6 +724,7 @@ def test_copied_helper_tampering_is_detected(tmp_path: Path) -> None:
         path = repository / name
         path.write_bytes(name.encode())
         path.chmod(0o755)
+    _write_generated_library(repository)
     process_file = tmp_path / "processes.txt"
     process_file.write_text("process\n", encoding="utf-8")
     context = capture._copy_runtime(repository, tmp_path / "capture", process_file)
