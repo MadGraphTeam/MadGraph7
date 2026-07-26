@@ -63,6 +63,7 @@ from .source_identity import (
     ReportSourceIdentityError,
     require_report_only_publication,
 )
+from .standalone_build import StandaloneBuildError, validate_latex_log
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -1512,6 +1513,16 @@ def _audit_pdf(service: ReportService) -> dict[str, object]:
                 f"isolated report PDF rebuild failed with exit "
                 f"{completed.returncode}:\n{tail}"
             )
+        latex_log = build_docs / "pyAmpliCol.log"
+        try:
+            log = latex_log.read_text(encoding="utf-8", errors="replace")
+            validate_latex_log(log)
+        except OSError as error:
+            raise FinalAuditError(
+                f"cannot read isolated report LaTeX log: {error}"
+            ) from error
+        except StandaloneBuildError as error:
+            raise FinalAuditError(str(error)) from error
         rebuilt = build_docs / "pyAmpliCol.pdf"
         if not rebuilt.is_file() or rebuilt.stat().st_size == 0:
             raise FinalAuditError("isolated report PDF rebuild produced no PDF")

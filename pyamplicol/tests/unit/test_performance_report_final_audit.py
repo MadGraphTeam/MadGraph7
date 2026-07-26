@@ -28,6 +28,7 @@ from tools.performance_report.final_audit import (
     _audit_eager_execution,
     _audit_measurement,
     _audit_model_source,
+    _audit_pdf,
     _audit_pointwise,
     _audit_recurrence_execution,
     _audit_recurrence_source_pack,
@@ -60,6 +61,19 @@ _CAPABILITY = "rusticol.recurrence-direct-arena.complex-f64.v1"
 _COLOR_CAPABILITY = "rusticol.recurrence-color.lc.v1"
 
 
+def _fake_latexmk(tmp_path: Path, log: str) -> Path:
+    executable = tmp_path / "fake-latexmk"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        "Path('pyAmpliCol.pdf').write_bytes(b'%PDF-1.4\\n%%EOF\\n')\n"
+        f"Path('pyAmpliCol.log').write_text({log!r}, encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    return executable
+
+
 def _cell(
     mode: ExecutionMode,
     *,
@@ -80,6 +94,45 @@ def _cell(
         ),
         workload=Workload.SELECTED_FLOW,
     )
+
+
+def test_final_pdf_audit_rejects_successful_latex_with_overfull_box(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    service = ReportService(ReportPaths.from_repo(repo))
+    service.paths.docs_dir.mkdir(parents=True, exist_ok=True)
+    (service.paths.docs_dir / "pyAmpliCol.tex").write_text(
+        (
+            "\\documentclass{article}\\begin{document}"
+            "\\input{result_test_table.tex}\\end{document}\n"
+        ),
+        encoding="ascii",
+    )
+    (service.paths.docs_dir / "result_test_table.tex").write_text(
+        "bad\n",
+        encoding="ascii",
+    )
+    (service.paths.docs_dir / "pyAmpliCol.pdf").write_bytes(
+        b"%PDF-1.4\n%%EOF\n"
+    )
+    executable = _fake_latexmk(
+        tmp_path,
+        "Overfull \\vbox (1.0pt too high)\n",
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.final_audit.shutil.which",
+        lambda _name: str(executable),
+    )
+    monkeypatch.setattr(ReportService, "load_caches", lambda _self: {})
+    monkeypatch.setattr(
+        "tools.performance_report.final_audit.render_all_tables",
+        lambda *_args, **_kwargs: {"result_test_table.tex": "bad\n"},
+    )
+
+    with pytest.raises(FinalAuditError, match="overfull"):
+        _audit_pdf(service)
 
 
 def _recurrence_binding_digest(binding: dict[str, object]) -> str:

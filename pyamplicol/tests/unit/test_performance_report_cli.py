@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from tools.performance_report import final_audit
-from tools.performance_report.cli import _parser, main
+from tools.performance_report.cli import _compile_pdf, _parser, main
 from tools.performance_report.service import ReportPaths, ReportService
 
 
@@ -33,6 +33,19 @@ def _initialize_git_repo(repo: Path) -> None:
         cwd=repo,
         check=True,
     )
+
+
+def _fake_latexmk(tmp_path: Path, log: str) -> Path:
+    executable = tmp_path / "fake-latexmk"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        "Path('pyAmpliCol.pdf').write_bytes(b'%PDF-1.4\\n%%EOF\\n')\n"
+        f"Path('pyAmpliCol.log').write_text({log!r}, encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    return executable
 
 
 def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
@@ -237,6 +250,30 @@ def test_final_audit_requires_an_architecture_profile(
         )
 
     assert called is False
+
+
+def test_refresh_pdf_rejects_successful_latex_with_overfull_box(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    service = ReportService(ReportPaths.from_repo(repo))
+    service.paths.docs_dir.mkdir(parents=True, exist_ok=True)
+    (service.paths.docs_dir / "pyAmpliCol.tex").write_text(
+        "\\documentclass{article}\\begin{document}bad\\end{document}\n",
+        encoding="ascii",
+    )
+    executable = _fake_latexmk(
+        tmp_path,
+        "Overfull \\hbox (1.0pt too wide)\n",
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.shutil.which",
+        lambda _name: str(executable),
+    )
+
+    with pytest.raises(RuntimeError, match="overfull"):
+        _compile_pdf(service)
 
 
 def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:

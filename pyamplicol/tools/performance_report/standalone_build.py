@@ -23,6 +23,18 @@ _UNRESOLVED_PATTERNS = (
 )
 
 
+def validate_latex_log(log: str) -> None:
+    """Reject layout overflow and unresolved cross-reference diagnostics."""
+
+    if "Overfull \\hbox" in log or "Overfull \\vbox" in log:
+        raise StandaloneBuildError("LaTeX output contains an overfull box")
+    for pattern in _UNRESOLVED_PATTERNS:
+        if pattern.search(log):
+            raise StandaloneBuildError(
+                f"LaTeX output is unresolved: {pattern.pattern}"
+            )
+
+
 def compile_report(
     report_dir: Path,
     *,
@@ -68,13 +80,7 @@ def compile_report(
         log = log_path.read_text(encoding="utf-8", errors="replace")
     except OSError as error:
         raise StandaloneBuildError(f"cannot read LaTeX log: {error}") from error
-    if "Overfull \\hbox" in log or "Overfull \\vbox" in log:
-        raise StandaloneBuildError("LaTeX output contains an overfull box")
-    for pattern in _UNRESOLVED_PATTERNS:
-        if pattern.search(log):
-            raise StandaloneBuildError(
-                f"LaTeX output is unresolved: {pattern.pattern}"
-            )
+    validate_latex_log(log)
 
     output = root / "pyAmpliCol.pdf"
     if not output.is_file() or output.stat().st_size == 0:

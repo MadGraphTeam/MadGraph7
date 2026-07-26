@@ -26,6 +26,7 @@ from .scheduler import (
 )
 from .service import ReportPaths, ReportService, validate_profile_name
 from .source_identity import require_eligible_report_source
+from .standalone_build import StandaloneBuildError, validate_latex_log
 from .worker import write_cell_result
 from .workspace import (
     export_profile,
@@ -318,6 +319,14 @@ def _compile_pdf(service: ReportService) -> Path:
             raise RuntimeError(
                 f"latexmk failed with exit {completed.returncode}:\n{tail}"
             )
+        latex_log = build_docs / "pyAmpliCol.log"
+        try:
+            log = latex_log.read_text(encoding="utf-8", errors="replace")
+            validate_latex_log(log)
+        except OSError as error:
+            raise RuntimeError(f"cannot read LaTeX log: {error}") from error
+        except StandaloneBuildError as error:
+            raise RuntimeError(str(error)) from error
         built_pdf = build_docs / "pyAmpliCol.pdf"
         if not built_pdf.is_file() or built_pdf.stat().st_size == 0:
             raise RuntimeError("latexmk did not produce a non-empty PDF")
