@@ -66,7 +66,7 @@ def _contract(tmp_path: Path) -> capture.CaptureContract:
             "host_sha256": capture._canonical_sha256(HOST),
             "color_flow": {"id": FLOW_ID, "word": FLOW_WORD},
             "helicity": {"id": HELICITY_ID, "values": HELICITY_VALUES},
-            "external_leg_permutation": list(range(9)),
+            "external_leg_permutation": list(capture.AMPLICOL_EXTERNAL_LEG_PERMUTATION),
         },
         input_files=(),
         host=HOST,
@@ -115,9 +115,9 @@ def _context(tmp_path: Path) -> capture.ProbeContext:
         group=11,
         integral=7,
         source_pdgs=(2, -2, 23, 21, 21, 21, 21, 21, 21),
-        generated_pdgs=(2, -2, 23, 21, 21, 21, 21, 21, 21),
-        generated_color_order=tuple(FLOW_WORD),
-        permutation=tuple(range(9)),
+        generated_pdgs=(2, -2, 21, 21, 21, 21, 21, 21, 23),
+        generated_color_order=(2, 3, 4, 5, 6, 7, 8, 1, 9),
+        permutation=capture.AMPLICOL_EXTERNAL_LEG_PERMUTATION,
     )
 
 
@@ -423,7 +423,7 @@ def test_sample_command_binds_all_required_physical_inputs(tmp_path: Path) -> No
         assert f"--source-revision={REVISION}" in command
         assert f"--color-flow-word={','.join(map(str, FLOW_WORD))}" in command
         assert f"--helicity-values={','.join(map(str, HELICITY_VALUES))}" in command
-        assert "--source-to-generated-permutation=0,1,2,3,4,5,6,7,8" in command
+        assert "--source-to-generated-permutation=0,1,3,4,5,6,7,8,2" in command
     assert f"--color-flow-id={FLOW_ID}" in selected
     assert f"--helicity-id={HELICITY_ID}" in union
     assert capture._canonical_sha256(selected) != capture._canonical_sha256(union)
@@ -461,6 +461,83 @@ def test_runtime_launcher_pins_interpreter_producer_and_probe_inputs(
     assert context.process_file in context.linked_files
     assert context.selected_binary in context.linked_files
     assert context.union_binary in context.linked_files
+
+
+def test_process_generation_subprocess_receives_lowercase_z(
+    tmp_path: Path,
+) -> None:
+    process_payload = (
+        "9 1\n"
+        "2 -2 21 21 21 21 21 21 23\n"
+        "\n"
+        "\n"
+        "1\n"
+        "\n"
+        "1 1 1 1 9 2 3 4 5 6 7 8\n"
+        "1 1 2 -2 21 21 21 21 21 21 23 "
+        "2 3 4 5 6 7 8 1 9 720.0\n"
+        "\n"
+        "\n"
+    )
+    repository = tmp_path / "case-sensitive-amplicol"
+    repository.mkdir()
+    process_list = repository / "process_list.py"
+    process_list.write_text(
+        "\n".join(
+            (
+                "import json",
+                "import sys",
+                "from pathlib import Path",
+                "arguments = sys.argv[1:]",
+                "Path('received.json').write_text(json.dumps(arguments))",
+                (f"if arguments != ['--serial', {capture.NORMALIZED_PROCESS!r}]:"),
+                "    raise SystemExit(19)",
+                f"Path('processes.txt').write_text({process_payload!r})",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    setup = tmp_path / "setup"
+    setup.mkdir()
+
+    generated = capture._generate_process_file(
+        repository=repository,
+        setup=setup,
+        log_path=setup / "generation.log",
+    )
+
+    assert generated == setup / "processes.txt"
+    assert generated.read_text(encoding="utf-8") == process_payload
+    assert json.loads((setup / "received.json").read_text(encoding="utf-8")) == [
+        "--serial",
+        "u u~ > z g g g g g g",
+    ]
+    assert " Z " in f" {capture.PROCESS_EXPRESSION} "
+    source_pdgs = capture.legacy_amplicol.process_pdgs(capture.NORMALIZED_PROCESS)
+    entry, matches = capture.legacy_amplicol.select_generated_process_entry(
+        capture.legacy_amplicol.parse_process_file(generated),
+        generated_process=capture.NORMALIZED_PROCESS,
+        wanted_pdgs=source_pdgs,
+    )
+    assert len(matches) == 1
+    assert (
+        capture.legacy_amplicol._permutation(
+            source_pdgs,
+            entry.process_pdgs,
+        )
+        == capture.AMPLICOL_EXTERNAL_LEG_PERMUTATION
+    )
+    mapped = capture.legacy_amplicol.source_mapped_color_order(
+        entry,
+        source_pdgs=source_pdgs,
+    )
+    colored_labels = {
+        index
+        for index, pdg in enumerate(source_pdgs, start=1)
+        if abs(pdg) == 21 or 1 <= abs(pdg) <= 6
+    }
+    assert [label for label in mapped if label in colored_labels] == FLOW_WORD
 
 
 def test_probe_stdout_is_strict_and_identity_bound() -> None:

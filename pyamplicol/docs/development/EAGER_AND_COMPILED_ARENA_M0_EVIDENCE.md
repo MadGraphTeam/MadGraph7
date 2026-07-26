@@ -170,10 +170,16 @@ is pinned separately on the command line.
       "id": "h:-1,+1,-1,+1,-1,+1,-1,+1,-1",
       "values": [-1, 1, -1, 1, -1, 1, -1, 1, -1]
     },
-    "external_leg_permutation": [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    "external_leg_permutation": [0, 1, 3, 4, 5, 6, 7, 8, 2]
   }
 }
 ```
+
+`external_leg_permutation` is the original-AmpliCol source-to-generated row
+mapping, not the pyAmpliCol artifact's identity ordering. The pinned generator
+moves the source-order `Z` leg from index 2 to generated-row index 8, giving
+exactly `[0, 1, 3, 4, 5, 6, 7, 8, 2]`. Request-template builders must retain
+that mapping.
 
 Runtime provenance is hashed after removing location-only `path`,
 `resolved_path`, `checkout`, and `working_directory` fields. All versions,

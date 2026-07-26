@@ -44,6 +44,7 @@ from tools.developer import legacy_amplicol  # noqa: E402
 
 PROCESS_EXPRESSION = "u u~ > Z g g g g g g"
 NORMALIZED_PROCESS = "u u~ > z g g g g g g"
+AMPLICOL_EXTERNAL_LEG_PERMUTATION = (0, 1, 3, 4, 5, 6, 7, 8, 2)
 SELECTED_ROLE = "selected-flow-helicity-sum"
 UNION_ROLE = "all-flow-single-helicity"
 ROLES = (SELECTED_ROLE, UNION_ROLE)
@@ -253,6 +254,11 @@ def _contract_from_request(path: Path) -> CaptureContract:
             "request AmpliCol revision differs from the contributor-lock pin: "
             f"{expected['amplicol_source_revision']} != "
             f"{legacy_amplicol.expected_revision()}"
+        )
+    if expected["external_leg_permutation"] != list(AMPLICOL_EXTERNAL_LEG_PERMUTATION):
+        _die(
+            "request AmpliCol source-to-generated permutation must be "
+            f"{list(AMPLICOL_EXTERNAL_LEG_PERMUTATION)}"
         )
 
     captures_raw = payload.get("captures")
@@ -492,7 +498,7 @@ def _fixture_points(
     normalized_process = " ".join(str(payload.get("process", "")).split()).casefold()
     if normalized_process != NORMALIZED_PROCESS:
         _die("validation-momenta fixture is not the qq_Z6g process")
-    if legacy_amplicol.process_pdgs(PROCESS_EXPRESSION) != pdgs:
+    if legacy_amplicol.process_pdgs(NORMALIZED_PROCESS) != pdgs:
         _die("fixture external PDGs differ from the original-AmpliCol process parser")
     return pdgs, tuple(points)
 
@@ -517,6 +523,31 @@ def _write_ordered_momenta(
         + "\n",
         encoding="utf-8",
     )
+
+
+def _generate_process_file(
+    *,
+    repository: Path,
+    setup: Path,
+    log_path: Path,
+) -> Path:
+    """Run the case-sensitive legacy generator with its lowercase spelling."""
+
+    _run(
+        (
+            sys.executable,
+            repository / "process_list.py",
+            "--serial",
+            NORMALIZED_PROCESS,
+        ),
+        cwd=setup,
+        label="original-AmpliCol process generation",
+        log_path=log_path,
+    )
+    process_file = setup / "processes.txt"
+    if not process_file.is_file():
+        _die("original-AmpliCol process_list.py did not write processes.txt")
+    return process_file
 
 
 def _copy_runtime(repository: Path, output: Path, process_file: Path) -> ProbeContext:
@@ -586,24 +617,15 @@ def _prepare_probes(
     setup = output / "setup"
     setup.mkdir(parents=True)
     log = setup / "build.log"
-    _run(
-        (
-            sys.executable,
-            repository / "process_list.py",
-            "--serial",
-            PROCESS_EXPRESSION,
-        ),
-        cwd=setup,
-        label="original-AmpliCol process generation",
+    process_file = _generate_process_file(
+        repository=repository,
+        setup=setup,
         log_path=log,
     )
-    process_file = setup / "processes.txt"
-    if not process_file.is_file():
-        _die("original-AmpliCol process_list.py did not write processes.txt")
     entries = legacy_amplicol.parse_process_file(process_file)
     entry, _matches = legacy_amplicol.select_generated_process_entry(
         entries,
-        generated_process=PROCESS_EXPRESSION,
+        generated_process=NORMALIZED_PROCESS,
         wanted_pdgs=source_pdgs,
     )
     mapped = legacy_amplicol.source_mapped_color_order(
