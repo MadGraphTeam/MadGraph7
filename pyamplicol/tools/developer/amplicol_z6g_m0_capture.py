@@ -57,6 +57,17 @@ DEFAULT_TARGET_SECONDS = 5.0
 DEFAULT_WARMUP_POINTS = 100
 DEFAULT_MINIMUM_POINTS = 100
 DEFAULT_MAXIMUM_POINTS = 100_000
+_SAMPLE_RUNTIME_RELATIVE_FILES = (
+    Path("tools/developer/amplicol_z6g_m0_capture.py"),
+    Path("tools/developer/legacy_amplicol.py"),
+    Path("tools/developer/legacy_oracle/__init__.py"),
+    Path("tools/developer/legacy_oracle/checkout.py"),
+    Path("tools/developer/legacy_oracle/evidence.py"),
+    Path("tools/developer/legacy_oracle/model.py"),
+    Path("tools/developer/legacy_oracle/probe.py"),
+    Path("tools/developer/legacy_oracle/processes.py"),
+    Path("dependencies/contributor-lock.toml"),
+)
 
 _M0_REQUEST_KEYS = {
     "kind",
@@ -398,6 +409,31 @@ def _host_identity() -> dict[str, Any]:
     }
 
 
+def _require_clean_revision(
+    repository: Path,
+    *,
+    expected_revision: str,
+    label: str,
+) -> None:
+    revision = _run(
+        ("git", "rev-parse", "--verify", "HEAD"),
+        cwd=repository,
+        label=f"{label} revision",
+    ).stdout.strip()
+    if revision != expected_revision:
+        _die(
+            f"{label} revision differs from the request pin: "
+            f"{revision} != {expected_revision}"
+        )
+    status = _run(
+        ("git", "status", "--porcelain=v1", "--untracked-files=all"),
+        cwd=repository,
+        label=f"{label} cleanliness",
+    ).stdout
+    if status:
+        _die(f"{label} has tracked or untracked pre-capture state:\n{status}")
+
+
 def _run(
     command: Sequence[str | os.PathLike[str]],
     *,
@@ -550,15 +586,29 @@ def _generate_process_file(
     return process_file
 
 
+def _copy_sample_runtime_sources(runtime: Path) -> tuple[Path, tuple[Path, ...]]:
+    bundle = runtime / "python-src"
+    copied: list[Path] = []
+    for relative in _SAMPLE_RUNTIME_RELATIVE_FILES:
+        source = (ROOT / relative).resolve(strict=True)
+        target = bundle / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied.append(target.resolve())
+    producer = (bundle / _SAMPLE_RUNTIME_RELATIVE_FILES[0]).resolve(strict=True)
+    return producer, tuple(copied)
+
+
 def _copy_runtime(repository: Path, output: Path, process_file: Path) -> ProbeContext:
     runtime = output / "runtime"
     runtime.mkdir(parents=True)
     interpreter = Path(sys.executable).resolve(strict=True)
+    bundled_producer, bundled_sources = _copy_sample_runtime_sources(runtime)
     worker_executable = runtime / "amplicol_z6g_m0_sample"
     worker_executable.write_text(
         "#!/bin/sh\n"
-        f"exec {shlex.quote(str(interpreter))} "
-        f'{shlex.quote(str(SCRIPT))} "$@"\n',
+        f"exec {shlex.quote(str(interpreter))} -I -S -B "
+        f'{shlex.quote(str(bundled_producer))} "$@"\n',
         encoding="utf-8",
     )
     worker_executable.chmod(0o755)
@@ -585,7 +635,7 @@ def _copy_runtime(repository: Path, output: Path, process_file: Path) -> ProbeCo
         union_binary=union_binary.resolve(),
         linked_files=(
             interpreter,
-            SCRIPT,
+            *bundled_sources,
             selected_binary.resolve(),
             union_binary.resolve(),
             runtime_process.resolve(),
@@ -612,6 +662,11 @@ def _prepare_probes(
     """Generate one LC row, build both probes, and snapshot execution inputs."""
 
     legacy_amplicol.prepare_checkout(repository)
+    _require_clean_revision(
+        repository,
+        expected_revision=legacy_amplicol.expected_revision(),
+        label="original-AmpliCol checkout",
+    )
     legacy_amplicol.validate_checkout(repository)
     source_pdgs, points = _fixture_points(fixture_path)
     setup = output / "setup"
@@ -1340,6 +1395,11 @@ def _capture(arguments: argparse.Namespace) -> dict[str, Any]:
         _die(f"output directory must not contain prior state: {output}")
     output.mkdir(parents=True, exist_ok=True)
     contract = _contract_from_request(request)
+    _require_clean_revision(
+        ROOT,
+        expected_revision=contract.expected["pyamplicol_source_revision"],
+        label="pyAmpliCol producer checkout",
+    )
     host = _host_identity()
     if host != contract.host:
         _die("current host identity differs from the four pyAmpliCol captures")
@@ -1495,6 +1555,11 @@ def _capture(arguments: argparse.Namespace) -> dict[str, Any]:
         )
 
     legacy_amplicol.validate_checkout(repository)
+    _require_clean_revision(
+        ROOT,
+        expected_revision=contract.expected["pyamplicol_source_revision"],
+        label="pyAmpliCol producer checkout",
+    )
     _verify_immutable_files(
         (
             *contract.input_files,

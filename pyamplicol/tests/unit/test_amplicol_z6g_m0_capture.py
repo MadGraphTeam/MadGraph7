@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -30,6 +32,7 @@ capture = _load("_test_amplicol_z6g_m0_capture", CAPTURE_SCRIPT)
 m0 = _load("_test_amplicol_z6g_m0_capture_m0", M0_SCRIPT)
 
 REVISION = "b" * 40
+PYAMPLICOL_REVISION = "a" * 40
 POINTS_SHA256 = "1" * 64
 NORMALIZATION_SHA256 = "2" * 64
 FLOW_ID = "flow:2,4,5,6,7,8,9,1"
@@ -56,10 +59,41 @@ def _write(path: Path, raw: bytes, *, executable: bool = False) -> dict[str, Any
     return capture._file_ref(path)
 
 
+def _git_repository(path: Path) -> tuple[Path, str]:
+    path.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=path, check=True)
+    tracked = path / "tracked.txt"
+    tracked.write_text("tracked\n", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=path, check=True)
+    subprocess.run(
+        (
+            "git",
+            "-c",
+            "user.name=Capture Test",
+            "-c",
+            "user.email=capture@example.invalid",
+            "commit",
+            "-qm",
+            "initial",
+        ),
+        cwd=path,
+        check=True,
+    )
+    revision = subprocess.run(
+        ("git", "rev-parse", "--verify", "HEAD"),
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return path, revision
+
+
 def _contract(tmp_path: Path) -> capture.CaptureContract:
     fixture = _write(tmp_path / "validation-momenta.json", b"fixture\n")
     return capture.CaptureContract(
         expected={
+            "pyamplicol_source_revision": PYAMPLICOL_REVISION,
             "amplicol_source_revision": REVISION,
             "momenta_points_sha256": POINTS_SHA256,
             "normalization_sha256": NORMALIZATION_SHA256,
@@ -228,13 +262,33 @@ def test_generated_manifests_pass_the_real_m0_amplicol_validator(
     tmp_path: Path,
 ) -> None:
     contract = _contract(tmp_path)
-    context = _context(tmp_path)
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    for name, raw in (
+        ("amplicol_library_benchmark", b"selected"),
+        ("amplicol_color_probe", b"union"),
+        ("libamp_1.so", b"library"),
+    ):
+        path = repository / name
+        path.write_bytes(raw)
+        path.chmod(0o755)
+    process_file = tmp_path / "processes.txt"
+    process_file.write_text("process\n", encoding="utf-8")
+    context = replace(
+        capture._copy_runtime(repository, tmp_path / "capture", process_file),
+        group=11,
+        integral=7,
+        source_pdgs=(2, -2, 23, 21, 21, 21, 21, 21, 21),
+        generated_pdgs=(2, -2, 21, 21, 21, 21, 21, 21, 23),
+        generated_color_order=(2, 3, 4, 5, 6, 7, 8, 1, 9),
+        permutation=capture.AMPLICOL_EXTERNAL_LEG_PERMUTATION,
+    )
     source = _source(tmp_path)
-    executable = _write(tmp_path / "capture-worker", b"worker", executable=True)
-    library = _write(tmp_path / "libamp.so", b"library")
+    executable = capture._file_ref(context.worker_executable)
+    linked = [capture._file_ref(path) for path in context.linked_files]
     binary_evidence = {
         "executable": executable,
-        "linked_libraries": [library],
+        "linked_libraries": linked,
         "source_files": list(source.source_files),
     }
     selected_values = capture._complex_pairs(contract.selected_values)
@@ -253,6 +307,13 @@ def test_generated_manifests_pass_the_real_m0_amplicol_validator(
         fixture=contract.fixture["file"],
         values=union_values,
     )
+    evidence_paths = [
+        executable["path"],
+        *(row["path"] for row in linked),
+        *(row["path"] for row in source.source_files),
+    ]
+    assert len(evidence_paths) == len(set(evidence_paths))
+    assert capture._file_ref(context.process_file) in linked
     combined = sorted(
         [*selected_projection, *union_projection],
         key=lambda row: row["position"],
@@ -314,6 +375,11 @@ def test_capture_orchestrates_exactly_seven_selected_union_pairs(
 
     monkeypatch.setattr(capture, "_contract_from_request", lambda _path: contract)
     monkeypatch.setattr(capture, "_host_identity", lambda: HOST)
+    monkeypatch.setattr(
+        capture,
+        "_require_clean_revision",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(capture, "_prepare_probes", lambda **_kwargs: context)
     monkeypatch.setattr(capture, "_source_evidence", lambda _repository: source)
     monkeypatch.setattr(
@@ -452,15 +518,184 @@ def test_runtime_launcher_pins_interpreter_producer_and_probe_inputs(
     )
 
     launcher = context.worker_executable.read_text(encoding="utf-8")
+    bundled_producer = (
+        context.runtime
+        / "python-src"
+        / "tools"
+        / "developer"
+        / "amplicol_z6g_m0_capture.py"
+    ).resolve()
     assert launcher.startswith("#!/bin/sh\nexec ")
     assert str(Path(sys.executable).resolve()) in launcher
-    assert str(CAPTURE_SCRIPT) in launcher
+    assert " -I -S -B " in launcher
+    assert str(bundled_producer) in launcher
+    assert str(CAPTURE_SCRIPT) not in launcher
     assert context.worker_executable.stat().st_mode & 0o111
     assert Path(sys.executable).resolve() in context.linked_files
-    assert CAPTURE_SCRIPT in context.linked_files
+    assert CAPTURE_SCRIPT not in context.linked_files
+    for relative in capture._SAMPLE_RUNTIME_RELATIVE_FILES:
+        copied = (context.runtime / "python-src" / relative).resolve()
+        assert copied.is_file()
+        assert copied in context.linked_files
     assert context.process_file in context.linked_files
     assert context.selected_binary in context.linked_files
     assert context.union_binary in context.linked_files
+    assert len(context.linked_files) == len(set(context.linked_files))
+
+    completed = subprocess.run(
+        (str(context.worker_executable), "_sample", "--help"),
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": ""},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "usage:" in completed.stdout
+
+
+def test_sample_runtime_inventory_covers_every_imported_legacy_oracle_module() -> None:
+    expected = {
+        path.relative_to(ROOT)
+        for path in (ROOT / "tools" / "developer" / "legacy_oracle").glob("*.py")
+    }
+    assert expected <= set(capture._SAMPLE_RUNTIME_RELATIVE_FILES)
+
+
+def test_copied_helper_tampering_is_detected(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    for name in (
+        "amplicol_library_benchmark",
+        "amplicol_color_probe",
+        "libamp_1.so",
+    ):
+        path = repository / name
+        path.write_bytes(name.encode())
+        path.chmod(0o755)
+    process_file = tmp_path / "processes.txt"
+    process_file.write_text("process\n", encoding="utf-8")
+    context = capture._copy_runtime(repository, tmp_path / "capture", process_file)
+    identities = tuple(capture._file_ref(path) for path in context.linked_files)
+    helper = (
+        context.runtime / "python-src" / "tools" / "developer" / "legacy_amplicol.py"
+    )
+    helper.write_text(
+        helper.read_text(encoding="utf-8") + "\n# adversarial drift\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(capture.CaptureError, match="capture input drifted"):
+        capture._verify_immutable_files(identities)
+
+
+def test_clean_revision_gate_rejects_revision_and_untracked_drift(
+    tmp_path: Path,
+) -> None:
+    repository, revision = _git_repository(tmp_path / "repository")
+
+    capture._require_clean_revision(
+        repository,
+        expected_revision=revision,
+        label="test checkout",
+    )
+    with pytest.raises(capture.CaptureError, match="revision differs"):
+        capture._require_clean_revision(
+            repository,
+            expected_revision="0" * 40,
+            label="test checkout",
+        )
+
+    (repository / "untracked.txt").write_text("drift\n", encoding="utf-8")
+    with pytest.raises(capture.CaptureError, match="tracked or untracked"):
+        capture._require_clean_revision(
+            repository,
+            expected_revision=revision,
+            label="test checkout",
+        )
+
+
+def test_prepare_probes_rejects_untracked_checkout_before_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, revision = _git_repository(tmp_path / "amplicol")
+    (repository / "untracked-before-build.txt").write_text(
+        "drift\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        capture.legacy_amplicol,
+        "prepare_checkout",
+        lambda _repository: None,
+    )
+    monkeypatch.setattr(
+        capture.legacy_amplicol,
+        "expected_revision",
+        lambda: revision,
+    )
+
+    with pytest.raises(capture.CaptureError, match="tracked or untracked"):
+        capture._prepare_probes(
+            repository=repository,
+            output=tmp_path / "output",
+            fixture_path=tmp_path / "not-read-before-cleanliness.json",
+            expected_flow_word=FLOW_WORD,
+            expected_permutation=capture.AMPLICOL_EXTERNAL_LEG_PERMUTATION,
+            jobs=1,
+        )
+
+
+def test_capture_rejects_current_source_revision_and_cleanliness_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, revision = _git_repository(tmp_path / "pyamplicol")
+    request = tmp_path / "request.json"
+    request.write_text("{}\n", encoding="utf-8")
+    base_contract = _contract(tmp_path)
+    monkeypatch.setattr(capture, "ROOT", repository)
+    prepared = False
+
+    def unexpected_prepare(**_kwargs: Any) -> None:
+        nonlocal prepared
+        prepared = True
+        raise AssertionError("probe preparation must not run")
+
+    monkeypatch.setattr(capture, "_prepare_probes", unexpected_prepare)
+
+    def arguments(output: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            request_template=request,
+            repository=tmp_path / "amplicol",
+            output_directory=tmp_path / output,
+        )
+
+    wrong_expected = dict(base_contract.expected)
+    wrong_expected["pyamplicol_source_revision"] = "0" * 40
+    monkeypatch.setattr(
+        capture,
+        "_contract_from_request",
+        lambda _path: replace(base_contract, expected=wrong_expected),
+    )
+    with pytest.raises(capture.CaptureError, match="revision differs"):
+        capture._capture(arguments("wrong-revision"))
+    assert prepared is False
+
+    clean_expected = dict(base_contract.expected)
+    clean_expected["pyamplicol_source_revision"] = revision
+    monkeypatch.setattr(
+        capture,
+        "_contract_from_request",
+        lambda _path: replace(base_contract, expected=clean_expected),
+    )
+    (repository / "untracked-current-source.txt").write_text(
+        "drift\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(capture.CaptureError, match="tracked or untracked"):
+        capture._capture(arguments("dirty-source"))
+    assert prepared is False
 
 
 def test_process_generation_subprocess_receives_lowercase_z(

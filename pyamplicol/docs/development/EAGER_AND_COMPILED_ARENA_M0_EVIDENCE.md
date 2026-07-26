@@ -320,14 +320,20 @@ $PYTHON "$WATCHDOG" --limit-gib 30 -- \
 The producer refuses a nonempty output directory. Before building anything it
 revalidates all four schema-6 captures with the M0 validator and requires their
 host, momenta, axes, normalization, selectors, source, and runtime contracts to
-agree. It also requires the current host and contributor-lock AmpliCol revision
-to match those pins.
+agree. It also requires the current host, the exact clean pyAmpliCol producer
+revision, and the exact clean contributor-lock AmpliCol revision to match those
+pins. Cleanliness is checked before the original-AmpliCol build with
+`git status --porcelain=v1 --untracked-files=all`; tracked and untracked
+preexisting state are both rejected.
 
 The producer builds and snapshots `amplicol_library_benchmark`,
 `amplicol_color_probe`, and the generated `libamp` library. A
-content-addressed launcher pins the exact Python interpreter and tracked
-producer source. The retained command for every sample additionally pins the
-raw momenta file and digest, source revision, stable flow or helicity ID,
+content-addressed launcher invokes the exact Python interpreter with
+`-I -S -B` and an immutable runtime copy of the producer, its complete imported
+`legacy_amplicol` / `legacy_oracle` helper-module set, and the contributor lock.
+It never imports those helpers from the live checkout or creates untracked
+bytecode beside them. The retained command for every sample additionally pins
+the raw momenta file and digest, source revision, stable flow or helicity ID,
 explicit flow word and helicity values, selected generated row, external-leg
 permutation, workload, round, and evaluated-point count.
 
