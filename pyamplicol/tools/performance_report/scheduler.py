@@ -804,6 +804,8 @@ class CampaignScheduler:
         )
 
     def _run_cell(self, planned: PlannedCell) -> CellOutcome:
+        if not self.settings.campaign_policy.allow_terminal_censors:
+            return self._run_cell_in_lane(planned)
         with self.service.store.named_lock(
             _resource_lane_lock_name(planned.cell)
         ):

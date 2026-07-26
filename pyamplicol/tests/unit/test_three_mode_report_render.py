@@ -571,6 +571,39 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
     assert not completeness.applicable_na_display_slots
 
 
+def test_best_mode_terminal_baselines_are_visibly_complete(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_n4_scope(caches)
+    reference = _cache_by_dataset(caches, "reference_amplicol_nlc")
+    entries = reference["entries"]
+    assert isinstance(entries, list)
+    for entry in entries:
+        if entry["n_final"] == 1:
+            entry["measurement"] = _memory_censor(
+                REPORT_CATALOG.cell(str(entry["cell_id"]))
+            )
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+    row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
+    marker = r"\matrixstatus{ReportOrange}{>100GB}"
+    assert row.count(marker) >= 2
+    generation_summary = next(
+        line
+        for line in tex.splitlines()
+        if r"\textbf{summary: generation}" in line
+    )
+    wall_summary = next(
+        line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
+    )
+    assert marker in generation_summary
+    assert marker in wall_summary
+    assert r"\matrixna{ReportMuted}" not in row
+    assert r"\matrixna{ReportMuted}" not in generation_summary
+    assert r"\matrixna{ReportMuted}" not in wall_summary
+
+
 def test_best_mode_missing_candidates_remain_incomplete_under_strict_policy(
     reset_caches,
 ) -> None:

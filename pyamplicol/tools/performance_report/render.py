@@ -1121,11 +1121,25 @@ def _best_mode_ratio(
 def _best_mode_runtime_ratio(joined: BestModeWorkload) -> str:
     if joined.mode is None:
         return _best_mode_terminal_status(joined)
+    if not _ok(joined.baseline):
+        return _status(joined.baseline)
     return _ratio(
         joined.candidate,
         joined.baseline,
         "wall_seconds_per_point",
     )
+
+
+def _best_mode_summary_terminal_label(
+    joined: BestModeWorkload,
+) -> str | None:
+    if joined.mode is None:
+        return joined.terminal_label
+    if not _ok(joined.baseline):
+        return policy_status_label(joined.baseline)
+    if not _ok(joined.candidate):
+        return policy_status_label(joined.candidate)
+    return None
 
 
 def _best_mode_lc_cell(view: BestModeMatrixCell) -> str:
@@ -1195,7 +1209,10 @@ def _best_mode_summary_pair(
         ):
             return _not_exposed()
         terminal_label = _canonical_best_mode_terminal_label(
-            tuple(item.terminal_label for item in joined)
+            tuple(
+                _best_mode_summary_terminal_label(item)
+                for item in joined
+            )
         )
         if terminal_label is not None:
             return (
