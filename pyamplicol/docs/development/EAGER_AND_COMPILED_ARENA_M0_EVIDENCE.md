@@ -287,15 +287,66 @@ The fourth command changes the UFO layout/output paths to
 `all-flow-union`/`ufo-union`. Do not add
 `--specialize-flow-at-generation`.
 
-The AmpliCol capture producer must run the matching raw probe seven times per
-workload in an interleaved subprocess schedule, on the same momenta file and
-host. It must write the schema above directly from raw outputs. Wrapping an old
-report row or copying its scalar timing into seven rows is invalid.
+Create `request-template.json` with the final four capture references and
+`expected` object. Its `amplicol_evidence` object must reserve exactly the
+`selected-flow-helicity-sum` and `all-flow-single-helicity` keys; their values
+may remain empty objects until the capture below finishes. Then run the tracked
+strict producer against the clean detached original-AmpliCol checkout:
+
+```sh
+REQUEST_TEMPLATE=/private/tmp/arena-m0/request-template.json
+AMPLICOL_SOURCE=/private/tmp/pyamplicol-eager-compiled-arena-amplicol-m0-src
+AMPLICOL_OUTPUT=/private/tmp/arena-m0/amplicol
+AMPLICOL_CAPTURE=tools/developer/amplicol_z6g_m0_capture.py
+
+$PYTHON "$WATCHDOG" --limit-gib 30 -- \
+  $PYTHON "$AMPLICOL_CAPTURE" capture \
+  --request-template "$REQUEST_TEMPLATE" \
+  --repository "$AMPLICOL_SOURCE" \
+  --output-directory "$AMPLICOL_OUTPUT" \
+  --jobs 4 \
+  --target-seconds 5 \
+  --warmup-points 100 \
+  --minimum-points 100 \
+  --maximum-points 100000
+```
+
+The producer refuses a nonempty output directory. Before building anything it
+revalidates all four schema-6 captures with the M0 validator and requires their
+host, momenta, axes, normalization, selectors, source, and runtime contracts to
+agree. It also requires the current host and contributor-lock AmpliCol revision
+to match those pins.
+
+The producer builds and snapshots `amplicol_library_benchmark`,
+`amplicol_color_probe`, and the generated `libamp` library. A
+content-addressed launcher pins the exact Python interpreter and tracked
+producer source. The retained command for every sample additionally pins the
+raw momenta file and digest, source revision, stable flow or helicity ID,
+explicit flow word and helicity values, selected generated row, external-leg
+permutation, workload, round, and evaluated-point count.
+
+`capture-index.json` contains the two final evidence references. The output
+also retains both authoritative manifests, exactly fourteen raw-sample JSON
+records, the launcher, both probe executables, the generated library, and the
+generated process file. The two workloads always run as seven chronological
+selected-then-all-flow subprocess pairs. Each worker's only stdout is the
+strict `amplicol-m0-probe-result`; the coordinator stores it verbatim and
+revalidates its identity and numerical values. Wrapping an old report row or
+copying its scalar timing into seven rows is therefore impossible.
+
+Merge the content-addressed references into the final request without changing
+the template's four capture references or `expected` pins:
+
+```sh
+REQUEST=/private/tmp/arena-m0/request.json
+jq --slurpfile amplicol "$AMPLICOL_OUTPUT/capture-index.json" \
+  '.amplicol_evidence = $amplicol[0].amplicol_evidence' \
+  "$REQUEST_TEMPLATE" > "$REQUEST"
+```
 
 After recording exact file sizes and SHA-256 values in the request, run:
 
 ```sh
-REQUEST=/private/tmp/arena-m0/request.json
 DECISION=/private/tmp/arena-m0/decision.json
 REQUEST_SHA256="$(shasum -a 256 "$REQUEST" | awk '{print $1}')"
 
