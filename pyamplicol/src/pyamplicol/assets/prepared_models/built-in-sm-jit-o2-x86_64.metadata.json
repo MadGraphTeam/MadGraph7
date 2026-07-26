@@ -10,8 +10,8 @@
     }
   },
   "bundle": "built-in-sm-jit-o2-x86_64.pyamplicol-model",
-  "bundle_sha256": "cf608153b030bccf4652ffe20e5a48383685928664506930382d9a3a12f4d1fc",
-  "bundle_size": 7427746,
+  "bundle_sha256": "c913fd328b4defcf8716c2e664025391dab411c1019d439187e110356896607b",
+  "bundle_size": 7421043,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
     "symbolica_version": "2.2.0",
