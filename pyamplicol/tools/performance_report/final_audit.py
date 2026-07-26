@@ -1067,7 +1067,7 @@ def _active_runtime_snapshot(
         or candidate["publishable"] is not False
         or candidate["native_build_inputs_sha256"] != native_digest
         or candidate["version"] != pyamplicol.__version__
-        or native_version != pyamplicol.__version__
+        or native_version.replace("-dev.", ".dev") != pyamplicol.__version__
         or not checkout_matches
         or not isinstance(native_digest, str)
         or _SHA256_RE.fullmatch(native_digest) is None

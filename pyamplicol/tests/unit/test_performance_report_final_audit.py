@@ -1094,9 +1094,10 @@ def test_active_runtime_snapshot_binds_exact_checkout(
 
     native_path = tmp_path / "_rusticol.so"
     native_path.write_bytes(b"native")
+    native_version = pyamplicol.__version__.replace(".dev", "-dev.")
     native = SimpleNamespace(
         __file__=str(native_path),
-        package_version=lambda: pyamplicol.__version__,
+        package_version=lambda: native_version,
         native_build_inputs_sha256=lambda: "e" * 64,
         target_info=lambda: SimpleNamespace(
             triple="aarch64-apple-darwin",
@@ -1182,6 +1183,7 @@ def test_active_runtime_snapshot_binds_exact_checkout(
     assert snapshot["python_package_tree"]["kind"] == (  # type: ignore[index]
         "pyamplicol-python-package-tree-v2"
     )
+    assert snapshot["native_extension"]["package_version"] == native_version  # type: ignore[index]
     assert snapshot["loaded_module_origin_policy"] == _loaded_origin_policy()
 
     other = tmp_path / "other"
