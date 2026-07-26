@@ -12,6 +12,7 @@ from pyamplicol.artifacts import inspect_artifact
 from pyamplicol.color.plan import build_color_plan
 from pyamplicol.config import (
     ColorConfig,
+    EagerEvaluatorConfig,
     EvaluatorConfig,
     GenerationConfig,
     GenerationValidationConfig,
@@ -174,7 +175,10 @@ def test_complete_pure_gluon_replay_matches_every_sector_specialization(
             post_build_validation=False,
         ),
     )
-    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=3))
+    evaluator = EvaluatorConfig(
+        eager=EagerEvaluatorConfig(point_tile_size=2),
+        jit=JITConfig(optimization_level=3),
+    )
     complete_path = tmp_path / "complete"
     Generator(
         RunConfig(
@@ -200,6 +204,20 @@ def test_complete_pure_gluon_replay_matches_every_sector_specialization(
     complete = Runtime.load(complete_path)
     resolved = complete.evaluate_resolved(momenta)
     exact = complete.evaluate_resolved(momenta, precision=32)
+    total = complete.evaluate(momenta)[0]
+    assert total == pytest.approx(
+        resolved.total()[0],
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    tiled_momenta = momenta * 3
+    tiled_total = complete.evaluate(tiled_momenta)
+    tiled_resolved = complete.evaluate_resolved(tiled_momenta)
+    assert tiled_total == pytest.approx(
+        tiled_resolved.total(),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
     assert exact.helicity_ids == resolved.helicity_ids
     assert exact.color_ids == resolved.color_ids
     color_plan = build_color_plan(

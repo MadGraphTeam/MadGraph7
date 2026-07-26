@@ -34,7 +34,7 @@ def test_public_lc_color_ids_are_physical_and_sector_independent() -> None:
 @pytest.mark.parametrize(
     ("color_accuracy", "expected_ids"),
     (
-        ("lc", ("flow:2,1,3,4", "flow:3,1,2,4")),
+        ("lc", ("flow:2,1,3,4", "flow:2,4,3,1")),
         ("nlc", ("color:contracted",)),
         ("full", ("color:contracted",)),
     ),

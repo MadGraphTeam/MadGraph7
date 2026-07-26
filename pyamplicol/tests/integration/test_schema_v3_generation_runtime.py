@@ -443,14 +443,25 @@ def test_current_source_generates_and_evaluates_schema_v3(
         breakdown = benchmark.timing_breakdown
         assert breakdown.wall_time is not None
         accounted_components = (
+            breakdown.native_input_pack_time,
+            breakdown.native_input_crossing_time,
+            breakdown.orchestration_time,
+            breakdown.state_prepare_time,
+            breakdown.state_clear_time,
             breakdown.source_fill_time,
-            breakdown.momentum_setup_time,
+            breakdown.momentum_input_setup_time,
+            breakdown.model_parameter_setup_time,
             breakdown.stage_input_pack_time,
             breakdown.stage_evaluator_call_time,
             breakdown.output_assign_time,
             breakdown.amplitude_input_pack_time,
             breakdown.amplitude_evaluator_call_time,
             breakdown.reduction_time,
+            breakdown.total_materialization_time,
+            breakdown.final_output_copy_time,
+            breakdown.selector_planner_time,
+            breakdown.selector_gather_time,
+            breakdown.selector_scatter_time,
         )
         accounted = sum(
             component.mean_seconds_per_point

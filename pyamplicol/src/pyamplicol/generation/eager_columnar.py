@@ -22,7 +22,6 @@ from typing import Any
 import numpy as np
 
 from ..color import build_color_contraction_plan
-from ..color.public_flows import amplicol_legacy_two_line_sector_public_word
 from ..models.base import Model
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import GenericDAG
@@ -1677,9 +1676,6 @@ class _Builder:
             all_sector_weight_factor_id=_U32,
         )
         reduction_rows: list[tuple[int, int, int]] = []
-        initial_labels = tuple(
-            leg.label for leg in self.dag.process.legs if leg.is_initial
-        )
         for descriptor in self.group_descriptors:
             group_id = descriptor.group_id
             vector = _descriptor_helicity_vector(self.dag, descriptor.helicity_key)
@@ -1704,32 +1700,11 @@ class _Builder:
                 flipped = tuple(-value for value in vector)
                 if flipped != vector:
                     helicity_members.append(flipped)
-            color_word = word
-            if self.dag.process.color_accuracy == "lc":
-                sector = self.dag.color_plan.sector(descriptor.sector_id)
-                if sector is None:
-                    raise EagerColumnarInputError(
-                        f"coherent group {group_id} references absent LC sector "
-                        f"{descriptor.sector_id}"
-                    )
-                expected_construction_word = tuple(
-                    sector.word_labels or sector.color_words[0]
-                )
-                if word != expected_construction_word:
-                    raise EagerColumnarInputError(
-                        f"coherent group {group_id} color word disagrees with LC "
-                        f"sector {descriptor.sector_id}"
-                    )
-                color_word = amplicol_legacy_two_line_sector_public_word(
-                    sector,
-                    initial_labels,
-                )
-            color_members = [color_word]
+            color_members = [word]
             if (
-                color_word
+                word
                 and all_sector_weight > helicity_weight + 1.0e-12
-                and (reflected := (color_word[0], *reversed(color_word[1:])))
-                != color_word
+                and (reflected := (word[0], *reversed(word[1:]))) != word
             ):
                 color_members.append(reflected)
             for helicity in helicity_members:
@@ -1899,14 +1874,8 @@ class _Builder:
             set(replay.materialized_sector_ids) if replay is not None else None
         )
         records: dict[tuple[int, ...], tuple[tuple[int, ...], float, bool]] = {}
-        initial_labels = tuple(
-            leg.label for leg in self.dag.process.legs if leg.is_initial
-        )
         for sector in self.dag.color_plan.sectors:
-            word = amplicol_legacy_two_line_sector_public_word(
-                sector,
-                initial_labels,
-            )
+            word = tuple(sector.word_labels or sector.color_words[0])
             representative = sector
             if replay is not None:
                 representative = self.dag.color_plan.sector(
@@ -1916,9 +1885,8 @@ class _Builder:
                     raise EagerColumnarInputError(
                         f"missing replay representative for sector {sector.id}"
                     )
-            representative_word = amplicol_legacy_two_line_sector_public_word(
-                representative,
-                initial_labels,
+            representative_word = tuple(
+                representative.word_labels or representative.color_words[0]
             )
             records.setdefault(
                 word,

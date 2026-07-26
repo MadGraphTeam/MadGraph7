@@ -1122,7 +1122,7 @@ def test_builtin_and_ufo_contracted_recurrence_have_matching_structure(
     (
         (_PROCESS, None),
         (_CHARGED_CURRENT_PROCESS, None),
-        (_TWO_QUARK_LINE_PROCESS, "flow:3,1,2,4"),
+        (_TWO_QUARK_LINE_PROCESS, "flow:2,4,3,1"),
     ),
 )
 def test_builtin_lc_all_flow_union_recurrence_matches_compiled(
