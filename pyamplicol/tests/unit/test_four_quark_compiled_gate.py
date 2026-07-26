@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -260,6 +261,68 @@ def test_compiled_profile_requires_direct_calls_and_zero_boundary_traffic() -> N
     with pytest.raises(gate.GateError, match="every evaluator backend call"):
         gate._audit_compiled_direct_profile(
             {**profile, "compiled_direct_arena_call_count": 6}
+        )
+
+
+def test_helicity_probe_is_computed_nonzero_and_self_representing() -> None:
+    def helicity(
+        identifier: str,
+        *,
+        computed: bool,
+        structural_zero: bool,
+        coefficient: float,
+        representative_id: str,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=identifier,
+            computed=computed,
+            structural_zero=structural_zero,
+            coefficient=coefficient,
+            representative_id=representative_id,
+        )
+
+    physics = SimpleNamespace(
+        helicities=(
+            helicity(
+                "zero",
+                computed=False,
+                structural_zero=True,
+                coefficient=0.0,
+                representative_id="zero",
+            ),
+            helicity(
+                "first",
+                computed=True,
+                structural_zero=False,
+                coefficient=1.0,
+                representative_id="first",
+            ),
+            helicity(
+                "alias",
+                computed=False,
+                structural_zero=False,
+                coefficient=1.0,
+                representative_id="first",
+            ),
+            helicity(
+                "second",
+                computed=True,
+                structural_zero=False,
+                coefficient=1.0,
+                representative_id="second",
+            ),
+        )
+    )
+
+    selected, count = gate._select_helicity_probe(physics, lane_name="test")
+
+    assert selected.id == "second"
+    assert count == 2
+
+    with pytest.raises(gate.GateError, match="no executable helicity"):
+        gate._select_helicity_probe(
+            SimpleNamespace(helicities=(physics.helicities[0],)),
+            lane_name="test",
         )
 
 

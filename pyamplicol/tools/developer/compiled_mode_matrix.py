@@ -436,9 +436,7 @@ def _stable_runtime_identity_value(
             if key != "mtime_ns" and not (_root and key == "platform")
         }
     if isinstance(value, list):
-        return [
-            _stable_runtime_identity_value(item, _root=False) for item in value
-        ]
+        return [_stable_runtime_identity_value(item, _root=False) for item in value]
     if isinstance(value, tuple):
         return tuple(
             _stable_runtime_identity_value(item, _root=False) for item in value
@@ -575,6 +573,17 @@ def _cell_evidence(
             "warmup_runs_per_profile": ACCEPTANCE_WARMUP_RUNS,
             "native_wall_time_source": regression.NATIVE_WALL_TIME_SOURCE,
             "native_wall_time_sample_pass": regression.NATIVE_WALL_TIME_SAMPLE_PASS,
+            "required_current_profile_attribution_sample_pass": (
+                regression.PROFILE_ATTRIBUTION_SAMPLE_PASS
+            ),
+            "required_current_profile_attribution_boundary": (
+                regression.ARENA_PROFILE_BOUNDARY
+            ),
+            "required_current_profile_attribution_phase_timing_scope": (
+                regression.ARENA_PHASE_TIMING_SCOPE
+            ),
+            "required_current_profile_attribution_evaluator_timing_available": False,
+            "required_current_profile_protocol": regression.ARENA_PROFILE_PROTOCOL,
             "timing_sample_contract": regression.PAIRED_TIMING_SAMPLE_CONTRACT,
         }
         numeric_minimums = {
@@ -801,6 +810,22 @@ def _cell_evidence(
             runtime_digests[lane] = next(iter(digests))
         if cell.workload != "summed" and not selected_nonzero_by_lane[lane]:
             errors.append(f"{lane} selected workload is identically zero")
+
+    if artifacts is not None:
+        try:
+            recomputed_arena_profile_gate = regression._arena_profile_gate(
+                measurements,
+                execution_mode=cell.execution_mode,
+                artifacts=artifacts,
+                minimum_profile_timed_blocks=ACCEPTANCE_MINIMUM_TIMED_BLOCKS,
+            )
+        except regression.RegressionError as error:
+            errors.append(f"arena profile evidence cannot be recomputed: {error}")
+        else:
+            if recomputed_arena_profile_gate.get("passes") is not True:
+                errors.append(
+                    "arena profile evidence fails independent matrix recomputation"
+                )
 
     provenance = _mapping(result.get("provenance"))
     provenance_digests: dict[str, str] = {}

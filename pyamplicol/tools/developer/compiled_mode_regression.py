@@ -43,14 +43,22 @@ MEMORY_LIMIT_GIB = 30.0
 NATIVE_WALL_TIME_SOURCE = "runtime_core_repeated_wall_time"
 NATIVE_WALL_TIME_SAMPLE_PASS = "runtime._benchmark_f64_wall_time"
 PAIRED_TIMING_SAMPLE_CONTRACT = "paired_unprofiled_headline_profiled_attribution_v1"
-PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
+PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime._profile_arena_repeated"
+FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
+ARENA_PROFILE_BOUNDARY = "warmed-direct-arena-borrowed-input-preallocated-output-v1"
+FROZEN_BASELINE_PROFILE_BOUNDARY = "materialized-native-profile-v1"
+ARENA_PHASE_TIMING_SCOPE = "coarse-arena-boundary-only-v1"
+FROZEN_BASELINE_PHASE_TIMING_SCOPE = "profiled-evaluator-phases-v1"
+ARENA_PROFILE_PROTOCOL = "arena"
+FROZEN_BASELINE_PROFILE_PROTOCOL = "frozen-pre-arena"
 NATIVE_SAMPLE_RESULT_KIND = "pyamplicol-compiled-mode-native-sample"
-NATIVE_SAMPLE_SCHEMA_VERSION = 3
+NATIVE_SAMPLE_SCHEMA_VERSION = 5
 INSTALLATION_IDENTITY_KIND = "pyamplicol-installed-distribution-identity"
 INSTALLATION_IDENTITY_SCHEMA_VERSION = 2
 RESULT_KIND = "pyamplicol-compiled-mode-regression"
 CACHE_KIND = "pyamplicol-compiled-mode-regression-artifact-cache"
-SCHEMA_VERSION = 4
+CACHE_SCHEMA_VERSION = 4
+SCHEMA_VERSION = 6
 DEFAULT_GENERATION_TIMEOUT = 300.0
 DEFAULT_PROFILE_TIMEOUT = 120.0
 DEFAULT_TARGET_RUNTIME = 5.0
@@ -63,6 +71,16 @@ GAIN_RELATIVE_THRESHOLD = 0.10
 MATERIAL_RESOURCE_GROWTH_THRESHOLD = 0.03
 VALIDATION_SEED = 20260719
 VALIDATION_SAMPLE_COUNT = 8
+CORRECTNESS_POINT_DERIVATION_KIND = (
+    "pyamplicol-compiled-mode-correctness-point-derivation"
+)
+CORRECTNESS_POINT_DERIVATION_SCHEMA_VERSION = 1
+CORRECTNESS_POINT_DERIVATION_CONTRACT = (
+    "authenticated-first-validation-point-massive-rambo-v1"
+)
+CORRECTNESS_SEED_START = 20260726
+MAX_CORRECTNESS_SEED_ATTEMPTS = 256
+PRECISION32_CORRECTNESS_POLICY = "first-current-sample-exact-oracle-direct-all-f64-v1"
 DEFAULT_LC_FLOW_LAYOUT = "topology-replay"
 CORRECTNESS_RELATIVE_TOLERANCE = 1.0e-12
 CORRECTNESS_ABSOLUTE_TOLERANCE = 1.0e-15
@@ -450,6 +468,7 @@ def _profile_command(
     helicities: Sequence[str],
     color_flows: Sequence[str],
     execution_mode: str = "compiled",
+    profile_protocol: str = ARENA_PROFILE_PROTOCOL,
     dependency_site: Path | None = None,
     include_precision32: bool = False,
 ) -> tuple[str, ...]:
@@ -461,6 +480,8 @@ def _profile_command(
         process_id,
         "--execution-mode",
         execution_mode,
+        "--profile-protocol",
+        profile_protocol,
         "--target-runtime",
         str(target_runtime),
         "--batch-size",
@@ -1068,7 +1089,7 @@ def _ensure_artifact(
     if (
         cache is not None
         and cache.get("kind") == CACHE_KIND
-        and cache.get("schema_version") == SCHEMA_VERSION
+        and cache.get("schema_version") == CACHE_SCHEMA_VERSION
         and cache.get("signature") == signature
     ):
         try:
@@ -1115,7 +1136,7 @@ def _ensure_artifact(
         cache_path,
         {
             "kind": CACHE_KIND,
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": CACHE_SCHEMA_VERSION,
             "signature": signature,
             "artifact_id": metadata["artifact_id"],
             "artifact_tree_sha256": tree_identity["sha256"],
@@ -1398,6 +1419,340 @@ def _validated_numerical_result(
     }
 
 
+def _validated_sha256(value: object, *, label: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise RegressionError(f"{label} must be a lowercase SHA-256 digest")
+    return value
+
+
+def _validated_canonical_float_hex(
+    value: object,
+    *,
+    label: str,
+    positive: bool,
+) -> str:
+    if not isinstance(value, str):
+        raise RegressionError(f"{label} must be a canonical f64 hexadecimal value")
+    try:
+        converted = float.fromhex(value)
+    except ValueError as error:
+        raise RegressionError(
+            f"{label} must be a canonical f64 hexadecimal value"
+        ) from error
+    if (
+        not math.isfinite(converted)
+        or converted.hex() != value
+        or (converted <= 0.0 if positive else converted < 0.0)
+    ):
+        qualifier = "positive" if positive else "non-negative"
+        raise RegressionError(f"{label} must be canonical, finite, and {qualifier}")
+    return value
+
+
+def _require_exact_keys(
+    mapping: Mapping[str, Any],
+    expected: frozenset[str],
+    *,
+    label: str,
+) -> None:
+    observed = frozenset(str(key) for key in mapping)
+    if observed != expected or any(not isinstance(key, str) for key in mapping):
+        raise RegressionError(
+            f"{label} fields differ: "
+            f"missing={sorted(expected - observed)!r}, "
+            f"unexpected={sorted(observed - expected)!r}"
+        )
+
+
+def _validated_correctness_point_derivation(
+    value: object,
+    *,
+    precision16: Mapping[str, Any],
+    precision32: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    label = "correctness point derivation"
+    if not isinstance(value, Mapping):
+        raise RegressionError(f"native sample has no {label}")
+    _require_exact_keys(
+        value,
+        frozenset(
+            {
+                "kind",
+                "schema_version",
+                "contract",
+                "source_validation",
+                "numpy",
+                "sqrt_s_f64_hex",
+                "external_mass_f64_hex",
+                "final_state_mass_f64_hex",
+                "seed_start",
+                "seed_attempt_limit",
+                "attempt_count",
+                "selected_seeds",
+                "point_sha256",
+                "invariant_sha256",
+                "batch_sha256",
+                "sha256",
+            }
+        ),
+        label=label,
+    )
+    _require_equal(
+        value,
+        "kind",
+        CORRECTNESS_POINT_DERIVATION_KIND,
+        label=f"{label} kind",
+    )
+    _require_equal(
+        value,
+        "schema_version",
+        CORRECTNESS_POINT_DERIVATION_SCHEMA_VERSION,
+        label=f"{label} schema_version",
+    )
+    _require_equal(
+        value,
+        "contract",
+        CORRECTNESS_POINT_DERIVATION_CONTRACT,
+        label=f"{label} contract",
+    )
+
+    source = value.get("source_validation")
+    if not isinstance(source, Mapping):
+        raise RegressionError(f"{label} has no authenticated source identity")
+    _require_exact_keys(
+        source,
+        frozenset(
+            {
+                "file_sha256",
+                "canonical_sha256",
+                "size_bytes",
+                "process_id",
+                "process_expression",
+                "external_pdgs",
+                "point_count",
+                "selected_point_index",
+                "selected_point_sha256",
+            }
+        ),
+        label=f"{label} source_validation",
+    )
+    for key in ("file_sha256", "canonical_sha256", "selected_point_sha256"):
+        _validated_sha256(
+            source.get(key),
+            label=f"{label} source_validation {key}",
+        )
+    source_size = source.get("size_bytes")
+    if (
+        isinstance(source_size, bool)
+        or not isinstance(source_size, int)
+        or source_size <= 0
+    ):
+        raise RegressionError(f"{label} source_validation size_bytes must be positive")
+    for key in ("process_id", "process_expression"):
+        source_text = source.get(key)
+        if not isinstance(source_text, str) or not source_text.strip():
+            raise RegressionError(f"{label} source_validation {key} must be non-empty")
+    source_pdgs = source.get("external_pdgs")
+    if (
+        not isinstance(source_pdgs, Sequence)
+        or isinstance(source_pdgs, (str, bytes))
+        or len(source_pdgs) < 4
+        or any(isinstance(pdg, bool) or not isinstance(pdg, int) for pdg in source_pdgs)
+    ):
+        raise RegressionError(f"{label} source_validation external_pdgs are invalid")
+    source_point_count = source.get("point_count")
+    if (
+        isinstance(source_point_count, bool)
+        or not isinstance(source_point_count, int)
+        or source_point_count <= 0
+    ):
+        raise RegressionError(f"{label} source_validation point_count must be positive")
+    _require_equal(
+        source,
+        "selected_point_index",
+        0,
+        label=f"{label} source_validation selected_point_index",
+    )
+
+    numpy_identity = value.get("numpy")
+    if not isinstance(numpy_identity, Mapping):
+        raise RegressionError(f"{label} has no NumPy identity")
+    _require_exact_keys(
+        numpy_identity,
+        frozenset(
+            {
+                "module",
+                "version",
+                "origin_file_name",
+                "origin_size_bytes",
+                "origin_sha256",
+                "random_generator",
+                "bit_generator",
+            }
+        ),
+        label=f"{label} NumPy identity",
+    )
+    _require_equal(
+        numpy_identity,
+        "module",
+        "numpy",
+        label=f"{label} NumPy module",
+    )
+    _require_equal(
+        numpy_identity,
+        "random_generator",
+        "default_rng",
+        label=f"{label} NumPy random_generator",
+    )
+    _require_equal(
+        numpy_identity,
+        "bit_generator",
+        "PCG64",
+        label=f"{label} NumPy bit_generator",
+    )
+    numpy_version = numpy_identity.get("version")
+    origin_file_name = numpy_identity.get("origin_file_name")
+    if not isinstance(numpy_version, str) or not numpy_version:
+        raise RegressionError(f"{label} NumPy version is invalid")
+    if (
+        not isinstance(origin_file_name, str)
+        or not origin_file_name
+        or "/" in origin_file_name
+        or "\\" in origin_file_name
+    ):
+        raise RegressionError(f"{label} NumPy origin must be path-free")
+    origin_size = numpy_identity.get("origin_size_bytes")
+    if (
+        isinstance(origin_size, bool)
+        or not isinstance(origin_size, int)
+        or origin_size <= 0
+    ):
+        raise RegressionError(f"{label} NumPy origin size is invalid")
+    _validated_sha256(
+        numpy_identity.get("origin_sha256"),
+        label=f"{label} NumPy origin_sha256",
+    )
+
+    sqrt_s_hex = _validated_canonical_float_hex(
+        value.get("sqrt_s_f64_hex"),
+        label=f"{label} sqrt_s_f64_hex",
+        positive=True,
+    )
+    sqrt_s = float.fromhex(sqrt_s_hex)
+    external_mass_hex = value.get("external_mass_f64_hex")
+    final_mass_hex = value.get("final_state_mass_f64_hex")
+    if (
+        not isinstance(external_mass_hex, Sequence)
+        or isinstance(external_mass_hex, (str, bytes))
+        or len(external_mass_hex) != len(source_pdgs)
+        or not isinstance(final_mass_hex, Sequence)
+        or isinstance(final_mass_hex, (str, bytes))
+        or len(final_mass_hex) != len(source_pdgs) - 2
+    ):
+        raise RegressionError(f"{label} mass vectors have invalid lengths")
+    validated_external_masses = [
+        _validated_canonical_float_hex(
+            mass,
+            label=f"{label} external mass {index}",
+            positive=False,
+        )
+        for index, mass in enumerate(external_mass_hex)
+    ]
+    validated_final_masses = [
+        _validated_canonical_float_hex(
+            mass,
+            label=f"{label} final-state mass {index}",
+            positive=False,
+        )
+        for index, mass in enumerate(final_mass_hex)
+    ]
+    if validated_final_masses != validated_external_masses[2:]:
+        raise RegressionError(f"{label} final-state masses are inconsistent")
+    if math.fsum(float.fromhex(mass) for mass in validated_final_masses) >= sqrt_s:
+        raise RegressionError(f"{label} final-state masses are not below threshold")
+
+    _require_equal(
+        value,
+        "seed_start",
+        CORRECTNESS_SEED_START,
+        label=f"{label} seed_start",
+    )
+    _require_equal(
+        value,
+        "seed_attempt_limit",
+        MAX_CORRECTNESS_SEED_ATTEMPTS,
+        label=f"{label} seed_attempt_limit",
+    )
+    attempts = value.get("attempt_count")
+    if (
+        isinstance(attempts, bool)
+        or not isinstance(attempts, int)
+        or not VALIDATION_SAMPLE_COUNT <= attempts <= MAX_CORRECTNESS_SEED_ATTEMPTS
+    ):
+        raise RegressionError(f"{label} attempt_count is invalid")
+    selected_seeds = value.get("selected_seeds")
+    if (
+        not isinstance(selected_seeds, Sequence)
+        or isinstance(selected_seeds, (str, bytes))
+        or len(selected_seeds) != VALIDATION_SAMPLE_COUNT
+        or any(
+            isinstance(seed, bool) or not isinstance(seed, int)
+            for seed in selected_seeds
+        )
+        or list(selected_seeds) != sorted(set(selected_seeds))
+        or selected_seeds[0] < CORRECTNESS_SEED_START
+        or selected_seeds[-1] >= CORRECTNESS_SEED_START + MAX_CORRECTNESS_SEED_ATTEMPTS
+        or selected_seeds[-1] != CORRECTNESS_SEED_START + attempts - 1
+    ):
+        raise RegressionError(f"{label} selected_seeds are invalid")
+
+    hashes: dict[str, list[str]] = {}
+    for key in ("point_sha256", "invariant_sha256"):
+        raw_hashes = value.get(key)
+        if (
+            not isinstance(raw_hashes, Sequence)
+            or isinstance(raw_hashes, (str, bytes))
+            or len(raw_hashes) != VALIDATION_SAMPLE_COUNT
+        ):
+            raise RegressionError(f"{label} {key} has the wrong length")
+        validated_hashes = [
+            _validated_sha256(digest, label=f"{label} {key}[{index}]")
+            for index, digest in enumerate(raw_hashes)
+        ]
+        if len(set(validated_hashes)) != VALIDATION_SAMPLE_COUNT:
+            raise RegressionError(f"{label} {key} values are not distinct")
+        hashes[key] = validated_hashes
+    batch_sha256 = _validated_sha256(
+        value.get("batch_sha256"),
+        label=f"{label} batch_sha256",
+    )
+    for numerical_label, numerical in (
+        ("precision-16", precision16),
+        ("precision-32", precision32),
+    ):
+        if numerical is None:
+            continue
+        if numerical.get("point_sha256") != hashes["point_sha256"]:
+            raise RegressionError(
+                f"{label} point hashes differ from {numerical_label} evidence"
+            )
+        if numerical.get("batch_sha256") != batch_sha256:
+            raise RegressionError(
+                f"{label} batch digest differs from {numerical_label} evidence"
+            )
+    derivation_sha256 = _validated_sha256(
+        value.get("sha256"),
+        label=f"{label} sha256",
+    )
+    digest_basis = {key: entry for key, entry in value.items() if key != "sha256"}
+    if _canonical_sha256(digest_basis) != derivation_sha256:
+        raise RegressionError(f"{label} digest does not authenticate its metadata")
+    return {
+        **digest_basis,
+        "sha256": derivation_sha256,
+    }
+
+
 def _native_profile_sample(
     payload: Mapping[str, Any],
     *,
@@ -1405,6 +1760,7 @@ def _native_profile_sample(
     batch_size: int | None = None,
     expected_execution_mode: str = "compiled",
     require_precision32: bool = False,
+    require_arena_profile: bool = False,
 ) -> dict[str, Any]:
     _require_equal(
         payload,
@@ -1438,12 +1794,64 @@ def _native_profile_sample(
         PAIRED_TIMING_SAMPLE_CONTRACT,
         label="profile timing_sample_contract",
     )
-    for key in ("evaluator_time_sample_pass", "timing_breakdown_sample_pass"):
-        _require_equal(
-            environment,
-            key,
+    evaluator_sample_pass = environment.get("evaluator_time_sample_pass")
+    timing_breakdown_sample_pass = environment.get("timing_breakdown_sample_pass")
+    if evaluator_sample_pass != timing_breakdown_sample_pass:
+        raise RegressionError(
+            "profile evaluator and timing-breakdown attribution passes differ"
+        )
+    allowed_profile_passes = (
+        {PROFILE_ATTRIBUTION_SAMPLE_PASS}
+        if require_arena_profile
+        else {
             PROFILE_ATTRIBUTION_SAMPLE_PASS,
-            label=f"profile {key}",
+            FROZEN_BASELINE_PROFILE_ATTRIBUTION_SAMPLE_PASS,
+        }
+    )
+    if evaluator_sample_pass not in allowed_profile_passes:
+        raise RegressionError(
+            "profile attribution did not use the required warmed Arena boundary: "
+            f"{evaluator_sample_pass!r}"
+        )
+    profile_attribution_boundary = environment.get("profile_attribution_boundary")
+    profile_attribution_borrowed_flat_input = environment.get(
+        "profile_attribution_borrowed_flat_input"
+    )
+    profile_attribution_preallocated_output = environment.get(
+        "profile_attribution_preallocated_output"
+    )
+    profile_attribution_phase_timing_scope = environment.get(
+        "profile_attribution_phase_timing_scope"
+    )
+    profile_attribution_evaluator_timing_available = environment.get(
+        "profile_attribution_evaluator_timing_available"
+    )
+    profile_protocol = environment.get("profile_protocol")
+    if evaluator_sample_pass == PROFILE_ATTRIBUTION_SAMPLE_PASS:
+        expected_profile_boundary = ARENA_PROFILE_BOUNDARY
+        expected_borrowed_input = True
+        expected_preallocated_output = True
+        expected_phase_timing_scope = ARENA_PHASE_TIMING_SCOPE
+        expected_evaluator_timing_available = False
+        expected_profile_protocol = ARENA_PROFILE_PROTOCOL
+    else:
+        expected_profile_boundary = FROZEN_BASELINE_PROFILE_BOUNDARY
+        expected_borrowed_input = False
+        expected_preallocated_output = False
+        expected_phase_timing_scope = FROZEN_BASELINE_PHASE_TIMING_SCOPE
+        expected_evaluator_timing_available = True
+        expected_profile_protocol = FROZEN_BASELINE_PROFILE_PROTOCOL
+    if (
+        profile_attribution_boundary != expected_profile_boundary
+        or profile_attribution_borrowed_flat_input is not expected_borrowed_input
+        or profile_attribution_preallocated_output is not expected_preallocated_output
+        or profile_attribution_phase_timing_scope != expected_phase_timing_scope
+        or profile_attribution_evaluator_timing_available
+        is not expected_evaluator_timing_available
+        or profile_protocol != expected_profile_protocol
+    ):
+        raise RegressionError(
+            "profile attribution boundary metadata does not match its sample pass"
         )
     for key in (
         "profile_attribution_paired_with_headline",
@@ -1565,10 +1973,31 @@ def _native_profile_sample(
         profile_wall.get("mean_seconds_per_point"),
         label="paired profiled wall mean_seconds_per_point",
     )
-    profile_evaluator_seconds_per_point = _finite_nonnegative(
-        payload.get("evaluator_time_per_point"),
-        label="paired profile evaluator_time_per_point",
-    )
+    profile_evaluator_breakdown = timing_breakdown.get("evaluator_call_time")
+    if expected_evaluator_timing_available:
+        profile_evaluator_seconds_per_point: float | None = _finite_nonnegative(
+            payload.get("evaluator_time_per_point"),
+            label="paired profile evaluator_time_per_point",
+        )
+        if not isinstance(profile_evaluator_breakdown, Mapping):
+            raise RegressionError(
+                "legacy paired profile has no evaluator timing component"
+            )
+        if not isinstance(payload.get("evaluator_uncertainty"), Mapping):
+            raise RegressionError(
+                "legacy paired profile has no evaluator timing uncertainty"
+            )
+    else:
+        if (
+            payload.get("evaluator_time_per_point") is not None
+            or payload.get("evaluator_uncertainty") is not None
+            or profile_evaluator_breakdown is not None
+        ):
+            raise RegressionError(
+                "coarse Arena boundary must record evaluator phase timing "
+                "as unavailable"
+            )
+        profile_evaluator_seconds_per_point = None
     cold_load_seconds = _finite_nonnegative(
         payload.get("cold_load_seconds"),
         label="native cold_load_seconds",
@@ -1594,6 +2023,23 @@ def _native_profile_sample(
         raise RegressionError(
             "paired raw profile sample vector does not match sample_count"
         )
+    if evaluator_sample_pass == PROFILE_ATTRIBUTION_SAMPLE_PASS:
+        for profile_index, raw_profile in enumerate(raw_profiles):
+            if not isinstance(raw_profile, Mapping):
+                raise RegressionError(
+                    f"paired raw Arena profile {profile_index} is invalid"
+                )
+            if (
+                raw_profile.get("profile_boundary") != ARENA_PROFILE_BOUNDARY
+                or raw_profile.get("borrowed_flat_input") is not True
+                or raw_profile.get("preallocated_output") is not True
+                or raw_profile.get("phase_timing_scope") != ARENA_PHASE_TIMING_SCOPE
+                or raw_profile.get("evaluator_timing_available") is not False
+            ):
+                raise RegressionError(
+                    "paired raw Arena profile does not authenticate its "
+                    "borrowed-input, preallocated-output, coarse-timing boundary"
+                )
     runtime_identity = environment.get("runtime_identity")
     if not isinstance(runtime_identity, Mapping):
         raise RegressionError("native sample has no runtime identity")
@@ -1641,11 +2087,31 @@ def _native_profile_sample(
         color_flows=color_flows,
         required=require_precision32,
     )
+    correctness_point_derivation = _validated_correctness_point_derivation(
+        payload.get("correctness_point_derivation"),
+        precision16=warmed_numerical_result,
+        precision32=precision32_numerical_result,
+    )
     return {
         "wall_seconds_per_point": headline_mean,
         "wall_samples_seconds_per_point": headline_values,
         "native_wall_time_source": source,
         "native_wall_time_sample_pass": NATIVE_WALL_TIME_SAMPLE_PASS,
+        "profile_attribution_sample_pass": evaluator_sample_pass,
+        "profile_attribution_boundary": profile_attribution_boundary,
+        "profile_attribution_borrowed_flat_input": (
+            profile_attribution_borrowed_flat_input
+        ),
+        "profile_attribution_preallocated_output": (
+            profile_attribution_preallocated_output
+        ),
+        "profile_attribution_phase_timing_scope": (
+            profile_attribution_phase_timing_scope
+        ),
+        "profile_attribution_evaluator_timing_available": (
+            profile_attribution_evaluator_timing_available
+        ),
+        "profile_protocol": profile_protocol,
         "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
         "profile_timed_block_count": sample_count,
         "repetitions_per_timed_block": repetitions,
@@ -1666,6 +2132,7 @@ def _native_profile_sample(
         "batch_sha256": batch_sha256,
         "helicities": list(helicities),
         "color_flows": list(color_flows),
+        "correctness_point_derivation": correctness_point_derivation,
         "warmed_numerical_result": warmed_numerical_result,
         "precision32_numerical_result": precision32_numerical_result,
     }
@@ -2045,8 +2512,18 @@ def _correctness_gate(
     reference16 = baseline_reference.get("warmed_numerical_result")
     if not isinstance(reference16, Mapping):
         raise RegressionError("baseline measurement has no warmed numerical result")
+    reference_derivation = baseline_reference.get("correctness_point_derivation")
+    if not isinstance(reference_derivation, Mapping):
+        raise RegressionError(
+            "baseline measurement has no correctness point derivation"
+        )
     comparisons: list[dict[str, Any]] = []
     for measurement in measurements:
+        if measurement.get("correctness_point_derivation") != reference_derivation:
+            raise RegressionError(
+                "correctness measurements do not share a byte-identical "
+                "point derivation"
+            )
         candidate16 = measurement.get("warmed_numerical_result")
         if not isinstance(candidate16, Mapping):
             raise RegressionError("measurement has no warmed numerical result")
@@ -2064,51 +2541,51 @@ def _correctness_gate(
         for measurement in measurements
         if isinstance(measurement.get("precision32_numerical_result"), Mapping)
     ]
-    if {measurement.get("lane") for measurement in precision32_measurements} != {
-        "baseline",
-        "current",
-    }:
+    if (
+        len(precision32_measurements) != 1
+        or precision32_measurements[0].get("lane") != "current"
+        or precision32_measurements[0].get("pair_index") != 1
+    ):
         raise RegressionError(
-            "correctness comparison requires precision-32 evidence from both lanes"
+            "correctness comparison requires exactly one precision-32 "
+            "exact-oracle result from current pair 1 and none from baseline"
         )
-    baseline32_measurement = next(
-        measurement
-        for measurement in precision32_measurements
-        if measurement.get("lane") == "baseline"
-    )
-    reference32 = baseline32_measurement["precision32_numerical_result"]
+    current32_measurement = precision32_measurements[0]
+    reference32 = current32_measurement["precision32_numerical_result"]
     assert isinstance(reference32, Mapping)
-    for measurement in precision32_measurements:
-        candidate32 = measurement["precision32_numerical_result"]
-        candidate16 = measurement["warmed_numerical_result"]
-        assert isinstance(candidate32, Mapping)
-        assert isinstance(candidate16, Mapping)
+    direct_oracle_comparison_count = 0
+    for measurement in measurements:
+        candidate16 = measurement.get("warmed_numerical_result")
+        if not isinstance(candidate16, Mapping):
+            raise RegressionError("measurement has no warmed numerical result")
         comparisons.append(
             _numerical_comparison(
                 reference32,
-                candidate32,
-                kind="precision32-cross-lane",
-                lane=measurement.get("lane"),
-                pair_index=measurement.get("pair_index"),
-            )
-        )
-        comparisons.append(
-            _numerical_comparison(
                 candidate16,
-                candidate32,
-                kind="precision16-vs-precision32",
+                kind="precision16-vs-current-exact-precision32",
                 lane=measurement.get("lane"),
                 pair_index=measurement.get("pair_index"),
             )
         )
+        direct_oracle_comparison_count += 1
     return {
         "relative_tolerance": CORRECTNESS_RELATIVE_TOLERANCE,
         "absolute_tolerance": CORRECTNESS_ABSOLUTE_TOLERANCE,
         "reference_lane": "baseline",
         "reference_pair_index": baseline_reference.get("pair_index"),
-        "precision32_lane_count": len(
-            {measurement.get("lane") for measurement in precision32_measurements}
+        "point_derivation_sha256": reference_derivation.get("sha256"),
+        "correctness_batch_sha256": reference_derivation.get("batch_sha256"),
+        "precision32_lane_count": 1,
+        "precision32_measurement_count": 1,
+        "precision32_policy": PRECISION32_CORRECTNESS_POLICY,
+        "precision32_authority_basis": (
+            "final-candidate-current-exact-oracle-directly-validates-every-"
+            "f64-measurement"
         ),
+        "precision32_reference_lane": "current",
+        "precision32_reference_pair_index": current32_measurement.get("pair_index"),
+        "precision32_direct_oracle_scope": "every-f64-measurement",
+        "precision32_direct_oracle_comparison_count": (direct_oracle_comparison_count),
         "comparison_count": len(comparisons),
         "maximum_absolute_error": max(
             (float(comparison["maximum_absolute_error"]) for comparison in comparisons),
@@ -2145,16 +2622,60 @@ _ZERO_COMPILED_BOUNDARY_COUNTERS = (
     "compiled_direct_arena_boundary_amplitude_output_bytes",
 )
 _ZERO_ARENA_PROFILE_TIMES = (
+    "native_input_pack_time_s",
+    "native_input_crossing_time_s",
+    "state_prepare_time_s",
+    "state_clear_time_s",
+    "source_fill_time_s",
+    "momentum_input_setup_time_s",
+    "momentum_setup_time_s",
+    "model_parameter_setup_time_s",
     "stage_input_pack_time_s",
     "stage_leaf_input_pack_time_s",
+    "stage_evaluator_call_time_s",
+    "stage_evaluator_time_s",
+    "stage_backend_call_time_s",
     "stage_evaluator_output_gather_time_s",
     "output_assign_time_s",
     "amplitude_input_pack_time_s",
     "amplitude_leaf_input_pack_time_s",
+    "amplitude_evaluator_call_time_s",
+    "amplitude_backend_call_time_s",
     "amplitude_evaluator_output_gather_time_s",
     "amplitude_output_remap_time_s",
+    "amplitude_evaluator_time_s",
+    "reduction_time_s",
+    "resolved_reduction_materialization_inclusive_time_s",
+    "total_materialization_time_s",
+    "final_output_copy_time_s",
+    "eager_initialize_time_s",
+    "eager_gather_time_s",
+    "eager_kernel_call_time_s",
+    "eager_invocation_scatter_time_s",
+    "eager_finalization_time_s",
+    "eager_scatter_finalization_time_s",
+    "eager_closure_time_s",
+    "eager_reduction_time_s",
+    "eager_copy_out_time_s",
+    "recurrence_momentum_fill_time_s",
+    "recurrence_union_source_fill_time_s",
+    "recurrence_schedule_time_s",
+    "recurrence_source_kernel_time_s",
+    "recurrence_contribution_kernel_time_s",
+    "recurrence_finalization_time_s",
+    "recurrence_closure_time_s",
+    "recurrence_replay_output_mapping_time_s",
+    "selector_planner_time_s",
     "selector_gather_time_s",
     "selector_scatter_time_s",
+)
+_EMPTY_ARENA_PROFILE_PHASE_VECTORS = (
+    "stage_input_pack_by_stage_time_s",
+    "stage_leaf_input_pack_by_stage_time_s",
+    "stage_evaluator_call_by_stage_time_s",
+    "stage_backend_call_by_stage_time_s",
+    "stage_evaluator_output_gather_by_stage_time_s",
+    "stage_output_assign_by_stage_time_s",
 )
 
 
@@ -2163,7 +2684,10 @@ def _arena_profile_gate(
     *,
     execution_mode: str,
     artifacts: Mapping[str, Mapping[str, Any]],
+    minimum_profile_timed_blocks: int = 1,
 ) -> dict[str, Any]:
+    if minimum_profile_timed_blocks <= 0:
+        raise RegressionError("minimum Arena profile timed blocks must be positive")
     failures: list[dict[str, object]] = []
     expected_capability = (
         EAGER_DIRECT_ARENA_CAPABILITY
@@ -2193,7 +2717,58 @@ def _arena_profile_gate(
     for measurement in measurements:
         if measurement.get("lane") != "current":
             continue
+        for key, expected in (
+            ("profile_attribution_sample_pass", PROFILE_ATTRIBUTION_SAMPLE_PASS),
+            ("profile_attribution_boundary", ARENA_PROFILE_BOUNDARY),
+            ("profile_attribution_borrowed_flat_input", True),
+            ("profile_attribution_preallocated_output", True),
+            ("profile_attribution_phase_timing_scope", ARENA_PHASE_TIMING_SCOPE),
+            ("profile_attribution_evaluator_timing_available", False),
+            ("profile_protocol", ARENA_PROFILE_PROTOCOL),
+            ("paired_profile_evaluator_seconds_per_point", None),
+            ("paired_profile_evaluator_uncertainty", None),
+        ):
+            if measurement.get(key) != expected:
+                failures.append(
+                    {
+                        "pair_index": measurement.get("pair_index"),
+                        "counter": key,
+                        "observed": measurement.get(key),
+                        "expected": expected,
+                    }
+                )
         breakdown = measurement.get("paired_profile_timing_breakdown")
+        profile_timed_block_count = measurement.get("profile_timed_block_count")
+        if (
+            isinstance(profile_timed_block_count, bool)
+            or not isinstance(profile_timed_block_count, int)
+            or profile_timed_block_count < minimum_profile_timed_blocks
+        ):
+            failures.append(
+                {
+                    "pair_index": measurement.get("pair_index"),
+                    "counter": "profile_timed_block_count",
+                    "observed": profile_timed_block_count,
+                    "expected": f"integer >= {minimum_profile_timed_blocks}",
+                }
+            )
+        if (
+            not isinstance(breakdown, Mapping)
+            or "evaluator_call_time" not in breakdown
+            or breakdown.get("evaluator_call_time") is not None
+        ):
+            failures.append(
+                {
+                    "pair_index": measurement.get("pair_index"),
+                    "counter": ("paired_profile_timing_breakdown.evaluator_call_time"),
+                    "observed": (
+                        breakdown.get("evaluator_call_time")
+                        if isinstance(breakdown, Mapping)
+                        else breakdown
+                    ),
+                    "expected": None,
+                }
+            )
         raw_profiles = (
             breakdown.get("raw_profile_samples")
             if isinstance(breakdown, Mapping)
@@ -2204,6 +2779,26 @@ def _arena_profile_gate(
             (str, bytes),
         ):
             raise RegressionError("current measurement has no raw arena profiles")
+        if (
+            isinstance(profile_timed_block_count, int)
+            and not isinstance(profile_timed_block_count, bool)
+            and (
+                breakdown.get("sample_count") != profile_timed_block_count
+                or len(raw_profiles) != profile_timed_block_count
+            )
+        ):
+            failures.append(
+                {
+                    "pair_index": measurement.get("pair_index"),
+                    "counter": "paired_profile_timed_block_coverage",
+                    "observed": {
+                        "measurement": profile_timed_block_count,
+                        "breakdown": breakdown.get("sample_count"),
+                        "raw_profiles": len(raw_profiles),
+                    },
+                    "expected": "equal positive counts",
+                }
+            )
         for profile_index, profile in enumerate(raw_profiles):
             if not isinstance(profile, Mapping):
                 raise RegressionError("current raw arena profile is invalid")
@@ -2218,6 +2813,23 @@ def _arena_profile_gate(
                         "expected": execution_mode,
                     }
                 )
+            for key, expected in (
+                ("profile_boundary", ARENA_PROFILE_BOUNDARY),
+                ("borrowed_flat_input", True),
+                ("preallocated_output", True),
+                ("phase_timing_scope", ARENA_PHASE_TIMING_SCOPE),
+                ("evaluator_timing_available", False),
+            ):
+                if profile.get(key) != expected:
+                    failures.append(
+                        {
+                            "pair_index": measurement.get("pair_index"),
+                            "profile_index": profile_index,
+                            "counter": key,
+                            "observed": profile.get(key),
+                            "expected": expected,
+                        }
+                    )
             required_zero = list(_ZERO_ARENA_PROFILE_COUNTERS)
             if execution_mode == "compiled":
                 required_zero.extend(_ZERO_COMPILED_BOUNDARY_COUNTERS)
@@ -2250,6 +2862,39 @@ def _arena_profile_gate(
                             "expected": 0.0,
                         }
                     )
+            for key in _EMPTY_ARENA_PROFILE_PHASE_VECTORS:
+                value = profile.get(key)
+                if value != []:
+                    failures.append(
+                        {
+                            "pair_index": measurement.get("pair_index"),
+                            "profile_index": profile_index,
+                            "counter": key,
+                            "observed": value,
+                            "expected": [],
+                        }
+                    )
+            wall_time = profile.get("wall_time_s")
+            orchestration_time = profile.get("orchestration_time_s")
+            if (
+                isinstance(wall_time, bool)
+                or not isinstance(wall_time, (float, int))
+                or not math.isfinite(float(wall_time))
+                or float(wall_time) <= 0.0
+                or orchestration_time != wall_time
+            ):
+                failures.append(
+                    {
+                        "pair_index": measurement.get("pair_index"),
+                        "profile_index": profile_index,
+                        "counter": "coarse_arena_boundary_wall_accounting",
+                        "observed": {
+                            "wall_time_s": wall_time,
+                            "orchestration_time_s": orchestration_time,
+                        },
+                        "expected": "equal finite positive values",
+                    }
+                )
             if execution_mode == "compiled":
                 engine_count = profile.get("compiled_direct_arena_engine_count")
                 call_count = profile.get("compiled_direct_arena_call_count")
@@ -2291,13 +2936,14 @@ def _arena_profile_gate(
         "required_current_artifact_capability": expected_capability,
         "current_artifact_capabilities": capabilities,
         "profile_count": profile_count,
+        "minimum_profile_timed_blocks": minimum_profile_timed_blocks,
         "zero_counters": list(_ZERO_ARENA_PROFILE_COUNTERS),
         "zero_compiled_boundary_counters": (
             list(_ZERO_COMPILED_BOUNDARY_COUNTERS)
             if execution_mode == "compiled"
             else []
         ),
-        "zero_legacy_traffic_times": list(_ZERO_ARENA_PROFILE_TIMES),
+        "zero_non_orchestration_phase_times": list(_ZERO_ARENA_PROFILE_TIMES),
         "failures": failures,
         "passes": profile_count > 0 and not failures,
     }
@@ -2625,6 +3271,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         pair_orders.append(list(order))
         for order_index, lane in enumerate(order):
             artifact = artifacts[lane]
+            request_precision32 = pair_index == 0 and lane == "current"
             profile_command = _profile_command(
                 interpreters[lane],
                 artifact=Path(str(artifact["path"])),
@@ -2636,8 +3283,13 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 helicities=arguments.helicity,
                 color_flows=arguments.color_flow,
                 execution_mode=execution_mode,
+                profile_protocol=(
+                    ARENA_PROFILE_PROTOCOL
+                    if lane == "current"
+                    else FROZEN_BASELINE_PROFILE_PROTOCOL
+                ),
                 dependency_site=dependency_sites[lane],
-                include_precision32=pair_index == 0,
+                include_precision32=request_precision32,
             )
             payload, command_elapsed, stderr = _run_json(
                 profile_command,
@@ -2649,8 +3301,19 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 minimum_samples=arguments.minimum_samples,
                 batch_size=arguments.batch_size,
                 expected_execution_mode=execution_mode,
-                require_precision32=pair_index == 0,
+                require_precision32=request_precision32,
+                require_arena_profile=lane == "current",
             )
+            observed_precision32 = isinstance(
+                sample.get("precision32_numerical_result"),
+                Mapping,
+            )
+            if observed_precision32 is not request_precision32:
+                raise RegressionError(
+                    "native sample precision-32 evidence does not match the "
+                    f"{PRECISION32_CORRECTNESS_POLICY} request policy for "
+                    f"{lane} pair {pair_index + 1}"
+                )
             native_module_sha256 = str(sample["native_module_sha256"])
             expected_native_module_sha256 = native_module_sha256_by_lane.setdefault(
                 lane,
@@ -2663,7 +3326,12 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 )
             if measurements:
                 reference = measurements[0]
-                for key in ("batch_sha256", "helicities", "color_flows"):
+                for key in (
+                    "batch_sha256",
+                    "helicities",
+                    "color_flows",
+                    "correctness_point_derivation",
+                ):
                     if sample[key] != reference[key]:
                         raise RegressionError(
                             "native samples do not share byte-identical inputs: "
@@ -2768,6 +3436,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         measurements,
         execution_mode=execution_mode,
         artifacts=artifacts,
+        minimum_profile_timed_blocks=arguments.minimum_samples,
     )
     resource_gate = _cell_resource_gate(
         artifacts,
@@ -2817,7 +3486,17 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             "color_flows": list(arguments.color_flow),
             "native_wall_time_source": NATIVE_WALL_TIME_SOURCE,
             "native_wall_time_sample_pass": NATIVE_WALL_TIME_SAMPLE_PASS,
+            "required_current_profile_attribution_sample_pass": (
+                PROFILE_ATTRIBUTION_SAMPLE_PASS
+            ),
+            "required_current_profile_attribution_boundary": (ARENA_PROFILE_BOUNDARY),
+            "required_current_profile_attribution_phase_timing_scope": (
+                ARENA_PHASE_TIMING_SCOPE
+            ),
+            "required_current_profile_attribution_evaluator_timing_available": False,
+            "required_current_profile_protocol": ARENA_PROFILE_PROTOCOL,
             "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
+            "precision32_correctness_policy": PRECISION32_CORRECTNESS_POLICY,
             "dependency_sites": {
                 lane: dependency_site_identities[lane] for lane in dependency_sites
             },

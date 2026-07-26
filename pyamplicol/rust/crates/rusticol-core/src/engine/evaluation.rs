@@ -685,7 +685,6 @@ impl ExecutionRuntime {
                             .expect("direct selector lane preflighted")
                             .run_f64_routed_materialized_direct_components_add_unprofiled(
                                 evaluation_view,
-                                &physics,
                                 Some(&source_group.helicity_ids),
                                 Some(&source_group.color_ids),
                                 None,
@@ -698,7 +697,6 @@ impl ExecutionRuntime {
                     } else {
                         self.run_f64_routed_materialized_direct_components_add_unprofiled(
                             evaluation_view,
-                            &physics,
                             Some(&source_group.helicity_ids),
                             Some(&source_group.color_ids),
                             Some(materialized_sector_ids),
@@ -1064,7 +1062,6 @@ impl ExecutionRuntime {
     fn run_f64_routed_materialized_direct_components_add_unprofiled(
         &mut self,
         batch: F64MomentumBatchView<'_>,
-        physics: &PhysicsRuntime,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
@@ -1075,6 +1072,11 @@ impl ExecutionRuntime {
         target_components: &mut [f64],
     ) -> RusticolResult<()> {
         let point_count = batch.point_count();
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
+            )
+        })?;
         let Self {
             compiled_direct_runtime: Some(direct),
             compiled_direct_color_schedules,
@@ -1116,7 +1118,7 @@ impl ExecutionRuntime {
             )?;
             amplitude.reduce_planes_f64_routed_components_add_into(
                 direct.amplitude_planes()?,
-                physics,
+                &physics,
                 *normalization_factor,
                 selected_helicity_ids,
                 selected_color_ids,

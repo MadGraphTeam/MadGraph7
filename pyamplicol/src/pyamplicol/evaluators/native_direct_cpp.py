@@ -342,11 +342,12 @@ def compiler_from_symbolica_settings(
         raise NativeEvaluationError(
             "native DirectApplication compiler flag metadata is invalid"
         )
+    extra_flags = tuple(str(flag) for flag in raw_flags if str(flag) != "-std=c++17")
     return NativeDirectCppCompiler(
         executable=executable,
         optimization_level=optimization,
         native_arch=native_arch,
-        extra_flags=tuple(str(flag) for flag in raw_flags),
+        extra_flags=extra_flags,
     )
 
 

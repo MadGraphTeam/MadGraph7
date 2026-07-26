@@ -429,30 +429,15 @@ def _equivalent_component_scale(
         return None
     for scale in (_sym.E("1"), _sym.E("-1")):
         if all(
-            (dense - scale * candidate).expand() == _sym.E("0")
+            (dense - scale * candidate).expand().to_canonical_string() == "0"
             for dense, candidate in zip(materialized, compact, strict=True)
         ):
             return scale
-
-    first_dense, first_compact = next(
-        (
-            (dense, candidate)
-            for dense, candidate in zip(materialized, compact, strict=True)
-            if candidate != _sym.E("0")
-        ),
-        (_sym.E("0"), _sym.E("0")),
-    )
-    if first_compact == _sym.E("0"):
-        return None
-    scale = (first_dense / first_compact).cancel()
-    if scale.get_all_symbols(False):
-        return None
-    if not all(
-        (dense - scale * candidate).expand() == _sym.E("0")
-        for dense, candidate in zip(materialized, compact, strict=True)
-    ):
-        return None
-    return scale
+    # The compact Yang-Mills convention is only certified for an exact sign.
+    # Retaining the fully materialized tensor is always correct for every other
+    # normalization.  In particular, do not derive a general ratio here:
+    # Symbolica's polynomial cancellation aborts the process for float atoms.
+    return None
 
 
 def _is_compile_time_zero_parameter(

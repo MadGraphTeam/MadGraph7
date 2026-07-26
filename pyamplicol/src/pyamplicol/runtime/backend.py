@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
-    EAGER_DAG_F64_RUNTIME_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     verify_native_module,
@@ -399,12 +398,8 @@ class RusticolRuntimeBackend:
                 )
             self._supports_per_point_selectors = declares_selector_capability
         elif self._execution_mode == "eager":
-            self._supports_per_point_selectors = any(
-                capability in capabilities
-                for capability in (
-                    EAGER_DAG_F64_RUNTIME_CAPABILITY,
-                    EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
-                )
+            self._supports_per_point_selectors = (
+                EAGER_RUNTIME_LAYOUT_F64_CAPABILITY in capabilities
             )
         else:
             self._supports_per_point_selectors = (
@@ -418,14 +413,7 @@ class RusticolRuntimeBackend:
             if self._execution_mode == "compiled":
                 required = COMPILED_RUNTIME_SELECTORS_CAPABILITY
             elif self._execution_mode == "eager":
-                required = next(
-                    capability
-                    for capability in (
-                        EAGER_DAG_F64_RUNTIME_CAPABILITY,
-                        EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
-                    )
-                    if capability in capabilities
-                )
+                required = EAGER_RUNTIME_LAYOUT_F64_CAPABILITY
             else:
                 required = RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY
             raise CompatibilityError(

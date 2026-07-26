@@ -262,17 +262,18 @@ check. Direct applications use the separate MIT-licensed SymJIT runtime;
 compiled artifacts dynamically load their evaluator library.
 
 Prepared eager artifacts additionally require
-`rusticol.eager-dag.complex-f64.v1`. Their JIT kernel applications use the same
-Symbolica-independent SymJIT loading path, while Rusticol owns gather,
-scatter/accumulation, current finalization, closure, and reduction. The C ABI,
-C11 driver, safe Rust wrapper, C++ wrapper, Fortran module, and Python extension
-all execute that same native eager plan.
+`rusticol.eager-runtime-layout.complex-f64.v1` and
+`eager-direct-arena-v1`. Their JIT direct-table applications use the same
+Symbolica-independent SymJIT loading path, while Rusticol owns the
+point-contiguous Direct-Arena execution, ordered fanout, current finalization,
+closure, and reduction. The C ABI, C11 driver, safe Rust wrapper, C++ wrapper,
+Fortran module, and Python extension all execute that same native eager plan.
 
 ASM/C++ libraries are target-specific. Rusticol requires an exact artifact and
 runtime target-triple match and verifies every recorded CPU feature before
 loading executable state. Higher-precision retained evaluator state is not a
-native SDK capability and remains available only through the Symbolica-backed
-Python path.
+native SDK capability and remains available through the public
+Symbolica-backed Python exact-evaluation path.
 
 Process artifacts are trusted executable inputs. Their hashes verify payload
 consistency but do not establish origin.

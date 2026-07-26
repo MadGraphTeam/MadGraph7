@@ -138,6 +138,19 @@ fn compiled_direct_profile_snapshot(
     Ok(snapshot)
 }
 
+fn ensure_selected_runtime_capabilities_supported(capabilities: &[String]) -> RusticolResult<()> {
+    if capabilities.iter().any(|capability| {
+        capability == EAGER_DAG_RUNTIME_CAPABILITY
+            || capability == EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY
+    }) {
+        return Err(RusticolError::compatibility(
+            "legacy eager plan-v2 artifacts are no longer executable; regenerate the artifact \
+             with the current `pyamplicol generate` before loading it",
+        ));
+    }
+    ensure_runtime_capabilities_supported(capabilities.iter().map(String::as_str))
+}
+
 impl NativeRuntime {
     pub const ABI_VERSION: u32 = crate::C_ABI_VERSION;
 
@@ -160,12 +173,8 @@ impl NativeRuntime {
     ) -> Result<Value, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
             let selection = manifest.select_process(Some(process_id))?;
-            ensure_runtime_capabilities_supported(
-                selection
-                    .process
-                    .required_runtime_capabilities
-                    .iter()
-                    .map(String::as_str),
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
@@ -223,12 +232,8 @@ impl NativeRuntime {
     ) -> Result<NativeEagerExactSections, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
             let selection = manifest.select_process(Some(process_id))?;
-            ensure_runtime_capabilities_supported(
-                selection
-                    .process
-                    .required_runtime_capabilities
-                    .iter()
-                    .map(String::as_str),
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
@@ -284,12 +289,8 @@ impl NativeRuntime {
     ) -> Result<NativeRecurrenceExactSections, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
             let selection = manifest.select_process(Some(process_id))?;
-            ensure_runtime_capabilities_supported(
-                selection
-                    .process
-                    .required_runtime_capabilities
-                    .iter()
-                    .map(String::as_str),
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
@@ -337,12 +338,8 @@ impl NativeRuntime {
     ) -> Result<Self, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
             let selection = manifest.select_process(process_id)?;
-            ensure_runtime_capabilities_supported(
-                selection
-                    .process
-                    .required_runtime_capabilities
-                    .iter()
-                    .map(String::as_str),
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
             )
         })?;
         let artifact_id = artifact.manifest().artifact_id.clone();
@@ -1259,6 +1256,179 @@ impl NativeRuntime {
             std::hint::black_box(&output);
         }
         Ok(started.elapsed().as_secs_f64())
+    }
+
+    /// Profile the warmed Direct-Arena timing boundary used by
+    /// [`Self::benchmark_f64_wall_time`] for batch-global selectors.
+    ///
+    /// The borrowed flat input and the caller-sized output are prepared once
+    /// outside the repeated region. Every measured repetition then uses the
+    /// allocation-free `evaluate_f64_into_with_selectors` path. This is kept
+    /// separate from the public diagnostic profiler below, whose materialized
+    /// input and owned result remain useful when inspecting legacy lanes.
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    pub fn evaluate_f64_arena_profile_repeated(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        repetitions: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+    ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        if repetitions == 0 {
+            return Err(RusticolError::invalid_argument(
+                "arena profile repetitions must be positive",
+            ));
+        }
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        let compiled_lane = match &self.execution_lane {
+            NativeExecutionLane::Compiled => {
+                let snapshot = compiled_direct_profile_snapshot(&self.runtime)?;
+                if snapshot.engine_count == 0 {
+                    return Err(RusticolError::compatibility(
+                        "warmed Arena profiling requires a compiled Direct-Arena artifact",
+                    ));
+                }
+                true
+            }
+            NativeExecutionLane::Eager(_) => false,
+            NativeExecutionLane::Recurrence(_) => {
+                return Err(RusticolError::compatibility(
+                    "warmed Arena profiling is available only for eager and compiled execution",
+                ));
+            }
+        };
+        let measured_points = point_count.checked_mul(repetitions).ok_or_else(|| {
+            RusticolError::invalid_argument("arena profile point count overflowed")
+        })?;
+        let measured_input_components =
+            momenta.len().checked_mul(repetitions).ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "arena profile native input component count overflowed",
+                )
+            })?;
+        let measured_points_u64 = u64::try_from(measured_points).map_err(|_| {
+            RusticolError::invalid_argument("arena profile point count does not fit in u64")
+        })?;
+        let measured_input_components_u64 =
+            u64::try_from(measured_input_components).map_err(|_| {
+                RusticolError::invalid_argument(
+                    "arena profile native input component count does not fit in u64",
+                )
+            })?;
+        let repetitions_u64 = u64::try_from(repetitions).map_err(|_| {
+            RusticolError::invalid_argument("arena profile repetition count does not fit in u64")
+        })?;
+
+        // The result allocation is deliberately outside the measured repeated
+        // boundary, matching the native headline timer. Prime the exact
+        // selector and workspace route once before the counter snapshot so the
+        // measured region is independently warmed even when this private
+        // operation is called directly.
+        let mut values = vec![0.0; point_count];
+        self.evaluate_f64_into_with_selectors(
+            momenta,
+            point_count,
+            helicity_ids,
+            color_ids,
+            None,
+            None,
+            &mut values,
+        )?;
+        let compiled_before = if compiled_lane {
+            Some(compiled_direct_profile_snapshot(&self.runtime)?)
+        } else {
+            None
+        };
+        let started = Instant::now();
+        for _ in 0..repetitions {
+            std::hint::black_box(&mut values);
+            self.evaluate_f64_into_with_selectors(
+                momenta,
+                point_count,
+                helicity_ids,
+                color_ids,
+                None,
+                None,
+                &mut values,
+            )?;
+            std::hint::black_box(&values);
+        }
+        let total_s = started.elapsed().as_secs_f64();
+        let mut runtime_profile = RuntimeProfile {
+            // The warmed Direct-Arena boundary is deliberately free of phase
+            // clocks. Keep its complete measured envelope in orchestration.
+            // Callers must treat leaf-evaluator phase timing as unavailable,
+            // rather than interpreting the zero-valued phase fields as
+            // measurements below clock resolution.
+            orchestration_s: total_s,
+            total_s,
+            total_materialized_value_count: measured_points_u64,
+            ..RuntimeProfile::default()
+        };
+        if let Some(before) = compiled_before {
+            let after = compiled_direct_profile_snapshot(&self.runtime)?;
+            let f64_bytes = std::mem::size_of::<f64>() as u64;
+            let complex_bytes = 2 * f64_bytes;
+            runtime_profile.source_component_count = after
+                .source_fill_bytes
+                .saturating_sub(before.source_fill_bytes)
+                / complex_bytes;
+            runtime_profile.momentum_component_count = after
+                .momentum_fill_bytes
+                .saturating_sub(before.momentum_fill_bytes)
+                / f64_bytes;
+            runtime_profile.model_parameter_component_count = after
+                .parameter_fill_bytes
+                .saturating_sub(before.parameter_fill_bytes)
+                / complex_bytes;
+            runtime_profile.state_clear_component_count = after
+                .amplitude_clear_bytes
+                .saturating_sub(before.amplitude_clear_bytes)
+                / complex_bytes;
+            runtime_profile.evaluator_backend_call_count = after
+                .backend_call_count
+                .saturating_sub(before.backend_call_count);
+            runtime_profile.compiled_direct_arena_engine_count = u64::try_from(before.engine_count)
+                .ok()
+                .and_then(|count| count.checked_mul(repetitions_u64))
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("compiled Direct-Arena engine count overflowed")
+                })?;
+            runtime_profile.compiled_direct_arena_call_count =
+                runtime_profile.evaluator_backend_call_count;
+            runtime_profile.compiled_direct_arena_boundary_input_bytes = after
+                .boundary_input_bytes
+                .saturating_sub(before.boundary_input_bytes);
+            runtime_profile.compiled_direct_arena_boundary_current_output_bytes = after
+                .boundary_current_output_bytes
+                .saturating_sub(before.boundary_current_output_bytes);
+            runtime_profile.compiled_direct_arena_boundary_amplitude_output_bytes = after
+                .boundary_amplitude_output_bytes
+                .saturating_sub(before.boundary_amplitude_output_bytes);
+        }
+        let mut profile: NativeRuntimeProfile = runtime_profile.into();
+        profile.native_input_component_count = measured_input_components_u64;
+        profile.native_input_pack_bytes = 0;
+        profile.native_input_crossing_bytes = 0;
+        profile.native_input_container_allocation_count = 0;
+        profile.native_output_allocation_count = 0;
+        self.validate_profile_accounting(&profile)?;
+        Ok(NativeProfiledEvaluation { values, profile })
+    }
+
+    #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+    pub fn evaluate_f64_arena_profile_repeated(
+        &mut self,
+        _momenta: &[f64],
+        _point_count: usize,
+        _repetitions: usize,
+        _helicity_ids: Option<&[String]>,
+        _color_ids: Option<&[String]>,
+    ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        Err(RusticolError::compatibility(
+            "warmed Arena profiling requires the f64-compiled or f64-symjit feature",
+        ))
     }
 
     pub fn evaluate_f64_profile(
@@ -2192,9 +2362,10 @@ where
 #[cfg(feature = "symbolica-runtime")]
 fn eager_parity_pending(feature: &str) -> RusticolError {
     RusticolError::unsupported_runtime_capability(
-        EAGER_DAG_RUNTIME_CAPABILITY,
+        EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         format!(
-            "eager {feature} is not available in the initial f64-total runtime slice; use compiled execution for this operation"
+            "eager {feature} is not provided by the native f64 Direct-Arena ABI; \
+             use the public Python Runtime exact-evaluation path for precision above 16 digits"
         ),
     )
 }
@@ -2207,4 +2378,23 @@ fn recurrence_parity_pending(feature: &str) -> RusticolError {
             "recurrence {feature} is not available in the initial f64 runtime slice; use compiled execution for this operation"
         ),
     )
+}
+
+#[cfg(test)]
+mod runtime_capability_cutover_tests {
+    use super::*;
+
+    #[test]
+    fn retired_eager_v2_capabilities_fail_with_regeneration_guidance() {
+        for capability in [
+            EAGER_DAG_RUNTIME_CAPABILITY,
+            EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
+        ] {
+            let error = ensure_selected_runtime_capabilities_supported(&[capability.to_string()])
+                .expect_err("retired eager capability must fail before generic preflight");
+            assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+            assert!(error.to_string().contains("legacy eager plan-v2"));
+            assert!(error.to_string().contains("regenerate"));
+        }
+    }
 }

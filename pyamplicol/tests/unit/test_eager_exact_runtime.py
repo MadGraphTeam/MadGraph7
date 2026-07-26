@@ -12,7 +12,7 @@ import pytest
 
 from pyamplicol._internal.versions import EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
-from pyamplicol.artifacts import ArtifactBuilder
+from pyamplicol.artifacts import ArtifactBuilder, load_manifest
 from pyamplicol.generation.eager_lowering import EAGER_RUNTIME_KIND
 from pyamplicol.generation.eager_tables import (
     EAGER_KERNEL_ABI,
@@ -29,13 +29,20 @@ from pyamplicol.generation.eager_tables import (
     pack_rows,
 )
 from pyamplicol.models.prepared import PreparedKernelPack, PreparedKernelRecord
-from pyamplicol.runtime.eager_exact import EagerExactExecutor, _plan_v3
+from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
+from pyamplicol.runtime.eager_exact import (
+    EagerExactExecutor as _EagerExactExecutor,
+)
+from pyamplicol.runtime.eager_exact import _plan_v3
 from pyamplicol.runtime.eager_exact._contracts import (
     _ExactComplexProduct,
     _resolve_exact_factor,
 )
 from pyamplicol.runtime.eager_exact._execution import _gather_inputs
-from pyamplicol.runtime.eager_exact._plan import _prepared_parameter_projection
+from pyamplicol.runtime.eager_exact._plan import (
+    _EagerExactPlan,
+    _prepared_parameter_projection,
+)
 from pyamplicol.runtime.eager_exact._plan_v3 import (
     EAGER_EXACT_SECTIONS_ABI,
     EAGER_PLAN_V3_ABI,
@@ -48,6 +55,7 @@ eager_plan_v3 = _plan_v3
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _ExactCallable = Callable[[Sequence[_ComplexDecimal], int], Sequence[_ComplexDecimal]]
+_COMPACT_SECTIONS_BY_ARTIFACT: dict[Path, dict[str, object]] = {}
 
 
 def test_exact_factor_product_is_combined_at_requested_precision() -> None:
@@ -386,7 +394,7 @@ def _build_artifact(
     coupling_row: EagerCouplingRow | None = None,
     invocation_output_factor_source: int = EAGER_OUTPUT_FACTOR_NONE,
     closure_output_factor_source: int = EAGER_OUTPUT_FACTOR_NONE,
-    compact_v3: bool = False,
+    compact_v3: bool = True,
 ) -> dict[str, object] | None:
     payload_target = {"triple": "test-target", "cpu_features": []}
     kernels = (
@@ -727,7 +735,56 @@ def _build_artifact(
                 "required_runtime_capabilities": capabilities,
             },
         )
+    resolved_root = root.resolve()
+    if compact_sections is None:
+        _COMPACT_SECTIONS_BY_ARTIFACT.pop(resolved_root, None)
+    else:
+        _COMPACT_SECTIONS_BY_ARTIFACT[resolved_root] = compact_sections
     return compact_sections
+
+
+class EagerExactExecutor(_EagerExactExecutor):
+    """Test adapter that supplies the synthetic compact native sections."""
+
+    def __init__(
+        self,
+        artifact: Path,
+        process_id: str,
+        native_runtime: object,
+        **options: object,
+    ) -> None:
+        if options.get("native_sections_loader") is None:
+            sections = _COMPACT_SECTIONS_BY_ARTIFACT.get(artifact.resolve())
+            if sections is not None:
+                options["native_sections_loader"] = (
+                    lambda _root, _process, payload=sections: payload
+                )
+        super().__init__(
+            artifact,
+            process_id,
+            native_runtime,
+            **options,  # type: ignore[arg-type]
+        )
+
+
+def _load_legacy_plan(
+    artifact: Path,
+    *,
+    kernel_loader: Callable[[PreparedKernelRecord, Path], _ExactCallable],
+) -> _EagerExactPlan:
+    manifest = load_manifest(artifact)
+    execution = json.loads(
+        (artifact / "processes/synthetic/execution.json").read_text(encoding="utf-8")
+    )
+    return _EagerExactPlan.load(
+        artifact_root=artifact,
+        process_root=artifact / "processes/synthetic",
+        process_id="synthetic",
+        execution=execution,
+        manifest=manifest,
+        kernel_loader=kernel_loader,
+        exact_payloads=ExactEvaluatorPayloadResolver(manifest),
+    )
 
 
 def _loader(
@@ -810,7 +867,7 @@ def test_eager_exact_plan_v3_uses_native_compact_sections(
         ),
     )
     finalization_inputs: list[tuple[_ComplexDecimal, ...]] = []
-    executor = EagerExactExecutor(
+    executor = _EagerExactExecutor(
         artifact,
         "synthetic",
         _NativeRuntime(),
@@ -1509,15 +1566,11 @@ def test_eager_exact_rejects_malformed_table_contract(tmp_path: Path) -> None:
     _build_artifact(
         artifact,
         invocation_row_size=EagerInvocationRow._STRUCT.size + 1,
+        compact_v3=False,
     )
 
     with pytest.raises(ArtifactError, match="row size"):
-        EagerExactExecutor(
-            artifact,
-            "synthetic",
-            _NativeRuntime(),
-            kernel_loader=_loader([]),
-        )
+        _load_legacy_plan(artifact, kernel_loader=_loader([]))
 
 
 def test_eager_exact_rejects_missing_kernel_and_plan_abi(tmp_path: Path) -> None:
@@ -1531,9 +1584,26 @@ def test_eager_exact_rejects_missing_kernel_and_plan_abi(tmp_path: Path) -> None
             kernel_loader=_loader([]),
         )
 
+    retired = tmp_path / "retired-v2"
+    _build_artifact(retired, compact_v3=False)
+    with pytest.raises(
+        CompatibilityError,
+        match=r"requires a compact plan-v3 artifact.*[Rr]egenerate",
+    ):
+        EagerExactExecutor(
+            retired,
+            "synthetic",
+            _NativeRuntime(),
+            kernel_loader=_loader([]),
+        )
+
     incompatible = tmp_path / "incompatible"
-    _build_artifact(incompatible, plan_abi="future-eager-plan")
-    with pytest.raises(CompatibilityError, match="unsupported eager plan ABI"):
+    _build_artifact(
+        incompatible,
+        plan_abi="future-eager-plan",
+        compact_v3=False,
+    )
+    with pytest.raises(CompatibilityError, match="requires a compact plan-v3 artifact"):
         EagerExactExecutor(
             incompatible,
             "synthetic",

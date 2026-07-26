@@ -204,6 +204,7 @@ def test_cpp_adapter_supplies_nested_complex_literal_compatibility_header(
     )
 
     assert evaluator.compile_kwargs is not None
+    assert evaluator.compile_kwargs["compiler_flags"] == ("-std=c++17",)
     assert evaluator.compile_kwargs["custom_header"] == (
         _compiled_complex_custom_header(settings)
     )
@@ -231,6 +232,7 @@ def test_asm_adapter_does_not_use_cpp_literal_compatibility_header(
     )
 
     assert evaluator.compile_kwargs is not None
+    assert evaluator.compile_kwargs["compiler_flags"] == ("-std=c++17",)
     assert "custom_header" not in evaluator.compile_kwargs
 
 

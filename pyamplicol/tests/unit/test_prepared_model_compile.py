@@ -441,6 +441,10 @@ def test_native_direct_complex_contract_matches_exact_arithmetic(
         direct_spec=spec,
     )
     assert manifest["function_name"] == manifest["direct_table"]["function_name"]
+    manifest_settings = manifest["settings"]
+    assert isinstance(manifest_settings, dict)
+    assert manifest_settings["compiler_flags"] == []
+    assert manifest_settings["effective_compiler_flags"] == ["-std=c++17"]
     assert "_complexf64(" not in Path(manifest["source_path"]).read_text(
         encoding="utf-8"
     )

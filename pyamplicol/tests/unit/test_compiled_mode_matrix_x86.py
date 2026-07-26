@@ -117,7 +117,9 @@ def _arguments(tmp_path: Path) -> argparse.Namespace:
         current_python=Path("/private/tmp/arena/current/bin/python"),
         baseline_dependency_site=Path("/private/tmp/arena/dependencies"),
         current_dependency_site=Path("/private/tmp/arena/dependencies"),
-        ufo_sm_model=Path("/workspace/src/pyamplicol/assets/models/ufo/sm"),
+        ufo_sm_model=Path(
+            "/workspace/src/pyamplicol/assets/models/json/sm/sm.json"
+        ),
     )
 
 

@@ -35,6 +35,7 @@ from ..config import EvaluatorConfig
 from ..evaluators.native_eager_direct_cpp import (
     render_native_eager_direct_table_cpp,
 )
+from ..evaluators.symbolica_adapters import _compiled_compiler_flags
 from ..evaluators.symbolica_compile import (
     _compile_symbolica_outputs,
     _symbolica_evaluator_kwargs,
@@ -905,7 +906,7 @@ def _compile_native_split_real_kernel(
         optimization_level=settings.compiled_optimization_level,
         native=settings.compiled_native,
         compiler_path=settings.compiler_path,
-        compiler_flags=tuple(settings.compiler_flags),
+        compiler_flags=_compiled_compiler_flags(settings),
         custom_header=custom_header,
     )
     compile_seconds = time.perf_counter() - compile_started

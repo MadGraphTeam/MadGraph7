@@ -920,6 +920,9 @@ fn panic_detail(payload: Box<dyn Any + Send>) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "f64-symjit"))]
+    use super::super::native_direct::tests::count_allocations;
+    #[cfg(feature = "f64-symjit")]
     use super::super::symjit_direct::tests::count_allocations;
     use super::*;
     use std::hint::black_box;

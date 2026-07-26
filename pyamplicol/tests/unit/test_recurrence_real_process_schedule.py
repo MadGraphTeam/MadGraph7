@@ -152,7 +152,7 @@ def test_builtin_charged_current_all_flow_union_retains_chiral_sources() -> None
     assert columnar.table("source_states").row_count == 8
 
 
-def test_builtin_ddbar_to_ttbar_exposes_legacy_crossed_lc_flow() -> None:
+def test_builtin_ddbar_to_ttbar_exposes_canonical_crossed_lc_flow() -> None:
     model = BuiltinSMModel()
     process = build_process_ir("d d~ > t t~", color_accuracy="lc")
     recurrence_catalog = build_recurrence_template_catalog(
@@ -169,7 +169,7 @@ def test_builtin_ddbar_to_ttbar_exposes_legacy_crossed_lc_flow() -> None:
     replay = build_lc_topology_replay_plan(color_plan, model)
     expected_public_flows = (
         ("flow:2,1,3,4", (2, 1, 3, 4)),
-        ("flow:3,1,2,4", (3, 1, 2, 4)),
+        ("flow:2,4,3,1", (2, 4, 3, 1)),
     )
 
     for layout in ("topology-replay", "all-flow-union"):
@@ -204,8 +204,8 @@ def test_builtin_ddbar_to_ttbar_exposes_legacy_crossed_lc_flow() -> None:
             )
             == expected_public_flows
         )
-        # Construction remains on the canonical fundamental-to-
-        # antifundamental sector word; only its public selector is aliased.
+        # Public selectors and construction words use the same canonical
+        # fundamental-to-antifundamental representation.
         assert tuple(
             tuple(
                 process.legs[source_slot].label

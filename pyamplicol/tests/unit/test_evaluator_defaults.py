@@ -71,4 +71,14 @@ def test_compiled_flags_do_not_probe_checkout_dependencies() -> None:
     )
 
     payload = settings.to_json_dict()
-    assert payload["effective_compiler_flags"] == ["-DPYAMPLICOL_TEST_FLAG=1"]
+    assert payload["compiler_flags"] == ["-DPYAMPLICOL_TEST_FLAG=1"]
+    assert payload["effective_compiler_flags"] == [
+        "-std=c++17",
+        "-DPYAMPLICOL_TEST_FLAG=1",
+    ]
+
+    jit_payload = SymbolicaEvaluatorSettings(
+        backend="jit",
+        compiler_flags=("-DPYAMPLICOL_TEST_FLAG=1",),
+    ).to_json_dict()
+    assert jit_payload["effective_compiler_flags"] == ["-DPYAMPLICOL_TEST_FLAG=1"]

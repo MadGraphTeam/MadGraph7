@@ -8,7 +8,6 @@ from collections.abc import Mapping, Sequence
 from itertools import product
 from typing import Any
 
-from ..color.public_flows import amplicol_legacy_two_line_sector_public_word
 from ..models.base import Model
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import GenericDAG
@@ -703,26 +702,9 @@ def _color_metadata(
 
     records: dict[str, dict[str, object]] = {}
     members_by_group: dict[int, tuple[str, ...]] = {}
-    initial_labels = tuple(leg.label for leg in dag.process.legs if leg.is_initial)
     for group in groups:
         group_id = _integer(group["group_id"])
-        construction_word = tuple(
-            _integer(value) for value in _sequence(group["color_word"])
-        )
-        sector_id = _integer(group["color_sector_id"])
-        sector = dag.color_plan.sector(sector_id)
-        if sector is None:
-            raise ValueError(f"coherent group references absent LC sector {sector_id}")
-        expected_construction_word = tuple(sector.word_labels or sector.color_words[0])
-        if construction_word != expected_construction_word:
-            raise ValueError(
-                f"coherent group {group_id} color word disagrees with LC sector "
-                f"{sector_id}"
-            )
-        word = amplicol_legacy_two_line_sector_public_word(
-            sector,
-            initial_labels,
-        )
+        word = tuple(_integer(value) for value in _sequence(group["color_word"]))
         identifier = _color_id(word)
         members = [identifier]
         records.setdefault(
@@ -771,18 +753,16 @@ def _add_replayed_lc_color_components(
     if replay is None:
         return
     materialized = set(replay.materialized_sector_ids)
-    initial_labels = tuple(leg.label for leg in dag.process.legs if leg.is_initial)
     for sector in dag.color_plan.sectors:
-        word = amplicol_legacy_two_line_sector_public_word(sector, initial_labels)
+        word = tuple(sector.word_labels or sector.color_words[0])
         identifier = _color_id(word)
         representative = dag.color_plan.sector(replay.representative_for(sector.id))
         if representative is None:
             raise ValueError(
                 f"LC replay representative for sector {sector.id} is missing"
             )
-        representative_word = amplicol_legacy_two_line_sector_public_word(
-            representative,
-            initial_labels,
+        representative_word = tuple(
+            representative.word_labels or representative.color_words[0]
         )
         representative_id = _color_id(representative_word)
         records.setdefault(

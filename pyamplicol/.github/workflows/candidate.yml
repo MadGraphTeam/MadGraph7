@@ -177,7 +177,7 @@ jobs:
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
       - name: Build pinned baseline dependency environment
-        working-directory: /tmp/pyamplicol-eager-compiled-arena-base-src
+        working-directory: /private/tmp/pyamplicol-eager-compiled-arena-base-src
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
@@ -263,6 +263,7 @@ jobs:
           name: pyamplicol-x86-performance-runtime-${{ github.run_id }}
           path: ${{ env.PERFORMANCE_BUNDLE_ROOT }}/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
 
   x86-performance-matrix-shard:
@@ -342,7 +343,7 @@ jobs:
             --current-dependency-site \
             "$PERFORMANCE_BUNDLE_ROOT/dependency-site" \
             --ufo-sm-model \
-            "$PERFORMANCE_BUNDLE_ROOT/prepared-models/ufo-sm-jit-o2.pyamplicol-model" \
+            src/pyamplicol/assets/models/json/sm/sm.json \
             --output-root "$PERFORMANCE_MATRIX_ROOT" \
             --expected-baseline-source-revision \
             443f354a467cdda187996bef1a41fbd5a00ae28d \
@@ -553,7 +554,7 @@ jobs:
             --current-dependency-site \
             "$PERFORMANCE_BUNDLE_ROOT/dependency-site" \
             --ufo-sm-model \
-            "$PERFORMANCE_BUNDLE_ROOT/prepared-models/ufo-sm-jit-o2.pyamplicol-model" \
+            src/pyamplicol/assets/models/json/sm/sm.json \
             --output-root "$PERFORMANCE_MATRIX_ROOT" \
             --expected-baseline-source-revision \
             443f354a467cdda187996bef1a41fbd5a00ae28d \

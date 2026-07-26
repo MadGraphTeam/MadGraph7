@@ -305,13 +305,9 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         COMPILED_RUNTIME_SELECTORS_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        EAGER_DAG_RUNTIME_CAPABILITY,
-        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_RUNTIME_LAYOUT_CAPABILITY,
-        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        EAGER_LC_TOPOLOGY_REPLAY_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

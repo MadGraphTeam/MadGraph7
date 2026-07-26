@@ -106,6 +106,71 @@ def _synthetic_result(
             "warmed_numerical_result": {
                 "values_f64": [1.0] * regression.VALIDATION_SAMPLE_COUNT,
             },
+            **(
+                {
+                    "profile_attribution_sample_pass": (
+                        regression.PROFILE_ATTRIBUTION_SAMPLE_PASS
+                    ),
+                    "profile_attribution_boundary": (regression.ARENA_PROFILE_BOUNDARY),
+                    "profile_attribution_borrowed_flat_input": True,
+                    "profile_attribution_preallocated_output": True,
+                    "profile_attribution_phase_timing_scope": (
+                        regression.ARENA_PHASE_TIMING_SCOPE
+                    ),
+                    "profile_attribution_evaluator_timing_available": False,
+                    "profile_protocol": regression.ARENA_PROFILE_PROTOCOL,
+                    "profile_timed_block_count": 7,
+                    "paired_profile_evaluator_seconds_per_point": None,
+                    "paired_profile_evaluator_uncertainty": None,
+                    "paired_profile_timing_breakdown": {
+                        "sample_count": 7,
+                        "evaluator_call_time": None,
+                        "raw_profile_samples": [
+                            {
+                                "execution_mode": cell.execution_mode,
+                                "wall_time_s": 1.0,
+                                "orchestration_time_s": 1.0,
+                                "profile_boundary": (regression.ARENA_PROFILE_BOUNDARY),
+                                "borrowed_flat_input": True,
+                                "preallocated_output": True,
+                                "phase_timing_scope": (
+                                    regression.ARENA_PHASE_TIMING_SCOPE
+                                ),
+                                "evaluator_timing_available": False,
+                                **{
+                                    key: 0
+                                    for key in (
+                                        *regression._ZERO_ARENA_PROFILE_COUNTERS,
+                                        *regression._ZERO_COMPILED_BOUNDARY_COUNTERS,
+                                    )
+                                },
+                                **{
+                                    key: 0.0
+                                    for key in regression._ZERO_ARENA_PROFILE_TIMES
+                                },
+                                **{
+                                    key: []
+                                    for key in (
+                                        regression._EMPTY_ARENA_PROFILE_PHASE_VECTORS
+                                    )
+                                },
+                                "compiled_direct_arena_engine_count": (
+                                    1 if cell.execution_mode == "compiled" else 0
+                                ),
+                                "compiled_direct_arena_call_count": (
+                                    1 if cell.execution_mode == "compiled" else 0
+                                ),
+                                "evaluator_backend_call_count": (
+                                    1 if cell.execution_mode == "compiled" else 0
+                                ),
+                            }
+                            for _ in range(7)
+                        ],
+                    },
+                }
+                if lane == "current"
+                else {}
+            ),
         }
         for _pair in range(7)
         for lane in ("baseline", "current")
@@ -139,6 +204,17 @@ def _synthetic_result(
             "warmup_runs_per_profile": 2,
             "native_wall_time_source": regression.NATIVE_WALL_TIME_SOURCE,
             "native_wall_time_sample_pass": regression.NATIVE_WALL_TIME_SAMPLE_PASS,
+            "required_current_profile_attribution_sample_pass": (
+                regression.PROFILE_ATTRIBUTION_SAMPLE_PASS
+            ),
+            "required_current_profile_attribution_boundary": (
+                regression.ARENA_PROFILE_BOUNDARY
+            ),
+            "required_current_profile_attribution_phase_timing_scope": (
+                regression.ARENA_PHASE_TIMING_SCOPE
+            ),
+            "required_current_profile_attribution_evaluator_timing_available": False,
+            "required_current_profile_protocol": regression.ARENA_PROFILE_PROTOCOL,
             "timing_sample_contract": regression.PAIRED_TIMING_SAMPLE_CONTRACT,
             "helicities": list(cell.helicities),
             "color_flows": list(cell.color_flows),
@@ -177,6 +253,13 @@ def _synthetic_result(
                     "evaluator-state": ("3" if lane == "baseline" else "4") * 64
                 },
                 "installation_identity": _synthetic_installation(lane),
+                "required_runtime_capabilities": [
+                    (
+                        regression.EAGER_DIRECT_ARENA_CAPABILITY
+                        if cell.execution_mode == "eager"
+                        else regression.COMPILED_DIRECT_ARENA_CAPABILITY
+                    )
+                ],
             }
             for lane in ("baseline", "current")
         },
@@ -567,6 +650,81 @@ def test_matrix_rejects_diagnostic_timing_methodology() -> None:
 
     assert audited["passes"] is False
     assert changed_cell in audited["cell_gate"]["failures"]
+
+
+def test_matrix_recomputes_arena_profile_evidence_instead_of_trusting_gate() -> None:
+    results = _passing_results()
+    changed_cell = next(iter(results))
+    result = results[changed_cell]
+    assert result["arena_profile_gate"]["passes"] is True
+    for measurement in result["measurements"]:
+        if measurement["lane"] != "current":
+            continue
+        measurement.pop("profile_attribution_phase_timing_scope")
+        breakdown = measurement["paired_profile_timing_breakdown"]
+        breakdown["raw_profile_samples"][0].pop("phase_timing_scope")
+
+    audited = _audit(results)
+
+    assert audited["passes"] is False
+    failures = audited["cell_gate"]["failures"][changed_cell]
+    assert "arena profile evidence fails independent matrix recomputation" in failures
+
+
+def test_matrix_rejects_synthetic_nested_evaluator_zero() -> None:
+    results = _passing_results()
+    changed_cell = next(iter(results))
+    result = results[changed_cell]
+    assert result["arena_profile_gate"]["passes"] is True
+    for measurement in result["measurements"]:
+        if measurement["lane"] == "current":
+            measurement["paired_profile_timing_breakdown"]["evaluator_call_time"] = {
+                "mean_seconds_per_point": 0.0
+            }
+
+    audited = _audit(results)
+
+    assert audited["passes"] is False
+    failures = audited["cell_gate"]["failures"][changed_cell]
+    assert "arena profile evidence fails independent matrix recomputation" in failures
+
+
+def test_matrix_rejects_truncated_raw_arena_profile_vector() -> None:
+    results = _passing_results()
+    changed_cell = next(iter(results))
+    result = results[changed_cell]
+    assert result["arena_profile_gate"]["passes"] is True
+    for measurement in result["measurements"]:
+        if measurement["lane"] == "current":
+            measurement["paired_profile_timing_breakdown"]["raw_profile_samples"] = [
+                measurement["paired_profile_timing_breakdown"]["raw_profile_samples"][0]
+            ]
+
+    audited = _audit(results)
+
+    assert audited["passes"] is False
+    failures = audited["cell_gate"]["failures"][changed_cell]
+    assert "arena profile evidence fails independent matrix recomputation" in failures
+
+
+def test_matrix_rejects_phase_clocks_under_coarse_arena_scope() -> None:
+    results = _passing_results()
+    changed_cell = next(iter(results))
+    result = results[changed_cell]
+    assert result["arena_profile_gate"]["passes"] is True
+    for measurement in result["measurements"]:
+        if measurement["lane"] != "current":
+            continue
+        for profile in measurement["paired_profile_timing_breakdown"][
+            "raw_profile_samples"
+        ]:
+            profile["stage_evaluator_call_time_s"] = 1.0e-9
+
+    audited = _audit(results)
+
+    assert audited["passes"] is False
+    failures = audited["cell_gate"]["failures"][changed_cell]
+    assert "arena profile evidence fails independent matrix recomputation" in failures
 
 
 def test_matrix_rejects_an_identically_zero_lc_selector() -> None:

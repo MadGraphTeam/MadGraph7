@@ -1093,8 +1093,13 @@ def _artifact_identity_and_audit(
         _mapping(concrete[0], label="concrete process").get("filters"),
         label="concrete process filters",
     )
-    if filters.get("lc_flow_layout") != lane.lc_flow_layout:
-        raise GateError(f"{lane.name} generation layout metadata is wrong")
+    if lane.color_accuracy == "lc":
+        if filters.get("lc_flow_layout") != lane.lc_flow_layout:
+            raise GateError(f"{lane.name} generation layout metadata is wrong")
+    elif "lc_flow_layout" in filters:
+        raise GateError(
+            f"{lane.name} generation metadata illegally carries an LC layout"
+        )
 
     try:
         effective = tomllib.loads(
@@ -1331,6 +1336,20 @@ def _physics_axes(physics: object) -> dict[str, object]:
     }
 
 
+def _select_helicity_probe(physics: Any, *, lane_name: str) -> tuple[Any, int]:
+    eligible = tuple(
+        helicity
+        for helicity in physics.helicities
+        if helicity.computed
+        and not helicity.structural_zero
+        and helicity.coefficient != 0.0
+        and helicity.representative_id == helicity.id
+    )
+    if not eligible:
+        raise GateError(f"{lane_name} has no executable helicity selector probe")
+    return eligible[len(eligible) // 2], len(eligible)
+
+
 def _evaluate_artifact(
     artifact: Path,
     *,
@@ -1408,7 +1427,10 @@ def _evaluate_artifact(
         ),
     }
 
-    helicity_id = physics.helicity_ids[len(physics.helicity_ids) // 2]
+    helicity, eligible_helicity_count = _select_helicity_probe(
+        physics, lane_name=lane.name
+    )
+    helicity_id = helicity.id
     helicity_probe = tuple(
         _as_complex(value)
         for value in runtime.evaluate(points, helicities=(helicity_id,))
@@ -1481,6 +1503,16 @@ def _evaluate_artifact(
         },
         "selector_probes": {
             "helicity_id": helicity_id,
+            "helicity": {
+                "id": helicity.id,
+                "index": helicity.index,
+                "values": list(helicity.values),
+                "computed": helicity.computed,
+                "structural_zero": helicity.structural_zero,
+                "representative_id": helicity.representative_id,
+                "coefficient": helicity.coefficient,
+            },
+            "eligible_helicity_count": eligible_helicity_count,
             "color_flow_id": color_id,
         },
         "runtime_execution": {

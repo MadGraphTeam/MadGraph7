@@ -3,99 +3,6 @@
 use super::evaluation::accumulate_selected_lc_replay_resolved_f64;
 use super::*;
 
-#[cfg(test)]
-const EAGER_DIRECT_PARITY_RTOL: f64 = 1.0e-12;
-#[cfg(test)]
-const EAGER_DIRECT_PARITY_ATOL: f64 = 1.0e-15;
-
-#[cfg(test)]
-fn direct_parts_close(left: f64, right: f64) -> bool {
-    (left - right).abs() <= EAGER_DIRECT_PARITY_ATOL + EAGER_DIRECT_PARITY_RTOL * left.abs()
-}
-
-#[cfg(test)]
-fn compare_direct_complex(
-    label: &str,
-    legacy: &[crate::EagerComplex64],
-    direct: &[crate::EagerComplex64],
-) -> RusticolResult<()> {
-    if legacy.len() != direct.len() {
-        return Err(RusticolError::integrity(format!(
-            "eager Direct-Arena {label} length {} differs from legacy {}",
-            direct.len(),
-            legacy.len()
-        )));
-    }
-    if let Some((index, (expected, actual))) = legacy
-        .iter()
-        .copied()
-        .zip(direct.iter().copied())
-        .enumerate()
-        .find(|(_, (expected, actual))| {
-            !direct_parts_close(expected.re, actual.re)
-                || !direct_parts_close(expected.im, actual.im)
-        })
-    {
-        return Err(RusticolError::integrity(format!(
-            "eager Direct-Arena {label} differs at {index}: {actual:?} != {expected:?}"
-        )));
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-fn compare_direct_real(label: &str, legacy: &[f64], direct: &[f64]) -> RusticolResult<()> {
-    if legacy.len() != direct.len() {
-        return Err(RusticolError::integrity(format!(
-            "eager Direct-Arena {label} length {} differs from legacy {}",
-            direct.len(),
-            legacy.len()
-        )));
-    }
-    if let Some((index, (expected, actual))) = legacy
-        .iter()
-        .copied()
-        .zip(direct.iter().copied())
-        .enumerate()
-        .find(|(_, (expected, actual))| !direct_parts_close(*expected, *actual))
-    {
-        return Err(RusticolError::integrity(format!(
-            "eager Direct-Arena {label} differs at {index}: {actual:?} != {expected:?}"
-        )));
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum EagerDirectValidationMode {
-    Disabled,
-    Direct,
-    Dual,
-}
-
-#[cfg(test)]
-impl EagerDirectValidationMode {
-    #[cfg(test)]
-    pub(super) fn from_environment() -> RusticolResult<Self> {
-        match std::env::var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION") {
-            Err(std::env::VarError::NotPresent) => Ok(Self::Disabled),
-            Err(error) => Err(RusticolError::invalid_argument(format!(
-                "could not read PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION: {error}"
-            ))),
-            Ok(value) => match value.trim() {
-                "" | "0" | "off" | "disabled" => Ok(Self::Disabled),
-                "direct" => Ok(Self::Direct),
-                "dual" => Ok(Self::Dual),
-                other => Err(RusticolError::invalid_argument(format!(
-                    "unsupported PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION value {other:?}; \
-                     expected direct, dual, or disabled"
-                ))),
-            },
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(super) struct EagerParameterProjectionEntry {
     pub(super) prepared_index: usize,
@@ -111,14 +18,8 @@ pub(super) struct EagerParameterProjection {
 
 #[allow(dead_code)] // Includes the order-preserving per-point benchmark reference buffers.
 pub(super) struct EagerNativeRuntime {
-    #[cfg(test)]
-    legacy_scheduler: Option<crate::EagerExecutionRuntime>,
-    #[cfg(test)]
-    legacy_backend: Option<PreparedEvaluatorBackend>,
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     direct_scheduler: Option<crate::eager_runtime::EagerDirectExecutionRuntime>,
-    #[cfg(test)]
-    direct_mode: EagerDirectValidationMode,
     backend_name: String,
     amplitude_count: usize,
     has_selector_domains: bool,
@@ -139,12 +40,8 @@ pub(super) struct EagerNativeRuntime {
     momenta: Vec<f64>,
     model_parameters: Vec<crate::EagerComplex64>,
     amplitudes: Vec<crate::EagerComplex64>,
-    #[cfg(test)]
-    direct_amplitudes: Vec<crate::EagerComplex64>,
     color_group_scratch: Vec<crate::EagerComplex64>,
     reduced: Vec<f64>,
-    #[cfg(test)]
-    direct_reduced: Vec<f64>,
     selected_groups: Vec<u32>,
     point_selector_offsets: Vec<usize>,
     point_selector_groups: Vec<u32>,
@@ -192,66 +89,6 @@ struct EagerSourceSchedule {
 }
 
 impl EagerNativeRuntime {
-    #[cfg(test)]
-    pub(super) fn new(
-        scheduler: crate::EagerExecutionRuntime,
-        backend: PreparedEvaluatorBackend,
-        backend_name: String,
-        parameter_projection: EagerParameterProjection,
-        raw_sum_groups: Vec<RawSumGroup>,
-        color_contraction: Option<ColorContractionRuntime>,
-    ) -> Self {
-        let amplitude_count = scheduler.plan().amplitude_count();
-        let has_selector_domains = scheduler.plan().has_selector_domains();
-        let effective_point_tile_size = scheduler.effective_point_tile_size();
-        let workspace_bytes = scheduler.workspace_bytes();
-        Self {
-            legacy_scheduler: Some(scheduler),
-            legacy_backend: Some(backend),
-            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            direct_scheduler: None,
-            direct_mode: EagerDirectValidationMode::Disabled,
-            backend_name,
-            amplitude_count,
-            has_selector_domains,
-            effective_point_tile_size,
-            workspace_bytes,
-            parameter_projection,
-            raw_sum_groups,
-            lc_resolved_replay_plan: None,
-            lc_resolved_replay_selection_cache: Vec::new(),
-            lc_replay_expanded_batch: Vec::new(),
-            lc_replay_seen_labels: Vec::new(),
-            lc_replay_flat_momenta: Vec::new(),
-            lc_replay_materialized_values: Vec::new(),
-            lc_replay_target_components: Vec::new(),
-            color_contraction,
-            initial_values: Vec::new(),
-            momenta: Vec::new(),
-            model_parameters: Vec::new(),
-            amplitudes: Vec::new(),
-            direct_amplitudes: Vec::new(),
-            color_group_scratch: Vec::new(),
-            reduced: Vec::new(),
-            direct_reduced: Vec::new(),
-            selected_groups: Vec::new(),
-            point_selector_offsets: Vec::new(),
-            point_selector_groups: Vec::new(),
-            point_selector_group_weights: Vec::new(),
-            point_selector_members: None,
-            point_selector_pairs: Vec::new(),
-            selected_helicity_indices: Vec::new(),
-            selected_color_indices: Vec::new(),
-            helicity_position_scratch: Vec::new(),
-            color_position_scratch: Vec::new(),
-            helicity_weights_scratch: Vec::new(),
-            right_helicity_weights_scratch: Vec::new(),
-            member_weights_scratch: Vec::new(),
-            source_schedule: None,
-            source_wavefunction_scratch: Vec::new(),
-        }
-    }
-
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     pub(super) fn new_direct(
         scheduler: crate::eager_runtime::EagerDirectExecutionRuntime,
@@ -265,13 +102,7 @@ impl EagerNativeRuntime {
         let effective_point_tile_size = scheduler.effective_point_tile_size();
         let workspace_bytes = scheduler.workspace_bytes();
         Self {
-            #[cfg(test)]
-            legacy_scheduler: None,
-            #[cfg(test)]
-            legacy_backend: None,
             direct_scheduler: Some(scheduler),
-            #[cfg(test)]
-            direct_mode: EagerDirectValidationMode::Direct,
             backend_name,
             amplitude_count,
             has_selector_domains,
@@ -291,12 +122,8 @@ impl EagerNativeRuntime {
             momenta: Vec::new(),
             model_parameters: Vec::new(),
             amplitudes: Vec::new(),
-            #[cfg(test)]
-            direct_amplitudes: Vec::new(),
             color_group_scratch: Vec::new(),
             reduced: Vec::new(),
-            #[cfg(test)]
-            direct_reduced: Vec::new(),
             selected_groups: Vec::new(),
             point_selector_offsets: Vec::new(),
             point_selector_groups: Vec::new(),
@@ -315,72 +142,6 @@ impl EagerNativeRuntime {
         }
     }
 
-    #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
-    pub(super) fn with_direct_validation(
-        mut self,
-        scheduler: crate::eager_runtime::EagerDirectExecutionRuntime,
-        mode: EagerDirectValidationMode,
-    ) -> Self {
-        self.direct_scheduler = Some(scheduler);
-        self.direct_mode = mode;
-        self
-    }
-
-    #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
-    fn audit_direct_schedule(&mut self, active_groups: Option<&[u32]>) -> RusticolResult<()> {
-        if std::env::var("PYAMPLICOL_EAGER_DIRECT_ARENA_AUDIT").as_deref() != Ok("1") {
-            return Ok(());
-        }
-        let legacy = aggregate_eager_schedule_audit(
-            self.legacy_scheduler
-                .as_mut()
-                .ok_or_else(|| {
-                    RusticolError::internal("eager direct audit has no legacy scheduler")
-                })?
-                .schedule_audit(active_groups)?,
-        );
-        let direct = aggregate_eager_schedule_audit(
-            self.direct_scheduler
-                .as_mut()
-                .ok_or_else(|| {
-                    RusticolError::internal("eager direct audit has no Direct-Arena scheduler")
-                })?
-                .schedule_audit(active_groups)?,
-        );
-        let mut keys = legacy
-            .keys()
-            .chain(direct.keys())
-            .copied()
-            .collect::<Vec<_>>();
-        keys.sort_unstable();
-        keys.dedup();
-        for key in keys {
-            let legacy_counts = legacy.get(&key).copied().unwrap_or_default();
-            let direct_counts = direct.get(&key).copied().unwrap_or_default();
-            eprintln!(
-                "eager_direct_schedule_audit groups={active_groups:?} stage={:?} role={} \
-                 kernel={:?} legacy_calls={} legacy_rows={} legacy_destinations={} \
-                 direct_calls={} direct_rows={} direct_destinations={}",
-                key.0,
-                key.1,
-                key.2,
-                legacy_counts.0,
-                legacy_counts.1,
-                legacy_counts.2,
-                direct_counts.0,
-                direct_counts.1,
-                direct_counts.2,
-            );
-            if legacy_counts.1 != direct_counts.1 || legacy_counts.2 != direct_counts.2 {
-                return Err(RusticolError::integrity(
-                    "eager Direct-Arena schedule audit found semantic work-count drift",
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    #[cfg(not(test))]
     fn execute_full_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
@@ -410,106 +171,6 @@ impl EagerNativeRuntime {
         }
     }
 
-    #[cfg(test)]
-    fn execute_full_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
-        match self.direct_mode {
-            EagerDirectValidationMode::Disabled => {
-                let scheduler = self.legacy_scheduler.as_mut().ok_or_else(|| {
-                    RusticolError::internal("eager legacy oracle has no packet scheduler")
-                })?;
-                let backend = self.legacy_backend.as_mut().ok_or_else(|| {
-                    RusticolError::internal("eager legacy oracle has no prepared backend")
-                })?;
-                scheduler.evaluate_into(
-                    backend,
-                    point_count,
-                    &self.initial_values,
-                    &self.momenta,
-                    &self.model_parameters,
-                    &mut self.amplitudes,
-                    &mut self.reduced,
-                )
-            }
-            EagerDirectValidationMode::Direct => {
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                {
-                    self.direct_scheduler
-                        .as_mut()
-                        .ok_or_else(|| {
-                            RusticolError::internal(
-                                "eager direct mode has no Direct-Arena scheduler",
-                            )
-                        })?
-                        .evaluate_into(
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.amplitudes,
-                            &mut self.reduced,
-                        )
-                }
-                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
-                {
-                    Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
-                    ))
-                }
-            }
-            EagerDirectValidationMode::Dual => {
-                {
-                    let scheduler = self.legacy_scheduler.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual oracle has no packet scheduler")
-                    })?;
-                    let backend = self.legacy_backend.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual oracle has no prepared backend")
-                    })?;
-                    scheduler.evaluate_into(
-                        backend,
-                        point_count,
-                        &self.initial_values,
-                        &self.momenta,
-                        &self.model_parameters,
-                        &mut self.amplitudes,
-                        &mut self.reduced,
-                    )?;
-                }
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                {
-                    self.direct_amplitudes
-                        .resize(self.amplitudes.len(), crate::EagerComplex64::new(0.0, 0.0));
-                    self.direct_reduced.resize(point_count, 0.0);
-                    self.direct_scheduler
-                        .as_mut()
-                        .ok_or_else(|| {
-                            RusticolError::internal("eager dual mode has no Direct-Arena scheduler")
-                        })?
-                        .evaluate_into(
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.direct_amplitudes,
-                            &mut self.direct_reduced,
-                        )?;
-                    compare_direct_complex(
-                        "full amplitudes",
-                        &self.amplitudes,
-                        &self.direct_amplitudes,
-                    )?;
-                    compare_direct_real("full totals", &self.reduced, &self.direct_reduced)
-                }
-                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
-                {
-                    Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
-                    ))
-                }
-            }
-        }
-    }
-
-    #[cfg(not(test))]
     fn execute_full_totals_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
@@ -538,30 +199,6 @@ impl EagerNativeRuntime {
         }
     }
 
-    #[cfg(test)]
-    fn execute_full_totals_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
-        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        if self.direct_mode == EagerDirectValidationMode::Direct {
-            return self
-                .direct_scheduler
-                .as_mut()
-                .ok_or_else(|| {
-                    RusticolError::internal("eager direct mode has no Direct-Arena scheduler")
-                })?
-                .evaluate_totals_into(
-                    point_count,
-                    &self.initial_values,
-                    &self.momenta,
-                    &self.model_parameters,
-                    &mut self.reduced,
-                );
-        }
-        // The packet and dual test-only oracles require materialized
-        // amplitudes for their cross-checks.
-        self.execute_full_scheduler(point_count)
-    }
-
-    #[cfg(not(test))]
     fn execute_selected_scheduler(
         &mut self,
         active_groups: &[u32],
@@ -595,111 +232,7 @@ impl EagerNativeRuntime {
         }
     }
 
-    #[cfg(test)]
-    fn execute_selected_scheduler(
-        &mut self,
-        active_groups: &[u32],
-        point_count: usize,
-    ) -> RusticolResult<()> {
-        match self.direct_mode {
-            EagerDirectValidationMode::Disabled => {
-                let scheduler = self.legacy_scheduler.as_mut().ok_or_else(|| {
-                    RusticolError::internal("eager legacy oracle has no packet scheduler")
-                })?;
-                let backend = self.legacy_backend.as_mut().ok_or_else(|| {
-                    RusticolError::internal("eager legacy oracle has no prepared backend")
-                })?;
-                scheduler.evaluate_selected_active_amplitudes_into(
-                    backend,
-                    active_groups,
-                    point_count,
-                    &self.initial_values,
-                    &self.momenta,
-                    &self.model_parameters,
-                    &mut self.amplitudes,
-                )
-            }
-            EagerDirectValidationMode::Direct => {
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                {
-                    self.direct_scheduler
-                        .as_mut()
-                        .ok_or_else(|| {
-                            RusticolError::internal(
-                                "eager direct mode has no Direct-Arena scheduler",
-                            )
-                        })?
-                        .evaluate_selected_active_amplitudes_into(
-                            active_groups,
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.amplitudes,
-                        )
-                }
-                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
-                {
-                    Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
-                    ))
-                }
-            }
-            EagerDirectValidationMode::Dual => {
-                self.amplitudes.fill(crate::EagerComplex64::new(0.0, 0.0));
-                {
-                    let scheduler = self.legacy_scheduler.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual oracle has no packet scheduler")
-                    })?;
-                    let backend = self.legacy_backend.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual oracle has no prepared backend")
-                    })?;
-                    scheduler.evaluate_selected_active_amplitudes_into(
-                        backend,
-                        active_groups,
-                        point_count,
-                        &self.initial_values,
-                        &self.momenta,
-                        &self.model_parameters,
-                        &mut self.amplitudes,
-                    )?;
-                }
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                {
-                    self.direct_amplitudes.clear();
-                    self.direct_amplitudes
-                        .resize(self.amplitudes.len(), crate::EagerComplex64::new(0.0, 0.0));
-                    self.direct_scheduler
-                        .as_mut()
-                        .ok_or_else(|| {
-                            RusticolError::internal("eager dual mode has no Direct-Arena scheduler")
-                        })?
-                        .evaluate_selected_active_amplitudes_into(
-                            active_groups,
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.direct_amplitudes,
-                        )?;
-                    compare_direct_complex(
-                        "selected amplitudes",
-                        &self.amplitudes,
-                        &self.direct_amplitudes,
-                    )
-                }
-                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
-                {
-                    Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
-                    ))
-                }
-            }
-        }
-    }
-
     #[allow(clippy::too_many_arguments)]
-    #[cfg(not(test))]
     fn execute_point_selected_scheduler(
         &mut self,
         group_offsets: &[usize],
@@ -744,115 +277,6 @@ impl EagerNativeRuntime {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    #[cfg(test)]
-    fn execute_point_selected_scheduler(
-        &mut self,
-        group_offsets: &[usize],
-        active_groups: &[u32],
-        active_group_weights: &[f64],
-        point_count: usize,
-        reduced: &mut [f64],
-    ) -> RusticolResult<()> {
-        match self.direct_mode {
-            EagerDirectValidationMode::Disabled => {
-                let scheduler = self.legacy_scheduler.as_mut().ok_or_else(|| {
-                    RusticolError::internal("eager legacy oracle has no packet scheduler")
-                })?;
-                let backend = self.legacy_backend.as_mut().ok_or_else(|| {
-                    RusticolError::internal("eager legacy oracle has no prepared backend")
-                })?;
-                scheduler.evaluate_point_selected_group_sets_into(
-                    backend,
-                    group_offsets,
-                    active_groups,
-                    active_group_weights,
-                    point_count,
-                    &self.initial_values,
-                    &self.momenta,
-                    &self.model_parameters,
-                    reduced,
-                )
-            }
-            EagerDirectValidationMode::Direct => {
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                {
-                    self.direct_scheduler
-                        .as_mut()
-                        .ok_or_else(|| {
-                            RusticolError::internal(
-                                "eager direct mode has no Direct-Arena scheduler",
-                            )
-                        })?
-                        .evaluate_point_selected_group_sets_into(
-                            group_offsets,
-                            active_groups,
-                            active_group_weights,
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            reduced,
-                        )
-                }
-                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
-                {
-                    Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
-                    ))
-                }
-            }
-            EagerDirectValidationMode::Dual => {
-                {
-                    let scheduler = self.legacy_scheduler.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual oracle has no packet scheduler")
-                    })?;
-                    let backend = self.legacy_backend.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual oracle has no prepared backend")
-                    })?;
-                    scheduler.evaluate_point_selected_group_sets_into(
-                        backend,
-                        group_offsets,
-                        active_groups,
-                        active_group_weights,
-                        point_count,
-                        &self.initial_values,
-                        &self.momenta,
-                        &self.model_parameters,
-                        reduced,
-                    )?;
-                }
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                {
-                    self.direct_reduced.resize(point_count, 0.0);
-                    self.direct_scheduler
-                        .as_mut()
-                        .ok_or_else(|| {
-                            RusticolError::internal("eager dual mode has no Direct-Arena scheduler")
-                        })?
-                        .evaluate_point_selected_group_sets_into(
-                            group_offsets,
-                            active_groups,
-                            active_group_weights,
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.direct_reduced,
-                        )?;
-                    compare_direct_real("per-point selected totals", reduced, &self.direct_reduced)
-                }
-                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
-                {
-                    Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
-                    ))
-                }
-            }
-        }
-    }
-
-    #[cfg(not(test))]
     fn execute_profile_scheduler(
         &mut self,
         active_groups: Option<&[u32]>,
@@ -890,162 +314,6 @@ impl EagerNativeRuntime {
                 "eager-direct-arena-v1 requires the f64-compiled or f64-symjit feature; regenerate or load \
                  this artifact with a Direct-Arena-capable runtime",
             ))
-        }
-    }
-
-    #[cfg(test)]
-    fn execute_profile_scheduler(
-        &mut self,
-        active_groups: Option<&[u32]>,
-        point_count: usize,
-    ) -> RusticolResult<crate::eager_runtime::EagerExecutionProfile> {
-        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        if self.direct_mode != EagerDirectValidationMode::Disabled {
-            self.audit_direct_schedule(active_groups)?;
-        }
-        match self.direct_mode {
-            EagerDirectValidationMode::Disabled => {
-                let scheduler = self.legacy_scheduler.as_mut().ok_or_else(|| {
-                    RusticolError::internal("eager legacy oracle has no packet scheduler")
-                })?;
-                let backend = self.legacy_backend.as_mut().ok_or_else(|| {
-                    RusticolError::internal("eager legacy oracle has no prepared backend")
-                })?;
-                if let Some(active_groups) = active_groups {
-                    scheduler.evaluate_selected_amplitudes_profile_into(
-                        backend,
-                        active_groups,
-                        point_count,
-                        &self.initial_values,
-                        &self.momenta,
-                        &self.model_parameters,
-                        &mut self.amplitudes,
-                    )
-                } else {
-                    scheduler.evaluate_profile_into(
-                        backend,
-                        point_count,
-                        &self.initial_values,
-                        &self.momenta,
-                        &self.model_parameters,
-                        &mut self.amplitudes,
-                        &mut self.reduced,
-                    )
-                }
-            }
-            EagerDirectValidationMode::Direct => {
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                {
-                    let scheduler = self.direct_scheduler.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager direct mode has no Direct-Arena scheduler")
-                    })?;
-                    if let Some(active_groups) = active_groups {
-                        scheduler.evaluate_selected_profile_into(
-                            active_groups,
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.amplitudes,
-                        )
-                    } else {
-                        scheduler.evaluate_profile_into(
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.amplitudes,
-                            &mut self.reduced,
-                        )
-                    }
-                }
-                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
-                {
-                    Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
-                    ))
-                }
-            }
-            EagerDirectValidationMode::Dual => {
-                let legacy = {
-                    let scheduler = self.legacy_scheduler.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual oracle has no packet scheduler")
-                    })?;
-                    let backend = self.legacy_backend.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual oracle has no prepared backend")
-                    })?;
-                    if let Some(active_groups) = active_groups {
-                        scheduler.evaluate_selected_amplitudes_profile_into(
-                            backend,
-                            active_groups,
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.amplitudes,
-                        )?
-                    } else {
-                        scheduler.evaluate_profile_into(
-                            backend,
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.amplitudes,
-                            &mut self.reduced,
-                        )?
-                    }
-                };
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                {
-                    self.direct_amplitudes
-                        .resize(self.amplitudes.len(), crate::EagerComplex64::new(0.0, 0.0));
-                    self.direct_reduced.resize(point_count, 0.0);
-                    let scheduler = self.direct_scheduler.as_mut().ok_or_else(|| {
-                        RusticolError::internal("eager dual mode has no Direct-Arena scheduler")
-                    })?;
-                    let direct = if let Some(active_groups) = active_groups {
-                        scheduler.evaluate_selected_profile_into(
-                            active_groups,
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.direct_amplitudes,
-                        )?
-                    } else {
-                        scheduler.evaluate_profile_into(
-                            point_count,
-                            &self.initial_values,
-                            &self.momenta,
-                            &self.model_parameters,
-                            &mut self.direct_amplitudes,
-                            &mut self.direct_reduced,
-                        )?
-                    };
-                    compare_direct_complex(
-                        "profiled amplitudes",
-                        &self.amplitudes,
-                        &self.direct_amplitudes,
-                    )?;
-                    if active_groups.is_none() {
-                        compare_direct_real(
-                            "profiled totals",
-                            &self.reduced,
-                            &self.direct_reduced,
-                        )?;
-                    }
-                    let _ = legacy;
-                    Ok(direct)
-                }
-                #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
-                {
-                    let _ = legacy;
-                    Err(RusticolError::compatibility(
-                        "eager Direct-Arena requires the f64-compiled or f64-symjit feature",
-                    ))
-                }
-            }
         }
     }
 
@@ -2219,31 +1487,6 @@ fn fill_selected_eager_group_ids(
     active.sort_unstable();
     active.dedup();
     Ok(())
-}
-
-#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[cfg(test)]
-type EagerScheduleAuditKey = (Option<u32>, &'static str, Option<u32>);
-
-#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[cfg(test)]
-type EagerScheduleAuditCounts = (usize, usize, usize);
-
-#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[cfg(test)]
-fn aggregate_eager_schedule_audit(
-    rows: Vec<crate::eager_runtime::EagerScheduleAuditRow>,
-) -> BTreeMap<EagerScheduleAuditKey, EagerScheduleAuditCounts> {
-    let mut aggregated = BTreeMap::new();
-    for row in rows {
-        let counts = aggregated
-            .entry((row.stage_index, row.role, row.kernel_id))
-            .or_insert((0_usize, 0_usize, 0_usize));
-        counts.0 += row.call_count;
-        counts.1 += row.row_count;
-        counts.2 += row.destination_count;
-    }
-    aggregated
 }
 
 #[allow(dead_code)] // Used by the order-preserving benchmark reference lane.

@@ -3303,6 +3303,49 @@ extern "C" int native_direct_leaf_direct_application_v1(
             allocated_bytes, 0,
             "warmed public compiled Direct evaluation allocated bytes"
         );
+        let arena_profile = direct
+            .evaluate_f64_arena_profile_repeated(
+                &allocation_momenta,
+                allocation_points,
+                3,
+                None,
+                None,
+            )
+            .expect("profile warmed retained Direct evaluate-into boundary");
+        assert_eq!(arena_profile.values.len(), allocation_points);
+        for (point_index, (profiled, expected)) in arena_profile
+            .values
+            .iter()
+            .copied()
+            .zip(&allocation_output)
+            .enumerate()
+        {
+            assert_close_real(
+                profiled,
+                *expected,
+                &format!("warmed retained Direct profile point={point_index}"),
+            );
+        }
+        assert_eq!(
+            arena_profile
+                .profile
+                .native_input_container_allocation_count,
+            0
+        );
+        assert_eq!(arena_profile.profile.native_output_allocation_count, 0);
+        assert_eq!(arena_profile.profile.observed_scratch_reallocation_count, 0);
+        assert!(
+            arena_profile.profile.compiled_direct_arena_engine_count > 0,
+            "warmed Direct profile did not authenticate an Arena engine"
+        );
+        assert_eq!(
+            arena_profile.profile.compiled_direct_arena_call_count,
+            arena_profile.profile.evaluator_backend_call_count,
+        );
+        assert!(
+            arena_profile.profile.compiled_direct_arena_call_count > 0,
+            "warmed Direct profile observed no evaluator calls"
+        );
 
         let allocation_batch = F64MomentumBatchView::from_contiguous_prevalidated(
             &allocation_momenta,
@@ -3337,6 +3380,8 @@ extern "C" int native_direct_leaf_direct_application_v1(
             "warmed compiled Direct runtime allocated bytes"
         );
 
+        let selected_color_ids = [selected_color.clone()];
+        let selected_helicity_ids = [selected_helicity.clone()];
         let selected_colors = BTreeSet::from([selected_color]);
         let selected_helicities = BTreeSet::from([selected_helicity]);
         let mut allocation_cases = vec![("selected-helicity", Some(&selected_helicities), None)];
@@ -3374,6 +3419,64 @@ extern "C" int native_direct_leaf_direct_application_v1(
             assert_eq!(
                 selected_allocated_bytes, 0,
                 "warmed selected Direct arena execution allocated bytes"
+            );
+        }
+        let mut profile_cases = vec![(
+            "selected-helicity",
+            Some(selected_helicity_ids.as_slice()),
+            None,
+        )];
+        if direct.metadata().color_accuracy == "lc" {
+            profile_cases.push(("selected-flow", None, Some(selected_color_ids.as_slice())));
+        }
+        for (label, helicities, colors) in profile_cases {
+            direct
+                .evaluate_f64_into_with_selectors(
+                    &allocation_momenta,
+                    allocation_points,
+                    helicities,
+                    colors,
+                    None,
+                    None,
+                    &mut allocation_output,
+                )
+                .unwrap_or_else(|error| panic!("evaluate retained Direct {label} oracle: {error}"));
+            let selected_profile = direct
+                .evaluate_f64_arena_profile_repeated(
+                    &allocation_momenta,
+                    allocation_points,
+                    3,
+                    helicities,
+                    colors,
+                )
+                .unwrap_or_else(|error| panic!("profile retained Direct {label}: {error}"));
+            for (point_index, (profiled, expected)) in selected_profile
+                .values
+                .iter()
+                .copied()
+                .zip(&allocation_output)
+                .enumerate()
+            {
+                assert_close_real(
+                    profiled,
+                    *expected,
+                    &format!("profiled retained Direct {label} point={point_index}"),
+                );
+            }
+            assert_eq!(
+                selected_profile
+                    .profile
+                    .native_input_container_allocation_count,
+                0,
+                "profiled retained Direct {label} input allocations"
+            );
+            assert_eq!(
+                selected_profile.profile.native_output_allocation_count, 0,
+                "profiled retained Direct {label} output allocations"
+            );
+            assert_eq!(
+                selected_profile.profile.observed_scratch_reallocation_count, 0,
+                "profiled retained Direct {label} scratch reallocations"
             );
         }
 

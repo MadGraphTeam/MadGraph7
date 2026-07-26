@@ -30,7 +30,7 @@ def contracts() -> portability.RuntimeContracts:
         symbolica_serialization_abi="symbolica-bincode2-v1",
         symjit_application_abi="symjit-application-storage-v3",
         symjit_runtime_capability="symjit.application.complex-f64.v1",
-        eager_runtime_capability="rusticol.eager-dag.complex-f64.v1",
+        eager_runtime_capability="rusticol.eager-runtime-layout.complex-f64.v1",
         package_version="0.1.0.dev0+candidate.portability",
     )
 

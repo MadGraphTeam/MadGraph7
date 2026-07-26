@@ -13,6 +13,7 @@ import pytest
 
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+    EAGER_DAG_F64_RUNTIME_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
     SYMJIT_F64_RUNTIME_CAPABILITY,
 )
@@ -517,6 +518,30 @@ def test_adapter_accepts_compact_eager_runtime_selector_capability(
         assert _NativeRuntime.last_evaluate_options is not None
         assert _NativeRuntime.last_evaluate_options["helicity_by_point"] == (0, 0)
         assert _NativeRuntime.last_evaluate_options["color_flow_by_point"] == (0, 0)
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+
+
+def test_adapter_does_not_treat_retired_eager_v2_as_selector_support(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(
+        tmp_path,
+        capabilities=(EAGER_DAG_F64_RUNTIME_CAPABILITY,),
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "eager"
+    try:
+        backend = backend_module.load_runtime_backend(tmp_path, process="uux_g")
+        assert backend.supports_per_point_selectors is False
     finally:
         _NativeRuntime.execution_mode = "compiled"
 

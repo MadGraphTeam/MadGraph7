@@ -2,20 +2,6 @@
 
 use super::*;
 
-fn compiled_direct_developer_oracle_enabled() -> bool {
-    // Legacy SymJIT application payloads may be lowered in memory only for the
-    // retained-artifact dual-run oracle. Production requires the generated
-    // compiled-plane capability and never enters this test-only escape hatch.
-    #[cfg(all(test, feature = "f64-symjit"))]
-    {
-        std::env::var_os("RUSTICOL_TEST_ENABLE_COMPILED_DIRECT").is_some()
-    }
-    #[cfg(not(all(test, feature = "f64-symjit")))]
-    {
-        false
-    }
-}
-
 fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> RusticolResult<bool> {
     let declared_execution = manifest
         .required_runtime_capabilities
@@ -59,9 +45,6 @@ fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> Rusti
         .count();
 
     if !declared_execution && !declared_stage && direct_count == 0 {
-        if compiled_direct_developer_oracle_enabled() {
-            return Ok(false);
-        }
         return Err(RusticolError::compatibility(
             "this compiled f64 artifact predates compiled-plane-arena-v1; regenerate it with \
              `pyamplicol generate-process` using the current pyAmpliCol build",
@@ -3355,25 +3338,6 @@ impl ExecutionRuntime {
                     &stage_evaluators.amplitude_stage,
                     payloads,
                 )?);
-                #[cfg(feature = "f64-symjit")]
-                if compiled_direct_developer_oracle_enabled()
-                    && compiled_direct_prototype::compiled_direct_symjit_supported(
-                        &stage_evaluators,
-                    )?
-                {
-                    let direct =
-                        compiled_direct_prototype::CompiledDirectEnginePrototype::load_production(
-                            &stage_evaluators.stages,
-                            &stage_evaluators.amplitude_stage,
-                            payloads,
-                            &runtime.sources,
-                            runtime.value_parameter_count,
-                            runtime.momentum_parameter_count,
-                            runtime.model_parameter_values_f64.len(),
-                            stage_evaluators.amplitude_stage.output_length,
-                        )?;
-                    runtime.compiled_direct_runtime = Some(direct);
-                }
             }
             #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
             {

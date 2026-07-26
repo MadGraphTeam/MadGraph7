@@ -1155,6 +1155,22 @@ fn generated_eager_native_into_is_warmed_allocation_free_when_fixture_is_supplie
         (0, 0),
         "warmed eager borrowed-input totals allocated"
     );
+    let arena_profile = runtime
+        .evaluate_f64_arena_profile_repeated(&momenta, point_count, 3, None, None)
+        .expect("profile warmed eager borrowed-input totals");
+    assert_eq!(arena_profile.values, output);
+    assert_eq!(
+        arena_profile
+            .profile
+            .native_input_container_allocation_count,
+        0
+    );
+    assert_eq!(arena_profile.profile.native_output_allocation_count, 0);
+    assert_eq!(arena_profile.profile.observed_scratch_reallocation_count, 0);
+    assert_eq!(
+        arena_profile.profile.native_input_component_count,
+        u64::try_from(momenta.len() * 3).expect("profile input count"),
+    );
 
     let selected_helicity = runtime
         .helicities()
@@ -1200,6 +1216,49 @@ fn generated_eager_native_into_is_warmed_allocation_free_when_fixture_is_supplie
         (0, 0),
         "warmed eager global selectors allocated"
     );
+    let mut profile_cases = vec![(
+        "selected-helicity",
+        Some(selected_helicities.as_slice()),
+        None,
+    )];
+    if let Some(ids) = selected_colors.as_ref() {
+        profile_cases.push(("selected-flow", None, Some(ids.as_slice())));
+    }
+    for (label, helicities, colors) in profile_cases {
+        runtime
+            .evaluate_f64_into_with_selectors(
+                &momenta,
+                point_count,
+                helicities,
+                colors,
+                None,
+                None,
+                &mut output,
+            )
+            .unwrap_or_else(|error| panic!("evaluate eager {label} oracle: {error}"));
+        let selected_profile = runtime
+            .evaluate_f64_arena_profile_repeated(&momenta, point_count, 3, helicities, colors)
+            .unwrap_or_else(|error| panic!("profile eager {label}: {error}"));
+        assert_eq!(
+            selected_profile.values, output,
+            "profiled eager {label} values"
+        );
+        assert_eq!(
+            selected_profile
+                .profile
+                .native_input_container_allocation_count,
+            0,
+            "profiled eager {label} input allocations"
+        );
+        assert_eq!(
+            selected_profile.profile.native_output_allocation_count, 0,
+            "profiled eager {label} output allocations"
+        );
+        assert_eq!(
+            selected_profile.profile.observed_scratch_reallocation_count, 0,
+            "profiled eager {label} scratch reallocations"
+        );
+    }
 
     let helicity_count = runtime
         .helicities()
@@ -1298,331 +1357,10 @@ fn generated_eager_native_into_is_warmed_allocation_free_when_fixture_is_supplie
     assert_eq!(sentinel, [37.0, 41.0]);
 }
 
-#[cfg(feature = "f64-symjit")]
-#[test]
-#[ignore = "local interleaved retained-artifact A/B timing evidence"]
-fn benchmark_generated_eager_direct_arena_against_legacy_when_fixture_is_supplied() {
-    use std::hint::black_box;
-    use std::time::Instant;
-
-    let Some(root) = std::env::var_os("RUSTICOL_EAGER_ARTIFACT") else {
-        return;
-    };
-    let previous_mode = std::env::var_os("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION");
-    // SAFETY: this ignored diagnostic is run by exact name with one test
-    // thread. Both runtimes consume the environment only during construction.
-    unsafe {
-        std::env::remove_var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION");
-    }
-    let mut legacy =
-        NativeRuntime::load(PathBuf::from(&root), None, None).expect("load legacy eager runtime");
-    // SAFETY: see the single-threaded diagnostic invariant above.
-    unsafe {
-        std::env::set_var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION", "direct");
-    }
-    let mut direct =
-        NativeRuntime::load(PathBuf::from(root), None, None).expect("load direct eager runtime");
-    // SAFETY: restore the process environment before any measurement begins.
-    unsafe {
-        if let Some(previous) = previous_mode {
-            std::env::set_var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION", previous);
-        } else {
-            std::env::remove_var("PYAMPLICOL_EAGER_DIRECT_ARENA_VALIDATION");
-        }
-    }
-
-    let validation_path = direct
-        .root()
-        .join("processes")
-        .join(&direct.metadata().representative_process_key)
-        .join("validation-momenta.json");
-    let validation: Value =
-        serde_json::from_slice(&fs::read(&validation_path).expect("read eager validation momenta"))
-            .expect("parse eager validation momenta");
-    let one_point = validation["points"][0]
-        .as_array()
-        .expect("one eager validation point")
-        .iter()
-        .flat_map(|leg| {
-            leg["momentum"]
-                .as_array()
-                .expect("four momentum components")
-                .iter()
-                .map(|value| {
-                    value
-                        .as_str()
-                        .expect("decimal momentum string")
-                        .parse::<f64>()
-                        .expect("f64 validation momentum")
-                })
-        })
-        .collect::<Vec<_>>();
-
-    for (point_count, repetitions) in [(128_usize, 50_usize), (1024, 8)] {
-        let momenta = one_point.repeat(point_count);
-        let mut legacy_output = vec![0.0; point_count];
-        let mut direct_output = vec![0.0; point_count];
-        for _ in 0..3 {
-            legacy
-                .evaluate_f64_into(&momenta, point_count, &mut legacy_output)
-                .expect("warm legacy eager runtime");
-            direct
-                .evaluate_f64_into(&momenta, point_count, &mut direct_output)
-                .expect("warm direct eager runtime");
-        }
-        for (legacy_value, direct_value) in legacy_output.iter().zip(&direct_output) {
-            assert_close_f64(*legacy_value, *direct_value, "eager retained A/B parity");
-        }
-
-        let mut legacy_us = Vec::with_capacity(7);
-        let mut direct_us = Vec::with_capacity(7);
-        for sample in 0_usize..7 {
-            let measure_legacy = |runtime: &mut NativeRuntime, output: &mut [f64]| {
-                let started = Instant::now();
-                for _ in 0..repetitions {
-                    runtime
-                        .evaluate_f64_into(&momenta, point_count, output)
-                        .expect("measure legacy eager runtime");
-                    black_box(&*output);
-                }
-                started.elapsed().as_secs_f64() * 1.0e6 / (repetitions * point_count) as f64
-            };
-            let measure_direct = |runtime: &mut NativeRuntime, output: &mut [f64]| {
-                let started = Instant::now();
-                for _ in 0..repetitions {
-                    runtime
-                        .evaluate_f64_into(&momenta, point_count, output)
-                        .expect("measure direct eager runtime");
-                    black_box(&*output);
-                }
-                started.elapsed().as_secs_f64() * 1.0e6 / (repetitions * point_count) as f64
-            };
-            if sample.is_multiple_of(2) {
-                legacy_us.push(measure_legacy(&mut legacy, &mut legacy_output));
-                direct_us.push(measure_direct(&mut direct, &mut direct_output));
-            } else {
-                direct_us.push(measure_direct(&mut direct, &mut direct_output));
-                legacy_us.push(measure_legacy(&mut legacy, &mut legacy_output));
-            }
-        }
-        let (legacy_median, legacy_mad) = median_mad_f64(&mut legacy_us);
-        let (direct_median, direct_mad) = median_mad_f64(&mut direct_us);
-        eprintln!(
-            "eager_retained_direct_ab point_count={point_count} repetitions={repetitions} \
-             samples=7 legacy_us_per_point={legacy_median:.9} legacy_mad={legacy_mad:.9} \
-             direct_us_per_point={direct_median:.9} direct_mad={direct_mad:.9} \
-             speedup={:.6}",
-            legacy_median / direct_median
-        );
-        let legacy_profile = legacy
-            .evaluate_f64_profile(&momenta, point_count, None, None)
-            .expect("profile legacy eager runtime")
-            .profile;
-        let direct_profile = direct
-            .evaluate_f64_profile(&momenta, point_count, None, None)
-            .expect("profile direct eager runtime")
-            .profile;
-        let us_per_point = |seconds: f64| seconds * 1.0e6 / point_count as f64;
-        eprintln!(
-            "eager_retained_direct_profile point_count={point_count} \
-             legacy_total_us_per_point={:.9} legacy_source_us_per_point={:.9} \
-             legacy_momentum_us_per_point={:.9} legacy_initialize_us_per_point={:.9} \
-             legacy_gather_us_per_point={:.9} legacy_kernel_us_per_point={:.9} \
-             legacy_copy_us_per_point={:.9} legacy_finalization_us_per_point={:.9} \
-             legacy_closure_us_per_point={:.9} legacy_reduction_us_per_point={:.9} \
-             legacy_copy_out_us_per_point={:.9} legacy_backend_calls={} \
-             direct_total_us_per_point={:.9} direct_source_us_per_point={:.9} \
-             direct_momentum_us_per_point={:.9} direct_initialize_us_per_point={:.9} \
-             direct_gather_us_per_point={:.9} direct_kernel_us_per_point={:.9} \
-             direct_copy_us_per_point={:.9} direct_finalization_us_per_point={:.9} \
-             direct_closure_us_per_point={:.9} direct_reduction_us_per_point={:.9} \
-             direct_copy_out_us_per_point={:.9} direct_backend_calls={}",
-            us_per_point(legacy_profile.total_s),
-            us_per_point(legacy_profile.source_fill_s),
-            us_per_point(legacy_profile.momentum_input_setup_s),
-            us_per_point(legacy_profile.eager_initialize_s),
-            us_per_point(legacy_profile.eager_gather_s),
-            us_per_point(legacy_profile.eager_kernel_call_s),
-            us_per_point(legacy_profile.eager_invocation_scatter_s),
-            us_per_point(legacy_profile.eager_finalization_s),
-            us_per_point(legacy_profile.eager_closure_s),
-            us_per_point(legacy_profile.eager_reduction_s),
-            us_per_point(legacy_profile.eager_copy_out_s),
-            legacy_profile.evaluator_backend_call_count,
-            us_per_point(direct_profile.total_s),
-            us_per_point(direct_profile.source_fill_s),
-            us_per_point(direct_profile.momentum_input_setup_s),
-            us_per_point(direct_profile.eager_initialize_s),
-            us_per_point(direct_profile.eager_gather_s),
-            us_per_point(direct_profile.eager_kernel_call_s),
-            us_per_point(direct_profile.eager_invocation_scatter_s),
-            us_per_point(direct_profile.eager_finalization_s),
-            us_per_point(direct_profile.eager_closure_s),
-            us_per_point(direct_profile.eager_reduction_s),
-            us_per_point(direct_profile.eager_copy_out_s),
-            direct_profile.evaluator_backend_call_count,
-        );
-    }
-}
-
-#[cfg(feature = "f64-symjit")]
-fn median_mad_f64(values: &mut [f64]) -> (f64, f64) {
-    values.sort_by(f64::total_cmp);
-    let median = values[values.len() / 2];
-    let mut deviations = values
-        .iter()
-        .map(|value| (value - median).abs())
-        .collect::<Vec<_>>();
-    deviations.sort_by(f64::total_cmp);
-    (median, deviations[deviations.len() / 2])
-}
-
 fn assert_close_f64(left: f64, right: f64, context: &str) {
     let tolerance = 1.0e-15 + 1.0e-12 * left.abs().max(right.abs());
     assert!(
         (left - right).abs() <= tolerance,
         "{context}: {left:.17e} != {right:.17e} (tolerance {tolerance:.3e})"
     );
-}
-
-#[cfg(feature = "f64-symjit")]
-#[test]
-fn generated_filtered_pack_and_binary_plan_execute_when_fixture_is_supplied() {
-    use crate::{
-        EagerAttachmentRow, EagerCouplingRow, EagerFinalizationRow, EagerInvocationRow,
-        EagerStagePayload,
-    };
-
-    let Some(root) = std::env::var_os("RUSTICOL_EAGER_ARTIFACT") else {
-        return;
-    };
-    let root = PathBuf::from(root);
-    let process_root = root.join("processes/d_dbar_to_z");
-    let execution: EagerExecutionManifest = serde_json::from_slice(
-        &fs::read(process_root.join("execution.json")).expect("read eager execution fixture"),
-    )
-    .expect("parse eager execution fixture");
-    execution
-        .validate_header()
-        .expect("validate eager execution header");
-    let pack: PreparedKernelPackManifest = serde_json::from_slice(
-        &fs::read(root.join("model/eager-kernel-pack.json"))
-            .expect("read filtered prepared-kernel fixture"),
-    )
-    .expect("parse filtered prepared-kernel fixture");
-    pack.validate()
-        .expect("validate filtered prepared-kernel fixture");
-    let coupling_bytes = fs::read(process_root.join(&execution.plan.couplings.path))
-        .expect("read eager coupling table");
-    let closures = fs::read(process_root.join(&execution.plan.closures.path))
-        .expect("read eager closure table");
-    assert_eq!(
-        closures.len(),
-        execution.plan.closures.count * EagerClosureRow::ENCODED_LEN
-    );
-    let stage_bytes = execution
-        .plan
-        .stages
-        .iter()
-        .map(|stage| {
-            let invocations = fs::read(process_root.join(&stage.invocations.path))
-                .expect("read eager invocation table");
-            let attachments = fs::read(process_root.join(&stage.attachments.path))
-                .expect("read eager attachment table");
-            let finalizations = fs::read(process_root.join(&stage.finalizations.path))
-                .expect("read eager finalization table");
-            assert_eq!(
-                invocations.len(),
-                stage.invocations.count * EagerInvocationRow::ENCODED_LEN
-            );
-            assert_eq!(
-                attachments.len(),
-                stage.attachments.count * EagerAttachmentRow::ENCODED_LEN
-            );
-            assert_eq!(
-                finalizations.len(),
-                stage.finalizations.count * EagerFinalizationRow::ENCODED_LEN
-            );
-            (invocations, attachments, finalizations)
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        coupling_bytes.len(),
-        execution.plan.couplings.count * EagerCouplingRow::ENCODED_LEN
-    );
-    let mut common = ExecutionRuntime::from_manifest(execution.compiled_metadata_manifest())
-        .expect("load shared source and physics execution metadata");
-    let kernel_payloads = EvaluatorPayloadStore::directory(&root.join("model/eager-kernels"));
-    let (parameter_projection, couplings, model_parameter_evaluator) =
-        prepare_eager_parameter_state(
-            &pack,
-            &execution.runtime_schema.model_parameters,
-            &coupling_bytes,
-            &kernel_payloads,
-        )
-        .expect("prepare eager model-parameter projection");
-    common.model_parameter_evaluator = model_parameter_evaluator;
-    common
-        .refresh_derived_model_parameters()
-        .expect("refresh prepared derived parameters");
-    let definition = execution
-        .plan_definition(
-            &pack,
-            u32::try_from(parameter_projection.parameter_count)
-                .expect("prepared parameter count fits u32"),
-        )
-        .expect("derive eager plan definition from runtime schema and filtered pack");
-    let stages = execution
-        .plan
-        .stages
-        .iter()
-        .zip(&stage_bytes)
-        .map(|(stage, bytes)| EagerStagePayload {
-            stage_index: stage.stage_index,
-            invocations: &bytes.0,
-            attachments: &bytes.1,
-            finalizations: &bytes.2,
-        })
-        .collect::<Vec<_>>();
-    let plan = EagerExecutionPlan::from_payloads(
-        definition,
-        EagerPlanPayloads {
-            couplings: &couplings,
-            stages: &stages,
-            closures: &closures,
-            selector_domains: None,
-        },
-    )
-    .expect("load generated eager binary plan");
-    let scheduler = EagerExecutionRuntime::new(
-        plan,
-        execution
-            .runtime_options
-            .validate()
-            .expect("runtime options"),
-    )
-    .expect("construct generated eager scheduler");
-    let backend = PreparedEvaluatorBackend::load(&pack, &root.join("model/eager-kernels"))
-        .expect("load filtered prepared evaluator pack");
-    let point = vec![
-        [500.0, 0.0, 0.0, 500.0],
-        [500.0, 0.0, 0.0, -500.0],
-        [1000.0, 0.0, 0.0, 0.0],
-    ];
-    let (raw_sum_groups, color_contraction) = execution
-        .raw_reduction_runtime()
-        .expect("load eager resolved reduction metadata");
-    let mut eager = EagerNativeRuntime::new(
-        scheduler,
-        backend,
-        "jit".to_string(),
-        parameter_projection,
-        raw_sum_groups,
-        color_contraction,
-    );
-    let (values, _) = eager
-        .run_f64(&mut common, &[point])
-        .expect("execute generated filtered eager artifact");
-    assert_eq!(values.len(), 1);
-    assert!(values[0].is_finite());
 }

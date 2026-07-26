@@ -78,7 +78,6 @@ from .artifact_writer import (
     CompiledHelicitySelectorExecutionArtifact,
     CompiledProcessArtifact,
     EagerPlanV3ProcessArtifact,
-    EagerProcessArtifact,
     RecurrenceProcessArtifact,
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
@@ -102,7 +101,6 @@ from .eager_columnar import (
 from .eager_lowering import (
     PreparedCatalogEagerKernelIndex,
     PreparedCatalogEagerKernelResolver,
-    lower_fused_eager_execution,
 )
 from .eager_tables import MISSING_U32
 from .helicity_materialization import materialize_helicity_recurrence
@@ -166,9 +164,6 @@ _MISSING_PROCESS_RESULT = object()
 _LOGGER = logging.getLogger("pyamplicol.generation")
 _MAX_FUSED_LC_HELICITY_SELECTOR_SECTORS = 128
 _MAX_POST_BUILD_RESOLVED_COMPONENTS = 1_000_000
-_EAGER_PLAN_VERSION_ENV = "PYAMPLICOL_EAGER_PLAN_VERSION"
-_EAGER_PLAN_V2 = "v2"
-_EAGER_PLAN_V3 = "v3"
 _EAGER_LOWERING_RESULT_KIND = "pyamplicol-eager-runtime-lowering-result"
 _EAGER_LOWERING_RESULT_SCHEMA_VERSION = 1
 _RECURRENCE_LOWERING_RESULT_KIND = "pyamplicol-recurrence-direct-lowering-result"
@@ -350,16 +345,6 @@ class _RustRecurrenceLoweringOutput:
     index_sha256: str
 
 
-def _selected_eager_plan_version() -> Literal["v2", "v3"]:
-    value = os.environ.get(_EAGER_PLAN_VERSION_ENV, _EAGER_PLAN_V3).strip().lower()
-    if value not in {_EAGER_PLAN_V2, _EAGER_PLAN_V3}:
-        raise GenerationError(
-            f"{_EAGER_PLAN_VERSION_ENV} must be {_EAGER_PLAN_V2!r} or "
-            f"{_EAGER_PLAN_V3!r}, got {value!r}"
-        )
-    return cast(Literal["v2", "v3"], value)
-
-
 def _invoke_rust_eager_lowering_v1(
     lowering_input: EagerLoweringInputV1,
     destination: Path,
@@ -369,15 +354,14 @@ def _invoke_rust_eager_lowering_v1(
         verify_native_module(module)
     except ImportError as exc:
         raise GenerationError(
-            "eager plan-v3 was requested, but pyamplicol._rusticol is unavailable; "
-            f"set {_EAGER_PLAN_VERSION_ENV}={_EAGER_PLAN_V2} to use plan-v2"
+            "eager generation requires pyamplicol._rusticol with the "
+            "eager plan-v3 lowering binding"
         ) from exc
     candidate = getattr(module, "_lower_eager_runtime_v1", None)
     if not callable(candidate):
         raise GenerationError(
-            "eager plan-v3 was requested, but pyamplicol._rusticol does not provide "
-            "the private _lower_eager_runtime_v1 binding; "
-            f"set {_EAGER_PLAN_VERSION_ENV}={_EAGER_PLAN_V2} to use plan-v2"
+            "pyamplicol._rusticol does not provide the required private "
+            "_lower_eager_runtime_v1 binding for eager plan-v3 generation"
         )
     binding = cast(_RustEagerLoweringBinding, candidate)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -2675,8 +2659,7 @@ class GenerationBackend:
                         "kind": repeated.factorized_block.kind,
                         "rank": (
                             2
-                            if repeated.factorized_block.kind
-                            == "klein-four-walsh"
+                            if repeated.factorized_block.kind == "klein-four-walsh"
                             else repeated.factorized_block.rank
                         ),
                         "coset_count": len(repeated.factorized_block.cosets),
@@ -2898,8 +2881,7 @@ class GenerationBackend:
         resolved_model: _ResolvedModel,
         temporary_root: Path,
         phase: PhaseHandle,
-    ) -> EagerProcessArtifact | EagerPlanV3ProcessArtifact:
-        process_name = process.expanded.request.name
+    ) -> EagerPlanV3ProcessArtifact:
         eager_kernel_index = resolved_model.eager_kernel_index
         if eager_kernel_index is None:
             raise GenerationError(
@@ -2909,66 +2891,12 @@ class GenerationBackend:
             process.dag,
             eager_kernel_index,
         )
-        if _selected_eager_plan_version() == _EAGER_PLAN_V3:
-            return self._construct_eager_plan_v3_artifact(
-                process,
-                model,
-                resolver,
-                temporary_root,
-                phase,
-            )
-        with phase.child(
-            process_name,
-            f"{process_name}: eager DAG lowering",
-            details={"process": process_name, "step": "runtime layout"},
-        ) as task:
-
-            def report(details: Mapping[str, str | int]) -> None:
-                completed = int(details.get("stage_index", task.completed))
-                total_value = details.get("stage_total")
-                total = None if total_value is None else int(total_value)
-                task.update(
-                    completed,
-                    total=total,
-                    message=str(details.get("step", "eager lowering")),
-                    details={"process": process_name, **details},
-                )
-
-            schema_mapping, eager_tables = lower_fused_eager_execution(
-                dag=process.dag,
-                model=model,
-                resolver=resolver,
-                process_id=process_name,
-                progress_callback=report if task.sink is not None else None,
-            )
-        phase.advance(
-            message=process_name,
-            details={"process": process_name, "step": "eager plan ready"},
-        )
-        run = self._run_config
-        if run is None:  # pragma: no cover - eager mode requires RunConfig
-            raise GenerationError("eager generation has no evaluator configuration")
-        ir = process.expanded.process_ir
-        dag = process.dag
-        return EagerProcessArtifact(
-            process_id=process_name,
-            expression=ir.process,
-            color_accuracy=ir.color_accuracy,
-            external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
-            aliases=process.expanded.aliases,
-            runtime_schema=schema_mapping,
-            eager_tables=eager_tables,
-            point_tile_size=run.evaluator.eager.point_tile_size,
-            workspace_mib=run.evaluator.eager.workspace_mib,
-            dag_summary={
-                "current_count": len(dag.currents),
-                "source_count": len(dag.sources),
-                "interaction_count": len(dag.interactions),
-                "amplitude_root_count": len(dag.amplitude_roots),
-                "truncated": False,
-            },
-            validation_point=process.validation_points[0],
-            generation_filters=process.filters,
+        return self._construct_eager_plan_v3_artifact(
+            process,
+            model,
+            resolver,
+            temporary_root,
+            phase,
         )
 
     def _construct_eager_plan_v3_artifact(
