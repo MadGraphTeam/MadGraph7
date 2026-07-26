@@ -499,7 +499,7 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
     baseline = REPORT_CATALOG.baseline_cell(target)
     assert baseline is not None
     revision = "current-revision"
-    _publish_current(service.store, baseline.cell_id, revision=revision)
+    _publish_current(service.store, baseline, revision=revision)
     captured: dict[str, object] = {}
 
     def fake_supervise(
