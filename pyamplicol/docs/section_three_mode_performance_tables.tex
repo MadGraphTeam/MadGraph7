@@ -22,12 +22,11 @@ validation is identified by a status and does not carry a timing ratio.
 
 The UFO-SM recurrence matrices use the same process definitions, colour
 contracts, numerical parameters, selectors, and validation points as the
-built-in-SM recurrence matrices.  Their source is the packaged Standard Model
-loaded through the generic UFO/JSON compiler.  This comparison tests
-model-generic lowering without changing the requested physics or the original
-\AC{} reference.  Compiled and eager process matrices are built-in-only; they
-measure execution-strategy differences against recurrence without introducing
-a second model-loading comparison.
+built-in-SM recurrence matrices. Their source is the packaged Standard Model
+loaded through the UFO/JSON interface. This comparison verifies that the
+imported and built-in model routes implement the same requested physics.
+Compiled and eager process matrices are built-in-only, isolating differences
+between execution modes from differences in model loading.
 
 \input{result_validation_summary.tex}
 
@@ -52,44 +51,46 @@ Every LC comparison contains two complete-coverage layouts:
   \item the all-flow union, measured with one physical helicity selected and
         all retained colour flows summed.
 \end{itemize}
-Neither selection is fixed during generation.  Each LC cell reports the two
+Neither selection is fixed during generation. Each LC cell reports the two
 baseline generation quantities and wall times, followed by candidate
-generation entries and \texttt{(wall$\mid$execution)} runtime ratios.
-Compiled and eager generation are compared with recurrence using the same
-layout.
+generation entries and runtime ratios. A separately measured execution
+attribution is displayed after the wall ratio when both sides expose one;
+otherwise it is marked \textsc{not exposed}. Compiled and eager generation are
+compared with recurrence using the same layout.
 
 The two original-\AC{} reference workloads have different setup boundaries.
 For the selected-flow workload, the reported generation quantity is creation
-of the process library.  For the all-flow workload, it is preparation of the
-direct iMode-2 evaluation.  Runtime ratios compare the same physical
-observable.  The all-flow setup quantities are not like-for-like, so the table
-shows the candidate process-generation time as an absolute value marked
-\texttt{n.c.} (not comparable) instead of forming a ratio.
+of the process library. For the all-flow workload, it is preparation of direct
+all-flow evaluation. Runtime ratios compare the same physical observable. The
+all-flow setup quantities are not like-for-like, so the table shows the
+candidate process-generation time as an absolute value marked \texttt{n.c.}
+(not comparable) instead of forming a ratio.
 
-NLC and full colour use one helicity-summed, colour-contracted artifact per
-mode.  Their cells report the absolute baseline generation and wall time,
-followed by the candidate generation ratio and
-\texttt{(wall$\mid$execution)} runtime ratios.  No per-flow scalar is defined
-for these contracted colour accuracies.
+NLC and full colour use one helicity-summed, colour-contracted calculation per
+mode. Their cells report the absolute baseline generation and wall time,
+followed by the candidate generation and runtime ratios. No per-flow scalar is
+defined for these contracted colour accuracies.
 
 The wall quantity is the repeated native evaluation time after caller-language
-input conversion.  The execution quantity is the narrower numerical-kernel
-part of that measurement.  Both are divided by the matching baseline wall time
-because the reference implementations do not expose a common internal
-submetric.
+input conversion and is the primary runtime observable. When available, the
+execution quantity is a separately measured, mode-specific attribution within
+that wall boundary. It is divided by the matching baseline wall time because
+the implementations do not expose a common narrower timing boundary. An
+unavailable attribution is reported as such rather than estimated.
 
 Preparing reusable model-level kernels is excluded from process-generation
 time and reported separately.  Compiled generation still includes
 process-specific evaluator construction and backend compilation.
 
-Publication requires recurrence to agree with original \AC{} at the
-independent-reference tolerance, and compiled and eager results to agree with
-recurrence at the stricter cross-mode tolerance.  Built-in and UFO-SM
-recurrence results are also compared directly at that stricter tolerance,
-rather than relying on their separate agreement with \AC{}.  Each result must
-also reproduce its resolved sum.  For LC, the component at the common
-flow--helicity selector is compared directly between topology replay and
-all-flow union.  A failed validation has no timing ratio.
+A timing is shown only after recurrence agrees with original \AC{} at the
+independent-reference tolerance and compiled and eager results agree with
+recurrence at the stricter cross-mode tolerance. Built-in and UFO-SM recurrence
+results are also compared directly at that stricter tolerance, rather than
+relying on their separate agreement with \AC{}. Each result must reproduce its
+resolved sum. For LC, the common flow--helicity component is compared directly
+between topology replay and all-flow union, and every \PAC{} all-flow result is
+also compared with the matching independently generated \AC{} component. A
+failed validation has no timing ratio.
 
 \subsection*{Cell and summary layout}
 
@@ -105,13 +106,13 @@ LC, upper
     candidate against original \AC{} \\
 LC, lower
   & selected-flow/all-flow wall times in microseconds per point
-  & for each workload, \texttt{(wall$\mid$execution)} ratios \\
+  & wall ratio and, when exposed, a separate execution attribution \\
 NLC/full, upper
   & contracted generation time in seconds
   & candidate generation ratio \\
 NLC/full, lower
   & contracted wall time in microseconds per point
-  & \texttt{(wall$\mid$execution)} ratios \\
+  & wall ratio and, when exposed, a separate execution attribution \\
 \bottomrule
 \end{tabular}
 \end{center}

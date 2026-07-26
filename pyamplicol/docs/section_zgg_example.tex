@@ -20,8 +20,9 @@ The current recursion uses the all-outgoing convention
   \qquad \sum_{i=1}^{5}q_i=0 .
   \label{eq:zgg-all-outgoing}
 \end{equation}
-External momenta are nevertheless supplied in the physical convention of
-Eq.~\eqref{eq:zgg-physical-process}; crossing is applied internally.
+External momenta are supplied in the physical convention of
+Eq.~\eqref{eq:zgg-physical-process} and crossed to the all-outgoing convention
+before the recursion is evaluated.
 
 \begin{center}
 \small
@@ -56,11 +57,9 @@ evaluation time.
 
 \subsection{Reusable current recursion}
 
-For a nonempty source subset \(I\), define
+For a nonempty source subset \(I\), define its momentum by
 \begin{equation}
-  q_I=\sum_{i\in I}q_i,
-  \qquad
-  m(I)=\sum_{i\in I}2^{i-1}.
+  q_I=\sum_{i\in I}q_i .
   \label{eq:zgg-subset-mask}
 \end{equation}
 A one-leg current is the appropriate external spinor, polarization vector, or
@@ -127,8 +126,7 @@ flow components.  One is optimized for a selected flow with summed helicities;
 the other shares work across all flows for a selected helicity.  Their resolved
 components and their summed matrix element are numerically identical.
 
-For the built-in compatibility model, the normalization used in this example
-is
+For the built-in Standard Model, the normalization used in this example is
 \begin{equation}
   |{\cal M}|^2
   ={\cal N}\sum_{h,c}w_{h,c}\,

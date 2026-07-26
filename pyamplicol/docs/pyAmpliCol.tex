@@ -60,15 +60,15 @@
 \newcommand{\ReportStatus}[1]{\textcolor{ReportMuted}{\textsc{#1}}}
 \newcommand{\ReportMetricCell}[2]{\shortstack{\textcolor{ReportGreen}{G #1}\\\textcolor{ReportBlue}{R #2}}}
 \newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
-\newcommand{\ReportMatrixLegend}{\ReportTableNote{The table heading names the baseline and candidate. LC reports the selected-flow, summed-helicity workload and the all-flow, selected-helicity workload separately. NLC and full colour report one contracted workload. Parenthesized values are candidate-to-baseline ratios.}}
-\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload reports process-generation time in seconds and native wall time and execution time in microseconds per phase-space point. Compiled rows use the labelled JIT, ASM, or C++ backend; eager and recurrence rows use portable JIT O2 prepared models. Parenthesized runtime values and selected-flow generation values compare each pyAmpliCol row with the corresponding AmpliCol reference workload. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}}
+\newcommand{\ReportMatrixLegend}{\ReportTableNote{The table heading names the baseline and candidate. LC reports the selected-flow, summed-helicity workload and the all-flow, selected-helicity workload separately. NLC and full colour report one contracted workload. Parenthesized values are candidate-to-baseline ratios; an execution attribution is shown only when both measurements expose it.}}
+\newcommand{\ReportLadderLegend}{\ReportTableNote{Each LC workload reports process-generation time in seconds and native wall time in microseconds per phase-space point, together with a separately measured execution attribution when exposed. Compiled rows use the labelled JIT, ASM, or C++ backend; eager and recurrence rows use portable JIT O2 prepared models. Parenthesized runtime values and selected-flow generation values compare each pyAmpliCol row with the corresponding AmpliCol reference workload. All-flow generation shows the absolute pyAmpliCol value marked n.c. because its setup boundary differs from the reference.}}
 \newcommand{\ReportLandscapeFooter}{}
-\newcommand{\ReportProfileName}{unscoped}
-\newcommand{\ReportPlatformSummary}{platform metadata unavailable}
-\newcommand{\ReportToolchainSummary}{toolchain metadata unavailable}
-\newcommand{\ReportEditionStatement}{This source build is an unmeasured
-  template; a published edition supplies architecture-specific environment
-  metadata.}
+\newcommand{\ReportProfileName}{unpopulated}
+\newcommand{\ReportPlatformSummary}{specified by the architecture profile}
+\newcommand{\ReportToolchainSummary}{specified by the architecture profile}
+\newcommand{\ReportEditionStatement}{This source is the unpopulated
+  documentation template. Architecture-specific copies contain their recorded
+  environment and measured results.}
 \InputIfFileExists{report_environment.tex}{}{}
 
 \lstset{
@@ -95,10 +95,10 @@
 This report presents the physics coverage, numerical validation, and
 performance of \PAC{} 0.1.0. We compare compiled, eager, and recurrence
 evaluation for the built-in Standard Model and for the same model imported from
-UFO/JSON, together with scalar-contact and scalar-gravity benchmarks. Every
-reported timing is associated with a documented software revision, hardware
-profile, numerical configuration, and a validation reference appropriate to
-the corresponding data set.
+UFO or serialized JSON, together with scalar-contact and scalar-gravity
+benchmarks. Every reported timing is associated with a documented software
+revision, hardware profile, numerical configuration, and validation reference
+appropriate to the corresponding data set.
 \end{abstract}
 
 \begingroup
@@ -127,13 +127,13 @@ The report has three purposes:
   \item present performance only after numerical agreement has been verified.
 \end{enumerate}
 
-In a complete architecture edition, an \ReportNA{} entry denotes a
-process/multiplicity combination outside the declared measurement scope or one
-to which the observable does not apply. Completion requires every applicable
-cell with at most four final-state legs to be numerical. A measurement that
-does not pass numerical validation is labelled explicitly and never replaced
-by a timing value. No value is copied, interpolated, or estimated from a
-neighbouring cell.
+In each architecture-specific report, an \ReportNA{} entry denotes a
+process/multiplicity combination outside the declared scope or an observable
+that does not apply. Every applicable cell with at most four final-state
+particles must instead contain a measured value or an explicit resource-limit
+status. A measurement that does not pass numerical validation is labelled
+explicitly and never replaced by a timing value. No value is copied,
+interpolated, or estimated from a neighbouring cell.
 
 \section{Current Recursion and Model Lowering}
 
@@ -165,15 +165,12 @@ UFO Python module, or its own serialized JSON representation of that model, to
 the same canonical representation used by process generation. The UFO module
 is executable Python; the corresponding serialized JSON form is data-only.
 
-Optimizations on the external-model path are proof-gated rather than selected
-by particle names or PDG values. Exact normalized colour and Lorentz
-expressions, propagator metadata, and coupling relations certify current
-reflection, helicity, and reusable-kernel identities. For overlapping
-Standard-Model validation processes, the resulting current, interaction,
-amplitude-root, and colour-sector counts must match the built-in compatibility
-model after applying the same independently inferred perturbative-order
-envelope. An external compiler may retain fewer evaluator calls only when an
-additional exact kernel-equivalence certificate proves that reuse.
+Optimizations of imported models are based on exact colour, Lorentz,
+propagator, and coupling identities rather than particle names or numerical
+codes. For Standard-Model validation processes, the built-in and imported
+routes must produce equivalent current, interaction, amplitude, and colour
+content. Algebraic reuse is allowed only when the relevant identity has been
+established exactly.
 
 \subsection{Contact terms and spin two}
 
@@ -249,9 +246,9 @@ values have one contracted colour component per helicity. Summing all
 non-point axes must reproduce the directly evaluated total. Selectors refer to
 physical helicities and flows.
 
-All public interfaces use the same numerical core. Cross-interface agreement
-therefore checks data conventions, while a separately generated value is
-required for an independent physics comparison.
+All binary64 interfaces use the same native numerical core. Cross-interface
+agreement therefore checks data conventions, while a separately generated
+value is required for an independent physics comparison.
 
 The JIT backend stores a portable SymJIT application for binary64 evaluation;
 the receiving host creates code appropriate for its processor. ASM and C++
@@ -281,20 +278,21 @@ process-generation values in the tables.
 Runtime measurements use the summed matrix element. The reported native wall
 time starts after caller-language array conversion and includes source
 construction, numerical evaluation, selector handling, and final reduction.
-The narrower execution submetric contains the mode-specific numerical schedule.
-Caller-language packing is excluded from both quantities. Comparisons use the
-same process, colour accuracy, parameters, phase-space point, precision,
-selectors, and normalization.
+Caller-language packing is excluded. When a backend exposes a separately
+measured execution attribution, the tables show it alongside wall time;
+otherwise the field is marked \textsc{not exposed} and is never inferred or
+replaced by zero. Comparisons use the same process, colour accuracy,
+parameters, phase-space point, precision, selectors, and normalization.
 
 \subsection{Benchmark platform}
 
-\ReportEditionStatement Its hardware, operating system, and processor summary
-is \ReportPlatformSummary. The
-measurement profile is \texttt{\ReportProfileName}; its recorded software
-environment is \ReportToolchainSummary. Measurements from different
-processor architectures are published as separate editions and are never
-combined in a summary ratio. Unless a table states otherwise, generation and
-evaluation use one CPU core and a five-second sampling target.
+\ReportEditionStatement The recorded hardware, operating system, and processor
+summary is \ReportPlatformSummary. The measurement profile is
+\texttt{\ReportProfileName}; its recorded software environment is
+\ReportToolchainSummary. Measurements from different processor architectures
+are reported separately and are never combined in a summary ratio. Unless a
+table states otherwise, generation and evaluation use one CPU core and a
+five-second sampling target.
 
 \subsection{Numerical validation}
 
@@ -333,20 +331,18 @@ benchmark contract above.
 The eager and recurrence rows start from the corresponding portable JIT O2
 prepared model. Each layout retains complete flow and helicity coverage; the
 selected-flow workload sums helicities, while the all-flow workload selects one
-helicity at runtime. Prepared-model creation is excluded from process-generation
-time. Every displayed \(Z\)-ladder ratio uses the matching original \AC{}
-workload as its denominator, while every non-recurrence \PAC{} result is
-compared directly with the matching recurrence result at the stricter
-cross-mode tolerance. Built-in and UFO-SM recurrence results are likewise
-compared directly.
+helicity at runtime. Prepared-model creation is excluded from
+process-generation time. Every displayed \(Z\)-ladder timing ratio uses the
+matching original \AC{} workload as its denominator, while every
+non-recurrence \PAC{} result is compared directly with the matching recurrence
+result at the stricter cross-mode tolerance. Built-in and UFO-SM recurrence
+results are likewise compared directly.
 
-Runtime comparisons between these backends also include their
-vectorization strategy. The SymJIT application evaluates a batch with SIMD
-across phase-space points, whereas generated ASM and C++ payloads
-are scalar and Rusticol invokes them point by point. Their ratios therefore
-measure both symbolic/code-generation quality and this SIMD advantage; they
-must not be interpreted as a comparison of otherwise identical vectorized
-kernels.
+Runtime comparisons between these backends also include their vectorization
+strategy. The JIT rows can use SIMD across phase-space points, whereas the
+generated ASM and C++ rows are scalar. Their ratios therefore include both
+code-generation quality and vectorization; they are not comparisons of
+otherwise identical kernels.
 
 \subsection*{Worked \(d\bar d\to Zg\) example}
 
@@ -383,12 +379,12 @@ point before timing.
 
 Both colour-singlet ladders use compiled JIT O3 evaluation and the full-colour
 contract. The scalar-contact ladder retains $n=2,\ldots,8$ final scalars and
-tests generic high-valence contact decomposition, identical-particle
-normalization, and source parity without Standard-Model-specific kernels. The
-scalar-gravity ladder retains $n=2,\ldots,4$ final gravitons and exercises
-spin-two wavefunctions, tensor propagators, and momentum-dependent vertices.
-Because every external particle in these fixtures is a colour singlet, LC,
-NLC, and full colour reduce to the same unit colour contraction.
+tests high-valence contact decomposition, identical-particle normalization,
+and source parity without Standard-Model-specific kernels. The scalar-gravity
+ladder retains $n=2,\ldots,4$ final gravitons and exercises spin-two
+wavefunctions, tensor propagators, and momentum-dependent vertices. Because
+every external particle in these models is a colour singlet, LC, NLC, and full
+colour reduce to the same unit colour contraction.
 
 For these ladders, the relative-difference row is
 \(\bigl||\mathcal M|^2_{\mathrm{f64}}-|\mathcal M|^2_{\mathrm{hp}}\bigr|
@@ -418,7 +414,6 @@ shows only the central timing.
 \input{section_lc_flow_layouts.tex}
 \clearpage
 \input{section_eager_execution.tex}
-\clearpage
 \input{section_ufo_support.tex}
 
 \clearpage

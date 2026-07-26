@@ -2,196 +2,60 @@
 \section{Supported UFO and Serialized-JSON Models}
 \label{sec:ufo-support}
 
-The external-model path compiles a supported subset of the UFO model format
-rather than interpreting arbitrary model code during amplitude evaluation.  A
-trusted UFO Python module or its serialized JSON representation is normalized
-to a typed, model-independent representation before current recursion begins.
-An interaction is executable only when its tensors can be materialized and
-every transformation required for its evaluation can be checked algebraically.
+\PAC{} accepts a documented subset of the Universal FeynRules Output (UFO)
+format and an equivalent serialized-JSON representation. Both sources are
+normalized before process generation and then use the same current recursion,
+colour treatment, and numerical interfaces as the built-in models. Unsupported
+structures are rejected explicitly rather than interpreted approximately.
 
-\subsection{Common loading and normalization route}
+\subsection{Sources and normalization}
 
-UFO and JSON inputs enter the same compilation route,
+The two input routes are
 \begin{equation}
   \{\text{trusted UFO module},\text{ serialized JSON}\}
   \longrightarrow
   \text{normalized model}
   \longrightarrow
-  \text{executable kernels}.
+  \text{numerical kernels}.
   \label{eq:ufo-loading-route}
 \end{equation}
-The UFO form is executable Python and must be obtained from a trusted source.
-The JSON form is data-only and is the preferred portable representation for
-exchange and archival.  After loading, both forms use the same particle,
-parameter, propagator, tensor, and coupling-order definitions.
+A UFO module is executable Python and must therefore come from a trusted
+source. The serialized JSON form is data-only and is preferable for portable
+exchange and archival. After loading, both forms describe the same particles,
+parameters, propagators, interactions, coupling orders, Lorentz tensors, and
+colour tensors.
 
-Model symbols occupy a model-local namespace, allowing two models with
-equally named parameters to coexist without identifying those parameters.
-The normalized representation contains typed particles, parameters,
-propagators, vertex terms, oriented kernels, component orderings, contractions,
-and Goldstone relations.  Unsupported spin, colour, or function structures are
-rejected before process generation.
+Model symbols remain in a model-local namespace, so equally named parameters
+from different models are not identified accidentally. The normalization step
+also makes component orderings and particle conjugation explicit. A model is
+accepted for process generation only when every interaction reachable by the
+requested process lies within the support boundary below.
 
-\subsection{From a UFO vertex to current kernels}
+\subsection{Interactions and exact verification}
 
-A UFO vertex is a matrix over colour and Lorentz structures:
+A UFO vertex is a sum over colour and Lorentz structures,
 \begin{equation}
   \mathcal V(1,\ldots,n)
-  = \sum_{a,b} g_{ab}\,
+  =\sum_{a,b}g_{ab}\,
     C_a(c_1,\ldots,c_n)\,
     L_b(s_1,p_1;\ldots;s_n,p_n).
   \label{eq:ufo-vertex-matrix}
 \end{equation}
-Each term retains its coupling-order vector and is normalized to an explicit
-component basis.  The supported Lorentz basis includes scalars, momenta,
-metrics, Dirac identity and gamma matrices, \(\gamma_5\), chiral projectors,
-slashed momenta, and sigma tensors.  All physical axes and component orderings
-are explicit.
+Each term retains its coupling-order assignment. The supported Lorentz basis
+includes scalars, momenta, metrics, Dirac identity and gamma matrices,
+\(\gamma_5\), chiral projectors, slashed momenta, and sigma tensors. The
+supported SU(3) representations are the singlet, fundamental,
+antifundamental, and adjoint.
 
-The supported colour representations are the SU(3) singlet, fundamental,
-antifundamental, and adjoint.  Trilinear projection recognizes
-\begin{equation}
-  1,\qquad
-  \delta_i{}^{\bar\jmath},\qquad
-  (T^a)_i{}^{\bar\jmath},\qquad
-  f^{abc}.
-  \label{eq:trilinear-color-basis}
-\end{equation}
-For a proposed basis tensor \(B_\sigma\), projection succeeds only if
-\begin{equation}
-  C_a(\boldsymbol c)=\kappa_a B_\sigma(\boldsymbol c)
-  \quad\text{for every colour component }\boldsymbol c,
-  \label{eq:exact-color-projection}
-\end{equation}
-with exact scalar \(\kappa_a\).  Numerical resemblance is not sufficient to
-establish an executable colour structure.
+Colour projection and symmetry reuse are based on exact normalized
+expressions. Numerical agreement at a sample point is not used to establish an
+algebraic identity. When an identity needed only for reuse cannot be proved,
+the corresponding contributions are evaluated separately. When an identity
+is required to represent an interaction at all, failure to establish it causes
+the model or process to be rejected.
 
-For a trilinear term, contracting the normalized tensor with two input currents
-gives an oriented kernel
-\begin{equation}
-  K^{A_r}_{r\leftarrow ij}(J_i,J_j)
-  =g_{a b}\,\kappa_a
-    \sum_{A_i,A_j}
-    L_b^{A_r}{}_{A_i A_j}(p_i,p_j,p_r)
-    J_i^{A_i}J_j^{A_j},
-  \qquad p_r=-(p_i+p_j).
-  \label{eq:oriented-kernel}
-\end{equation}
-Couplings, perturbative orders, colour normalization, and input/output
-component orderings remain attached to the kernel.  The propagator is applied
-only when the result becomes an internal current.
-
-\subsection{Algebraic verification}
-
-Algebraic verification establishes that an optimized or factorized expression
-reconstructs the normalized source tensor.  It does not assert that a model is
-unitary, renormalizable, or phenomenologically complete.
-
-Kernel reuse, for example, requires the exact relation
-\begin{equation}
-  K'(x,y;p_x,p_y)
-  =\eta\,K(y,x;p_y,p_x),
-  \qquad \eta\in\{-1,+1\},
-  \label{eq:kernel-equivalence}
-\end{equation}
-after canonicalizing component expressions and resolving coupling aliases.
-When such a relation cannot be established, both kernels are retained.  By
-contrast, a contact interaction that cannot be factorized without changing
-its tensor, colour coefficient, coupling, or multiplicity is rejected rather
-than approximated.
-
-\begin{center}
-\small
-\begin{tabular}{@{}L{1.55in}L{2.25in}L{2.85in}@{}}
-\toprule
-\textbf{verification} & \textbf{checked identity} & \textbf{consequence} \\
-\midrule
-Colour projection & Eq.~\eqref{eq:exact-color-projection} &
-  colour-flow interpretation of a kernel \\
-Kernel equivalence & Eq.~\eqref{eq:kernel-equivalence} &
-  one value reused for symmetry-related contributions \\
-Four-point factorization & exact colour topology, Lorentz components,
-  signs, and multiplicity & two no-pole auxiliary-current stages \\
-Fundamental Fierz relation & exact generator projection and eligible vector
-  metadata & leading-colour singlet subtraction \\
-Yang--Mills relations & exact cubic and quartic tensors and coupling relation &
-  helicity and trace-reflection reuse \\
-Tensor ordering & explicit physical axes and component permutations &
-  stable source-to-current component maps \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\subsection{Four-point contact factorization}
-
-Two four-point colour structures have a verified auxiliary-current
-factorization.  A literal colour singlet is split directly when its normalized
-Lorentz tensor can be reconstructed.  A coloured gauge contact must have the
-form
-\begin{equation}
-  C^{a_1a_2a_3a_4}
-  = c\,f^{a_i a_j b}f^{b a_k a_r},
-  \label{eq:two-f-color}
-\end{equation}
-up to exact permutations, with one shared adjoint index \(b\) and scalar
-coefficient \(c\).  It is represented by a non-propagating auxiliary current,
-\begin{align}
-  A^{b}_{\rho\sigma}[i,j]
-    &= f^{b a_i a_j}
-       \sum_{A_i,A_j}
-       P_{\rho\sigma;A_iA_j}
-       J_i^{A_i}J_j^{A_j},
-       \label{eq:contact-partial}\\
-  J_r^{A_r}\big|_{V_4}
-    &= \frac{c\,s_{ijkr}}{m_r}
-       f^{a_r b a_k}
-       \sum_{\rho,\sigma,A_k}
-       F^{A_r}{}_{\rho\sigma A_k}
-       A^{b}_{\rho\sigma}J_k^{A_k}.
-       \label{eq:contact-final}
-\end{align}
-Here \(s_{ijkr}=\pm1\) is the orientation parity and \(m_r\) removes
-indistinguishable assignments of identical inputs.  The original coupling and
-its complete perturbative order occur only in
-Eq.~\eqref{eq:contact-final}; the auxiliary in
-Eq.~\eqref{eq:contact-partial} has unit coupling and no propagator.  The
-factorization therefore introduces neither an artificial pole nor duplicated
-coupling weight.
-
-The open-axis Lorentz tensor is reconstructed component by component.  This
-covers the SU(3) four-vector gauge contact and supported colour-singlet
-four-vector contacts; other coloured four-point tensors require a separately
-verified intermediate colour channel.
-
-\subsection{Higher-valence colour-singlet contacts}
-
-Supported colour-singlet contacts of valence \(n\geq4\) are represented by a
-balanced binary tree.  For input set \(S\),
-\begin{equation}
-  A_S=\Phi_S(A_{S_L},A_{S_R}),
-  \qquad S=S_L\mathbin{\dot\cup}S_R,
-  \qquad
-  J_r\big|_{V_n}=\frac{g}{m_r}
-      \Psi_r(A_{S_L},A_{S_R}),
-  \label{eq:contact-tree}
-\end{equation}
-where internal \(A_S\) are non-propagating, and the physical coupling \(g\)
-appears only in the final map.  The tree has \(O(n)\) auxiliary operations and
-\(O(\log n)\) depth.
-
-For scalar contacts, \(\Phi_S(x,y)=xy\).  For supported non-scalar or
-momentum-dependent singlet contacts, the auxiliary retains the components and
-momenta needed to reconstruct the original Lorentz expression, using
-\begin{equation}
-  p_r=-\sum_{i\ne r}p_i.
-  \label{eq:contact-momentum-conservation}
-\end{equation}
-This is generic in valence only after the colour tensor has been proved to be a
-singlet; it is not a general algorithm for coloured higher-point contacts.
-
-\subsection{Colour flow and model symmetries}
-
-Leading-colour singlet subtraction follows from the fundamental Fierz identity
+Leading-colour singlet subtraction, for example, follows from the fundamental
+Fierz identity
 \begin{equation}
   (T^a)_i{}^{\bar\jmath}(T^a)_k{}^{\bar l}
   =T_R\left(
@@ -201,53 +65,44 @@ Leading-colour singlet subtraction follows from the fundamental Fierz identity
   \right).
   \label{eq:fierz}
 \end{equation}
-It is enabled only when the fundamental-generator colour tensor, fermion
-representations, Lorentz kernel, and massless adjoint-vector propagator satisfy
-the corresponding exact contracts.
+It is used only when the colour representation, Lorentz interaction, and
+vector propagator satisfy the corresponding exact conditions. The same
+principle applies to vectorlike parity, Yang--Mills relations, and current
+reflection.
 
-Further recognizers establish vectorlike parity, Yang--Mills cubic and quartic
-relations, and local adjoint-current reflection.  A global symmetry is used
-only when the reachable interaction sector is closed under the verified
-relations.  An additional reachable interaction that does not satisfy them
-disables the reuse theorem but does not remove any physical contribution.
+\subsection{Contact interactions and propagators}
 
-\subsection{Propagators, closures, and spin two}
+Supported contact interactions are rewritten with non-propagating auxiliary
+currents only when the original tensor can be reconstructed exactly. The
+physical coupling appears once, and the rewriting introduces no artificial
+pole. Colour-singlet scalar contacts provide the validation ladder for this
+construction. Higher-valence singlet interactions are accepted when their
+normalized tensor admits the same exact reconstruction.
 
-Propagators are taken from the model definition.  For standard scalar, Dirac,
-vector, and spin-two particles they have the schematic forms
-\begin{align}
-  P_0(p)&=\frac{i}{p^2-m^2+i m\Gamma},
-  &P_{1/2}(p)&=\frac{i(\gamma^\mu p_\mu+m)}{p^2-m^2+i m\Gamma},
-  \label{eq:standard-propagators-a}\\
-  P_1^{\mu\nu}(p)&=
-    \frac{-i}{p^2-m^2+i m\Gamma}
-    \left(g^{\mu\nu}-\frac{p^\mu p^\nu}{m^2}\right),
-  &P_2^{\mu\nu,\rho\sigma}(p)&=
-    \frac{i\,\Pi^{\mu\nu,\rho\sigma}(p)}
-         {p^2-m^2+i m\Gamma}.
-  \label{eq:standard-propagators-b}
-\end{align}
-The massless-vector branch uses Feynman gauge without the singular
-\(p^\mu p^\nu/m^2\) term.  Spin-two currents use a 16-component ordered tensor
-space and the massless de Donder or massive Fierz--Pauli projector.
-Non-propagating contact auxiliaries use the identity.
+A coloured four-vector gauge contact is accepted only for the two-\(f\)
+structure
+\begin{equation}
+  C^{a_1a_2a_3a_4}
+  =c\,f^{a_i a_j b}f^{b a_k a_r},
+  \label{eq:two-f-color}
+\end{equation}
+up to exact permutations, with one shared adjoint index and a matching Lorentz
+factorization. Other coloured contact tensors require a separately supported
+intermediate colour channel.
 
-A custom UFO propagator is accepted when its numerator and denominator can be
-materialized in the declared component ordering.  It is applied as supplied
-and disables optimizations that require a standard propagator.  Goldstone
-relations are determined from quantum numbers and exact mass expressions;
-ambiguous matches are rejected.
+Standard scalar, Dirac, vector, and spin-two propagators use the mass, width,
+gauge, and component ordering declared by the normalized model. A custom UFO
+propagator is accepted only when its numerator and denominator can be lowered
+exactly; optimizations that assume a standard propagator are then disabled.
+Massless spin two is validated by the scalar-gravity model. Massive spin-two
+support remains experimental because it has not yet been tested across a
+comparably broad set of models.
 
-Massless spin two is validated by the scalar-gravity model.  Massive spin two
-remains experimental because its broad model and constraint coverage has not
-yet been qualified.
+\subsection{Support boundary}
 
-\subsection{Implemented support boundary}
-
-The table distinguishes implemented classes from proof-gated or unsupported
-ones.  ``Proof-gated'' means that a model is accepted when the stated exact
-identity can be established; it does not imply acceptance of every
-algebraically equivalent UFO spelling.
+In the table, \emph{conditional} means that the stated exact algebraic
+condition must be established for the particular model expression. It does not
+imply acceptance of every algebraically equivalent UFO spelling.
 
 \begingroup
 \small
@@ -266,48 +121,42 @@ source & UFO directory / JSON & supported & UFO Python must be trusted; JSON
   is data-only and both use the same normalized model \\
 spin & scalar, Dirac, vector & supported & standard wavefunctions,
   propagators, component orderings, and closures \\
-spin & massless spin two & supported & 16-component tensor path validated by
-  the scalar-gravity model \\
-spin & massive spin two & experimental & Fierz--Pauli path is implemented but
+spin & massless spin two & supported & tensor path validated by the
+  scalar-gravity model \\
+spin & massive spin two & experimental & Fierz--Pauli path is available, but
   broad model validation is incomplete \\
-spin & UFO ghosts & partial & propagating ghosts require a materializable
-  custom propagator and are not broadly qualified \\
-spin & Majorana/FNV, spin \(3/2\) & unsupported & no fermion-number-violating
-  flow or Rarita--Schwinger current contract \\
-colour & \(1,3,\bar3,8\) of SU(3) & supported & leading, next-to-leading, and
-  full-colour treatments described in this report \\
-colour & \(6,\bar6\), extra groups & unsupported & no sextet or multiple-group
-  flow and contraction representation \\
-arity 3 & \(1,\delta,T,f\) colour & supported & exact projection and
-  materializable Lorentz components \\
+spin & UFO ghosts & partial & propagating ghosts require an exactly
+  representable custom propagator and are not broadly qualified \\
+spin & Majorana/FNV, spin \(3/2\) & unsupported & no
+  fermion-number-violating-flow or Rarita--Schwinger current prescription \\
+colour & \(1,3,\bar3,8\) of SU(3) & supported & LC, NLC, and full-colour
+  treatments described in this report \\
+colour & \(6,\bar6\), extra groups & unsupported & no sextet or
+  multiple-group flow and contraction representation \\
+arity 3 & \(1,\delta,T,f\) colour & supported & exact colour projection and
+  representable Lorentz components \\
 arity 3 & \(d^{abc}\), \(\epsilon\), \(K_6\), \(T_6\) & unsupported & no
-  executable colour-flow and contraction contract \\
-arity 4 & colour singlet & supported & exact tensor reconstruction; supported
-  generic singlet-tree fallback \\
-arity 4 & two-\(f\) gauge colour & proof-gated & one shared adjoint index,
+  supported colour-flow and contraction prescription \\
+arity 4 & colour singlet & conditional & exact tensor reconstruction by
+  non-propagating auxiliary currents \\
+arity 4 & two-\(f\) gauge colour & conditional & one shared adjoint index,
   trivalent topology, and exact Lorentz reconstruction \\
-arity 4 & other coloured tensors & unsupported & no verified auxiliary colour
+arity 4 & other coloured tensors & unsupported & no supported auxiliary colour
   channel \\
-arity \(>4\) & colour-singlet contact & supported & balanced no-pole tree with
-  the original coupling only at the final node \\
+arity \(>4\) & colour-singlet contact & conditional & exact no-pole
+  reconstruction with the original coupling inserted once \\
 arity \(>4\) & coloured contact & unsupported & no general
   irreducible-channel factorization \\
-Lorentz & normalized tensor basis & supported & all tensor functions must
-  normalize and materialize with explicit axes \\
+Lorentz & normalized tensor basis & supported & every tensor function must
+  normalize with explicit component axes \\
 Lorentz & form factors / unknown functions & unsupported & no portable
-  executable function contract \\
-propagator & standard \(0,\frac12,1,2\) & supported & runtime mass and width,
-  with explicit ordering and closure \\
-propagator & custom UFO tensor & proof-gated & exact component lowering;
-  affected symmetry reuse is disabled \\
-symmetry & vectorlike/Yang--Mills/reflection & proof-gated & exact normalized
-  identities over the complete reachable sector \\
+  numerical prescription \\
+propagator & standard \(0,\frac12,1,2\) & supported & model mass and width,
+  with explicit component ordering and closure \\
+propagator & custom UFO tensor & conditional & exact component lowering;
+  standard-propagator optimizations are disabled \\
+symmetry & vectorlike/Yang--Mills/reflection & conditional & exact normalized
+  identities over the complete interaction sector used by the process \\
 \bottomrule
 \end{longtable}
 \endgroup
-
-The boundary is algebraic rather than process-name or particle-code based.
-Recognizing a tensor symbol during syntax inspection does not imply that its
-current, colour flow, or contraction is implemented.  Models outside the
-stated boundary are rejected explicitly rather than evaluated with an inferred
-or approximate prescription.

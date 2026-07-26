@@ -2,45 +2,36 @@
 \section{\texorpdfstring{Shared-Current DAG and Numerical Execution}{Shared-Current DAG and Numerical Execution}}
 \label{sec:zgg-dag}
 
-The current recursion becomes a directed acyclic graph (DAG) by merging
-physically identical intermediate currents.  This section describes the
-identity, staging, and timing conventions without depending on a particular
-artifact format or software interface.
+The current recursion becomes a directed acyclic graph (DAG) when physically
+identical intermediate currents are shared. This section summarizes the
+identity and ordering needed for that reuse and relates them to the three
+execution modes.
 
-\subsection{Current identity}
+\subsection{Current identity and reuse}
 
-Two contributions share a current only when every physics-relevant entry in
+Two contributions share a current only when every physics-relevant label
+agrees. Schematically,
 \begin{equation}
- \Omega(J)=\bigl(
- t,\ I,\ H,\ \chi,\ s,\ F,\ Q,\ C,\ O,\ a,\ \pi_I
- \bigr)
+ \Omega(J)=
+ \bigl(t,I,H,s,F,Q,C,O,a,\pi_I\bigr),
  \label{eq:zgg-current-key}
 \end{equation}
-is equal.  These entries specify the particle species \(t\), external subset
-\(I\), helicity ancestry \(H\), chirality and spin state \((\chi,s)\), flavour
-and additive quantum-number flow \((F,Q)\), colour state \(C\), perturbative
-order \(O\), any auxiliary-current type \(a\), and the colour-sensitive
-ordering \(\pi_I\).  The subset fixes the current momentum
-\(q_I=\sum_{i\in I}q_i\); the ordered labels prevent distinct colour
-traversals from being merged.
+where the entries identify the particle species, external subset, helicity and
+spin ancestry, flavour and additive charges, colour state, perturbative order,
+auxiliary-current type, and colour-sensitive ordering. The subset determines
+the current momentum \(q_I=\sum_{i\in I}q_i\), while the ordered labels prevent
+distinct colour traversals from being merged.
 
-Exact equality permits reuse across all amplitude contributions and physical
-flows.  A second level of reuse applies when two target currents require the
-same kernel value up to a known sign or scalar factor.  It is useful to keep
-the three concepts distinct:
-\begin{equation}
- \underbrace{\text{same current identity}}_{\text{one stored node}},\qquad
- \underbrace{\text{same kernel evaluation}}_{\text{one numerical value}},\qquad
- \underbrace{\text{same physical flow}}_{\text{one resolved component}}.
- \label{eq:zgg-three-identities}
-\end{equation}
+Exact identity permits one stored current to serve every amplitude contribution
+that needs it. A second kind of reuse applies when different currents require
+the same numerical kernel value up to a known exact factor. Neither form of
+reuse merges distinct physical helicity or colour-flow components.
 
-\subsection{Topological stages and storage}
+\subsection{Topological ordering}
 
-The graph is evaluated in increasing source-subset size.  An interaction
-forming a current from \(k\) external labels belongs to stage \(k\), so every
-input is available before its consumer.  For the process of
-Sec.~\ref{sec:zgg-example}, the stage sequence is schematically
+The graph is evaluated in increasing external-subset size. Every input is
+therefore available before the current that consumes it. For the process in
+Sec.~\ref{sec:zgg-example}, the ordering is schematically
 \begin{equation}
  \boxed{\text{sources}}
  \longrightarrow
@@ -50,80 +41,43 @@ Sec.~\ref{sec:zgg-example}, the stage sequence is schematically
  \longrightarrow
  \boxed{|I|=4}
  \longrightarrow
- \boxed{\text{amplitude roots}} .
+ \boxed{\text{amplitude closures}} .
  \label{eq:zgg-stage-chain}
 \end{equation}
-At each stage, every admissible partition contributing to the same current is
-summed coherently before the current is propagated. The amplitude roots then
-close the largest retained currents against the remaining external states.
-This ordering makes every dependency explicit without assigning significance
-to storage locations or evaluator-specific identifiers.
+At each stage, all admissible partitions contributing to the same current are
+summed coherently before propagation. The final closures join the largest
+retained currents to the remaining external states. This ordering makes the
+dependency structure explicit without assigning physical meaning to a
+particular storage layout.
 
-A current may be needed as a source value, before propagation, or after
-propagation.  Keeping these storage variants explicit prevents a propagator
-from being applied twice and lets the final closure request the correct form.
-Conceptually, the numerical state is
+\subsection{Numerical realization}
+
+Compiled mode combines many relations in a stage into process-specific
+multi-output evaluators. Eager mode follows the same process graph using
+reusable prepared-model kernels. Recurrence mode represents the current and
+closure sequence directly. All three preserve the same coherent sums, colour
+contraction, helicity treatment, symmetry weights, and normalization.
+
+For resolved leading-colour evaluation, the public result has the form
 \begin{equation}
-  x=\bigl[x_{\rm current}\mid x_{\rm momentum}\mid x_{\rm model}\bigr].
-  \label{eq:zgg-global-state}
-\end{equation}
-Each stage consumes only the entries it needs:
-\begin{equation}
-  x_k=L_k x,\qquad y_k=E_k(x_k),\qquad
-  x[S_k]\mathrel{\leftarrow}y_k ,
-  \label{eq:zgg-stage-map}
-\end{equation}
-where \(L_k\) gathers the stage-local inputs and \(S_k\) identifies its output
-slots.  This stage-local layout reduces data movement while leaving the
-physics graph unchanged.
-
-\subsection{Compiled and eager evaluation}
-
-In compiled mode, a stage is optimized as a multi-output expression.  For
-target current \(j\),
-\begin{equation}
-  y_j=\mathcal P_j\!\left[
-       \sum_{e:\,\operatorname{target}(e)=j}
-       f_e\,K_{g(e)}(x_k)
-     \right],
-  \label{eq:zgg-stage-expression}
-\end{equation}
-where \(K_{g(e)}\) is a reusable kernel value, \(f_e\) is the exact attachment
-factor, and \(\mathcal P_j\) is the propagator or identity.  Symbolic
-optimization may therefore share algebra across several current components
-within the stage.
-
-Eager mode evaluates the same graph with prepared model kernels and explicit
-gather, accumulation, finalization, and closure steps.  Recurrence mode builds
-a compact current schedule directly.  The three modes preserve the same stage
-dependencies, coherent root sums, colour contraction, symmetry weights, and
-normalization; only the placement of symbolic compilation and numerical
-scheduling differs.
-
-For leading-colour resolved evaluation, the public tensor is
-\begin{equation}
-  R_{n,h,c}=|{\cal M}_{h,c}(p_n)|^2,
+  R_{p,h,f}=\left|\mathcal M_{h,f}(p)\right|^2,
   \qquad
   \operatorname{shape}(R)=
   (N_{\rm point},N_{\rm helicity},N_{\rm flow}) .
   \label{eq:zgg-resolved-shape}
 \end{equation}
-Structural zeros remain explicit.  Summing the resolved tensor reproduces the
-directly evaluated total within the validation tolerance.
+Structural zeros remain explicit, and summing the non-point axes must reproduce
+the directly evaluated total within the stated numerical tolerance.
 
 \subsection{Timing boundary}
 
-The report separates the complete native evaluation from its numerical-kernel
-submetric.  The complete time begins after caller-language array conversion and
-includes source construction, momentum and parameter preparation, stage input
-gathers, kernel execution, output assignment, closures, and final reduction.
-The narrower execution time contains the mode-specific numerical kernels:
-\begin{equation}
- t_{\rm exec}=\sum_{k}t\bigl(E_k\bigr)+t\bigl(E_{\rm root}\bigr),
- \qquad
- t_{\rm wall}=t_{\rm exec}+t_{\rm source}+t_{\rm momentum/model}
- +t_{\rm gather/scatter}+t_{\rm reduce}+t_{\rm batch}.
- \label{eq:zgg-timing-boundary}
-\end{equation}
-This distinction exposes orchestration overhead while keeping the complete
-wall-time observable comparable across execution modes.
+The primary runtime quantity is the complete native wall time after
+caller-language array conversion. It includes source and momentum preparation,
+the mode-specific numerical evaluation, selectors, closures, and final
+reduction. Packing performed by the caller is outside this boundary.
+
+Some backends additionally expose a narrower execution attribution. Because
+its precise boundary is mode-specific, it is reported only as a supplementary
+quantity and only when measured directly. The complete wall time remains the
+common observable used for comparisons; an unavailable attribution is marked
+explicitly rather than inferred.

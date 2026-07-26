@@ -1,136 +1,95 @@
 % SPDX-License-Identifier: 0BSD
-\section{Prepared-Model Eager DAG Execution}
+\section{Compiled, Eager, and Recurrence Execution}
 \label{sec:eager-execution}
 
-This section compares the compiled and eager realizations of the shared-current
-DAG; recurrence execution is described by the general recursion in
-Sec.~\ref{sec:zgg-example}.  Compiled mode combines many current relations into
-process-specific stage evaluators.  Eager mode prepares model-local kernels
-once and represents each process by an invocation schedule.  They use the same
-physical graph, normalization, colour contraction, and resolved observables.
+The three execution modes differ in how they turn the same current recursion
+into numerical work. Compiled mode specializes groups of current relations to
+one process. Eager mode applies reusable model kernels according to a
+process-specific schedule. Recurrence mode constructs a compact schedule of
+currents, contributions, and closures directly. These choices change the
+balance between process-generation cost and runtime work, but not the
+observable being evaluated.
 
 \begin{center}
 \small
-\begin{tabular}{L{0.18\textwidth}L{0.35\textwidth}L{0.35\textwidth}}
+\begin{tabular}{@{}L{0.72in}L{1.85in}L{2.00in}L{1.40in}@{}}
 \toprule
- & \textbf{Compiled mode} & \textbf{Eager mode} \\
+\textbf{mode} & \textbf{process preparation} & \textbf{evaluation} &
+  \textbf{characteristic balance} \\
 \midrule
-Numerical unit
-  & Multi-output expression specialized to one process stage
-  & Reusable model kernel applied by a process schedule \\
-Process preparation
-  & Builds and compiles process-specific stage evaluators
-  & Maps the proven DAG to reusable model kernels and a process schedule \\
-Runtime work
-  & Calls a small number of wide stage evaluators
-  & Applies reusable kernels and combines the resulting currents \\
-Expected trade-off
-  & More preparation for greater process-wide fusion
-  & Faster process preparation with additional scheduling work \\
+Compiled
+  & Builds process-specific stage evaluators
+  & Evaluates a small number of process-wide, multi-output stages
+  & More preparation; greater fusion across a process \\
+Eager
+  & Maps the process graph to reusable prepared-model kernels
+  & Applies those kernels according to the process dependencies
+  & Reuses model work across processes \\
+Recurrence
+  & Builds a compact schedule directly from the current recursion
+  & Evaluates scheduled currents, contributions, and closures
+  & Avoids construction of a generic process DAG \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\subsection{Prepared model and process schedule}
+\subsection{Common physics contract}
 
-A prepared model separates model-level algebra from process-level graph
-construction.  Schematically,
+All three modes retain the same external states, perturbative orders,
+helicities, colour components, coherent amplitude groups, symmetry factors,
+and initial-state averages. In a contracted colour basis their common
+observable has the schematic form
 \begin{equation}
-  \mathcal{B}_{M,b,o,t}
-  = \left(
-      \mathcal{I}_{M},\;
-      \{K_\kappa^{(b,o,t)}\}_{\kappa\in\mathcal{K}_M},\;
-      \mathcal{P}_{M}
-    \right),
-  \label{eq:eager-prepared-model}
+  \mathcal M_p
+  =\mathcal N\sum_h\sum_{a,b}
+    A_{ha}(p)^{*}\,C_{ab}\,A_{hb}(p),
+  \label{eq:three-mode-common-observable}
 \end{equation}
-where \(\mathcal I_M\) defines the model, \(K_\kappa\) are numerical kernels for
-its canonical interaction classes, and \(\mathcal P_M\) records the numerical
-and target conventions.  The labels \(b,o,t\) identify the backend,
-optimization, and target architecture.
+with the corresponding resolved form retained when helicity or leading-colour
+flow components are requested. Each mode must reproduce both the directly
+evaluated total and the sum of those resolved components.
 
-For a process \(P\), the eager schedule records the graph dependencies, the
-kernel associated with each interaction, the current transformations, and the
-final colour and helicity reductions. It also retains the dependencies needed
-for resolved helicity and colour-flow selections.
+Current contributions are accumulated coherently before a propagator or other
+current transformation is applied. Final closures then form the amplitude
+components entering Eq.~\eqref{eq:three-mode-common-observable}. This ordering
+is common to the three modes and prevents execution strategy from changing the
+normalization.
 
-Because the numerical kernels are already part of \(\mathcal B\), eager
-process generation does not compile a new evaluator for every process.  Model
-preparation occurs before the process-generation timer and is not included in
-the process-generation values reported here.
+\subsection{Prepared-model boundary}
 
-\subsection{Stage execution}
+A prepared model contains reusable numerical information derived from the
+model's particles, parameters, propagators, and interaction tensors. Eager and
+recurrence JIT O2 measurements reuse this model-level preparation and add only
+the process-dependent schedule. Compiled JIT O3 measurements instead include
+construction and compilation of their process-specific evaluators.
 
-Let \(V_{c\alpha p}\) denote component \(\alpha\) of current \(c\) at
-phase-space point \(p\).  For one stage, unpropagated components are
-\begin{equation}
-  U_{c\alpha p}^{(s)} =
-  \sum_{r\in\mathcal{R}_s(c,\alpha)}
-    w_r\,
-    \left[
-      K_{\kappa(r)}
-      \left(
-        G_r(V_{\cdot\cdot p}),\;q_r(p),\;\theta
-      \right)
-    \right]_{\alpha(r)} ,
-  \label{eq:eager-invocation-sum}
-\end{equation}
-where \(G_r\) gathers the required current components and momenta, \(w_r\) is
-an exact factor, and \(\theta\) denotes model parameters.  Contributions are
-accumulated before finalization:
-\begin{equation}
-  V_{c\beta p}^{(s)} =
-  \left[F_{\phi(c)}\left(U_{c\cdot p}^{(s)},Q_c(p),\theta\right)\right]_\beta .
-  \label{eq:eager-finalization}
-\end{equation}
-The map \(F_{\phi(c)}\) is an identity, propagator, or another model-defined
-current transformation.  Applying it once per current preserves the
-normalization convention of compiled mode.
+Prepared-model creation is measured separately and excluded from the
+process-generation times in the comparison tables. This boundary is important:
+the reported eager and recurrence generation times describe adding a process
+to an already prepared model, not importing and compiling the model itself.
 
-After the last stage, closure relations produce amplitude components,
-\begin{equation}
-  A_{h\gamma p}
-  = \sum_{r\in\mathcal{C}(h,\gamma)}
-      w_r^{\mathrm{cl}}
-      K_{\kappa(r)}^{\mathrm{cl}}
-      \left(G_r^{\mathrm{cl}}(V_{\cdot\cdot p}),q_r(p),\theta\right),
-  \label{eq:eager-closure}
-\end{equation}
-and the standard colour/helicity reduction gives the requested observable.  In
-a contracted colour basis,
-\begin{equation}
-  \mathcal{M}_p =
-  \mathcal{N}\sum_h\sum_{\gamma,\delta}
-  A_{h\gamma p}\,C_{\gamma\delta}\,A^*_{h\delta p},
-  \label{eq:eager-reduction}
-\end{equation}
-with the same colour matrix, symmetry factors, initial-state average, and
-coupling normalization as the other execution modes.
+\subsection{Batches, selectors, and portability}
 
-\subsection{Batched evaluation and selectors}
+Evaluation is batched over phase-space points, allowing the JIT backend to use
+the point dimension for vectorization. Partitioning a large input batch changes
+neither the process representation nor the numerical result.
 
-Compatible kernel applications are batched across phase-space points so that
-the point dimension can be vectorized. Large input batches may be partitioned,
-but this changes neither the graph nor the numerical result.
+Helicity and colour-flow selectors refer to physical resolved components. A
+complete leading-colour calculation retains every declared helicity and flow,
+so selecting one flow with summed helicities or one helicity with all flows
+does not alter the underlying physics coverage. The two layouts used for these
+workloads are described in Sec.~\ref{sec:lc-flow-layouts}.
 
-A helicity or flow selection retains the complete dependency closure of the
-requested amplitudes. A complete leading-colour process therefore supports a
-selected flow with summed helicities, a selected helicity with all flows, or
-any retained subset without changing its physics content. The two corresponding
-graph layouts are described in Sec.~\ref{sec:lc-flow-layouts}.
+Portable JIT state is compiled for the receiving processor when loaded.
+Target-native ASM and C++ payloads remain architecture-specific, and the exact
+symbolic representation is retained where higher-precision evaluation is
+supported.
 
-\subsection{Precision, portability, and interpretation}
+\subsection{Interpretation}
 
-A standalone eager process contains the numerical kernels and schedule needed
-for evaluation.  Portable JIT state is compiled for the receiving processor at
-load time; target-native ASM and C++ payloads remain architecture-specific.
-The exact symbolic representation is retained for higher-precision evaluation.
-
-Eager generation time starts from a prepared model and ends with a validated,
-loadable process; prepared-model creation is outside this timing boundary. At
-runtime, eager mode avoids process-specific backend compilation but performs
-explicit scheduling and reusable-kernel dispatch.
-Compiled mode can be faster when process-wide fusion dominates, whereas eager
-mode can reduce preparation cost when many processes share one model.  The
-tables quantify this trade-off under identical physics and validation
-conditions rather than assuming a universal ranking.
+Compiled mode may benefit most when process-wide fusion outweighs its
+additional preparation cost. Eager mode can reduce repeated preparation when
+many processes share a model, while recurrence provides a compact direct
+representation of the current construction. The tables compare these
+trade-offs under identical physics, selector, precision, and validation
+conditions; no mode is assumed to be universally fastest.
