@@ -575,10 +575,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Requires gfortran+f2py (standalone) or a C++ compiler")
         logger.info("   (standalone_cpp / standalone_mg7).")
         logger.info("   For standalone_mg7, --simd picks the vectorisation width:")
-        logger.info("   auto (default), none, sse4, avx2, 512y, 512z.")
+        logger.info("   auto (default), none, sse4, avx2, 512y, 512z; and")
+        logger.info("   --precision picks the float type: m mixed (default), d double, f float.")
         logger.info("   Example: check crossing g u > g u",'$MG:color:GREEN')
         logger.info("   Example: check crossing g u > g u --exporter=standalone_cpp",'$MG:color:GREEN')
-        logger.info("   Example: check crossing g u > g u --exporter=standalone_mg7 --simd=avx2",'$MG:color:GREEN')
+        logger.info("   Example: check crossing g u > g u --exporter=standalone_mg7 --simd=avx2 --precision=d",'$MG:color:GREEN')
         logger.info("o cms:",'$MG:color:GREEN')
         logger.info("   Check the complex mass scheme consistency by comparing")
         logger.info("   it to the narrow width approximation in the off-shell")
@@ -1108,7 +1109,10 @@ class CheckValidForCmd(cmd.CheckCmd):
                    '--exporter':'standalone',
                    # 'check crossing --exporter=standalone_mg7' vectorisation
                    # (SIMD) width: auto (default), none, sse4, avx2, 512y, 512z.
-                   '--simd':'auto'}
+                   '--simd':'auto',
+                   # 'check crossing --exporter=standalone_mg7' float precision:
+                   # m mixed (default), d double, f float.
+                   '--precision':'m'}
 
         if args[0] in ['cms'] or args[0].lower()=='cmsoptions':
             # increase the default energy to 5000
@@ -2423,15 +2427,20 @@ class CompleteForCmd(cmd.CompleteCmd):
             options.extend(cms_options)
         if crossing_check_mode:
             # 'check crossing' only understands --energy, --exporter and (for
-            # standalone_mg7) --simd; the cms options above do not apply.
-            crossing_options = ['--energy=', '--exporter=', '--simd=']
-            # Value completion for the two crossing-specific options.
+            # standalone_mg7) --simd / --precision; the cms options above do not
+            # apply.
+            crossing_options = ['--energy=', '--exporter=', '--simd=',
+                                '--precision=']
+            # Value completion for the crossing-specific options.
             if args[-1] == '--exporter=':
                 return self.list_completion(
                     text, list(process_checks.CROSSING_EXPORTERS))
             elif args[-1] == '--simd=':
                 return self.list_completion(
                     text, list(process_checks.MG7_SIMD_CHOICES))
+            elif args[-1] == '--precision=':
+                return self.list_completion(
+                    text, list(process_checks.MG7_PRECISION_CHOICES))
             # Propose the options themselves once the user starts an option.
             if text.startswith('-'):
                 return self.list_completion(text, crossing_options)
@@ -4372,6 +4381,16 @@ This implies that with decay chains:
                             ', '.join(process_checks.MG7_SIMD_CHOICES),
                             option[1]))
                 options['simd'] = option[1]
+            elif option[0]=='--precision':
+                # Floating-point precision for 'check crossing --exporter=
+                # standalone_mg7' (ignored by the other backends).
+                if option[1] not in process_checks.MG7_PRECISION_CHOICES:
+                    raise self.InvalidCmd(
+                        "The '--precision' option for 'check crossing' must be "
+                        "one of %s, not '%s'." % (
+                            ', '.join(process_checks.MG7_PRECISION_CHOICES),
+                            option[1]))
+                options['precision'] = option[1]
             elif option[0]=='--name':
                 if '.' in option[1]:
                     raise self.InvalidCmd("Do not specify the extension in the"+

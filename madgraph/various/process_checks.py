@@ -4027,6 +4027,12 @@ CROSSING_EXPORTERS = ('standalone', 'standalone_cpp', 'standalone_mg7')
 # the standalone_mg7 crossing backend; ignored by the others.
 MG7_SIMD_CHOICES = ('auto', 'none', 'sse4', 'avx2', '512y', '512z')
 
+# Floating-point precision choices for the standalone_mg7 (cudacpp) backend, each
+# mapping to the madmatrix.mk 'FPTYPE=<x>' build variant: 'd' double, 'f' float,
+# 'm' mixed (double elsewhere, float in the colour algebra -- the madmatrix
+# default). Only used by the standalone_mg7 crossing backend.
+MG7_PRECISION_CHOICES = ('f', 'm', 'd')
+
 
 def _crossing_pdg_entries(matrix_element, identity_only=False):
     """Python enumeration of a matrix element's reachable extended flavor ids.
@@ -4219,6 +4225,8 @@ class _Mg7CrossingBackend(object):
     MG7_SIMD_CHOICES): it is passed to the madmatrix build as
     'BACKEND=cpp<simd>', so the same crossing self-check can run on scalar
     (none), SSE4, AVX2 or AVX-512 code, or let madmatrix auto-detect ('auto').
+    The floating-point precision is selectable via options['precision'] (see
+    MG7_PRECISION_CHOICES): it is passed as 'FPTYPE=<x>' (f/m/d).
     """
     output_format = 'standalone_mg7'
     needs_matrix_element = True
@@ -4231,6 +4239,12 @@ class _Mg7CrossingBackend(object):
                 "Unknown --simd '%s' for standalone_mg7; choose one of %s."
                 % (simd, ', '.join(MG7_SIMD_CHOICES)))
         self.simd = simd
+        precision = (options or {}).get('precision', 'm')
+        if precision not in MG7_PRECISION_CHOICES:
+            raise InvalidCmd(
+                "Unknown --precision '%s' for standalone_mg7; choose one of %s."
+                % (precision, ', '.join(MG7_PRECISION_CHOICES)))
+        self.precision = precision
 
     def build(self, pdir, env):
         if not shutil.which(self.compiler):
@@ -4245,7 +4259,8 @@ class _Mg7CrossingBackend(object):
         src = src.replace(_MG7_MOM_FROM, _MG7_MOM_TO, 1)
         with open(check, 'w') as fsock:
             fsock.write(src)
-        make_cmd = ['make', '-j2', 'BACKEND=cpp%s' % self.simd, 'check_sa.exe']
+        make_cmd = ['make', '-j2', 'BACKEND=cpp%s' % self.simd,
+                    'FPTYPE=%s' % self.precision, 'check_sa.exe']
         with open(os.devnull, 'w') as devnull:
             rc = subprocess.call(make_cmd, cwd=pdir,
                                  stdout=devnull, stderr=subprocess.STDOUT,
