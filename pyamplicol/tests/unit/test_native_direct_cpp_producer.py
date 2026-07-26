@@ -136,7 +136,10 @@ def test_compiler_settings_retain_cpp_and_asm_direct_flags() -> None:
             "compiled_optimization_level": 3,
             "compiled_native": True,
             "compiler_path": "/usr/bin/c++",
-            "effective_compiler_flags": ["-fno-math-errno"],
+            "effective_compiler_flags": [
+                "-std=c++17",
+                "-fno-math-errno",
+            ],
         }
     )
     assert compiler.executable == "/usr/bin/c++"

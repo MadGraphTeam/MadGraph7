@@ -612,7 +612,12 @@ def compile_native_direct_applications(
 
 
 def _compiled_compiler_flags(settings: SymbolicaEvaluatorSettings) -> tuple[str, ...]:
-    return tuple(settings.compiler_flags)
+    flags = tuple(settings.compiler_flags)
+    if settings.backend == "compiled-complex":
+        # Symbolica's generated C++ and pyAmpliCol's injected direct-table
+        # support use C++17 features.  Apple clang otherwise defaults to C++98.
+        return ("-std=c++17", *flags)
+    return flags
 
 
 _CPP_COMPLEX_LITERAL_COMPAT_HEADER = r"""
