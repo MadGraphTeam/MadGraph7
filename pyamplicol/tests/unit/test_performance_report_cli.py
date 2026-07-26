@@ -51,6 +51,7 @@ def _fake_latexmk(tmp_path: Path, log: str) -> Path:
 def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     populate = _parser().parse_args(("populate",))
     assert populate.target_runtime == 5.0
+    assert populate.generation_time_limit_seconds is None
 
     worker = _parser().parse_args(
         (
@@ -64,6 +65,11 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
         )
     )
     assert worker.target_runtime == 5.0
+
+    limited = _parser().parse_args(
+        ("populate", "--generation-time-limit-seconds", "7200")
+    )
+    assert limited.generation_time_limit_seconds == 7200.0
 
 
 def test_report_profile_is_a_global_architecture_scope() -> None:

@@ -15,6 +15,7 @@ from .agreements import (
 )
 from .cache import empty_measurement
 from .models import Accuracy, CellSpec, ModelKey, ResultStatus
+from .phase_state import WorkerPhaseReporter
 from .runner import (
     INDEPENDENT_RELATIVE_TOLERANCE,
     RELATIVE_TOLERANCE,
@@ -256,6 +257,7 @@ def measure_pyamplicol_cell(
     baseline: Mapping[str, object] | None,
     prepared_model_path: Path | None = None,
     reused_artifact: GeneratedArtifact | None = None,
+    phase_reporter: WorkerPhaseReporter | None = None,
 ) -> dict[str, object]:
     """Generate or retime one complete-coverage pyAmpliCol artifact."""
 
@@ -265,6 +267,7 @@ def measure_pyamplicol_cell(
         settings=settings,
         repo_root=repo_root,
         prepared_model_path=prepared_model_path,
+        phase_reporter=phase_reporter,
     )
     validate_artifact_contract(cell, generated.path)
     runtime = _load_runtime(generated.path, generated.process_id)

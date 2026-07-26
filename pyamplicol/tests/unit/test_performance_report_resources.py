@@ -9,6 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from tools.performance_report.phase_state import (
+    WorkerPhaseChannel,
+    WorkerPhaseReporter,
+)
 from tools.performance_report.resources import (
     DEFAULT_SAMPLE_INTERVAL_SECONDS,
     ProcessRecord,
@@ -249,3 +253,139 @@ def test_defaults_and_invalid_limits() -> None:
         supervise_worker(("worker",), timeout_seconds=0)
     with pytest.raises(ValueError, match="max_rss_bytes"):
         supervise_worker(("worker",), max_rss_bytes=0)
+    with pytest.raises(ValueError, match="generation_timeout_seconds"):
+        supervise_worker(("worker",), generation_timeout_seconds=0)
+    with pytest.raises(ValueError, match="specified together"):
+        supervise_worker(("worker",), generation_timeout_seconds=1)
+
+
+def test_generation_limit_excludes_preparation_and_post_generation(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / "phase.json")
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+    )
+    generation = reporter.generation()
+    sleep_count = 0
+    signals: list[int] = []
+
+    def sleep(_duration: float) -> None:
+        nonlocal sleep_count
+        sleep_count += 1
+        if sleep_count == 1:
+            clock.now = 50.0
+            generation.__enter__()
+        elif sleep_count == 2:
+            clock.now = 51.0
+            generation.__exit__(None, None, None)
+        else:
+            clock.now = 101.0
+            process.returncode = 0
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        signals.append(selected_signal)
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        generation_timeout_seconds=2.0,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "completed"
+    assert result.returncode == 0
+    assert signals == []
+    assert result.generation_phase is not None
+    assert result.generation_phase.authenticated
+    assert result.generation_phase.supervisor_reason == "completed"
+    assert result.generation_phase.final_phase == "post-generation"
+    assert result.generation_phase.generation_elapsed_seconds == 1.0
+
+
+def test_generation_limit_terminates_only_active_generation(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / "phase.json")
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+    )
+    generation = reporter.generation()
+    sleep_count = 0
+
+    def sleep(_duration: float) -> None:
+        nonlocal sleep_count
+        sleep_count += 1
+        if sleep_count == 1:
+            clock.now = 50.0
+            generation.__enter__()
+        else:
+            clock.now += 1.0
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        generation_timeout_seconds=2.0,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "generation_timeout"
+    assert result.returncode == -signal.SIGTERM
+    assert result.usage.wall_seconds == 52.0
+    assert result.generation_phase is not None
+    assert result.generation_phase.authenticated
+    assert result.generation_phase.supervisor_reason == "generation_timeout"
+    assert result.generation_phase.final_phase == "generation"
+    assert result.generation_phase.generation_elapsed_seconds == 2.0
+
+
+def test_generation_phase_monitor_fails_closed_on_malformed_state(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / "phase.json")
+    channel.path.write_text("{malformed", encoding="ascii")
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        generation_timeout_seconds=2.0,
+        phase_channel=channel,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=clock.sleep,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "phase_state_error"
+    assert result.returncode == -signal.SIGTERM
+    assert result.generation_phase is not None
+    assert not result.generation_phase.authenticated
+    assert result.generation_phase.supervisor_reason == "phase_state_error"
+    assert "valid JSON" in str(result.generation_phase.error)

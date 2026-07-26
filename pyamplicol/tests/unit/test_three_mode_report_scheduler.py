@@ -25,6 +25,7 @@ from tools.performance_report.models import (
     ResultStatus,
     Workload,
 )
+from tools.performance_report.phase_state import WorkerPhaseChannel
 from tools.performance_report.resources import ResourceUsage, SupervisedResult
 from tools.performance_report.scheduler import (
     CampaignScheduler,
@@ -487,3 +488,70 @@ def test_explicit_regenerate_or_rerun_forces_generation(
 
     assert outcome.status == "ok"
     assert "--reused-measurement-json" not in command
+
+
+def test_scheduler_plumbs_authenticated_generation_only_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    target = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    baseline = REPORT_CATALOG.baseline_cell(target)
+    assert baseline is not None
+    revision = "current-revision"
+    _publish_current(service.store, baseline.cell_id, revision=revision)
+    captured: dict[str, object] = {}
+
+    def fake_supervise(
+        command: Sequence[str],
+        **arguments: object,
+    ) -> SupervisedResult:
+        captured["command"] = tuple(command)
+        captured.update(arguments)
+        result_path = Path(command[command.index("--result-json") + 1])
+        result_path.write_text(
+            json.dumps(_ok_measurement(revision=revision)) + "\n",
+            encoding="ascii",
+        )
+        return SupervisedResult(
+            0,
+            "completed",
+            ResourceUsage(True, 1, 1, 0, 0.1, 0.1),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(generation_time_limit_seconds=7200.0),
+    )
+    scheduler.source_revision = revision
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            target,
+            dependency=False,
+            baseline_cell_id=baseline.cell_id,
+            rank=1,
+        )
+    )
+
+    assert outcome.status == "ok"
+    assert captured["generation_timeout_seconds"] == 7200.0
+    channel = captured["phase_channel"]
+    assert isinstance(channel, WorkerPhaseChannel)
+    command = captured["command"]
+    assert isinstance(command, tuple)
+    assert command[command.index("--phase-state-path") + 1] == str(channel.path)
+    assert command[command.index("--phase-state-run-id") + 1] == channel.run_id
+    assert (
+        command[command.index("--phase-state-authentication-key") + 1]
+        == channel.authentication_key
+    )
+
+
+@pytest.mark.parametrize("limit", (0.0, float("inf"), float("nan")))
+def test_campaign_rejects_invalid_generation_only_limit(limit: float) -> None:
+    with pytest.raises(ValueError, match="generation_time_limit_seconds"):
+        CampaignSettings(generation_time_limit_seconds=limit)

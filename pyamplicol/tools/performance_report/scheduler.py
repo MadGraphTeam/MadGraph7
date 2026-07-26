@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import uuid
@@ -26,7 +27,12 @@ from .models import (
     ResultStatus,
     Workload,
 )
-from .resources import ResourceUsage, supervise_worker
+from .phase_state import WorkerPhaseChannel
+from .resources import (
+    GenerationPhaseEvidence,
+    ResourceUsage,
+    supervise_worker,
+)
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .service import ReportService
 
@@ -68,6 +74,7 @@ class CampaignSettings:
     target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
     batch_size: int = 128
     timeout_seconds: float | None = None
+    generation_time_limit_seconds: float | None = None
     max_rss_bytes: int | None = None
     campaign_max_rss_bytes: int | None = None
     artifact_policy: ArtifactPolicy = ArtifactPolicy.REGENERATE
@@ -82,6 +89,11 @@ class CampaignSettings:
             raise ValueError("target runtime and batch size must be positive")
         if self.timeout_seconds is not None and self.timeout_seconds <= 0.0:
             raise ValueError("timeout_seconds must be positive")
+        if self.generation_time_limit_seconds is not None and (
+            self.generation_time_limit_seconds <= 0.0
+            or not math.isfinite(self.generation_time_limit_seconds)
+        ):
+            raise ValueError("generation_time_limit_seconds must be positive")
         if self.max_rss_bytes is not None and self.max_rss_bytes <= 0:
             raise ValueError("max_rss_bytes must be positive")
         if self.campaign_max_rss_bytes is not None and self.campaign_max_rss_bytes <= 0:
@@ -297,8 +309,11 @@ def plan_campaign(
     )
 
 
-def _resource_payload(usage: ResourceUsage) -> dict[str, object]:
-    return {
+def _resource_payload(
+    usage: ResourceUsage,
+    generation_phase: GenerationPhaseEvidence | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "available": usage.available,
         "current_rss_bytes": usage.current_rss_bytes,
         "peak_rss_bytes": usage.peak_rss_bytes,
@@ -307,6 +322,9 @@ def _resource_payload(usage: ResourceUsage) -> dict[str, object]:
         "wall_seconds": usage.wall_seconds,
         "probe_error": usage.error,
     }
+    if generation_phase is not None:
+        payload["generation_phase"] = generation_phase.as_dict()
+    return payload
 
 
 def _attempt_files(root: Path) -> tuple[str, ...]:
@@ -545,6 +563,13 @@ class CampaignScheduler:
             ) as attempt:
                 worker_result = attempt.path("worker-result.json")
                 worker_log = attempt.path("worker.log")
+                phase_channel = (
+                    None
+                    if self.settings.generation_time_limit_seconds is None
+                    else WorkerPhaseChannel.create(
+                        attempt.path("worker-phase-state.json")
+                    )
+                )
                 command = [
                     sys.executable,
                     "-I",
@@ -570,6 +595,17 @@ class CampaignScheduler:
                     "--cell-cores",
                     str(self.settings.cell_cores),
                 ]
+                if phase_channel is not None:
+                    command.extend(
+                        (
+                            "--phase-state-path",
+                            os.fspath(phase_channel.path),
+                            "--phase-state-run-id",
+                            phase_channel.run_id,
+                            "--phase-state-authentication-key",
+                            phase_channel.authentication_key,
+                        )
+                    )
                 if baseline_record is not None:
                     command.extend(
                         ("--baseline-json", os.fspath(baseline_record.result_path))
@@ -607,15 +643,23 @@ class CampaignScheduler:
                 supervised = supervise_worker(
                     command,
                     timeout_seconds=self.settings.timeout_seconds,
+                    generation_timeout_seconds=(
+                        self.settings.generation_time_limit_seconds
+                    ),
+                    phase_channel=phase_channel,
                     max_rss_bytes=self._effective_cell_rss_limit(),
                 )
-                resources = _resource_payload(supervised.usage)
+                resources = _resource_payload(
+                    supervised.usage,
+                    supervised.generation_phase,
+                )
                 if supervised.reason != "completed":
-                    status = (
-                        ResultStatus.TIMEOUT
-                        if supervised.reason == "timeout"
-                        else ResultStatus.MEMORY_LIMIT
-                    )
+                    status = {
+                        "timeout": ResultStatus.TIMEOUT,
+                        "generation_timeout": ResultStatus.TIMEOUT,
+                        "memory_limit": ResultStatus.MEMORY_LIMIT,
+                        "phase_state_error": ResultStatus.ERROR,
+                    }[supervised.reason]
                     result = failure_measurement(
                         status,
                         f"worker terminated by {supervised.reason}",

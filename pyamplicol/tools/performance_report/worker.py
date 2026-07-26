@@ -20,6 +20,7 @@ from .measurement import (
     measure_pyamplicol_cell,
 )
 from .models import ExecutionMode, ResultStatus
+from .phase_state import WorkerPhaseChannel, WorkerPhaseReporter
 from .runner import RunnerSettings
 from .source_identity import require_eligible_report_source
 
@@ -62,6 +63,7 @@ def measure_cell(
     peer_json: Sequence[tuple[str, Path]] = (),
     prepared_model_path: Path | None = None,
     reused_measurement_json: Path | None = None,
+    phase_reporter: WorkerPhaseReporter | None = None,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
     source_identity = require_eligible_report_source(repo_root)
@@ -105,6 +107,7 @@ def measure_cell(
             baseline=baseline,
             prepared_model_path=prepared_model_path,
             reused_artifact=reused_artifact,
+            phase_reporter=phase_reporter,
         )
     attach_direct_agreements(
         cell,
@@ -130,11 +133,40 @@ def write_cell_result(
     result_path: Path,
     *,
     log_path: Path | None = None,
+    phase_state_path: Path | None = None,
+    phase_state_run_id: str | None = None,
+    phase_state_authentication_key: str | None = None,
     **kwargs: object,
 ) -> dict[str, object]:
     try:
+        phase_arguments = (
+            phase_state_path,
+            phase_state_run_id,
+            phase_state_authentication_key,
+        )
+        if any(argument is not None for argument in phase_arguments):
+            if not all(argument is not None for argument in phase_arguments):
+                raise ValueError(
+                    "worker phase-state arguments must be specified together"
+                )
+            assert phase_state_path is not None
+            assert phase_state_run_id is not None
+            assert phase_state_authentication_key is not None
+            phase_reporter = WorkerPhaseReporter(
+                WorkerPhaseChannel(
+                    path=phase_state_path.expanduser().resolve(strict=False),
+                    run_id=phase_state_run_id,
+                    authentication_key=phase_state_authentication_key,
+                )
+            )
+        else:
+            phase_reporter = None
         if log_path is None:
-            result = measure_cell(cell_id, **kwargs)  # type: ignore[arg-type]
+            result = measure_cell(
+                cell_id,
+                phase_reporter=phase_reporter,
+                **kwargs,  # type: ignore[arg-type]
+            )
         else:
             log_path.parent.mkdir(parents=True, exist_ok=True)
             with (
@@ -142,7 +174,11 @@ def write_cell_result(
                 redirect_stdout(stream),
                 redirect_stderr(stream),
             ):
-                result = measure_cell(cell_id, **kwargs)  # type: ignore[arg-type]
+                result = measure_cell(
+                    cell_id,
+                    phase_reporter=phase_reporter,
+                    **kwargs,  # type: ignore[arg-type]
+                )
     except Exception as error:
         if log_path is not None:
             with log_path.open("a", encoding="utf-8") as stream:

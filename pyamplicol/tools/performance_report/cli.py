@@ -154,6 +154,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     worker.add_argument("--batch-size", type=int, default=128)
     worker.add_argument("--cell-cores", type=int, default=1)
+    worker.add_argument("--phase-state-path", type=Path, help=argparse.SUPPRESS)
+    worker.add_argument("--phase-state-run-id", help=argparse.SUPPRESS)
+    worker.add_argument(
+        "--phase-state-authentication-key",
+        help=argparse.SUPPRESS,
+    )
 
     prepare = subparsers.add_parser("_prepare", help=argparse.SUPPRESS)
     prepare.add_argument(
@@ -212,6 +218,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     populate.add_argument("--batch-size", type=int, default=128)
     populate.add_argument("--timeout-seconds", type=float)
+    populate.add_argument(
+        "--generation-time-limit-seconds",
+        type=float,
+        help="limit only the authenticated Generator.generate phase",
+    )
     populate.add_argument("--max-ram-gib", type=float)
     populate.add_argument("--campaign-max-ram-gib", type=float)
     populate.add_argument(
@@ -433,6 +444,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 target_runtime_seconds=args.target_runtime,
                 batch_size=args.batch_size,
                 timeout_seconds=args.timeout_seconds,
+                generation_time_limit_seconds=args.generation_time_limit_seconds,
                 max_rss_bytes=_gib_bytes(args.max_ram_gib),
                 campaign_max_rss_bytes=_gib_bytes(campaign_limit),
                 artifact_policy=ArtifactPolicy(args.artifact_policy),
@@ -530,6 +542,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             prepared_model_path=args.prepared_model,
             reused_measurement_json=args.reused_measurement_json,
+            phase_state_path=args.phase_state_path,
+            phase_state_run_id=args.phase_state_run_id,
+            phase_state_authentication_key=args.phase_state_authentication_key,
             log_path=args.log_path,
         )
         return 0

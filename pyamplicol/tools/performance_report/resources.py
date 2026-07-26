@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import platform
 import signal
@@ -16,8 +17,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from .phase_state import (
+    WORKER_PHASE_STATE_ABI,
+    WorkerPhaseChannel,
+    WorkerPhaseState,
+    WorkerPhaseStateError,
+    read_worker_phase_state,
+)
+
 DEFAULT_SAMPLE_INTERVAL_SECONDS = 1.0
 DEFAULT_TERMINATION_GRACE_SECONDS = 5.0
+DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS = 30.0
+GENERATION_PHASE_EVIDENCE_ABI = "pyamplicol-report-generation-phase-evidence-v1"
 
 
 class ResourceProbeError(RuntimeError):
@@ -57,7 +68,49 @@ class ResourceUsage:
     error: str | None = None
 
 
-TerminationReason = Literal["completed", "timeout", "memory_limit"]
+TerminationReason = Literal[
+    "completed",
+    "timeout",
+    "generation_timeout",
+    "memory_limit",
+    "phase_state_error",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationPhaseEvidence:
+    """Supervisor-authenticated evidence for the worker generation interval."""
+
+    configured_timeout_seconds: float
+    supervisor_reason: TerminationReason
+    authenticated: bool
+    run_id: str
+    worker_pid: int
+    final_sequence: int | None
+    final_phase: str | None
+    generation_started_monotonic_ns: int | None
+    generation_finished_monotonic_ns: int | None
+    generation_elapsed_seconds: float | None
+    final_state_sha256: str | None
+    error: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "abi": GENERATION_PHASE_EVIDENCE_ABI,
+            "phase_state_abi": WORKER_PHASE_STATE_ABI,
+            "configured_timeout_seconds": self.configured_timeout_seconds,
+            "supervisor_reason": self.supervisor_reason,
+            "authenticated": self.authenticated,
+            "run_id": self.run_id,
+            "worker_pid": self.worker_pid,
+            "final_sequence": self.final_sequence,
+            "final_phase": self.final_phase,
+            "generation_started_monotonic_ns": (self.generation_started_monotonic_ns),
+            "generation_finished_monotonic_ns": (self.generation_finished_monotonic_ns),
+            "generation_elapsed_seconds": self.generation_elapsed_seconds,
+            "final_state_sha256": self.final_state_sha256,
+            "error": self.error,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +120,7 @@ class SupervisedResult:
     returncode: int
     reason: TerminationReason
     usage: ResourceUsage
+    generation_phase: GenerationPhaseEvidence | None = None
 
 
 class CompletedProcessLike(Protocol):
@@ -426,28 +480,49 @@ def supervise_worker(
     command: Sequence[str],
     *,
     timeout_seconds: float | None = None,
+    generation_timeout_seconds: float | None = None,
+    phase_channel: WorkerPhaseChannel | None = None,
     max_rss_bytes: int | None = None,
     interval_seconds: float = DEFAULT_SAMPLE_INTERVAL_SECONDS,
     termination_grace_seconds: float = DEFAULT_TERMINATION_GRACE_SECONDS,
+    phase_state_startup_grace_seconds: float = (
+        DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS
+    ),
     snapshotter: Snapshotter = process_snapshot,
     popen_factory: PopenFactory = _default_popen,
     clock: Clock = time.monotonic,
     sleeper: Sleeper = time.sleep,
     signaler: TreeSignaler = _signal_process_tree,
 ) -> SupervisedResult:
-    """Run a worker in a new session and enforce optional wall/RSS limits."""
+    """Run a worker and enforce wall, generation-only, and RSS limits.
+
+    ``generation_timeout_seconds`` requires an authenticated phase channel.
+    Missing, malformed, replayed, or incomplete phase evidence terminates the
+    worker rather than silently turning the generation limit into a wall limit.
+    """
 
     if not command:
         raise ValueError("command must not be empty")
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive when specified")
+    if generation_timeout_seconds is not None and (
+        generation_timeout_seconds <= 0 or not math.isfinite(generation_timeout_seconds)
+    ):
+        raise ValueError("generation_timeout_seconds must be positive when specified")
+    if (generation_timeout_seconds is None) != (phase_channel is None):
+        raise ValueError(
+            "generation_timeout_seconds and phase_channel must be specified together"
+        )
     if max_rss_bytes is not None and max_rss_bytes <= 0:
         raise ValueError("max_rss_bytes must be positive when specified")
     if interval_seconds <= 0:
         raise ValueError("interval_seconds must be positive")
     if termination_grace_seconds < 0:
         raise ValueError("termination_grace_seconds must be non-negative")
+    if phase_state_startup_grace_seconds < 0:
+        raise ValueError("phase_state_startup_grace_seconds must be non-negative")
 
+    phase_monitor_started = clock()
     process = popen_factory(tuple(command), start_new_session=True)
     monitor = ResourceMonitor(
         process.pid,
@@ -457,34 +532,119 @@ def supervise_worker(
     )
     reason: TerminationReason = "completed"
     returncode: int | None = None
+    phase_state: WorkerPhaseState | None = None
+    phase_error: str | None = None
+
+    def terminate(selected_reason: TerminationReason) -> None:
+        nonlocal reason, returncode
+        reason = selected_reason
+        returncode = _terminate_worker(
+            process,
+            member_pids=monitor.member_pids,
+            grace_seconds=termination_grace_seconds,
+            signaler=signaler,
+        )
+
+    def observe_phase(now_seconds: float) -> None:
+        nonlocal phase_state, phase_error
+        assert phase_channel is not None
+        try:
+            observed = read_worker_phase_state(
+                phase_channel,
+                expected_pid=process.pid,
+            )
+        except FileNotFoundError:
+            if (
+                phase_state is not None
+                or now_seconds - phase_monitor_started
+                >= phase_state_startup_grace_seconds
+            ):
+                phase_error = "worker phase-state file is missing"
+            return
+        except WorkerPhaseStateError as error:
+            phase_error = str(error)
+            return
+
+        earliest_seconds = phase_monitor_started - interval_seconds
+        latest_seconds = now_seconds + interval_seconds
+        observed_timestamps = (
+            observed.transition_monotonic_ns,
+            observed.generation_started_monotonic_ns,
+            observed.generation_finished_monotonic_ns,
+        )
+        if any(
+            timestamp is not None
+            and not (earliest_seconds <= timestamp / 1_000_000_000 <= latest_seconds)
+            for timestamp in observed_timestamps
+        ):
+            phase_error = (
+                "worker phase-state transition timestamp is outside the "
+                "supervised process lifetime"
+            )
+            return
+        if phase_state is not None:
+            if observed.sequence < phase_state.sequence:
+                phase_error = "worker phase-state sequence moved backwards"
+                return
+            if (
+                observed.sequence == phase_state.sequence
+                and observed.sha256 != phase_state.sha256
+            ):
+                phase_error = (
+                    "worker phase-state changed without advancing its sequence"
+                )
+                return
+            prior_start = phase_state.generation_started_monotonic_ns
+            current_start = observed.generation_started_monotonic_ns
+            if prior_start is not None and current_start != prior_start:
+                phase_error = "worker generation start timestamp changed"
+                return
+        phase_state = observed
+
     try:
         while True:
             usage = monitor.sample_once()
+            now_seconds = clock()
             if (
                 max_rss_bytes is not None
                 and usage.current_rss_bytes is not None
                 and usage.current_rss_bytes > max_rss_bytes
             ):
-                reason = "memory_limit"
-                returncode = _terminate_worker(
-                    process,
-                    member_pids=monitor.member_pids,
-                    grace_seconds=termination_grace_seconds,
-                    signaler=signaler,
-                )
+                terminate("memory_limit")
                 break
+            if phase_channel is not None:
+                observe_phase(now_seconds)
+                if phase_error is not None:
+                    terminate("phase_state_error")
+                    break
+                if phase_state is not None:
+                    generation_elapsed = phase_state.generation_elapsed_seconds(
+                        now_seconds=now_seconds
+                    )
+                    assert generation_timeout_seconds is not None
+                    if (
+                        generation_elapsed is not None
+                        and generation_elapsed >= generation_timeout_seconds
+                    ):
+                        terminate("generation_timeout")
+                        break
             if timeout_seconds is not None and usage.wall_seconds >= timeout_seconds:
-                reason = "timeout"
-                returncode = _terminate_worker(
-                    process,
-                    member_pids=monitor.member_pids,
-                    grace_seconds=termination_grace_seconds,
-                    signaler=signaler,
-                )
+                terminate("timeout")
                 break
 
             returncode = process.poll()
             if returncode is not None:
+                if phase_channel is not None:
+                    if phase_state is None:
+                        reason = "phase_state_error"
+                        phase_error = (
+                            "worker exited without authenticated phase-state evidence"
+                        )
+                    elif phase_state.phase == "generation":
+                        reason = "phase_state_error"
+                        phase_error = (
+                            "worker exited before closing its generation interval"
+                        )
                 break
             sleeper(interval_seconds)
     finally:
@@ -498,16 +658,51 @@ def supervise_worker(
 
     if returncode is None:
         returncode = process.wait()
+    generation_phase = None
+    if phase_channel is not None:
+        assert generation_timeout_seconds is not None
+        generation_phase = GenerationPhaseEvidence(
+            configured_timeout_seconds=generation_timeout_seconds,
+            supervisor_reason=reason,
+            authenticated=phase_state is not None and phase_error is None,
+            run_id=phase_channel.run_id,
+            worker_pid=process.pid,
+            final_sequence=None if phase_state is None else phase_state.sequence,
+            final_phase=None if phase_state is None else phase_state.phase,
+            generation_started_monotonic_ns=(
+                None
+                if phase_state is None
+                else phase_state.generation_started_monotonic_ns
+            ),
+            generation_finished_monotonic_ns=(
+                None
+                if phase_state is None
+                else phase_state.generation_finished_monotonic_ns
+            ),
+            generation_elapsed_seconds=(
+                None
+                if phase_state is None
+                else phase_state.generation_elapsed_seconds(
+                    now_seconds=clock(),
+                )
+            ),
+            final_state_sha256=(None if phase_state is None else phase_state.sha256),
+            error=phase_error,
+        )
     return SupervisedResult(
         returncode=returncode,
         reason=reason,
         usage=monitor.usage,
+        generation_phase=generation_phase,
     )
 
 
 __all__ = [
+    "DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS",
     "DEFAULT_SAMPLE_INTERVAL_SECONDS",
     "DEFAULT_TERMINATION_GRACE_SECONDS",
+    "GENERATION_PHASE_EVIDENCE_ABI",
+    "GenerationPhaseEvidence",
     "ProcessRecord",
     "ProcessTreeSample",
     "ProcessTreeSampler",

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -29,6 +30,7 @@ from tools.performance_report.runner import (
     _regular_file_identity,
     config_values,
     derive_selector_contract,
+    generate_artifact,
     point_digest,
     pointwise_validation,
     resolved_sum_validation,
@@ -593,6 +595,87 @@ def _cell(
         and cell.measurement.accuracy is accuracy
         and cell.workload is workload
     )
+
+
+def test_generation_phase_wraps_only_generator_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol.api
+    import pyamplicol.config.resolver
+    import tools.performance_report.runner as report_runner
+
+    events: list[str] = []
+
+    class FakeSource:
+        def compile(self, **_kwargs: object) -> object:
+            events.append("model-preparation")
+            return object()
+
+    class FakeModelSource:
+        @staticmethod
+        def built_in_sm() -> FakeSource:
+            return FakeSource()
+
+        @staticmethod
+        def from_path(_path: Path) -> FakeSource:
+            return FakeSource()
+
+    class FakeGenerator:
+        def __init__(self, _resolution: object) -> None:
+            pass
+
+        def generate(self, *_args: object, **_kwargs: object) -> None:
+            events.append("Generator.generate")
+
+    class SpyReporter:
+        @contextmanager
+        def generation(self):
+            events.append("phase-enter")
+            try:
+                yield
+            finally:
+                events.append("phase-exit")
+
+    monkeypatch.setattr(pyamplicol.api, "Generator", FakeGenerator)
+    monkeypatch.setattr(pyamplicol.api, "ModelSource", FakeModelSource)
+    monkeypatch.setattr(
+        pyamplicol.config.resolver,
+        "resolve_config",
+        lambda *_args, **_kwargs: SimpleNamespace(requested={}),
+    )
+    monkeypatch.setattr(
+        pyamplicol.config.resolver,
+        "config_to_dict",
+        lambda _value: {},
+    )
+    monkeypatch.setattr(report_runner, "config_values", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        report_runner,
+        "_authenticated_effective_config",
+        lambda _path: events.append("post-generation-validation") or {},
+    )
+    monkeypatch.setattr(
+        report_runner,
+        "_single_process_id",
+        lambda _path, fallback: fallback,
+    )
+
+    generate_artifact(
+        _cell(ExecutionMode.COMPILED, Accuracy.LC, Workload.SELECTED_FLOW),
+        tmp_path / "artifact",
+        settings=RunnerSettings(),
+        repo_root=tmp_path,
+        phase_reporter=SpyReporter(),  # type: ignore[arg-type]
+    )
+
+    assert events == [
+        "model-preparation",
+        "phase-enter",
+        "Generator.generate",
+        "phase-exit",
+        "post-generation-validation",
+    ]
 
 
 @pytest.mark.parametrize(

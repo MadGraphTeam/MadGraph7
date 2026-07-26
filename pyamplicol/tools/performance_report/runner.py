@@ -14,6 +14,7 @@ import stat
 import time
 import tomllib
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Protocol
@@ -26,6 +27,7 @@ from .models import (
     ResultStatus,
     Workload,
 )
+from .phase_state import WorkerPhaseReporter
 from .runtime_evidence import (
     RuntimeEvidenceError,
     established_preimport_runtime_identity,
@@ -1799,6 +1801,7 @@ def generate_artifact(
     settings: RunnerSettings,
     repo_root: Path,
     prepared_model_path: Path | None = None,
+    phase_reporter: WorkerPhaseReporter | None = None,
 ) -> GeneratedArtifact:
     """Generate one complete-coverage artifact and time process generation only."""
 
@@ -1843,14 +1846,18 @@ def generate_artifact(
         )
         preparation_reused = False
     model_seconds = time.perf_counter() - model_started
-    generation_started = time.perf_counter()
-    Generator(resolution).generate(
-        cell.process,
-        destination,
-        model=model,
-        mode="replace",
+    generation_phase = (
+        nullcontext() if phase_reporter is None else phase_reporter.generation()
     )
-    generation_seconds = time.perf_counter() - generation_started
+    with generation_phase:
+        generation_started = time.perf_counter()
+        Generator(resolution).generate(
+            cell.process,
+            destination,
+            model=model,
+            mode="replace",
+        )
+        generation_seconds = time.perf_counter() - generation_started
     effective_config = _authenticated_effective_config(destination)
     return GeneratedArtifact(
         path=destination,
