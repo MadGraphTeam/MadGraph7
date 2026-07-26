@@ -41,6 +41,56 @@ cell-scoped reproductions, accumulates tested fixes, and coordinates batched
 landings with the main local filler. It must never edit either active campaign
 checkout or relabel existing evidence.
 
+The Mac and cluster campaigns use independent measurement branches, worktrees,
+profiles, artifact roots, coordination roots, virtual environments, and
+candidate-wheel directories. Use these fixed branch roles:
+
+- `codex/macbook-M3-full-report`: frozen-source Mac measurement checkout;
+- `codex/x86-EPYC-full-report`: frozen-source cluster measurement checkout;
+- `codex/x86-EPYC-report-checkpoints`: report-only cluster snapshots for
+  review.
+
+Never merge or pull either cluster branch into the active Mac measurement
+worktree. Executable fixes land on `main` in coordinated batches and begin a
+new final measurement epoch only when necessary.
+
+### Hourly cluster PDF review
+
+The support lane is also the cluster publication reviewer. Once the cluster
+creates its checkpoint branch, give the support lane a separate, read-only
+review worktree:
+
+```bash
+git fetch origin codex/x86-EPYC-report-checkpoints
+REVIEW_TREE="../pyamplicol-x86-EPYC-report-review"
+test ! -e "$REVIEW_TREE"
+git worktree add -b codex/x86-EPYC-report-review \
+  "$REVIEW_TREE" origin/codex/x86-EPYC-report-checkpoints
+git -C "$REVIEW_TREE" branch --set-upstream-to=\
+origin/codex/x86-EPYC-report-checkpoints
+```
+
+At least once per hour while the cluster campaign is active, the support lane
+must obtain the newest lightweight checkpoint with:
+
+```bash
+git -C "$REVIEW_TREE" pull --ff-only
+PDF="$REVIEW_TREE/docs/performance_reports/x86_EPYC/pyAmpliCol.pdf"
+REVIEW_SHA="$(git -C "$REVIEW_TREE" rev-parse --short=12 HEAD)"
+QA_DIR=".artifacts/performance-report-qa/x86_EPYC/hourly-$REVIEW_SHA"
+test ! -e "$QA_DIR"
+mkdir -p "$QA_DIR"
+pdfinfo "$PDF"
+pdftoppm -png -r 144 "$PDF" "$QA_DIR/page"
+```
+
+Inspect every page, not only changed pages. Check process coverage, status
+labels, units, ratios, A/B/C winners, summaries, legends, continuation pages,
+spacing, clipping, blank regions, and whether values are physically and
+numerically plausible. Compare raw status counts with what the PDF shows.
+Send a timestamped review result and concrete page/cell feedback directly to
+the cluster filler. Do not commit or push from the review worktree.
+
 ## 1. Establish the exact measured source
 
 Use a new clean worktree at the final handoff on `main`:

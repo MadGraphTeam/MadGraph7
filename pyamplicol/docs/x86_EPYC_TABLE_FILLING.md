@@ -50,6 +50,16 @@ cell-scoped reproductions, accumulates tested fixes, and coordinates batched
 landings. It never edits the cluster checkout, current records, or immutable
 attempts.
 
+The campaigns must remain isolated:
+
+- this cluster measures on `codex/x86-EPYC-full-report`;
+- the Mac measures on `codex/macbook-M3-full-report`;
+- hourly review snapshots use `codex/x86-EPYC-report-checkpoints`.
+
+Each has a separate worktree, profile, artifact root, coordination root,
+virtual environment, and candidate-wheel directory. Never merge or pull the
+Mac or checkpoint branch into this active measurement worktree.
+
 ## 2. Establish the exact measured source
 
 ```bash
@@ -141,7 +151,64 @@ Original AmpliCol workers use one distinct pinned legacy workspace per cell
 under the profile artifact root. Ten workers must never mutate one shared
 legacy checkout.
 
-## 5. Phase A: AmpliCol and recurrence only
+## 5. Publish an hourly lightweight review checkpoint
+
+Create a separate publication worktree once, rooted at the frozen measured
+source:
+
+```bash
+CHECKPOINT_TREE="../pyamplicol-x86-EPYC-report-checkpoints"
+test ! -e "$CHECKPOINT_TREE"
+git worktree add -b codex/x86-EPYC-report-checkpoints \
+  "$CHECKPOINT_TREE" "$MEASURED_SOURCE_REVISION"
+git -C "$CHECKPOINT_TREE" push -u origin \
+  codex/x86-EPYC-report-checkpoints
+```
+
+The active measurement checkout remains at `MEASURED_SOURCE_REVISION`.
+Checkpoint commits are made only in `CHECKPOINT_TREE` and are never pulled
+back into the measurement checkout.
+
+At least once per hour, and at each multiplicity or mandatory-pause boundary,
+finish `recover --compile`, export a portable snapshot, and push only raw JSON,
+generated TeX/environment metadata, and the PDF:
+
+```bash
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+EXPORT_DIR=".artifacts/hourly-x86-EPYC-$STAMP"
+test ! -e "$EXPORT_DIR"
+.venv/bin/python docs/result_tables.py export-profile \
+  x86_EPYC "$EXPORT_DIR"
+PROFILE_OUT="$CHECKPOINT_TREE/docs/performance_reports/x86_EPYC"
+cp "$EXPORT_DIR"/results/*.json "$PROFILE_OUT/results/"
+cp "$EXPORT_DIR"/report_environment.json "$PROFILE_OUT/"
+cp "$EXPORT_DIR"/report_environment.tex "$PROFILE_OUT/"
+cp "$EXPORT_DIR"/result_*_table.tex "$PROFILE_OUT/"
+cp "$EXPORT_DIR"/result_validation_summary.tex "$PROFILE_OUT/"
+cp "$EXPORT_DIR"/pyAmpliCol.pdf "$PROFILE_OUT/"
+git -C "$CHECKPOINT_TREE" add \
+  docs/performance_reports/x86_EPYC/report_environment.json \
+  docs/performance_reports/x86_EPYC/report_environment.tex \
+  docs/performance_reports/x86_EPYC/results/*.json \
+  docs/performance_reports/x86_EPYC/result_*_table.tex \
+  docs/performance_reports/x86_EPYC/result_validation_summary.tex \
+  docs/performance_reports/x86_EPYC/pyAmpliCol.pdf
+if ! git -C "$CHECKPOINT_TREE" diff --cached --quiet; then
+  git -C "$CHECKPOINT_TREE" commit -m \
+    "Checkpoint x86_EPYC report $STAMP"
+  git -C "$CHECKPOINT_TREE" push origin \
+    codex/x86-EPYC-report-checkpoints
+fi
+```
+
+Never copy or stage evaluator/process artifacts, wheels, models, logs, attempts,
+locks, coordination state, auxiliary files, entry points, manifests, or prose.
+Notify `x86_epyc_support_lane` after every push. It will pull this branch into
+its separate review worktree, inspect every PDF page, and send timestamped
+feedback. A checkpoint is review evidence, not a new measurement source and
+must not invalidate or relabel existing attempts.
+
+## 6. Phase A: AmpliCol and recurrence only
 
 Do not launch compiled or eager cells yet. For each `N=1,...,9`, in increasing
 order, issue this batch manually:
@@ -169,9 +236,11 @@ result, mismatch, resource-probe gap, or unexplained `N/A` is a defect.
 ### Mandatory pause A
 
 After every AmpliCol and recurrence lane is closed, stop the workers and finish
-one live refresh. Send the user:
+one live refresh, publish the Section 5 checkpoint, and wait for the support
+lane's page-by-page review. Send the user:
 
 - a clickable link to the current `x86_EPYC/pyAmpliCol.pdf`;
+- the exact checkpoint-branch commit containing that PDF;
 - raw status counts by multiplicity and mode;
 - the zero-scheduled dry-run result over all AmpliCol/recurrence cells; and
 - all resource-frontier and support-lane findings.
@@ -179,7 +248,7 @@ one live refresh. Send the user:
 Wait for explicit user approval. Do not start any remaining Z variant,
 compiled process matrix, eager process matrix, or scalar cell before it.
 
-## 6. Phase B: finish both Z tables
+## 7. Phase B: finish both Z tables
 
 After approval A, fill only the remaining compiled/eager Z variants. For each
 `N=1,...,9`, in increasing order:
@@ -200,11 +269,12 @@ before increasing `N`.
 ### Mandatory pause B
 
 When both Z tables are closed for their complete declared ranges, stop every
-worker, refresh once more, send the PDF link and status/dry-run evidence to the
-user, and wait for explicit approval. Do not start the remaining process
-matrices or scalar ladders before it.
+worker, refresh once more, publish the Section 5 checkpoint, obtain the support
+lane's full-page review, send the PDF link, checkpoint SHA, and status/dry-run
+evidence to the user, and wait for explicit approval. Do not start the
+remaining process matrices or scalar ladders before it.
 
-## 7. Phase C: compiled/eager matrices and remaining tables
+## 8. Phase C: compiled/eager matrices and remaining tables
 
 After approval B, run the remaining compiled/eager cells multiplicity by
 multiplicity:
@@ -224,7 +294,7 @@ document—not only the newest page. Do not proceed to `N+1` until every
 applicable slot at or below `N` is numerical or carries an authenticated
 resource/frontier status and no unexplained `N/A` remains.
 
-## 8. Review and escalation after every batch
+## 9. Review and escalation after every batch
 
 For successful cells verify five-second sampling, positive uncertainty and
 wall time, finite generation time, exact source/runtime/artifact identities,
@@ -267,7 +337,7 @@ updates are report-only. If a new epoch is necessary, preserve old attempts for
 diagnosis, reset publication caches, clean-build, and rerun the final coherent
 epoch instead of relabelling evidence.
 
-## 9. Final audit and lightweight publication
+## 10. Final audit and lightweight publication
 
 The full declared catalog contains 1646 cells and 1571 direct-agreement catalog
 edges. The audit must separate numerically verified, `>2h`, `>100GB`,
