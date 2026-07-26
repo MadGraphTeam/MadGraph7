@@ -41,6 +41,8 @@ requires:
 - selected-total versus resolved-sum closure;
 - pairwise component-level parity across compiled, eager, and recurrence,
   including identical resolved flow/helicity axes;
+- compiled runtime no greater than 1.15 times recurrence for both LC layouts
+  at batches 128 and 1024, independently for built-in SM and UFO-SM;
 - matching source, runtime, host, sample, momenta, normalization, physical-axis,
   selector, logical reduction, and applicable execution-schedule identities.
 
@@ -65,6 +67,34 @@ diagnostic lower bounds and are rejected here.
 Built-in and UFO captures must agree pointwise at `rtol=1e-12`,
 `atol=1e-15` for each layout. The two layouts are different workloads, so their
 values are not cross-compared with each other.
+
+## Compiled-versus-recurrence runtime ceiling
+
+The 15% ceiling is an acceptance condition, not a report-only comparison. For
+each built-in/UFO model, each `topology-replay`/`all-flow-union` layout, and
+each required batch 128/1024, the combiner requires:
+
+```text
+compiled subprocess median seconds/point
+    <= 1.15 * recurrence subprocess median seconds/point
+```
+
+The boundary is inclusive. Batch 1 remains required raw evidence but is not a
+cell in this throughput ceiling.
+
+The combiner does not trust stored aggregate timing fields. It first
+recomputes each lane's median and raw MAD from the retained positive
+per-subprocess seconds-per-point samples, checks the retained sample count,
+median, MAD, and native timing boundary, and only then computes the ratio.
+The accepted decision retains all eight model/layout/batch results under
+`validation.compiled_recurrence_runtime_ceiling`, including both recomputed
+medians, raw MADs, sample counts, the ratio, and the policy limit. The complete
+raw samples remain under `timings`.
+
+If any one ratio exceeds 1.15, the whole six-input decision is rejected with
+exit code 2. As with every other rejection, `validation`, `timings`, and
+`comparisons` are all null, so no partial headline comparison can be mistaken
+for accepted evidence.
 
 ## Request schema
 
@@ -140,10 +170,16 @@ is pinned separately on the command line.
       "id": "h:-1,+1,-1,+1,-1,+1,-1,+1,-1",
       "values": [-1, 1, -1, 1, -1, 1, -1, 1, -1]
     },
-    "external_leg_permutation": [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    "external_leg_permutation": [0, 1, 3, 4, 5, 6, 7, 8, 2]
   }
 }
 ```
+
+`external_leg_permutation` is the original-AmpliCol source-to-generated row
+mapping, not the pyAmpliCol artifact's identity ordering. The pinned generator
+moves the source-order `Z` leg from index 2 to generated-row index 8, giving
+exactly `[0, 1, 3, 4, 5, 6, 7, 8, 2]`. Request-template builders must retain
+that mapping.
 
 Runtime provenance is hashed after removing location-only `path`,
 `resolved_path`, `checkout`, and `working_directory` fields. All versions,
@@ -257,15 +293,79 @@ The fourth command changes the UFO layout/output paths to
 `all-flow-union`/`ufo-union`. Do not add
 `--specialize-flow-at-generation`.
 
-The AmpliCol capture producer must run the matching raw probe seven times per
-workload in an interleaved subprocess schedule, on the same momenta file and
-host. It must write the schema above directly from raw outputs. Wrapping an old
-report row or copying its scalar timing into seven rows is invalid.
+Create `request-template.json` with the final four capture references and
+`expected` object. Its `amplicol_evidence` object must reserve exactly the
+`selected-flow-helicity-sum` and `all-flow-single-helicity` keys; their values
+may remain empty objects until the capture below finishes. Then run the tracked
+strict producer against the clean detached original-AmpliCol checkout:
+
+```sh
+REQUEST_TEMPLATE=/private/tmp/arena-m0/request-template.json
+AMPLICOL_SOURCE=/private/tmp/pyamplicol-eager-compiled-arena-amplicol-m0-src
+AMPLICOL_OUTPUT=/private/tmp/arena-m0/amplicol
+AMPLICOL_CAPTURE=tools/developer/amplicol_z6g_m0_capture.py
+
+$PYTHON "$WATCHDOG" --limit-gib 30 -- \
+  $PYTHON "$AMPLICOL_CAPTURE" capture \
+  --request-template "$REQUEST_TEMPLATE" \
+  --repository "$AMPLICOL_SOURCE" \
+  --output-directory "$AMPLICOL_OUTPUT" \
+  --jobs 4 \
+  --target-seconds 5 \
+  --warmup-points 100 \
+  --minimum-points 100 \
+  --maximum-points 100000
+```
+
+The producer refuses a nonempty output directory. Before building anything it
+revalidates all four schema-6 captures with the M0 validator and requires their
+host, momenta, axes, normalization, selectors, source, and runtime contracts to
+agree. It also requires the current host, the exact clean pyAmpliCol producer
+revision, and the exact clean contributor-lock AmpliCol revision to match those
+pins. Cleanliness is checked before the original-AmpliCol build with
+`git status --porcelain=v1 --untracked-files=all`; tracked and untracked
+preexisting state are both rejected.
+
+The producer builds and snapshots `amplicol_library_benchmark`,
+`amplicol_color_probe`, the generated `libamp` library, and every regular file
+in the generated `Library/` tree while preserving its runtime-relative path.
+After the build, one real selected-flow probe authenticates the executable's
+emitted group, integral, PDG multiset, and serialized color order. The producer
+adopts that emitted row, recomputes its source permutation and colored physical
+flow, and requires both to match the request rather than trusting the
+pre-generation process-file serialization.
+
+A content-addressed launcher invokes the exact Python interpreter with
+`-I -S -B` and an immutable runtime copy of the producer, its complete imported
+`legacy_amplicol` / `legacy_oracle` helper-module set, and the contributor lock.
+It never imports those helpers from the live checkout or creates untracked
+bytecode beside them. The retained command for every sample additionally pins
+the raw momenta file and digest, source revision, stable flow or helicity ID,
+explicit flow word and helicity values, authenticated executable row,
+external-leg permutation, workload, round, and evaluated-point count.
+
+`capture-index.json` contains the two final evidence references. The output
+also retains both authoritative manifests, exactly fourteen raw-sample JSON
+records, the launcher, both probe executables, the generated library, and the
+generated process file. The two workloads always run as seven chronological
+selected-then-all-flow subprocess pairs. Each worker's only stdout is the
+strict `amplicol-m0-probe-result`; the coordinator stores it verbatim and
+revalidates its identity and numerical values. Wrapping an old report row or
+copying its scalar timing into seven rows is therefore impossible.
+
+Merge the content-addressed references into the final request without changing
+the template's four capture references or `expected` pins:
+
+```sh
+REQUEST=/private/tmp/arena-m0/request.json
+jq --slurpfile amplicol "$AMPLICOL_OUTPUT/capture-index.json" \
+  '.amplicol_evidence = $amplicol[0].amplicol_evidence' \
+  "$REQUEST_TEMPLATE" > "$REQUEST"
+```
 
 After recording exact file sizes and SHA-256 values in the request, run:
 
 ```sh
-REQUEST=/private/tmp/arena-m0/request.json
 DECISION=/private/tmp/arena-m0/decision.json
 REQUEST_SHA256="$(shasum -a 256 "$REQUEST" | awk '{print $1}')"
 
@@ -279,8 +379,70 @@ Exit code 0 means the emitted decision is accepted. Exit code 2 means rejected;
 the decision still has a canonical `content_sha256` and a non-empty `errors`
 list. An accepted decision retains every raw median/MAD and reports explicit
 pyAmpliCol/AmpliCol ratios for each model, lane, and batch, with both timing
-boundaries attached. A rejected decision never contains partial headline
-comparisons.
+boundaries attached. It also records the eight mandatory compiled/recurrence
+ceiling cells described above. A rejected decision never contains partial
+headline comparisons.
+
+## Final qq_Z6g comparison document
+
+`tools/developer/qq_z6g_final_comparison.py` renders the final detailed
+comparison at `docs/QQ_Z6G_ARENA_COMPARISON.md`. It accepts only the accepted
+combined M0 request/decision plus the frozen AArch64 pre-Arena matrix evidence.
+It re-runs the complete M0 validation and authenticates the 24 primary
+`qq_Z6g` result JSONs against their passing 168-cell matrix aggregate before
+rendering any value.
+
+The pre-Arena evidence request has kind
+`pyamplicol-qq-z6g-pre-arena-evidence-request`, schema 1, and exactly this
+shape:
+
+```json
+{
+  "kind": "pyamplicol-qq-z6g-pre-arena-evidence-request",
+  "schema_version": 1,
+  "matrix_aggregate": {
+    "path": "matrix/matrix-result.json",
+    "size_bytes": 0,
+    "sha256": "<raw file SHA-256>"
+  },
+  "primary_results": [
+    {
+      "cell_id": "<one exact frozen primary cell id>",
+      "path": "matrix/cells/<cell id>/result.json",
+      "size_bytes": 0,
+      "sha256": "<raw file SHA-256>"
+    }
+  ]
+}
+```
+
+`primary_results` must contain exactly the built-in/UFO × topology/union ×
+eager/compiled × batch 1/128/1024 Cartesian product. Unknown fields, missing
+cells, duplicate cells, changed bytes, stale aggregate digests, non-AArch64
+evidence, stale medians/MADs, failed numerical gates, or changed runtime/build
+identities reject the whole document.
+
+Run the renderer with every identity pinned explicitly:
+
+```sh
+.venv/bin/python tools/developer/qq_z6g_final_comparison.py \
+  --request "$REQUEST" \
+  --request-sha256 "$REQUEST_SHA256" \
+  --acceptance "$DECISION" \
+  --acceptance-sha256 "$DECISION_SHA256" \
+  --expected-source-revision "$FINAL_ARENA_SOURCE_REVISION" \
+  --expected-runtime-provenance-sha256 "$FINAL_ARENA_RUNTIME_SHA256" \
+  --pre-arena-manifest "$PRE_ARENA_MANIFEST" \
+  --pre-arena-manifest-sha256 "$PRE_ARENA_MANIFEST_SHA256" \
+  --expected-pre-arena-source-revision "$PRE_ARENA_SOURCE_REVISION" \
+  --expected-pre-arena-build-sha256 "$PRE_ARENA_BUILD_SHA256" \
+  --expected-pre-arena-runtime-sha256 "$PRE_ARENA_RUNTIME_SHA256"
+```
+
+The renderer binds the evidence to the measured source and runtime identities;
+it deliberately does not require the publication checkout's `HEAD` to equal
+the measured Arena revision. This permits a later report-only publication
+descendant without weakening any measured identity.
 
 ## Frozen accepted-base inputs
 

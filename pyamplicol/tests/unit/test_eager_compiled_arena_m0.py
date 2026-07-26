@@ -10,6 +10,7 @@ import statistics
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -750,6 +751,26 @@ def _rewrite_request(corpus: dict[str, Any]) -> None:
     corpus["request_ref"] = _write_json(path, corpus["request"])
 
 
+def _capture_with_compiled_recurrence_ratio(
+    capture: m0.Capture,
+    *,
+    batch: int,
+    ratio: float,
+) -> m0.Capture:
+    timings = copy.deepcopy(capture.timings)
+    recurrence = timings["recurrence"][str(batch)]
+    compiled = timings["compiled"][str(batch)]
+    compiled_values = [value * ratio for value in recurrence["raw_seconds_per_point"]]
+    compiled_median = statistics.median(compiled_values)
+    compiled["sample_count"] = len(compiled_values)
+    compiled["median_seconds_per_point"] = compiled_median
+    compiled["mad_seconds_per_point"] = statistics.median(
+        abs(value - compiled_median) for value in compiled_values
+    )
+    compiled["raw_seconds_per_point"] = compiled_values
+    return replace(capture, timings=timings)
+
+
 def test_positive_fixture_emits_content_addressed_acceptance(
     tmp_path: Path,
 ) -> None:
@@ -768,6 +789,130 @@ def test_positive_fixture_emits_content_addressed_acceptance(
     ]["1024"]
     assert comparison["pyamplicol_over_amplicol"] > 0.0
     assert comparison["amplicol_boundary"] == "amplitude-evaluation"
+    ceiling = decision["validation"]["compiled_recurrence_runtime_ceiling"]
+    assert ceiling["passes"] is True
+    assert ceiling["required_batches"] == list(m0.COMPILED_RECURRENCE_BATCHES)
+    assert ceiling["maximum_compiled_over_recurrence"] == (
+        m0.MAX_COMPILED_OVER_RECURRENCE
+    )
+    assert {
+        (model, layout, int(batch))
+        for model, model_cells in ceiling["cells"].items()
+        for layout, layout_cells in model_cells.items()
+        for batch in layout_cells
+    } == {
+        (model, layout, batch)
+        for model in m0.MODELS
+        for layout in m0.LAYOUTS
+        for batch in m0.COMPILED_RECURRENCE_BATCHES
+    }
+
+
+def test_compiled_recurrence_ceiling_is_inclusive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _make_corpus(tmp_path)
+    validate_capture = m0._validate_capture
+
+    def at_ceiling(
+        loaded: m0.LoadedJson,
+        *,
+        model: str,
+        layout: str,
+        expected: dict[str, Any],
+        benchmark: ModuleType,
+    ) -> m0.Capture:
+        capture = validate_capture(
+            loaded,
+            model=model,
+            layout=layout,
+            expected=expected,
+            benchmark=benchmark,
+        )
+        for batch in m0.COMPILED_RECURRENCE_BATCHES:
+            capture = _capture_with_compiled_recurrence_ratio(
+                capture,
+                batch=batch,
+                ratio=m0.MAX_COMPILED_OVER_RECURRENCE,
+            )
+        return capture
+
+    monkeypatch.setattr(m0, "_validate_capture", at_ceiling)
+    decision, code = _run(tmp_path, corpus)
+
+    assert code == 0
+    assert decision["accepted"] is True
+    ceiling = decision["validation"]["compiled_recurrence_runtime_ceiling"]
+    for model in m0.MODELS:
+        for layout in m0.LAYOUTS:
+            for batch in m0.COMPILED_RECURRENCE_BATCHES:
+                cell = ceiling["cells"][model][layout][str(batch)]
+                assert cell["passes"] is True
+                assert cell["compiled_over_recurrence"] == pytest.approx(
+                    m0.MAX_COMPILED_OVER_RECURRENCE
+                )
+
+
+@pytest.mark.parametrize(
+    ("target_model", "target_layout", "target_batch"),
+    [
+        pytest.param(model, layout, batch, id=f"{model}-{layout}-{batch}")
+        for model in m0.MODELS
+        for layout in m0.LAYOUTS
+        for batch in m0.COMPILED_RECURRENCE_BATCHES
+    ],
+)
+def test_rejects_every_required_compiled_recurrence_ceiling_cell(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_model: str,
+    target_layout: str,
+    target_batch: int,
+) -> None:
+    corpus = _make_corpus(tmp_path)
+    validate_capture = m0._validate_capture
+
+    def over_ceiling(
+        loaded: m0.LoadedJson,
+        *,
+        model: str,
+        layout: str,
+        expected: dict[str, Any],
+        benchmark: ModuleType,
+    ) -> m0.Capture:
+        capture = validate_capture(
+            loaded,
+            model=model,
+            layout=layout,
+            expected=expected,
+            benchmark=benchmark,
+        )
+        if model == target_model and layout == target_layout:
+            capture = _capture_with_compiled_recurrence_ratio(
+                capture,
+                batch=target_batch,
+                ratio=m0.MAX_COMPILED_OVER_RECURRENCE + 1.0e-6,
+            )
+        return capture
+
+    monkeypatch.setattr(m0, "_validate_capture", over_ceiling)
+    decision, code = _run(tmp_path, corpus)
+
+    assert code == 2
+    assert decision["accepted"] is False
+    assert decision["status"] == "rejected"
+    assert decision["validation"] is None
+    assert decision["timings"] is None
+    assert decision["comparisons"] is None
+    assert len(decision["errors"]) == 1
+    error = decision["errors"][0]
+    assert f"{target_model}/{target_layout}" in error
+    assert f"batch {target_batch}" in error
+    assert "compiled qq_Z6g exceeds the recurrence ceiling" in error
+    assert decision["policy"]["maximum_compiled_over_recurrence"] == (
+        m0.MAX_COMPILED_OVER_RECURRENCE
+    )
 
 
 def test_producer_shaped_builtin_model_identity_split_is_accepted(

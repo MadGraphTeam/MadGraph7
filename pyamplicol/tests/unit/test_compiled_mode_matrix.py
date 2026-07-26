@@ -256,6 +256,82 @@ def test_canonical_matrix_is_the_documented_168_cells() -> None:
     assert len({cell.artifact_group_id for cell in cells}) == 56
 
 
+def test_stable_file_identity_projection_only_removes_mtimes() -> None:
+    value = {
+        "path": "/fixed/tool.py",
+        "resolved_path": "/fixed/tool.py",
+        "size_bytes": 123,
+        "sha256": "a" * 64,
+        "mtime_ns": 100,
+        "nested": [
+            {
+                "path": "/fixed/model",
+                "mtime_ns": 200,
+                "digest": {"sha256": "b" * 64},
+            }
+        ],
+    }
+    projected = matrix._stable_file_identity_value(value)
+    assert projected == {
+        "path": "/fixed/tool.py",
+        "resolved_path": "/fixed/tool.py",
+        "size_bytes": 123,
+        "sha256": "a" * 64,
+        "nested": [
+            {
+                "path": "/fixed/model",
+                "digest": {"sha256": "b" * 64},
+            }
+        ],
+    }
+    assert matrix._stable_file_identity_value(projected) == projected
+
+
+def test_stable_runtime_projection_drops_only_host_observations() -> None:
+    runtime = {
+        "platform": "Linux-6.11.0-runner-a-x86_64",
+        "python": "3.11.9",
+        "executable": {
+            "path": "/tmp/runtime/current/bin/python",
+            "size_bytes": 123,
+            "sha256": "a" * 64,
+            "mtime_ns": 100,
+        },
+        "native_module": {
+            "path": "/tmp/runtime/current/pyamplicol/_rusticol.abi3.so",
+            "sha256": "b" * 64,
+        },
+        "build_info": {
+            "payload": {
+                "source_revision": CURRENT_SOURCE_REVISION,
+                "native_build_inputs_sha256": CURRENT_NATIVE_INPUTS,
+            }
+        },
+    }
+    equivalent = copy.deepcopy(runtime)
+    equivalent["platform"] = "Linux-6.12.0-runner-b-x86_64"
+    equivalent["executable"]["mtime_ns"] = 200
+    assert matrix._stable_runtime_identity_value(runtime) == (
+        matrix._stable_runtime_identity_value(equivalent)
+    )
+
+    changed_path = copy.deepcopy(equivalent)
+    changed_path["executable"]["path"] = "/tmp/another/bin/python"
+    assert matrix._stable_runtime_identity_value(runtime) != (
+        matrix._stable_runtime_identity_value(changed_path)
+    )
+    changed_sha = copy.deepcopy(equivalent)
+    changed_sha["native_module"]["sha256"] = "c" * 64
+    assert matrix._stable_runtime_identity_value(runtime) != (
+        matrix._stable_runtime_identity_value(changed_sha)
+    )
+    changed_build = copy.deepcopy(equivalent)
+    changed_build["build_info"]["payload"]["source_revision"] = "f" * 40
+    assert matrix._stable_runtime_identity_value(runtime) != (
+        matrix._stable_runtime_identity_value(changed_build)
+    )
+
+
 def test_cell_command_wires_physical_ordinal_selectors_and_ufo_model() -> None:
     topology = next(
         cell

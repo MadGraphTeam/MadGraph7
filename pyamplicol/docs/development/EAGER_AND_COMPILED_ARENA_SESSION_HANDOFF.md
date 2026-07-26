@@ -5,6 +5,37 @@ Operational worktree:
 `/Users/vjhirsch/HEP_programs/pyAmpliCol/PREPARE_STANDALONE_PYAMPLICOL/pyamplicol_eager_and_compiled_arena`  
 Feature branch: `eager_and_compiled_arena`
 
+## 2026-07-26 continuation status
+
+This ledger records the state at its original handoff and is intentionally
+not rewritten retroactively. The implementation history after that handoff
+has superseded several unfinished items below:
+
+- eager and compiled Direct-Arena execution is implemented for LC topology,
+  LC all-flow union, NLC contracted color, and full contracted color;
+- compiled precision-32 NLC/full contraction and the later report physics
+  canaries are fixed;
+- exact-source all-JIT, four-independent-quark-line, color, selector, API,
+  source, artifact, and runtime-identity gates now exist;
+- the complete 168-cell AArch64 matrix and its eight-shard x86-64 equivalent
+  have strict numerical, performance, resource, provenance, and postflight
+  acceptance logic;
+- the authoritative qq_Z6g gate covers built-in/UFO-SM and
+  topology/union workloads, compares eager/compiled/recurrence with seven
+  paired subprocess rounds, and requires compiled batch-128/1024 performance
+  to remain within 15% of recurrence;
+- a pinned original-AmpliCol producer authenticates both selected-flow and
+  all-flow evidence, including the generated executable row and complete
+  generated-library payload.
+
+The migration goal is still active at this update. Remaining work is
+execution rather than another runtime design change: freeze one final clean
+feature SHA, build its exact candidate, run the full local and x86 acceptance
+campaigns, populate the authenticated qq_Z6g comparison, land that SHA on
+`main`, and complete the profile-scoped 742-cell report regeneration and
+publication audit. The exact repository and evidence manifests remain
+authoritative over prose in the older sections below.
+
 ## Mandatory restart directive
 
 The next implementation session must begin by:

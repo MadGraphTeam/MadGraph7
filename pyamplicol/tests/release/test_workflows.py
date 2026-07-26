@@ -55,7 +55,7 @@ def test_native_toolchains_and_manylinux_image_are_immutable() -> None:
     assert "rust-toolchain@stable" not in workflows
     assert "default-toolchain stable" not in workflows
     assert "manylinux_2_28_x86_64:latest" not in workflows
-    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 5
+    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 6
     assert workflows.count(f"default-toolchain {RUST_TOOLCHAIN}") == 2
     assert workflows.count(MANYLINUX_IMAGE) == 2
     assert "cargo install just --version 1.46.0 --locked" in workflows
@@ -99,8 +99,8 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert "retention-days:" in workflow
     assert "id-token: write" not in workflow
     assert "contents: read" in workflow
-    assert workflow.count("dependencies/install_dependencies.py") == 3
-    assert workflow.count("--without-legacy-amplicol") == 3
+    assert workflow.count("dependencies/install_dependencies.py") == 5
+    assert workflow.count("--without-legacy-amplicol") == 5
     assert workflow.count("--no-build") == 3
     assert "Focused clean-checkout release tests" in workflow
     assert "PYAMPLICOL_BUILD_MODE: release" in workflow
@@ -177,6 +177,146 @@ def test_candidate_native_x86_acceptance_is_exact_and_content_bound() -> None:
     assert "all_evidence_files_content_bound" in helper
 
 
+def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
+    workflow = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
+    assert "/private/tmp/pyamplicol-arena-x86" not in workflow
+    assert "continue-on-error" not in workflow
+    for job in (
+        "x86-performance-runtime-bundle",
+        "x86-performance-matrix-shard",
+        "x86-qq-recurrence-capture",
+        "x86-performance-matrix-aggregate",
+        "x86-qq-recurrence-acceptance",
+        "x86-portable-candidate-acceptance",
+    ):
+        assert workflow.count(f"  {job}:\n") == 1
+
+    runtime_job = workflow.split(
+        "  x86-performance-runtime-bundle:\n",
+        maxsplit=1,
+    )[1].split("\n  x86-performance-matrix-shard:\n", maxsplit=1)[0]
+    assert "runs-on: ubuntu-24.04" in runtime_job
+    assert "timeout-minutes: 360" in runtime_job
+    assert "needs: release-tool-tests" in runtime_job
+    assert (
+        "BASELINE_SOURCE_ROOT: "
+        "/private/tmp/pyamplicol-eager-compiled-arena-base-src"
+        in runtime_job
+    )
+    private_tmp_setup = "sudo install -d -m 1777 /private/tmp"
+    assert private_tmp_setup in runtime_job
+    assert 'test "$(stat -c \'%a\' /private/tmp)" = 1777' in runtime_job
+    assert runtime_job.index(private_tmp_setup) < runtime_job.index(
+        "git worktree add --detach"
+    )
+    assert "443f354a467cdda187996bef1a41fbd5a00ae28d" in runtime_job
+    assert "freeze-baseline" in runtime_job
+    assert "frozen-baseline-attestation.json" in runtime_job
+    assert runtime_job.count("build_release_artifacts.py") == 2
+    assert "bundle-dependencies" in runtime_job
+    assert "prepare-ufo" in runtime_job
+    assert "materialize" in runtime_job
+    assert "create-manifest" in runtime_job
+    assert "verify" in runtime_job
+    assert "if-no-files-found: error" in runtime_job
+
+    shard_job = workflow.split(
+        "  x86-performance-matrix-shard:\n",
+        maxsplit=1,
+    )[1].split("\n  x86-qq-recurrence-capture:\n", maxsplit=1)[0]
+    assert "needs: x86-performance-runtime-bundle" in shard_job
+    assert "timeout-minutes: 360" in shard_job
+    assert "shard: [0, 1, 2, 3, 4, 5, 6, 7]" in shard_job
+    assert "compiled_mode_matrix_x86.py shard" in shard_job
+    assert "--shard-count 8" in shard_job
+    assert "--samples 7" in shard_job
+    assert "--target-runtime 5" in shard_job
+    assert "--minimum-samples 7" in shard_job
+    assert "--warmup-runs 2" in shard_job
+    assert "--rerun-results" in shard_job
+    assert "--regenerate-artifacts" in shard_job
+    assert "runtime-bundle.json" in shard_job
+
+    capture_job = workflow.split(
+        "  x86-qq-recurrence-capture:\n",
+        maxsplit=1,
+    )[1].split("\n  x86-performance-matrix-aggregate:\n", maxsplit=1)[0]
+    assert "timeout-minutes: 360" in capture_job
+    for role in (
+        "builtin-topology",
+        "builtin-union",
+        "ufo-topology",
+        "ufo-union",
+    ):
+        assert capture_job.count(f"role: {role}") == 1
+    assert "recurrence_z6g_benchmark.py" in capture_job
+    assert capture_job.count("--mode compiled") == 1
+    assert capture_job.count("--mode eager") == 1
+    assert capture_job.count("--mode recurrence") == 1
+    assert "--target-runtime 5" in capture_job
+    assert "--minimum-samples 7" in capture_job
+    assert "--subprocess-samples 7" in capture_job
+    assert "--validation-samples 10" in capture_job
+    assert "--generation-timeout 10800" in capture_job
+    assert "--profile-timeout 1800" in capture_job
+    assert "--specialize-flow-at-generation" not in capture_job
+    assert "flow:2,4,5,6,7,8,9,1" in capture_job
+    assert "h:-1,+1,-1,+1,-1,+1,-1,+1,-1" in capture_job
+    assert (
+        "path: ${{ env.QQ_UPLOAD_ROOT }}/${{ matrix.role }}.json"
+        in capture_job
+    )
+    assert "path: ${{ env.QQ_CAPTURE_ROOT }}/" not in capture_job
+    assert "path: ${{ env.QQ_WORK_ROOT }}" not in capture_job
+    assert (
+        '"$QQ_UPLOAD_ROOT/${{ matrix.role }}.json"'
+        in capture_job
+    )
+
+    aggregate_job = workflow.split(
+        "  x86-performance-matrix-aggregate:\n",
+        maxsplit=1,
+    )[1].split("\n  x86-qq-recurrence-acceptance:\n", maxsplit=1)[0]
+    assert "compiled_mode_matrix_x86.py aggregate" in aggregate_job
+    assert "--shard-count 8" in aggregate_job
+    assert "merge-multiple: true" in aggregate_job
+    assert "compiled-mode-matrix-x86-aggregate.json" in aggregate_job
+
+    qq_job = workflow.split(
+        "  x86-qq-recurrence-acceptance:\n",
+        maxsplit=1,
+    )[1].split("\n  x86-portable-candidate-acceptance:\n", maxsplit=1)[0]
+    assert "x86_qq_recurrence_acceptance.py" in qq_job
+    assert "merge-multiple: true" in qq_job
+    assert "--builtin-topology" in qq_job
+    assert "$QQ_CAPTURE_ROOT/builtin-topology.json" in qq_job
+    assert "$QQ_CAPTURE_ROOT/builtin-topology/result.json" not in qq_job
+    assert "--builtin-union" in qq_job
+    assert "--ufo-topology" in qq_job
+    assert "--ufo-union" in qq_job
+
+    final_job = workflow.split(
+        "  x86-portable-candidate-acceptance:\n",
+        maxsplit=1,
+    )[1].split("\n  macos-candidate:\n", maxsplit=1)[0]
+    for need in (
+        "candidate-source-validation",
+        "x86-performance-matrix-aggregate",
+        "x86-qq-recurrence-acceptance",
+    ):
+        assert f"- {need}" in final_job
+    assert "x86_portable_performance_acceptance.py" in final_job
+    assert "arena-native-x86-acceptance.json" in final_job
+    assert "compiled-mode-matrix-x86-aggregate.json" in final_job
+    assert "x86-qq-recurrence-acceptance.json" in final_job
+    assert '--expected-revision "${{ github.sha }}"' in final_job
+    assert "if-no-files-found: error" in final_job
+
+    assert workflow.count(
+        "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0"
+    ) == 9
+
+
 def test_automatic_tests_cover_generation_config_provenance() -> None:
     workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
     trigger = workflow.split("on:\n", maxsplit=1)[1].split(
@@ -221,13 +361,13 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
     candidate = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
     release = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
 
-    assert candidate.count(MEMORY_WATCHDOG) == 12
+    assert candidate.count(MEMORY_WATCHDOG) == 19
     assert (
         _guarded_count(
             candidate,
             r'(?:python|"\$PYTHON") dependencies/install_dependencies\.py',
         )
-        == 3
+        == 5
     )
     assert (
         _guarded_count(
@@ -269,10 +409,17 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
     assert (
         _guarded_count(
             candidate,
-            r'(?:python|"\$PYTHON") tools/release/build_release_artifacts\.py',
+            r'(?:\.venv/bin/python|python|"\$PYTHON") '
+            r"tools/release/build_release_artifacts\.py",
         )
-        == 2
+        == 3
     )
+    assert (
+        f"{MEMORY_WATCHDOG} \\\n"
+        '            "$BASELINE_SOURCE_ROOT/.venv/bin/python" \\\n'
+        '            "$BASELINE_SOURCE_ROOT/tools/release/'
+        'build_release_artifacts.py"'
+    ) in candidate
 
     assert "ulimit -v" not in release
     assert release.count(MEMORY_WATCHDOG) == 11

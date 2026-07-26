@@ -395,6 +395,57 @@ def _mapping(value: object) -> Mapping[str, Any] | None:
     return value if isinstance(value, Mapping) else None
 
 
+def _stable_file_identity_value(value: object) -> object:
+    """Remove observational mtimes but retain content and path identities.
+
+    Git checkout and artifact-extraction mtimes vary between independent x86
+    shard runners.  Resolved paths, sizes, and SHA-256 digests remain part of
+    the identity.  This projection is deliberately limited to ``mtime_ns``;
+    it does not rewrite paths or any digest-covered runtime object.
+    """
+
+    if isinstance(value, Mapping):
+        return {
+            key: _stable_file_identity_value(item)
+            for key, item in value.items()
+            if key != "mtime_ns"
+        }
+    if isinstance(value, list):
+        return [_stable_file_identity_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_stable_file_identity_value(item) for item in value)
+    return value
+
+
+def _stable_runtime_identity_value(
+    value: object,
+    *,
+    _root: bool = True,
+) -> object:
+    """Project a runtime identity onto cross-runner immutable observations.
+
+    The top-level kernel/platform string and filesystem mtimes are host
+    observations.  Fixed paths, Python/package versions, sizes, every digest,
+    build provenance, native inputs, and dependency identities remain exact.
+    """
+
+    if isinstance(value, Mapping):
+        return {
+            key: _stable_runtime_identity_value(item, _root=False)
+            for key, item in value.items()
+            if key != "mtime_ns" and not (_root and key == "platform")
+        }
+    if isinstance(value, list):
+        return [
+            _stable_runtime_identity_value(item, _root=False) for item in value
+        ]
+    if isinstance(value, tuple):
+        return tuple(
+            _stable_runtime_identity_value(item, _root=False) for item in value
+        )
+    return value
+
+
 def _installation_identity_errors(
     identity: object,
     *,
@@ -653,7 +704,9 @@ def _cell_evidence(
             errors.append("measurement lane/runtime identity is invalid")
             continue
         measurement_counts[str(lane)] += 1
-        measurement_runtime_digests[str(lane)].add(_canonical_sha256(runtime_identity))
+        measurement_runtime_digests[str(lane)].add(
+            _canonical_sha256(_stable_runtime_identity_value(runtime_identity))
+        )
         numerical = _mapping(measurement.get("warmed_numerical_result"))
         numerical_values = (
             numerical.get("values_f64") if numerical is not None else None
@@ -773,7 +826,9 @@ def _cell_evidence(
             if value is None:
                 errors.append(f"provenance.{key} is absent")
             else:
-                provenance_digests[key] = _canonical_sha256(value)
+                provenance_digests[key] = _canonical_sha256(
+                    _stable_file_identity_value(value)
+                )
                 if key in current_tool_paths:
                     record = _mapping(value)
                     expected_sha = _sha256_file(current_tool_paths[key])
@@ -832,6 +887,29 @@ def audit_results(
         )
         for cell_id in sorted(set(expected) & observed_ids)
     ]
+    return audit_cell_evidence(
+        evidence,
+        missing=missing,
+        unexpected=unexpected,
+        expected_builds=expected_builds,
+    )
+
+
+def audit_cell_evidence(
+    evidence: Sequence[Mapping[str, Any]],
+    *,
+    missing: Sequence[str],
+    unexpected: Sequence[str],
+    expected_builds: Mapping[str, Mapping[str, str]],
+) -> dict[str, Any]:
+    """Aggregate already authenticated cell evidence for the frozen matrix.
+
+    The regular single-host driver builds this evidence directly above.  The
+    x86 shard aggregator uses the same function after each shard has validated
+    its own host-local paths and artifact trees.  Keeping the global gates in
+    one function prevents the sharded path from weakening the 168-cell
+    acceptance contract.
+    """
 
     identity_sets: defaultdict[str, set[str]] = defaultdict(set)
     for record in evidence:
