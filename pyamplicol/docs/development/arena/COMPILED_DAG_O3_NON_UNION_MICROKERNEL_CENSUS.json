@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "source_revision": "f4606fa9be52355b4a66efcfa2b7072d489205eb",
   "process": {
     "definition": "u u~ > Z + 6g",
@@ -20,14 +20,27 @@
     "amplitude_root_count": 2
   },
   "profitability_denominator": {
-    "contract": "materialized-executable-schedule-repeated-evaluation-groups-v1",
-    "weighting": "unique-evaluation-group-identity",
-    "active_evaluation_group_id_count": 203,
-    "active_repeated_evaluation_group_id_count": 0,
-    "eligible_repeated_evaluation_group_id_count": 0,
-    "coverage": null,
-    "status": "undefined-empty-denominator",
-    "provenance": "The original plan and its pre-census acceptance implementation 105c00e define this identity-weighted contract. Every materialized evaluation_group_id has fanout one."
+    "contract": "materialized-active-repeated-prepared-kernel-occurrences-v1",
+    "weighting": "active-materialized-occurrence",
+    "active_occurrence_count": 203,
+    "active_repeated_prepared_kernel_identity_count": 5,
+    "eligible_occurrence_count": 103,
+    "coverage": 0.5073891625615764,
+    "coverage_basis_points": 5074,
+    "status": "passed",
+    "active_prepared_kernel_occurrence_counts": {
+      "4": 35,
+      "7": 49,
+      "24": 49,
+      "36": 40,
+      "41": 30
+    },
+    "eligible_prepared_kernel_occurrence_counts": {
+      "4": 5,
+      "7": 49,
+      "24": 49
+    },
+    "provenance": "User-authorized cutover from singleton evaluation_group identities to globally weighted occurrences of repeated prepared kernels in the 203-interaction materialized schedule."
   },
   "vector_weyl_slice": {
     "complete_current_ownership": true,
@@ -118,6 +131,43 @@
       }
     ]
   },
+  "three_vector_singleton_slice": {
+    "complete_current_ownership": true,
+    "structurally_homogeneous": true,
+    "singleton_only": true,
+    "eligible_destination_count": 5,
+    "eligible_destination_ids": [
+      15,
+      17,
+      19,
+      21,
+      23
+    ],
+    "invocation_count": 5,
+    "attachment_count": 5,
+    "overwrite_attachment_count": 5,
+    "accumulate_attachment_count": 0,
+    "vertex_kernel_count": 1,
+    "vertex_kernel": {
+      "prepared_kernel_id": 4,
+      "signature_sha256": "120acbff47e08ce698a108c3c8b0758555d5292f24c6b05c4504a977714ebd8c",
+      "invocation_count": 5,
+      "complex_input_count": 16,
+      "complex_output_count": 4,
+      "source_bytes": 16556,
+      "proof_class": "builtin-sm:three-vector-current"
+    },
+    "finalizer": {
+      "kind": "propagator",
+      "prepared_kernel_id": 37,
+      "signature_sha256": "b04f53f0c0046718e3090d041bea2f7d31dd363f02d1f7fc614ce620a7e7cacd",
+      "complex_input_count": 8,
+      "complex_output_count": 4,
+      "source_bytes": 1896
+    },
+    "estimated_semantic_row_bytes": 1440,
+    "descriptor_bytes": 776
+  },
   "patchless_code_shape_probe": {
     "purpose": "profitability upper bound only",
     "representation": "four chirality-by-propagation contribution sources with the linear massless finalizer distributed into each source",
@@ -141,91 +191,66 @@
   },
   "proceed_gates": {
     "coverage": {
-      "denominator_contract": "materialized-executable-schedule-repeated-evaluation-groups-v1",
+      "denominator_contract": "materialized-active-repeated-prepared-kernel-occurrences-v1",
       "required_basis_points": 5000,
-      "observed_numerator": 0,
-      "observed_denominator": 0,
-      "observed_basis_points": null,
-      "passed": false
+      "observed_numerator": 103,
+      "observed_denominator": 203,
+      "observed_basis_points": 5074,
+      "passed": true
     },
     "projected_source_compression": {
       "maximum_basis_points": 2500,
-      "unique_table_source_bytes": 3266,
-      "occurrence_expanded_replaced_source_bytes": 160034,
-      "observed_basis_points": 204,
-      "passed": true
+      "unique_table_vertex_source_bytes": 19822,
+      "occurrence_expanded_replaced_vertex_source_bytes": 242814,
+      "observed_basis_points": 816,
+      "passed": true,
+      "qualification": "Exact prepared-expression bytes for the two vector-Weyl kernels and the one authorized three-vector kernel; finalizers excluded from both sides."
     },
-    "projected_machine_code": {
+    "dominant_vector_core_projected_machine_code": {
       "maximum_basis_points": 2500,
       "direct_table_code_bytes": 11584,
       "projected_replaced_code_bytes": 92536,
       "observed_basis_points": 1252,
       "passed": true,
-      "qualification": "standalone profitability probe; the accepted implementation would retain post-accumulation finalization"
+      "qualification": "Standalone patchless probe covers the dominant 98 vector-Weyl occurrences only. No three-vector machine-code value is invented; complete candidate landing still requires the exact selected-code gate."
     },
     "hard_bounds": {
       "maximum_kernel_identities": 8,
-      "observed_vertex_kernel_identities": 2,
-      "observed_patchless_probe_kernel_identities": 4,
+      "observed_vertex_kernel_identities": 3,
+      "observed_known_kernel_and_finalizer_identities": 7,
       "maximum_complex_inputs": 16,
-      "observed_maximum_complex_inputs": 6,
-      "maximum_complex_outputs": 2,
-      "observed_maximum_complex_outputs": 2,
+      "observed_maximum_complex_inputs": 16,
+      "maximum_complex_outputs_by_family": {
+        "vector-weyl": 2,
+        "three-vector-singleton": 4
+      },
+      "observed_maximum_complex_outputs": 4,
       "maximum_source_payload_bytes": 65536,
-      "observed_maximum_source_payload_bytes": 1634,
+      "observed_maximum_source_payload_bytes": 16556,
       "maximum_semantic_table_bytes": 4194304
     }
   },
   "denominator_sensitivity": [
     {
       "kind": "global-repeated-prepared-kernel-occurrences",
-      "numerator": 98,
+      "numerator": 103,
       "denominator": 203,
-      "basis_points": 4828,
-      "accepted": false,
-      "reason": "useful cost-weighted proxy, but not the original evaluation-group identity contract"
+      "basis_points": 5074,
+      "accepted": true,
+      "reason": "user-authorized global cost-weighted materialized-schedule denominator"
     },
     {
-      "kind": "global-repeated-prepared-kernel-identities",
-      "numerator": 2,
-      "denominator": 5,
-      "basis_points": 4000,
-      "accepted": false
-    },
-    {
-      "kind": "all-active-current-destinations",
-      "numerator": 26,
-      "denominator": 55,
-      "basis_points": 4727,
-      "accepted": false
-    },
-    {
-      "kind": "multi-contribution-occurrences",
-      "numerator": 94,
-      "denominator": 189,
-      "basis_points": 4974,
-      "accepted": false
-    },
-    {
-      "kind": "selected-vector-weyl-family-only",
-      "numerator": 98,
-      "denominator": 98,
-      "basis_points": 10000,
-      "accepted": false,
-      "reason": "tautological family-restricted denominator"
-    },
-    {
-      "kind": "materialized-repeated-evaluation-group-identities",
+      "kind": "superseded-materialized-repeated-evaluation-group-identities",
       "numerator": 0,
       "denominator": 0,
-      "accepted": true,
+      "accepted": false,
       "result": "undefined",
-      "reason": "authoritative contract; all 203 materialized evaluation_group_id values have fanout one"
+      "reason": "Every materialized evaluation_group_id has fanout one, so this identity denominator cannot measure source-kernel repetition."
     }
   ],
-  "smallest_structural_scope_extension": {
-    "authorized_by_current_plan": false,
-    "reason": "This is exactly the four-component three-vector family deferred until after a 5-10% first-slice benchmark.",
+  "authorized_structural_scope_extension": {
+    "authorized_by_user": true,
+    "reason": "The user directed implementation to continue without another authorization pause; this is the smallest structural extension that crosses the global 50% occurrence gate.",
     "current_ids": [
       15,
       17,
@@ -252,12 +277,16 @@
     "pinned_revision": "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2",
     "direct_table_exact_code_shape_available": true,
     "executed_direct_application_exact_code_shape_available": false,
-    "reason": "The pinned public API exposes DirectTable scalar/SIMD code shapes but not the privately lowered DirectApplication/DirectApplet machine-code size."
+    "landing_metric_policy": "fail-closed-exact-executed-selected-machine-code-only",
+    "accepted_metric_kind": "executed-selected-machine-code-scalar-plus-simd-v1",
+    "portable_source_application_bytes_are_machine_code": false,
+    "reason": "The pinned public API exposes DirectTable scalar/SIMD code shapes but not the privately lowered DirectApplication/DirectApplet machine-code size. Source bytes and DirectTable-only bytes remain diagnostic and cannot satisfy the 25% landing gate."
   },
   "decision": {
-    "proceed": false,
-    "reason": "mandatory-repeated-evaluation-group-denominator-is-empty",
-    "implementation_started": false,
-    "candidate_may_land": false
+    "proceed": true,
+    "reason": "authorized-vector-weyl-plus-three-vector-singleton-slice-covers-103-of-203-occurrences",
+    "implementation_started": true,
+    "authorization_pause_required": false,
+    "candidate_may_land": "only-after-all-exact-acceptance-gates-pass"
   }
 }

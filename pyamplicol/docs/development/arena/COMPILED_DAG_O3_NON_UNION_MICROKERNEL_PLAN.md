@@ -92,9 +92,27 @@ selected current. The first contribution overwrites, later contributions
 accumulate in original order, and the ordinary propagator/finalizer runs last.
 No selected destination is split between table and residual execution.
 
-Under that corrected interpretation, all 26 two-component destinations are
-wholly eligible. Their 98 contributions collapse to two canonical
-vector--Weyl vertex kernels, used 49 times per chirality:
+The user subsequently authorized the profitability denominator to follow the
+actual repeated source unit: each active occurrence of a prepared-kernel
+identity that repeats in the 203-interaction materialized schedule. This
+replaces the empty `evaluation_group_id` identity denominator. Those IDs
+identify concrete execution rows and all have fanout one; they do not identify
+shared generated source.
+
+The frozen global prepared-kernel occurrence distribution is:
+
+| Prepared kernel | Active occurrences |
+|---:|---:|
+| 4 | 35 |
+| 7 | 49 |
+| 24 | 49 |
+| 36 | 40 |
+| 41 | 30 |
+| **Total** | **203** |
+
+All 26 two-component destinations are wholly eligible. Their 98 contributions
+collapse to two canonical vector--Weyl vertex kernels, used 49 times per
+chirality:
 
 | Prepared kernel | Chirality | Calls | Complex inputs | Complex outputs | Source bytes |
 |---:|---:|---:|---:|---:|---:|
@@ -107,17 +125,28 @@ through six and two destinations at width seven. It yields 26 overwrite and
 finalizer classes. The corrected slice is therefore structurally compact and
 fits every hard arity, output, kernel-count, and source-size bound.
 
-The immutable profitability gate nevertheless cannot pass. The original plan
-and its pre-census acceptance implementation (`105c00e`) define the
-denominator as the set of unique, active, repeated
-`evaluation_group_id` values in the materialized executable schedule. All 203
-materialized IDs have fanout one, so that authoritative denominator is empty
-and its coverage ratio is undefined. The acceptance contract explicitly
-rejects an empty denominator; it is not a vacuous 100% pass.
+The initial implementation also includes the smallest structural extension:
+five singleton four-component gluon currents, current IDs
+`15,17,19,21,23`. They all use prepared three-vector kernel 4 and vector
+propagator 37. Eligibility is structural: each current is homogeneous, owns
+exactly one contribution, has 16 complex inputs and four complete complex
+outputs, and has no residual contribution. Kernel 4 has canonical signature
+`120acbff47e08ce698a108c3c8b0758555d5292f24c6b05c4504a977714ebd8c`
+and 16,556 expression bytes. Propagator 37 has canonical signature
+`b04f53f0c0046718e3090d041bea2f7d31dd363f02d1f7fc614ce620a7e7cacd`.
+
+This authorized slice covers `103/203 = 50.739%` of the global prepared-kernel
+occurrences and therefore passes the 50% gate. It uses three vertex identities,
+at most seven known vertex/finalizer identities, at most 16 inputs, and no more
+than two outputs for vector--Weyl kernels or four outputs for the singleton
+three-vector family. Its prepared vertex source compression is
+`19,822/242,814 = 8.164%`, and its estimated additional semantic rows are
+1,440 bytes. Four-output kernels outside this exact structural family remain
+ineligible.
 
 The captured census JSON is
 `COMPILED_DAG_O3_NON_UNION_MICROKERNEL_CENSUS.json`, with SHA-256
-`cf9c31587c0ecd2519e7c355adc346f67b0125bc0705a0d6dbaddda65deb00ce`.
+`aff953353500d6bff3a15e9dc6f44449ca2ce227439ffcae985b4db4bf5f0b88`.
 It was produced from the clean generation worktree by constructing the
 existing unit-test `u u~ > Z g g g g g g` evaluator process and calling
 the materialized-stage and prepared-kernel catalog builders directly; no
@@ -125,34 +154,16 @@ pyAmpliCol native rebuild participated in the structural census.
 
 | Census quantity | Required | Observed |
 |---|---:|---:|
-| Active materialized evaluation-group IDs | diagnostic | 203 |
-| Repeated evaluation-group IDs | non-empty denominator | 0 |
-| Wholly owned vector--Weyl destinations | diagnostic | 26 / 55 (47.273%) |
-| Prepared-motif occurrence proxy | diagnostic | 98 / 203 (48.276%) |
-| Prepared-motif identity proxy | diagnostic | 2 / 5 (40.000%) |
-| Canonical vertex kernel identities | at most 8 | 2 |
-| Maximum complex input/output width | at most 16 / 2 | 6 / 2 |
-| Projected DirectTable/replaced code | at most 25% | 11,584 / 92,536 (12.518%) |
-| Unique/occurrence-expanded vertex source | diagnostic | 3,266 / 160,034 (2.041%) |
+| Global repeated prepared-kernel occurrences | denominator | 203 |
+| Wholly owned vector--Weyl destinations | exactly 26 | 26 |
+| Structurally homogeneous singleton three-vector destinations | exactly 5 | 5 |
+| Eligible occurrences | at least 50% | 103 / 203 (50.739%) |
+| Canonical vertex kernel identities | at most 8 | 3 |
+| Maximum complex inputs | at most 16 | 16 |
+| Vector--Weyl outputs | exactly 2 | 2 |
+| Singleton three-vector outputs | exactly 4 | 4 |
+| Prepared vertex source ratio | at most 25% | 19,822 / 242,814 (8.164%) |
 | Projected semantic rows | at most 4 MiB | below the cap |
-
-No non-tautological proxy supplies an authorized pass. Counting repeated
-prepared-kernel occurrences gives `98/203 = 48.276%`; counting canonical
-prepared-kernel identities gives `2/5 = 40%`; counting all current
-destinations gives `26/55 = 47.273%`; and counting only multi-contribution
-occurrences gives `94/189 = 49.735%`. Restricting the denominator to
-vector--Weyl contributions reports `98/98`, but merely defines the selected
-family as its own denominator and weakens the explicit pre-code gate.
-
-The smallest structural extension is five singleton four-component gluon
-currents, using prepared three-vector kernel 4 and vector propagator 37. It
-would move the occurrence proxy to `103/203 = 50.739%`, use 1,440 bytes of
-semantic rows, and stay under eight executable kernel identities. It is,
-however, exactly the four-component three-vector extension that the approved
-plan defers until the vector--Weyl candidate first measures a 5--10% gain. It
-also requires four complex outputs, beyond the initial two-output bound.
-Selecting one particular four-contribution current would reach 102
-occurrences but would violate structural, process-independent eligibility.
 
 A standalone Rust probe compiled four patchless SymJIT O3 source classes
 (propagated/unpropagated crossed with chirality) using only DirectTable
@@ -165,19 +176,28 @@ scatters. For this upper-bound probe the linear massless finalizer was
 distributed into each contribution source; that is code-size evidence only,
 not authorization to change the approved post-accumulation finalizer order.
 
-There is a second independent acceptance limitation in the pinned SymJIT API.
+The probe covers the dominant 98-call vector--Weyl core. No exact
+three-vector machine-code number is inferred from source or descriptor bytes.
+The complete candidate must still provide exact selected loaded machine-code
+evidence before landing.
+
+The pinned SymJIT API creates an observability constraint.
 `DirectTableCallable` exposes exact scalar and SIMD code shapes, but
 `DirectApplication` privately lowers its source to a distinct `Application`
 and neither it nor the resulting `DirectApplet` exposes the lowered
 `MachineCode::size`. The public source-application machine-code size is not
-the executed lowered DirectApplication body. Consequently an exact combined
-table-plus-residual runtime machine-code reduction cannot be authenticated
-without a new SymJIT API, which this plan forbids.
+the executed lowered DirectApplication body. The independent auditor therefore
+accepts only an exact
+`executed-selected-machine-code-scalar-plus-simd-v1` metric for the 25% landing
+gate. An unavailable exact metric fails that gate. DirectTable-only bytes and
+portable source-Application bytes remain diagnostic and are never treated as
+machine code.
 
-Per the fail-fast and no-land rules, implementation stops at this census.
-No compiled-stage-plan v2 runtime, compatibility cutover, or candidate
-performance claim is integrated. The exploratory generation/runtime changes
-remain excluded from this branch, and no candidate is eligible for `main`.
+Implementation proceeds with the authorized 103-occurrence slice. No further
+authorization pause is required while a suitable in-scope improvement remains.
+This does not relax landing: the candidate is deleted or withheld unless it
+passes every numerical, performance, resource, exact code-size, cutover, and
+regression gate below.
 
 ## Design
 
@@ -201,26 +221,31 @@ Contributions to a destination retain their original evaluation-group order.
 Independent destinations may be grouped only when the dependency certificate
 proves that the grouping is order-independent.
 
-The initial slice is limited to complete two-component vector-Weyl current
-families. Eligibility is structural, never process-name based. A motif key
+The initial slice contains complete two-component vector--Weyl current
+families plus structurally homogeneous singleton four-component three-vector
+currents. Eligibility is structural, never process-name based. A motif key
 includes source digest and ABI, canonical input order, input permutation,
 result particle/chirality/width, mutable-parameter and coupling provenance,
 selector-domain signature, finalizer identity, and optimization level.
 
-The first slice is bounded to eight kernel identities, at most 16 complex
-inputs and two complex outputs per kernel, 64 KiB source payload per kernel,
-and 4 MiB semantic row data for the artifact. It proceeds only if a pre-code
-census finds that eligible islands cover at least 50% of active repeated
-evaluation groups and projected generated text is at most 25% of the text
-they replace.
+The slice is bounded to eight kernel identities, at most 16 complex inputs,
+64 KiB source payload per kernel, and 4 MiB semantic row data for the artifact.
+Vector--Weyl kernels must have exactly two complex outputs. Four complex
+outputs are allowed only for the authorized three-vector family, and every
+destination in that family must have exactly one invocation, one overwrite
+attachment, and no accumulation or residual contribution.
 
-If both primary batches improve by at least 10%, expansion stops. If both
-improve by at least 5% but either is below 10%, the same representation may be
-extended to eligible four-component three-vector currents. If either batch is
-below 5% after the first slice, or either remains below 10% after that single
-extension, the candidate is removed and not landed. No whole-schedule
-superkernel, generic MIR outlining, additional fusion, or recurrence-style
-execution is in scope.
+The pre-code census denominator is every active materialized occurrence of a
+prepared-kernel identity that repeats globally. Eligible table invocations
+must match exactly the `49 + 49 + 5` authorized occurrence distribution and
+cover at least 50% of all 203 occurrences. Projected generated text must be at
+most 25% of the text it replaces.
+
+Implementation and measurement continue without another authorization pause
+while there is a suitable improvement inside these bounds. Landing still
+requires the final candidate to improve both primary batches by at least 10%.
+No whole-schedule superkernel, generic MIR outlining, additional fusion, or
+recurrence-style execution is in scope.
 
 ## Artifact cutover and diagnostics
 
@@ -258,7 +283,9 @@ Landing requires:
 - at least 10% lower median wall time at both batch 128 and batch 1024, with
   the paired change larger than three MAD;
 - batch-1 regression no greater than 5%;
-- selected loaded machine code at least 25% smaller;
+- exact executed selected scalar-plus-SIMD loaded machine code at least 25%
+  smaller; unavailable exact evidence fails closed, and neither source bytes
+  nor DirectTable-only bytes may substitute;
 - no warmed execution allocations;
 - generation time, artifact bytes, load time, and peak RSS no more than 10%
   worse;

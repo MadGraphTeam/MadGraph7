@@ -67,18 +67,35 @@ ABSOLUTE_TOLERANCE = 1.0e-15
 
 MAX_KERNEL_IDENTITIES = 8
 MAX_COMPLEX_INPUTS = 16
-MAX_COMPLEX_OUTPUTS = 2
+MAX_COMPLEX_OUTPUTS = 4
+VECTOR_WEYL_KERNEL_FAMILY = "vector-weyl"
+THREE_VECTOR_SINGLETON_KERNEL_FAMILY = "three-vector-singleton"
+EXACT_CODE_SIZE_METRIC = "executed-selected-machine-code-scalar-plus-simd-v1"
 MAX_KERNEL_SOURCE_BYTES = 64 * 1024
 MAX_SEMANTIC_ROW_BYTES = 4 * 1024 * 1024
 MIN_CENSUS_COVERAGE = 0.50
 MAX_PROJECTED_TEXT_FRACTION = 0.25
 
 CENSUS_DENOMINATOR_CONTRACT = (
-    "materialized-executable-schedule-repeated-evaluation-groups-v1"
+    "materialized-active-repeated-prepared-kernel-occurrences-v1"
 )
 TARGET_ACTIVE_NON_SOURCE_CURRENT_SLOTS = 55
 TARGET_MATERIALIZED_INTERACTIONS = 203
 TARGET_TWO_COMPONENT_CURRENT_SLOTS = 26
+TARGET_THREE_VECTOR_SINGLETON_CURRENT_SLOTS = 5
+TARGET_ELIGIBLE_PREPARED_KERNEL_OCCURRENCES = 103
+TARGET_ACTIVE_PREPARED_KERNEL_COUNTS = {
+    4: 35,
+    7: 49,
+    24: 49,
+    36: 40,
+    41: 30,
+}
+TARGET_ELIGIBLE_PREPARED_KERNEL_COUNTS = {
+    4: 5,
+    7: 49,
+    24: 49,
+}
 TARGET_PROOF_DAG_NON_SOURCE_CURRENT_SLOTS = 1425
 TARGET_PROOF_DAG_INTERACTIONS = 8338
 
@@ -314,6 +331,7 @@ def _validate_kernel(value: object, path: str) -> dict[str, object]:
         kernel,
         {
             "kernel_id",
+            "kernel_family",
             "motif_sha256",
             "source_sha256",
             "descriptor_sha256",
@@ -336,6 +354,15 @@ def _validate_kernel(value: object, path: str) -> dict[str, object]:
         path,
     )
     kernel_id = _integer(kernel["kernel_id"], f"{path}.kernel_id", minimum=0)
+    kernel_family = _string(kernel["kernel_family"], f"{path}.kernel_family")
+    if kernel_family not in {
+        VECTOR_WEYL_KERNEL_FAMILY,
+        THREE_VECTOR_SINGLETON_KERNEL_FAMILY,
+    }:
+        _error(
+            f"{path}.kernel_family",
+            "only vector-Weyl and singleton three-vector kernels are authorized",
+        )
     for field in (
         "motif_sha256",
         "source_sha256",
@@ -366,7 +393,10 @@ def _validate_kernel(value: object, path: str) -> dict[str, object]:
     )
     if sorted(permutation) != list(range(len(canonical_order))):
         _error(f"{path}.input_permutation", "must permute every canonical input")
-    _string(kernel["result_signature"], f"{path}.result_signature")
+    result_signature = _string(
+        kernel["result_signature"],
+        f"{path}.result_signature",
+    )
     input_count = _integer(
         kernel["input_complex_count"],
         f"{path}.input_complex_count",
@@ -384,8 +414,23 @@ def _validate_kernel(value: object, path: str) -> dict[str, object]:
             f"{path}.input_complex_count",
             "must match the canonical input descriptor count",
         )
-    if output_count > MAX_COMPLEX_OUTPUTS:
-        _error(f"{path}.output_complex_count", "exceeds the initial-slice bound")
+    if (
+        kernel_family == THREE_VECTOR_SINGLETON_KERNEL_FAMILY
+        and input_count != MAX_COMPLEX_INPUTS
+    ):
+        _error(
+            f"{path}.input_complex_count",
+            "the authorized three-vector family requires exactly 16 inputs",
+        )
+    expected_result = {
+        VECTOR_WEYL_KERNEL_FAMILY: ("vector-weyl:2", 2),
+        THREE_VECTOR_SINGLETON_KERNEL_FAMILY: ("three-vector:4", 4),
+    }[kernel_family]
+    if (result_signature, output_count) != expected_result:
+        _error(
+            path,
+            f"{kernel_family!r} requires result signature/output {expected_result!r}",
+        )
     source_bytes = _integer(
         kernel["source_bytes"],
         f"{path}.source_bytes",
@@ -402,6 +447,7 @@ def _validate_kernel(value: object, path: str) -> dict[str, object]:
         _error(f"{path}.optimization_level", "microkernels must use O3")
     return {
         "kernel_id": kernel_id,
+        "kernel_family": kernel_family,
         "motif_sha256": kernel["motif_sha256"],
         "output_complex_count": output_count,
         "machine_code_bytes": machine_code_bytes,
@@ -577,6 +623,12 @@ def _validate_island(
     if not invocation_ids:
         _error(f"{path}.invocations", "must not be empty")
     _dense_ids(invocation_ids, f"{path}.invocations.invocation_id")
+    invocation_group_ids = [values[0] for values in invocations.values()]
+    if len(invocation_group_ids) != len(set(invocation_group_ids)):
+        _error(
+            f"{path}.invocations",
+            "materialized occurrence IDs must be unique within an island",
+        )
 
     attachment_rows = _sequence(island["attachments"], f"{path}.attachments")
     attachment_ids: list[int] = []
@@ -717,6 +769,22 @@ def _validate_island(
                 f"{path}.order_certificate",
                 f"current {current_id} attachment order differs",
             )
+    if kernel["kernel_family"] == THREE_VECTOR_SINGLETON_KERNEL_FAMILY:
+        if any(len(rows) != 1 for rows in actual_by_current.values()):
+            _error(
+                f"{path}.attachments",
+                "three-vector islands may own only singleton currents",
+            )
+        if any(count != 1 for _, _, count in invocations.values()):
+            _error(
+                f"{path}.invocations",
+                "three-vector singleton invocations must attach exactly once",
+            )
+        if len(invocation_rows) != len(current_ids):
+            _error(
+                path,
+                "three-vector singleton islands require one invocation per current",
+            )
 
     semantic_row_bytes = _integer(
         island["semantic_row_bytes"],
@@ -731,6 +799,7 @@ def _validate_island(
     return {
         "island_id": island_id,
         "kernel_id": kernel_id,
+        "kernel_family": kernel["kernel_family"],
         "current_ids": current_ids,
         "evaluation_group_ids": sorted({values[0] for values in invocations.values()}),
         "invocation_count": len(invocation_rows),
@@ -935,11 +1004,22 @@ def audit_stage_plan_v2(value: object, path: str = "stage_plan") -> dict[str, ob
     return {
         "stage_id": stage_id,
         "diagnostics": recomputed,
-        "table_evaluation_group_ids": [
-            f"{stage_id}:{group_id}"
+        "table_occurrence_families": {
+            f"{stage_id}:{group_id}": str(summary["kernel_family"])
             for summary in island_summaries
             for group_id in summary["evaluation_group_ids"]  # type: ignore[union-attr]
-        ],
+        },
+        "table_destination_family_counts": {
+            family: sum(
+                len(summary["current_ids"])  # type: ignore[arg-type]
+                for summary in island_summaries
+                if summary["kernel_family"] == family
+            )
+            for family in (
+                VECTOR_WEYL_KERNEL_FAMILY,
+                THREE_VECTOR_SINGLETON_KERNEL_FAMILY,
+            )
+        },
         "residual_only": not table_ids,
         "table_only": not residual_ids,
     }
@@ -960,7 +1040,8 @@ def _sum_diagnostics(
 def _validate_census(
     value: object,
     path: str,
-    table_evaluation_group_ids: set[str],
+    table_occurrence_families: Mapping[str, str],
+    table_destination_family_counts: Mapping[str, int],
 ) -> dict[str, float | int]:
     census = _mapping(value, path)
     _exact_keys(
@@ -970,8 +1051,9 @@ def _validate_census(
             "active_non_source_current_slots",
             "materialized_interaction_count",
             "two_component_current_slots",
-            "active_repeated_evaluation_group_ids",
-            "eligible_evaluation_group_ids",
+            "four_component_three_vector_singleton_slots",
+            "active_prepared_kernel_occurrences",
+            "eligible_prepared_kernel_occurrence_ids",
             "proof_dag_non_source_current_slots",
             "proof_dag_interaction_count",
             "projected_generated_text_bytes",
@@ -982,12 +1064,16 @@ def _validate_census(
     if census["denominator_contract"] != CENSUS_DENOMINATOR_CONTRACT:
         _error(
             f"{path}.denominator_contract",
-            "coverage denominator must be the materialized executable schedule",
+            "coverage denominator must be all repeated prepared-kernel "
+            "occurrences in the materialized executable schedule",
         )
     expected_counts = {
         "active_non_source_current_slots": TARGET_ACTIVE_NON_SOURCE_CURRENT_SLOTS,
         "materialized_interaction_count": TARGET_MATERIALIZED_INTERACTIONS,
         "two_component_current_slots": TARGET_TWO_COMPONENT_CURRENT_SLOTS,
+        "four_component_three_vector_singleton_slots": (
+            TARGET_THREE_VECTOR_SINGLETON_CURRENT_SLOTS
+        ),
         "proof_dag_non_source_current_slots": (
             TARGET_PROOF_DAG_NON_SOURCE_CURRENT_SLOTS
         ),
@@ -1008,31 +1094,106 @@ def _validate_census(
     ):
         _error(path, "proof-DAG counts are mislabeled as active schedule counts")
 
-    active = set(
-        _unique_strings(
-            census["active_repeated_evaluation_group_ids"],
-            f"{path}.active_repeated_evaluation_group_ids",
-        )
+    active_rows = _sequence(
+        census["active_prepared_kernel_occurrences"],
+        f"{path}.active_prepared_kernel_occurrences",
     )
+    active: dict[str, int] = {}
+    for index, raw_row in enumerate(active_rows):
+        row_path = f"{path}.active_prepared_kernel_occurrences[{index}]"
+        row = _mapping(raw_row, row_path)
+        _exact_keys(row, {"occurrence_id", "prepared_kernel_id"}, row_path)
+        occurrence_id = _string(row["occurrence_id"], f"{row_path}.occurrence_id")
+        if occurrence_id in active:
+            _error(f"{row_path}.occurrence_id", "duplicate occurrence")
+        active[occurrence_id] = _integer(
+            row["prepared_kernel_id"],
+            f"{row_path}.prepared_kernel_id",
+            minimum=0,
+        )
+    if len(active) != TARGET_MATERIALIZED_INTERACTIONS:
+        _error(
+            f"{path}.active_prepared_kernel_occurrences",
+            f"must enumerate all {TARGET_MATERIALIZED_INTERACTIONS} occurrences",
+        )
+    active_kernel_counts: dict[int, int] = {}
+    for prepared_kernel_id in active.values():
+        active_kernel_counts[prepared_kernel_id] = (
+            active_kernel_counts.get(prepared_kernel_id, 0) + 1
+        )
+    if active_kernel_counts != TARGET_ACTIVE_PREPARED_KERNEL_COUNTS:
+        _error(
+            f"{path}.active_prepared_kernel_occurrences",
+            "prepared-kernel distribution differs from the frozen census: "
+            f"{active_kernel_counts}",
+        )
+    if any(count < 2 for count in active_kernel_counts.values()):
+        _error(
+            f"{path}.active_prepared_kernel_occurrences",
+            "the denominator may contain only repeated prepared kernels",
+        )
     eligible = set(
         _unique_strings(
-            census["eligible_evaluation_group_ids"],
-            f"{path}.eligible_evaluation_group_ids",
+            census["eligible_prepared_kernel_occurrence_ids"],
+            f"{path}.eligible_prepared_kernel_occurrence_ids",
         )
     )
-    if not active:
-        _error(f"{path}.active_repeated_evaluation_group_ids", "must not be empty")
-    if not eligible <= active:
-        _error(f"{path}.eligible_evaluation_group_ids", "must be an active subset")
-    table_repeated_groups = table_evaluation_group_ids & active
-    if eligible != table_repeated_groups:
+    if not eligible <= set(active):
         _error(
-            f"{path}.eligible_evaluation_group_ids",
-            "must exactly match repeated groups covered by table invocations",
+            f"{path}.eligible_prepared_kernel_occurrence_ids",
+            "must be an active subset",
+        )
+    if eligible != set(table_occurrence_families):
+        _error(
+            f"{path}.eligible_prepared_kernel_occurrence_ids",
+            "must exactly match occurrences covered by table invocations",
+        )
+    eligible_kernel_counts: dict[int, int] = {}
+    for occurrence_id in eligible:
+        prepared_kernel_id = active[occurrence_id]
+        eligible_kernel_counts[prepared_kernel_id] = (
+            eligible_kernel_counts.get(prepared_kernel_id, 0) + 1
+        )
+        expected_family = (
+            THREE_VECTOR_SINGLETON_KERNEL_FAMILY
+            if prepared_kernel_id == 4
+            else VECTOR_WEYL_KERNEL_FAMILY
+        )
+        if table_occurrence_families[occurrence_id] != expected_family:
+            _error(
+                f"{path}.eligible_prepared_kernel_occurrence_ids",
+                f"{occurrence_id} binds the wrong structural kernel family",
+            )
+    if eligible_kernel_counts != TARGET_ELIGIBLE_PREPARED_KERNEL_COUNTS:
+        _error(
+            f"{path}.eligible_prepared_kernel_occurrence_ids",
+            "eligible prepared-kernel distribution must be exactly "
+            f"{TARGET_ELIGIBLE_PREPARED_KERNEL_COUNTS}, got "
+            f"{eligible_kernel_counts}",
+        )
+    expected_destination_counts = {
+        VECTOR_WEYL_KERNEL_FAMILY: TARGET_TWO_COMPONENT_CURRENT_SLOTS,
+        THREE_VECTOR_SINGLETON_KERNEL_FAMILY: (
+            TARGET_THREE_VECTOR_SINGLETON_CURRENT_SLOTS
+        ),
+    }
+    if dict(table_destination_family_counts) != expected_destination_counts:
+        _error(
+            path,
+            "table destination family counts must match the authorized "
+            f"complete-current slice {expected_destination_counts}",
         )
     coverage = len(eligible) / len(active)
+    if len(eligible) != TARGET_ELIGIBLE_PREPARED_KERNEL_OCCURRENCES:
+        _error(
+            f"{path}.eligible_prepared_kernel_occurrence_ids",
+            f"expected {TARGET_ELIGIBLE_PREPARED_KERNEL_OCCURRENCES} occurrences",
+        )
     if coverage < MIN_CENSUS_COVERAGE:
-        _error(f"{path}.eligible_evaluation_group_ids", "coverage is below 50%")
+        _error(
+            f"{path}.eligible_prepared_kernel_occurrence_ids",
+            "coverage is below 50%",
+        )
 
     generated = _integer(
         census["projected_generated_text_bytes"],
@@ -1051,8 +1212,8 @@ def _validate_census(
             "projected text exceeds 25% of replaced text",
         )
     return {
-        "active_repeated_evaluation_group_count": len(active),
-        "eligible_evaluation_group_count": len(eligible),
+        "active_prepared_kernel_occurrence_count": len(active),
+        "eligible_prepared_kernel_occurrence_count": len(eligible),
         "coverage": coverage,
         "projected_text_fraction": fraction,
     }
@@ -1073,6 +1234,7 @@ def _validate_artifact_metrics(
             "load_seconds",
             "peak_rss_bytes",
             "code_size_metric_available",
+            "code_size_metric_kind",
             "selected_machine_code_bytes",
             "portable_source_applications",
         },
@@ -1081,14 +1243,25 @@ def _validate_artifact_metrics(
     metric_available = artifact["code_size_metric_available"]
     if not isinstance(metric_available, bool):
         _error(f"{path}.code_size_metric_available", "expected a boolean")
+    metric_kind = artifact["code_size_metric_kind"]
     selected_machine_code: int | None
     if metric_available:
+        if metric_kind != EXACT_CODE_SIZE_METRIC:
+            _error(
+                f"{path}.code_size_metric_kind",
+                f"must identify exact executed code as {EXACT_CODE_SIZE_METRIC!r}",
+            )
         selected_machine_code = _integer(
             artifact["selected_machine_code_bytes"],
             f"{path}.selected_machine_code_bytes",
             minimum=1,
         )
     else:
+        if metric_kind is not None:
+            _error(
+                f"{path}.code_size_metric_kind",
+                "must be null when the exact metric is unavailable",
+            )
         if artifact["selected_machine_code_bytes"] is not None:
             _error(
                 f"{path}.selected_machine_code_bytes",
@@ -1160,6 +1333,7 @@ def _validate_artifact_metrics(
             minimum=1,
         ),
         "code_size_metric_available": metric_available,
+        "code_size_metric_kind": metric_kind,
         "selected_machine_code_bytes": selected_machine_code,
         "portable_source_application_bytes": portable_source_bytes,
         "portable_source_application_set_sha256": canonical_sha256(
@@ -1222,15 +1396,36 @@ def _validate_candidate(
             f"{path}.metrics.selected_machine_code_bytes",
             "is smaller than concrete table plus residual machine code",
         )
-    table_groups = {
-        str(group)
-        for summary in summaries
-        for group in summary["table_evaluation_group_ids"]  # type: ignore[union-attr]
+    table_occurrence_families: dict[str, str] = {}
+    table_destination_family_counts = {
+        VECTOR_WEYL_KERNEL_FAMILY: 0,
+        THREE_VECTOR_SINGLETON_KERNEL_FAMILY: 0,
     }
+    for summary in summaries:
+        occurrence_families = _mapping(
+            summary["table_occurrence_families"],
+            "summary.table_occurrence_families",
+        )
+        overlap = set(table_occurrence_families) & set(occurrence_families)
+        if overlap:
+            _error(
+                f"{path}.stage_plans",
+                f"table occurrence IDs overlap: {sorted(overlap)}",
+            )
+        table_occurrence_families.update(
+            {str(key): str(item) for key, item in occurrence_families.items()}
+        )
+        destination_counts = _mapping(
+            summary["table_destination_family_counts"],
+            "summary.table_destination_family_counts",
+        )
+        for family in table_destination_family_counts:
+            table_destination_family_counts[family] += int(destination_counts[family])
     census = _validate_census(
         candidate["census"],
         f"{path}.census",
-        table_groups,
+        table_occurrence_families,
+        table_destination_family_counts,
     )
     return metrics, {
         "diagnostics": diagnostics,
@@ -1848,6 +2043,8 @@ def audit_campaign(value: object) -> dict[str, object]:
         "code_size_diagnostics": {
             "baseline_metric_available": baseline["code_size_metric_available"],
             "candidate_metric_available": candidate["code_size_metric_available"],
+            "baseline_metric_kind": baseline["code_size_metric_kind"],
+            "candidate_metric_kind": candidate["code_size_metric_kind"],
             "baseline_portable_source_application_bytes": baseline[
                 "portable_source_application_bytes"
             ],
