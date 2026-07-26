@@ -18,6 +18,30 @@ WATCHDOG_STDERR = (
 )
 
 
+def test_native_sample_schema_and_profile_contract_are_cross_module_locked() -> None:
+    assert compiled_mode_sample.SCHEMA_VERSION == (
+        regression.NATIVE_SAMPLE_SCHEMA_VERSION
+    )
+    assert compiled_mode_sample.ARENA_PROFILE_ATTRIBUTION_SAMPLE_PASS == (
+        regression.PROFILE_ATTRIBUTION_SAMPLE_PASS
+    )
+    assert compiled_mode_sample.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS == (
+        regression.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS
+    )
+    assert compiled_mode_sample.ARENA_PROFILE_BOUNDARY == (
+        regression.ARENA_PROFILE_BOUNDARY
+    )
+    assert compiled_mode_sample.LEGACY_PROFILE_BOUNDARY == (
+        regression.LEGACY_PROFILE_BOUNDARY
+    )
+    assert compiled_mode_sample.ARENA_PHASE_TIMING_SCOPE == (
+        regression.ARENA_PHASE_TIMING_SCOPE
+    )
+    assert compiled_mode_sample.LEGACY_PHASE_TIMING_SCOPE == (
+        regression.LEGACY_PHASE_TIMING_SCOPE
+    )
+
+
 def _correctness_derivation(
     point_sha256: list[str],
     *,
@@ -176,8 +200,8 @@ def _profile_payload(
         "repetitions_per_sample": repetitions,
         "interrupted": False,
         "uncertainty": {"standard_deviation": wall / 100.0},
-        "evaluator_time_per_point": wall / 2.0,
-        "evaluator_uncertainty": {"standard_deviation": wall / 200.0},
+        "evaluator_time_per_point": None,
+        "evaluator_uncertainty": None,
         "correctness_point_derivation": _correctness_derivation(
             [f"{index:064x}" for index in range(1, len(expanded_values) + 1)]
         ),
@@ -194,9 +218,16 @@ def _profile_payload(
                 "sample_count": sample_count,
                 "samples_seconds_per_point": [profiled_wall] * sample_count,
             },
+            "evaluator_call_time": None,
             "raw_profile_samples": [
                 {
                     "wall_time_s": profiled_wall * batch_size * repetitions,
+                    "orchestration_time_s": (profiled_wall * batch_size * repetitions),
+                    "profile_boundary": regression.ARENA_PROFILE_BOUNDARY,
+                    "borrowed_flat_input": True,
+                    "preallocated_output": True,
+                    "phase_timing_scope": regression.ARENA_PHASE_TIMING_SCOPE,
+                    "evaluator_timing_available": False,
                     **{
                         key: 0
                         for key in (
@@ -205,6 +236,9 @@ def _profile_payload(
                         )
                     },
                     **{key: 0.0 for key in regression._ZERO_ARENA_PROFILE_TIMES},
+                    **{
+                        key: [] for key in regression._EMPTY_ARENA_PROFILE_PHASE_VECTORS
+                    },
                     "execution_mode": execution_mode,
                     "evaluator_backend_call_count": (
                         1 if execution_mode == "compiled" else 0
@@ -228,6 +262,13 @@ def _profile_payload(
             "timing_breakdown_sample_pass": (
                 regression.PROFILE_ATTRIBUTION_SAMPLE_PASS
             ),
+            "profile_attribution_boundary": (regression.ARENA_PROFILE_BOUNDARY),
+            "profile_attribution_borrowed_flat_input": True,
+            "profile_attribution_preallocated_output": True,
+            "profile_attribution_phase_timing_scope": (
+                regression.ARENA_PHASE_TIMING_SCOPE
+            ),
+            "profile_attribution_evaluator_timing_available": False,
             "timing_sample_contract": (
                 timing_contract or regression.PAIRED_TIMING_SAMPLE_CONTRACT
             ),
@@ -388,6 +429,19 @@ def test_arena_profile_gate_requires_current_capability_and_complete_calls() -> 
         )["passes"]
         is True
     )
+    eager_profiles = eager_sample["paired_profile_timing_breakdown"][
+        "raw_profile_samples"
+    ]
+    assert isinstance(eager_profiles, list)
+    eager_profiles[0]["profile_boundary"] = "materialized-native-profile-v1"
+    assert (
+        regression._arena_profile_gate(
+            eager_measurements,
+            execution_mode="eager",
+            artifacts=direct,
+        )["passes"]
+        is False
+    )
 
     compiled_sample = regression._native_profile_sample(
         _profile_payload(1.0),
@@ -510,6 +564,107 @@ def test_native_profile_sample_requires_rusticol_marker() -> None:
             _profile_payload(1.25e-6, source="runtime_evaluate_wall_time"),
             minimum_samples=5,
         )
+
+
+def test_current_profile_requires_authenticated_arena_boundary() -> None:
+    arena_payload = _profile_payload(1.25e-6)
+    sample = regression._native_profile_sample(
+        arena_payload,
+        minimum_samples=5,
+        require_arena_profile=True,
+    )
+    assert sample["profile_attribution_sample_pass"] == (
+        regression.PROFILE_ATTRIBUTION_SAMPLE_PASS
+    )
+    assert sample["profile_attribution_boundary"] == (regression.ARENA_PROFILE_BOUNDARY)
+    assert sample["profile_attribution_borrowed_flat_input"] is True
+    assert sample["profile_attribution_preallocated_output"] is True
+    assert sample["profile_attribution_phase_timing_scope"] == (
+        regression.ARENA_PHASE_TIMING_SCOPE
+    )
+    assert sample["profile_attribution_evaluator_timing_available"] is False
+    assert sample["paired_profile_evaluator_seconds_per_point"] is None
+
+    fabricated_evaluator = _profile_payload(1.25e-6)
+    fabricated_evaluator["evaluator_time_per_point"] = 0.0
+    with pytest.raises(regression.RegressionError, match="must record evaluator"):
+        regression._native_profile_sample(
+            fabricated_evaluator,
+            minimum_samples=5,
+            require_arena_profile=True,
+        )
+
+    legacy_payload = _profile_payload(1.25e-6)
+    environment = legacy_payload["environment"]
+    assert isinstance(environment, dict)
+    environment["evaluator_time_sample_pass"] = (
+        regression.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS
+    )
+    environment["timing_breakdown_sample_pass"] = (
+        regression.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS
+    )
+    environment["profile_attribution_boundary"] = regression.LEGACY_PROFILE_BOUNDARY
+    environment["profile_attribution_borrowed_flat_input"] = False
+    environment["profile_attribution_preallocated_output"] = False
+    environment["profile_attribution_phase_timing_scope"] = (
+        regression.LEGACY_PHASE_TIMING_SCOPE
+    )
+    environment["profile_attribution_evaluator_timing_available"] = True
+    legacy_payload["evaluator_time_per_point"] = 0.5e-6
+    legacy_payload["evaluator_uncertainty"] = {"standard_deviation": 0.01e-6}
+    timing_breakdown = legacy_payload["timing_breakdown"]
+    assert isinstance(timing_breakdown, dict)
+    timing_breakdown["evaluator_call_time"] = {
+        "mean_seconds_per_point": 0.5e-6,
+        "sample_count": 5,
+        "samples_seconds_per_point": [0.5e-6] * 5,
+    }
+    regression._native_profile_sample(legacy_payload, minimum_samples=5)
+    with pytest.raises(regression.RegressionError, match="warmed Arena boundary"):
+        regression._native_profile_sample(
+            legacy_payload,
+            minimum_samples=5,
+            require_arena_profile=True,
+        )
+
+
+def test_native_sample_helper_falls_back_to_legacy_profile_operation() -> None:
+    calls: list[tuple[object, int, dict[str, object]]] = []
+
+    class FrozenRuntime:
+        def profile_repeated(
+            self,
+            batch: object,
+            repetitions: int,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            calls.append((batch, repetitions, dict(kwargs)))
+            return {
+                "execution_mode": "compiled",
+                "wall_time_s": 8.0,
+                "stage_evaluator_call_time_s": 2.0,
+                "amplitude_evaluator_call_time_s": 1.0,
+            }
+
+    selected = compiled_mode_sample._profile_operation(FrozenRuntime())
+    assert selected.sample_pass == (
+        compiled_mode_sample.LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS
+    )
+    assert selected.boundary == compiled_mode_sample.LEGACY_PROFILE_BOUNDARY
+    assert selected.phase_timing_scope == (
+        compiled_mode_sample.LEGACY_PHASE_TIMING_SCOPE
+    )
+    assert selected.evaluator_timing_available is True
+    raw = selected.operation(("point",), 4, include_values=False)
+    wall, evaluator = compiled_mode_sample._profile_components(
+        raw,
+        evaluated_points=4,
+        execution_mode="compiled",
+        evaluator_timing_available=selected.evaluator_timing_available,
+    )
+    assert wall == 2.0
+    assert evaluator == 0.75
+    assert calls == [(("point",), 4, {"include_values": False})]
 
 
 @pytest.mark.parametrize(
@@ -1859,6 +2014,14 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
 
         def profile_repeated(
             self,
+            _batch: tuple[object, ...],
+            _repetitions: int,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            raise AssertionError("current sampling used the legacy profiler")
+
+        def _profile_arena_repeated(
+            self,
             batch: tuple[object, ...],
             repetitions: int,
             **kwargs: object,
@@ -1867,10 +2030,17 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
             points = repetitions * len(batch)
             return {
                 "execution_mode": "compiled",
+                "profile_boundary": compiled_mode_sample.ARENA_PROFILE_BOUNDARY,
+                "borrowed_flat_input": True,
+                "preallocated_output": True,
+                "phase_timing_scope": compiled_mode_sample.ARENA_PHASE_TIMING_SCOPE,
+                "evaluator_timing_available": False,
                 "wall_time_s": points * 0.007,
                 "stage_evaluator_call_time_s": points * 0.003,
                 "amplitude_evaluator_call_time_s": points * 0.001,
-                "stage_input_copy_component_count": points * 17,
+                "native_input_container_allocation_count": 0,
+                "native_output_allocation_count": 0,
+                "stage_input_copy_component_count": 0,
             }
 
         def evaluate(
@@ -1944,9 +2114,22 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
         result,
         minimum_samples=5,
         batch_size=2,
+        require_arena_profile=True,
     )
     assert measured["wall_seconds_per_point"] == pytest.approx(0.005)
     assert measured["paired_profile_wall_seconds_per_point"] == pytest.approx(0.007)
+    assert measured["paired_profile_evaluator_seconds_per_point"] is None
+    assert measured["paired_profile_evaluator_uncertainty"] is None
+    assert measured["profile_attribution_sample_pass"] == (
+        regression.PROFILE_ATTRIBUTION_SAMPLE_PASS
+    )
+    assert measured["profile_attribution_boundary"] == (
+        regression.ARENA_PROFILE_BOUNDARY
+    )
+    assert measured["profile_attribution_phase_timing_scope"] == (
+        regression.ARENA_PHASE_TIMING_SCOPE
+    )
+    assert measured["profile_attribution_evaluator_timing_available"] is False
     assert measured["warmed_numerical_result"]["values_f64"] == [2.5] * 8
     assert measured["precision32_numerical_result"]["values_f64"] == [2.5] * 8
     derivation = measured["correctness_point_derivation"]

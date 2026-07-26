@@ -146,9 +146,15 @@ CI, packaging, and release validation are intentionally deferred to the final
 optimization integration.
 
 The benchmark headline now always comes from the warmed native unprofiled
-`_benchmark_f64_wall_time` pass. A paired `profile_repeated` pass uses the
-byte-identical batch and repetition count only for attribution. Profiled wall
-time is never substituted for the performance headline.
+`_benchmark_f64_wall_time` pass. Current Direct-Arena runtimes use a paired
+private `_profile_arena_repeated` pass over the byte-identical borrowed input,
+preallocated output, selectors, and repetition count only for attribution.
+Frozen baselines without that boundary retain their historical
+`profile_repeated` pass. The current measurement authenticates
+`warmed-direct-arena-borrowed-input-preallocated-output-v1`; profiled wall time
+is never substituted for the performance headline. Because this coarse Arena
+boundary deliberately has no nested phase clocks, evaluator-only timing and
+uncertainty are recorded as unavailable rather than as synthetic zeros.
 
 The regression driver treats a performance result as authoritative only when
 both interpreters use one read-only shared artifact or when all

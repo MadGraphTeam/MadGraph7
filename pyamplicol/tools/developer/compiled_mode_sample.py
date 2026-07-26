@@ -6,9 +6,11 @@ The helper is executed by the interpreter being measured.  It deliberately
 does not use :class:`pyamplicol.benchmarking.BenchmarkBackend`, whose timing
 policy can differ between the frozen and current installations.  Every
 headline block calls the native ``_benchmark_f64_wall_time`` entry point, whose
-timer starts after it has packed the batch. A separate ``profile_repeated`` call then
-uses the same batch object, selector arguments, and repetition count solely
-for attribution.
+timer starts after it has packed the batch. A separate private warmed-Arena
+profile uses the same borrowed input, preallocated-output boundary, selector
+arguments, and repetition count solely for attribution. Frozen baseline
+runtimes without that private boundary retain their historical
+``profile_repeated`` attribution.
 """
 
 from __future__ import annotations
@@ -30,12 +32,17 @@ from pathlib import Path
 from typing import Any
 
 RESULT_KIND = "pyamplicol-compiled-mode-native-sample"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 INSTALLATION_IDENTITY_KIND = "pyamplicol-installed-distribution-identity"
 INSTALLATION_IDENTITY_SCHEMA_VERSION = 2
 NATIVE_WALL_TIME_SOURCE = "runtime_core_repeated_wall_time"
 NATIVE_WALL_TIME_SAMPLE_PASS = "runtime._benchmark_f64_wall_time"
-PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
+ARENA_PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime._profile_arena_repeated"
+LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
+ARENA_PROFILE_BOUNDARY = "warmed-direct-arena-borrowed-input-preallocated-output-v1"
+LEGACY_PROFILE_BOUNDARY = "materialized-native-profile-v1"
+ARENA_PHASE_TIMING_SCOPE = "coarse-arena-boundary-only-v1"
+LEGACY_PHASE_TIMING_SCOPE = "profiled-evaluator-phases-v1"
 PAIRED_TIMING_SAMPLE_CONTRACT = "paired_unprofiled_headline_profiled_attribution_v1"
 MAX_CALIBRATION_BLOCKS = 4
 MAX_REPETITIONS = 1_000_000_000
@@ -64,6 +71,17 @@ class ValidationMomentaSource:
 
     points: tuple[tuple[FourMomentum, ...], ...]
     identity: Mapping[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileOperation:
+    operation: Any
+    sample_pass: str
+    boundary: str
+    borrowed_flat_input: bool
+    preallocated_output: bool
+    phase_timing_scope: str
+    evaluator_timing_available: bool
 
 
 class SampleError(RuntimeError):
@@ -1124,7 +1142,8 @@ def _profile_components(
     *,
     evaluated_points: int,
     execution_mode: str,
-) -> tuple[float, float]:
+    evaluator_timing_available: bool,
+) -> tuple[float, float | None]:
     observed_mode = profile.get("execution_mode")
     if observed_mode not in (None, execution_mode):
         raise SampleError(
@@ -1135,6 +1154,15 @@ def _profile_components(
         profile.get("wall_time_s"),
         label="native repeated profile wall_time_s",
     )
+    if not evaluator_timing_available:
+        if (
+            profile.get("phase_timing_scope") != ARENA_PHASE_TIMING_SCOPE
+            or profile.get("evaluator_timing_available") is not False
+        ):
+            raise SampleError(
+                "warmed Arena profile did not authenticate coarse-boundary-only timing"
+            )
+        return wall / evaluated_points, None
     stage = _finite_nonnegative(
         profile.get("stage_evaluator_call_time_s"),
         label="native repeated profile stage_evaluator_call_time_s",
@@ -1148,6 +1176,32 @@ def _profile_components(
         )
         evaluator = stage + amplitude
     return wall / evaluated_points, evaluator / evaluated_points
+
+
+def _profile_operation(runtime: object) -> ProfileOperation:
+    arena_profiler = getattr(runtime, "_profile_arena_repeated", None)
+    if callable(arena_profiler):
+        return ProfileOperation(
+            operation=arena_profiler,
+            sample_pass=ARENA_PROFILE_ATTRIBUTION_SAMPLE_PASS,
+            boundary=ARENA_PROFILE_BOUNDARY,
+            borrowed_flat_input=True,
+            preallocated_output=True,
+            phase_timing_scope=ARENA_PHASE_TIMING_SCOPE,
+            evaluator_timing_available=False,
+        )
+    legacy_profiler = getattr(runtime, "profile_repeated", None)
+    if callable(legacy_profiler):
+        return ProfileOperation(
+            operation=legacy_profiler,
+            sample_pass=LEGACY_PROFILE_ATTRIBUTION_SAMPLE_PASS,
+            boundary=LEGACY_PROFILE_BOUNDARY,
+            borrowed_flat_input=False,
+            preallocated_output=False,
+            phase_timing_scope=LEGACY_PHASE_TIMING_SCOPE,
+            evaluator_timing_available=True,
+        )
+    raise SampleError("native repeated profiler is unavailable")
 
 
 def _complex_pair(value: object, *, label: str) -> list[float]:
@@ -1307,13 +1361,12 @@ def sample(arguments: argparse.Namespace) -> dict[str, object]:
         )
     runtime_identity["dependency_site"] = dependency_site_identity
     timer = getattr(runtime, "_benchmark_f64_wall_time", None)
-    profiler = getattr(runtime, "profile_repeated", None)
+    profile_operation = _profile_operation(runtime)
+    profiler = profile_operation.operation
     evaluate_once = getattr(runtime, "evaluate", None)
     evaluate_resolved_once = getattr(runtime, "evaluate_resolved", None)
     if not callable(timer):
         raise SampleError("native unprofiled wall timer is unavailable")
-    if not callable(profiler):
-        raise SampleError("native repeated profiler is unavailable")
     if not callable(evaluate_once):
         raise SampleError("native f64 evaluator is unavailable")
     if not callable(evaluate_resolved_once):
@@ -1382,9 +1435,11 @@ def sample(arguments: argparse.Namespace) -> dict[str, object]:
             raw_profile,
             evaluated_points=evaluated_points_per_block,
             execution_mode=execution_mode,
+            evaluator_timing_available=profile_operation.evaluator_timing_available,
         )
         profiled_wall_samples.append(profile_wall)
-        evaluator_samples.append(evaluator_time)
+        if evaluator_time is not None:
+            evaluator_samples.append(evaluator_time)
         raw_profiles.append(_json_value(raw_profile))
 
     numerical_result = _warmed_numerical_result(
@@ -1415,12 +1470,16 @@ def sample(arguments: argparse.Namespace) -> dict[str, object]:
     measured_evaluations = sample_count * repetitions
     measured_points = measured_evaluations * len(batch)
     headline_mean = float(statistics.fmean(headline_samples))
-    evaluator_mean = float(statistics.fmean(evaluator_samples))
+    evaluator_mean = (
+        float(statistics.fmean(evaluator_samples)) if evaluator_samples else None
+    )
     timing_breakdown = {
         "sample_count": sample_count,
         "execution_mode": execution_mode,
         "wall_time": _component(profiled_wall_samples),
-        "evaluator_call_time": _component(evaluator_samples),
+        "evaluator_call_time": (
+            _component(evaluator_samples) if evaluator_samples else None
+        ),
         "raw_profile_samples": raw_profiles,
     }
     return {
@@ -1433,7 +1492,9 @@ def sample(arguments: argparse.Namespace) -> dict[str, object]:
         "interrupted": False,
         "uncertainty": _statistics(headline_samples),
         "evaluator_time_per_point": evaluator_mean,
-        "evaluator_uncertainty": _statistics(evaluator_samples),
+        "evaluator_uncertainty": (
+            _statistics(evaluator_samples) if evaluator_samples else None
+        ),
         "correctness_point_derivation": correctness_point_derivation,
         "warmed_numerical_result": numerical_result,
         "precision32_numerical_result": precision32_result,
@@ -1442,8 +1503,21 @@ def sample(arguments: argparse.Namespace) -> dict[str, object]:
         "environment": {
             "wall_time_source": NATIVE_WALL_TIME_SOURCE,
             "wall_time_sample_pass": NATIVE_WALL_TIME_SAMPLE_PASS,
-            "evaluator_time_sample_pass": PROFILE_ATTRIBUTION_SAMPLE_PASS,
-            "timing_breakdown_sample_pass": PROFILE_ATTRIBUTION_SAMPLE_PASS,
+            "evaluator_time_sample_pass": profile_operation.sample_pass,
+            "timing_breakdown_sample_pass": profile_operation.sample_pass,
+            "profile_attribution_boundary": profile_operation.boundary,
+            "profile_attribution_borrowed_flat_input": (
+                profile_operation.borrowed_flat_input
+            ),
+            "profile_attribution_preallocated_output": (
+                profile_operation.preallocated_output
+            ),
+            "profile_attribution_phase_timing_scope": (
+                profile_operation.phase_timing_scope
+            ),
+            "profile_attribution_evaluator_timing_available": (
+                profile_operation.evaluator_timing_available
+            ),
             "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
             "profile_attribution_paired_with_headline": True,
             "profile_attribution_identical_batch": True,

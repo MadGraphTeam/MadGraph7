@@ -540,6 +540,50 @@ impl Runtime {
             .map_err(python_error)
     }
 
+    #[pyo3(signature=(momenta, repetitions, *, helicities=None, color_flows=None, precision=16, include_values=false))]
+    fn _profile_arena_repeated(
+        &mut self,
+        py: Python<'_>,
+        momenta: &Bound<'_, PyAny>,
+        repetitions: usize,
+        helicities: Option<Vec<String>>,
+        color_flows: Option<Vec<String>>,
+        precision: u32,
+        include_values: bool,
+    ) -> PyResult<Py<PyAny>> {
+        require_raw_f64_precision(precision).map_err(python_error)?;
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let point_count = momenta.point_count();
+        let profiled = self
+            .runtime
+            .evaluate_f64_arena_profile_repeated(
+                momenta.as_slice(),
+                point_count,
+                repetitions,
+                helicities.as_deref(),
+                color_flows.as_deref(),
+            )
+            .map_err(python_error)?;
+        let measured_points = point_count
+            .checked_mul(repetitions)
+            .ok_or_else(|| PyValueError::new_err("arena profile point count overflowed"))?;
+        let result = runtime_profile_to_python(py, &profiled.profile, measured_points)?;
+        result.set_item("execution_mode", self.runtime.metadata().execution_mode)?;
+        result.set_item(
+            "profile_boundary",
+            "warmed-direct-arena-borrowed-input-preallocated-output-v1",
+        )?;
+        result.set_item("borrowed_flat_input", true)?;
+        result.set_item("preallocated_output", true)?;
+        result.set_item("phase_timing_scope", "coarse-arena-boundary-only-v1")?;
+        result.set_item("evaluator_timing_available", false)?;
+        if include_values {
+            result.set_item("values", PyList::new(py, profiled.values)?)?;
+        }
+        self.emit_warnings(py)?;
+        Ok(result.into_any().unbind())
+    }
+
     #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, helicity_by_point=None, color_flow_by_point=None, precision=16, include_values=false))]
     fn profile(
         &mut self,

@@ -1155,6 +1155,22 @@ fn generated_eager_native_into_is_warmed_allocation_free_when_fixture_is_supplie
         (0, 0),
         "warmed eager borrowed-input totals allocated"
     );
+    let arena_profile = runtime
+        .evaluate_f64_arena_profile_repeated(&momenta, point_count, 3, None, None)
+        .expect("profile warmed eager borrowed-input totals");
+    assert_eq!(arena_profile.values, output);
+    assert_eq!(
+        arena_profile
+            .profile
+            .native_input_container_allocation_count,
+        0
+    );
+    assert_eq!(arena_profile.profile.native_output_allocation_count, 0);
+    assert_eq!(arena_profile.profile.observed_scratch_reallocation_count, 0);
+    assert_eq!(
+        arena_profile.profile.native_input_component_count,
+        u64::try_from(momenta.len() * 3).expect("profile input count"),
+    );
 
     let selected_helicity = runtime
         .helicities()
@@ -1200,6 +1216,49 @@ fn generated_eager_native_into_is_warmed_allocation_free_when_fixture_is_supplie
         (0, 0),
         "warmed eager global selectors allocated"
     );
+    let mut profile_cases = vec![(
+        "selected-helicity",
+        Some(selected_helicities.as_slice()),
+        None,
+    )];
+    if let Some(ids) = selected_colors.as_ref() {
+        profile_cases.push(("selected-flow", None, Some(ids.as_slice())));
+    }
+    for (label, helicities, colors) in profile_cases {
+        runtime
+            .evaluate_f64_into_with_selectors(
+                &momenta,
+                point_count,
+                helicities,
+                colors,
+                None,
+                None,
+                &mut output,
+            )
+            .unwrap_or_else(|error| panic!("evaluate eager {label} oracle: {error}"));
+        let selected_profile = runtime
+            .evaluate_f64_arena_profile_repeated(&momenta, point_count, 3, helicities, colors)
+            .unwrap_or_else(|error| panic!("profile eager {label}: {error}"));
+        assert_eq!(
+            selected_profile.values, output,
+            "profiled eager {label} values"
+        );
+        assert_eq!(
+            selected_profile
+                .profile
+                .native_input_container_allocation_count,
+            0,
+            "profiled eager {label} input allocations"
+        );
+        assert_eq!(
+            selected_profile.profile.native_output_allocation_count, 0,
+            "profiled eager {label} output allocations"
+        );
+        assert_eq!(
+            selected_profile.profile.observed_scratch_reallocation_count, 0,
+            "profiled eager {label} scratch reallocations"
+        );
+    }
 
     let helicity_count = runtime
         .helicities()
