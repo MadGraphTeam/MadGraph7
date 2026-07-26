@@ -44,7 +44,7 @@ use crate::direct_arena::{
 // planes. Keeping a small, fixed power-of-two point tile preserves that
 // cross-stage locality on both cache-rich and cache-poor CPUs without an
 // online host-specific tuner.
-const COMPILED_DIRECT_LOCALITY_POINT_CAP: u32 = 16;
+const COMPILED_DIRECT_LOCALITY_POINT_CAP: u32 = 32;
 const COMPILED_DIRECT_WORKSPACE_BYTES: usize = 256 * 1024 * 1024;
 const COMPILED_DIRECT_CACHE_TARGET_BYTES: usize = 4 * 1024 * 1024;
 
@@ -2800,8 +2800,8 @@ extern "C" int native_direct_leaf_direct_application_v1(
     }
 
     #[test]
-    fn compiled_direct_tile_policy_caps_representative_fused_shapes_at_sixteen_points() {
-        for scalar_values_per_point in [16, 1_024, 32_768] {
+    fn compiled_direct_tile_policy_uses_thirty_two_points_for_compact_fused_shapes() {
+        for scalar_values_per_point in [16, 1_024] {
             assert_eq!(
                 deterministic_point_tile_size(
                     COMPILED_DIRECT_LOCALITY_POINT_CAP,
@@ -2810,9 +2810,20 @@ extern "C" int native_direct_leaf_direct_application_v1(
                     scalar_values_per_point,
                 )
                 .unwrap(),
-                16,
+                32,
             );
         }
+        assert_eq!(
+            deterministic_point_tile_size(
+                COMPILED_DIRECT_LOCALITY_POINT_CAP,
+                COMPILED_DIRECT_WORKSPACE_BYTES,
+                COMPILED_DIRECT_CACHE_TARGET_BYTES,
+                32_768,
+            )
+            .unwrap(),
+            16,
+            "larger fused shapes remain cache-limited to sixteen points"
+        );
         assert_eq!(
             deterministic_point_tile_size(
                 COMPILED_DIRECT_LOCALITY_POINT_CAP,
@@ -2833,7 +2844,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
             )
             .unwrap(),
             16,
-            "stage-liveness qq_Z6g union-flow shape restores a sixteen-point tile"
+            "stage-liveness qq_Z6g union-flow shape remains cache-limited to sixteen points"
         );
     }
 
