@@ -60,19 +60,36 @@ Each has a separate worktree, profile, artifact root, coordination root,
 virtual environment, and candidate-wheel directory. Never merge or pull the
 Mac or checkpoint branch into this active measurement worktree.
 
+The Mac filler initially owns the serialized main-push token. This filler must
+wait for an explicit transfer or release before creating its main landing. If
+x86 finishes first, request an explicit early transfer rather than assuming
+ownership.
+
 ## 2. Establish the exact measured source
 
+From a clean cluster coordinator checkout, create a dedicated measurement
+worktree. Do not switch branches in an existing checkout:
+
 ```bash
+set -euo pipefail
 git fetch origin
-git switch main
-git pull --ff-only origin main
+MEASURE_TREE="../pyamplicol-x86-EPYC-measure"
+test ! -e "$MEASURE_TREE"
+git worktree add -b codex/x86-EPYC-full-report \
+  "$MEASURE_TREE" origin/main
+git -C "$MEASURE_TREE" push -u origin codex/x86-EPYC-full-report
+cd "$MEASURE_TREE"
 test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 test "$(uname -m)" = "x86_64"
 grep -m1 -i 'AMD EPYC' /proc/cpuinfo
+test "$(nproc)" -ge 11
 test -z "$(git status --short)"
 test -f docs/performance_reports/x86_EPYC/TABLE_FILLING.md
 test ! -e .artifacts/performance-report/x86_EPYC
 test ! -e .artifacts/performance-report-coordination/x86_EPYC
+test ! -e .venv
+python3 tools/ci/memory_watchdog.py --limit-gib 93.1 -- \
+  python3 dependencies/install_dependencies.py --reset --no-build
 python3 docs/performance_reports/x86_EPYC/result_tables.py validate
 python3 - <<'PY'
 import json
@@ -90,9 +107,7 @@ assert all(
 )
 print("verified reset 1646-cell profile")
 PY
-git switch -c codex/x86-EPYC-full-report
 MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
-git push -u origin HEAD
 test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"
 ```
 
@@ -106,6 +121,7 @@ coordination state.
 The build guard uses 93.1 GiB, which is below 100 decimal GB:
 
 ```bash
+set -euo pipefail
 test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"
 test -z "$(git status --short)"
 CANDIDATE_DIR=".artifacts/candidate-$MEASURED_SOURCE_REVISION"
@@ -117,9 +133,10 @@ env -u PYTHONPATH -u PYTHONHOME PYAMPLICOL_BUILD_MODE=candidate \
 WHEEL_PATH="$(find "$CANDIDATE_DIR" -maxdepth 1 -type f -name '*.whl' -print)"
 test "$(printf '%s\n' "$WHEEL_PATH" | sed '/^$/d' | wc -l)" -eq 1
 .venv/bin/python -m pip install --force-reinstall --no-deps "$WHEEL_PATH"
-PYAMPLICOL_BUILD_MODE=candidate .venv/bin/python \
-  tools/developer/prepare_source_runtime.py \
-  --candidate --wheel-directory "$CANDIDATE_DIR"
+env -u PYTHONPATH -u PYTHONHOME PYAMPLICOL_BUILD_MODE=candidate \
+  .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 93.1 -- \
+  .venv/bin/python tools/developer/prepare_source_runtime.py \
+    --candidate --wheel-directory "$CANDIDATE_DIR"
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
   refresh-profile-environment \
   --expected-source-revision "$MEASURED_SOURCE_REVISION"
@@ -131,9 +148,14 @@ features. Every result and censor binds to that identity.
 
 ## 4. Keep a live PDF beside the workers
 
-In a second terminal, run:
+Pin all measurement commands in Sections 6--8 to logical CPUs 0--9. Reserve
+logical CPU 10 for publication recovery and checkpoint export; it is not one
+of the ten measurement cores. In a dedicated publisher terminal, run:
 
 ```bash
+set -euo pipefail
+taskset -pc 10 "$$"
+renice 19 -p "$$"
 while true; do
   .venv/bin/python \
     docs/performance_reports/x86_EPYC/result_tables.py recover --compile
@@ -157,6 +179,7 @@ Create a separate publication worktree once, rooted at the frozen measured
 source:
 
 ```bash
+set -euo pipefail
 CHECKPOINT_TREE="../pyamplicol-x86-EPYC-report-checkpoints"
 test ! -e "$CHECKPOINT_TREE"
 git worktree add -b codex/x86-EPYC-report-checkpoints \
@@ -169,11 +192,17 @@ The active measurement checkout remains at `MEASURED_SOURCE_REVISION`.
 Checkpoint commits are made only in `CHECKPOINT_TREE` and are never pulled
 back into the measurement checkout.
 
-At least once per hour, and at each multiplicity or mandatory-pause boundary,
-finish `recover --compile`, export a portable snapshot, and push only raw JSON,
-generated TeX/environment metadata, and the PDF:
+Create a dedicated checkpoint-publisher lane with a recurring hourly wake-up;
+it must remain active independently of a long or mandatory-completion
+`populate` call. At least once per hour, and at each multiplicity or
+mandatory-pause boundary, finish `recover --compile` on reserved CPU 10,
+export a portable snapshot, and push only raw JSON, generated TeX/environment
+metadata, and the PDF:
 
 ```bash
+set -euo pipefail
+taskset -pc 10 "$$"
+renice 19 -p "$$"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 EXPORT_DIR=".artifacts/hourly-x86-EPYC-$STAMP"
 test ! -e "$EXPORT_DIR"
@@ -196,17 +225,19 @@ git -C "$CHECKPOINT_TREE" add \
 if ! git -C "$CHECKPOINT_TREE" diff --cached --quiet; then
   git -C "$CHECKPOINT_TREE" commit -m \
     "Checkpoint x86_EPYC report $STAMP"
-  git -C "$CHECKPOINT_TREE" push origin \
-    codex/x86-EPYC-report-checkpoints
 fi
+git -C "$CHECKPOINT_TREE" push origin \
+  codex/x86-EPYC-report-checkpoints
+CHECKPOINT_SHA="$(git -C "$CHECKPOINT_TREE" rev-parse HEAD)"
 ```
 
 Never copy or stage evaluator/process artifacts, wheels, models, logs, attempts,
 locks, coordination state, auxiliary files, entry points, manifests, or prose.
-Notify `x86_epyc_support_lane` after every push. It will pull this branch into
-its separate review worktree, inspect every PDF page, and send timestamped
-feedback. A checkpoint is review evidence, not a new measurement source and
-must not invalidate or relabel existing attempts.
+Notify `x86_epyc_support_lane` after every hourly attempt, including when the
+snapshot is unchanged; include `STAMP` and `CHECKPOINT_SHA`. It will still pull
+the branch, render into a timestamped QA directory, inspect every PDF page, and
+send timestamped feedback. A checkpoint is review evidence, not a new
+measurement source and must not invalidate or relabel existing attempts.
 
 ## 6. Phase A: AmpliCol and recurrence only
 
@@ -214,7 +245,9 @@ Do not launch compiled or eager cells yet. For each `N=1,...,9`, in increasing
 order, issue this batch manually:
 
 ```bash
-.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py populate \
+set -euo pipefail
+taskset -c 0-9 .venv/bin/python \
+  docs/performance_reports/x86_EPYC/result_tables.py populate \
   --n-final N --mode amplicol --mode recurrence \
   --missing-only --artifact-policy reuse \
   --workers 10 --cell-cores 1 --target-runtime 5 \
@@ -254,7 +287,9 @@ After approval A, fill only the remaining compiled/eager Z variants. For each
 `N=1,...,9`, in increasing order:
 
 ```bash
-.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py populate \
+set -euo pipefail
+taskset -c 0-9 .venv/bin/python \
+  docs/performance_reports/x86_EPYC/result_tables.py populate \
   --dataset z_builtin_sm --dataset z_external_sm \
   --n-final N --mode compiled --mode eager \
   --missing-only --artifact-policy reuse \
@@ -280,7 +315,9 @@ After approval B, run the remaining compiled/eager cells multiplicity by
 multiplicity:
 
 ```bash
-.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py populate \
+set -euo pipefail
+taskset -c 0-9 .venv/bin/python \
+  docs/performance_reports/x86_EPYC/result_tables.py populate \
   --n-final N --mode compiled --mode eager \
   --missing-only --artifact-policy reuse \
   --workers 10 --cell-cores 1 --target-runtime 5 \
@@ -304,6 +341,7 @@ recurrence, compiled JIT O3, and eager-DAG JIT O2; the winner must be the
 smallest validated wall time for that exact workload.
 
 ```bash
+set -euo pipefail
 PDF="docs/performance_reports/x86_EPYC/pyAmpliCol.pdf"
 QA_DIR=".artifacts/performance-report-qa/x86_EPYC/checkpoint"
 mkdir -p "$QA_DIR"
@@ -345,6 +383,7 @@ dependency, and frontier counts; censored endpoints are never claimed as
 numerical evidence.
 
 ```bash
+set -euo pipefail
 git add \
   docs/performance_reports/x86_EPYC/report_environment.json \
   docs/performance_reports/x86_EPYC/report_environment.tex \
@@ -355,12 +394,53 @@ git add \
 git diff --cached --check
 git commit -m "Publish x86_EPYC performance report"
 PUBLICATION_REVISION="$(git rev-parse HEAD)"
-.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
-  final-audit \
-  --expected-source-revision "$MEASURED_SOURCE_REVISION" \
-  --publication-revision "$PUBLICATION_REVISION" \
-  --max-n-final 9 --expected-cell-count 1646
-git push origin HEAD
+env -u PYTHONPATH -u PYTHONHOME \
+  .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 93.1 -- \
+  .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
+    final-audit \
+    --expected-source-revision "$MEASURED_SOURCE_REVISION" \
+    --publication-revision "$PUBLICATION_REVISION" \
+    --max-n-final 9 --expected-cell-count 1646
+git push origin HEAD:codex/x86-EPYC-full-report
+
+# Obtain the shared main-push token from the macbook_M3 filler. Aggregate the
+# already-audited profile in a clean landing worktree; do not redefine the
+# profile's PUBLICATION_REVISION as the two-profile merge commit.
+git fetch origin main
+git merge-base --is-ancestor "$MEASURED_SOURCE_REVISION" origin/main
+LANDING_TREE="../pyamplicol-x86-EPYC-main-landing"
+test ! -e "$LANDING_TREE"
+git worktree add -b codex/x86-EPYC-main-landing \
+  "$LANDING_TREE" origin/main
+git -C "$LANDING_TREE" merge --no-ff --no-edit "$PUBLICATION_REVISION"
+AGGREGATE_REVISION="$(git -C "$LANDING_TREE" rev-parse HEAD)"
+AUDITED_PROFILE_ARGS=(
+  --audited-profile "x86_EPYC=$PUBLICATION_REVISION"
+)
+if test -n "${MAC_PUBLICATION_REVISION:-}"; then
+  AUDITED_PROFILE_ARGS+=(
+    --audited-profile "macbook_M3=$MAC_PUBLICATION_REVISION"
+  )
+fi
+(
+  cd "$LANDING_TREE"
+  python3 -m tools.performance_report.aggregate_audit \
+    --base-revision "$MEASURED_SOURCE_REVISION" \
+    --revision "$AGGREGATE_REVISION" \
+    "${AUDITED_PROFILE_ARGS[@]}"
+  python3 docs/performance_reports/x86_EPYC/result_tables.py audit
+)
+if test -f \
+  "$LANDING_TREE/docs/performance_reports/macbook_M3/report-workspace.json"; then
+  (
+    cd "$LANDING_TREE"
+    python3 docs/performance_reports/macbook_M3/result_tables.py audit
+  )
+fi
+git -C "$LANDING_TREE" push origin HEAD:main
+git -C "$LANDING_TREE" pull --ff-only origin main
+MAIN_LANDING_REVISION="$(git -C "$LANDING_TREE" rev-parse HEAD)"
+test "$MAIN_LANDING_REVISION" = "$(git -C "$LANDING_TREE" rev-parse origin/main)"
 ```
 
 Never commit `.artifacts/`, process/evaluator artifacts, prepared models,
@@ -368,18 +448,19 @@ candidate wheels, build trees, attempts, logs, locks, coordination state, page
 PNGs, or LaTeX auxiliary files. Commit raw JSON, generated TeX, environment
 metadata, and the reviewed PDF.
 
-Coordinate the final main advance with `macbook_M3`; only one task pushes at a
-time. Then:
-
-```bash
-git switch main
-git pull --ff-only origin main
-test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-```
+Coordinate the final main advance with `macbook_M3`; only one task holds the
+main-push token at a time. Announce both the independently audited
+`PUBLICATION_REVISION` and aggregate `MAIN_LANDING_REVISION`. If the main push
+is rejected because the other report landed first, fetch and merge
+`origin/main` into the landing worktree, obtain the sibling's independently
+audited publication SHA, repeat the aggregate and structural audits, and retry
+without force. Never merge sibling-profile output into the frozen measurement
+worktree.
 
 ## Standalone copy
 
 ```bash
+set -euo pipefail
 python3 docs/result_tables.py export-profile x86_EPYC /absolute/output/path
 cd /absolute/output/path
 python3 build_pdf.py

@@ -7,6 +7,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage{array}
 \usepackage{booktabs}
+\usepackage{eso-pic}
 \usepackage{fancyhdr}
 \usepackage{hyperref}
 \usepackage{listings}
@@ -16,7 +17,7 @@
 \usepackage[table]{xcolor}
 
 \DeclareMathSizes{5}{5}{5}{5}
-\DeclareMathSizes{6.2}{6.2}{5}{5}
+\DeclareMathSizes{6.8}{6.8}{5}{5}
 
 \definecolor{ReportInk}{HTML}{17212B}
 \definecolor{ReportBlue}{HTML}{145A86}
@@ -51,6 +52,18 @@
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\headrule}{\hbox to\headwidth{\color{ReportRule}\leaders\hrule height \headrulewidth\hfill}}
+
+\newif\ifReportLandscapePage
+\ReportLandscapePagefalse
+\AddToShipoutPictureFG{%
+  \ifReportLandscapePage
+    \AtPageLowerLeft{%
+      \put(\LenToUnit{\dimexpr\paperwidth-0.35in\relax},
+           \LenToUnit{0.5\paperheight}){%
+        \rotatebox{90}{\makebox[0pt][c]{%
+          \textcolor{ReportMuted}{\thepage}}}}}%
+  \fi
+}
 
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
@@ -288,7 +301,7 @@ parameters, phase-space point, precision, selectors, and normalization.
 
 \subsection{Benchmark platform}
 
-\ReportEditionStatement The recorded hardware, operating system, and processor
+\ReportEditionStatement{} The recorded hardware, operating system, and processor
 summary is \ReportPlatformSummary. The measurement profile is
 \texttt{\ReportProfileName}; its recorded software environment is
 \ReportToolchainSummary. Measurements from different processor architectures
@@ -314,12 +327,15 @@ generation or runtime value.
 
 \clearpage
 \begin{landscape}
+\ReportLandscapePagetrue
 \pagestyle{empty}
 \input{section_three_mode_performance_tables.tex}
 \end{landscape}
+\ReportLandscapePagefalse
 \clearpage
 \pagestyle{empty}
 \begin{landscape}
+\ReportLandscapePagetrue
 \section{Z-plus-Jets Evaluator Ladders}
 
 The dedicated $d\bar d\to Z+(n-1)g$ ladders compare the independent reference
@@ -374,6 +390,7 @@ point before timing.
 \ReportLadderLegend
 \ReportLandscapeFooter
 \end{landscape}
+\ReportLandscapePagefalse
 \clearpage
 \pagestyle{fancy}
 

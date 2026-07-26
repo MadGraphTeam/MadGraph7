@@ -102,7 +102,7 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
     assert r"\renewcommand{\ReportPlatformSummary}" in environment_tex
     assert r"\renewcommand{\ReportToolchainSummary}" in environment_tex
     assert r"\renewcommand{\ReportEditionStatement}" in environment_tex
-    assert "pending authenticated post-checkpoint build" in environment_tex
+    assert "pending an authenticated post-checkpoint build" in environment_tex
     assert "source checkout" not in environment_tex
     environment = json.loads((profile / ENVIRONMENT_JSON).read_text())
     assert environment["schema"] == ENVIRONMENT_SCHEMA
@@ -125,6 +125,7 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
         == "pending_exact_runtime"
     )
     assert manifest["environment_json"] == ENVIRONMENT_JSON
+    assert "result_tables.py" in manifest["tracked_content"]
     assert manifest["initialized_source_identity"] == {
         "schema": "pyamplicol-report-source-v1",
         "revision": "unknown",
@@ -154,8 +155,11 @@ def test_initialize_x86_epyc_profile_binds_parallel_resource_policy(
     readme = (profile / "README.md").read_text(encoding="utf-8")
 
     assert manifest["campaign_policy"] == X86_EPYC_POLICY.as_manifest()
-    assert readme.count("--workers 10 --cell-cores 1 --target-runtime 5") == 9
-    assert readme.count("--max-ram-gb 100 --allow-symbolica-parallel") == 9
+    assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (
+        readme
+    )
+    assert "populate" not in readme
+    assert "export-profile x86_EPYC" in readme
 
 
 def test_profile_readme_requires_full_audited_five_second_campaign(
@@ -167,49 +171,13 @@ def test_profile_readme_requires_full_audited_five_second_campaign(
     profile = initialize_profile(repo, "macbook_M3")
     readme = (profile / "README.md").read_text(encoding="utf-8")
 
-    for multiplicity in range(1, 10):
-        assert f"--n-final {multiplicity} --missing-only --artifact-policy reuse" in (
-            readme
-        )
-    assert readme.count("--workers 1 --cell-cores 1 --target-runtime 5") == 9
-    assert readme.count("--max-ram-gb 30 --refresh-pdf end") == 9
-    assert readme.count("result_tables.py audit") == 10
-    assert "1..9" in readme
-    assert "--artifact-policy regenerate" not in readme
-    assert "visually review" in readme
-    assert 'MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"' in readme
-    assert 'PUBLICATION_REVISION="$(git rev-parse HEAD)"' in readme
-    assert (
-        "python3 docs/performance_reports/macbook_M3/result_tables.py "
-        "final-audit \\" in readme
+    assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (
+        readme
     )
-    assert (
-        '--expected-source-revision "$MEASURED_SOURCE_REVISION" \\\n'
-        '  --publication-revision "$PUBLICATION_REVISION" &&\n'
-        "git push origin HEAD"
-    ) in readme
-    assert "python3 docs/result_tables.py final-audit" not in readme
-    assert readme.count("git push origin HEAD") == 2
-    checkpoint_push = readme.index("git push origin HEAD")
-    publication_push = readme.index("git push origin HEAD", checkpoint_push + 1)
-    assert readme.index("MEASURED_SOURCE_REVISION=") < readme.index(
-        'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"'
-    )
-    assert readme.index(
-        'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"'
-    ) < checkpoint_push
-    assert checkpoint_push < readme.index("refresh-profile-environment")
-    assert readme.index("PUBLICATION_REVISION=") < readme.index(" final-audit \\")
-    assert publication_push > readme.index(" final-audit \\")
-    for path in (
-        "report_environment.json",
-        "report_environment.tex",
-        "results/*.json",
-        "result_*_table.tex",
-        "result_validation_summary.tex",
-        "pyAmpliCol.pdf",
-    ):
-        assert f"docs/performance_reports/macbook_M3/{path}" in readme
+    assert "populate" not in readme
+    assert "render --compile" in readme
+    assert "result_tables.py audit" in readme
+    assert "export-profile macbook_M3" in readme
 
 
 def test_root_report_readme_requires_separate_mac_and_cluster_campaigns() -> None:
@@ -217,74 +185,10 @@ def test_root_report_readme_requires_separate_mac_and_cluster_campaigns() -> Non
         Path(__file__).resolve().parents[2] / "docs/README.md"
     ).read_text(encoding="utf-8")
 
-    for profile in ("macbook_M3", "cluster_EPYC"):
-        for multiplicity in range(1, 5):
-            command = (
-                f"{profile}/result_tables.py populate \\\n"
-                f"  --n-final {multiplicity} --missing-only "
-                "--artifact-policy reuse"
-            )
-            assert command in readme
-    assert readme.count("--target-runtime 5 --refresh-pdf end") == 8
-    assert "--n-final 1..4" not in readme
-    assert "--artifact-policy regenerate" not in readme
-    assert "visually review the refreshed PDF after every" in readme
-    assert "python3 docs/result_tables.py final-audit" not in readme
-    assert readme.count('MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"') == 2
-    assert readme.count('PUBLICATION_REVISION="$(git rev-parse HEAD)"') == 2
-    assert readme.count(
-        '--expected-source-revision "$MEASURED_SOURCE_REVISION" \\'
-    ) == 2
-    assert readme.count(
-        '--publication-revision "$PUBLICATION_REVISION" &&\n'
-        "git push origin HEAD"
-    ) == 2
-    assert readme.count(
-        'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION" &&\n'
-        "git push origin HEAD"
-    ) == 2
-    assert readme.count("git push origin HEAD") == 4
-
-    mac_start = readme.index("Create the first Mac workspace")
-    cluster_start = readme.index("Create an independent cluster workspace")
-    for profile, lifecycle in (
-        ("macbook_M3", readme[mac_start:cluster_start]),
-        ("cluster_EPYC", readme[cluster_start:]),
-    ):
-        final_command = (
-            f"python3 docs/performance_reports/{profile}/result_tables.py "
-            "final-audit \\"
-        )
-        assert final_command in lifecycle
-        assert lifecycle.count("git push origin HEAD") == 2
-        checkpoint_push = lifecycle.index("git push origin HEAD")
-        publication_push = lifecycle.index(
-            "git push origin HEAD",
-            checkpoint_push + 1,
-        )
-        assert lifecycle.index("MEASURED_SOURCE_REVISION=") < lifecycle.index(
-            'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"'
-        )
-        assert lifecycle.index(
-            'test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"'
-        ) < checkpoint_push
-        assert checkpoint_push < lifecycle.index("refresh-profile-environment")
-        assert lifecycle.index("PUBLICATION_REVISION=") > lifecycle.index(
-            f'git commit -m "Publish {profile} performance report"'
-        )
-        assert lifecycle.index("PUBLICATION_REVISION=") < lifecycle.index(
-            final_command
-        )
-        assert publication_push > lifecycle.index(final_command)
-        for path in (
-            "report_environment.json",
-            "report_environment.tex",
-            "results/*.json",
-            "result_*_table.tex",
-            "result_validation_summary.tex",
-            "pyAmpliCol.pdf",
-        ):
-            assert f"docs/performance_reports/{profile}/{path}" in lifecycle
+    for profile in ("macbook_M3", "x86_EPYC"):
+        assert f"performance_reports/{profile}/TABLE_FILLING.md" in readme
+    assert "cluster_EPYC" not in readme
+    assert "`n=1` through `n=9`" in readme
 
 
 def _commit_all(repo: Path, message: str) -> str:

@@ -170,7 +170,6 @@ def _campaign_commands(profile: str, policy: CampaignPolicy) -> str:
 
 
 def _workspace_readme(profile: str, policy: CampaignPolicy) -> str:
-    campaign = _campaign_commands(profile, policy)
     return f"""<!-- SPDX-License-Identifier: 0BSD -->
 # pyAmpliCol performance report: `{profile}`
 
@@ -179,6 +178,11 @@ This directory is the self-contained publication workspace for the
 canonical raw JSON measurements, generated table TeX, and the PDF when it has
 been compiled. Large evaluator artifacts, worker logs, locks, and coordination
 state are deliberately stored outside this tracked directory.
+
+`{TABLE_FILLING_RUNBOOK}` is the sole authoritative campaign procedure. Follow
+its phase ordering, resource limits, user-approval pauses, numerical gates,
+visual-review cadence, branch coordination, and publication allowlist. This
+README intentionally contains no shortened measurement recipe.
 
 Compile this publication folder on any machine with Python and pdfLaTeX:
 
@@ -195,74 +199,17 @@ python3 docs/performance_reports/{profile}/result_tables.py render --compile
 python3 docs/performance_reports/{profile}/result_tables.py audit
 ```
 
-Before measuring, commit this complete initialized workspace, save and verify
-its exact identity, and push the measured-source checkpoint:
+Create a portable copy, including raw data, TeX, and the reviewed PDF, from a
+source checkout with:
 
 ```bash
-git add docs/performance_reports/{profile}
-git commit -m "Initialize {profile} performance report"
-MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
-test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION" &&
-git push origin HEAD
+python3 docs/result_tables.py export-profile {profile} /absolute/output/path
 ```
 
-That first push must complete before any build or measurement. Keep
-`MEASURED_SOURCE_REVISION` unchanged for the rest of the campaign. Perform the
-project's clean build and native-install gate for that exact commit, then
-authenticate and record the installed measurement runtime:
-
-```bash
-python3 docs/performance_reports/{profile}/result_tables.py \\
-  refresh-profile-environment \\
-  --expected-source-revision "$MEASURED_SOURCE_REVISION"
-```
-
-Initialization deliberately labels the runtime metadata as pending: the exact
-installed runtime does not exist until after the checkpoint build. The refresh
-command fails unless the source checkout and native runtime both match the
-requested full commit SHA. It changes only generated publication metadata, so
-the checkpoint remains the evaluator source identity.
-
-Populate each multiplicity separately with the standard five-second timing
-policy:
-
-```bash
-{campaign}
-```
-
-After each populate command, inspect its audit result and visually review the
-newly refreshed PDF before continuing to the next multiplicity. Do not replace
-these nine invocations with one combined `1..9` campaign.
-
-After all nine audits and visual reviews pass, stage only the allowed
-publication outputs, create the report-only descendant, save its identity, and
-run the complete profile-scoped audit:
-
-```bash
-git add \\
-  docs/performance_reports/{profile}/report_environment.json \\
-  docs/performance_reports/{profile}/report_environment.tex \\
-  docs/performance_reports/{profile}/results/*.json \\
-  docs/performance_reports/{profile}/result_*_table.tex \\
-  docs/performance_reports/{profile}/result_validation_summary.tex \\
-  docs/performance_reports/{profile}/pyAmpliCol.pdf
-git diff --cached --check
-git commit -m "Publish {profile} performance report"
-PUBLICATION_REVISION="$(git rev-parse HEAD)"
-python3 docs/performance_reports/{profile}/result_tables.py final-audit \\
-  --expected-source-revision "$MEASURED_SOURCE_REVISION" \\
-  --publication-revision "$PUBLICATION_REVISION" &&
-git push origin HEAD
-```
-
-The copied entry point selects this profile automatically. Detailed execution
-and review requirements are recorded in `{TABLE_FILLING_RUNBOOK}`. It still requires a
-pyAmpliCol source checkout and installed native extension because measurements
-exercise the public runtime APIs. During measurement, do not modify the
-already-committed profile prose, entry points, or manifest, and never stage
-evaluator source, `.artifacts/`, worker attempts, logs, locks, coordination
-state, or LaTeX auxiliary files. Push the publication commit only after
-`final-audit` succeeds.
+The copied entry point selects this profile automatically. Measurements still
+require the exact pyAmpliCol source checkout and authenticated native runtime.
+Never commit evaluator artifacts, candidate wheels, prepared models, attempts,
+logs, locks, coordination state, page images, or LaTeX auxiliary files.
 """
 
 
@@ -498,8 +445,7 @@ def _tex_escape(value: str) -> str:
 
 def _environment_tex(environment: Mapping[str, str]) -> str:
     toolchain = (
-        "Exact measurement-runtime metadata pending authenticated "
-        "post-checkpoint build."
+        "pending an authenticated post-checkpoint build"
         if environment["status"] == "pending_exact_runtime"
         else (
             f"{environment['python_implementation']} "
@@ -580,6 +526,7 @@ def _workspace_manifest(
             TABLE_FILLING_RUNBOOK,
             WORKSPACE_MANIFEST,
             STANDALONE_BUILDER,
+            "result_tables.py",
             "pyAmpliCol.pdf (when compiled and reviewed)",
         ],
         "excluded_content": [

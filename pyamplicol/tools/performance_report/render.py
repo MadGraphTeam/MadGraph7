@@ -594,7 +594,7 @@ def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
 
 def _matrix_macros() -> list[str]:
     return [
-        r"\providecommand{\matrixentryfont}{\fontsize{6.2pt}{7.0pt}\selectfont}",
+        r"\providecommand{\matrixentryfont}{\fontsize{6.8pt}{7.8pt}\selectfont}",
         r"\providecommand{\matrixpunct}[1]{\textcolor{black}{\texttt{#1}}}",
         (
             r"\providecommand{\matrixratio}[2]{\matrixpunct{(}"
@@ -793,9 +793,17 @@ def _matrix_block(
     block_index: int,
     block_count: int,
 ) -> list[str]:
+    value_width = {2: "3.50in", 3: "2.49in"}.get(len(multiplicities))
+    if value_width is None:
+        raise ValueError(
+            "matrix blocks must contain two or three multiplicities"
+        )
     column_spec = (
         r"@{}r@{\hspace{0.04in}}L{1.65in}"
-        + "".join(r"@{\hspace{0.06in}}L{2.49in}" for _ in multiplicities)
+        + "".join(
+            rf"@{{\hspace{{0.06in}}}}L{{{value_width}}}"
+            for _ in multiplicities
+        )
         + r"@{}"
     )
     lines = [
@@ -811,9 +819,10 @@ def _matrix_block(
             + "}"
         ),
         r"\begingroup",
-        r"\scriptsize",
+        r"\centering",
+        r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
-        r"\renewcommand{\arraystretch}{1.06}",
+        r"\renewcommand{\arraystretch}{1.10}",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
         (
@@ -1326,9 +1335,17 @@ def _best_mode_block(
         Accuracy.NLC: "NLC",
         Accuracy.FULL: "full-colour",
     }[accuracy]
+    value_width = {2: "3.50in", 3: "2.49in"}.get(len(multiplicities))
+    if value_width is None:
+        raise ValueError(
+            "matrix blocks must contain two or three multiplicities"
+        )
     column_spec = (
         r"@{}r@{\hspace{0.04in}}L{1.65in}"
-        + "".join(r"@{\hspace{0.06in}}L{2.49in}" for _ in multiplicities)
+        + "".join(
+            rf"@{{\hspace{{0.06in}}}}L{{{value_width}}}"
+            for _ in multiplicities
+        )
         + r"@{}"
     )
     lines = [
@@ -1345,9 +1362,10 @@ def _best_mode_block(
             + "}"
         ),
         r"\begingroup",
-        r"\scriptsize",
+        r"\centering",
+        r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
-        r"\renewcommand{\arraystretch}{1.06}",
+        r"\renewcommand{\arraystretch}{1.10}",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
         (
@@ -1556,14 +1574,15 @@ def _z_block(
             + "}"
         ),
         r"\begingroup",
-        r"\tiny",
+        r"\centering",
+        r"\scriptsize",
         r"\setlength{\tabcolsep}{1.4pt}",
-        r"\renewcommand{\arraystretch}{1.03}",
+        r"\renewcommand{\arraystretch}{1.05}",
         (
-            r"\begin{tabular}{@{}r L{1.18in} "
-            r"R{0.82in} R{0.82in} R{0.82in} "
+            r"\begin{tabular}{@{}r L{1.50in} "
+            r"R{1.26in} R{1.26in} R{1.26in} "
             r"@{\hspace{0.08in}}"
-            r"R{0.82in} R{0.82in} R{0.82in}@{}}"
+            r"R{1.26in} R{1.26in} R{1.26in}@{}}"
         ),
         r"\toprule",
         (
