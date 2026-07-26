@@ -5,11 +5,14 @@
 //! This module consumes the existing stage/chunk manifests, lowers each
 //! already-fused SymJIT O3 leaf to DirectApplication v3 at load time, and
 //! executes the unchanged leaf schedule against persistent component-major
-//! planes. There is deliberately one physical current plane per global value
-//! component: that preserves fused-stage order and parent locality while
-//! removing per-leaf gather and scatter traffic.
+//! planes. Canonical manifest component IDs are cold-bound to a stage-granular
+//! physical layout: values with disjoint whole-stage lifetimes may reuse a
+//! plane while every Arena-v1 stage retains its no-alias contract.
 
 #![allow(dead_code)]
+
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
 #[cfg(feature = "f64-symjit")]
 use std::path::PathBuf;
@@ -110,19 +113,30 @@ impl LoadedCompiledDirectLeaf {
         momenta: DirectMomentumView,
         parameters: DirectParameterView,
         _zero_plane: &AlignedF64Buffer,
+        current_component_map: &[u32],
     ) -> RusticolResult<BoundCompiledDirectLeaf> {
         match self {
             #[cfg(feature = "f64-symjit")]
             Self::Symjit(leaf) => {
                 // SAFETY: forwarded from the engine's fixed-allocation bind.
-                unsafe { leaf.bind(arena, momenta, parameters, _zero_plane) }
-                    .map(BoundCompiledDirectLeaf::Symjit)
+                unsafe {
+                    leaf.bind_with_current_map(
+                        arena,
+                        momenta,
+                        parameters,
+                        _zero_plane,
+                        current_component_map,
+                    )
+                }
+                .map(BoundCompiledDirectLeaf::Symjit)
             }
             #[cfg(feature = "f64-compiled")]
             Self::Native(leaf) => {
                 // SAFETY: forwarded from the engine's fixed-allocation bind.
-                unsafe { leaf.bind(arena, momenta, parameters) }
-                    .map(BoundCompiledDirectLeaf::Native)
+                unsafe {
+                    leaf.bind_with_current_map(arena, momenta, parameters, current_component_map)
+                }
+                .map(BoundCompiledDirectLeaf::Native)
             }
         }
     }
@@ -147,6 +161,64 @@ struct LoadedStage {
 struct BoundStage {
     leaves: Vec<BoundCompiledDirectLeaf>,
     leaf_plans: Vec<DirectLeafPlan>,
+}
+
+const UNMAPPED_CURRENT_COMPONENT: u32 = u32::MAX;
+
+#[derive(Clone, Debug)]
+struct CompiledDirectCurrentLayout {
+    canonical_to_physical: Box<[u32]>,
+    physical_component_count: u32,
+    live_component_count: usize,
+}
+
+impl CompiledDirectCurrentLayout {
+    fn identity(canonical_component_count: usize) -> RusticolResult<Self> {
+        let physical_component_count = u32::try_from(canonical_component_count).map_err(|_| {
+            RusticolError::integrity("compiled Direct-Arena current plane count exceeds u32")
+        })?;
+        Ok(Self {
+            canonical_to_physical: (0..physical_component_count)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            physical_component_count,
+            live_component_count: canonical_component_count,
+        })
+    }
+
+    fn physical_component(&self, canonical_component: usize) -> RusticolResult<u32> {
+        self.canonical_to_physical
+            .get(canonical_component)
+            .copied()
+            .filter(|component| *component != UNMAPPED_CURRENT_COMPONENT)
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "compiled Direct-Arena canonical current component {canonical_component} has \
+                     no physical liveness assignment"
+                ))
+            })
+    }
+
+    fn physical_map(&self) -> &[u32] {
+        &self.canonical_to_physical
+    }
+
+    fn is_identity(&self) -> bool {
+        self.live_component_count == self.canonical_to_physical.len()
+            && self.physical_component_count as usize == self.canonical_to_physical.len()
+            && self
+                .canonical_to_physical
+                .iter()
+                .copied()
+                .enumerate()
+                .all(|(canonical, physical)| physical as usize == canonical)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompiledDirectCurrentLayoutPolicy {
+    Identity { tile_capacity: u32 },
+    StageLivenessProduction,
 }
 
 trait DirectStagePlan {
@@ -193,6 +265,7 @@ pub(crate) struct CompiledDirectEnginePrototype {
     source_components: Box<[usize]>,
     default_source_states: Box<[GenericSourceStateIrManifest]>,
     source_wavefunction_scratch: Vec<Complex<f64>>,
+    current_layout: CompiledDirectCurrentLayout,
     value_component_count: usize,
     momentum_component_count: usize,
     model_parameter_count: usize,
@@ -214,6 +287,33 @@ impl CompiledDirectEnginePrototype {
         model_parameter_count: usize,
         amplitude_component_count: usize,
         tile_capacity: u32,
+    ) -> RusticolResult<Self> {
+        Self::load_with_current_layout_policy(
+            stages,
+            amplitude,
+            payloads,
+            source_components,
+            source_scratch_len,
+            value_component_count,
+            momentum_component_count,
+            model_parameter_count,
+            amplitude_component_count,
+            CompiledDirectCurrentLayoutPolicy::Identity { tile_capacity },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn load_with_current_layout_policy(
+        stages: &[GenericSerializedStageEvaluatorManifest],
+        amplitude: &GenericSerializedStageEvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+        source_components: &[usize],
+        source_scratch_len: usize,
+        value_component_count: usize,
+        momentum_component_count: usize,
+        model_parameter_count: usize,
+        amplitude_component_count: usize,
+        layout_policy: CompiledDirectCurrentLayoutPolicy,
     ) -> RusticolResult<Self> {
         if value_component_count == 0 || amplitude_component_count == 0 {
             return Err(RusticolError::integrity(
@@ -267,10 +367,61 @@ impl CompiledDirectEnginePrototype {
             &structural_zero_components,
         )?;
 
+        let full_stage_leaves = loaded_stages
+            .iter()
+            .map(|stage| (0..stage.leaves.len()).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        let full_amplitude_leaves = (0..loaded_amplitude.leaves.len()).collect::<Vec<_>>();
+        let full_schedule = validate_schedule(
+            &loaded_stages,
+            &loaded_amplitude,
+            value_component_count,
+            source_components,
+            amplitude_component_count,
+            &full_stage_leaves,
+            &full_amplitude_leaves,
+        )?;
+        let current_layout = match layout_policy {
+            CompiledDirectCurrentLayoutPolicy::Identity { .. } => {
+                CompiledDirectCurrentLayout::identity(value_component_count)?
+            }
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction => {
+                derive_stage_current_layout(
+                    &loaded_stages,
+                    &loaded_amplitude,
+                    source_components,
+                    value_component_count,
+                )?
+            }
+        };
+        let tile_capacity = match layout_policy {
+            CompiledDirectCurrentLayoutPolicy::Identity { tile_capacity } => tile_capacity,
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction => {
+                let scalar_values_per_point =
+                    usize::try_from(current_layout.physical_component_count)
+                        .ok()
+                        .and_then(|value| value.checked_mul(2))
+                        .and_then(|value| value.checked_add(momentum_component_count))
+                        .and_then(|value| {
+                            amplitude_component_count
+                                .checked_mul(2)
+                                .and_then(|amplitudes| value.checked_add(amplitudes))
+                        })
+                        .ok_or_else(|| {
+                            RusticolError::integrity(
+                                "compiled Direct-Arena physical per-point shape overflows",
+                            )
+                        })?;
+                deterministic_point_tile_size(
+                    COMPILED_DIRECT_LOCALITY_POINT_CAP,
+                    COMPILED_DIRECT_WORKSPACE_BYTES,
+                    compiled_direct_cache_target_bytes(),
+                    scalar_values_per_point,
+                )?
+            }
+        };
         let mut arena = Box::new(DirectArenaWorkspace::new(
-            u32::try_from(value_component_count).map_err(|_| {
-                RusticolError::integrity("compiled Direct-Arena current plane count exceeds u32")
-            })?,
+            current_layout.physical_component_count,
             u32::try_from(amplitude_component_count).map_err(|_| {
                 RusticolError::integrity("compiled Direct-Arena amplitude plane count exceeds u32")
             })?,
@@ -297,21 +448,6 @@ impl CompiledDirectEnginePrototype {
             stride,
             "compiled prototype shared zero plane",
         )?);
-
-        let full_stage_leaves = loaded_stages
-            .iter()
-            .map(|stage| (0..stage.leaves.len()).collect::<Vec<_>>())
-            .collect::<Vec<_>>();
-        let full_amplitude_leaves = (0..loaded_amplitude.leaves.len()).collect::<Vec<_>>();
-        let full_schedule = validate_schedule(
-            &loaded_stages,
-            &loaded_amplitude,
-            value_component_count,
-            source_components,
-            amplitude_component_count,
-            &full_stage_leaves,
-            &full_amplitude_leaves,
-        )?;
 
         let arena_view = arena.view()?;
         let momentum_view = DirectMomentumView {
@@ -348,7 +484,13 @@ impl CompiledDirectEnginePrototype {
                     .leaves
                     .into_iter()
                     .map(|leaf| unsafe {
-                        leaf.bind(arena_view, momentum_view, parameter_view, &zero_plane)
+                        leaf.bind(
+                            arena_view,
+                            momentum_view,
+                            parameter_view,
+                            &zero_plane,
+                            current_layout.physical_map(),
+                        )
                     })
                     .collect::<RusticolResult<Vec<_>>>()?,
                 leaf_plans: loaded.leaf_plans,
@@ -391,6 +533,7 @@ impl CompiledDirectEnginePrototype {
             source_components: source_components.to_vec().into_boxed_slice(),
             default_source_states: Box::new([]),
             source_wavefunction_scratch: vec![c64(0.0, 0.0); source_scratch_len],
+            current_layout,
             value_component_count,
             momentum_component_count,
             model_parameter_count,
@@ -413,24 +556,7 @@ impl CompiledDirectEnginePrototype {
     ) -> RusticolResult<Self> {
         let (source_components, source_scratch_len) =
             canonical_source_layout(sources, value_component_count)?;
-        let scalar_values_per_point = value_component_count
-            .checked_mul(2)
-            .and_then(|value| value.checked_add(momentum_component_count))
-            .and_then(|value| {
-                amplitude_component_count
-                    .checked_mul(2)
-                    .and_then(|amplitudes| value.checked_add(amplitudes))
-            })
-            .ok_or_else(|| {
-                RusticolError::integrity("compiled Direct-Arena per-point shape overflows")
-            })?;
-        let tile_capacity = deterministic_point_tile_size(
-            COMPILED_DIRECT_LOCALITY_POINT_CAP,
-            COMPILED_DIRECT_WORKSPACE_BYTES,
-            compiled_direct_cache_target_bytes(),
-            scalar_values_per_point,
-        )?;
-        let mut direct = Self::load(
+        let mut direct = Self::load_with_current_layout_policy(
             stages,
             amplitude,
             payloads,
@@ -440,7 +566,7 @@ impl CompiledDirectEnginePrototype {
             momentum_component_count,
             model_parameter_count,
             amplitude_component_count,
-            tile_capacity,
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
         )?;
         direct.default_source_states = sources
             .iter()
@@ -570,7 +696,9 @@ impl CompiledDirectEnginePrototype {
                         )?;
                     }
                     for (offset, value) in output.iter().copied().enumerate() {
-                        let target = (start + offset) * stride + point_index;
+                        let physical_component =
+                            self.current_layout.physical_component(start + offset)?;
+                        let target = physical_component as usize * stride + point_index;
                         current_re[target] = value.re;
                         current_im[target] = value.im;
                     }
@@ -653,6 +781,12 @@ impl CompiledDirectEnginePrototype {
         global_parameter_count: usize,
         state: &[Complex<f64>],
     ) -> RusticolResult<()> {
+        if !self.current_layout.is_identity() {
+            return Err(RusticolError::invalid_argument(
+                "compiled Direct-Arena full-state developer input requires an identity current \
+                 layout",
+            ));
+        }
         if point_count == 0
             || point_count > self.arena.tile_capacity() as usize
             || state.len() != point_count.saturating_mul(global_parameter_count)
@@ -834,6 +968,12 @@ impl CompiledDirectEnginePrototype {
         global_parameter_count: usize,
         state: &mut [Complex<f64>],
     ) -> RusticolResult<()> {
+        if !self.current_layout.is_identity() {
+            return Err(RusticolError::invalid_argument(
+                "compiled Direct-Arena full-state developer output requires an identity current \
+                 layout",
+            ));
+        }
         if state.len() != point_count.saturating_mul(global_parameter_count) {
             return Err(RusticolError::invalid_argument(
                 "compiled Direct-Arena output state shape is invalid",
@@ -1006,6 +1146,305 @@ fn canonical_structural_zero_components(
     Ok((0..value_component_count)
         .filter(|component| !sources.contains(component) && !produced.contains(component))
         .collect())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CompiledDirectCurrentLifetime {
+    canonical_component: usize,
+    first_event: u64,
+    last_event: u64,
+}
+
+fn derive_stage_current_layout(
+    stages: &[LoadedStage],
+    amplitude: &LoadedStage,
+    source_components: &[usize],
+    canonical_component_count: usize,
+) -> RusticolResult<CompiledDirectCurrentLayout> {
+    let mut first_events = vec![None; canonical_component_count];
+    let mut last_events = vec![None; canonical_component_count];
+    for &component in source_components {
+        define_current_component(
+            &mut first_events,
+            &mut last_events,
+            component,
+            0,
+            "source fill",
+        )?;
+    }
+
+    for (stage_index, stage) in stages.iter().enumerate() {
+        let event = u64::try_from(stage_index)
+            .ok()
+            .and_then(|value| value.checked_add(1))
+            .ok_or_else(|| {
+                RusticolError::integrity("compiled Direct-Arena stage-liveness event exceeds u64")
+            })?;
+        for leaf in &stage.leaf_plans {
+            for &component in &leaf.input_current_components {
+                use_current_component(
+                    &first_events,
+                    &mut last_events,
+                    component,
+                    event,
+                    "current stage input",
+                )?;
+            }
+        }
+        // Arena-v1 declares no input/output or output/output aliasing for the
+        // complete fused stage, not merely for one leaf. Give every output the
+        // same inclusive definition event so the allocator preserves that
+        // whole-stage contract.
+        for leaf in &stage.leaf_plans {
+            for &component in &leaf.output_current_components {
+                define_current_component(
+                    &mut first_events,
+                    &mut last_events,
+                    component,
+                    event,
+                    "current stage output",
+                )?;
+            }
+        }
+    }
+
+    let amplitude_event = u64::try_from(stages.len())
+        .ok()
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| {
+            RusticolError::integrity("compiled Direct-Arena amplitude-liveness event exceeds u64")
+        })?;
+    for leaf in &amplitude.leaf_plans {
+        for &component in &leaf.input_current_components {
+            use_current_component(
+                &first_events,
+                &mut last_events,
+                component,
+                amplitude_event,
+                "amplitude stage input",
+            )?;
+        }
+    }
+
+    let mut lifetimes = first_events
+        .into_iter()
+        .zip(last_events)
+        .enumerate()
+        .filter_map(|(canonical_component, (first_event, last_event))| {
+            first_event.map(|first_event| {
+                last_event
+                    .map(|last_event| CompiledDirectCurrentLifetime {
+                        canonical_component,
+                        first_event,
+                        last_event,
+                    })
+                    .ok_or_else(|| {
+                        RusticolError::integrity(format!(
+                            "compiled Direct-Arena current component {canonical_component} has a \
+                             definition but no lifetime end"
+                        ))
+                    })
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    if lifetimes.is_empty() {
+        return Err(RusticolError::integrity(
+            "compiled Direct-Arena stage liveness has no live current components",
+        ));
+    }
+    lifetimes.sort_unstable_by_key(|lifetime| (lifetime.first_event, lifetime.canonical_component));
+
+    // Unit-width interval coloring in O(N log N). At every definition event,
+    // release only ranges whose inclusive lifetime ended strictly earlier and
+    // deterministically reuse the lowest free physical plane.
+    let mut active = BinaryHeap::<Reverse<(u64, u32)>>::new();
+    let mut free = BinaryHeap::<Reverse<u32>>::new();
+    let mut next_physical = 0_u32;
+    let mut canonical_to_physical = vec![UNMAPPED_CURRENT_COMPONENT; canonical_component_count];
+    for lifetime in &lifetimes {
+        while let Some(Reverse((last_event, physical_component))) = active.peek().copied() {
+            if last_event >= lifetime.first_event {
+                break;
+            }
+            active.pop();
+            free.push(Reverse(physical_component));
+        }
+        let physical_component = if let Some(Reverse(component)) = free.pop() {
+            component
+        } else {
+            let component = next_physical;
+            next_physical = next_physical.checked_add(1).ok_or_else(|| {
+                RusticolError::integrity(
+                    "compiled Direct-Arena physical current plane count exceeds u32",
+                )
+            })?;
+            component
+        };
+        canonical_to_physical[lifetime.canonical_component] = physical_component;
+        active.push(Reverse((lifetime.last_event, physical_component)));
+    }
+
+    let layout = CompiledDirectCurrentLayout {
+        canonical_to_physical: canonical_to_physical.into_boxed_slice(),
+        physical_component_count: next_physical,
+        live_component_count: lifetimes.len(),
+    };
+    validate_compiled_current_layout(&layout, &lifetimes, stages, amplitude)?;
+    Ok(layout)
+}
+
+fn define_current_component(
+    first_events: &mut [Option<u64>],
+    last_events: &mut [Option<u64>],
+    component: usize,
+    event: u64,
+    context: &str,
+) -> RusticolResult<()> {
+    let first = first_events.get_mut(component).ok_or_else(|| {
+        RusticolError::integrity(format!(
+            "compiled Direct-Arena {context} component {component} is out of bounds"
+        ))
+    })?;
+    let last = last_events.get_mut(component).ok_or_else(|| {
+        RusticolError::integrity(format!(
+            "compiled Direct-Arena {context} component {component} is out of bounds"
+        ))
+    })?;
+    if first.replace(event).is_some() || last.replace(event).is_some() {
+        return Err(RusticolError::integrity(format!(
+            "compiled Direct-Arena {context} component {component} has multiple producers"
+        )));
+    }
+    Ok(())
+}
+
+fn use_current_component(
+    first_events: &[Option<u64>],
+    last_events: &mut [Option<u64>],
+    component: usize,
+    event: u64,
+    context: &str,
+) -> RusticolResult<()> {
+    let first = first_events
+        .get(component)
+        .copied()
+        .flatten()
+        .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "compiled Direct-Arena {context} component {component} is absent or used before \
+                 its producer"
+            ))
+        })?;
+    if first > event {
+        return Err(RusticolError::integrity(format!(
+            "compiled Direct-Arena {context} component {component} precedes its producer"
+        )));
+    }
+    let last = last_events.get_mut(component).ok_or_else(|| {
+        RusticolError::integrity(format!(
+            "compiled Direct-Arena {context} component {component} is out of bounds"
+        ))
+    })?;
+    *last = Some(last.unwrap_or(first).max(event));
+    Ok(())
+}
+
+fn validate_compiled_current_layout(
+    layout: &CompiledDirectCurrentLayout,
+    lifetimes: &[CompiledDirectCurrentLifetime],
+    stages: &[LoadedStage],
+    amplitude: &LoadedStage,
+) -> RusticolResult<()> {
+    if layout.physical_component_count == 0
+        || layout.live_component_count != lifetimes.len()
+        || layout.canonical_to_physical.is_empty()
+    {
+        return Err(RusticolError::integrity(
+            "compiled Direct-Arena current-liveness accounting is inconsistent",
+        ));
+    }
+    let mut physical_chains =
+        vec![Vec::<CompiledDirectCurrentLifetime>::new(); layout.physical_component_count as usize];
+    for lifetime in lifetimes {
+        if lifetime.first_event > lifetime.last_event {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena current component {} has a reversed lifetime",
+                lifetime.canonical_component
+            )));
+        }
+        let physical = layout.physical_component(lifetime.canonical_component)?;
+        physical_chains
+            .get_mut(physical as usize)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "compiled Direct-Arena liveness assignment exceeds physical storage",
+                )
+            })?
+            .push(*lifetime);
+    }
+    for chain in &mut physical_chains {
+        chain.sort_unstable_by_key(|lifetime| (lifetime.first_event, lifetime.canonical_component));
+        for pair in chain.windows(2) {
+            if pair[0].last_event >= pair[1].first_event {
+                return Err(RusticolError::integrity(format!(
+                    "compiled Direct-Arena live current components {} and {} alias physical plane",
+                    pair[0].canonical_component, pair[1].canonical_component
+                )));
+            }
+        }
+    }
+    for (stage_index, stage) in stages.iter().enumerate() {
+        validate_stage_physical_aliases(
+            layout,
+            stage,
+            &format!("compiled Direct-Arena stage {stage_index}"),
+        )?;
+    }
+    validate_stage_physical_aliases(layout, amplitude, "compiled Direct-Arena amplitude stage")?;
+    Ok(())
+}
+
+fn validate_stage_physical_aliases(
+    layout: &CompiledDirectCurrentLayout,
+    stage: &LoadedStage,
+    context: &str,
+) -> RusticolResult<()> {
+    let mut canonical_inputs = BTreeSet::new();
+    let mut canonical_outputs = BTreeSet::new();
+    for leaf in &stage.leaf_plans {
+        for &component in &leaf.input_current_components {
+            canonical_inputs.insert(component);
+        }
+        for &component in &leaf.output_current_components {
+            if !canonical_outputs.insert(component) {
+                return Err(RusticolError::integrity(format!(
+                    "{context} repeats an output current component"
+                )));
+            }
+        }
+    }
+    let mut inputs = BTreeSet::new();
+    for component in canonical_inputs {
+        if !inputs.insert(layout.physical_component(component)?) {
+            return Err(RusticolError::integrity(format!(
+                "{context} aliases distinct live input current components"
+            )));
+        }
+    }
+    let mut outputs = BTreeSet::new();
+    for component in canonical_outputs {
+        if !outputs.insert(layout.physical_component(component)?) {
+            return Err(RusticolError::integrity(format!(
+                "{context} aliases distinct output current components"
+            )));
+        }
+    }
+    if inputs.iter().any(|component| outputs.contains(component)) {
+        return Err(RusticolError::integrity(format!(
+            "{context} aliases an input and output current component"
+        )));
+    }
+    Ok(())
 }
 
 fn point_count_u32(point_count: usize, active: u32) -> RusticolResult<u32> {
@@ -1781,6 +2220,82 @@ mod tests {
 
     static TEST_DIRECTORY_ID: AtomicU64 = AtomicU64::new(0);
 
+    fn liveness_leaf(inputs: &[usize], outputs: &[usize]) -> DirectLeafPlan {
+        DirectLeafPlan {
+            input_current_components: inputs.to_vec().into_boxed_slice(),
+            output_current_components: outputs.to_vec().into_boxed_slice(),
+            output_amplitude_components: Box::new([]),
+        }
+    }
+
+    fn liveness_stage(leaves: Vec<DirectLeafPlan>) -> LoadedStage {
+        LoadedStage {
+            leaves: Vec::new(),
+            leaf_plans: leaves,
+        }
+    }
+
+    #[test]
+    fn stage_liveness_reuses_only_strictly_dead_current_planes() {
+        let stages = vec![
+            liveness_stage(vec![liveness_leaf(&[0], &[1])]),
+            liveness_stage(vec![liveness_leaf(&[1], &[2])]),
+        ];
+        let amplitude = liveness_stage(vec![liveness_leaf(&[2], &[])]);
+        let expected = derive_stage_current_layout(&stages, &amplitude, &[0], 5).unwrap();
+
+        assert_eq!(expected.physical_component_count, 2);
+        assert_eq!(expected.live_component_count, 3);
+        assert_eq!(expected.physical_component(0).unwrap(), 0);
+        assert_eq!(expected.physical_component(1).unwrap(), 1);
+        assert_eq!(expected.physical_component(2).unwrap(), 0);
+        assert_eq!(
+            expected.canonical_to_physical[3..],
+            [UNMAPPED_CURRENT_COMPONENT, UNMAPPED_CURRENT_COMPONENT]
+        );
+        for _ in 0..32 {
+            let actual = derive_stage_current_layout(&stages, &amplitude, &[0], 5).unwrap();
+            assert_eq!(actual.canonical_to_physical, expected.canonical_to_physical);
+            assert_eq!(
+                actual.physical_component_count,
+                expected.physical_component_count
+            );
+        }
+    }
+
+    #[test]
+    fn stage_liveness_preserves_arena_v1_whole_stage_no_aliasing() {
+        let stages = vec![
+            liveness_stage(vec![liveness_leaf(&[0], &[1]), liveness_leaf(&[0], &[2])]),
+            liveness_stage(vec![liveness_leaf(&[1, 2], &[3])]),
+        ];
+        let amplitude = liveness_stage(vec![liveness_leaf(&[3], &[])]);
+        let layout = derive_stage_current_layout(&stages, &amplitude, &[0], 4).unwrap();
+
+        let first_stage_planes = [0, 1, 2]
+            .into_iter()
+            .map(|component| layout.physical_component(component).unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            first_stage_planes.len(),
+            3,
+            "same-stage input and every output must remain disjoint"
+        );
+        assert_ne!(
+            layout.physical_component(1).unwrap(),
+            layout.physical_component(2).unwrap(),
+            "outputs from separate leaves still share the fused-stage no-alias contract"
+        );
+    }
+
+    #[test]
+    fn stage_liveness_rejects_a_current_use_without_a_producer() {
+        let stages = vec![liveness_stage(vec![liveness_leaf(&[1], &[2])])];
+        let amplitude = liveness_stage(vec![liveness_leaf(&[2], &[])]);
+        let error = derive_stage_current_layout(&stages, &amplitude, &[0], 3).unwrap_err();
+        assert!(error.message().contains("used before its producer"));
+    }
+
     fn test_payload_directory() -> PathBuf {
         let target = std::env::var_os("CARGO_TARGET_DIR")
             .map(PathBuf::from)
@@ -2298,6 +2813,28 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 16,
             );
         }
+        assert_eq!(
+            deterministic_point_tile_size(
+                COMPILED_DIRECT_LOCALITY_POINT_CAP,
+                COMPILED_DIRECT_WORKSPACE_BYTES,
+                COMPILED_DIRECT_CACHE_TARGET_BYTES,
+                65_268,
+            )
+            .unwrap(),
+            8,
+            "canonical qq_Z6g union-flow shape fits only eight points in the cache target"
+        );
+        assert_eq!(
+            deterministic_point_tile_size(
+                COMPILED_DIRECT_LOCALITY_POINT_CAP,
+                COMPILED_DIRECT_WORKSPACE_BYTES,
+                COMPILED_DIRECT_CACHE_TARGET_BYTES,
+                28_792,
+            )
+            .unwrap(),
+            16,
+            "stage-liveness qq_Z6g union-flow shape restores a sixteen-point tile"
+        );
     }
 
     #[test]

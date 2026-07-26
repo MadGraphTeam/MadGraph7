@@ -2820,6 +2820,26 @@ struct PhysicsRuntime {
     helicity_index_by_id: BTreeMap<String, usize>,
     color_index_by_id: BTreeMap<String, usize>,
     reduction_by_group_id: BTreeMap<i64, crate::ReductionGroup>,
+    numeric_reduction_by_group_id: BTreeMap<i64, NumericReductionGroup>,
+}
+
+#[derive(Clone)]
+struct NumericReductionGroup {
+    physical_helicity_indices: Vec<usize>,
+    helicity_membership: Vec<bool>,
+    normalized_helicity_weights: Vec<(usize, f64)>,
+    normalized_color_weights: Vec<(usize, f64)>,
+    normalized_member_weights: Vec<(usize, usize, f64)>,
+}
+
+impl NumericReductionGroup {
+    #[inline(always)]
+    fn contains_helicity(&self, helicity_index: usize) -> bool {
+        self.helicity_membership
+            .get(helicity_index)
+            .copied()
+            .unwrap_or(false)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -3743,7 +3763,6 @@ struct RoutedReductionScratch {
     color_indices: Vec<usize>,
     helicity_positions: Vec<Option<usize>>,
     color_positions: Vec<Option<usize>>,
-    raw_member_weights: Vec<(usize, usize, f64)>,
     selected_member_weights: Vec<(usize, usize, f64)>,
     selected_member_weight_ranges: Vec<std::ops::Range<usize>>,
     direct_group_re: Vec<f64>,

@@ -1149,7 +1149,7 @@ impl AmplitudeRuntime {
                 let left_group = &raw_sum_groups[entry.left_group_index];
                 let right_group = &raw_sum_groups[entry.right_group_index];
                 let left_reduction = physics
-                    .reduction_by_group_id
+                    .numeric_reduction_by_group_id
                     .get(&left_group.id)
                     .ok_or_else(|| {
                         RusticolError::invalid_argument(format!(
@@ -1158,7 +1158,7 @@ impl AmplitudeRuntime {
                         ))
                     })?;
                 let right_reduction = physics
-                    .reduction_by_group_id
+                    .numeric_reduction_by_group_id
                     .get(&right_group.id)
                     .ok_or_else(|| {
                         RusticolError::invalid_argument(format!(
@@ -1166,15 +1166,17 @@ impl AmplitudeRuntime {
                             right_group.id
                         ))
                     })?;
-                if left_reduction.physical_helicity_ids != right_reduction.physical_helicity_ids {
+                if left_reduction.physical_helicity_indices
+                    != right_reduction.physical_helicity_indices
+                {
                     return Err(RusticolError::invalid_argument(
                         "colour contraction mixed distinct physical helicities",
                     ));
                 }
-                let left_weights = physics.normalized_helicity_weights(left_reduction)?;
-                let right_weights = physics.normalized_helicity_weights(right_reduction)?;
+                let left_weights = &left_reduction.normalized_helicity_weights;
+                let right_weights = &right_reduction.normalized_helicity_weights;
                 if left_weights.len() != right_weights.len()
-                    || left_weights.iter().zip(&right_weights).any(
+                    || left_weights.iter().zip(right_weights).any(
                         |((left_index, left_weight), (right_index, right_weight))| {
                             left_index != right_index
                                 || left_weight.to_bits() != right_weight.to_bits()
@@ -1187,7 +1189,8 @@ impl AmplitudeRuntime {
                 }
                 selected_helicity_weights_by_entry.push(
                     left_weights
-                        .into_iter()
+                        .iter()
+                        .copied()
                         .filter_map(|(helicity_index, weight)| {
                             selected_helicity_positions[helicity_index]
                                 .map(|position| (position, weight))
@@ -1236,7 +1239,7 @@ impl AmplitudeRuntime {
             let mut selected_member_weights_by_group = Vec::with_capacity(raw_sum_groups.len());
             for group in raw_sum_groups {
                 let reduction = physics
-                    .reduction_by_group_id
+                    .numeric_reduction_by_group_id
                     .get(&group.id)
                     .ok_or_else(|| {
                         RusticolError::invalid_argument(format!(
@@ -1245,9 +1248,10 @@ impl AmplitudeRuntime {
                         ))
                     })?;
                 selected_member_weights_by_group.push(
-                    physics
-                        .normalized_member_weights(reduction)?
-                        .into_iter()
+                    reduction
+                        .normalized_member_weights
+                        .iter()
+                        .copied()
                         .filter_map(|(helicity_index, color_index, weight)| {
                             Some((
                                 selected_helicity_positions[helicity_index]?,
@@ -1412,7 +1416,7 @@ impl AmplitudeRuntime {
         scratch.selected_member_weight_ranges.clear();
         for group in &self.raw_sum_groups {
             let reduction = physics
-                .reduction_by_group_id
+                .numeric_reduction_by_group_id
                 .get(&group.id)
                 .ok_or_else(|| {
                     RusticolError::invalid_argument(format!(
@@ -1420,9 +1424,9 @@ impl AmplitudeRuntime {
                         group.id
                     ))
                 })?;
-            physics.normalized_member_weights_into(reduction, &mut scratch.raw_member_weights)?;
             let start = scratch.selected_member_weights.len();
-            for (helicity_index, color_index, weight) in scratch.raw_member_weights.iter().copied()
+            for (helicity_index, color_index, weight) in
+                reduction.normalized_member_weights.iter().copied()
             {
                 let (Some(helicity_position), Some(color_position)) = (
                     scratch.helicity_positions[helicity_index],
@@ -1610,7 +1614,7 @@ impl AmplitudeRuntime {
         scratch.selected_member_weight_ranges.clear();
         for group in &self.raw_sum_groups {
             let reduction = physics
-                .reduction_by_group_id
+                .numeric_reduction_by_group_id
                 .get(&group.id)
                 .ok_or_else(|| {
                     RusticolError::invalid_argument(format!(
@@ -1618,9 +1622,9 @@ impl AmplitudeRuntime {
                         group.id
                     ))
                 })?;
-            physics.normalized_member_weights_into(reduction, &mut scratch.raw_member_weights)?;
             let start = scratch.selected_member_weights.len();
-            for (helicity_index, color_index, weight) in scratch.raw_member_weights.iter().copied()
+            for (helicity_index, color_index, weight) in
+                reduction.normalized_member_weights.iter().copied()
             {
                 let (Some(helicity_position), Some(color_position)) = (
                     scratch.helicity_positions[helicity_index],
@@ -1765,7 +1769,7 @@ impl AmplitudeRuntime {
         scratch.selected_member_weight_ranges.clear();
         for group in raw_sum_groups {
             let reduction = physics
-                .reduction_by_group_id
+                .numeric_reduction_by_group_id
                 .get(&group.id)
                 .ok_or_else(|| {
                     RusticolError::invalid_argument(format!(
@@ -1773,9 +1777,9 @@ impl AmplitudeRuntime {
                         group.id
                     ))
                 })?;
-            physics.normalized_member_weights_into(reduction, &mut scratch.raw_member_weights)?;
             let start = scratch.selected_member_weights.len();
-            for (helicity_index, color_index, weight) in scratch.raw_member_weights.iter().copied()
+            for (helicity_index, color_index, weight) in
+                reduction.normalized_member_weights.iter().copied()
             {
                 let (Some(helicity_position), Some(color_position)) = (
                     scratch.helicity_positions[helicity_index],
@@ -1926,15 +1930,11 @@ impl AmplitudeRuntime {
                 output_length
             )));
         }
-        let helicity = physics
-            .manifest
-            .helicities
-            .get(helicity_index)
-            .ok_or_else(|| {
-                RusticolError::selector(format!(
-                    "runtime helicity index {helicity_index} is out of range"
-                ))
-            })?;
+        if helicity_index >= physics.manifest.helicities.len() {
+            return Err(RusticolError::selector(format!(
+                "runtime helicity index {helicity_index} is out of range"
+            )));
+        }
         let color_count = physics.manifest.color_components.len();
         let color_indices = physics.selected_color_indices(selected_color_ids)?;
         let mut full_values = vec![0.0; batch_size * color_count];
@@ -1956,7 +1956,7 @@ impl AmplitudeRuntime {
             let mut group_active = vec![false; contraction.group_count];
             for (group_index, group) in raw_sum_groups.iter().enumerate() {
                 let reduction = physics
-                    .reduction_by_group_id
+                    .numeric_reduction_by_group_id
                     .get(&group.id)
                     .ok_or_else(|| {
                         RusticolError::invalid_argument(format!(
@@ -1964,10 +1964,7 @@ impl AmplitudeRuntime {
                             group.id
                         ))
                     })?;
-                group_active[group_index] = reduction
-                    .physical_helicity_ids
-                    .iter()
-                    .any(|id| id == &helicity.id)
+                group_active[group_index] = reduction.contains_helicity(helicity_index)
                     && group
                         .indices
                         .iter()
@@ -2009,7 +2006,7 @@ impl AmplitudeRuntime {
             let mut active_groups = Vec::new();
             for (group_index, group) in raw_sum_groups.iter().enumerate() {
                 let reduction = physics
-                    .reduction_by_group_id
+                    .numeric_reduction_by_group_id
                     .get(&group.id)
                     .ok_or_else(|| {
                         RusticolError::invalid_argument(format!(
@@ -2017,10 +2014,7 @@ impl AmplitudeRuntime {
                             group.id
                         ))
                     })?;
-                if !reduction
-                    .physical_helicity_ids
-                    .iter()
-                    .any(|id| id == &helicity.id)
+                if !reduction.contains_helicity(helicity_index)
                     || !group
                         .indices
                         .iter()
@@ -2028,34 +2022,7 @@ impl AmplitudeRuntime {
                 {
                     continue;
                 }
-                let mut color_weights = reduction
-                    .physical_color_ids
-                    .iter()
-                    .map(|id| {
-                        let index = *physics.color_index_by_id.get(id).ok_or_else(|| {
-                            RusticolError::artifact(format!(
-                                "resolved reduction group {} references unknown color {id:?}",
-                                group.id
-                            ))
-                        })?;
-                        Ok((
-                            index,
-                            physics.manifest.color_components[index].coefficient(),
-                        ))
-                    })
-                    .collect::<RusticolResult<Vec<_>>>()?;
-                let total_color_weight =
-                    color_weights.iter().map(|(_, weight)| *weight).sum::<f64>();
-                if !total_color_weight.is_finite() || total_color_weight <= 0.0 {
-                    return Err(RusticolError::artifact(format!(
-                        "resolved reduction group {} has no positive color weight",
-                        group.id
-                    )));
-                }
-                for (_, weight) in &mut color_weights {
-                    *weight /= total_color_weight;
-                }
-                active_groups.push((group_index, color_weights));
+                active_groups.push((group_index, reduction.normalized_color_weights.clone()));
             }
             for row in 0..batch_size {
                 let color_row = row * color_count;
@@ -2166,15 +2133,11 @@ impl AmplitudeRuntime {
                 self.output_length
             )));
         }
-        let helicity = physics
-            .manifest
-            .helicities
-            .get(helicity_index)
-            .ok_or_else(|| {
-                RusticolError::selector(format!(
-                    "runtime helicity index {helicity_index} is out of range"
-                ))
-            })?;
+        if helicity_index >= physics.manifest.helicities.len() {
+            return Err(RusticolError::selector(format!(
+                "runtime helicity index {helicity_index} is out of range"
+            )));
+        }
         let scratch = &mut self.routed_reduction_scratch;
 
         if let Some(contraction) = self.color_contraction.as_mut() {
@@ -2214,7 +2177,7 @@ impl AmplitudeRuntime {
             scratch.direct_group_im.fill(0.0);
             for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
                 let reduction = physics
-                    .reduction_by_group_id
+                    .numeric_reduction_by_group_id
                     .get(&group.id)
                     .ok_or_else(|| {
                         RusticolError::invalid_argument(format!(
@@ -2222,10 +2185,7 @@ impl AmplitudeRuntime {
                             group.id
                         ))
                     })?;
-                let active = reduction
-                    .physical_helicity_ids
-                    .iter()
-                    .any(|id| id == &helicity.id)
+                let active = reduction.contains_helicity(helicity_index)
                     && group
                         .indices
                         .iter()
@@ -2284,7 +2244,7 @@ impl AmplitudeRuntime {
         for group in &self.raw_sum_groups {
             let start = scratch.selected_member_weights.len();
             let reduction = physics
-                .reduction_by_group_id
+                .numeric_reduction_by_group_id
                 .get(&group.id)
                 .ok_or_else(|| {
                     RusticolError::invalid_argument(format!(
@@ -2292,10 +2252,7 @@ impl AmplitudeRuntime {
                         group.id
                     ))
                 })?;
-            if !reduction
-                .physical_helicity_ids
-                .iter()
-                .any(|id| id == &helicity.id)
+            if !reduction.contains_helicity(helicity_index)
                 || !group
                     .indices
                     .iter()
@@ -2304,28 +2261,10 @@ impl AmplitudeRuntime {
                 scratch.selected_member_weight_ranges.push(start..start);
                 continue;
             }
-            let mut total_color_weight = 0.0;
-            for id in &reduction.physical_color_ids {
-                let index = *physics.color_index_by_id.get(id).ok_or_else(|| {
-                    RusticolError::artifact(format!(
-                        "resolved reduction group {} references unknown color {id:?}",
-                        group.id
-                    ))
-                })?;
-                let weight = physics.manifest.color_components[index].coefficient();
-                total_color_weight += weight;
-                scratch.selected_member_weights.push((0, index, weight));
-            }
-            if !total_color_weight.is_finite() || total_color_weight <= 0.0 {
-                return Err(RusticolError::artifact(format!(
-                    "resolved reduction group {} has no positive color weight",
-                    group.id
-                )));
+            for (index, weight) in &reduction.normalized_color_weights {
+                scratch.selected_member_weights.push((0, *index, *weight));
             }
             let stop = scratch.selected_member_weights.len();
-            for (_, _, weight) in &mut scratch.selected_member_weights[start..stop] {
-                *weight /= total_color_weight;
-            }
             scratch.selected_member_weight_ranges.push(start..stop);
         }
 
@@ -2430,15 +2369,11 @@ impl AmplitudeRuntime {
                 "materialized helicity reduction requires coherent amplitude-group metadata",
             ));
         }
-        let helicity = physics
-            .manifest
-            .helicities
-            .get(helicity_index)
-            .ok_or_else(|| {
-                RusticolError::selector(format!(
-                    "runtime helicity index {helicity_index} is out of range"
-                ))
-            })?;
+        if helicity_index >= physics.manifest.helicities.len() {
+            return Err(RusticolError::selector(format!(
+                "runtime helicity index {helicity_index} is out of range"
+            )));
+        }
         let batch_size = amplitudes.point_count() as usize;
         let expected_target_len = target_point_count
             .checked_mul(target_component_count)
@@ -2482,7 +2417,7 @@ impl AmplitudeRuntime {
         for group in &self.raw_sum_groups {
             let start = scratch.selected_member_weights.len();
             let reduction = physics
-                .reduction_by_group_id
+                .numeric_reduction_by_group_id
                 .get(&group.id)
                 .ok_or_else(|| {
                     RusticolError::invalid_argument(format!(
@@ -2490,10 +2425,7 @@ impl AmplitudeRuntime {
                         group.id
                     ))
                 })?;
-            if !reduction
-                .physical_helicity_ids
-                .iter()
-                .any(|id| id == &helicity.id)
+            if !reduction.contains_helicity(helicity_index)
                 || !group
                     .indices
                     .iter()
@@ -2502,32 +2434,11 @@ impl AmplitudeRuntime {
                 scratch.selected_member_weight_ranges.push(start..start);
                 continue;
             }
-            scratch.raw_member_weights.clear();
-            let mut total_color_weight = 0.0;
-            for id in &reduction.physical_color_ids {
-                let index = *physics.color_index_by_id.get(id).ok_or_else(|| {
-                    RusticolError::artifact(format!(
-                        "resolved reduction group {} references unknown color {id:?}",
-                        group.id
-                    ))
-                })?;
-                let weight = physics.manifest.color_components[index].coefficient();
-                total_color_weight += weight;
-                scratch.raw_member_weights.push((0, index, weight));
-            }
-            if !total_color_weight.is_finite() || total_color_weight <= 0.0 {
-                return Err(RusticolError::artifact(format!(
-                    "resolved reduction group {} has no positive color weight",
-                    group.id
-                )));
-            }
-            for (_, color_index, weight) in scratch.raw_member_weights.iter().copied() {
+            for (color_index, weight) in reduction.normalized_color_weights.iter().copied() {
                 if let Some(color_position) = scratch.color_positions[color_index] {
-                    scratch.selected_member_weights.push((
-                        0,
-                        color_position,
-                        weight / total_color_weight,
-                    ));
+                    scratch
+                        .selected_member_weights
+                        .push((0, color_position, weight));
                 }
             }
             scratch
@@ -2628,15 +2539,11 @@ impl AmplitudeRuntime {
                 output_length
             )));
         }
-        let helicity = physics
-            .manifest
-            .helicities
-            .get(helicity_index)
-            .ok_or_else(|| {
-                RusticolError::selector(format!(
-                    "runtime helicity index {helicity_index} is out of range"
-                ))
-            })?;
+        if helicity_index >= physics.manifest.helicities.len() {
+            return Err(RusticolError::selector(format!(
+                "runtime helicity index {helicity_index} is out of range"
+            )));
+        }
         if let Some(contraction) = color_contraction.as_mut() {
             if !physics.has_contracted_color_axis() || physics.manifest.color_components.len() != 1
             {
@@ -2664,20 +2571,16 @@ impl AmplitudeRuntime {
                 .resize(contraction.group_count, c64(0.0, 0.0));
             for (row, target) in output.iter_mut().enumerate() {
                 for (group_index, group) in raw_sum_groups.iter().enumerate() {
-                    let reduction =
-                        physics
-                            .reduction_by_group_id
-                            .get(&group.id)
-                            .ok_or_else(|| {
-                                RusticolError::invalid_argument(format!(
-                                    "resolved metadata is missing coherent group {}",
-                                    group.id
-                                ))
-                            })?;
-                    let active = reduction
-                        .physical_helicity_ids
-                        .iter()
-                        .any(|id| id == &helicity.id)
+                    let reduction = physics
+                        .numeric_reduction_by_group_id
+                        .get(&group.id)
+                        .ok_or_else(|| {
+                            RusticolError::invalid_argument(format!(
+                                "resolved metadata is missing coherent group {}",
+                                group.id
+                            ))
+                        })?;
+                    let active = reduction.contains_helicity(helicity_index)
                         && group
                             .indices
                             .iter()
@@ -2718,7 +2621,7 @@ impl AmplitudeRuntime {
         for group in raw_sum_groups {
             let start = scratch.selected_member_weights.len();
             let reduction = physics
-                .reduction_by_group_id
+                .numeric_reduction_by_group_id
                 .get(&group.id)
                 .ok_or_else(|| {
                     RusticolError::invalid_argument(format!(
@@ -2726,10 +2629,7 @@ impl AmplitudeRuntime {
                         group.id
                     ))
                 })?;
-            if !reduction
-                .physical_helicity_ids
-                .iter()
-                .any(|id| id == &helicity.id)
+            if !reduction.contains_helicity(helicity_index)
                 || !group
                     .indices
                     .iter()
@@ -2738,28 +2638,12 @@ impl AmplitudeRuntime {
                 scratch.selected_member_weight_ranges.push(start..start);
                 continue;
             }
-            let mut total_color_weight = 0.0;
-            for id in &reduction.physical_color_ids {
-                let index = *physics.color_index_by_id.get(id).ok_or_else(|| {
-                    RusticolError::artifact(format!(
-                        "resolved reduction group {} references unknown color {id:?}",
-                        group.id
-                    ))
-                })?;
-                let weight = physics.manifest.color_components[index].coefficient();
-                total_color_weight += weight;
-                scratch.selected_member_weights.push((0, index, weight));
-            }
-            if !total_color_weight.is_finite() || total_color_weight <= 0.0 {
-                return Err(RusticolError::artifact(format!(
-                    "resolved reduction group {} has no positive color weight",
-                    group.id
-                )));
+            for (color_index, weight) in reduction.normalized_color_weights.iter().copied() {
+                scratch
+                    .selected_member_weights
+                    .push((0, color_index, weight));
             }
             let stop = scratch.selected_member_weights.len();
-            for (_, _, weight) in &mut scratch.selected_member_weights[start..stop] {
-                *weight /= total_color_weight;
-            }
             scratch.selected_member_weight_ranges.push(start..stop);
         }
 

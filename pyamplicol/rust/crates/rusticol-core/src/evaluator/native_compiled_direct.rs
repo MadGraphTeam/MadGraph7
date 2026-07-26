@@ -229,6 +229,19 @@ impl LoadedNativeCompiledDirectStage {
         momenta: DirectMomentumView,
         parameters: DirectParameterView,
     ) -> RusticolResult<BoundNativeCompiledDirectStage> {
+        // SAFETY: this entry point preserves the historical identity mapping
+        // and forwards the caller's complete fixed-storage contract.
+        unsafe { self.bind_with_current_map(arena, momenta, parameters, &[]) }
+    }
+
+    /// Bind canonical current IDs through a cold, immutable physical map.
+    pub(crate) unsafe fn bind_with_current_map(
+        self,
+        arena: DirectArenaView,
+        momenta: DirectMomentumView,
+        parameters: DirectParameterView,
+        current_component_map: &[u32],
+    ) -> RusticolResult<BoundNativeCompiledDirectStage> {
         validate_direct_views(
             arena,
             momenta,
@@ -238,6 +251,11 @@ impl LoadedNativeCompiledDirectStage {
                 values_im: ptr::null(),
                 value_count: 0,
             },
+        )?;
+        validate_mapped_bindings(
+            &self.input_bindings,
+            &self.output_bindings,
+            current_component_map,
         )?;
 
         let point_stride = arena.point_stride;
@@ -269,7 +287,7 @@ impl LoadedNativeCompiledDirectStage {
             .iter()
             .copied()
             .map(|binding| {
-                resolve_input_plane(binding, arena, momenta, &zero_plane)
+                resolve_input_plane(binding, arena, momenta, &zero_plane, current_component_map)
                     .map(|values| NativeCompiledDirectInputPlaneV1 { values })
             })
             .collect::<RusticolResult<Vec<_>>>()?
@@ -279,7 +297,7 @@ impl LoadedNativeCompiledDirectStage {
             .iter()
             .copied()
             .map(|binding| {
-                resolve_arena_plane(binding.0, arena)
+                resolve_arena_plane(binding.0, arena, current_component_map)
                     .map(|values| NativeCompiledDirectOutputPlaneV1 { values })
             })
             .collect::<RusticolResult<Vec<_>>>()?
@@ -499,15 +517,77 @@ fn validate_static_bindings(
     Ok(())
 }
 
+fn validate_mapped_bindings(
+    inputs: &[NativeCompiledDirectPlaneBinding],
+    outputs: &[NativeCompiledDirectOutputBinding],
+    current_component_map: &[u32],
+) -> RusticolResult<()> {
+    let mapped_inputs = inputs
+        .iter()
+        .copied()
+        .filter_map(|binding| match binding {
+            NativeCompiledDirectPlaneBinding::Arena(arena) => {
+                Some(map_arena_plane(arena, current_component_map))
+            }
+            NativeCompiledDirectPlaneBinding::Momentum { .. }
+            | NativeCompiledDirectPlaneBinding::Zero => None,
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let mut mapped_outputs = Vec::with_capacity(outputs.len());
+    for (index, output) in outputs.iter().copied().enumerate() {
+        let mapped = map_arena_plane(output.0, current_component_map)?;
+        if mapped_outputs.contains(&mapped) {
+            return Err(RusticolError::integrity(format!(
+                "native compiled mapped output binding {index} aliases an earlier output"
+            )));
+        }
+        if mapped_inputs.contains(&mapped) {
+            return Err(RusticolError::integrity(format!(
+                "native compiled mapped output binding {index} aliases an input plane"
+            )));
+        }
+        mapped_outputs.push(mapped);
+    }
+    Ok(())
+}
+
+fn map_arena_plane(
+    binding: NativeCompiledDirectArenaPlane,
+    current_component_map: &[u32],
+) -> RusticolResult<NativeCompiledDirectArenaPlane> {
+    match binding {
+        NativeCompiledDirectArenaPlane::Current {
+            component,
+            imaginary,
+        } if !current_component_map.is_empty() => {
+            let physical = current_component_map
+                .get(component as usize)
+                .copied()
+                .filter(|physical| *physical != u32::MAX)
+                .ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "native compiled current binding {component} has no physical mapping"
+                    ))
+                })?;
+            Ok(NativeCompiledDirectArenaPlane::Current {
+                component: physical,
+                imaginary,
+            })
+        }
+        _ => Ok(binding),
+    }
+}
+
 fn resolve_input_plane(
     binding: NativeCompiledDirectPlaneBinding,
     arena: DirectArenaView,
     momenta: DirectMomentumView,
     zero_plane: &AlignedF64Buffer,
+    current_component_map: &[u32],
 ) -> RusticolResult<*const f64> {
     match binding {
         NativeCompiledDirectPlaneBinding::Arena(binding) => {
-            Ok(resolve_arena_plane(binding, arena)?.cast_const())
+            Ok(resolve_arena_plane(binding, arena, current_component_map)?.cast_const())
         }
         NativeCompiledDirectPlaneBinding::Momentum {
             form,
@@ -541,7 +621,9 @@ fn resolve_input_plane(
 fn resolve_arena_plane(
     binding: NativeCompiledDirectArenaPlane,
     arena: DirectArenaView,
+    current_component_map: &[u32],
 ) -> RusticolResult<*mut f64> {
+    let binding = map_arena_plane(binding, current_component_map)?;
     let (base, shape, label) = match binding {
         NativeCompiledDirectArenaPlane::Current {
             component,
@@ -1026,6 +1108,15 @@ extern "C" int rusticol_status_leaf_direct_application_v1(
             }
         }
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn mapped_native_bindings_reject_a_physical_input_output_alias() {
+        let error = validate_mapped_bindings(&input_bindings(), &output_bindings(), &[0, 1, 0, 1])
+            .unwrap_err();
+        assert_eq!(error.kind(), RusticolErrorKind::Integrity);
+        assert!(error.message().contains("mapped output"));
+        assert!(error.message().contains("aliases an input plane"));
     }
 
     #[test]

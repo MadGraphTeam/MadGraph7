@@ -18,6 +18,7 @@ impl PhysicsRuntime {
             .map(|(index, color)| (color.id().to_string(), index))
             .collect::<BTreeMap<_, _>>();
         let mut reduction_by_group_id = BTreeMap::new();
+        let mut numeric_reduction_by_group_id = BTreeMap::new();
         for group in &manifest.reduction.groups {
             let group_id = parse_reduction_group_id(&group.id)?;
             let mut expected_helicity_weight = None;
@@ -43,12 +44,29 @@ impl PhysicsRuntime {
                     "resolved reduction groups map to duplicate evaluator id {group_id}"
                 )));
             }
+            if numeric_reduction_by_group_id
+                .insert(
+                    group_id,
+                    numeric_reduction_group(
+                        group,
+                        &manifest,
+                        &helicity_index_by_id,
+                        &color_index_by_id,
+                    )?,
+                )
+                .is_some()
+            {
+                return Err(RusticolError::artifact(format!(
+                    "resolved reduction groups map to duplicate numeric evaluator id {group_id}"
+                )));
+            }
         }
         Ok(Self {
             manifest,
             helicity_index_by_id,
             color_index_by_id,
             reduction_by_group_id,
+            numeric_reduction_by_group_id,
         })
     }
 
@@ -618,6 +636,98 @@ impl PhysicsRuntime {
             color_indices,
         })
     }
+}
+
+fn numeric_reduction_group(
+    group: &crate::ReductionGroup,
+    manifest: &ProcessPhysicsV1,
+    helicity_index_by_id: &BTreeMap<String, usize>,
+    color_index_by_id: &BTreeMap<String, usize>,
+) -> RusticolResult<NumericReductionGroup> {
+    let mut physical_helicity_indices = Vec::with_capacity(group.physical_helicity_ids.len());
+    let mut helicity_membership = vec![false; manifest.helicities.len()];
+    let mut normalized_helicity_weights = Vec::with_capacity(group.physical_helicity_ids.len());
+    let mut total_helicity_weight = 0.0;
+    for id in &group.physical_helicity_ids {
+        let index = *helicity_index_by_id.get(id).ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "resolved reduction group {} references unknown helicity {id:?}",
+                group.id
+            ))
+        })?;
+        let coefficient = manifest.helicities[index].coefficient;
+        physical_helicity_indices.push(index);
+        helicity_membership[index] = true;
+        normalized_helicity_weights.push((index, coefficient));
+        total_helicity_weight += coefficient;
+    }
+    if !total_helicity_weight.is_finite() || total_helicity_weight <= 0.0 {
+        return Err(RusticolError::artifact(format!(
+            "resolved reduction group {} has no positive helicity weight",
+            group.id
+        )));
+    }
+    for (_, weight) in &mut normalized_helicity_weights {
+        *weight /= total_helicity_weight;
+    }
+
+    let mut physical_color_weights = Vec::with_capacity(group.physical_color_ids.len());
+    let mut total_color_weight = 0.0;
+    for id in &group.physical_color_ids {
+        let index = *color_index_by_id.get(id).ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "resolved reduction group {} references unknown color {id:?}",
+                group.id
+            ))
+        })?;
+        let coefficient = manifest.color_components[index].coefficient();
+        physical_color_weights.push((index, coefficient));
+        total_color_weight += coefficient;
+    }
+    if !total_color_weight.is_finite() || total_color_weight <= 0.0 {
+        return Err(RusticolError::artifact(format!(
+            "resolved reduction group {} has no positive color weight",
+            group.id
+        )));
+    }
+    let mut normalized_color_weights = physical_color_weights.clone();
+    for (_, weight) in &mut normalized_color_weights {
+        *weight /= total_color_weight;
+    }
+
+    let member_count = group
+        .physical_helicity_ids
+        .len()
+        .checked_mul(group.physical_color_ids.len())
+        .ok_or_else(|| RusticolError::artifact("resolved reduction member count overflows"))?;
+    let mut normalized_member_weights = Vec::with_capacity(member_count);
+    let mut total_member_weight = 0.0;
+    for helicity_id in &group.physical_helicity_ids {
+        let helicity_index = helicity_index_by_id[helicity_id];
+        let helicity_weight = manifest.helicities[helicity_index].coefficient;
+        for (color_index, color_weight) in &physical_color_weights {
+            let weight = helicity_weight * *color_weight;
+            total_member_weight += weight;
+            normalized_member_weights.push((helicity_index, *color_index, weight));
+        }
+    }
+    if !total_member_weight.is_finite() || total_member_weight <= 0.0 {
+        return Err(RusticolError::artifact(format!(
+            "resolved reduction group {} has no positive member weight",
+            group.id
+        )));
+    }
+    for (_, _, weight) in &mut normalized_member_weights {
+        *weight /= total_member_weight;
+    }
+
+    Ok(NumericReductionGroup {
+        physical_helicity_indices,
+        helicity_membership,
+        normalized_helicity_weights,
+        normalized_color_weights,
+        normalized_member_weights,
+    })
 }
 
 impl ExecutionRuntime {

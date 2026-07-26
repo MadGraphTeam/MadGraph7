@@ -3164,6 +3164,56 @@ fn inconsistent_helicity_weights_are_rejected() {
     assert!(error.to_string().contains("inconsistent helicity weights"));
 }
 
+#[test]
+fn numeric_reduction_binding_preserves_manifest_order_and_weights() {
+    for color_accuracy in ["lc", "nlc", "full"] {
+        let physics = test_physics_runtime(color_accuracy);
+        let reduction = physics.reduction_by_group_id.get(&7).unwrap();
+        let numeric = physics.numeric_reduction_by_group_id.get(&7).unwrap();
+
+        let expected_helicity_indices = reduction
+            .physical_helicity_ids
+            .iter()
+            .map(|id| physics.helicity_index_by_id[id])
+            .collect::<Vec<_>>();
+        assert_eq!(numeric.physical_helicity_indices, expected_helicity_indices);
+        for (index, helicity) in physics.manifest.helicities.iter().enumerate() {
+            assert_eq!(
+                numeric.contains_helicity(index),
+                reduction.physical_helicity_ids.contains(&helicity.id)
+            );
+        }
+        assert_eq!(
+            numeric.normalized_helicity_weights,
+            physics.normalized_helicity_weights(reduction).unwrap()
+        );
+        assert_eq!(
+            numeric.normalized_member_weights,
+            physics.normalized_member_weights(reduction).unwrap()
+        );
+
+        let mut expected_color_weights = reduction
+            .physical_color_ids
+            .iter()
+            .map(|id| {
+                let index = physics.color_index_by_id[id];
+                (
+                    index,
+                    physics.manifest.color_components[index].coefficient(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let total_color_weight = expected_color_weights
+            .iter()
+            .map(|(_, weight)| *weight)
+            .sum::<f64>();
+        for (_, weight) in &mut expected_color_weights {
+            *weight /= total_color_weight;
+        }
+        assert_eq!(numeric.normalized_color_weights, expected_color_weights);
+    }
+}
+
 fn empty_generic_runtime() -> ExecutionRuntime {
     ExecutionRuntime {
         process: "a b > c".to_string(),
