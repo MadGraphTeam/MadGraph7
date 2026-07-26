@@ -108,7 +108,7 @@ def test_final_audit_is_routed_through_the_isolated_result_tables_entrypoint() -
     assert arguments.report_profile == "macbook_M3"
     assert arguments.expected_source_revision == "a" * 40
     assert arguments.publication_revision == "b" * 40
-    assert arguments.expected_cell_count == 742
+    assert arguments.expected_cell_count == 1646
     assert arguments.structural_only is True
 
 
@@ -180,8 +180,8 @@ def test_final_audit_receives_the_bound_architecture_profile_service(
     )
     assert observed["expected_source_revision"] == "a" * 40
     assert observed["expected_publication_revision"] == "b" * 40
-    assert observed["max_n_final"] == 4
-    assert observed["expected_cell_count"] == 742
+    assert observed["max_n_final"] == 9
+    assert observed["expected_cell_count"] == 1646
     assert observed["replay"] is False
     assert environment_checks == [(repo.resolve(), profile, "a" * 40)]
     assert json.loads(capsys.readouterr().out)["final_gate_complete"] is True

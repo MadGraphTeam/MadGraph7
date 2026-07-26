@@ -22,7 +22,7 @@ class DisplayAccounting:
 def report_display_accounting(
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
-    max_n_final: int = 4,
+    max_n_final: int = 9,
 ) -> DisplayAccounting:
     """Return canonical logical-slot counts through ``max_n_final``.
 

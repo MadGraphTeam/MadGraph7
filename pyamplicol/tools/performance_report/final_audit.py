@@ -93,6 +93,9 @@ from .workspace import load_profile_campaign_policy
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_MAX_PUBLICATION_MULTIPLICITY = 9
+_EXPECTED_PUBLICATION_CELL_COUNT = 1646
+_EXPECTED_PUBLICATION_DIRECT_AGREEMENT_COUNT = 1571
 _EXPECTED_N4_CELL_COUNT = 742
 _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 136,
@@ -3900,8 +3903,8 @@ def audit_final_report(
     *,
     expected_source_revision: str,
     expected_publication_revision: str | None = None,
-    max_n_final: int = 4,
-    expected_cell_count: int | None = _EXPECTED_N4_CELL_COUNT,
+    max_n_final: int = _MAX_PUBLICATION_MULTIPLICITY,
+    expected_cell_count: int | None = _EXPECTED_PUBLICATION_CELL_COUNT,
     replay: bool = True,
     catalog: ReportCatalog = REPORT_CATALOG,
     service: ReportService | None = None,
@@ -3946,8 +3949,8 @@ def _audit_final_report_locked(
     *,
     expected_source_revision: str,
     expected_publication_revision: str | None = None,
-    max_n_final: int = 4,
-    expected_cell_count: int | None = _EXPECTED_N4_CELL_COUNT,
+    max_n_final: int = _MAX_PUBLICATION_MULTIPLICITY,
+    expected_cell_count: int | None = _EXPECTED_PUBLICATION_CELL_COUNT,
     replay: bool = True,
     catalog: ReportCatalog = REPORT_CATALOG,
     service: ReportService | None = None,
@@ -4497,9 +4500,9 @@ def _audit_final_report_locked(
 
     canonical_publication_scope = (
         catalog is REPORT_CATALOG
-        and max_n_final == 4
-        and expected_cell_count == _EXPECTED_N4_CELL_COUNT
-        and len(cells) == _EXPECTED_N4_CELL_COUNT
+        and max_n_final == _MAX_PUBLICATION_MULTIPLICITY
+        and expected_cell_count == _EXPECTED_PUBLICATION_CELL_COUNT
+        and len(cells) == _EXPECTED_PUBLICATION_CELL_COUNT
     )
     final_gate_complete = (
         replay and verify_render and verify_pdf and canonical_publication_scope
@@ -4512,6 +4515,16 @@ def _audit_final_report_locked(
         if edge.candidate.cell_id in selected_ids
         and edge.baseline.cell_id in selected_ids
     )
+    if (
+        canonical_publication_scope
+        and len(catalog_direct_edges)
+        != _EXPECTED_PUBLICATION_DIRECT_AGREEMENT_COUNT
+    ):
+        raise FinalAuditError(
+            "canonical publication direct-agreement catalog count differs: "
+            f"expected={_EXPECTED_PUBLICATION_DIRECT_AGREEMENT_COUNT}, "
+            f"observed={len(catalog_direct_edges)}"
+        )
     modes: dict[str, int] = defaultdict(int)
     for cell in cells:
         modes[cell.measurement.execution_mode.value] += 1
@@ -4581,9 +4594,9 @@ def _audit_final_report_locked(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Audit every n<=4 report record at one exact measured source/runtime "
-            "SHA and an optional report-only publication descendant. Numerical "
-            "replay is mandatory by default."
+            "Audit every record in the complete declared report range at one "
+            "exact measured source/runtime SHA and an optional report-only "
+            "publication descendant. Numerical replay is mandatory by default."
         )
     )
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
@@ -4597,11 +4610,15 @@ def _parser() -> argparse.ArgumentParser:
         "--publication-revision",
         help="require the clean publication checkout to equal this full Git SHA",
     )
-    parser.add_argument("--max-n-final", type=int, default=4)
+    parser.add_argument(
+        "--max-n-final",
+        type=int,
+        default=_MAX_PUBLICATION_MULTIPLICITY,
+    )
     parser.add_argument(
         "--expected-cell-count",
         type=int,
-        default=_EXPECTED_N4_CELL_COUNT,
+        default=_EXPECTED_PUBLICATION_CELL_COUNT,
     )
     replay = parser.add_mutually_exclusive_group()
     replay.add_argument(

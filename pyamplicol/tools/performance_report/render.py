@@ -1755,7 +1755,7 @@ def summarize_visible_completeness(
     caches: Mapping[str, CachePayload] | Iterable[CachePayload],
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
-    max_n_final: int = 4,
+    max_n_final: int = 9,
     policy: CampaignPolicy = STRICT_POLICY,
 ) -> VisibleCompleteness:
     """Audit every logical table slot that represents a required measurement.

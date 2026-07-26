@@ -330,7 +330,7 @@ def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
     caches = copy.deepcopy(reset_caches)
     _fill_visible_n4_scope(caches)
 
-    summary = summarize_visible_completeness(caches)
+    summary = summarize_visible_completeness(caches, max_n_final=4)
     evidence = summary.as_dict()
 
     assert summary.complete
@@ -936,8 +936,13 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (2, 186),
         (3, 206),
         (4, 286),
+        (5, 285),
+        (6, 165),
+        (7, 165),
+        (8, 165),
+        (9, 124),
     )
-    assert summary.expected_total == 742
+    assert summary.expected_total == 1646
     assert summary.passed_total == 4
     assert summary.oracle_count == 1
     assert summary.independent_count == 1
@@ -949,8 +954,8 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_count == 1
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "742 & 4" in tex
-    assert "742 required measured cells" in tex
-    assert "288 matrix process/multiplicity positions" in tex
-    assert "16 reference execution fields" in tex
+    assert "1646 & 4" in tex
+    assert "1646 required measured cells" in tex
+    assert "316 matrix process/multiplicity positions" in tex
+    assert "36 reference execution fields" in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

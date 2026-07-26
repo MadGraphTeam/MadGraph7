@@ -17,7 +17,7 @@ Measurement = Mapping[str, object]
 CachePayload = Mapping[str, object]
 
 SUMMARY_TABLE_NAME = "result_validation_summary.tex"
-MAX_PUBLICATION_MULTIPLICITY = 4
+MAX_PUBLICATION_MULTIPLICITY = 9
 
 
 def _number(record: Mapping[str, object], field: str) -> float | None:
@@ -96,7 +96,7 @@ def _cell_measurements(
 
 @dataclass(frozen=True, slots=True)
 class ValidationSummary:
-    """Numerical evidence summarized over every applicable ``n <= 4`` cell."""
+    """Numerical evidence across the complete declared publication range."""
 
     expected_by_n: tuple[tuple[int, int], ...]
     passed_by_n: tuple[tuple[int, int], ...]
@@ -292,8 +292,8 @@ def render_validation_summary(
         r"\subsection*{Numerical validation summary}",
         (
             r"Only measurements whose numerical checks pass are counted below. "
-            r"The scope comprises every applicable report cell with at most "
-            r"four final-state particles."
+            r"The scope comprises every applicable report cell across the "
+            r"complete declared multiplicity range."
         ),
         r"\begin{center}",
         r"\small",
@@ -325,7 +325,7 @@ def render_validation_summary(
             r"\end{tabular}",
             r"\end{center}",
             (
-                r"\ReportTableNote{Display accounting through \(n=4\): "
+                r"\ReportTableNote{Display accounting through \(n=9\): "
                 f"{display.required_measurement_count} required measured cells; "
                 f"{display.structurally_not_applicable_display_slot_count} "
                 r"matrix process/multiplicity positions marked "
