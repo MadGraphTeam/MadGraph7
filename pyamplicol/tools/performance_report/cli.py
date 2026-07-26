@@ -246,6 +246,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     populate.add_argument("--campaign-max-ram-gib", type=float)
     populate.add_argument(
+        "--campaign-max-ram-gb",
+        type=float,
+        help="decimal GB ceiling for all concurrent worker process trees",
+    )
+    populate.add_argument(
         "--limit-gib",
         type=float,
         help="compatibility alias for --campaign-max-ram-gib",
@@ -464,7 +469,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parser.error("cell filters select no report cells")
             if args.max_ram_gib is not None and args.max_ram_gb is not None:
                 parser.error("--max-ram-gib and --max-ram-gb are mutually exclusive")
-            campaign_limit = (
+            if args.campaign_max_ram_gb is not None and (
+                args.campaign_max_ram_gib is not None
+                or args.limit_gib is not None
+            ):
+                parser.error(
+                    "--campaign-max-ram-gb is mutually exclusive with "
+                    "--campaign-max-ram-gib and --limit-gib"
+                )
+            campaign_limit_gib = (
                 args.campaign_max_ram_gib
                 if args.campaign_max_ram_gib is not None
                 else args.limit_gib
@@ -491,7 +504,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if args.max_ram_gb is not None
                     else _gib_bytes(args.max_ram_gib)
                 ),
-                campaign_max_rss_bytes=_gib_bytes(campaign_limit),
+                campaign_max_rss_bytes=(
+                    _gb_bytes(args.campaign_max_ram_gb)
+                    if args.campaign_max_ram_gb is not None
+                    else _gib_bytes(campaign_limit_gib)
+                ),
                 artifact_policy=ArtifactPolicy(args.artifact_policy),
                 missing_only=args.missing_only,
                 rerun=args.rerun,

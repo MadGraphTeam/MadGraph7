@@ -72,6 +72,18 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     )
     assert limited.generation_time_limit_seconds == 7200.0
 
+    decimal_limits = _parser().parse_args(
+        (
+            "populate",
+            "--max-ram-gb",
+            "30",
+            "--campaign-max-ram-gb",
+            "30",
+        )
+    )
+    assert decimal_limits.max_ram_gb == 30.0
+    assert decimal_limits.campaign_max_ram_gb == 30.0
+
 
 def test_report_profile_is_a_global_architecture_scope() -> None:
     parsed = _parser().parse_args(("--report-profile", "macbook_M3", "populate"))
@@ -350,6 +362,7 @@ def test_profile_population_requires_the_active_authenticated_environment(
         text=True,
     ).stdout.strip()
     checked: list[tuple[Path, str, str]] = []
+    scheduler_settings: list[object] = []
 
     def require_environment(
         root: Path,
@@ -363,6 +376,7 @@ def test_profile_population_requires_the_active_authenticated_environment(
     class FakeScheduler:
         def __init__(self, _service, *, settings) -> None:
             self.settings = settings
+            scheduler_settings.append(settings)
 
         def run(self, planned):
             return SimpleNamespace(
@@ -400,10 +414,17 @@ def test_profile_population_requires_the_active_authenticated_environment(
                 "1",
                 "--workload",
                 "selected-flow",
+                "--max-ram-gb",
+                "30",
+                "--campaign-max-ram-gb",
+                "30",
             )
         )
         == 0
     )
 
     assert checked == [(repo.resolve(), "macbook_M3", expected_revision)]
+    assert len(scheduler_settings) == 1
+    assert scheduler_settings[0].max_rss_bytes == 30_000_000_000
+    assert scheduler_settings[0].campaign_max_rss_bytes == 30_000_000_000
     assert json.loads(capsys.readouterr().out)["planned"] == 3
