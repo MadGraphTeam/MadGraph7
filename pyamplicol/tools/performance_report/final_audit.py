@@ -2254,7 +2254,12 @@ def _audit_unavailable_execution_timing(
     timing_sample_count = timing.get("sample_count")
     measurement = {
         "execution_seconds_per_point": None,
-        "provenance": {"execution_timing": timing},
+        "provenance": {
+            "execution_timing": timing,
+            "arena_profile_evidence": provenance.get(
+                "arena_profile_evidence"
+            ),
+        },
     }
     if (
         unavailable_execution_timing_record(

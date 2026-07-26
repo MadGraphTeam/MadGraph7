@@ -19,6 +19,16 @@ from tools.performance_report.agreements import (
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
 )
+from tools.performance_report.arena_profile import (
+    ARENA_PHASE_TIMING_SCOPE,
+    ARENA_PROFILE_BOUNDARY,
+    EMPTY_ARENA_PHASE_VECTOR_FIELDS,
+    ZERO_ARENA_COUNTER_FIELDS,
+    ZERO_ARENA_PHASE_TIME_FIELDS,
+    ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS,
+    build_arena_profile_evidence,
+    digest_arena_profile_value,
+)
 from tools.performance_report.cache import (
     build_reset_caches,
     digest_json,
@@ -1658,10 +1668,54 @@ def test_candidate_measurement_requires_positive_finite_execution_time(
         )
 
 
-def _arena_unavailable_execution_timing(
+def _arena_profile_evidence(
     *,
     execution_mode: ExecutionMode = ExecutionMode.COMPILED,
 ) -> dict[str, object]:
+    raw_profile = {
+        "execution_mode": execution_mode.value,
+        "profile_boundary": ARENA_PROFILE_BOUNDARY,
+        "borrowed_flat_input": True,
+        "preallocated_output": True,
+        "phase_timing_scope": ARENA_PHASE_TIMING_SCOPE,
+        "evaluator_timing_available": False,
+        "points": 128,
+        "wall_time_s": 128 * 1.1e-6,
+        "orchestration_time_s": 128 * 1.1e-6,
+        **{field: 0 for field in ZERO_ARENA_COUNTER_FIELDS},
+        **{field: 0.0 for field in ZERO_ARENA_PHASE_TIME_FIELDS},
+        **{field: [] for field in EMPTY_ARENA_PHASE_VECTOR_FIELDS},
+        **{
+            field: 0
+            for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS
+        },
+    }
+    if execution_mode is ExecutionMode.COMPILED:
+        raw_profile.update(
+            {
+                "compiled_direct_arena_engine_count": 1,
+                "compiled_direct_arena_call_count": 128,
+                "evaluator_backend_call_count": 128,
+            }
+        )
+    return build_arena_profile_evidence(
+        [raw_profile] * 5,
+        execution_mode=execution_mode.value,
+        repetitions_per_profile=1,
+        batch_size=128,
+    )
+
+
+def _arena_unavailable_execution_timing(
+    *,
+    execution_mode: ExecutionMode = ExecutionMode.COMPILED,
+    arena_evidence: dict[str, object] | None = None,
+) -> dict[str, object]:
+    evidence = (
+        _arena_profile_evidence(execution_mode=execution_mode)
+        if arena_evidence is None
+        else arena_evidence
+    )
     return {
         "abi": "pyamplicol-report-arena-execution-timing-v2",
         "status": "unavailable",
@@ -1669,6 +1723,8 @@ def _arena_unavailable_execution_timing(
         "raw_seconds_per_point": None,
         "sample_count": 5,
         "native_profile_points_per_sample": 128,
+        "repetitions_per_sample": 1,
+        "batch_size": 128,
         "sample_contract": "paired_unprofiled_headline_profiled_attribution_v1",
         "profile_protocol": "arena",
         "profile_sample_pass": "runtime._profile_arena_repeated",
@@ -1684,13 +1740,27 @@ def _arena_unavailable_execution_timing(
         "identical_repetitions": True,
         "execution_mode": execution_mode.value,
         "warmed_boundary_wall_seconds_per_point": 1.1e-6,
+        "arena_profile_evidence_sha256": digest_arena_profile_value(evidence),
+    }
+
+
+def _arena_unavailable_provenance(
+    *,
+    execution_mode: ExecutionMode = ExecutionMode.COMPILED,
+) -> dict[str, object]:
+    evidence = _arena_profile_evidence(execution_mode=execution_mode)
+    return {
+        "arena_profile_evidence": evidence,
+        "execution_timing": _arena_unavailable_execution_timing(
+            execution_mode=execution_mode,
+            arena_evidence=evidence,
+        ),
     }
 
 
 @pytest.mark.parametrize(
     "cell",
     (
-        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
         _cell(ExecutionMode.EAGER, optimization_level=2),
         _cell(ExecutionMode.COMPILED, optimization_level=1),
         _cell(ExecutionMode.COMPILED, backend="cpp", optimization_level=None),
@@ -1699,11 +1769,9 @@ def _arena_unavailable_execution_timing(
 def test_final_audit_accepts_authenticated_arena_unavailable_timing(
     cell: CellSpec,
 ) -> None:
-    provenance = {
-        "execution_timing": _arena_unavailable_execution_timing(
-            execution_mode=cell.measurement.execution_mode,
-        )
-    }
+    provenance = _arena_unavailable_provenance(
+        execution_mode=cell.measurement.execution_mode,
+    )
     _audit_unavailable_execution_timing(
         cell,
         provenance,
@@ -1723,6 +1791,8 @@ def test_final_audit_accepts_authenticated_arena_unavailable_timing(
         ("sample_count", True),
         ("native_profile_points_per_sample", 0),
         ("native_profile_points_per_sample", None),
+        ("repetitions_per_sample", 2),
+        ("batch_size", 64),
         ("sample_contract", "separate_native_profile_diagnostic_v1"),
         ("profile_protocol", "frozen-pre-arena"),
         ("profile_sample_pass", "runtime.profile_repeated"),
@@ -1737,30 +1807,35 @@ def test_final_audit_accepts_authenticated_arena_unavailable_timing(
         ("execution_mode", "eager"),
         ("warmed_boundary_wall_seconds_per_point", 0.0),
         ("warmed_boundary_wall_seconds_per_point", float("nan")),
+        ("arena_profile_evidence_sha256", "0" * 64),
     ),
 )
 def test_final_audit_rejects_tampered_arena_unavailable_timing(
     field: str,
     value: object,
 ) -> None:
-    timing = _arena_unavailable_execution_timing()
+    provenance = _arena_unavailable_provenance()
+    timing = provenance["execution_timing"]
+    assert isinstance(timing, dict)
     timing[field] = value
     with pytest.raises(FinalAuditError, match="unavailable-attribution record"):
         _audit_unavailable_execution_timing(
             _cell(ExecutionMode.COMPILED, optimization_level=3),
-            {"execution_timing": timing},
+            provenance,
             measurement_sample_count=5,
             context="candidate",
         )
 
 
 def test_final_audit_binds_arena_unavailable_shape_and_sample_count() -> None:
-    timing = _arena_unavailable_execution_timing()
+    provenance = _arena_unavailable_provenance()
+    timing = provenance["execution_timing"]
+    assert isinstance(timing, dict)
     timing["unexpected"] = True
     with pytest.raises(FinalAuditError, match="fields do not match"):
         _audit_unavailable_execution_timing(
             _cell(ExecutionMode.COMPILED, optimization_level=3),
-            {"execution_timing": timing},
+            provenance,
             measurement_sample_count=5,
             context="candidate",
         )
@@ -1768,7 +1843,7 @@ def test_final_audit_binds_arena_unavailable_shape_and_sample_count() -> None:
     with pytest.raises(FinalAuditError, match="unavailable-attribution record"):
         _audit_unavailable_execution_timing(
             _cell(ExecutionMode.COMPILED, optimization_level=3),
-            {"execution_timing": _arena_unavailable_execution_timing()},
+            _arena_unavailable_provenance(),
             measurement_sample_count=6,
             context="candidate",
         )
@@ -1961,6 +2036,27 @@ def test_runtime_identity_audit_distinguishes_source_and_direct_codegen_levels(
             expected_source_revision=_REVISION,
             active_runtime=_active_runtime(),
             artifact=None,
+        )
+
+
+def test_final_audit_rejects_tampered_raw_arena_profile_evidence() -> None:
+    provenance = _arena_unavailable_provenance()
+    evidence = provenance["arena_profile_evidence"]
+    assert isinstance(evidence, dict)
+    raw_profiles = evidence["raw_profiles"]
+    assert isinstance(raw_profiles, list)
+    assert isinstance(raw_profiles[0], dict)
+    raw_profiles[0]["native_input_pack_bytes"] = 1
+
+    with pytest.raises(
+        FinalAuditError,
+        match="not an authenticated Arena",
+    ):
+        _audit_unavailable_execution_timing(
+            _cell(ExecutionMode.COMPILED, optimization_level=1),
+            provenance,
+            measurement_sample_count=5,
+            context="candidate",
         )
 
 

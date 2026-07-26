@@ -125,6 +125,7 @@ class _NativeRuntime:
     last_evaluate_options: dict[str, object] | None = None
     last_benchmark_options: dict[str, object] | None = None
     last_profile_options: dict[str, object] | None = None
+    last_arena_profile_options: dict[str, object] | None = None
 
     def __init__(self) -> None:
         self.parameter_updates: list[dict[str, complex | float | int]] = []
@@ -177,6 +178,12 @@ class _NativeRuntime:
     ) -> dict[str, object]:
         type(self).last_profile_options = dict(kwargs)
         return {"wall_time_s": 0.5}
+
+    def _profile_arena_repeated(
+        self, _momenta: object, _repetitions: int, **kwargs: object
+    ) -> dict[str, object]:
+        type(self).last_arena_profile_options = dict(kwargs)
+        return {"wall_time_s": 0.4}
 
     def set_model_parameters(self, mapping: dict[str, complex | float | int]) -> None:
         self.parameter_updates.append(mapping)
@@ -623,6 +630,34 @@ def test_native_profile_resolves_per_point_selectors(
         "helicity_by_point": (0, 0),
         "color_flow_by_point": (0, 0),
     }
+
+
+def test_private_arena_profiler_never_uses_public_profile_repeated(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    from pyamplicol.runtime import load_runtime_backend
+
+    _NativeRuntime.physics_value = _native_physics("lc")
+    _NativeRuntime.last_profile_options = None
+    _NativeRuntime.last_arena_profile_options = None
+    backend = load_runtime_backend(tmp_path, process="uux_g")
+    payload = backend._profile_arena_repeated(
+        ((), ()),
+        3,
+        helicities=("h0",),
+        color_flows=("1",),
+    )
+
+    assert payload == {"wall_time_s": 0.4}
+    assert _NativeRuntime.last_arena_profile_options == {
+        "helicities": ("h0",),
+        "color_flows": ("c0",),
+        "precision": 16,
+        "include_values": False,
+    }
+    assert _NativeRuntime.last_profile_options is None
 
 
 def test_adapter_maps_contracted_color_and_native_errors(

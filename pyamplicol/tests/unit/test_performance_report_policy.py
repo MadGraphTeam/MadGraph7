@@ -4,6 +4,16 @@ from __future__ import annotations
 from copy import deepcopy
 from types import SimpleNamespace
 
+from tools.performance_report.arena_profile import (
+    ARENA_PHASE_TIMING_SCOPE,
+    ARENA_PROFILE_BOUNDARY,
+    EMPTY_ARENA_PHASE_VECTOR_FIELDS,
+    ZERO_ARENA_COUNTER_FIELDS,
+    ZERO_ARENA_PHASE_TIME_FIELDS,
+    ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS,
+    build_arena_profile_evidence,
+    digest_arena_profile_value,
+)
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.report_policy import (
     publication_measurement_policy_issues,
@@ -141,6 +151,34 @@ def test_unavailable_execution_requires_authenticated_arena_boundary() -> None:
     )
 
     provenance = measurement["provenance"]
+    raw_profile = {
+        "execution_mode": "compiled",
+        "profile_boundary": ARENA_PROFILE_BOUNDARY,
+        "borrowed_flat_input": True,
+        "preallocated_output": True,
+        "phase_timing_scope": ARENA_PHASE_TIMING_SCOPE,
+        "evaluator_timing_available": False,
+        "points": 128,
+        "wall_time_s": 128 * 2.1e-6,
+        "orchestration_time_s": 128 * 2.1e-6,
+        **{field: 0 for field in ZERO_ARENA_COUNTER_FIELDS},
+        **{field: 0.0 for field in ZERO_ARENA_PHASE_TIME_FIELDS},
+        **{field: [] for field in EMPTY_ARENA_PHASE_VECTOR_FIELDS},
+        **{
+            field: 0
+            for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS
+        },
+        "compiled_direct_arena_engine_count": 1,
+        "compiled_direct_arena_call_count": 128,
+        "evaluator_backend_call_count": 128,
+    }
+    arena_evidence = build_arena_profile_evidence(
+        [raw_profile] * 5,
+        execution_mode="compiled",
+        repetitions_per_profile=1,
+        batch_size=128,
+    )
+    provenance["arena_profile_evidence"] = arena_evidence
     provenance["execution_timing"] = {
         "abi": "pyamplicol-report-arena-execution-timing-v2",
         "status": "unavailable",
@@ -148,6 +186,8 @@ def test_unavailable_execution_requires_authenticated_arena_boundary() -> None:
         "raw_seconds_per_point": None,
         "sample_count": 5,
         "native_profile_points_per_sample": 128,
+        "repetitions_per_sample": 1,
+        "batch_size": 128,
         "sample_contract": (
             "paired_unprofiled_headline_profiled_attribution_v1"
         ),
@@ -165,6 +205,9 @@ def test_unavailable_execution_requires_authenticated_arena_boundary() -> None:
         "identical_repetitions": True,
         "execution_mode": "compiled",
         "warmed_boundary_wall_seconds_per_point": 2.1e-6,
+        "arena_profile_evidence_sha256": digest_arena_profile_value(
+            arena_evidence
+        ),
     }
     assert not any(
         issue.field == "execution_seconds_per_point"

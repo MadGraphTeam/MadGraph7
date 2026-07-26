@@ -11,6 +11,18 @@ from types import SimpleNamespace
 
 import pytest
 
+from tools.performance_report.arena_profile import (
+    ARENA_PHASE_TIMING_SCOPE,
+    ARENA_PROFILE_BOUNDARY,
+    EMPTY_ARENA_PHASE_VECTOR_FIELDS,
+    ZERO_ARENA_COUNTER_FIELDS,
+    ZERO_ARENA_PHASE_TIME_FIELDS,
+    ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS,
+    ArenaProfileEvidenceError,
+    build_arena_profile_evidence,
+    digest_arena_profile_value,
+    validate_arena_profile_evidence,
+)
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.models import (
     Accuracy,
@@ -28,6 +40,8 @@ from tools.performance_report.runner import (
     _benchmark_measurement,
     _real_nonnegative,
     _regular_file_identity,
+    _run_arena_benchmark,
+    _run_report_benchmark,
     config_values,
     derive_selector_contract,
     generate_artifact,
@@ -41,10 +55,50 @@ from tools.performance_report.runner import (
 )
 
 
+def _raw_arena_profile(
+    *,
+    execution_mode: str = "compiled",
+    points: int = 128,
+    wall_time: float = 1.1e-6 * 128,
+) -> dict[str, object]:
+    profile: dict[str, object] = {
+        "execution_mode": execution_mode,
+        "profile_boundary": ARENA_PROFILE_BOUNDARY,
+        "borrowed_flat_input": True,
+        "preallocated_output": True,
+        "phase_timing_scope": ARENA_PHASE_TIMING_SCOPE,
+        "evaluator_timing_available": False,
+        "points": points,
+        "wall_time_s": wall_time,
+        "orchestration_time_s": wall_time,
+        **{field: 0 for field in ZERO_ARENA_COUNTER_FIELDS},
+        **{field: 0.0 for field in ZERO_ARENA_PHASE_TIME_FIELDS},
+        **{field: [] for field in EMPTY_ARENA_PHASE_VECTOR_FIELDS},
+        **{field: 0 for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS},
+        "state_component_count": 11,
+        "source_component_count": 7,
+    }
+    if execution_mode == "compiled":
+        profile.update(
+            {
+                "compiled_direct_arena_engine_count": 2,
+                "compiled_direct_arena_call_count": 3,
+                "evaluator_backend_call_count": 3,
+            }
+        )
+    return profile
+
+
 def _benchmark_fixture(
     *,
     arena_authenticated: bool = True,
 ) -> SimpleNamespace:
+    evidence = build_arena_profile_evidence(
+        (_raw_arena_profile(),) * 5,
+        execution_mode="compiled",
+        repetitions_per_profile=1,
+        batch_size=128,
+    )
     return SimpleNamespace(
         uncertainty=SimpleNamespace(
             standard_error=1.0e-9,
@@ -55,9 +109,14 @@ def _benchmark_fixture(
         sample_count=5,
         effective_config=SimpleNamespace(target_runtime=5.0),
         timing_breakdown=SimpleNamespace(
-            wall_time=SimpleNamespace(mean_seconds_per_point=1.1e-6),
+            wall_time=SimpleNamespace(
+                mean_seconds_per_point=evidence[
+                    "warmed_boundary_wall_seconds_per_point"
+                ]
+            ),
             evaluator_call_time=None,
         ),
+        arena_profile_evidence=evidence,
         environment={
             "evaluator_time_raw_seconds_per_point": None,
             "evaluator_time_status": "unavailable",
@@ -80,6 +139,8 @@ def _benchmark_fixture(
             "execution_mode": "compiled",
             "evaluator_sample_count": 5,
             "native_profile_points_per_sample": 128,
+            "native_profile_repetitions_per_sample": 1,
+            "native_profile_batch_size": 128,
             "timing_sample_contract": (
                 "paired_unprofiled_headline_profiled_attribution_v1"
             ),
@@ -107,6 +168,8 @@ def test_benchmark_measurement_records_authenticated_arena_unavailable_timing() 
         "raw_seconds_per_point": None,
         "sample_count": 5,
         "native_profile_points_per_sample": 128,
+        "repetitions_per_sample": 1,
+        "batch_size": 128,
         "sample_contract": ("paired_unprofiled_headline_profiled_attribution_v1"),
         "profile_protocol": "arena",
         "profile_sample_pass": "runtime._profile_arena_repeated",
@@ -122,6 +185,9 @@ def test_benchmark_measurement_records_authenticated_arena_unavailable_timing() 
         "identical_repetitions": True,
         "execution_mode": "compiled",
         "warmed_boundary_wall_seconds_per_point": 1.1e-6,
+        "arena_profile_evidence_sha256": digest_arena_profile_value(
+            measurement["arena_profile_evidence"]
+        ),
     }
     assert measurement["benchmark_evidence"] == {
         "target_runtime_seconds": 5.0,
@@ -166,6 +232,223 @@ def test_benchmark_measurement_rejects_uncertainty_for_unexposed_execution() -> 
 
     with pytest.raises(RunnerError, match="warmed Arena profile boundary"):
         _benchmark_measurement(benchmark, matrix_element=2.0)
+
+
+def test_benchmark_measurement_retains_supported_recurrence_execution_timing() -> None:
+    benchmark = _benchmark_fixture()
+    benchmark.evaluator_time_per_point = 8.0e-7
+    benchmark.environment.update(
+        {
+            "evaluator_time_status": "measured",
+            "evaluator_time_raw_seconds_per_point": 8.0e-7,
+            "evaluator_time_ratio_eligible": True,
+            "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            "compiled_direct_arena_active": False,
+            "execution_mode": "recurrence",
+            "timing_sample_contract": "paired-native-repeated-profile-v1",
+        }
+    )
+
+    measurement = _benchmark_measurement(benchmark, matrix_element=2.0)
+
+    assert measurement["execution_seconds_per_point"] == 8.0e-7
+    assert measurement["arena_profile_evidence"] is None
+    assert measurement["execution_timing"] == {
+        "abi": "pyamplicol-report-execution-timing-v1",
+        "status": "measured",
+        "ratio_eligible": True,
+        "raw_seconds_per_point": 8.0e-7,
+        "source": "runtime_profile_core_evaluator_call_time",
+        "compiled_direct_arena_active": False,
+        "sample_count": 5,
+        "native_profile_points_per_sample": 128,
+        "sample_contract": "paired-native-repeated-profile-v1",
+    }
+
+
+@pytest.mark.parametrize(
+    "execution_mode",
+    (ExecutionMode.EAGER, ExecutionMode.COMPILED),
+)
+def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
+    execution_mode: ExecutionMode,
+) -> None:
+    class Runtime:
+        def __init__(self) -> None:
+            self.wall_calls: list[tuple[object, int, dict[str, object]]] = []
+            self.arena_calls: list[tuple[object, int, dict[str, object]]] = []
+            self.public_profile_calls = 0
+
+        def _benchmark_f64_wall_time(
+            self,
+            batch: object,
+            repetitions: int,
+            **kwargs: object,
+        ) -> float:
+            self.wall_calls.append((batch, repetitions, dict(kwargs)))
+            return 1.0e-3
+
+        def _profile_arena_repeated(
+            self,
+            batch: object,
+            repetitions: int,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            self.arena_calls.append((batch, repetitions, dict(kwargs)))
+            assert isinstance(batch, tuple)
+            return _raw_arena_profile(
+                execution_mode=execution_mode.value,
+                points=len(batch) * repetitions,
+                wall_time=2.0e-3,
+            )
+
+        def profile_repeated(self, *_args: object, **_kwargs: object) -> object:
+            self.public_profile_calls += 1
+            raise AssertionError("public profile_repeated must not be used")
+
+    backend = Runtime()
+    runtime = SimpleNamespace(_backend=backend)
+    result = _run_report_benchmark(
+        runtime,
+        (((1.0, 0.0, 0.0, 1.0),),),
+        execution_mode=execution_mode,
+        benchmark_config=SimpleNamespace(
+            target_runtime=5.0e-3,
+            batch_size=2,
+            warmup_runs=1,
+            minimum_samples=5,
+            precision=16,
+        ),
+        selectors={"helicities": None, "color_flows": ("flow:1",)},
+    )
+
+    assert result.sample_count == 5
+    assert result.evaluator_time_per_point is None
+    assert result.environment["elapsed_seconds"] == pytest.approx(5.0e-3)
+    assert result.arena_profile_evidence["profile_count"] == 5
+    assert backend.public_profile_calls == 0
+    assert len(backend.arena_calls) == 6
+    for wall_call, arena_call in zip(
+        backend.wall_calls[-5:],
+        backend.arena_calls[-5:],
+        strict=True,
+    ):
+        wall_batch, wall_repetitions, wall_kwargs = wall_call
+        arena_batch, arena_repetitions, arena_kwargs = arena_call
+        assert arena_batch == wall_batch
+        assert arena_repetitions == wall_repetitions
+        assert arena_kwargs == {**wall_kwargs, "include_values": False}
+
+
+def test_report_arena_benchmark_requires_private_profiler() -> None:
+    runtime = SimpleNamespace(
+        _benchmark_f64_wall_time=lambda *_args, **_kwargs: 1.0,
+        profile_repeated=lambda *_args, **_kwargs: {},
+    )
+
+    with pytest.raises(RunnerError, match=r"_profile_arena_repeated"):
+        _run_arena_benchmark(
+            runtime,
+            (((1.0, 0.0, 0.0, 1.0),),),
+            execution_mode="compiled",
+            benchmark_config=SimpleNamespace(
+                target_runtime=5.0,
+                batch_size=2,
+                warmup_runs=1,
+                minimum_samples=5,
+                precision=16,
+            ),
+            selectors={"helicities": None, "color_flows": None},
+        )
+
+
+def test_report_benchmark_keeps_recurrence_on_supported_public_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, object]] = []
+    expected = object()
+
+    class BenchmarkRunner:
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        def run(self, runtime: object, *, points: object) -> object:
+            calls.append((runtime, points))
+            return expected
+
+    monkeypatch.setattr("pyamplicol.api.BenchmarkRunner", BenchmarkRunner)
+    runtime = SimpleNamespace(_backend=SimpleNamespace())
+    points = (((1.0, 0.0, 0.0, 1.0),),)
+    result = _run_report_benchmark(
+        runtime,
+        points,
+        execution_mode=ExecutionMode.RECURRENCE,
+        benchmark_config=SimpleNamespace(),
+        selectors={"helicities": None, "color_flows": None},
+    )
+
+    assert result is expected
+    assert calls == [(runtime, points)]
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "native_input_container_allocation_count",
+        "native_input_pack_bytes",
+        "stage_evaluator_output_gather_component_count",
+        "selector_scatter_value_count",
+        "amplitude_output_remap_component_count",
+    ),
+)
+def test_arena_profile_evidence_rejects_warmed_boundary_traffic(
+    field: str,
+) -> None:
+    profile = _raw_arena_profile()
+    profile[field] = 1
+
+    with pytest.raises(ArenaProfileEvidenceError, match=field):
+        build_arena_profile_evidence(
+            (profile,),
+            execution_mode="compiled",
+            repetitions_per_profile=1,
+            batch_size=128,
+        )
+
+
+def test_arena_profile_evidence_recomputes_all_native_counters() -> None:
+    evidence = build_arena_profile_evidence(
+        (_raw_arena_profile(),) * 5,
+        execution_mode="compiled",
+        repetitions_per_profile=1,
+        batch_size=128,
+    )
+
+    assert evidence["counter_totals"]["points"] == 640
+    assert evidence["counter_totals"]["state_component_count"] == 55
+    assert evidence["counter_totals"]["source_component_count"] == 35
+
+    evidence["counter_totals"]["state_component_count"] = 54
+    with pytest.raises(
+        ArenaProfileEvidenceError,
+        match="independently recomputed",
+    ):
+        validate_arena_profile_evidence(
+            evidence,
+            execution_mode="compiled",
+            sample_count=5,
+            native_profile_points_per_sample=128,
+        )
+
+
+def test_arena_profile_evidence_rejects_recurrence_protocol_claim() -> None:
+    with pytest.raises(ArenaProfileEvidenceError, match="unsupported"):
+        build_arena_profile_evidence(
+            (_raw_arena_profile(execution_mode="recurrence"),),
+            execution_mode="recurrence",
+            repetitions_per_profile=1,
+            batch_size=128,
+        )
 
 
 def _digest_json(value: object) -> str:

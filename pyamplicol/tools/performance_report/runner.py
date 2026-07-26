@@ -11,6 +11,7 @@ import math
 import os
 import platform
 import stat
+import statistics
 import time
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -19,6 +20,17 @@ from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
+from .arena_profile import (
+    ARENA_PHASE_TIMING_SCOPE,
+    ARENA_PROFILE_BOUNDARY,
+    ARENA_PROFILE_PROTOCOL,
+    ARENA_PROFILE_SAMPLE_PASS,
+    PAIRED_TIMING_SAMPLE_CONTRACT,
+    ArenaProfileEvidenceError,
+    build_arena_profile_evidence,
+    digest_arena_profile_value,
+    validate_arena_profile_evidence,
+)
 from .models import (
     Accuracy,
     CellSpec,
@@ -35,13 +47,8 @@ from .runtime_evidence import (
     python_package_tree_identity,
 )
 from .timing import (
-    ARENA_PHASE_TIMING_SCOPE,
-    ARENA_PROFILE_BOUNDARY,
-    ARENA_PROFILE_PROTOCOL,
-    ARENA_PROFILE_SAMPLE_PASS,
     ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI,
     MEASURED_EXECUTION_TIMING_ABI,
-    PAIRED_TIMING_SAMPLE_CONTRACT,
     UNAVAILABLE_STATUS,
 )
 
@@ -50,6 +57,11 @@ INDEPENDENT_RELATIVE_TOLERANCE = 1.0e-8
 ABSOLUTE_TOLERANCE = 1.0e-15
 GENERATION_VALIDATION_SEED = 12345
 DEFAULT_TARGET_RUNTIME_SECONDS = 5.0
+_ARENA_MINIMUM_SAMPLES = 5
+_ARENA_MAX_SAMPLES = 64
+_ARENA_MAX_CALIBRATION_BLOCKS = 4
+_ARENA_MAX_REPETITIONS = 1_000_000_000
+_ARENA_MINIMUM_TARGET_FRACTION = 0.95
 _RECURRENCE_DIRECT_TEMPLATE_ABI = "pyamplicol-recurrence-direct-template-v1"
 _RECURRENCE_DIRECT_BACKEND_ABI = "rusticol.recurrence-direct-backend.v1"
 _RECURRENCE_DIRECT_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
@@ -1610,6 +1622,323 @@ def pointwise_validation(
     }
 
 
+@dataclass(frozen=True, slots=True)
+class _ArenaStatistics:
+    standard_deviation: float
+    standard_error: float
+    relative_standard_error: float
+
+
+@dataclass(frozen=True, slots=True)
+class _ArenaBenchmarkResult:
+    effective_config: object
+    sample_count: int
+    wall_time_per_point: float
+    evaluator_time_per_point: None
+    uncertainty: _ArenaStatistics
+    environment: Mapping[str, object]
+    timing_breakdown: Mapping[str, object]
+    arena_profile_evidence: Mapping[str, object]
+    evaluator_uncertainty: None = None
+
+
+def _positive_duration(value: object, name: str) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) <= 0.0
+    ):
+        raise RunnerError(f"{name} must be finite and positive")
+    return float(value)
+
+
+def _arena_benchmark_batch(points: object, batch_size: int) -> tuple[object, ...]:
+    if (
+        not isinstance(points, Sequence)
+        or isinstance(points, (str, bytes, bytearray))
+        or not points
+    ):
+        raise RunnerError("Arena report benchmark requires validation points")
+    if (
+        isinstance(batch_size, bool)
+        or not isinstance(batch_size, int)
+        or batch_size < 1
+    ):
+        raise RunnerError("Arena report benchmark batch size must be positive")
+    source = tuple(points)
+    return tuple(source[index % len(source)] for index in range(batch_size))
+
+
+def _arena_statistics(samples: Sequence[float]) -> _ArenaStatistics:
+    if len(samples) < _ARENA_MINIMUM_SAMPLES:
+        raise RunnerError(
+            f"Arena report benchmark requires at least {_ARENA_MINIMUM_SAMPLES} "
+            "timed blocks"
+        )
+    mean = statistics.fmean(samples)
+    deviation = statistics.stdev(samples)
+    error = deviation / math.sqrt(len(samples))
+    relative = error / mean
+    return _ArenaStatistics(
+        standard_deviation=deviation,
+        standard_error=error,
+        relative_standard_error=relative,
+    )
+
+
+def _calibrate_arena_repetitions(
+    timer: object,
+    batch: tuple[object, ...],
+    *,
+    target_runtime: float,
+    sample_count: int,
+    selector_arguments: Mapping[str, object],
+) -> tuple[int, list[dict[str, object]]]:
+    if not callable(timer):
+        raise RunnerError("native unprofiled wall timer is unavailable")
+    target_per_block = target_runtime / sample_count
+    repetitions = 1
+    observed = _positive_duration(
+        timer(batch, repetitions, **selector_arguments),
+        "Arena wall calibration duration",
+    )
+    blocks = [{"repetitions": repetitions, "duration_seconds": observed}]
+    for _ in range(_ARENA_MAX_CALIBRATION_BLOCKS):
+        estimate = math.ceil(repetitions * target_per_block / observed)
+        candidate = min(max(estimate, 1), _ARENA_MAX_REPETITIONS)
+        if candidate == repetitions:
+            break
+        repetitions = candidate
+        observed = _positive_duration(
+            timer(batch, repetitions, **selector_arguments),
+            "Arena wall calibration duration",
+        )
+        blocks.append(
+            {"repetitions": repetitions, "duration_seconds": observed}
+        )
+        ratio = observed / target_per_block
+        if 0.75 <= ratio <= 1.5:
+            break
+    return repetitions, blocks
+
+
+def _run_arena_benchmark(
+    runtime: object,
+    points: object,
+    *,
+    execution_mode: str,
+    benchmark_config: object,
+    selectors: Mapping[str, tuple[str, ...] | None],
+) -> _ArenaBenchmarkResult:
+    """Measure native wall time and authenticate a paired private Arena profile."""
+
+    if execution_mode not in {"compiled", "eager"}:
+        raise RunnerError(
+            "private warmed Arena profiling is supported only for eager and "
+            "compiled report cells"
+        )
+    timer = getattr(runtime, "_benchmark_f64_wall_time", None)
+    profiler = getattr(runtime, "_profile_arena_repeated", None)
+    if not callable(timer):
+        raise RunnerError(
+            "current report timing requires runtime._benchmark_f64_wall_time"
+        )
+    if not callable(profiler):
+        raise RunnerError(
+            "current report timing requires runtime._profile_arena_repeated"
+        )
+    target_runtime = float(getattr(benchmark_config, "target_runtime", 0.0))
+    batch_size = getattr(benchmark_config, "batch_size", None)
+    warmup_runs = getattr(benchmark_config, "warmup_runs", None)
+    minimum_samples = getattr(benchmark_config, "minimum_samples", None)
+    precision = getattr(benchmark_config, "precision", None)
+    if not math.isfinite(target_runtime) or target_runtime <= 0.0:
+        raise RunnerError("Arena report target runtime must be finite and positive")
+    if (
+        isinstance(warmup_runs, bool)
+        or not isinstance(warmup_runs, int)
+        or warmup_runs < 0
+    ):
+        raise RunnerError("Arena report warmup count is invalid")
+    if (
+        isinstance(minimum_samples, bool)
+        or not isinstance(minimum_samples, int)
+        or minimum_samples < _ARENA_MINIMUM_SAMPLES
+    ):
+        raise RunnerError(
+            f"Arena report timing requires at least {_ARENA_MINIMUM_SAMPLES} "
+            "samples"
+        )
+    if precision != 16:
+        raise RunnerError("Arena report timing requires native f64 precision")
+    batch = _arena_benchmark_batch(points, batch_size)
+    selector_arguments: dict[str, object] = {
+        "helicities": selectors.get("helicities"),
+        "color_flows": selectors.get("color_flows"),
+        "precision": 16,
+    }
+    profile_arguments = {**selector_arguments, "include_values": False}
+    for _ in range(warmup_runs):
+        _positive_duration(
+            timer(batch, 1, **selector_arguments),
+            "Arena wall warmup duration",
+        )
+        warmup_profile = profiler(batch, 1, **profile_arguments)
+        if not isinstance(warmup_profile, Mapping):
+            raise RunnerError("native warmed Arena profile is not an object")
+        try:
+            build_arena_profile_evidence(
+                (warmup_profile,),
+                execution_mode=execution_mode,
+                repetitions_per_profile=1,
+                batch_size=len(batch),
+            )
+        except ArenaProfileEvidenceError as error:
+            raise RunnerError(f"invalid warmed Arena profile: {error}") from error
+    repetitions, calibration_blocks = _calibrate_arena_repetitions(
+        timer,
+        batch,
+        target_runtime=target_runtime,
+        sample_count=minimum_samples,
+        selector_arguments=selector_arguments,
+    )
+    evaluated_points = repetitions * len(batch)
+    headline_samples: list[float] = []
+    headline_durations: list[float] = []
+    raw_profiles: list[Mapping[str, object]] = []
+    profile_elapsed = 0.0
+    while (
+        len(headline_samples) < minimum_samples
+        or math.fsum(headline_durations) < target_runtime
+    ):
+        if len(headline_samples) >= _ARENA_MAX_SAMPLES:
+            raise RunnerError(
+                "Arena report benchmark could not reach its target duration "
+                f"within {_ARENA_MAX_SAMPLES} samples"
+            )
+        duration = _positive_duration(
+            timer(batch, repetitions, **selector_arguments),
+            "Arena headline wall duration",
+        )
+        headline_durations.append(duration)
+        headline_samples.append(duration / evaluated_points)
+        profile_started = time.perf_counter()
+        raw_profile = profiler(batch, repetitions, **profile_arguments)
+        profile_elapsed += time.perf_counter() - profile_started
+        if not isinstance(raw_profile, Mapping):
+            raise RunnerError("native warmed Arena profile is not an object")
+        raw_profiles.append(raw_profile)
+    try:
+        arena_evidence = build_arena_profile_evidence(
+            raw_profiles,
+            execution_mode=execution_mode,
+            repetitions_per_profile=repetitions,
+            batch_size=len(batch),
+        )
+    except ArenaProfileEvidenceError as error:
+        raise RunnerError(f"invalid warmed Arena profile: {error}") from error
+    sample_count = len(headline_samples)
+    uncertainty = _arena_statistics(headline_samples)
+    mean_wall = statistics.fmean(headline_samples)
+    achieved_runtime = math.fsum(headline_durations)
+    measured_evaluations = sample_count * repetitions
+    measured_points = measured_evaluations * len(batch)
+    return _ArenaBenchmarkResult(
+        effective_config=benchmark_config,
+        sample_count=sample_count,
+        wall_time_per_point=mean_wall,
+        evaluator_time_per_point=None,
+        uncertainty=uncertainty,
+        environment={
+            "wall_time_source": "runtime_core_repeated_wall_time",
+            "wall_time_sample_pass": "runtime._benchmark_f64_wall_time",
+            "evaluator_time_raw_seconds_per_point": None,
+            "evaluator_time_status": UNAVAILABLE_STATUS,
+            "evaluator_time_ratio_eligible": False,
+            "evaluator_time_sample_pass": ARENA_PROFILE_SAMPLE_PASS,
+            "timing_breakdown_sample_pass": ARENA_PROFILE_SAMPLE_PASS,
+            "profile_protocol": ARENA_PROFILE_PROTOCOL,
+            "profile_attribution_boundary": ARENA_PROFILE_BOUNDARY,
+            "profile_attribution_borrowed_flat_input": True,
+            "profile_attribution_preallocated_output": True,
+            "profile_attribution_phase_timing_scope": ARENA_PHASE_TIMING_SCOPE,
+            "profile_attribution_evaluator_timing_available": False,
+            "profile_attribution_paired_with_headline": True,
+            "profile_attribution_identical_batch": True,
+            "profile_attribution_identical_repetitions": True,
+            "execution_mode": execution_mode,
+            "evaluator_sample_count": sample_count,
+            "native_profile_sample_count": sample_count,
+            "native_profile_points_per_sample": evaluated_points,
+            "native_profile_repetitions_per_sample": repetitions,
+            "native_profile_batch_size": len(batch),
+            "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
+            "elapsed_seconds": achieved_runtime,
+            "completed_sample_count": sample_count,
+            "planned_sample_count": sample_count,
+            "repetitions_per_sample": repetitions,
+            "measured_point_count": measured_points,
+            "profile_attribution_evaluation_count": measured_evaluations,
+            "profile_attribution_point_count": measured_points,
+            "profile_attribution_elapsed_seconds": profile_elapsed,
+            "headline_block_durations_seconds": headline_durations,
+            "calibration": {
+                "target_seconds_per_block": (
+                    target_runtime / minimum_samples
+                ),
+                "blocks": calibration_blocks,
+            },
+            "interrupted": False,
+        },
+        timing_breakdown={
+            "sample_count": sample_count,
+            "execution_mode": execution_mode,
+            "wall_time": {
+                "mean_seconds_per_point": arena_evidence[
+                    "warmed_boundary_wall_seconds_per_point"
+                ],
+            },
+            "evaluator_call_time": None,
+            "raw_profile_samples": arena_evidence["raw_profiles"],
+        },
+        arena_profile_evidence=arena_evidence,
+    )
+
+
+def _run_report_benchmark(
+    runtime: object,
+    points: object,
+    *,
+    execution_mode: ExecutionMode,
+    benchmark_config: object,
+    selectors: Mapping[str, tuple[str, ...] | None],
+) -> object:
+    """Select the mode's authenticated timing protocol without fallback."""
+
+    if execution_mode in {ExecutionMode.EAGER, ExecutionMode.COMPILED}:
+        backend = getattr(runtime, "_backend", None)
+        if backend is None:
+            raise RunnerError(
+                "eager/compiled report timing requires the runtime's private "
+                "native backend"
+            )
+        return _run_arena_benchmark(
+            backend,
+            points,
+            execution_mode=execution_mode.value,
+            benchmark_config=benchmark_config,
+            selectors=selectors,
+        )
+    if execution_mode is ExecutionMode.RECURRENCE:
+        from pyamplicol.api import BenchmarkRunner
+
+        return BenchmarkRunner(benchmark_config).run(runtime, points=points)
+    raise RunnerError(
+        f"unsupported pyAmpliCol report execution mode: {execution_mode.value}"
+    )
+
+
 def _benchmark_measurement(
     benchmark: object,
     *,
@@ -1641,6 +1970,7 @@ def _benchmark_measurement(
     ):
         raise RunnerError("benchmark has invalid native-profile point count")
     timing_sample_contract = environment.get("timing_sample_contract")
+    arena_profile_evidence: Mapping[str, object] | None = None
     if timing_status == UNAVAILABLE_STATUS:
         breakdown = getattr(benchmark, "timing_breakdown", None)
         wall_component = (
@@ -1658,6 +1988,22 @@ def _benchmark_measurement(
             if isinstance(breakdown, Mapping)
             else getattr(breakdown, "evaluator_call_time", None)
         )
+        raw_arena_evidence = getattr(benchmark, "arena_profile_evidence", None)
+        profile_repetitions = environment.get(
+            "native_profile_repetitions_per_sample"
+        )
+        profile_batch_size = environment.get("native_profile_batch_size")
+        try:
+            arena_profile_evidence = validate_arena_profile_evidence(
+                raw_arena_evidence,
+                execution_mode=str(environment.get("execution_mode")),
+                sample_count=evaluator_sample_count,
+                native_profile_points_per_sample=raw_points_per_sample,
+            )
+        except ArenaProfileEvidenceError as error:
+            raise RunnerError(
+                f"benchmark has invalid warmed Arena profile evidence: {error}"
+            ) from error
         if (
             evaluator_time is not None
             or getattr(benchmark, "evaluator_uncertainty", None) is not None
@@ -1680,9 +2026,19 @@ def _benchmark_measurement(
             or environment.get("profile_attribution_identical_batch") is not True
             or environment.get("profile_attribution_identical_repetitions") is not True
             or timing_sample_contract != PAIRED_TIMING_SAMPLE_CONTRACT
-            or environment.get("execution_mode")
-            not in {"compiled", "eager", "recurrence"}
+            or environment.get("execution_mode") not in {"compiled", "eager"}
             or evaluator_sample_count != benchmark.sample_count
+            or isinstance(profile_repetitions, bool)
+            or not isinstance(profile_repetitions, int)
+            or profile_repetitions < 1
+            or isinstance(profile_batch_size, bool)
+            or not isinstance(profile_batch_size, int)
+            or profile_batch_size < 1
+            or profile_repetitions * profile_batch_size
+            != raw_points_per_sample
+            or arena_profile_evidence.get("repetitions_per_profile")
+            != profile_repetitions
+            or arena_profile_evidence.get("batch_size") != profile_batch_size
             or evaluator_component is not None
             or isinstance(warmed_wall, bool)
             or not isinstance(warmed_wall, (int, float))
@@ -1700,6 +2056,8 @@ def _benchmark_measurement(
             "raw_seconds_per_point": None,
             "sample_count": evaluator_sample_count,
             "native_profile_points_per_sample": raw_points_per_sample,
+            "repetitions_per_sample": profile_repetitions,
+            "batch_size": profile_batch_size,
             "sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
             "profile_protocol": ARENA_PROFILE_PROTOCOL,
             "profile_sample_pass": ARENA_PROFILE_SAMPLE_PASS,
@@ -1713,6 +2071,9 @@ def _benchmark_measurement(
             "identical_repetitions": True,
             "execution_mode": environment["execution_mode"],
             "warmed_boundary_wall_seconds_per_point": float(warmed_wall),
+            "arena_profile_evidence_sha256": digest_arena_profile_value(
+                arena_profile_evidence
+            ),
         }
     elif timing_status == "measured":
         time_source = environment.get("evaluator_time_source")
@@ -1768,6 +2129,7 @@ def _benchmark_measurement(
             None if evaluator_time is None else float(evaluator_time)
         ),
         "execution_timing": execution_timing,
+        "arena_profile_evidence": arena_profile_evidence,
         "matrix_element": matrix_element,
         "sample_count": int(benchmark.sample_count),
         "standard_error_seconds_per_point": float(uncertainty.standard_error),
@@ -1799,8 +2161,6 @@ def profile_runtime(
     benchmark_config: object,
     selector_contract: SelectorContract | None,
 ) -> dict[str, object]:
-    from pyamplicol.api import BenchmarkRunner
-
     validate_runtime_contract(cell, runtime)
     if selector_contract is not None:
         validate_selector_contract(runtime, selector_contract, points)
@@ -1813,7 +2173,13 @@ def profile_runtime(
         helicity_ids=tuple(selectors["helicities"] or ()),
         color_flow_ids=tuple(selectors["color_flows"] or ()),
     )
-    benchmark = BenchmarkRunner(selected_config).run(runtime, points=points)
+    benchmark = _run_report_benchmark(
+        runtime,
+        points,
+        execution_mode=cell.measurement.execution_mode,
+        benchmark_config=selected_config,
+        selectors=selectors,
+    )
     result = _benchmark_measurement(
         benchmark,
         matrix_element=_real_nonnegative(values[0]),

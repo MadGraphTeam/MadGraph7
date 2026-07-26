@@ -628,6 +628,43 @@ class RusticolRuntimeBackend:
             )
         )
 
+    def _profile_arena_repeated(
+        self,
+        momenta: Momenta,
+        repetitions: int,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: int = 16,
+        include_values: bool = False,
+    ) -> Mapping[str, object]:
+        """Use the private warmed-Arena profiler without a public fallback."""
+
+        helicities = _normalized_selectors(helicities)
+        color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
+        if precision != 16:
+            raise EvaluationError(
+                "Arena profiling is available only for native f64 precision"
+            )
+        profiler = getattr(self._runtime, "_profile_arena_repeated", None)
+        if not callable(profiler):
+            raise EvaluationError(
+                "native runtime does not expose warmed Arena profiling"
+            )
+        payload = _invoke(
+            self._native_module,
+            profiler,
+            momenta,
+            repetitions,
+            helicities=helicities,
+            color_flows=color_flows,
+            precision=precision,
+            include_values=include_values,
+        )
+        if not isinstance(payload, Mapping):
+            raise EvaluationError("native warmed Arena profile is not a mapping")
+        return cast(Mapping[str, object], dict(payload))
+
     def evaluate_resolved(
         self,
         momenta: Momenta,

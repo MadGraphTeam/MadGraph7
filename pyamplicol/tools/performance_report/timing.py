@@ -6,21 +6,23 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 
+from .arena_profile import (
+    ARENA_PHASE_TIMING_SCOPE,
+    ARENA_PROFILE_BOUNDARY,
+    ARENA_PROFILE_PROTOCOL,
+    ARENA_PROFILE_SAMPLE_PASS,
+    PAIRED_TIMING_SAMPLE_CONTRACT,
+    ArenaProfileEvidenceError,
+    digest_arena_profile_value,
+    validate_arena_profile_evidence,
+)
+
 MEASURED_EXECUTION_TIMING_ABI = "pyamplicol-report-execution-timing-v1"
 ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI = (
     "pyamplicol-report-arena-execution-timing-v2"
 )
 EXECUTION_TIMING_KEY = "execution_timing"
 UNAVAILABLE_STATUS = "unavailable"
-ARENA_PROFILE_PROTOCOL = "arena"
-ARENA_PROFILE_SAMPLE_PASS = "runtime._profile_arena_repeated"
-ARENA_PROFILE_BOUNDARY = (
-    "warmed-direct-arena-borrowed-input-preallocated-output-v1"
-)
-ARENA_PHASE_TIMING_SCOPE = "coarse-arena-boundary-only-v1"
-PAIRED_TIMING_SAMPLE_CONTRACT = (
-    "paired_unprofiled_headline_profiled_attribution_v1"
-)
 ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS = frozenset(
     {
         "abi",
@@ -29,6 +31,8 @@ ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS = frozenset(
         "raw_seconds_per_point",
         "sample_count",
         "native_profile_points_per_sample",
+        "repetitions_per_sample",
+        "batch_size",
         "sample_contract",
         "profile_protocol",
         "profile_sample_pass",
@@ -42,6 +46,7 @@ ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS = frozenset(
         "identical_repetitions",
         "execution_mode",
         "warmed_boundary_wall_seconds_per_point",
+        "arena_profile_evidence_sha256",
     }
 )
 
@@ -63,8 +68,39 @@ def unavailable_execution_timing_record(
     raw = record.get("raw_seconds_per_point")
     sample_count = record.get("sample_count")
     native_points = record.get("native_profile_points_per_sample")
+    repetitions = record.get("repetitions_per_sample")
+    batch_size = record.get("batch_size")
     warmed_wall = record.get("warmed_boundary_wall_seconds_per_point")
     execution_mode = record.get("execution_mode")
+    evidence = provenance.get("arena_profile_evidence")
+    evidence_digest = record.get("arena_profile_evidence_sha256")
+    evidence_valid = False
+    if (
+        isinstance(execution_mode, str)
+        and isinstance(sample_count, int)
+        and not isinstance(sample_count, bool)
+        and isinstance(native_points, int)
+        and not isinstance(native_points, bool)
+        and isinstance(evidence_digest, str)
+    ):
+        try:
+            validate_arena_profile_evidence(
+                evidence,
+                execution_mode=execution_mode,
+                sample_count=sample_count,
+                native_profile_points_per_sample=native_points,
+            )
+        except ArenaProfileEvidenceError:
+            pass
+        else:
+            evidence_valid = (
+                digest_arena_profile_value(evidence) == evidence_digest
+                and isinstance(evidence, Mapping)
+                and evidence.get("repetitions_per_profile") == repetitions
+                and evidence.get("batch_size") == batch_size
+                and evidence.get("warmed_boundary_wall_seconds_per_point")
+                == warmed_wall
+            )
     if (
         set(record) != ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS
         or record.get("abi") != ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI
@@ -77,6 +113,13 @@ def unavailable_execution_timing_record(
         or isinstance(native_points, bool)
         or not isinstance(native_points, int)
         or native_points < 1
+        or isinstance(repetitions, bool)
+        or not isinstance(repetitions, int)
+        or repetitions < 1
+        or isinstance(batch_size, bool)
+        or not isinstance(batch_size, int)
+        or batch_size < 1
+        or repetitions * batch_size != native_points
         or record.get("sample_contract") != PAIRED_TIMING_SAMPLE_CONTRACT
         or record.get("profile_protocol") != ARENA_PROFILE_PROTOCOL
         or record.get("profile_sample_pass") != ARENA_PROFILE_SAMPLE_PASS
@@ -88,11 +131,12 @@ def unavailable_execution_timing_record(
         or record.get("paired_with_headline") is not True
         or record.get("identical_batch") is not True
         or record.get("identical_repetitions") is not True
-        or execution_mode not in {"compiled", "eager", "recurrence"}
+        or execution_mode not in {"compiled", "eager"}
         or isinstance(warmed_wall, bool)
         or not isinstance(warmed_wall, (int, float))
         or not math.isfinite(float(warmed_wall))
         or float(warmed_wall) <= 0.0
+        or not evidence_valid
         or measurement.get(field) is not None
     ):
         return None

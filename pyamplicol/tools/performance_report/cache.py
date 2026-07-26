@@ -265,12 +265,16 @@ def _validate_execution_timing(
     *,
     execution_seconds_per_point: float | None,
     measurement_sample_count: int,
+    arena_profile_evidence: object,
 ) -> None:
     timing = _required_mapping(value, "measurement.provenance.execution_timing")
     if timing.get("abi") == ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI:
         measurement = {
             "execution_seconds_per_point": execution_seconds_per_point,
-            "provenance": {"execution_timing": timing},
+            "provenance": {
+                "execution_timing": timing,
+                "arena_profile_evidence": arena_profile_evidence,
+            },
         }
         if (
             unavailable_execution_timing_record(
@@ -440,6 +444,9 @@ def validate_measurement(
                 raw_execution_timing,
                 execution_seconds_per_point=execution_seconds,
                 measurement_sample_count=int(measurement["sample_count"]),
+                arena_profile_evidence=provenance.get(
+                    "arena_profile_evidence"
+                ),
             )
         elif execution_seconds is None and "source_revision" in provenance:
             raise ValueError(
