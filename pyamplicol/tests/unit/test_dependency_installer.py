@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -91,6 +92,67 @@ def test_symjit_patch_set_is_revision_digest_and_tree_pinned() -> None:
     assert len(payload["symjit"]["patched_tree_sha256"]) == 64
     assert len(payload["symjit"]["candidate_tree_sha256"]) == 64
     assert payload["symjit"]["release_status"] == "patched-candidate"
+
+
+def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> None:
+    module = _module()
+    target = tmp_path / "symjit"
+    target.mkdir()
+    environment = dict(os.environ)
+    for name in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"):
+        environment.pop(name, None)
+    environment["GIT_CEILING_DIRECTORIES"] = str(target.parent.resolve())
+
+    applied: list[str] = []
+    for patch in module._contributor_patches(module._lock()):
+        if (
+            b"diff --git a/rust/direct.rs b/rust/direct.rs\n"
+            not in patch.path.read_bytes()
+        ):
+            continue
+        command = [
+            "git",
+            "apply",
+            "--whitespace=nowarn",
+            "--include=rust/direct.rs",
+            str(patch.path),
+        ]
+        check = subprocess.run(
+            [*command[:2], "--check", *command[2:]],
+            cwd=target,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert check.returncode == 0, (
+            f"{patch.name} does not follow the tracked rust/direct.rs lineage:\n"
+            f"{check.stderr}"
+        )
+        subprocess.run(
+            command,
+            cwd=target,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        applied.append(patch.name)
+
+    assert applied == [
+        "symjit-aarch64-compression-and-direct-arena",
+        "symjit-eager-and-compiled-direct-arena",
+        "symjit-x86-direct-table",
+        "symjit-compiled-direct-arena-all-jit-levels",
+    ]
+    direct = target / "rust" / "direct.rs"
+    digest = subprocess.run(
+        ["git", "hash-object", direct],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert digest == "94ea8fb2b80c03f2266b6be1f82b705e9b96fa04"
 
 
 def test_contributor_patch_application_is_exact_idempotent_and_fails_on_drift(

@@ -1,11 +1,12 @@
 diff --git a/rust/direct.rs b/rust/direct.rs
-index 62db4ed..23f1cd8 100644
+index 01ad8b6..94ea8fb 100644
 --- a/rust/direct.rs
 +++ b/rust/direct.rs
-@@ -94,6 +94,19 @@ impl DirectOutputScale {
+@@ -93,6 +93,20 @@ impl DirectOutputScale {
+             Self::Identity => 3,
          }
      }
- 
++
 +    fn accepts_source_optimization_level(self, optimization_level: u8) -> bool {
 +        match self {
 +            Self::ExactFactor => optimization_level == 2,
@@ -22,7 +23,7 @@ index 62db4ed..23f1cd8 100644
  }
  
  impl TryFrom<u8> for DirectOutputScale {
-@@ -275,10 +288,11 @@ impl DirectApplicationMetadata {
+@@ -275,10 +289,11 @@ impl DirectApplicationMetadata {
          if source.count_diffs != 0 {
              bail!("direct applications do not support differential outputs");
          }
@@ -36,7 +37,8 @@ index 62db4ed..23f1cd8 100644
              || !source.config.symbolica()
              || !source.config.is_complex()
              || source.config.direct_arena()
-@@ -287,8 +301,8 @@ impl DirectApplicationMetadata {
+@@ -286,9 +301,9 @@ impl DirectApplicationMetadata {
+             || source.config.direct_arena_operation() != 0
          {
              bail!(
 -                "direct {:?} applications require a portable native Symbolica complex O{} source",
@@ -47,7 +49,7 @@ index 62db4ed..23f1cd8 100644
              );
          }
          if !source.prog.builder.ft.is_empty() {
-@@ -535,6 +549,14 @@ impl DirectApplication {
+@@ -538,6 +553,14 @@ impl DirectApplication {
          &self.metadata
      }
  
@@ -62,7 +64,7 @@ index 62db4ed..23f1cd8 100644
      pub fn prepare_simd(&mut self) {
          self.application.prepare_simd();
      }
-@@ -1442,9 +1464,9 @@ mod tests {
+@@ -1441,9 +1464,9 @@ mod tests {
          .unwrap()
      }
  
@@ -74,7 +76,7 @@ index 62db4ed..23f1cd8 100644
          config.set_complex(true);
          config.set_symbolica(true);
          config.set_simd(true);
-@@ -1457,6 +1479,10 @@ mod tests {
+@@ -1455,6 +1478,10 @@ mod tests {
              .unwrap()
      }
  
@@ -85,7 +87,7 @@ index 62db4ed..23f1cd8 100644
      fn compiled_metadata(source: &Application) -> DirectApplicationMetadata {
          assert_eq!(source.count_states, 0);
          DirectApplicationMetadata::new_with_output_scale(
-@@ -1840,6 +1866,20 @@ mod tests {
+@@ -1837,6 +1864,20 @@ mod tests {
          assert!(machine_code_contains_call(&direct.application));
      }
  
