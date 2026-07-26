@@ -186,7 +186,10 @@ def audit_aggregate_report(
 
     for profile in sorted(changed_profiles):
         profile_revision = audited[profile]
-        _git(root, ("merge-base", "--is-ancestor", base, profile_revision))
+        _git(
+            root,
+            ("merge-base", "--is-ancestor", profile_revision, aggregate),
+        )
         aggregate_tree = _profile_tree(root, aggregate, profile)
         audited_tree = _profile_tree(root, profile_revision, profile)
         if aggregate_tree != audited_tree:

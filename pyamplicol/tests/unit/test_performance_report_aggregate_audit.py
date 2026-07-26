@@ -79,6 +79,32 @@ def test_accepts_exact_subtrees_from_two_audited_profiles(tmp_path: Path) -> Non
     assert result["changed_profiles"] == ["macbook_M3", "x86_EPYC"]
 
 
+def test_accepts_audited_profile_after_main_advances_independently(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    measured_source = _seed(repo)
+    mac = _profile_commit(repo, "macbook_M3", "mac", "1")
+    _git(repo, "switch", "--detach", measured_source)
+    _git(repo, "switch", "-c", "advanced-main")
+    _write(repo / "src/runtime.py", "fixed = 'later-main-change'\n")
+    landing_base = _commit(repo, "advance main independently")
+    _git(repo, "merge", "--no-ff", "--no-edit", mac)
+    aggregate = _git(repo, "rev-parse", "HEAD")
+
+    result = audit_aggregate_report(
+        repo,
+        base_revision=landing_base,
+        revision=aggregate,
+        audited_profiles={"macbook_M3": mac},
+    )
+
+    assert result["status"] == "ok"
+    assert result["base_revision"] == landing_base
+    assert result["changed_profiles"] == ["macbook_M3"]
+
+
 @pytest.mark.parametrize(
     ("relative", "mutation"),
     (

@@ -412,6 +412,7 @@ LANDING_TREE="../pyamplicol-x86-EPYC-main-landing"
 test ! -e "$LANDING_TREE"
 git worktree add -b codex/x86-EPYC-main-landing \
   "$LANDING_TREE" origin/main
+LANDING_BASE_REVISION="$(git -C "$LANDING_TREE" rev-parse HEAD)"
 git -C "$LANDING_TREE" merge --no-ff --no-edit "$PUBLICATION_REVISION"
 AGGREGATE_REVISION="$(git -C "$LANDING_TREE" rev-parse HEAD)"
 AUDITED_PROFILE_ARGS=(
@@ -425,7 +426,7 @@ fi
 (
   cd "$LANDING_TREE"
   python3 -m tools.performance_report.aggregate_audit \
-    --base-revision "$MEASURED_SOURCE_REVISION" \
+    --base-revision "$LANDING_BASE_REVISION" \
     --revision "$AGGREGATE_REVISION" \
     "${AUDITED_PROFILE_ARGS[@]}"
   python3 docs/performance_reports/x86_EPYC/result_tables.py audit
