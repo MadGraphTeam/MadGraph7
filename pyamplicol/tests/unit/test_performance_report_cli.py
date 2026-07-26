@@ -5,7 +5,11 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
+from tools.performance_report import final_audit
 from tools.performance_report.cli import _parser, main
+from tools.performance_report.service import ReportPaths, ReportService
 
 
 def _initialize_git_repo(repo: Path) -> None:
@@ -49,9 +53,7 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
 
 
 def test_report_profile_is_a_global_architecture_scope() -> None:
-    parsed = _parser().parse_args(
-        ("--report-profile", "macbook_M3", "populate")
-    )
+    parsed = _parser().parse_args(("--report-profile", "macbook_M3", "populate"))
     assert parsed.report_profile == "macbook_M3"
 
 
@@ -75,6 +77,99 @@ def test_final_audit_is_routed_through_the_isolated_result_tables_entrypoint() -
     assert arguments.publication_revision == "b" * 40
     assert arguments.expected_cell_count == 742
     assert arguments.structural_only is True
+
+
+def test_final_audit_receives_the_bound_architecture_profile_service(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = tmp_path / "repo"
+    profile = "macbook_M3"
+    expected_paths = ReportPaths.from_repo(repo, profile=profile)
+    expected_service = ReportService(expected_paths)
+    observed: dict[str, object] = {}
+
+    def construct_service(paths: ReportPaths) -> ReportService:
+        assert paths == expected_paths
+        return expected_service
+
+    def fake_audit(
+        repo_root: Path,
+        **arguments: object,
+    ) -> dict[str, object]:
+        observed["repo_root"] = repo_root
+        observed.update(arguments)
+        return {"final_gate_complete": True}
+
+    monkeypatch.setattr(
+        "tools.performance_report.cli.ReportService",
+        construct_service,
+    )
+    monkeypatch.setattr(final_audit, "audit_final_report", fake_audit)
+
+    assert (
+        main(
+            (
+                "--repo-root",
+                str(repo),
+                "--report-profile",
+                profile,
+                "final-audit",
+                "--expected-source-revision",
+                "a" * 40,
+                "--publication-revision",
+                "b" * 40,
+                "--structural-only",
+            )
+        )
+        == 0
+    )
+
+    assert observed["repo_root"] == repo.resolve()
+    assert observed["service"] is expected_service
+    assert expected_service.paths.docs_dir == (
+        repo.resolve() / "docs/performance_reports/macbook_M3"
+    )
+    assert expected_service.paths.artifact_root == (
+        repo.resolve() / ".artifacts/performance-report/macbook_M3"
+    )
+    assert expected_service.paths.coordination_root == (
+        repo.resolve() / ".artifacts/performance-report-coordination/macbook_M3"
+    )
+    assert observed["expected_source_revision"] == "a" * 40
+    assert observed["expected_publication_revision"] == "b" * 40
+    assert observed["max_n_final"] == 4
+    assert observed["expected_cell_count"] == 742
+    assert observed["replay"] is False
+    assert json.loads(capsys.readouterr().out)["final_gate_complete"] is True
+
+
+def test_final_audit_requires_an_architecture_profile(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    called = False
+
+    def fake_audit(*_args: object, **_kwargs: object) -> dict[str, object]:
+        nonlocal called
+        called = True
+        return {"final_gate_complete": True}
+
+    monkeypatch.setattr(final_audit, "audit_final_report", fake_audit)
+
+    with pytest.raises(SystemExit, match="2"):
+        main(
+            (
+                "--repo-root",
+                str(tmp_path / "repo"),
+                "final-audit",
+                "--expected-source-revision",
+                "a" * 40,
+            )
+        )
+
+    assert called is False
 
 
 def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:
