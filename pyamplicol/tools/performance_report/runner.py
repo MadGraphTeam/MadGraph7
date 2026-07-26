@@ -34,6 +34,16 @@ from .runtime_evidence import (
     loaded_pyamplicol_origin_policy,
     python_package_tree_identity,
 )
+from .timing import (
+    ARENA_PHASE_TIMING_SCOPE,
+    ARENA_PROFILE_BOUNDARY,
+    ARENA_PROFILE_PROTOCOL,
+    ARENA_PROFILE_SAMPLE_PASS,
+    ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI,
+    MEASURED_EXECUTION_TIMING_ABI,
+    PAIRED_TIMING_SAMPLE_CONTRACT,
+    UNAVAILABLE_STATUS,
+)
 
 RELATIVE_TOLERANCE = 1.0e-12
 INDEPENDENT_RELATIVE_TOLERANCE = 1.0e-8
@@ -49,12 +59,6 @@ _RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
 _RECURRENCE_JIT_SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
 _RECURRENCE_JIT_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
 _RECURRENCE_JIT_SOURCE_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
-_EXECUTION_TIMING_ABI = "pyamplicol-report-execution-timing-v1"
-_COMPILED_ARENA_EXECUTION_TIME_SOURCE = (
-    "runtime_profile_core_compiled_direct_arena_orchestration_time"
-)
-
-
 class RunnerError(RuntimeError):
     """Raised when a cell cannot satisfy the report measurement contract."""
 
@@ -1617,51 +1621,11 @@ def _benchmark_measurement(
         raise RunnerError("benchmark did not retain timing provenance")
     evaluator_time = benchmark.evaluator_time_per_point
     raw_evaluator_time = environment.get("evaluator_time_raw_seconds_per_point")
-    if (
-        isinstance(raw_evaluator_time, bool)
-        or not isinstance(raw_evaluator_time, (int, float))
-        or not math.isfinite(float(raw_evaluator_time))
-        or float(raw_evaluator_time) < 0.0
-    ):
-        raise RunnerError("benchmark has invalid raw evaluator timing provenance")
-    raw_evaluator_time = float(raw_evaluator_time)
     timing_status = environment.get("evaluator_time_status")
     ratio_eligible = environment.get("evaluator_time_ratio_eligible")
-    time_source = environment.get("evaluator_time_source")
-    compiled_direct_arena_active = environment.get(
-        "compiled_direct_arena_active",
-        False,
-    )
-    if not isinstance(time_source, str) or not time_source:
-        raise RunnerError("benchmark has no evaluator timing source")
-    if not isinstance(compiled_direct_arena_active, bool):
-        raise RunnerError("benchmark has invalid compiled Direct-Arena timing state")
-    if timing_status == "below_timer_resolution":
-        if (
-            evaluator_time is not None
-            or raw_evaluator_time != 0.0
-            or ratio_eligible is not False
-            or compiled_direct_arena_active is not True
-            or time_source != _COMPILED_ARENA_EXECUTION_TIME_SOURCE
-        ):
-            raise RunnerError(
-                "benchmark below-resolution execution timing is not an "
-                "authenticated compiled Direct-Arena zero"
-            )
-    elif timing_status == "measured":
-        if (
-            isinstance(evaluator_time, bool)
-            or not isinstance(evaluator_time, (int, float))
-            or not math.isfinite(float(evaluator_time))
-            or float(evaluator_time) != raw_evaluator_time
-            or ratio_eligible is not (raw_evaluator_time > 0.0)
-        ):
-            raise RunnerError("benchmark measured execution timing is inconsistent")
-    else:
-        raise RunnerError("benchmark has unsupported evaluator timing status")
     evaluator_sample_count = environment.get(
         "evaluator_sample_count",
-        benchmark.sample_count,
+        environment.get("native_profile_sample_count", benchmark.sample_count),
     )
     if (
         isinstance(evaluator_sample_count, bool)
@@ -1670,26 +1634,122 @@ def _benchmark_measurement(
     ):
         raise RunnerError("benchmark has invalid evaluator timing sample count")
     raw_points_per_sample = environment.get("native_profile_points_per_sample")
-    if raw_points_per_sample is not None and (
+    if (
         isinstance(raw_points_per_sample, bool)
         or not isinstance(raw_points_per_sample, int)
         or raw_points_per_sample < 1
     ):
         raise RunnerError("benchmark has invalid native-profile point count")
     timing_sample_contract = environment.get("timing_sample_contract")
-    if not isinstance(timing_sample_contract, str) or not timing_sample_contract:
-        raise RunnerError("benchmark has no timing sample contract")
-    execution_timing = {
-        "abi": _EXECUTION_TIMING_ABI,
-        "status": timing_status,
-        "ratio_eligible": ratio_eligible,
-        "raw_seconds_per_point": raw_evaluator_time,
-        "source": time_source,
-        "compiled_direct_arena_active": compiled_direct_arena_active,
-        "sample_count": evaluator_sample_count,
-        "native_profile_points_per_sample": raw_points_per_sample,
-        "sample_contract": timing_sample_contract,
-    }
+    if timing_status == UNAVAILABLE_STATUS:
+        breakdown = getattr(benchmark, "timing_breakdown", None)
+        wall_component = (
+            breakdown.get("wall_time")
+            if isinstance(breakdown, Mapping)
+            else getattr(breakdown, "wall_time", None)
+        )
+        warmed_wall = (
+            wall_component.get("mean_seconds_per_point")
+            if isinstance(wall_component, Mapping)
+            else getattr(wall_component, "mean_seconds_per_point", None)
+        )
+        evaluator_component = (
+            breakdown.get("evaluator_call_time")
+            if isinstance(breakdown, Mapping)
+            else getattr(breakdown, "evaluator_call_time", None)
+        )
+        if (
+            evaluator_time is not None
+            or getattr(benchmark, "evaluator_uncertainty", None) is not None
+            or raw_evaluator_time is not None
+            or ratio_eligible is not False
+            or environment.get("profile_protocol") != ARENA_PROFILE_PROTOCOL
+            or environment.get("evaluator_time_sample_pass")
+            != ARENA_PROFILE_SAMPLE_PASS
+            or environment.get("timing_breakdown_sample_pass")
+            != ARENA_PROFILE_SAMPLE_PASS
+            or environment.get("profile_attribution_boundary")
+            != ARENA_PROFILE_BOUNDARY
+            or environment.get("profile_attribution_borrowed_flat_input") is not True
+            or environment.get("profile_attribution_preallocated_output") is not True
+            or environment.get("profile_attribution_phase_timing_scope")
+            != ARENA_PHASE_TIMING_SCOPE
+            or environment.get("profile_attribution_evaluator_timing_available")
+            is not False
+            or environment.get("profile_attribution_paired_with_headline") is not True
+            or environment.get("profile_attribution_identical_batch") is not True
+            or environment.get("profile_attribution_identical_repetitions") is not True
+            or timing_sample_contract != PAIRED_TIMING_SAMPLE_CONTRACT
+            or environment.get("execution_mode")
+            not in {"compiled", "eager", "recurrence"}
+            or evaluator_sample_count != benchmark.sample_count
+            or evaluator_component is not None
+            or isinstance(warmed_wall, bool)
+            or not isinstance(warmed_wall, (int, float))
+            or not math.isfinite(float(warmed_wall))
+            or float(warmed_wall) <= 0.0
+        ):
+            raise RunnerError(
+                "benchmark unavailable execution timing is not authenticated "
+                "by the warmed Arena profile boundary"
+            )
+        execution_timing = {
+            "abi": ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI,
+            "status": UNAVAILABLE_STATUS,
+            "ratio_eligible": False,
+            "raw_seconds_per_point": None,
+            "sample_count": evaluator_sample_count,
+            "native_profile_points_per_sample": raw_points_per_sample,
+            "sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
+            "profile_protocol": ARENA_PROFILE_PROTOCOL,
+            "profile_sample_pass": ARENA_PROFILE_SAMPLE_PASS,
+            "profile_boundary": ARENA_PROFILE_BOUNDARY,
+            "borrowed_flat_input": True,
+            "preallocated_output": True,
+            "phase_timing_scope": ARENA_PHASE_TIMING_SCOPE,
+            "evaluator_timing_available": False,
+            "paired_with_headline": True,
+            "identical_batch": True,
+            "identical_repetitions": True,
+            "execution_mode": environment["execution_mode"],
+            "warmed_boundary_wall_seconds_per_point": float(warmed_wall),
+        }
+    elif timing_status == "measured":
+        time_source = environment.get("evaluator_time_source")
+        compiled_direct_arena_active = environment.get(
+            "compiled_direct_arena_active",
+            False,
+        )
+        if (
+            isinstance(raw_evaluator_time, bool)
+            or not isinstance(raw_evaluator_time, (int, float))
+            or not math.isfinite(float(raw_evaluator_time))
+            or float(raw_evaluator_time) <= 0.0
+            or isinstance(evaluator_time, bool)
+            or not isinstance(evaluator_time, (int, float))
+            or not math.isfinite(float(evaluator_time))
+            or float(evaluator_time) != float(raw_evaluator_time)
+            or ratio_eligible is not True
+            or not isinstance(time_source, str)
+            or not time_source
+            or not isinstance(compiled_direct_arena_active, bool)
+            or not isinstance(timing_sample_contract, str)
+            or not timing_sample_contract
+        ):
+            raise RunnerError("benchmark measured execution timing is inconsistent")
+        execution_timing = {
+            "abi": MEASURED_EXECUTION_TIMING_ABI,
+            "status": "measured",
+            "ratio_eligible": True,
+            "raw_seconds_per_point": float(raw_evaluator_time),
+            "source": time_source,
+            "compiled_direct_arena_active": compiled_direct_arena_active,
+            "sample_count": evaluator_sample_count,
+            "native_profile_points_per_sample": raw_points_per_sample,
+            "sample_contract": timing_sample_contract,
+        }
+    else:
+        raise RunnerError("benchmark has unsupported evaluator timing status")
     target_runtime = float(benchmark.effective_config.target_runtime)
     if not math.isfinite(target_runtime) or target_runtime <= 0.0:
         raise RunnerError("benchmark has an invalid target timing duration")

@@ -19,12 +19,26 @@ from .agreements import (
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .models import Accuracy, CellSpec, ResultStatus
+from .timing import (
+    ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI,
+    MEASURED_EXECUTION_TIMING_ABI,
+    unavailable_execution_timing_record,
+)
 
 CACHE_SCHEMA_VERSION = 4
 REPORT_VERSION = "0.3.0"
-_EXECUTION_TIMING_ABI = "pyamplicol-report-execution-timing-v1"
-_COMPILED_ARENA_EXECUTION_TIME_SOURCE = (
-    "runtime_profile_core_compiled_direct_arena_orchestration_time"
+_MEASURED_EXECUTION_TIMING_FIELDS = frozenset(
+    {
+        "abi",
+        "status",
+        "ratio_eligible",
+        "raw_seconds_per_point",
+        "source",
+        "compiled_direct_arena_active",
+        "sample_count",
+        "native_profile_points_per_sample",
+        "sample_contract",
+    }
 )
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
     {
@@ -250,29 +264,39 @@ def _validate_execution_timing(
     value: object,
     *,
     execution_seconds_per_point: float | None,
+    measurement_sample_count: int,
 ) -> None:
     timing = _required_mapping(value, "measurement.provenance.execution_timing")
-    expected_fields = {
-        "abi",
-        "status",
-        "ratio_eligible",
-        "raw_seconds_per_point",
-        "source",
-        "compiled_direct_arena_active",
-        "sample_count",
-        "native_profile_points_per_sample",
-        "sample_contract",
-    }
-    if set(timing) != expected_fields:
+    if timing.get("abi") == ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI:
+        measurement = {
+            "execution_seconds_per_point": execution_seconds_per_point,
+            "provenance": {"execution_timing": timing},
+        }
+        if (
+            unavailable_execution_timing_record(
+                measurement,
+                "execution_seconds_per_point",
+            )
+            is None
+            or timing.get("sample_count") != measurement_sample_count
+        ):
+            raise ValueError(
+                "measurement.provenance.execution_timing is not an "
+                "authenticated Arena unavailable-attribution record"
+            )
+        return
+    if set(timing) != _MEASURED_EXECUTION_TIMING_FIELDS:
         raise ValueError(
             "measurement.provenance.execution_timing fields do not match contract"
         )
+    if timing.get("abi") != MEASURED_EXECUTION_TIMING_ABI:
+        raise ValueError("measurement.provenance.execution_timing ABI is invalid")
     raw = timing.get("raw_seconds_per_point")
     if (
         isinstance(raw, bool)
         or not isinstance(raw, (int, float))
         or not math.isfinite(float(raw))
-        or float(raw) < 0.0
+        or float(raw) <= 0.0
     ):
         raise ValueError("measurement.provenance.execution_timing raw time is invalid")
     sample_count = timing.get("sample_count")
@@ -280,6 +304,7 @@ def _validate_execution_timing(
         isinstance(sample_count, bool)
         or not isinstance(sample_count, int)
         or sample_count < 1
+        or sample_count != measurement_sample_count
     ):
         raise ValueError(
             "measurement.provenance.execution_timing sample_count is invalid"
@@ -298,22 +323,6 @@ def _validate_execution_timing(
         raise ValueError(
             "measurement.provenance.execution_timing sample contract is invalid"
         )
-    if timing.get("abi") != _EXECUTION_TIMING_ABI:
-        raise ValueError("measurement.provenance.execution_timing ABI is invalid")
-    if timing.get("status") == "below_timer_resolution":
-        if (
-            execution_seconds_per_point is not None
-            or float(raw) != 0.0
-            or timing.get("ratio_eligible") is not False
-            or timing.get("compiled_direct_arena_active") is not True
-            or timing.get("source") != _COMPILED_ARENA_EXECUTION_TIME_SOURCE
-            or native_points is None
-        ):
-            raise ValueError(
-                "measurement.provenance.execution_timing below-resolution "
-                "record is not an authenticated compiled Direct-Arena zero"
-            )
-        return
     if timing.get("status") != "measured":
         raise ValueError(
             "measurement.provenance.execution_timing status is unsupported"
@@ -321,7 +330,8 @@ def _validate_execution_timing(
     if (
         execution_seconds_per_point is None
         or float(raw) != execution_seconds_per_point
-        or timing.get("ratio_eligible") is not (execution_seconds_per_point > 0.0)
+        or execution_seconds_per_point <= 0.0
+        or timing.get("ratio_eligible") is not True
         or not isinstance(timing.get("compiled_direct_arena_active"), bool)
         or not isinstance(timing.get("source"), str)
         or not timing.get("source")
@@ -429,11 +439,12 @@ def validate_measurement(
             _validate_execution_timing(
                 raw_execution_timing,
                 execution_seconds_per_point=execution_seconds,
+                measurement_sample_count=int(measurement["sample_count"]),
             )
         elif execution_seconds is None and "source_revision" in provenance:
             raise ValueError(
                 "successful pyAmpliCol measurement with unavailable execution "
-                "timing requires below-resolution provenance"
+                "timing requires authenticated Arena provenance"
             )
         _validate_runtime_identity_postflight(provenance, validation)
         if measurement["failure"] is not None:

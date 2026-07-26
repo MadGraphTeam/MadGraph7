@@ -43,30 +43,41 @@ from tools.performance_report.runner import (
 
 def _benchmark_fixture(
     *,
-    evaluator_time: float | None,
-    timing_status: str,
-    compiled_direct_arena_active: bool,
+    arena_authenticated: bool = True,
 ) -> SimpleNamespace:
-    raw_time = 0.0 if evaluator_time is None else evaluator_time
     return SimpleNamespace(
         uncertainty=SimpleNamespace(
             standard_error=1.0e-9,
             relative_standard_error=0.01,
         ),
         wall_time_per_point=1.0e-6,
-        evaluator_time_per_point=evaluator_time,
+        evaluator_time_per_point=None,
         sample_count=5,
         effective_config=SimpleNamespace(target_runtime=5.0),
+        timing_breakdown=SimpleNamespace(
+            wall_time=SimpleNamespace(mean_seconds_per_point=1.1e-6),
+            evaluator_call_time=None,
+        ),
         environment={
-            "evaluator_time_raw_seconds_per_point": raw_time,
-            "evaluator_time_status": timing_status,
-            "evaluator_time_ratio_eligible": evaluator_time is not None,
-            "evaluator_time_source": (
-                "runtime_profile_core_compiled_direct_arena_orchestration_time"
-                if compiled_direct_arena_active
-                else "runtime_profile_core_evaluator_call_time"
+            "evaluator_time_raw_seconds_per_point": None,
+            "evaluator_time_status": "unavailable",
+            "evaluator_time_ratio_eligible": False,
+            "evaluator_time_sample_pass": "runtime._profile_arena_repeated",
+            "timing_breakdown_sample_pass": "runtime._profile_arena_repeated",
+            "profile_protocol": "arena",
+            "profile_attribution_boundary": (
+                "warmed-direct-arena-borrowed-input-preallocated-output-v1"
             ),
-            "compiled_direct_arena_active": compiled_direct_arena_active,
+            "profile_attribution_borrowed_flat_input": arena_authenticated,
+            "profile_attribution_preallocated_output": True,
+            "profile_attribution_phase_timing_scope": (
+                "coarse-arena-boundary-only-v1"
+            ),
+            "profile_attribution_evaluator_timing_available": False,
+            "profile_attribution_paired_with_headline": True,
+            "profile_attribution_identical_batch": True,
+            "profile_attribution_identical_repetitions": True,
+            "execution_mode": "compiled",
             "evaluator_sample_count": 5,
             "native_profile_points_per_sample": 128,
             "timing_sample_contract": (
@@ -82,27 +93,35 @@ def _benchmark_fixture(
     )
 
 
-def test_benchmark_measurement_records_compiled_zero_below_timer_resolution() -> None:
+def test_benchmark_measurement_records_authenticated_arena_unavailable_timing() -> None:
     measurement = _benchmark_measurement(
-        _benchmark_fixture(
-            evaluator_time=None,
-            timing_status="below_timer_resolution",
-            compiled_direct_arena_active=True,
-        ),
+        _benchmark_fixture(),
         matrix_element=2.0,
     )
 
     assert measurement["execution_seconds_per_point"] is None
     assert measurement["execution_timing"] == {
-        "abi": "pyamplicol-report-execution-timing-v1",
-        "status": "below_timer_resolution",
+        "abi": "pyamplicol-report-arena-execution-timing-v2",
+        "status": "unavailable",
         "ratio_eligible": False,
-        "raw_seconds_per_point": 0.0,
-        "source": ("runtime_profile_core_compiled_direct_arena_orchestration_time"),
-        "compiled_direct_arena_active": True,
+        "raw_seconds_per_point": None,
         "sample_count": 5,
         "native_profile_points_per_sample": 128,
         "sample_contract": ("paired_unprofiled_headline_profiled_attribution_v1"),
+        "profile_protocol": "arena",
+        "profile_sample_pass": "runtime._profile_arena_repeated",
+        "profile_boundary": (
+            "warmed-direct-arena-borrowed-input-preallocated-output-v1"
+        ),
+        "borrowed_flat_input": True,
+        "preallocated_output": True,
+        "phase_timing_scope": "coarse-arena-boundary-only-v1",
+        "evaluator_timing_available": False,
+        "paired_with_headline": True,
+        "identical_batch": True,
+        "identical_repetitions": True,
+        "execution_mode": "compiled",
+        "warmed_boundary_wall_seconds_per_point": 1.1e-6,
     }
     assert measurement["benchmark_evidence"] == {
         "target_runtime_seconds": 5.0,
@@ -116,16 +135,37 @@ def test_benchmark_measurement_records_compiled_zero_below_timer_resolution() ->
     }
 
 
-def test_benchmark_measurement_rejects_unauthenticated_zero_execution() -> None:
-    with pytest.raises(RunnerError, match="authenticated compiled Direct-Arena zero"):
+def test_benchmark_measurement_rejects_unauthenticated_unavailable_timing() -> None:
+    with pytest.raises(RunnerError, match="warmed Arena profile boundary"):
         _benchmark_measurement(
-            _benchmark_fixture(
-                evaluator_time=None,
-                timing_status="below_timer_resolution",
-                compiled_direct_arena_active=False,
-            ),
+            _benchmark_fixture(arena_authenticated=False),
             matrix_element=2.0,
         )
+
+
+def test_benchmark_measurement_rejects_synthetic_zero_execution() -> None:
+    benchmark = _benchmark_fixture()
+    benchmark.evaluator_time_per_point = 0.0
+    benchmark.environment.update(
+        {
+            "evaluator_time_status": "measured",
+            "evaluator_time_raw_seconds_per_point": 0.0,
+            "evaluator_time_ratio_eligible": False,
+            "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
+            "compiled_direct_arena_active": False,
+        }
+    )
+
+    with pytest.raises(RunnerError, match="measured execution timing"):
+        _benchmark_measurement(benchmark, matrix_element=2.0)
+
+
+def test_benchmark_measurement_rejects_uncertainty_for_unexposed_execution() -> None:
+    benchmark = _benchmark_fixture()
+    benchmark.evaluator_uncertainty = SimpleNamespace(standard_error=0.0)
+
+    with pytest.raises(RunnerError, match="warmed Arena profile boundary"):
+        _benchmark_measurement(benchmark, matrix_element=2.0)
 
 
 def _digest_json(value: object) -> str:

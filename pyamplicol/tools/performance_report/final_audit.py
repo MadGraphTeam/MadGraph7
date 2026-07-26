@@ -89,6 +89,10 @@ from .source_identity import (
     require_report_only_publication,
 )
 from .standalone_build import StandaloneBuildError, validate_latex_log
+from .timing import (
+    ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS,
+    unavailable_execution_timing_record,
+)
 from .workspace import load_profile_campaign_policy
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -161,26 +165,6 @@ _REPORT_PROFILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 _PUBLICATION_MEMBER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 _PORTABLE_ARTIFACT_ROOT = "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}"
 _PUBLICATION_LINEAGE_KIND = "pyamplicol-report-publication-lineage-v1"
-_EXECUTION_TIMING_ABI = "pyamplicol-report-execution-timing-v1"
-_COMPILED_ARENA_EXECUTION_TIME_SOURCE = (
-    "runtime_profile_core_compiled_direct_arena_orchestration_time"
-)
-_PAIRED_TIMING_SAMPLE_CONTRACT = "paired_unprofiled_headline_profiled_attribution_v1"
-_EXECUTION_TIMING_FIELDS = frozenset(
-    {
-        "abi",
-        "status",
-        "ratio_eligible",
-        "raw_seconds_per_point",
-        "source",
-        "compiled_direct_arena_active",
-        "sample_count",
-        "native_profile_points_per_sample",
-        "sample_contract",
-    }
-)
-
-
 class FinalAuditError(RuntimeError):
     """The final report evidence does not satisfy its publication contract."""
 
@@ -2249,58 +2233,44 @@ def _expected_legacy_revision(repo_root: Path) -> str:
     return revision
 
 
-def _audit_below_resolution_execution_timing(
+def _audit_unavailable_execution_timing(
     cell: CellSpec,
     provenance: Mapping[str, object],
     *,
     measurement_sample_count: int,
     context: str,
 ) -> None:
-    """Authenticate the sole permitted unavailable execution submetric."""
+    """Authenticate an unavailable execution attribution from the Arena profiler."""
 
-    if (
-        cell.measurement.execution_mode is not ExecutionMode.COMPILED
-        or cell.measurement.backend != "jit"
-        or cell.measurement.jit_optimization_level != 3
-    ):
-        raise FinalAuditError(
-            f"{context}.execution_seconds_per_point may be unavailable only "
-            "for compiled JIT O3"
-        )
     timing = _mapping(
         provenance.get("execution_timing"),
         f"{context}.provenance.execution_timing",
     )
-    if set(timing) != _EXECUTION_TIMING_FIELDS:
+    if set(timing) != ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS:
         raise FinalAuditError(
             f"{context}.provenance.execution_timing fields do not match "
             "the authenticated contract"
         )
-    raw_seconds = timing.get("raw_seconds_per_point")
     timing_sample_count = timing.get("sample_count")
-    native_points = timing.get("native_profile_points_per_sample")
+    measurement = {
+        "execution_seconds_per_point": None,
+        "provenance": {"execution_timing": timing},
+    }
     if (
-        timing.get("abi") != _EXECUTION_TIMING_ABI
-        or timing.get("status") != "below_timer_resolution"
-        or timing.get("ratio_eligible") is not False
-        or isinstance(raw_seconds, bool)
-        or not isinstance(raw_seconds, (int, float))
-        or not math.isfinite(float(raw_seconds))
-        or float(raw_seconds) != 0.0
-        or timing.get("source") != _COMPILED_ARENA_EXECUTION_TIME_SOURCE
-        or timing.get("compiled_direct_arena_active") is not True
+        unavailable_execution_timing_record(
+            measurement,
+            "execution_seconds_per_point",
+        )
+        is None
         or isinstance(timing_sample_count, bool)
         or not isinstance(timing_sample_count, int)
         or timing_sample_count < 5
         or timing_sample_count != measurement_sample_count
-        or isinstance(native_points, bool)
-        or not isinstance(native_points, int)
-        or native_points < 1
-        or timing.get("sample_contract") != _PAIRED_TIMING_SAMPLE_CONTRACT
+        or timing.get("execution_mode") != cell.measurement.execution_mode.value
     ):
         raise FinalAuditError(
             f"{context}.provenance.execution_timing is not an authenticated "
-            "compiled Direct-Arena below-resolution record"
+            "Arena unavailable-attribution record"
         )
 
 
@@ -2432,7 +2402,7 @@ def _audit_measurement(
 
     raw_execution_seconds = measurement.get("execution_seconds_per_point")
     if raw_execution_seconds is None:
-        _audit_below_resolution_execution_timing(
+        _audit_unavailable_execution_timing(
             cell,
             provenance,
             measurement_sample_count=sample_count,

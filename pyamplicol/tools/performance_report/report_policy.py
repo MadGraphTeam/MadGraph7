@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from .models import ResultStatus
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .source_identity import SOURCE_IDENTITY_SCHEMA
-from .timing import below_resolution_record
+from .timing import unavailable_execution_timing_record
 
 Measurement = Mapping[str, object]
 _FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -62,7 +62,7 @@ def timing_policy_issues(
 
     execution = _finite_number(measurement.get("execution_seconds_per_point"))
     if execution is None:
-        if below_resolution_record(
+        if unavailable_execution_timing_record(
             measurement,
             "execution_seconds_per_point",
         ) is None:
@@ -70,8 +70,8 @@ def timing_policy_issues(
                 ReportPolicyIssue(
                     "execution_seconds_per_point",
                     (
-                        "must be measured or carry authenticated compiled-Arena "
-                        "below-resolution evidence"
+                        "must be measured or carry authenticated Arena evidence "
+                        "that the execution attribution is not exposed"
                     ),
                 )
             )
@@ -86,8 +86,8 @@ def timing_policy_issues(
         issues.append(
             ReportPolicyIssue(
                 "execution_seconds_per_point",
-                "raw zero must be represented as unavailable with authenticated "
-                "below-resolution evidence",
+                "zero is not a timing measurement; an unexposed attribution "
+                "must be null with authenticated Arena evidence",
             )
         )
 

@@ -131,7 +131,7 @@ def test_five_timed_samples_are_required() -> None:
     assert "provenance.runtime_profile.completed_sample_count" in fields
 
 
-def test_zero_execution_requires_explicit_resolution_bound() -> None:
+def test_unavailable_execution_requires_authenticated_arena_boundary() -> None:
     measurement = _measurement()
     measurement["execution_seconds_per_point"] = None
 
@@ -142,21 +142,41 @@ def test_zero_execution_requires_explicit_resolution_bound() -> None:
 
     provenance = measurement["provenance"]
     provenance["execution_timing"] = {
-        "abi": "pyamplicol-report-execution-timing-v1",
-        "status": "below_timer_resolution",
+        "abi": "pyamplicol-report-arena-execution-timing-v2",
+        "status": "unavailable",
         "ratio_eligible": False,
-        "raw_seconds_per_point": 0.0,
-        "source": (
-            "runtime_profile_core_compiled_direct_arena_orchestration_time"
-        ),
-        "compiled_direct_arena_active": True,
+        "raw_seconds_per_point": None,
         "sample_count": 5,
         "native_profile_points_per_sample": 128,
         "sample_contract": (
             "paired_unprofiled_headline_profiled_attribution_v1"
         ),
+        "profile_protocol": "arena",
+        "profile_sample_pass": "runtime._profile_arena_repeated",
+        "profile_boundary": (
+            "warmed-direct-arena-borrowed-input-preallocated-output-v1"
+        ),
+        "borrowed_flat_input": True,
+        "preallocated_output": True,
+        "phase_timing_scope": "coarse-arena-boundary-only-v1",
+        "evaluator_timing_available": False,
+        "paired_with_headline": True,
+        "identical_batch": True,
+        "identical_repetitions": True,
+        "execution_mode": "compiled",
+        "warmed_boundary_wall_seconds_per_point": 2.1e-6,
     }
     assert not any(
+        issue.field == "execution_seconds_per_point"
+        for issue in timing_policy_issues(measurement)
+    )
+
+
+def test_zero_execution_is_not_treated_as_an_unavailable_attribution() -> None:
+    measurement = _measurement()
+    measurement["execution_seconds_per_point"] = 0.0
+
+    assert any(
         issue.field == "execution_seconds_per_point"
         for issue in timing_policy_issues(measurement)
     )

@@ -29,7 +29,6 @@ from tools.performance_report.final_audit import (
     FinalAuditError,
     _active_runtime_snapshot,
     _artifact_reference,
-    _audit_below_resolution_execution_timing,
     _audit_compiled_execution,
     _audit_eager_execution,
     _audit_measurement,
@@ -40,6 +39,7 @@ from tools.performance_report.final_audit import (
     _audit_recurrence_source_pack,
     _audit_runtime_identity,
     _audit_tex_table_reachability,
+    _audit_unavailable_execution_timing,
     _authenticated_effective_config,
     _ensure_exact_cli_python,
     _python_package_tree_identity,
@@ -1658,42 +1658,58 @@ def test_candidate_measurement_requires_positive_finite_execution_time(
         )
 
 
-def _below_resolution_execution_timing() -> dict[str, object]:
+def _arena_unavailable_execution_timing(
+    *,
+    execution_mode: ExecutionMode = ExecutionMode.COMPILED,
+) -> dict[str, object]:
     return {
-        "abi": "pyamplicol-report-execution-timing-v1",
-        "status": "below_timer_resolution",
+        "abi": "pyamplicol-report-arena-execution-timing-v2",
+        "status": "unavailable",
         "ratio_eligible": False,
-        "raw_seconds_per_point": 0.0,
-        "source": ("runtime_profile_core_compiled_direct_arena_orchestration_time"),
-        "compiled_direct_arena_active": True,
+        "raw_seconds_per_point": None,
         "sample_count": 5,
         "native_profile_points_per_sample": 128,
         "sample_contract": "paired_unprofiled_headline_profiled_attribution_v1",
+        "profile_protocol": "arena",
+        "profile_sample_pass": "runtime._profile_arena_repeated",
+        "profile_boundary": (
+            "warmed-direct-arena-borrowed-input-preallocated-output-v1"
+        ),
+        "borrowed_flat_input": True,
+        "preallocated_output": True,
+        "phase_timing_scope": "coarse-arena-boundary-only-v1",
+        "evaluator_timing_available": False,
+        "paired_with_headline": True,
+        "identical_batch": True,
+        "identical_repetitions": True,
+        "execution_mode": execution_mode.value,
+        "warmed_boundary_wall_seconds_per_point": 1.1e-6,
     }
 
 
-def test_final_audit_accepts_only_authenticated_compiled_o3_timer_zero() -> None:
-    provenance = {"execution_timing": _below_resolution_execution_timing()}
-    _audit_below_resolution_execution_timing(
-        _cell(ExecutionMode.COMPILED, optimization_level=3),
-        provenance,
-        measurement_sample_count=5,
-        context="candidate",
-    )
-
-    for cell in (
+@pytest.mark.parametrize(
+    "cell",
+    (
         _cell(ExecutionMode.RECURRENCE, optimization_level=2),
         _cell(ExecutionMode.EAGER, optimization_level=2),
         _cell(ExecutionMode.COMPILED, optimization_level=1),
         _cell(ExecutionMode.COMPILED, backend="cpp", optimization_level=None),
-    ):
-        with pytest.raises(FinalAuditError, match="only for compiled JIT O3"):
-            _audit_below_resolution_execution_timing(
-                cell,
-                provenance,
-                measurement_sample_count=5,
-                context="candidate",
-            )
+    ),
+)
+def test_final_audit_accepts_authenticated_arena_unavailable_timing(
+    cell: CellSpec,
+) -> None:
+    provenance = {
+        "execution_timing": _arena_unavailable_execution_timing(
+            execution_mode=cell.measurement.execution_mode,
+        )
+    }
+    _audit_unavailable_execution_timing(
+        cell,
+        provenance,
+        measurement_sample_count=5,
+        context="candidate",
+    )
 
 
 @pytest.mark.parametrize(
@@ -1702,25 +1718,35 @@ def test_final_audit_accepts_only_authenticated_compiled_o3_timer_zero() -> None
         ("abi", "wrong"),
         ("status", "measured"),
         ("ratio_eligible", True),
-        ("raw_seconds_per_point", 1.0e-30),
-        ("raw_seconds_per_point", float("nan")),
-        ("source", "runtime_profile_core_evaluator_call_time"),
-        ("compiled_direct_arena_active", False),
+        ("raw_seconds_per_point", 0.0),
         ("sample_count", 4),
         ("sample_count", True),
         ("native_profile_points_per_sample", 0),
         ("native_profile_points_per_sample", None),
         ("sample_contract", "separate_native_profile_diagnostic_v1"),
+        ("profile_protocol", "frozen-pre-arena"),
+        ("profile_sample_pass", "runtime.profile_repeated"),
+        ("profile_boundary", "materialized-native-profile-v1"),
+        ("borrowed_flat_input", False),
+        ("preallocated_output", False),
+        ("phase_timing_scope", "profiled-evaluator-phases-v1"),
+        ("evaluator_timing_available", True),
+        ("paired_with_headline", False),
+        ("identical_batch", False),
+        ("identical_repetitions", False),
+        ("execution_mode", "eager"),
+        ("warmed_boundary_wall_seconds_per_point", 0.0),
+        ("warmed_boundary_wall_seconds_per_point", float("nan")),
     ),
 )
-def test_final_audit_rejects_tampered_below_resolution_timing(
+def test_final_audit_rejects_tampered_arena_unavailable_timing(
     field: str,
     value: object,
 ) -> None:
-    timing = _below_resolution_execution_timing()
+    timing = _arena_unavailable_execution_timing()
     timing[field] = value
-    with pytest.raises(FinalAuditError, match="below-resolution record"):
-        _audit_below_resolution_execution_timing(
+    with pytest.raises(FinalAuditError, match="unavailable-attribution record"):
+        _audit_unavailable_execution_timing(
             _cell(ExecutionMode.COMPILED, optimization_level=3),
             {"execution_timing": timing},
             measurement_sample_count=5,
@@ -1728,21 +1754,21 @@ def test_final_audit_rejects_tampered_below_resolution_timing(
         )
 
 
-def test_final_audit_binds_below_resolution_timing_shape_and_sample_count() -> None:
-    timing = _below_resolution_execution_timing()
+def test_final_audit_binds_arena_unavailable_shape_and_sample_count() -> None:
+    timing = _arena_unavailable_execution_timing()
     timing["unexpected"] = True
     with pytest.raises(FinalAuditError, match="fields do not match"):
-        _audit_below_resolution_execution_timing(
+        _audit_unavailable_execution_timing(
             _cell(ExecutionMode.COMPILED, optimization_level=3),
             {"execution_timing": timing},
             measurement_sample_count=5,
             context="candidate",
         )
 
-    with pytest.raises(FinalAuditError, match="below-resolution record"):
-        _audit_below_resolution_execution_timing(
+    with pytest.raises(FinalAuditError, match="unavailable-attribution record"):
+        _audit_unavailable_execution_timing(
             _cell(ExecutionMode.COMPILED, optimization_level=3),
-            {"execution_timing": _below_resolution_execution_timing()},
+            {"execution_timing": _arena_unavailable_execution_timing()},
             measurement_sample_count=6,
             context="candidate",
         )

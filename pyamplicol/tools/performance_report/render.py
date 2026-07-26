@@ -27,7 +27,7 @@ from .models import (
     Workload,
     ZVariant,
 )
-from .timing import below_resolution_record
+from .timing import unavailable_execution_timing_record
 from .validation_summary import (
     SUMMARY_TABLE_NAME,
     render_validation_summary,
@@ -422,16 +422,16 @@ def _time(value: object, *, microseconds: bool = False) -> str:
     return rf"\texttt{{{_compact(number)}}}"
 
 
-def _below_resolution_time(
+def _unavailable_time(
     measurement: Measurement,
     field: str,
     *,
     microseconds: bool = False,
 ) -> str | None:
-    record = below_resolution_record(measurement, field)
+    record = unavailable_execution_timing_record(measurement, field)
     if record is None:
         return None
-    return r"\matrixstatus{ReportMuted}{below res.}"
+    return _not_exposed()
 
 
 def _status(measurement: Measurement) -> str:
@@ -479,13 +479,13 @@ def _runtime_value(measurement: Measurement) -> float | None:
 def _metric(measurement: Measurement, field: str, *, microseconds: bool = False) -> str:
     if not _ok(measurement):
         return _status(measurement)
-    below = _below_resolution_time(
+    unavailable = _unavailable_time(
         measurement,
         field,
         microseconds=microseconds,
     )
-    if below is not None:
-        return below
+    if unavailable is not None:
+        return unavailable
     return _time(measurement.get(field), microseconds=microseconds)
 
 
@@ -508,8 +508,8 @@ def _ratio_value(
             ):
                 return None
     if (
-        below_resolution_record(candidate, field) is not None
-        or below_resolution_record(baseline, field) is not None
+        unavailable_execution_timing_record(candidate, field) is not None
+        or unavailable_execution_timing_record(baseline, field) is not None
     ):
         return None
     numerator = candidate.get(field)
@@ -533,10 +533,10 @@ def _ratio(candidate: Measurement, baseline: Measurement, field: str) -> str:
         if not _ok(candidate):
             return _status(candidate)
         if (
-            below_resolution_record(candidate, field) is not None
-            or below_resolution_record(baseline, field) is not None
+            unavailable_execution_timing_record(candidate, field) is not None
+            or unavailable_execution_timing_record(baseline, field) is not None
         ):
-            return r"\matrixstatus{ReportMuted}{below res.}"
+            return _not_exposed()
         return r"\matrixnaratio{ReportMuted}"
     color = (
         "ReportGreen" if value < 1.0 else "ReportOrange" if value < 2.0 else "ReportRed"
@@ -549,14 +549,17 @@ def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
     execution = _ratio_value(candidate, baseline, "execution_seconds_per_point")
     if not _ok(candidate):
         return _status(candidate)
+    execution_not_exposed = any(
+        unavailable_execution_timing_record(
+            measurement,
+            "execution_seconds_per_point",
+        )
+        is not None
+        for measurement in (candidate, baseline)
+    )
 
     def field(value: float | None, name: str) -> tuple[str, str]:
         if value is None:
-            if (
-                below_resolution_record(candidate, name) is not None
-                or below_resolution_record(baseline, name) is not None
-            ):
-                return "ReportMuted", "below res."
             return "ReportMuted", "N/A"
         color = (
             "ReportGreen"
@@ -568,6 +571,11 @@ def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
         return color, f"x{_compact(value)}"
 
     wall_color, wall_text = field(wall, "wall_seconds_per_point")
+    if execution_not_exposed:
+        return (
+            rf"\matrixratiopairnotexposed{{{wall_color}}}"
+            f"{{{wall_text}}}"
+        )
     execution_color, execution_text = field(
         execution,
         "execution_seconds_per_point",
@@ -590,6 +598,11 @@ def _matrix_macros() -> list[str]:
             r"\providecommand{\matrixratiopair}[4]{\matrixpunct{(}"
             r"\textcolor{#1}{\texttt{#2}}\matrixpunct{|}"
             r"\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}"
+        ),
+        (
+            r"\providecommand{\matrixratiopairnotexposed}[2]{\matrixpunct{(}"
+            r"\textcolor{#1}{\texttt{#2}}\matrixpunct{|}"
+            r"\matrixnotexposed{ReportMuted}\matrixpunct{)}}"
         ),
         r"\providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}",
         (
@@ -724,10 +737,16 @@ def _summary_pair(
         and _ok(item.candidate)
         and item.baseline.get(field) is not None
         and item.candidate.get(field) is not None
-        and below_resolution_record(item.baseline, field) is None
-        and below_resolution_record(item.candidate, field) is None
+        and unavailable_execution_timing_record(item.baseline, field) is None
+        and unavailable_execution_timing_record(item.candidate, field) is None
     ]
     if not valid:
+        if field == "execution_seconds_per_point" and any(
+            unavailable_execution_timing_record(measurement, field) is not None
+            for item in joined
+            for measurement in (item.baseline, item.candidate)
+        ):
+            return _not_exposed()
         for item in joined:
             if not _ok(item.candidate) and policy_status_label(item.candidate):
                 return _status(item.candidate)
@@ -923,20 +942,24 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
                 "all-flow direct-setup baseline quantities. The selected-flow "
                 "entry carries a generation ratio; the all-flow entry carries "
                 "the absolute pyAmpliCol process-generation time marked n.c. "
-                "(not comparable). Both runtime entries retain their "
-                "(wall|native execution) ratios."
+                "(not comparable). Runtime comparisons use native wall time; "
+                "a separate execution-attribution ratio appears only when both "
+                "measurements expose one."
             )
         else:
             detail = (
                 "Each cell shows the topology-replay/all-flow-union baseline "
                 "generation times and wall times, followed by layout-matched "
-                "candidate/baseline generation and "
-                "(wall|native execution) ratios."
+                "candidate/baseline generation and wall-time ratios. A separate "
+                "execution-attribution ratio appears only when both "
+                "measurements expose one."
             )
     else:
         detail = (
             "Each cell shows the baseline generation and wall time, followed by "
-            "candidate/baseline generation and (wall|native execution) ratios."
+            "candidate/baseline generation and wall-time ratios. A separate "
+            "execution-attribution ratio appears only when both measurements "
+            "expose one."
         )
     return (
         r"\ReportTableNote{Baseline: "
@@ -948,7 +971,9 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + " "
         + _tex_escape(
             "Not applicable marks a process/multiplicity combination outside "
-            "the process-family definition; it is not an unfilled measurement."
+            "the process-family definition. Not exposed means that a successful "
+            "wall-time measurement has no separately reported execution "
+            "attribution; neither label denotes an unfilled measurement."
         )
         + "}"
     )
@@ -1085,10 +1110,16 @@ def _best_mode_summary_pair(
         and _ok(item.candidate)
         and item.baseline.get(field) is not None
         and item.candidate.get(field) is not None
-        and below_resolution_record(item.baseline, field) is None
-        and below_resolution_record(item.candidate, field) is None
+        and unavailable_execution_timing_record(item.baseline, field) is None
+        and unavailable_execution_timing_record(item.candidate, field) is None
     )
     if not valid:
+        if field == "execution_seconds_per_point" and any(
+            unavailable_execution_timing_record(measurement, field) is not None
+            for item in joined
+            for measurement in (item.baseline, item.candidate)
+        ):
+            return _not_exposed()
         return r"\matrixna{ReportMuted}"
     baseline_sum = math.fsum(float(item.baseline[field]) for item in valid)
     candidate_sum = math.fsum(float(item.candidate[field]) for item in valid)
@@ -1393,6 +1424,11 @@ def _z_value(
     absolute = _metric(measurement, field, microseconds=microseconds)
     if reference or not _ok(measurement):
         return absolute
+    if (
+        unavailable_execution_timing_record(measurement, field) is not None
+        or unavailable_execution_timing_record(joined.baseline, field) is not None
+    ):
+        return _not_exposed()
     if not comparable:
         return rf"\matrixncabsolute{{{absolute}}}"
     return absolute + r"\," + _ratio(measurement, joined.baseline, field)
@@ -1527,9 +1563,10 @@ def _z_block(
                 r"Parenthesized values are candidate/reference ratios. "
                 r"All-flow generation shows the absolute pyAmpliCol value "
                 r"marked n.c. because its setup boundary differs from the "
-                r"reference. In the reference rows, not exposed means that "
-                r"the original interface provides no separate native-execution "
-                r"timing; it is not a missing measurement.}"
+                r"reference. The wall time is the common runtime observable. "
+                r"Not exposed means that a successful wall measurement has no "
+                r"separately reported execution attribution; it is not a "
+                r"missing measurement.}"
             ),
             r"\end{minipage}",
         ]
@@ -1704,6 +1741,12 @@ def render_scalar_ladder(
             r"\end{tabular}",
             r"\end{center}",
             r"\endgroup",
+            (
+                r"\ReportTableNote{Wall time is the common runtime observable. "
+                r"Execution is a separately measured attribution when exposed; "
+                r"\textsc{not exposed} denotes a successful wall measurement, "
+                r"not a missing result.}"
+            ),
         ]
     )
     return "\n".join(lines) + "\n"

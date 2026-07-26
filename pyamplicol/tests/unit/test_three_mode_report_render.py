@@ -34,7 +34,7 @@ from tools.performance_report.validation_summary import (
 )
 
 
-def test_below_resolution_execution_timing_is_never_ratioed() -> None:
+def test_unavailable_execution_timing_is_never_ratioed() -> None:
     baseline = {
         "status": ResultStatus.OK.value,
         "execution_seconds_per_point": 1.0e-6,
@@ -44,7 +44,7 @@ def test_below_resolution_execution_timing_is_never_ratioed() -> None:
         "execution_seconds_per_point": 1.0e-9,
         "provenance": {
             "execution_timing": {
-                "status": "below_timer_resolution",
+                "status": "unavailable",
                 "ratio_eligible": False,
             }
         },
@@ -106,24 +106,38 @@ def _set_ok(
     }
 
 
-def _mark_below_resolution(measurement: dict[str, object]) -> None:
+def _mark_arena_unavailable(
+    measurement: dict[str, object],
+    *,
+    execution_mode: str = "compiled",
+) -> None:
     measurement["execution_seconds_per_point"] = None
     provenance = measurement["provenance"]
     assert isinstance(provenance, dict)
     provenance["execution_timing"] = {
-        "abi": "pyamplicol-report-execution-timing-v1",
-        "status": "below_timer_resolution",
+        "abi": "pyamplicol-report-arena-execution-timing-v2",
+        "status": "unavailable",
         "ratio_eligible": False,
-        "raw_seconds_per_point": 0.0,
-        "source": (
-            "runtime_profile_core_compiled_direct_arena_orchestration_time"
-        ),
-        "compiled_direct_arena_active": True,
+        "raw_seconds_per_point": None,
         "sample_count": 5,
         "native_profile_points_per_sample": 128,
         "sample_contract": (
             "paired_unprofiled_headline_profiled_attribution_v1"
         ),
+        "profile_protocol": "arena",
+        "profile_sample_pass": "runtime._profile_arena_repeated",
+        "profile_boundary": (
+            "warmed-direct-arena-borrowed-input-preallocated-output-v1"
+        ),
+        "borrowed_flat_input": True,
+        "preallocated_output": True,
+        "phase_timing_scope": "coarse-arena-boundary-only-v1",
+        "evaluator_timing_available": False,
+        "paired_with_headline": True,
+        "identical_batch": True,
+        "identical_repetitions": True,
+        "execution_mode": execution_mode,
+        "warmed_boundary_wall_seconds_per_point": 1.1e-6,
     }
 
 
@@ -312,7 +326,7 @@ def test_inapplicable_and_reset_cells_use_distinct_markers(reset_caches) -> None
 
     assert r"\matrixnotapplicable{ReportMuted}" in tex
     assert r"\matrixstatus{ReportMuted}{N/A}" in tex
-    assert "not an unfilled measurement" in tex
+    assert "neither label denotes an unfilled measurement" in tex
 
 
 def test_z_reference_execution_is_explicitly_not_exposed(reset_caches) -> None:
@@ -470,7 +484,7 @@ def test_adapter_joins_recurrence_baseline_without_copying_timing(
     assert r"\matrixratio{ReportGreen}{0.5}" in tex
 
 
-def test_below_resolution_execution_is_explicit_and_has_no_zero_ratio(
+def test_unavailable_execution_is_not_exposed_and_has_no_zero_ratio(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -509,21 +523,19 @@ def test_below_resolution_execution_is_explicit_and_has_no_zero_ratio(
         and entry["n_final"] == 1
         and entry["workload"] == Workload.CONTRACTED.value
     )
-    _mark_below_resolution(measurement)
+    _mark_arena_unavailable(measurement)
 
     tex = render_matrix_table(
         REPORT_CATALOG.dataset("matrix_compiled_builtin_sm_nlc"),
         caches,
     )
 
-    assert (
-        r"\matrixratiopair{ReportGreen}{x0.5}"
-        r"{ReportMuted}{below res.}"
-    ) in tex
+    assert r"\matrixratiopairnotexposed{ReportGreen}{x0.5}" in tex
+    assert "Not exposed means that a successful wall-time measurement" in tex
     assert r"{x0}" not in tex
 
 
-def test_z_ladder_prints_below_resolution_status_instead_of_zero(
+def test_z_ladder_prints_not_exposed_instead_of_zero(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -558,15 +570,15 @@ def test_z_ladder_prints_below_resolution_status_instead_of_zero(
         and entry["variant"] == "jit_o3"
         and entry["workload"] == Workload.SELECTED_FLOW.value
     )
-    _mark_below_resolution(measurement)
+    _mark_arena_unavailable(measurement)
 
     tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
 
-    assert r"\matrixstatus{ReportMuted}{below res.}" in tex
+    assert r"\matrixnotexposed{ReportMuted}" in tex
     assert r"{x0}" not in tex
 
 
-def test_below_resolution_measurements_do_not_enter_summary_ratios(
+def test_unavailable_execution_is_not_treated_as_a_summary_ratio(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -597,7 +609,7 @@ def test_below_resolution_measurements_do_not_enter_summary_ratios(
         and entry["n_final"] == 1
         and entry["workload"] == Workload.CONTRACTED.value
     )
-    _mark_below_resolution(measurement)
+    _mark_arena_unavailable(measurement)
     dataset = REPORT_CATALOG.dataset("matrix_compiled_builtin_sm_nlc")
     view = BaselineCandidateAdapter(caches).matrix_cell(
         dataset,
@@ -611,7 +623,7 @@ def test_below_resolution_measurements_do_not_enter_summary_ratios(
         "execution_seconds_per_point",
     )
 
-    assert summary == r"\matrixna{ReportMuted}"
+    assert summary == r"\matrixnotexposed{ReportMuted}"
 
 
 def test_adapter_joins_original_amplicol_for_primary_recurrence(
@@ -788,7 +800,7 @@ def test_dense_scalar_ladder_fits_narrower_columns(reset_caches) -> None:
     assert r"\setlength{\tabcolsep}{2.2pt}" in tex
 
 
-def test_scalar_timing_uses_explicit_below_resolution_bound(
+def test_scalar_timing_marks_unavailable_arena_attribution_not_exposed(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -814,11 +826,12 @@ def test_scalar_timing_uses_explicit_below_resolution_bound(
         for entry in entries
         if entry["n_final"] == 2
     )
-    _mark_below_resolution(measurement)
+    _mark_arena_unavailable(measurement)
 
     tex = render_scalar_ladder(dataset, caches)
 
-    assert r"\matrixstatus{ReportMuted}{below res.}" in tex
+    assert r"\matrixnotexposed{ReportMuted}" in tex
+    assert "successful wall measurement" in tex
 
 
 def test_all_outputs_include_matrices_z_and_scalar_ladders(
