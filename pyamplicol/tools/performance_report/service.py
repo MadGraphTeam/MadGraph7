@@ -152,9 +152,7 @@ class ReportService:
         cells_by_dataset: dict[str, list[object]] = {}
         for cell in self.catalog.measurement_cells():
             cells_by_dataset.setdefault(cell.dataset_id, []).append(cell)
-        expected_names = {
-            f"{dataset_id}.json" for dataset_id in cells_by_dataset
-        }
+        expected_names = {f"{dataset_id}.json" for dataset_id in cells_by_dataset}
         if set(caches) != expected_names:
             raise ReportServiceError(
                 "report cache set differs from catalog; "
@@ -174,7 +172,10 @@ class ReportService:
         records: tuple[CurrentRecord, ...] | None = None,
     ) -> int:
         records = self.store.recover_current_records() if records is None else records
-        expected_revision = source_revision(self.paths.repo_root)
+        expected_revision = source_revision(
+            self.paths.repo_root,
+            require_clean=True,
+        )
         by_cell = {
             record.cell_id: record
             for record in records

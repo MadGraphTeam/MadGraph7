@@ -103,7 +103,7 @@ jobs:
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
-      - name: Produce one architecture-scoped built-in-SM JIT O3 pack
+      - name: Produce one host-labelled portable built-in-SM JIT O2 pack
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python tools/ci/eager_portability.py produce
@@ -119,7 +119,7 @@ jobs:
           retention-days: 14
 
   consume-matching-architecture-pack:
-    name: Consume matching pack (${{ matrix.target }})
+    name: Consume portable pack (${{ matrix.target }})
     needs: produce-architecture-packs
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -164,12 +164,12 @@ jobs:
         with:
           name: pyamplicol-eager-jit-transfer-${{ matrix.pack_architecture }}
           path: .artifacts/eager-portability-transfer
-      - name: Build the matching pinned non-publishable consumer environment
+      - name: Build the pinned non-publishable consumer environment
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
-      - name: Generate and evaluate from the same-architecture pack
+      - name: Generate and evaluate from the portable pack
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python tools/ci/eager_portability.py consume

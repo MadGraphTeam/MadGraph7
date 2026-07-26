@@ -16,6 +16,9 @@ from pyamplicol.generation.recurrence_columnar import (
     RecurrenceNormalizationV1,
     build_recurrence_builder_input_v1,
 )
+from pyamplicol.generation.recurrence_physics import (
+    build_recurrence_runtime_metadata,
+)
 from pyamplicol.generation.recurrence_projection import (
     project_recurrence_process_v1,
 )
@@ -45,6 +48,230 @@ _UFO_SM_ROOT = (
     / "json"
     / "sm"
 )
+
+
+def test_ufo_full_ddbar_to_ee_prepares_source_only_electron_mass() -> None:
+    compiled = compile_model_source(
+        _UFO_SM_ROOT / "sm.json",
+        restriction=str((_UFO_SM_ROOT / "restrict_default.json").resolve()),
+        use_cache=True,
+    )
+    model = CompiledUFOModel(compiled)
+    process = build_model_process_ir(
+        "d d~ > e+ e-",
+        compiled.ir,
+        color_accuracy="full",
+    )
+    prepared_catalog = build_prepared_kernel_catalog(model)
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        prepared_catalog,
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+    color_plan = build_color_plan(
+        process,
+        color_accuracy="full",
+        fold_trace_reflections=False,
+    )
+    logical = project_recurrence_process_v1(
+        process,
+        color_plan,
+        recurrence_catalog,
+        layout="contracted-color-union",
+        normalization=RecurrenceNormalizationV1(
+            ExactComplexRationalV1(1),
+            "source-only-parameter-canary-v1",
+            "c" * 64,
+        ),
+        coupling_order_limits=infer_minimal_coupling_order_limits(
+            process,
+            model=model,
+        ),
+        model=model,
+    )
+
+    electron_mass = next(
+        row for row in logical.parameter_projection if row.runtime_name == "Me"
+    )
+    assert electron_mass.prepared_parameter_id is not None
+    metadata = build_recurrence_runtime_metadata(
+        logical,
+        recurrence_catalog,
+        model,
+        {
+            "averaging_factor": 1.0,
+            "coupling_factor": 1.0,
+            "symmetry_factor": 1.0,
+            "source": "source-only-parameter-canary-v1",
+        },
+    )
+    assert metadata["prepared_parameter_defaults"][
+        electron_mass.prepared_parameter_id
+    ] == [0.0, 0.0]
+
+
+def test_builtin_charged_current_all_flow_union_retains_chiral_sources() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("u d~ > e+ ve", color_accuracy="lc")
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+    color_plan = build_color_plan(
+        process,
+        color_accuracy="lc",
+        fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(process),
+    )
+    logical = project_recurrence_process_v1(
+        process,
+        color_plan,
+        recurrence_catalog,
+        layout="all-flow-union",
+        normalization=RecurrenceNormalizationV1(
+            ExactComplexRationalV1(1),
+            "runtime-chiral-source-canary-v1",
+            "e" * 64,
+        ),
+        coupling_order_limits=infer_minimal_coupling_order_limits(
+            process,
+            model=model,
+        ),
+        model=model,
+    )
+
+    assert tuple(leg.public_label for leg in logical.external_legs) == (1, 2, 3, 4)
+    assert all(
+        {state.spin_state for state in leg.source_states} == {-1, 1}
+        for leg in logical.external_legs
+    )
+    assert all(len(leg.source_states) == 2 for leg in logical.external_legs)
+    columnar = build_recurrence_builder_input_v1(logical)
+    assert columnar.table("source_states").row_count == 8
+
+
+def test_builtin_ddbar_to_ttbar_exposes_legacy_crossed_lc_flow() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("d d~ > t t~", color_accuracy="lc")
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+    color_plan = build_color_plan(
+        process,
+        color_accuracy="lc",
+        fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(process),
+    )
+    replay = build_lc_topology_replay_plan(color_plan, model)
+    expected_public_flows = (
+        ("flow:2,1,3,4", (2, 1, 3, 4)),
+        ("flow:3,1,2,4", (3, 1, 2, 4)),
+    )
+
+    for layout in ("topology-replay", "all-flow-union"):
+        logical = project_recurrence_process_v1(
+            process,
+            color_plan,
+            recurrence_catalog,
+            layout=layout,
+            normalization=RecurrenceNormalizationV1(
+                ExactComplexRationalV1(1),
+                "legacy-two-line-flow-canary-v1",
+                "f" * 64,
+            ),
+            topology_replay=replay if layout == "topology-replay" else None,
+            coupling_order_limits=infer_minimal_coupling_order_limits(
+                process,
+                model=model,
+            ),
+            model=model,
+        )
+
+        assert (
+            tuple(
+                (
+                    flow.public_id,
+                    tuple(
+                        process.legs[source_slot].label
+                        for source_slot in flow.word_source_slots
+                    ),
+                )
+                for flow in logical.public_flows
+            )
+            == expected_public_flows
+        )
+        # Construction remains on the canonical fundamental-to-
+        # antifundamental sector word; only its public selector is aliased.
+        assert tuple(
+            tuple(
+                process.legs[source_slot].label
+                for source_slot in sector.word_source_slots
+            )
+            for sector in logical.physical_sectors
+        ) == ((2, 1, 3, 4), (2, 4, 3, 1))
+        build_recurrence_builder_input_v1(logical)
+
+
+def test_builtin_two_line_contracted_color_keeps_unique_construction_flows() -> None:
+    model = BuiltinSMModel()
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+
+    for expression in ("d d~ > t t~", "d d~ > d d~"):
+        for accuracy in ("nlc", "full"):
+            process = build_process_ir(expression, color_accuracy=accuracy)
+            color_plan = build_color_plan(
+                process,
+                color_accuracy=accuracy,
+                fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(
+                    process
+                ),
+            )
+            logical = project_recurrence_process_v1(
+                process,
+                color_plan,
+                recurrence_catalog,
+                layout="contracted-color-union",
+                normalization=RecurrenceNormalizationV1(
+                    ExactComplexRationalV1(1),
+                    "contracted-two-line-flow-canary-v1",
+                    "0" * 64,
+                ),
+                coupling_order_limits=infer_minimal_coupling_order_limits(
+                    process,
+                    model=model,
+                ),
+                model=model,
+            )
+
+            public_ids = tuple(flow.public_id for flow in logical.public_flows)
+            construction_ids = tuple(
+                sector.public_id for sector in logical.physical_sectors
+            )
+            assert public_ids == construction_ids
+            assert len(set(public_ids)) == len(public_ids)
+            assert tuple(
+                (
+                    flow.construction_sector_id,
+                    flow.word_source_slots,
+                )
+                for flow in logical.public_flows
+            ) == tuple(
+                (
+                    sector.sector_id,
+                    sector.word_source_slots,
+                )
+                for sector in logical.physical_sectors
+            )
+            build_recurrence_builder_input_v1(logical)
 
 
 def test_sm_process_projects_model_generic_topology_replay_input() -> None:

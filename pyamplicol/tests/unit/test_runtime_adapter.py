@@ -120,6 +120,7 @@ class _NativeRuntime:
     physics_value = _native_physics()
     load_arguments: tuple[object, ...] | None = None
     execution_mode = "compiled"
+    artifact_id = "a" * 64
     last_evaluate_options: dict[str, object] | None = None
     last_benchmark_options: dict[str, object] | None = None
     last_profile_options: dict[str, object] | None = None
@@ -139,7 +140,10 @@ class _NativeRuntime:
 
     def metadata_json(self) -> str:
         return json.dumps(
-            {"execution_mode": self.execution_mode, "process_key": "uux_g"}
+            {
+                "execution_mode": self.execution_mode,
+                "process_key": "uux_g",
+            }
         )
 
     def evaluate(self, _momenta: object, **kwargs: object) -> list[object]:
@@ -247,12 +251,8 @@ def _selector_manifest(
                 "extensions": {
                     "runtime_selectors": {
                         "axes": {
-                            "helicity": {
-                                "runtime_contract": "complete-reusable"
-                            },
-                            "color_flow": {
-                                "runtime_contract": "complete-reusable"
-                            },
+                            "helicity": {"runtime_contract": "complete-reusable"},
+                            "color_flow": {"runtime_contract": "complete-reusable"},
                         }
                     }
                 }
@@ -326,6 +326,7 @@ def test_adapter_maps_typed_metadata_totals_and_runtime_state(
     assert isinstance(backend.physics.helicities[0], HelicityConfiguration)
     assert isinstance(backend.physics.color_flows[0], ColorFlow)
     assert isinstance(backend.physics.model_parameters[0], ModelParameter)
+    assert backend.artifact_id == "a" * 64
     assert backend.physics.external_particles[0].name == "u"
     assert backend.physics.external_particles[0].pdg_id == 2
     assert backend.physics.external_particles[0].state == "incoming"
@@ -355,8 +356,15 @@ def test_adapter_maps_typed_metadata_totals_and_runtime_state(
     }
 
     public = Runtime.load(tmp_path, process="uux_g")
+    assert public.artifact_id == "a" * 64
+    assert public.execution_mode == "compiled"
     assert isinstance(public.physics, ProcessPhysics)
     assert public.evaluate([], precision=32) == (Decimal("1.25"),)
+    for invalid_artifact_id in ("g" * 64, "A" * 64):
+        _NativeRuntime.artifact_id = invalid_artifact_id
+        with pytest.raises(EvaluationError, match="authenticated artifact identity"):
+            _ = public.artifact_id
+    _NativeRuntime.artifact_id = "a" * 64
 
 
 def test_adapter_routes_eager_high_precision_to_eager_exact_executor(

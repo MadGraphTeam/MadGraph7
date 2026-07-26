@@ -909,10 +909,7 @@ fn build_direct_parts(
             universal_selector_digest,
         )?;
     }
-    if closure_row_by_term
-        .iter()
-        .any(|row_id| *row_id == DIRECT_NONE_U32)
-    {
+    if closure_row_by_term.contains(&DIRECT_NONE_U32) {
         return Err(invalid(
             "not every semantic closure term was lowered to a direct row",
         ));

@@ -30,7 +30,11 @@ except ModuleNotFoundError:  # pragma: no cover - pip vendors the build fallback
         parse_wheel_filename,
     )
 
-from _artifacts import audit_wheel, canonicalize_name
+from _artifacts import (
+    _candidate_dependency_overrides,
+    audit_wheel,
+    canonicalize_name,
+)
 from _common import (
     CANDIDATE_ARTIFACTS,
     DEPENDENCY_WHEELHOUSE,
@@ -156,6 +160,7 @@ build_info_resource = package.joinpath("_build_info.json")
 if mode == "candidate":
     build_info = json.loads(build_info_resource.read_text(encoding="utf-8"))
     assert build_info["publishable"] is False
+    assert build_info["selftest_fixture_bootstrap"] is False
     assert build_info["version"] == version
 else:
     assert not build_info_resource.is_file()
@@ -249,11 +254,14 @@ fixture = importlib.resources.files("pyamplicol").joinpath(
 )
 expected = json.loads(fixture.joinpath("expected.json").read_text(encoding="utf-8"))
 artifact = fixture.joinpath(str(expected["artifact_path"]))
+manifest = json.loads(artifact.joinpath("artifact.json").read_text(encoding="utf-8"))
 runtime = Runtime.load(
     str(artifact),
     process=str(expected["process_id"]),
     mute_warnings=True,
 )
+assert runtime.artifact_id == manifest["artifact_id"]
+assert runtime.execution_mode == "compiled"
 total = tuple(complex(value) for value in runtime.evaluate(expected["momenta"]))
 resolved = runtime.evaluate_resolved(expected["momenta"])
 reduced = tuple(complex(value) for value in resolved.total())
@@ -333,6 +341,8 @@ for backend in (
         ]
     ]
     runtime = Runtime.load(artifact)
+    assert runtime.artifact_id == manifest["artifact_id"]
+    assert runtime.execution_mode == "compiled"
     total = runtime.evaluate(momenta)[0]
     resolved = runtime.evaluate_resolved(momenta)
     assert resolved.total()[0] == total
@@ -382,6 +392,8 @@ eager_execution = json.loads(
 assert eager_execution["kind"] == "pyamplicol-runtime-eager-execution"
 assert (eager_artifact / "model/eager-kernel-pack.json").is_file()
 eager_runtime = Runtime.load(eager_artifact)
+assert eager_runtime.artifact_id == eager_manifest["artifact_id"]
+assert eager_runtime.execution_mode == "eager"
 eager_total = eager_runtime.evaluate(momenta)[0]
 eager_resolved = eager_runtime.evaluate_resolved(momenta)
 eager_reduced = eager_resolved.total()[0]
@@ -462,23 +474,6 @@ def exact_dependencies() -> dict[str, str]:
             raise ReleaseError(f"release lock repeats Python dependency {name}")
         dependencies[name] = version
     return dependencies
-
-
-def _candidate_dependencies(
-    lock: dict[str, Any], dependencies: dict[str, str]
-) -> dict[str, str]:
-    symbolica = lock["symbolica"]
-    candidates = {
-        canonicalize_name(str(symbolica["python_distribution"])): str(
-            symbolica["python_version"]
-        ),
-    }
-    for name, version in candidates.items():
-        if dependencies.get(name) != version:
-            raise ReleaseError(
-                f"candidate dependency contract disagrees with lock for {name}"
-            )
-    return candidates
 
 
 def _wheel_identity(path: Path) -> tuple[str, str, set[str]]:
@@ -1118,7 +1113,8 @@ def _install_dependencies(
         "https://pypi.org/simple",
     ]
     if mode == "candidate":
-        candidate_requirements = _candidate_dependencies(lock, dependencies)
+        candidate_requirements = _candidate_dependency_overrides()
+        dependencies.update(candidate_requirements)
         local_wheels = _candidate_dependency_wheels(
             candidate_requirements,
             wheelhouses,

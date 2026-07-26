@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::super::*;
+use crate::artifact::PinnedNativeLibrary;
+use std::sync::Arc;
 
 type EvaluateFunction =
     unsafe extern "C" fn(*const Complex<f64>, *mut Complex<f64>, *mut Complex<f64>);
 type BufferLengthFunction = unsafe extern "C" fn() -> std::ffi::c_ulong;
 
 pub(crate) struct CompiledComplexF64Evaluator {
-    _library: libloading::Library,
+    _library: Arc<PinnedNativeLibrary>,
     evaluate: EvaluateFunction,
     scratch: Vec<Complex<f64>>,
     input_len: usize,
@@ -16,7 +18,7 @@ pub(crate) struct CompiledComplexF64Evaluator {
 
 impl CompiledComplexF64Evaluator {
     pub(crate) fn load(
-        path: &Path,
+        library: Arc<PinnedNativeLibrary>,
         function_name: &str,
         input_len: usize,
         output_len: usize,
@@ -34,14 +36,7 @@ impl CompiledComplexF64Evaluator {
             ));
         }
 
-        // Process artifacts are trusted executable input. Keeping the library in this
-        // object guarantees that the copied function pointers remain valid.
-        let library = unsafe { libloading::Library::new(path) }.map_err(|error| {
-            RusticolError::evaluation(format!(
-                "could not load compiled evaluator library {}: {error}",
-                path.display()
-            ))
-        })?;
+        let path = library.display_path();
         let exported_name = format!("{function_name}_complexf64");
         let evaluate = unsafe {
             *library
@@ -194,8 +189,13 @@ extern "C" void rusticol_test_complexf64(
     #[test]
     fn symbolica_compiled_complex_abi_loads_and_evaluates_batches() {
         let (directory, library) = compiled_fixture();
-        let mut evaluator =
-            CompiledComplexF64Evaluator::load(&library, "rusticol_test", 2, 2).unwrap();
+        let mut evaluator = CompiledComplexF64Evaluator::load(
+            PinnedNativeLibrary::from_test_path(&library).unwrap(),
+            "rusticol_test",
+            2,
+            2,
+        )
+        .unwrap();
         let params = [
             Complex::new(1.0, 2.0),
             Complex::new(3.0, -4.0),
@@ -244,8 +244,13 @@ extern "C" void rusticol_test_complexf64(
     #[test]
     fn compiled_evaluator_validates_batch_dimensions() {
         let (directory, library) = compiled_fixture();
-        let mut evaluator =
-            CompiledComplexF64Evaluator::load(&library, "rusticol_test", 2, 2).unwrap();
+        let mut evaluator = CompiledComplexF64Evaluator::load(
+            PinnedNativeLibrary::from_test_path(&library).unwrap(),
+            "rusticol_test",
+            2,
+            2,
+        )
+        .unwrap();
         let mut output = [Complex::new(0.0, 0.0); 2];
 
         let error = evaluator

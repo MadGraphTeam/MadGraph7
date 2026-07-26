@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -56,9 +57,7 @@ def _ok_measurement(*, revision: str | None = None) -> dict[str, object]:
             "validation": {"status": ResultStatus.OK.value},
             "resources": {},
             "provenance": (
-                {}
-                if revision is None
-                else {"report_source_revision": revision}
+                {} if revision is None else {"report_source_revision": revision}
             ),
         }
     )
@@ -176,6 +175,24 @@ def _matrix_cell(
 def _service(tmp_path: Path) -> ReportService:
     root = tmp_path / "repo"
     (root / "docs").mkdir(parents=True)
+    subprocess.run(("git", "init", "-q"), cwd=root, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "report-tests@example.invalid"),
+        cwd=root,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Report Tests"),
+        cwd=root,
+        check=True,
+    )
+    (root / "README.md").write_text("# report fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "README.md"), cwd=root, check=True)
+    subprocess.run(
+        ("git", "commit", "-q", "-m", "Initialize fixture"),
+        cwd=root,
+        check=True,
+    )
     return ReportService(
         ReportPaths.from_repo(
             root,
@@ -204,12 +221,15 @@ def test_equivalent_reuse_requires_fresh_revision_and_never_uses_amplicol(
     equivalent = REPORT_CATALOG.equivalent_cells(candidate)[0]
     stale = _publish_current(store, equivalent.cell_id, revision="old")
 
-    assert _fresh_equivalent_current(
-        store,
-        candidate,
-        catalog=REPORT_CATALOG,
-        expected_revision="new",
-    ) is None
+    assert (
+        _fresh_equivalent_current(
+            store,
+            candidate,
+            catalog=REPORT_CATALOG,
+            expected_revision="new",
+        )
+        is None
+    )
 
     fresh = _publish_current(store, equivalent.cell_id, revision="new")
     selected = _fresh_equivalent_current(
@@ -229,12 +249,15 @@ def test_equivalent_reuse_requires_fresh_revision_and_never_uses_amplicol(
         and cell.n_final == 1
         and cell.workload is Workload.SELECTED_FLOW
     )
-    assert _fresh_equivalent_current(
-        store,
-        reference,
-        catalog=REPORT_CATALOG,
-        expected_revision="new",
-    ) is None
+    assert (
+        _fresh_equivalent_current(
+            store,
+            reference,
+            catalog=REPORT_CATALOG,
+            expected_revision="new",
+        )
+        is None
+    )
 
 
 def _run_with_captured_worker(
@@ -274,9 +297,7 @@ def _run_with_captured_worker(
         **_kwargs: object,
     ) -> SupervisedResult:
         command_seen.extend(command)
-        result_path = Path(
-            command_seen[command_seen.index("--result-json") + 1]
-        )
+        result_path = Path(command_seen[command_seen.index("--result-json") + 1])
         result_path.write_text(
             json.dumps(_ok_measurement(revision=revision)) + "\n",
             encoding="ascii",
@@ -327,9 +348,7 @@ def test_reuse_and_retime_use_equivalent_artifact_but_target_baseline(
     assert command[command.index("--reused-measurement-json") + 1] == str(
         equivalent.result_path
     )
-    assert command[command.index("--baseline-json") + 1] == str(
-        baseline.result_path
-    )
+    assert command[command.index("--baseline-json") + 1] == str(baseline.result_path)
     assert command[command.index("--cell-id") + 1] == (
         "matrix-recurrence-builtin-sm-lc-n1-dd-z-jets-selected-flow"
     )

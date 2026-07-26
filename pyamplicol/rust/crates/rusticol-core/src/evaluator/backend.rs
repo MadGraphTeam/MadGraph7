@@ -2415,9 +2415,9 @@ pub(crate) fn flatten_evaluators_from_store(
                         "rusticol currently supports compiled complex evaluators, got {number_type}"
                     )));
                 }
-                let library = payloads.physical_path(library_path)?;
+                let library = payloads.load_native_library(library_path)?;
                 let eval = CompiledComplexF64Evaluator::load(
-                    &library,
+                    library,
                     function_name,
                     *input_len,
                     *output_len,

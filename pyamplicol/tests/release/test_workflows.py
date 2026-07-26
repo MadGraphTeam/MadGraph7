@@ -21,6 +21,7 @@ MANYLINUX_IMAGE = (
     "sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614"
 )
 MEMORY_WATCHDOG = "tools/ci/memory_watchdog.py --limit-gib 30 --"
+ARENA_X86_ACCEPTANCE = "tools/developer/arena_native_x86_acceptance.py"
 
 
 def _guarded_count(workflow: str, command: str) -> int:
@@ -111,10 +112,69 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert "g++ gfortran make" in workflow
     assert "gcc-c++ gcc-gfortran make" in workflow
     assert "brew install gcc" in workflow
-    assert workflow.index("Test the installed candidate wheel and native SDK") < (
-        workflow.index("actions/upload-artifact")
+    source_job = workflow.split(
+        "  candidate-source-validation:\n",
+        maxsplit=1,
+    )[1].split("\n  macos-candidate:\n", maxsplit=1)[0]
+    assert source_job.index("Audit emitted Arena acceptance evidence") < (
+        source_job.index("actions/upload-artifact")
+    )
+    macos_job = workflow.split("  macos-candidate:\n", maxsplit=1)[1].split(
+        "\n  manylinux-candidate:\n",
+        maxsplit=1,
+    )[0]
+    assert macos_job.index("Test the installed candidate wheel and native SDK") < (
+        macos_job.index("actions/upload-artifact")
     )
     assert "continue-on-error" not in workflow
+
+
+def test_candidate_native_x86_acceptance_is_exact_and_content_bound() -> None:
+    workflow = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
+    source_job = workflow.split(
+        "  candidate-source-validation:\n",
+        maxsplit=1,
+    )[1].split("\n  macos-candidate:\n", maxsplit=1)[0]
+
+    assert "runs-on: ubuntu-24.04" in source_job
+    assert "timeout-minutes: 360" in source_job
+    assert "ARENA_EVIDENCE_ROOT: /tmp/pyamplicol-arena-x86-${{ github.sha }}" in (
+        source_job
+    )
+    assert "ref: ${{ github.sha }}" in source_job
+    assert "persist-credentials: false" in source_job
+    assert source_job.count(ARENA_X86_ACCEPTANCE) == 2
+    assert "<<'PY'" not in source_job
+    assert "runtime-identity-preflight.json" in source_job
+    assert "compiled-all-jit-arena-gate.json" in source_job
+    assert "four-quark-compiled-gate.json" in source_job
+    assert "eager-compiled-color/result.json" in source_job
+    assert "arena-native-x86-acceptance.json" in source_job
+    assert '--expected-revision "${{ github.sha }}"' in source_job
+    assert source_job.count('--expected-workspace "${{ github.workspace }}"') == 2
+    assert source_job.count("--points 3") == 2
+    assert "--point-count 3" in source_job
+    assert "--generation-timeout 900" in source_job
+    assert "--generation-timeout 2400" in source_job
+    assert source_job.index(f"{ARENA_X86_ACCEPTANCE} \\\n            preflight") < (
+        source_job.index("compiled_all_jit_arena_gate.py")
+    )
+    assert source_job.index("eager_benchmark_matrix.py") < source_job.index(
+        f"{ARENA_X86_ACCEPTANCE}\n          audit"
+    )
+    assert source_job.index("arena-native-x86-acceptance.json") < source_job.index(
+        "if-no-files-found:"
+    )
+
+    helper = (ROOT / ARENA_X86_ACCEPTANCE).read_text(encoding="utf-8")
+    assert '"-I",' in helper
+    assert '"-S",' in helper
+    assert '"-B",' in helper
+    assert "preimport_python_runtime_identity" in helper
+    assert "source_only_bytecode_policy" in helper
+    assert "loaded_pyamplicol_origin_policy" in helper
+    assert "candidate_wheel_matches_loaded_runtime" in helper
+    assert "all_evidence_files_content_bound" in helper
 
 
 def test_automatic_tests_cover_generation_config_provenance() -> None:
@@ -127,8 +187,7 @@ def test_automatic_tests_cover_generation_config_provenance() -> None:
     assert "branches: [main]" in trigger
     assert "workflow_dispatch:" in trigger
     assert (
-        "group: tests-${{ github.workflow }}-${{ github.ref }}-"
-        "${{ github.event_name }}"
+        "group: tests-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}"
     ) in workflow
     candidate_job = workflow.split(
         "  candidate-runtime:\n",
@@ -162,7 +221,7 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
     candidate = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
     release = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
 
-    assert candidate.count(MEMORY_WATCHDOG) == 9
+    assert candidate.count(MEMORY_WATCHDOG) == 12
     assert (
         _guarded_count(
             candidate,
@@ -184,6 +243,28 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
             r"tools/release/test_deployment\.py",
         )
         == 3
+    )
+    assert (
+        _guarded_count(
+            candidate,
+            r"\.venv/bin/python "
+            r"tools/developer/compiled_all_jit_arena_gate\.py",
+        )
+        == 1
+    )
+    assert (
+        _guarded_count(
+            candidate,
+            r"\.venv/bin/python tools/developer/four_quark_compiled_gate\.py",
+        )
+        == 1
+    )
+    assert (
+        _guarded_count(
+            candidate,
+            r"\.venv/bin/python tools/developer/eager_benchmark_matrix\.py",
+        )
+        == 1
     )
     assert (
         _guarded_count(

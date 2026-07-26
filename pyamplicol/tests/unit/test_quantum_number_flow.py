@@ -91,6 +91,7 @@ def test_loader_charge_uses_the_exact_float_ratio() -> None:
             "sorted and unique",
         ),
         ((("symbolic", "x"),), "symbol-free"),
+        ((("symbolic-function", "unknown(1)"),), "symbol-free"),
         ((("complex", "sqrt(-1)"),), "must be real"),
         ((("infinite", "log(0)"),), "finite real constant"),
     ],
@@ -105,6 +106,14 @@ def test_quantum_number_metadata_rejects_noncanonical_constants(
 
 def test_quantum_number_metadata_accepts_large_finite_exact_constants() -> None:
     flow = (("large_exact_number", "exp(1000000)"),)
+    assert validate_quantum_number_flow(flow) == flow
+
+
+@pytest.mark.parametrize("expression", ("pi", "sqrt(2)"))
+def test_quantum_number_metadata_accepts_builtin_exact_constants(
+    expression: str,
+) -> None:
+    flow = (("exact_number", expression),)
     assert validate_quantum_number_flow(flow) == flow
 
 

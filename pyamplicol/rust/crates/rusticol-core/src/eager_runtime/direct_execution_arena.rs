@@ -948,7 +948,7 @@ fn load_applications(
                 EAGER_DIRECT_TABLE_BINDING_ABI,
             )?,
             EagerDirectPreparedApplication::Native {
-                library_path,
+                library,
                 function_name,
                 source_application_abi,
                 invocation_stride,
@@ -957,7 +957,7 @@ fn load_applications(
                 evaluator_state_sha256,
                 simd_lane_width,
             } => LoadedSymjitEagerDirectTable::load_native_application(
-                library_path,
+                Arc::clone(library),
                 function_name,
                 artifact.display_path.clone(),
                 source_application_abi,

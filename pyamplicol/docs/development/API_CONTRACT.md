@@ -95,6 +95,15 @@ selector capabilities. LC advertises `("helicity", "color_flow")`; NLC/full
 advertise only `("helicity",)`. Their singleton contracted-color output axis is
 metadata, not a selectable color flow.
 
+`Runtime.artifact_id` returns the lowercase 64-hex manifest identity
+authenticated by the native loader. `Runtime.execution_mode` returns exactly
+`"compiled"`, `"eager"`, or `"recurrence"` from authenticated runtime metadata.
+Both fail with `EvaluationError` when an injected backend cannot supply a valid
+identity. These facade properties intentionally are not structural requirements
+of `RuntimeBackend`: keeping the protocol's original minimum surface preserves
+compatibility with third-party backends, while the built-in Rusticol adapter and
+installed-candidate gates must expose both identities.
+
 `Runtime.evaluate(momenta, *, helicities=None, color_flows=None)` returns one
 fully summed value per point. Momenta have shape
 `(point, particle, [E, px, py, pz])`.
@@ -123,7 +132,10 @@ leaf/backend/output-gather/remap attribution is non-additive: full-stage
 evaluator envelopes own leaf gathering, while composed selected-chunk
 input-pack envelopes own it. Movement and materialization counters are
 normalized per profiled point; backend-call and explicit allocation counters
-are normalized per runtime call.
+are normalized per runtime call. Compiled Direct-Arena engine/call counts and
+its input/current-output/amplitude-output boundary-byte counters are likewise
+normalized per runtime call. A valid fused Arena profile reports zero boundary
+traffic and enough Arena calls to cover every evaluator backend call.
 
 `benchmark(...)` is the convenience wrapper.
 

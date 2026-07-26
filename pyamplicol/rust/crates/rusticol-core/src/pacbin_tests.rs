@@ -182,7 +182,7 @@ fn python_golden_round_trips_and_supports_indexed_borrowed_ranges() {
 }
 
 #[test]
-fn open_keeps_one_immutable_mapping_after_atomic_source_replacement() {
+fn open_keeps_one_immutable_snapshot_after_atomic_source_replacement() {
     static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
         "rusticol-pacbin-{}-{}.pacbin",
@@ -199,7 +199,7 @@ fn open_keeps_one_immutable_mapping_after_atomic_source_replacement() {
 }
 
 #[test]
-fn expected_container_digest_authenticates_the_mapped_storage() {
+fn expected_container_digest_authenticates_an_immutable_snapshot() {
     static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
         "rusticol-pacbin-authenticated-{}-{}.pacbin",
@@ -210,6 +210,18 @@ fn expected_container_digest_authenticates_the_mapped_storage() {
     let digest: [u8; 32] = Sha256::digest(&bytes).into();
     fs::write(&path, &bytes).unwrap();
     let reader = PacbinReader::open_with_sha256(&path, &digest).unwrap();
+
+    fs::write(&path, vec![0_u8; bytes.len()]).unwrap();
+    assert_eq!(reader.member_bytes("a/jit.symjit").unwrap(), b"jit-v1");
+    reader.verify_payloads().unwrap();
+    OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_len(0)
+        .unwrap();
+    assert_eq!(reader.member_bytes("a/jit.symjit").unwrap(), b"jit-v1");
+    reader.verify_payloads().unwrap();
 
     let replacement = path.with_extension("replacement");
     fs::write(&replacement, b"replaced after authenticated open").unwrap();

@@ -64,9 +64,7 @@ def measure_cell(
 ) -> dict[str, object]:
     source_identity = require_eligible_report_source(repo_root)
     cell = catalog.cell(cell_id)
-    baseline = (
-        None if baseline_json is None else load_measurement(baseline_json)
-    )
+    baseline = None if baseline_json is None else load_measurement(baseline_json)
     reused_artifact = (
         None
         if reused_measurement_json is None
@@ -99,6 +97,11 @@ def measure_cell(
             baseline=baseline,
             prepared_model_path=prepared_model_path,
             reused_artifact=reused_artifact,
+        )
+    source_identity_postflight = require_eligible_report_source(repo_root)
+    if source_identity_postflight != source_identity:
+        raise RuntimeError(
+            "report source identity changed during cell measurement"
         )
     provenance = result.get("provenance")
     result["provenance"] = {

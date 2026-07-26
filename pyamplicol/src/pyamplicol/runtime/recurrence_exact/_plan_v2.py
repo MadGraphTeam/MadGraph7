@@ -8,7 +8,7 @@ import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, TypeVar, cast
 
 from pyamplicol._internal.versions import verify_native_module
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
@@ -32,6 +32,7 @@ class _NativeExactSectionsBinding(Protocol):
 
 
 _NativeExactSectionsLoader = Callable[[Path, str], object]
+_RowT = TypeVar("_RowT")
 
 
 @dataclass(frozen=True, slots=True)
@@ -422,10 +423,10 @@ def _rows(
     root: Mapping[str, object],
     name: str,
     width: int,
-    row_type: type[object],
+    row_type: Callable[..., _RowT],
     *,
     signed_fields: set[int] | None = None,
-) -> tuple[object, ...]:
+) -> tuple[_RowT, ...]:
     signed = signed_fields or set()
     parsed = []
     for index, raw in enumerate(_sequence(root.get(name), f"recurrence {name}")):
@@ -517,8 +518,8 @@ def _parse_executor(raw: object, index: int) -> _Executor:
         momentum_operand_count=_integer(
             values[5], f"direct executor {index} momentum count"
         ),
-        prepared_kernel_id=cast(int | None, prepared_kernel_id),
-        runtime_template=cast(str | None, runtime_template),
+        prepared_kernel_id=prepared_kernel_id,
+        runtime_template=runtime_template,
     )
 
 
@@ -818,11 +819,11 @@ def _validate_contracted_sections(sections: _RecurrenceExactSectionsV1) -> None:
 
 
 def _table_slice(
-    rows: Sequence[object],
+    rows: Sequence[_RowT],
     start: int,
     count: int,
     context: str,
-) -> Sequence[object]:
+) -> Sequence[_RowT]:
     stop = start + count
     if start < 0 or stop > len(rows):
         raise ArtifactError(f"{context} is out of bounds")

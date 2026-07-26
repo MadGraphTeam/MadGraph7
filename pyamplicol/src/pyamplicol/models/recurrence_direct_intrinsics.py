@@ -5,14 +5,28 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import math
 import struct
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from . import compiler_symbolica as _sym
 from .recurrence_template import ExactComplexRationalV1
+
+
+class _LazyCompilerSymbolica:
+    """Keep planning metadata independent of compiler-module imports."""
+
+    def __getattr__(self, name: str) -> object:
+        module = importlib.import_module(
+            ".compiler_symbolica",
+            package=__package__,
+        )
+        return getattr(module, name)
+
+
+_sym = _LazyCompilerSymbolica()
 
 RECURRENCE_INTRINSIC_SCALE_KIND = "intrinsic-scale-v1"
 WEYL_PROPAGATOR_POSITIVE_TEMPLATE = "rusticol.recurrence-intrinsic.weyl-propagator-a.v1"

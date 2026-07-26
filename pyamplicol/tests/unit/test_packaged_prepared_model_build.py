@@ -111,6 +111,19 @@ def test_candidate_wheel_staging_accepts_exact_packaged_model(
     assert bundle.read_bytes() == before
 
 
+def test_candidate_wheel_staging_rejects_candidate_fingerprint_drift(
+    tmp_path: Path,
+) -> None:
+    overlay = _overlay(tmp_path)
+    build_info_path = overlay / "src" / "pyamplicol" / "_build_info.json"
+    build_info = json.loads(build_info_path.read_text(encoding="utf-8"))
+    build_info["candidate_fingerprint"] = "0" * 12
+    build_info_path.write_text(json.dumps(build_info), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="active exact dependency lock"):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
 def test_wheel_staging_rejects_built_in_source_drift(tmp_path: Path) -> None:
     overlay = _overlay(tmp_path)
     source = overlay / "src" / "pyamplicol" / "models" / "builtin" / "model.py"

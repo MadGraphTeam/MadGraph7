@@ -13,8 +13,10 @@
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::Arc;
 
+use crate::artifact::PinnedNativeLibrary;
 use crate::direct_arena::{
     DirectArenaInterval, DirectArenaLayout, DirectArenaTrafficCounters, assign_direct_arena,
 };
@@ -40,7 +42,7 @@ pub(crate) enum EagerDirectPreparedApplication<'a> {
         descriptor: &'a [u8],
     },
     Native {
-        library_path: &'a Path,
+        library: &'a Arc<PinnedNativeLibrary>,
         function_name: &'a str,
         source_application_abi: &'a str,
         invocation_stride: u32,
@@ -296,7 +298,7 @@ impl EagerDirectInvocationPrototype {
                     EAGER_DIRECT_TABLE_BINDING_ABI,
                 )?,
                 EagerDirectPreparedApplication::Native {
-                    library_path,
+                    library,
                     function_name,
                     source_application_abi,
                     invocation_stride,
@@ -305,7 +307,7 @@ impl EagerDirectInvocationPrototype {
                     evaluator_state_sha256,
                     simd_lane_width,
                 } => LoadedSymjitEagerDirectTable::load_native_application(
-                    library_path,
+                    Arc::clone(library),
                     function_name,
                     artifact.display_path.clone(),
                     source_application_abi,
@@ -947,7 +949,7 @@ fn run_retained_stage_variant<B: super::EagerKernelBackend>(
         retained.attachment_range = attachment_start..attachments.len();
         invocations.push(retained);
     }
-    if invocations.len() < 1 || attachments.len() < 1 {
+    if invocations.is_empty() || attachments.is_empty() {
         return Err(RusticolError::internal(
             "retained eager stage variant unexpectedly has no work",
         ));
@@ -2207,9 +2209,8 @@ mod tests {
         let operations = original_initializes
             .into_iter()
             .zip(retained)
-            .filter_map(|(_original, keep)| {
-                keep.then(|| retained_attachment_operation(&mut written, 23))
-            })
+            .filter(|&(_original, keep)| keep)
+            .map(|_| retained_attachment_operation(&mut written, 23))
             .collect::<Vec<_>>();
         assert_eq!(operations, [0], "first retained write must overwrite");
 

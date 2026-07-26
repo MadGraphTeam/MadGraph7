@@ -154,6 +154,7 @@ jobs:
             tests/unit/test_model_loading.py \
             tests/unit/test_sdk_config.py \
             tests/unit/test_selftest_fixture.py \
+            tests/unit/test_symbolica_exact.py \
             -q
       - name: Run eager prepared-model and runtime unit checks (30 GiB RSS limit)
         run: >-

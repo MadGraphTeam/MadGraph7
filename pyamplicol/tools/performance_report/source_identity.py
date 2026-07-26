@@ -81,10 +81,12 @@ def _generated_report_path(value: str) -> bool:
         return False
     if parts[0] in {".artifacts", "tmp"}:
         return True
+    if parts[:3] == ("docs", "results", ".coordination"):
+        return True
     if (
         len(parts) == 3
         and parts[:2] == ("docs", "results")
-        and parts[2].endswith(".json")
+        and parts[2].endswith((".json", ".lock"))
     ):
         return True
     if len(parts) == 2 and parts[0] == "docs":

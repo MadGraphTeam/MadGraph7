@@ -69,6 +69,9 @@ struct CompiledDirectProfileSnapshot {
     parameter_fill_bytes: u64,
     amplitude_clear_bytes: u64,
     backend_call_count: u64,
+    boundary_input_bytes: u64,
+    boundary_current_output_bytes: u64,
+    boundary_amplitude_output_bytes: u64,
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -94,6 +97,9 @@ fn compiled_direct_profile_snapshot(
         snapshot.parameter_fill_bytes = traffic.parameter_fill_bytes;
         snapshot.amplitude_clear_bytes = traffic.amplitude_clear_bytes;
         snapshot.backend_call_count = traffic.leaf.calls;
+        snapshot.boundary_input_bytes = traffic.boundary_input_bytes;
+        snapshot.boundary_current_output_bytes = traffic.boundary_current_output_bytes;
+        snapshot.boundary_amplitude_output_bytes = traffic.boundary_amplitude_output_bytes;
     }
     let children = runtime
         .helicity_sum_runtime
@@ -119,12 +125,92 @@ fn compiled_direct_profile_snapshot(
         snapshot.backend_call_count = snapshot
             .backend_call_count
             .saturating_add(child.backend_call_count);
+        snapshot.boundary_input_bytes = snapshot
+            .boundary_input_bytes
+            .saturating_add(child.boundary_input_bytes);
+        snapshot.boundary_current_output_bytes = snapshot
+            .boundary_current_output_bytes
+            .saturating_add(child.boundary_current_output_bytes);
+        snapshot.boundary_amplitude_output_bytes = snapshot
+            .boundary_amplitude_output_bytes
+            .saturating_add(child.boundary_amplitude_output_bytes);
     }
     Ok(snapshot)
 }
 
 impl NativeRuntime {
     pub const ABI_VERSION: u32 = crate::C_ABI_VERSION;
+
+    /// Content identity of the authenticated artifact manifest that supplied
+    /// this in-memory runtime.
+    pub fn artifact_id(&self) -> &str {
+        &self.artifact_id
+    }
+
+    /// Load only the authenticated physical reduction groups of an eager
+    /// plan-v3 artifact.
+    ///
+    /// Unlike the exact-section bridge, this does not materialize exact
+    /// invocations, attachments, finalizations, or closures that are unrelated
+    /// to reduction authentication.
+    #[doc(hidden)]
+    pub fn load_eager_reduction_groups(
+        artifact_path: impl AsRef<Path>,
+        process_id: &str,
+    ) -> Result<Value, RusticolError> {
+        let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
+            let selection = manifest.select_process(Some(process_id))?;
+            ensure_runtime_capabilities_supported(
+                selection
+                    .process
+                    .required_runtime_capabilities
+                    .iter()
+                    .map(String::as_str),
+            )
+        })?;
+        let selection = artifact.select_process(Some(process_id))?;
+        if selection.alias.is_some() {
+            return Err(RusticolError::invalid_argument(
+                "compact eager reduction groups must be requested by representative process ID",
+            ));
+        }
+        let (manifest, evaluator_root) = load_verified_evaluator(&artifact, &selection)?;
+        let physics_bytes = artifact.read_payload(&selection.process.physics_path)?;
+        let mut physics =
+            ProcessPhysicsV1::from_json(&physics_bytes, &selection.process.physics_path)?;
+        if physics.process_id != selection.process.id
+            || physics.process != selection.process.expression
+            || physics.color_accuracy.as_str() != selection.process.color_accuracy
+            || physics
+                .external_particles
+                .iter()
+                .map(|particle| particle.pdg)
+                .ne(selection.process.external_pdgs.iter().copied())
+        {
+            return Err(RusticolError::integrity(format!(
+                "runtime physics payload {:?} does not match process {:?}",
+                selection.process.physics_path, selection.process.id
+            )));
+        }
+        match manifest {
+            LoadedExecutionManifest::Compiled(_) => Err(RusticolError::compatibility(
+                "compact reduction-group loading requires an eager plan-v3 artifact",
+            )),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::EagerV3(manifest) => {
+                super::eager_v3_load::load_eager_v3_reduction_groups(
+                    &artifact,
+                    &evaluator_root,
+                    &manifest,
+                    &mut physics,
+                )
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::Recurrence(_) => Err(RusticolError::compatibility(
+                "recurrence reduction-group loading is unavailable through the eager bridge",
+            )),
+        }
+    }
 
     /// Load only the exact-required sections of an eager plan-v3 artifact.
     ///
@@ -259,6 +345,7 @@ impl NativeRuntime {
                     .map(String::as_str),
             )
         })?;
+        let artifact_id = artifact.manifest().artifact_id.clone();
         let selection = artifact.select_process(process_id)?;
         let (manifest, evaluator_root) = load_verified_evaluator(&artifact, &selection)?;
         let physics_bytes = artifact.read_payload(&selection.process.physics_path)?;
@@ -412,6 +499,7 @@ impl NativeRuntime {
         };
         let mut loaded = Self {
             root: artifact.root().to_path_buf(),
+            artifact_id,
             runtime,
             execution_lane,
             process,
@@ -1069,6 +1157,15 @@ impl NativeRuntime {
                         evaluator_backend_call_count: after
                             .backend_call_count
                             .saturating_sub(before.backend_call_count),
+                        compiled_direct_arena_engine_count: after.engine_count as u64,
+                        compiled_direct_arena_call_count: after
+                            .backend_call_count
+                            .saturating_sub(before.backend_call_count),
+                        compiled_direct_arena_boundary_input_bytes: after.boundary_input_bytes,
+                        compiled_direct_arena_boundary_current_output_bytes: after
+                            .boundary_current_output_bytes,
+                        compiled_direct_arena_boundary_amplitude_output_bytes: after
+                            .boundary_amplitude_output_bytes,
                         total_materialized_value_count: batch.len() as u64,
                         ..RuntimeProfile::default()
                     },

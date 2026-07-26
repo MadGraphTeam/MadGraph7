@@ -24,7 +24,13 @@ from pyamplicol.generation.stage_artifacts import (
 )
 
 
-def _leaf(path: str, input_len: int, output_len: int) -> dict[str, object]:
+def _leaf(
+    path: str,
+    input_len: int,
+    output_len: int,
+    *,
+    optimization_level: int = 3,
+) -> dict[str, object]:
     return {
         "kind": "symjit-application-evaluator",
         "runtime_capability": SYMJIT_F64_RUNTIME_CAPABILITY,
@@ -36,7 +42,7 @@ def _leaf(path: str, input_len: int, output_len: int) -> dict[str, object]:
         "batch_layout": "row-major",
         "compiler_type": "native",
         "translation_mode": "indirect",
-        "optimization_level": 3,
+        "optimization_level": optimization_level,
         "word_bits": 64,
         "endianness": "little",
         "required_defuns": [],
@@ -201,11 +207,32 @@ def test_compiled_plane_contract_freezes_leaf_and_plane_bindings() -> None:
     ]
 
 
-def test_compiled_plane_contract_leaves_non_o3_generation_on_row_major_path() -> None:
+@pytest.mark.parametrize("optimization_level", [0, 1, 2, 3])
+def test_compiled_plane_contract_covers_every_jit_optimization_level(
+    optimization_level: int,
+) -> None:
     stage = _stage()
-    stage["evaluator"]["chunks"][0]["optimization_level"] = 2
+    stage["evaluator"]["chunks"][0]["optimization_level"] = optimization_level
 
-    assert _compiled_plane_arena_stage(stage) is None
+    direct = _compiled_plane_arena_stage(stage)
+
+    assert direct is not None
+    assert [leaf["optimization_level"] for leaf in direct["leaves"]] == [
+        optimization_level,
+        3,
+    ]
+    assert [leaf["direct_codegen_optimization_level"] for leaf in direct["leaves"]] == [
+        3,
+        3,
+    ]
+
+
+def test_compiled_plane_contract_rejects_unknown_jit_optimization_level() -> None:
+    stage = _stage()
+    stage["evaluator"]["chunks"][0]["optimization_level"] = 4
+
+    with pytest.raises(ValueError, match="optimization level must be 0, 1, 2, or 3"):
+        _compiled_plane_arena_stage(stage)
 
 
 @pytest.mark.parametrize(
@@ -251,19 +278,17 @@ def test_stage_set_requires_complete_capability_bound_metadata() -> None:
 
     missing = deepcopy(_set())
     del missing["stages"][0]["compiled_plane_arena"]
-    with pytest.raises(ValueError, match="compiled plane-arena capability"):
+    with pytest.raises(ValueError, match="compiled f64 artifacts require"):
         _stage_evaluator_set(missing)
 
-    row_major = deepcopy(_set())
-    row_major["required_runtime_capabilities"].remove(
+    pre_arena = deepcopy(_set())
+    pre_arena["required_runtime_capabilities"].remove(
         COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY
     )
-    del row_major["stages"][0]["compiled_plane_arena"]
-    del row_major["amplitude_stage"]["compiled_plane_arena"]
-    assert (
-        _stage_evaluator_set(row_major)["required_runtime_capabilities"]
-        == [SYMJIT_F64_RUNTIME_CAPABILITY]
-    )
+    del pre_arena["stages"][0]["compiled_plane_arena"]
+    del pre_arena["amplitude_stage"]["compiled_plane_arena"]
+    with pytest.raises(ValueError, match="compiled f64 artifacts require"):
+        _stage_evaluator_set(pre_arena)
 
     drift = deepcopy(_set())
     drift["amplitude_stage"]["compiled_plane_arena"]["leaves"][1]["output_start"] = 0

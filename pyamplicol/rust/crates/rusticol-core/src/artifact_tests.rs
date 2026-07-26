@@ -1117,6 +1117,7 @@ fn compiled_color_topology_lane_verifies_nested_evaluator_payloads() {
 #[cfg(feature = "f64-symjit")]
 fn mixed_backend_runtime_artifact() -> TestArtifact {
     const DIRECT: &str = "symjit.application.complex-f64.v1";
+    const ARENA: &str = crate::engine::COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY;
     const ASM: &str = "symbolica.compiled-asm.complex-f64.v1";
     const CPP: &str = "symbolica.compiled-cpp.complex-f64.v1";
     let mut artifact = TestArtifact::new();
@@ -1129,7 +1130,7 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
             "color_accuracy": "lc",
             "external_pdgs": [1, -1, 22],
             "physics_path": "processes/direct/physics.json",
-            "required_runtime_capabilities": [DIRECT],
+            "required_runtime_capabilities": [ARENA, DIRECT],
             "aliases": [],
         },
         {
@@ -1152,15 +1153,79 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
         }
     ]);
     artifact.manifest["runtime"]["evaluator_manifest_path"] = json!("processes/evaluators.json");
-    artifact.manifest["runtime"]["required_runtime_capabilities"] = json!([ASM, CPP, DIRECT]);
+    artifact.manifest["runtime"]["required_runtime_capabilities"] =
+        json!([ARENA, ASM, CPP, DIRECT]);
 
     let direct_application = direct_symjit_application_bytes(14);
-    let direct_execution = minimal_execution_manifest(
+    let mut direct_execution = minimal_execution_manifest(
         "direct",
         "a b > c",
         DIRECT,
         direct_evaluator_manifest("evaluators/direct.symjit"),
     );
+    let input_binding = |parameter_index: usize| {
+        let (kind, source_id, component, global_component, real_valued) = if parameter_index < 2 {
+            ("value", parameter_index, 0, parameter_index, false)
+        } else {
+            (
+                "momentum",
+                (parameter_index - 2) / 4,
+                (parameter_index - 2) % 4,
+                parameter_index,
+                true,
+            )
+        };
+        json!({
+            "parameter_index": parameter_index,
+            "kind": kind,
+            "source_id": source_id,
+            "component": component,
+            "global_component": global_component,
+            "real_valued": real_valued,
+        })
+    };
+    let input_bindings = (0..14).map(input_binding).collect::<Vec<_>>();
+    let direct_stage = &mut direct_execution["compiled"]["stage_evaluators"]["amplitude_stage"];
+    direct_stage["parameter_layout"] = json!("stage-local-value-momentum");
+    direct_stage["input_components"] = json!(input_bindings);
+    direct_stage["compiled_plane_arena"] = json!({
+        "schema_version": 1,
+        "kind": "compiled-plane-arena-stage",
+        "application_abi": crate::engine::COMPILED_PLANE_DIRECT_APPLICATION_ABI,
+        "source_application_abi": crate::engine::COMPILED_PLANE_SOURCE_APPLICATION_ABI,
+        "element_layout": "split-complex-component-major",
+        "output_operation": "overwrite",
+        "output_factor": "identity",
+        "input_output_aliasing": "forbidden",
+        "output_output_aliasing": "forbidden",
+        "input_bindings": (0..14).map(input_binding).collect::<Vec<_>>(),
+        "output_bindings": [{
+            "output_index": 0,
+            "arena": "amplitude",
+            "component": 0,
+        }],
+        "leaves": [{
+            "application_path": "evaluators/direct.symjit",
+            "source_application_abi": crate::engine::COMPILED_PLANE_SOURCE_APPLICATION_ABI,
+            "optimization_level": 3,
+            "direct_codegen_optimization_level": 3,
+            "input_len": 14,
+            "output_len": 1,
+            "input_indices": (0..14).collect::<Vec<_>>(),
+            "output_start": 0,
+            "output_stop": 1,
+        }],
+    });
+    direct_execution["compiled"]["stage_evaluators"]["parameter_layout"] =
+        json!("stage-local-value-momentum");
+    direct_execution["compiled"]["stage_evaluators"]["parameter_count"] = json!(0);
+    direct_execution["compiled"]["stage_evaluators"]["value_parameter_count"] = json!(0);
+    direct_execution["compiled"]["stage_evaluators"]["momentum_parameter_count"] = json!(0);
+    direct_execution["compiled"]["stage_evaluators"]["model_parameter_count"] = json!(0);
+    direct_execution["compiled"]["stage_evaluators"]["real_valued_inputs"] = json!([]);
+    direct_execution["compiled"]["stage_evaluators"]["required_runtime_capabilities"] =
+        json!([ARENA, DIRECT]);
+    direct_execution["required_runtime_capabilities"] = json!([ARENA, DIRECT]);
     let cpp_execution = minimal_execution_manifest(
         "cpp",
         "a b > d",
@@ -1176,12 +1241,12 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
     let execution_set = json!({
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
         "kind": "pyamplicol-runtime-execution-set",
-        "required_runtime_capabilities": [ASM, CPP, DIRECT],
+        "required_runtime_capabilities": [ARENA, ASM, CPP, DIRECT],
         "processes": [
             {
                 "process_id": "direct",
                 "manifest_path": "direct/execution.json",
-                "required_runtime_capabilities": [DIRECT]
+                "required_runtime_capabilities": [ARENA, DIRECT]
             },
             {
                 "process_id": "asm",
@@ -1316,6 +1381,39 @@ fn valid_manifest_verifies_all_payloads() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn read_payload_authenticates_the_exact_open_file_across_path_replacement() {
+    let artifact = TestArtifact::new();
+    let verified = VerifiedArtifact::open(&artifact.root).expect("valid artifact");
+    let payload_path = artifact.root.join("physics.json");
+    let displaced_path = artifact.root.join("physics.authenticated");
+    let replacement_path = artifact.root.join("physics.replacement");
+    let original = fs::read(&payload_path).expect("read original payload");
+    let replacement = b"[]";
+    assert_eq!(
+        replacement.len(),
+        original.len(),
+        "replacement must bypass the size-only check"
+    );
+    fs::write(&replacement_path, replacement).expect("write replacement payload");
+
+    let returned = verified
+        .read_payload_with_pre_read_hook("physics.json", || {
+            fs::rename(&payload_path, &displaced_path).expect("displace authenticated payload");
+            fs::rename(&replacement_path, &payload_path).expect("publish replacement payload");
+        })
+        .expect("the already-open authenticated file remains stable");
+
+    assert_eq!(returned, original);
+    assert_ne!(returned, replacement);
+    let error = verified
+        .read_payload("physics.json")
+        .expect_err("a later open must reject the replacement bytes");
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("SHA-256"));
+}
+
 #[cfg(feature = "f64-symjit")]
 #[test]
 fn verified_artifact_resolves_packed_evaluator_payloads() {
@@ -1344,6 +1442,63 @@ fn verified_artifact_resolves_packed_evaluator_payloads() {
             .as_ref(),
         b"exact-state"
     );
+}
+
+#[cfg(all(unix, feature = "f64-symjit"))]
+#[test]
+fn verified_loose_evaluator_source_reauthenticates_replacement_bytes() {
+    let mut artifact = TestArtifact::new();
+    add_test_payload(
+        &mut artifact,
+        "loose.symjit",
+        "evaluator-state",
+        b"jit-v1",
+        Some("p0"),
+        true,
+    );
+    artifact.write_manifest();
+    let verified = VerifiedArtifact::open(&artifact.root).expect("loose evaluator artifact");
+    let source = verified
+        .evaluator_payload_store(verified.root())
+        .expect("verified evaluator store")
+        .source("loose.symjit")
+        .expect("loose evaluator source");
+    let replacement_path = artifact.root.join("loose.replacement");
+    fs::write(&replacement_path, b"bad-v1").expect("write replacement evaluator");
+    fs::rename(&replacement_path, artifact.root.join("loose.symjit"))
+        .expect("replace loose evaluator path");
+
+    let error = source
+        .read()
+        .expect_err("replacement evaluator bytes must be reauthenticated");
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("SHA-256"));
+}
+
+#[cfg(all(unix, feature = "f64-symjit"))]
+#[test]
+fn evaluator_container_replacement_after_validation_is_reauthenticated() {
+    let mut artifact = TestArtifact::new();
+    add_test_evaluator_container(&mut artifact);
+    let verified = VerifiedArtifact::open(&artifact.root).expect("packed artifact");
+    let container_path = artifact.root.join("evaluators.pacbin");
+    let replacement_path = artifact.root.join("evaluators.replacement");
+    let mut replacement = decode_hex(PYTHON_PACBIN_GOLDEN_HEX);
+    let payload_offset = replacement
+        .windows(b"jit-v1".len())
+        .position(|window| window == b"jit-v1")
+        .expect("golden JIT member");
+    replacement[payload_offset..payload_offset + b"jit-v1".len()].copy_from_slice(b"bad-v1");
+    fs::write(&replacement_path, replacement).expect("write replacement PACBIN");
+    fs::rename(&replacement_path, &container_path).expect("replace validated PACBIN path");
+
+    let error =
+        load_evaluator_payload_container(&verified.root, &verified.manifest, &verified.payloads)
+            .expect_err("replacement PACBIN bytes must not inherit prior validation");
+
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("payload digest mismatch"));
 }
 
 #[cfg(feature = "f64-symjit")]

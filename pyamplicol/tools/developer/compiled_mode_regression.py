@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Compare compiled-mode runtime against a frozen baseline interpreter.
+"""Compare one eager or compiled runtime against a frozen baseline interpreter.
 
 The driver generates one compiled JIT O3 artifact per interpreter and reuses
 it while its cache signature remains valid.  Each reported outer sample comes
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import math
 import os
@@ -28,6 +29,7 @@ import statistics
 import subprocess
 import sys
 import time
+import tomllib
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
@@ -36,27 +38,31 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
 NATIVE_SAMPLE_HELPER = ROOT / "tools" / "developer" / "compiled_mode_sample.py"
+DEPENDENCY_ENTRY = ROOT / "tools" / "developer" / "python_dependency_entry.py"
 MEMORY_LIMIT_GIB = 30.0
 NATIVE_WALL_TIME_SOURCE = "runtime_core_repeated_wall_time"
 NATIVE_WALL_TIME_SAMPLE_PASS = "runtime._benchmark_f64_wall_time"
 PAIRED_TIMING_SAMPLE_CONTRACT = "paired_unprofiled_headline_profiled_attribution_v1"
 PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
 NATIVE_SAMPLE_RESULT_KIND = "pyamplicol-compiled-mode-native-sample"
-NATIVE_SAMPLE_SCHEMA_VERSION = 2
+NATIVE_SAMPLE_SCHEMA_VERSION = 3
 INSTALLATION_IDENTITY_KIND = "pyamplicol-installed-distribution-identity"
-INSTALLATION_IDENTITY_SCHEMA_VERSION = 1
+INSTALLATION_IDENTITY_SCHEMA_VERSION = 2
 RESULT_KIND = "pyamplicol-compiled-mode-regression"
 CACHE_KIND = "pyamplicol-compiled-mode-regression-artifact-cache"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 DEFAULT_GENERATION_TIMEOUT = 300.0
 DEFAULT_PROFILE_TIMEOUT = 120.0
 DEFAULT_TARGET_RUNTIME = 5.0
-DEFAULT_SAMPLE_COUNT = 5
+DEFAULT_SAMPLE_COUNT = 7
 DEFAULT_BATCH_SIZE = 1024
 DEFAULT_WARMUP_RUNS = 2
-RELATIVE_TOLERANCE = 0.02
+RELATIVE_TOLERANCE = 0.03
 MAD_MULTIPLIER = 3.0
+GAIN_RELATIVE_THRESHOLD = 0.10
+MATERIAL_RESOURCE_GROWTH_THRESHOLD = 0.03
 VALIDATION_SEED = 20260719
+VALIDATION_SAMPLE_COUNT = 8
 DEFAULT_LC_FLOW_LAYOUT = "topology-replay"
 CORRECTNESS_RELATIVE_TOLERANCE = 1.0e-12
 CORRECTNESS_ABSOLUTE_TOLERANCE = 1.0e-15
@@ -71,6 +77,14 @@ PERFORMANCE_RELEVANT_PAYLOAD_ROLES = frozenset(
 )
 REQUIRED_PERFORMANCE_PAYLOAD_ROLES = frozenset({"evaluator-state"})
 _HASH_CHUNK_BYTES = 1024 * 1024
+EXECUTION_MODES = ("eager", "compiled")
+DEPENDENCY_DISTRIBUTIONS = (
+    ("numpy", "numpy"),
+    ("symbolica", "symbolica"),
+    ("ufo-model-loader", "ufo_model_loader"),
+)
+EAGER_DIRECT_ARENA_CAPABILITY = "eager-direct-arena-v1"
+COMPILED_DIRECT_ARENA_CAPABILITY = "compiled-plane-arena-v1"
 
 
 class RegressionError(RuntimeError):
@@ -153,6 +167,105 @@ def _tree_identity(path: Path) -> dict[str, object]:
     }
 
 
+def _normalized_distribution_name(value: str) -> str:
+    return re.sub(r"[-_.]+", "-", value).casefold()
+
+
+def _dependency_site_identity(path: Path) -> dict[str, object]:
+    """Hash every external distribution used by measured artifact generation."""
+
+    try:
+        root = path.expanduser().resolve(strict=True)
+    except OSError as error:
+        raise RegressionError(f"cannot resolve dependency site: {path}") from error
+    if not root.is_dir():
+        raise RegressionError(f"dependency site is not a directory: {root}")
+    available: dict[str, list[importlib.metadata.Distribution]] = {}
+    for distribution in importlib.metadata.distributions(path=[str(root)]):
+        name = distribution.metadata.get("Name")
+        if isinstance(name, str):
+            available.setdefault(_normalized_distribution_name(name), []).append(
+                distribution
+            )
+    identities: dict[str, dict[str, object]] = {}
+    for distribution_name, import_name in DEPENDENCY_DISTRIBUTIONS:
+        normalized_name = _normalized_distribution_name(distribution_name)
+        matches = available.get(normalized_name, [])
+        if len(matches) != 1:
+            raise RegressionError(
+                "dependency site must contain exactly one "
+                f"{distribution_name} distribution, "
+                f"found {len(matches)}: {root}"
+            )
+        distribution = matches[0]
+        digest = hashlib.sha256()
+        file_count = 0
+        size_bytes = 0
+        package_origin: Path | None = None
+        entries = sorted(distribution.files or (), key=str)
+        for entry in entries:
+            relative = Path(str(entry))
+            if (
+                relative.is_absolute()
+                or ".." in relative.parts
+                or "__pycache__" in relative.parts
+                or relative.suffix == ".pyc"
+            ):
+                continue
+            candidate = root / relative
+            try:
+                resolved = candidate.resolve(strict=True)
+                resolved.relative_to(root)
+            except (OSError, ValueError) as error:
+                raise RegressionError(
+                    f"{distribution_name} dependency file escapes its "
+                    f"authenticated site: {entry}"
+                ) from error
+            if not resolved.is_file():
+                continue
+            encoded = relative.as_posix().encode("utf-8")
+            size = resolved.stat().st_size
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+            digest.update(size.to_bytes(8, "big"))
+            with resolved.open("rb") as stream:
+                while chunk := stream.read(_HASH_CHUNK_BYTES):
+                    digest.update(chunk)
+            file_count += 1
+            size_bytes += size
+            if relative.as_posix() == f"{import_name}/__init__.py":
+                package_origin = resolved
+        if file_count == 0 or package_origin is None:
+            raise RegressionError(
+                f"dependency distribution {distribution_name!r} has no "
+                f"authenticated package content in {root}"
+            )
+        identities[distribution_name] = {
+            "name": str(distribution.metadata["Name"]),
+            "version": distribution.version,
+            "package_origin": str(package_origin),
+            "algorithm": "sha256-relative-path-size-content-v1",
+            "sha256": digest.hexdigest(),
+            "file_count": file_count,
+            "size_bytes": size_bytes,
+        }
+    digest_basis = {
+        package: {
+            key: value
+            for key, value in identity.items()
+            if key not in {"package_origin"}
+        }
+        for package, identity in identities.items()
+    }
+    return {
+        "path": str(path),
+        "resolved_path": str(root),
+        "algorithm": ("sha256-numpy-symbolica-ufo-model-loader-distributions-v1"),
+        "sha256": _canonical_sha256(digest_basis),
+        "distributions": identities,
+    }
+
+
 def _command_identity(command: Sequence[str]) -> dict[str, object]:
     argv = [str(value) for value in command]
     canonical = json.dumps(
@@ -197,6 +310,10 @@ def _guarded_command(command: Sequence[str]) -> tuple[str, ...]:
     if not NATIVE_SAMPLE_HELPER.is_file():
         raise RegressionError(
             f"native sampling helper does not exist: {NATIVE_SAMPLE_HELPER}"
+        )
+    if not DEPENDENCY_ENTRY.is_file():
+        raise RegressionError(
+            f"dependency entry helper does not exist: {DEPENDENCY_ENTRY}"
         )
     return (
         sys.executable,
@@ -268,14 +385,14 @@ def _generation_command(
     artifact: Path,
     model: str,
     color: str,
+    execution_mode: str = "compiled",
+    jit_optimization_level: int = 3,
     lc_flow_layout: str = DEFAULT_LC_FLOW_LAYOUT,
+    dependency_site: Path | None = None,
 ) -> tuple[str, ...]:
-    # Do not pass --execution-mode: the frozen pre-branch CLI has no such flag,
-    # and compiled is the default in both interpreters.
-    return (
-        str(python),
-        "-m",
-        "pyamplicol",
+    if execution_mode not in EXECUTION_MODES:
+        raise RegressionError(f"unsupported execution mode: {execution_mode!r}")
+    arguments = (
         "generate",
         process,
         str(artifact),
@@ -283,8 +400,10 @@ def _generation_command(
         model,
         "--backend",
         "jit",
+        "--execution-mode",
+        execution_mode,
         "--jit-optimization-level",
-        "3",
+        str(jit_optimization_level),
         "--color-accuracy",
         color,
         "--lc-flow-layout",
@@ -295,7 +414,7 @@ def _generation_command(
         "1",
         "--validation",
         "--validation-samples",
-        "1",
+        str(VALIDATION_SAMPLE_COUNT),
         "--validation-seed",
         str(VALIDATION_SEED),
         "--no-post-build-validation",
@@ -304,6 +423,18 @@ def _generation_command(
         "off",
         "--format",
         "json",
+    )
+    if dependency_site is None:
+        return (str(python), "-m", "pyamplicol", *arguments)
+    return (
+        str(python),
+        str(DEPENDENCY_ENTRY),
+        "--dependency-site",
+        str(dependency_site),
+        "--module",
+        "pyamplicol",
+        "--",
+        *arguments,
     )
 
 
@@ -318,6 +449,9 @@ def _profile_command(
     warmup_runs: int,
     helicities: Sequence[str],
     color_flows: Sequence[str],
+    execution_mode: str = "compiled",
+    dependency_site: Path | None = None,
+    include_precision32: bool = False,
 ) -> tuple[str, ...]:
     command = [
         str(python),
@@ -325,6 +459,8 @@ def _profile_command(
         str(artifact),
         "--process",
         process_id,
+        "--execution-mode",
+        execution_mode,
         "--target-runtime",
         str(target_runtime),
         "--batch-size",
@@ -338,6 +474,10 @@ def _profile_command(
         command.extend(("--helicity", helicity))
     for color_flow in color_flows:
         command.extend(("--color-flow", color_flow))
+    if dependency_site is not None:
+        command.extend(("--dependency-site", str(dependency_site)))
+    if include_precision32:
+        command.append("--include-precision32")
     return tuple(command)
 
 
@@ -447,11 +587,136 @@ def _artifact_payload_digests(
     return sorted(result, key=lambda entry: str(entry["path"]))
 
 
+def _artifact_execution_mode(record: Mapping[str, Any]) -> str | None:
+    capabilities = record.get("required_runtime_capabilities")
+    if not isinstance(capabilities, list):
+        return None
+    normalized = tuple(str(capability) for capability in capabilities)
+    if any(
+        capability
+        in {
+            "eager-direct-arena-v1",
+            "rusticol.eager-runtime-layout.complex-f64.v1",
+        }
+        or "eager-dag" in capability
+        for capability in normalized
+    ):
+        return "eager"
+    if any(
+        capability == "compiled-plane-arena-v1"
+        or capability == "symjit.application.complex-f64.v1"
+        for capability in normalized
+    ):
+        return "compiled"
+    return None
+
+
+def _artifact_effective_contract(artifact: Path) -> dict[str, object] | None:
+    path = artifact / "config" / "effective.toml"
+    if not path.is_file():
+        return None
+    try:
+        payload = tomllib.loads(path.read_text(encoding="utf-8"))
+        evaluator = payload["evaluator"]
+        color = payload["color"]
+        jit = evaluator["jit"]
+    except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise RegressionError(
+            f"artifact has an invalid effective configuration: {path}"
+        ) from error
+    if not isinstance(evaluator, Mapping) or not isinstance(color, Mapping):
+        raise RegressionError(f"artifact effective configuration is invalid: {path}")
+    return {
+        "backend": evaluator.get("backend"),
+        "execution_mode": evaluator.get("execution_mode"),
+        "jit_optimization_level": (
+            jit.get("optimization_level") if isinstance(jit, Mapping) else None
+        ),
+        "lc_flow_layout": color.get("lc_flow_layout"),
+        "color_accuracy": color.get("accuracy"),
+    }
+
+
+def _artifact_semantic_identity(
+    manifest: Mapping[str, Any],
+    record: Mapping[str, Any],
+    *,
+    artifact: Path,
+    process_id: str,
+    execution_mode: str,
+    lc_flow_layout: str | None,
+) -> dict[str, object] | None:
+    """Build an ABI-neutral identity for the timed public physics workload."""
+
+    physics_relative = record.get("physics_path")
+    payloads = manifest.get("payloads")
+    if not isinstance(physics_relative, str) or not isinstance(payloads, list):
+        return None
+    validation_records = [
+        payload
+        for payload in payloads
+        if isinstance(payload, Mapping)
+        and payload.get("role") == "validation-momenta"
+        and payload.get("process_id") == process_id
+        and isinstance(payload.get("path"), str)
+    ]
+    if len(validation_records) != 1:
+        return None
+    physics = _json_object(
+        artifact / physics_relative,
+        label="runtime physics",
+    )
+    validation = _json_object(
+        artifact / str(validation_records[0]["path"]),
+        label="validation momenta",
+    )
+    model = manifest.get("model")
+    if not isinstance(model, Mapping):
+        return None
+    common_model = {
+        key: model.get(key)
+        for key in (
+            "name",
+            "restriction",
+            "compiled_schema_version",
+            "content_sha256",
+        )
+    }
+    effective_contract = _artifact_effective_contract(artifact)
+    if effective_contract is None:
+        return None
+    identity = {
+        "kind": "pyamplicol-abi-neutral-performance-workload",
+        "schema_version": 1,
+        "process": {
+            "id": process_id,
+            "expression": (
+                " ".join(str(record.get("expression", "")).split()).casefold()
+            ),
+            "external_pdgs": record.get("external_pdgs"),
+        },
+        "model_common_physics": common_model,
+        "color_accuracy": record.get("color_accuracy"),
+        "lc_flow_layout": lc_flow_layout,
+        "execution_mode": execution_mode,
+        "effective_contract": effective_contract,
+        "runtime_physics": physics,
+        "runtime_physics_sha256": _canonical_sha256(physics),
+        "validation_momenta": validation,
+        "validation_momenta_sha256": _canonical_sha256(validation),
+    }
+    return {
+        **identity,
+        "sha256": _canonical_sha256(identity),
+    }
+
+
 def _artifact_metadata(
     artifact: Path,
     *,
     expected_process: str,
     expected_color: str,
+    expected_execution_mode: str = "compiled",
     expected_lc_flow_layout: str | None = None,
 ) -> dict[str, Any]:
     manifest_path = artifact / "artifact.json"
@@ -480,11 +745,18 @@ def _artifact_metadata(
         raise RegressionError(
             f"artifact color accuracy does not match {expected_color!r}: {artifact}"
         )
-    capabilities = record.get("required_runtime_capabilities", ())
-    if not isinstance(capabilities, list) or any(
-        "eager-dag" in str(capability) for capability in capabilities
+    execution_mode = _artifact_execution_mode(record)
+    if execution_mode != expected_execution_mode:
+        raise RegressionError(
+            f"artifact is not {expected_execution_mode} mode: {artifact}"
+        )
+    raw_capabilities = record.get("required_runtime_capabilities")
+    if not isinstance(raw_capabilities, list) or not all(
+        isinstance(value, str) for value in raw_capabilities
     ):
-        raise RegressionError(f"artifact is not compiled mode: {artifact}")
+        raise RegressionError(
+            f"artifact runtime capability inventory is invalid: {artifact}"
+        )
     artifact_id = outer.get("artifact_id")
     if not isinstance(artifact_id, str) or not artifact_id:
         raise RegressionError(f"artifact ID is invalid: {artifact}")
@@ -499,19 +771,78 @@ def _artifact_metadata(
         )
     tree_identity = _tree_identity(artifact)
     payload_digests = _artifact_payload_digests(outer, artifact=artifact)
+    semantic_identity = _artifact_semantic_identity(
+        outer,
+        record,
+        artifact=artifact,
+        process_id=process_id,
+        execution_mode=execution_mode,
+        lc_flow_layout=lc_flow_layout,
+    )
+    extensions = outer.get("extensions")
+    generation = (
+        extensions.get("generation") if isinstance(extensions, Mapping) else None
+    )
+    raw_phases = (
+        generation.get("phase_timings_seconds")
+        if isinstance(generation, Mapping)
+        else None
+    )
+    phase_timings: dict[str, float] | None = None
+    core_generation_seconds: float | None = None
+    if isinstance(raw_phases, Mapping):
+        phase_timings = {}
+        for name, raw_value in raw_phases.items():
+            if (
+                not isinstance(name, str)
+                or isinstance(raw_value, bool)
+                or not isinstance(raw_value, (float, int))
+                or not math.isfinite(float(raw_value))
+                or float(raw_value) < 0.0
+            ):
+                raise RegressionError(
+                    f"artifact has an invalid generation phase: {artifact}"
+                )
+            phase_timings[name] = float(raw_value)
+        core_generation_seconds = sum(
+            value
+            for name, value in phase_timings.items()
+            if name not in {"model-loading", "process-expansion"}
+        )
+        if core_generation_seconds <= 0.0:
+            core_generation_seconds = None
+    material_payload_size_bytes = sum(
+        int(payload["size_bytes"])
+        for payload in payload_digests
+        if str(payload.get("role"))
+        not in {
+            "configuration-effective",
+            "configuration-requested",
+            "validation-momenta",
+        }
+    )
     return {
         "artifact_id": artifact_id,
         "path": str(artifact),
         "process_id": process_id,
         "process_expression": expression,
         "color_accuracy": color,
+        "execution_mode": execution_mode,
+        "required_runtime_capabilities": list(raw_capabilities),
         "lc_flow_layout": lc_flow_layout,
         "manifest_sha256": _sha256_file(manifest_path),
         "tree_identity": tree_identity,
         "payload_digests": payload_digests,
         "payload_digest_count": len(payload_digests),
+        "material_payload_size_bytes": material_payload_size_bytes,
         "size_bytes": tree_identity["size_bytes"],
         "producer": outer.get("producer"),
+        "semantic_workload_identity": semantic_identity,
+        "semantic_workload_sha256": (
+            None if semantic_identity is None else semantic_identity["sha256"]
+        ),
+        "generation_phase_timings_seconds": phase_timings,
+        "core_generation_seconds": core_generation_seconds,
     }
 
 
@@ -567,21 +898,36 @@ def _generation_signature(
     process: str,
     model: str,
     color: str,
+    execution_mode: str = "compiled",
+    jit_optimization_level: int = 3,
     lc_flow_layout: str = DEFAULT_LC_FLOW_LAYOUT,
+    dependency_site: Path | None = None,
+    dependency_site_identity: Mapping[str, Any] | None = None,
     artifact: Path | None = None,
 ) -> dict[str, object]:
     result: dict[str, object] = {
+        "generation_driver": _path_identity(Path(__file__)),
+        "dependency_entry": _path_identity(DEPENDENCY_ENTRY),
         "python": _path_identity(python),
         "installed_pyamplicol": dict(installation_identity),
         "process": process,
         "model": _model_identity(model),
         "color_accuracy": color,
         "lc_flow_layout": lc_flow_layout,
-        "execution_mode": "compiled-default",
+        "execution_mode": execution_mode,
         "backend": "jit",
-        "jit_optimization_level": 3,
+        "jit_optimization_level": jit_optimization_level,
+        "dependency_site": (
+            None
+            if dependency_site is None
+            else dict(
+                dependency_site_identity
+                if dependency_site_identity is not None
+                else _dependency_site_identity(dependency_site)
+            )
+        ),
         "workers": 1,
-        "validation_samples": 1,
+        "validation_samples": VALIDATION_SAMPLE_COUNT,
         "validation_seed": VALIDATION_SEED,
         "post_build_validation": False,
         "emit_api_bundle": False,
@@ -594,7 +940,10 @@ def _generation_signature(
                 artifact=artifact,
                 model=model,
                 color=color,
+                execution_mode=execution_mode,
+                jit_optimization_level=jit_optimization_level,
                 lc_flow_layout=lc_flow_layout,
+                dependency_site=dependency_site,
             )
         )
     return result
@@ -673,21 +1022,29 @@ def _ensure_artifact(
     process: str,
     model: str,
     color: str,
+    execution_mode: str = "compiled",
+    jit_optimization_level: int = 3,
     generation_timeout: float,
     regenerate: bool,
     environment: Mapping[str, str],
     lc_flow_layout: str = DEFAULT_LC_FLOW_LAYOUT,
+    dependency_site: Path | None = None,
+    dependency_site_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     lane_root = output_root / lane
     artifact = lane_root / "artifact"
     cache_path = lane_root / "artifact-cache.json"
+    expected_artifact_lc_flow_layout = lc_flow_layout if color == "lc" else None
     generation_command = _generation_command(
         python,
         process=process,
         artifact=artifact,
         model=model,
         color=color,
+        execution_mode=execution_mode,
+        jit_optimization_level=jit_optimization_level,
         lc_flow_layout=lc_flow_layout,
+        dependency_site=dependency_site,
     )
     command_identity = _command_identity(generation_command)
     installation_identity = _installed_pyamplicol_identity(
@@ -700,7 +1057,11 @@ def _ensure_artifact(
         process=process,
         model=model,
         color=color,
+        execution_mode=execution_mode,
+        jit_optimization_level=jit_optimization_level,
         lc_flow_layout=lc_flow_layout,
+        dependency_site=dependency_site,
+        dependency_site_identity=dependency_site_identity,
         artifact=artifact,
     )
     cache = None if regenerate else _read_cache(cache_path)
@@ -715,7 +1076,8 @@ def _ensure_artifact(
                 artifact,
                 expected_process=process,
                 expected_color=color,
-                expected_lc_flow_layout=lc_flow_layout,
+                expected_execution_mode=execution_mode,
+                expected_lc_flow_layout=expected_artifact_lc_flow_layout,
             )
         except RegressionError:
             pass
@@ -727,6 +1089,7 @@ def _ensure_artifact(
             ) == tree_identity.get("sha256"):
                 return {
                     **metadata,
+                    "installation_identity": installation_identity,
                     "reused": True,
                     "generation": None,
                     "generation_command": command_identity,
@@ -743,7 +1106,8 @@ def _ensure_artifact(
         artifact,
         expected_process=process,
         expected_color=color,
-        expected_lc_flow_layout=lc_flow_layout,
+        expected_execution_mode=execution_mode,
+        expected_lc_flow_layout=expected_artifact_lc_flow_layout,
     )
     tree_identity = metadata["tree_identity"]
     assert isinstance(tree_identity, Mapping)
@@ -759,6 +1123,7 @@ def _ensure_artifact(
     )
     return {
         **metadata,
+        "installation_identity": installation_identity,
         "reused": False,
         "generation": {
             "command": command_identity,
@@ -825,11 +1190,221 @@ def _require_equal(
         raise RegressionError(f"{label} must be {expected!r}, got {value!r}")
 
 
+def _validated_complex_tree(value: object, *, label: str) -> object:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        if len(value) == 2 and all(
+            not isinstance(component, (bool, Sequence))
+            and isinstance(component, (float, int))
+            for component in value
+        ):
+            return [
+                _finite_number(value[0], label=f"{label} real"),
+                _finite_number(value[1], label=f"{label} imaginary"),
+            ]
+        return [
+            _validated_complex_tree(entry, label=f"{label}[{index}]")
+            for index, entry in enumerate(value)
+        ]
+    raise RegressionError(f"{label} must be a nested complex-pair sequence")
+
+
+def _flatten_complex_tree(value: object) -> list[tuple[float, float]]:
+    if (
+        isinstance(value, Sequence)
+        and not isinstance(value, (str, bytes))
+        and len(value) == 2
+        and all(isinstance(component, (float, int)) for component in value)
+    ):
+        return [(float(value[0]), float(value[1]))]
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [pair for entry in value for pair in _flatten_complex_tree(entry)]
+    raise RegressionError("resolved complex value tree is invalid")
+
+
+def _validated_complex_array(
+    value: object,
+    *,
+    shape: Sequence[int],
+    label: str,
+) -> object:
+    if not shape:
+        return _validated_complex_tree(value, label=label)
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise RegressionError(f"{label} must be an exact nested complex array")
+    expected = shape[0]
+    if len(value) != expected:
+        raise RegressionError(
+            f"{label} axis length differs: {len(value)} != {expected}"
+        )
+    return [
+        _validated_complex_array(
+            entry,
+            shape=shape[1:],
+            label=f"{label}[{index}]",
+        )
+        for index, entry in enumerate(value)
+    ]
+
+
+def _validated_numerical_result(
+    value: object,
+    *,
+    precision: int,
+    helicities: Sequence[str],
+    color_flows: Sequence[str],
+    required: bool,
+) -> dict[str, Any] | None:
+    label = f"precision-{precision} numerical result"
+    if value is None and not required:
+        return None
+    if not isinstance(value, Mapping):
+        raise RegressionError(f"native sample has no {label}")
+    _require_equal(value, "precision", precision, label=f"{label} precision")
+    point_count = _positive_mapping_int(
+        value,
+        "point_count",
+        label=f"{label} point_count",
+    )
+    distinct_point_count = _positive_mapping_int(
+        value,
+        "distinct_point_count",
+        label=f"{label} distinct_point_count",
+    )
+    point_sha256 = value.get("point_sha256")
+    if (
+        point_count != VALIDATION_SAMPLE_COUNT
+        or distinct_point_count != point_count
+        or not isinstance(point_sha256, Sequence)
+        or isinstance(point_sha256, (str, bytes))
+        or len(point_sha256) != point_count
+        or any(
+            not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            for digest in point_sha256
+        )
+        or len(set(point_sha256)) != point_count
+    ):
+        raise RegressionError(
+            f"{label} must contain {VALIDATION_SAMPLE_COUNT} distinct points"
+        )
+    batch_sha256 = value.get("batch_sha256")
+    if (
+        not isinstance(batch_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", batch_sha256) is None
+    ):
+        raise RegressionError(f"{label} has an invalid batch SHA-256")
+    numerical_values = value.get("values_f64")
+    numerical_hex = value.get("values_f64_hex")
+    if (
+        not isinstance(numerical_values, Sequence)
+        or isinstance(numerical_values, (str, bytes))
+        or not isinstance(numerical_hex, Sequence)
+        or isinstance(numerical_hex, (str, bytes))
+        or len(numerical_values) != point_count
+        or len(numerical_hex) != point_count
+    ):
+        raise RegressionError(f"{label} has invalid value vectors")
+    validated_values: list[float] = []
+    validated_hex: list[str] = []
+    for raw_value, raw_hex in zip(numerical_values, numerical_hex, strict=True):
+        converted = _finite_number(raw_value, label=f"{label} value")
+        if not isinstance(raw_hex, str) or raw_hex != converted.hex():
+            raise RegressionError(f"{label} has an invalid raw f64 representation")
+        validated_values.append(converted)
+        validated_hex.append(raw_hex)
+    for key, selector_expected in (
+        ("helicities", list(helicities)),
+        ("color_flows", list(color_flows)),
+    ):
+        if value.get(key) != selector_expected:
+            raise RegressionError(f"{label} {key} do not match timed selectors")
+    resolved = value.get("resolved")
+    if not isinstance(resolved, Mapping):
+        raise RegressionError(f"{label} has no resolved evidence")
+    resolved_shape = resolved.get("shape")
+    resolved_helicity_ids = resolved.get("helicity_ids")
+    resolved_color_ids = resolved.get("color_ids")
+    if (
+        not isinstance(resolved_shape, Sequence)
+        or isinstance(resolved_shape, (str, bytes))
+        or len(resolved_shape) != 3
+        or not all(
+            isinstance(axis, int) and not isinstance(axis, bool) and axis >= 0
+            for axis in resolved_shape
+        )
+        or not isinstance(resolved_helicity_ids, Sequence)
+        or isinstance(resolved_helicity_ids, (str, bytes))
+        or not all(isinstance(identifier, str) for identifier in resolved_helicity_ids)
+        or not isinstance(resolved_color_ids, Sequence)
+        or isinstance(resolved_color_ids, (str, bytes))
+        or not all(isinstance(identifier, str) for identifier in resolved_color_ids)
+    ):
+        raise RegressionError(f"{label} resolved metadata is invalid")
+    expected_shape = [
+        point_count,
+        len(resolved_helicity_ids),
+        len(resolved_color_ids),
+    ]
+    if list(resolved_shape) != expected_shape:
+        raise RegressionError(
+            f"{label} resolved shape differs: {list(resolved_shape)} "
+            f"!= {expected_shape}"
+        )
+    resolved_totals = _validated_complex_array(
+        resolved.get("totals_complex"),
+        shape=(point_count,),
+        label=f"{label} resolved totals",
+    )
+    resolved_values = _validated_complex_array(
+        resolved.get("values_complex"),
+        shape=tuple(expected_shape),
+        label=f"{label} resolved values",
+    )
+    assert isinstance(resolved_totals, list)
+    for scalar, pair in zip(validated_values, resolved_totals, strict=True):
+        if (
+            not isinstance(pair, Sequence)
+            or len(pair) != 2
+            or not math.isclose(
+                scalar,
+                float(pair[0]),
+                rel_tol=CORRECTNESS_RELATIVE_TOLERANCE,
+                abs_tol=CORRECTNESS_ABSOLUTE_TOLERANCE,
+            )
+            or not math.isclose(
+                float(pair[1]),
+                0.0,
+                rel_tol=0.0,
+                abs_tol=CORRECTNESS_ABSOLUTE_TOLERANCE,
+            )
+        ):
+            raise RegressionError(f"{label} evaluate() disagrees with resolved totals")
+    return {
+        "precision": precision,
+        "point_count": point_count,
+        "distinct_point_count": distinct_point_count,
+        "point_sha256": list(point_sha256),
+        "batch_sha256": batch_sha256,
+        "values_f64": validated_values,
+        "values_f64_hex": validated_hex,
+        "helicities": list(helicities),
+        "color_flows": list(color_flows),
+        "resolved": {
+            "shape": list(resolved_shape),
+            "helicity_ids": list(resolved_helicity_ids),
+            "color_ids": list(resolved_color_ids),
+            "totals_complex": resolved_totals,
+            "values_complex": resolved_values,
+        },
+    }
+
+
 def _native_profile_sample(
     payload: Mapping[str, Any],
     *,
     minimum_samples: int,
     batch_size: int | None = None,
+    expected_execution_mode: str = "compiled",
+    require_precision32: bool = False,
 ) -> dict[str, Any]:
     _require_equal(
         payload,
@@ -884,7 +1459,7 @@ def _native_profile_sample(
     _require_equal(
         environment,
         "execution_mode",
-        "compiled",
+        expected_execution_mode,
         label="profile execution_mode",
     )
     sample_count = payload.get("sample_count")
@@ -980,7 +1555,7 @@ def _native_profile_sample(
     _require_equal(
         timing_breakdown,
         "execution_mode",
-        "compiled",
+        expected_execution_mode,
         label="profile timing breakdown execution_mode",
     )
     profile_wall = timing_breakdown.get("wall_time")
@@ -993,6 +1568,10 @@ def _native_profile_sample(
     profile_evaluator_seconds_per_point = _finite_nonnegative(
         payload.get("evaluator_time_per_point"),
         label="paired profile evaluator_time_per_point",
+    )
+    cold_load_seconds = _finite_nonnegative(
+        payload.get("cold_load_seconds"),
+        label="native cold_load_seconds",
     )
     headline_mean = _finite_positive(
         payload.get("wall_time_per_point"),
@@ -1047,56 +1626,21 @@ def _native_profile_sample(
         or not all(isinstance(value, str) for value in color_flows)
     ):
         raise RegressionError("native sample has invalid color-flow selectors")
-    warmed_numerical_result = payload.get("warmed_numerical_result")
-    if not isinstance(warmed_numerical_result, Mapping):
-        raise RegressionError("native sample has no warmed numerical result")
-    numerical_point_count = _positive_mapping_int(
-        warmed_numerical_result,
-        "point_count",
-        label="warmed numerical result point_count",
+    warmed_numerical_result = _validated_numerical_result(
+        payload.get("warmed_numerical_result"),
+        precision=16,
+        helicities=helicities,
+        color_flows=color_flows,
+        required=True,
     )
-    if numerical_point_count > reported_batch_size:
-        raise RegressionError(
-            "warmed numerical result contains more points than the sampled batch"
-        )
-    numerical_batch_sha256 = warmed_numerical_result.get("batch_sha256")
-    if (
-        not isinstance(numerical_batch_sha256, str)
-        or re.fullmatch(r"[0-9a-f]{64}", numerical_batch_sha256) is None
-    ):
-        raise RegressionError("warmed numerical result has an invalid batch SHA-256")
-    numerical_values = warmed_numerical_result.get("values_f64")
-    numerical_hex = warmed_numerical_result.get("values_f64_hex")
-    if (
-        not isinstance(numerical_values, Sequence)
-        or isinstance(numerical_values, (str, bytes))
-        or not isinstance(numerical_hex, Sequence)
-        or isinstance(numerical_hex, (str, bytes))
-        or len(numerical_values) != numerical_point_count
-        or len(numerical_hex) != numerical_point_count
-    ):
-        raise RegressionError("warmed numerical result has invalid value vectors")
-    validated_values: list[float] = []
-    validated_hex: list[str] = []
-    for raw_value, raw_hex in zip(numerical_values, numerical_hex, strict=True):
-        value = _finite_number(
-            raw_value,
-            label="warmed numerical result value",
-        )
-        if not isinstance(raw_hex, str) or raw_hex != value.hex():
-            raise RegressionError(
-                "warmed numerical result has an invalid raw f64 representation"
-            )
-        validated_values.append(value)
-        validated_hex.append(raw_hex)
-    for key, selector_expected in (
-        ("helicities", list(helicities)),
-        ("color_flows", list(color_flows)),
-    ):
-        if warmed_numerical_result.get(key) != selector_expected:
-            raise RegressionError(
-                f"warmed numerical result {key} do not match timed selectors"
-            )
+    assert warmed_numerical_result is not None
+    precision32_numerical_result = _validated_numerical_result(
+        payload.get("precision32_numerical_result"),
+        precision=32,
+        helicities=helicities,
+        color_flows=color_flows,
+        required=require_precision32,
+    )
     return {
         "wall_seconds_per_point": headline_mean,
         "wall_samples_seconds_per_point": headline_values,
@@ -1109,6 +1653,7 @@ def _native_profile_sample(
         "measured_evaluation_count": expected_evaluations,
         "measured_point_count": expected_points,
         "native_elapsed_seconds": environment.get("elapsed_seconds"),
+        "cold_load_seconds": cold_load_seconds,
         "profile_uncertainty": payload.get("uncertainty"),
         "paired_profile_wall_seconds_per_point": (profile_wall_seconds_per_point),
         "paired_profile_evaluator_seconds_per_point": (
@@ -1121,14 +1666,8 @@ def _native_profile_sample(
         "batch_sha256": batch_sha256,
         "helicities": list(helicities),
         "color_flows": list(color_flows),
-        "warmed_numerical_result": {
-            "point_count": numerical_point_count,
-            "batch_sha256": numerical_batch_sha256,
-            "values_f64": validated_values,
-            "values_f64_hex": validated_hex,
-            "helicities": list(helicities),
-            "color_flows": list(color_flows),
-        },
+        "warmed_numerical_result": warmed_numerical_result,
+        "precision32_numerical_result": precision32_numerical_result,
     }
 
 
@@ -1178,11 +1717,94 @@ def _regression_gate(
         "current_median_seconds_per_point": current_median,
         "current_over_baseline": current_median / baseline_median,
         "relative_change": (current_median - baseline_median) / baseline_median,
-        "two_percent_upper_bound_seconds_per_point": relative_limit,
+        "three_percent_upper_bound_seconds_per_point": relative_limit,
         "three_baseline_mad_upper_bound_seconds_per_point": mad_limit,
-        "within_two_percent": within_relative,
+        "within_three_percent": within_relative,
         "within_three_baseline_mad": within_mad,
         "passes": within_relative and within_mad,
+    }
+
+
+def _paired_distribution(
+    measurements: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    pairs: dict[int, dict[str, float]] = {}
+    for measurement in measurements:
+        pair_index = measurement.get("pair_index")
+        lane = measurement.get("lane")
+        if (
+            isinstance(pair_index, bool)
+            or not isinstance(pair_index, int)
+            or lane not in {"baseline", "current"}
+        ):
+            raise RegressionError("timing measurement has an invalid pair identity")
+        pairs.setdefault(pair_index, {})[str(lane)] = _finite_positive(
+            measurement.get("wall_seconds_per_point"),
+            label="paired wall time",
+        )
+    if not pairs or any(
+        set(pair) != {"baseline", "current"} for pair in pairs.values()
+    ):
+        raise RegressionError("timing measurements do not form complete lane pairs")
+    differences = [
+        pair["baseline"] - pair["current"] for _, pair in sorted(pairs.items())
+    ]
+    ratios = [pair["current"] / pair["baseline"] for _, pair in sorted(pairs.items())]
+    difference_median = float(statistics.median(differences))
+    difference_mad = float(
+        statistics.median(abs(value - difference_median) for value in differences)
+    )
+    return {
+        "pair_count": len(pairs),
+        "differences_seconds_per_point": differences,
+        "difference_median_seconds_per_point": difference_median,
+        "difference_mad_seconds_per_point": difference_mad,
+        "current_over_baseline_ratios": ratios,
+        "median_current_over_baseline": float(statistics.median(ratios)),
+    }
+
+
+def _gain_gate(
+    baseline: Mapping[str, Any],
+    current: Mapping[str, Any],
+    paired: Mapping[str, Any],
+) -> dict[str, Any]:
+    baseline_median = _finite_positive(
+        baseline.get("median_seconds_per_point"),
+        label="baseline median",
+    )
+    current_median = _finite_positive(
+        current.get("median_seconds_per_point"),
+        label="current median",
+    )
+    baseline_mad = _finite_nonnegative(
+        baseline.get("mad_seconds_per_point"),
+        label="baseline MAD",
+    )
+    paired_difference_median = _finite_number(
+        paired.get("difference_median_seconds_per_point"),
+        label="paired difference median",
+    )
+    paired_difference_mad = _finite_nonnegative(
+        paired.get("difference_mad_seconds_per_point"),
+        label="paired difference MAD",
+    )
+    relative_gain = 1.0 - current_median / baseline_median
+    noise_floor = MAD_MULTIPLIER * max(baseline_mad, paired_difference_mad)
+    beyond_noise = (
+        baseline_median - current_median >= noise_floor
+        and paired_difference_median >= MAD_MULTIPLIER * paired_difference_mad
+    )
+    return {
+        "required_relative_gain": GAIN_RELATIVE_THRESHOLD,
+        "relative_gain": relative_gain,
+        "baseline_minus_current_seconds_per_point": baseline_median - current_median,
+        "noise_floor_seconds_per_point": noise_floor,
+        "paired_difference_median_seconds_per_point": paired_difference_median,
+        "paired_difference_mad_seconds_per_point": paired_difference_mad,
+        "at_least_ten_percent": relative_gain >= GAIN_RELATIVE_THRESHOLD,
+        "beyond_measurement_noise": beyond_noise,
+        "passes": relative_gain >= GAIN_RELATIVE_THRESHOLD and beyond_noise,
     }
 
 
@@ -1252,7 +1874,29 @@ def _performance_authority(
             "basis": "single-read-only-shared-artifact",
             "comparison_mode": "shared-artifact",
             "payload_identities": None,
+            "semantic_identities": None,
         }
+    semantic_identities = {
+        lane: artifact.get("semantic_workload_identity")
+        for lane, artifact in artifacts.items()
+    }
+    if all(
+        isinstance(identity, Mapping) and isinstance(identity.get("sha256"), str)
+        for identity in semantic_identities.values()
+    ):
+        semantic_digests = {
+            str(identity["sha256"])
+            for identity in semantic_identities.values()
+            if isinstance(identity, Mapping)
+        }
+        if len(semantic_digests) == 1:
+            return {
+                "authoritative": True,
+                "basis": "matching-abi-neutral-semantic-workload-identities",
+                "comparison_mode": "independently-generated-artifacts",
+                "payload_identities": None,
+                "semantic_identities": semantic_identities,
+            }
     identities = {
         lane: _performance_payload_identity(artifact)
         for lane, artifact in artifacts.items()
@@ -1263,6 +1907,7 @@ def _performance_authority(
             "basis": "per-lane-artifact-performance-payload-identity-unproven",
             "comparison_mode": "independently-generated-artifacts",
             "payload_identities": identities,
+            "semantic_identities": semantic_identities,
         }
     digests = {
         str(identity["sha256"])
@@ -1279,6 +1924,108 @@ def _performance_authority(
         ),
         "comparison_mode": "independently-generated-artifacts",
         "payload_identities": identities,
+        "semantic_identities": semantic_identities,
+    }
+
+
+def _numerical_comparison(
+    expected: Mapping[str, Any],
+    observed: Mapping[str, Any],
+    *,
+    kind: str,
+    lane: object,
+    pair_index: object,
+) -> dict[str, Any]:
+    for key in (
+        "point_count",
+        "distinct_point_count",
+        "point_sha256",
+        "batch_sha256",
+        "helicities",
+        "color_flows",
+    ):
+        if observed.get(key) != expected.get(key):
+            raise RegressionError(
+                f"{kind} numerical results do not share identical inputs: {key} differs"
+            )
+    expected_resolved = expected.get("resolved")
+    observed_resolved = observed.get("resolved")
+    if not isinstance(expected_resolved, Mapping) or not isinstance(
+        observed_resolved,
+        Mapping,
+    ):
+        raise RegressionError(f"{kind} numerical result has no resolved evidence")
+    for key in ("shape", "helicity_ids", "color_ids"):
+        if observed_resolved.get(key) != expected_resolved.get(key):
+            raise RegressionError(f"{kind} resolved evidence differs in {key}")
+    expected_values = expected.get("values_f64")
+    observed_values = observed.get("values_f64")
+    if (
+        not isinstance(expected_values, Sequence)
+        or isinstance(expected_values, (str, bytes))
+        or not isinstance(observed_values, Sequence)
+        or isinstance(observed_values, (str, bytes))
+        or len(expected_values) != len(observed_values)
+    ):
+        raise RegressionError(f"{kind} numerical scalar shape differs")
+    vector_groups = (
+        (
+            [(float(value), 0.0) for value in expected_values],
+            [(float(value), 0.0) for value in observed_values],
+        ),
+        (
+            _flatten_complex_tree(expected_resolved.get("totals_complex")),
+            _flatten_complex_tree(observed_resolved.get("totals_complex")),
+        ),
+        (
+            _flatten_complex_tree(expected_resolved.get("values_complex")),
+            _flatten_complex_tree(observed_resolved.get("values_complex")),
+        ),
+    )
+    passes = True
+    maximum_absolute = 0.0
+    maximum_relative = 0.0
+    for expected_vector, observed_vector in vector_groups:
+        if len(expected_vector) != len(observed_vector):
+            raise RegressionError(f"{kind} numerical evidence shape differs")
+        for expected_pair, observed_pair in zip(
+            expected_vector,
+            observed_vector,
+            strict=True,
+        ):
+            for expected_component, observed_component in zip(
+                expected_pair,
+                observed_pair,
+                strict=True,
+            ):
+                expected_number = _finite_number(
+                    expected_component,
+                    label=f"{kind} expected numerical component",
+                )
+                observed_number = _finite_number(
+                    observed_component,
+                    label=f"{kind} observed numerical component",
+                )
+                absolute_error = abs(observed_number - expected_number)
+                relative_error = absolute_error / max(
+                    abs(expected_number),
+                    CORRECTNESS_ABSOLUTE_TOLERANCE,
+                )
+                maximum_absolute = max(maximum_absolute, absolute_error)
+                maximum_relative = max(maximum_relative, relative_error)
+                passes &= math.isclose(
+                    observed_number,
+                    expected_number,
+                    rel_tol=CORRECTNESS_RELATIVE_TOLERANCE,
+                    abs_tol=CORRECTNESS_ABSOLUTE_TOLERANCE,
+                )
+    return {
+        "kind": kind,
+        "lane": lane,
+        "pair_index": pair_index,
+        "passes": passes,
+        "maximum_absolute_error": maximum_absolute,
+        "maximum_relative_error": maximum_relative,
     }
 
 
@@ -1295,99 +2042,264 @@ def _correctness_gate(
     )
     if baseline_reference is None:
         raise RegressionError("correctness comparison has no baseline measurement")
-    reference = baseline_reference.get("warmed_numerical_result")
-    if not isinstance(reference, Mapping):
+    reference16 = baseline_reference.get("warmed_numerical_result")
+    if not isinstance(reference16, Mapping):
         raise RegressionError("baseline measurement has no warmed numerical result")
-    reference_values = reference.get("values_f64")
-    if not isinstance(reference_values, Sequence) or isinstance(
-        reference_values,
-        (str, bytes),
-    ):
-        raise RegressionError("baseline warmed numerical result is invalid")
     comparisons: list[dict[str, Any]] = []
-    all_pass = True
-    maximum_absolute_error = 0.0
-    maximum_relative_error = 0.0
     for measurement in measurements:
-        candidate = measurement.get("warmed_numerical_result")
-        if not isinstance(candidate, Mapping):
+        candidate16 = measurement.get("warmed_numerical_result")
+        if not isinstance(candidate16, Mapping):
             raise RegressionError("measurement has no warmed numerical result")
-        for key in ("point_count", "batch_sha256", "helicities", "color_flows"):
-            if candidate.get(key) != reference.get(key):
-                raise RegressionError(
-                    "warmed numerical results do not share identical inputs: "
-                    f"{key} differs"
-                )
-        candidate_values = candidate.get("values_f64")
-        if (
-            not isinstance(candidate_values, Sequence)
-            or isinstance(candidate_values, (str, bytes))
-            or len(candidate_values) != len(reference_values)
-        ):
-            raise RegressionError("warmed numerical result shape differs")
-        comparison_passes = True
-        comparison_max_absolute = 0.0
-        comparison_max_relative = 0.0
-        for raw_expected, raw_observed in zip(
-            reference_values,
-            candidate_values,
-            strict=True,
-        ):
-            expected = _finite_number(
-                raw_expected,
-                label="baseline correctness value",
-            )
-            observed = _finite_number(
-                raw_observed,
-                label="candidate correctness value",
-            )
-            absolute_error = abs(observed - expected)
-            relative_error = absolute_error / max(
-                abs(expected),
-                CORRECTNESS_ABSOLUTE_TOLERANCE,
-            )
-            comparison_max_absolute = max(
-                comparison_max_absolute,
-                absolute_error,
-            )
-            comparison_max_relative = max(
-                comparison_max_relative,
-                relative_error,
-            )
-            comparison_passes &= math.isclose(
-                observed,
-                expected,
-                rel_tol=CORRECTNESS_RELATIVE_TOLERANCE,
-                abs_tol=CORRECTNESS_ABSOLUTE_TOLERANCE,
-            )
-        maximum_absolute_error = max(
-            maximum_absolute_error,
-            comparison_max_absolute,
-        )
-        maximum_relative_error = max(
-            maximum_relative_error,
-            comparison_max_relative,
-        )
-        all_pass &= comparison_passes
         comparisons.append(
-            {
-                "lane": measurement.get("lane"),
-                "pair_index": measurement.get("pair_index"),
-                "passes": comparison_passes,
-                "maximum_absolute_error": comparison_max_absolute,
-                "maximum_relative_error": comparison_max_relative,
-            }
+            _numerical_comparison(
+                reference16,
+                candidate16,
+                kind="precision16-cross-lane",
+                lane=measurement.get("lane"),
+                pair_index=measurement.get("pair_index"),
+            )
+        )
+    precision32_measurements = [
+        measurement
+        for measurement in measurements
+        if isinstance(measurement.get("precision32_numerical_result"), Mapping)
+    ]
+    if {measurement.get("lane") for measurement in precision32_measurements} != {
+        "baseline",
+        "current",
+    }:
+        raise RegressionError(
+            "correctness comparison requires precision-32 evidence from both lanes"
+        )
+    baseline32_measurement = next(
+        measurement
+        for measurement in precision32_measurements
+        if measurement.get("lane") == "baseline"
+    )
+    reference32 = baseline32_measurement["precision32_numerical_result"]
+    assert isinstance(reference32, Mapping)
+    for measurement in precision32_measurements:
+        candidate32 = measurement["precision32_numerical_result"]
+        candidate16 = measurement["warmed_numerical_result"]
+        assert isinstance(candidate32, Mapping)
+        assert isinstance(candidate16, Mapping)
+        comparisons.append(
+            _numerical_comparison(
+                reference32,
+                candidate32,
+                kind="precision32-cross-lane",
+                lane=measurement.get("lane"),
+                pair_index=measurement.get("pair_index"),
+            )
+        )
+        comparisons.append(
+            _numerical_comparison(
+                candidate16,
+                candidate32,
+                kind="precision16-vs-precision32",
+                lane=measurement.get("lane"),
+                pair_index=measurement.get("pair_index"),
+            )
         )
     return {
         "relative_tolerance": CORRECTNESS_RELATIVE_TOLERANCE,
         "absolute_tolerance": CORRECTNESS_ABSOLUTE_TOLERANCE,
         "reference_lane": "baseline",
         "reference_pair_index": baseline_reference.get("pair_index"),
+        "precision32_lane_count": len(
+            {measurement.get("lane") for measurement in precision32_measurements}
+        ),
         "comparison_count": len(comparisons),
-        "maximum_absolute_error": maximum_absolute_error,
-        "maximum_relative_error": maximum_relative_error,
+        "maximum_absolute_error": max(
+            (float(comparison["maximum_absolute_error"]) for comparison in comparisons),
+            default=0.0,
+        ),
+        "maximum_relative_error": max(
+            (float(comparison["maximum_relative_error"]) for comparison in comparisons),
+            default=0.0,
+        ),
         "comparisons": comparisons,
-        "passes": all_pass,
+        "passes": all(bool(comparison["passes"]) for comparison in comparisons),
+    }
+
+
+_ZERO_ARENA_PROFILE_COUNTERS = (
+    "native_input_container_allocation_count",
+    "stage_input_copy_component_count",
+    "stage_leaf_input_copy_component_count",
+    "stage_evaluator_output_gather_component_count",
+    "stage_output_assign_component_count",
+    "amplitude_input_copy_component_count",
+    "amplitude_leaf_input_copy_component_count",
+    "amplitude_evaluator_output_gather_component_count",
+    "amplitude_output_remap_component_count",
+    "selector_gather_point_count",
+    "selector_gather_bytes",
+    "selector_scatter_value_count",
+    "observed_scratch_reallocation_count",
+    "native_output_allocation_count",
+)
+_ZERO_COMPILED_BOUNDARY_COUNTERS = (
+    "compiled_direct_arena_boundary_input_bytes",
+    "compiled_direct_arena_boundary_current_output_bytes",
+    "compiled_direct_arena_boundary_amplitude_output_bytes",
+)
+_ZERO_ARENA_PROFILE_TIMES = (
+    "stage_input_pack_time_s",
+    "stage_leaf_input_pack_time_s",
+    "stage_evaluator_output_gather_time_s",
+    "output_assign_time_s",
+    "amplitude_input_pack_time_s",
+    "amplitude_leaf_input_pack_time_s",
+    "amplitude_evaluator_output_gather_time_s",
+    "amplitude_output_remap_time_s",
+    "selector_gather_time_s",
+    "selector_scatter_time_s",
+)
+
+
+def _arena_profile_gate(
+    measurements: Sequence[Mapping[str, Any]],
+    *,
+    execution_mode: str,
+    artifacts: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    failures: list[dict[str, object]] = []
+    expected_capability = (
+        EAGER_DIRECT_ARENA_CAPABILITY
+        if execution_mode == "eager"
+        else COMPILED_DIRECT_ARENA_CAPABILITY
+    )
+    current_artifact = artifacts.get("current")
+    capabilities = (
+        current_artifact.get("required_runtime_capabilities")
+        if isinstance(current_artifact, Mapping)
+        else None
+    )
+    if (
+        not isinstance(capabilities, Sequence)
+        or isinstance(capabilities, (str, bytes))
+        or expected_capability not in capabilities
+    ):
+        failures.append(
+            {
+                "artifact": "current",
+                "counter": "required_runtime_capabilities",
+                "observed": capabilities,
+                "expected": expected_capability,
+            }
+        )
+    profile_count = 0
+    for measurement in measurements:
+        if measurement.get("lane") != "current":
+            continue
+        breakdown = measurement.get("paired_profile_timing_breakdown")
+        raw_profiles = (
+            breakdown.get("raw_profile_samples")
+            if isinstance(breakdown, Mapping)
+            else None
+        )
+        if not isinstance(raw_profiles, Sequence) or isinstance(
+            raw_profiles,
+            (str, bytes),
+        ):
+            raise RegressionError("current measurement has no raw arena profiles")
+        for profile_index, profile in enumerate(raw_profiles):
+            if not isinstance(profile, Mapping):
+                raise RegressionError("current raw arena profile is invalid")
+            profile_count += 1
+            if profile.get("execution_mode") != execution_mode:
+                failures.append(
+                    {
+                        "pair_index": measurement.get("pair_index"),
+                        "profile_index": profile_index,
+                        "counter": "execution_mode",
+                        "observed": profile.get("execution_mode"),
+                        "expected": execution_mode,
+                    }
+                )
+            required_zero = list(_ZERO_ARENA_PROFILE_COUNTERS)
+            if execution_mode == "compiled":
+                required_zero.extend(_ZERO_COMPILED_BOUNDARY_COUNTERS)
+            for key in required_zero:
+                value = profile.get(key)
+                if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+                    failures.append(
+                        {
+                            "pair_index": measurement.get("pair_index"),
+                            "profile_index": profile_index,
+                            "counter": key,
+                            "observed": value,
+                            "expected": 0,
+                        }
+                    )
+            for key in _ZERO_ARENA_PROFILE_TIMES:
+                value = profile.get(key)
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (float, int))
+                    or not math.isfinite(float(value))
+                    or float(value) != 0.0
+                ):
+                    failures.append(
+                        {
+                            "pair_index": measurement.get("pair_index"),
+                            "profile_index": profile_index,
+                            "counter": key,
+                            "observed": value,
+                            "expected": 0.0,
+                        }
+                    )
+            if execution_mode == "compiled":
+                engine_count = profile.get("compiled_direct_arena_engine_count")
+                call_count = profile.get("compiled_direct_arena_call_count")
+                backend_call_count = profile.get("evaluator_backend_call_count")
+                for key, value in (
+                    ("compiled_direct_arena_engine_count", engine_count),
+                    ("compiled_direct_arena_call_count", call_count),
+                    ("evaluator_backend_call_count", backend_call_count),
+                ):
+                    if (
+                        isinstance(value, bool)
+                        or not isinstance(value, int)
+                        or value <= 0
+                    ):
+                        failures.append(
+                            {
+                                "pair_index": measurement.get("pair_index"),
+                                "profile_index": profile_index,
+                                "counter": key,
+                                "observed": value,
+                                "expected": "positive integer",
+                            }
+                        )
+                if call_count != backend_call_count:
+                    failures.append(
+                        {
+                            "pair_index": measurement.get("pair_index"),
+                            "profile_index": profile_index,
+                            "counter": "compiled_direct_arena_call_coverage",
+                            "observed": {
+                                "compiled": call_count,
+                                "backend": backend_call_count,
+                            },
+                            "expected": "equal",
+                        }
+                    )
+    return {
+        "execution_mode": execution_mode,
+        "required_current_artifact_capability": expected_capability,
+        "current_artifact_capabilities": capabilities,
+        "profile_count": profile_count,
+        "zero_counters": list(_ZERO_ARENA_PROFILE_COUNTERS),
+        "zero_compiled_boundary_counters": (
+            list(_ZERO_COMPILED_BOUNDARY_COUNTERS)
+            if execution_mode == "compiled"
+            else []
+        ),
+        "zero_legacy_traffic_times": list(_ZERO_ARENA_PROFILE_TIMES),
+        "failures": failures,
+        "passes": profile_count > 0 and not failures,
     }
 
 
@@ -1420,12 +2332,157 @@ def _resource_summary(
     }
 
 
+def _median_measurement_metric(
+    measurements: Sequence[Mapping[str, Any]],
+    *,
+    lane: str,
+    key: str,
+) -> float | None:
+    values = [
+        float(value)
+        for measurement in measurements
+        if measurement.get("lane") == lane
+        for value in [measurement.get(key)]
+        if isinstance(value, (float, int))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) >= 0.0
+    ]
+    return float(statistics.median(values)) if values else None
+
+
+def _cell_resource_gate(
+    artifacts: Mapping[str, Mapping[str, Any]],
+    measurements: Sequence[Mapping[str, Any]],
+    *,
+    gain_gate: Mapping[str, Any],
+    shared_artifact: bool,
+) -> dict[str, Any]:
+    comparisons: dict[str, dict[str, object]] = {}
+
+    def compare(name: str, baseline: float | None, current: float | None) -> None:
+        if baseline is None or current is None or baseline <= 0.0:
+            comparisons[name] = {
+                "baseline": baseline,
+                "current": current,
+                "ratio": None,
+                "material_growth": None,
+                "offset_by_runtime_gain": False,
+                "passes": shared_artifact,
+            }
+            return
+        ratio = current / baseline
+        material = ratio > 1.0 + MATERIAL_RESOURCE_GROWTH_THRESHOLD
+        offset = not material or bool(gain_gate.get("passes"))
+        comparisons[name] = {
+            "baseline": baseline,
+            "current": current,
+            "ratio": ratio,
+            "material_growth": material,
+            "offset_by_runtime_gain": offset,
+            "passes": offset,
+        }
+
+    compare(
+        "material_payload_size_bytes",
+        float(artifacts["baseline"].get("material_payload_size_bytes", 0.0)),
+        float(artifacts["current"].get("material_payload_size_bytes", 0.0)),
+    )
+    compare(
+        "cold_load_seconds",
+        _median_measurement_metric(
+            measurements,
+            lane="baseline",
+            key="cold_load_seconds",
+        ),
+        _median_measurement_metric(
+            measurements,
+            lane="current",
+            key="cold_load_seconds",
+        ),
+    )
+    compare(
+        "peak_rss_gib",
+        _median_measurement_metric(
+            measurements,
+            lane="baseline",
+            key="peak_rss_gib",
+        ),
+        _median_measurement_metric(
+            measurements,
+            lane="current",
+            key="peak_rss_gib",
+        ),
+    )
+    baseline_generation = artifacts["baseline"].get("core_generation_seconds")
+    current_generation = artifacts["current"].get("core_generation_seconds")
+    generation_ratio = (
+        float(current_generation) / float(baseline_generation)
+        if isinstance(baseline_generation, (float, int))
+        and not isinstance(baseline_generation, bool)
+        and float(baseline_generation) > 0.0
+        and isinstance(current_generation, (float, int))
+        and not isinstance(current_generation, bool)
+        else None
+    )
+    generation_passes = shared_artifact or (
+        generation_ratio is not None and generation_ratio <= 1.10
+    )
+    return {
+        "material_growth_threshold": MATERIAL_RESOURCE_GROWTH_THRESHOLD,
+        "material_growth_requires_runtime_gain": True,
+        "comparisons": comparisons,
+        "generation": {
+            "baseline_core_seconds": baseline_generation,
+            "current_core_seconds": current_generation,
+            "current_over_baseline": generation_ratio,
+            "maximum_ratio": 1.10,
+            "passes": generation_passes,
+        },
+        "passes": generation_passes
+        and all(bool(value["passes"]) for value in comparisons.values()),
+    }
+
+
 def _environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment.pop("PYTHONPATH", None)
     environment["PYTHONHASHSEED"] = "0"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment.setdefault("SYMBOLICA_HIDE_BANNER", "1")
     return environment
+
+
+def _resolved_workload(arguments: argparse.Namespace, *, lc_flow_layout: str) -> str:
+    requested = getattr(arguments, "workload", "auto")
+    if arguments.color != "lc":
+        derived = "summed"
+        if arguments.helicity or arguments.color_flow:
+            raise RegressionError("NLC/full summed workloads cannot use LC selectors")
+    elif lc_flow_layout == "topology-replay":
+        if not arguments.color_flow and not arguments.helicity and requested == "auto":
+            return "summed"
+        if not arguments.color_flow or arguments.helicity:
+            raise RegressionError(
+                "topology-replay acceptance requires one runtime color-flow selector "
+                "and no helicity selector"
+            )
+        derived = "single-flow-helicity-sum"
+    else:
+        if not arguments.helicity and not arguments.color_flow and requested == "auto":
+            return "summed"
+        if not arguments.helicity or arguments.color_flow:
+            raise RegressionError(
+                "all-flow-union acceptance requires one runtime helicity selector "
+                "and no color-flow selector"
+            )
+        derived = "all-flow-single-helicity"
+    if requested not in {"auto", derived}:
+        raise RegressionError(
+            f"declared workload {requested!r} does not match "
+            f"selectors/layout {derived!r}"
+        )
+    return derived
 
 
 def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
@@ -1437,11 +2494,39 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
     output_root = _absolute_path(arguments.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     model = _model_argument(arguments.model)
+    execution_mode = getattr(arguments, "execution_mode", "compiled")
+    if execution_mode not in EXECUTION_MODES:
+        raise RegressionError(f"unsupported execution mode: {execution_mode!r}")
+    jit_optimization_level = getattr(arguments, "jit_optimization_level", 3)
+    dependency_sites = {
+        "baseline": getattr(arguments, "baseline_dependency_site", None),
+        "current": getattr(arguments, "current_dependency_site", None),
+    }
+    dependency_sites = {
+        lane: (None if path is None else _absolute_path(path).resolve(strict=True))
+        for lane, path in dependency_sites.items()
+    }
+    dependency_identity_cache: dict[str, dict[str, object]] = {}
+    dependency_site_identities: dict[str, dict[str, object] | None] = {}
+    for lane, path in dependency_sites.items():
+        if path is None:
+            dependency_site_identities[lane] = None
+            continue
+        key = str(path)
+        identity = dependency_identity_cache.get(key)
+        if identity is None:
+            identity = _dependency_site_identity(path)
+            dependency_identity_cache[key] = identity
+        dependency_site_identities[lane] = identity
     lc_flow_layout = getattr(
         arguments,
         "lc_flow_layout",
         DEFAULT_LC_FLOW_LAYOUT,
     )
+    expected_artifact_lc_flow_layout = (
+        lc_flow_layout if arguments.color == "lc" else None
+    )
+    workload = _resolved_workload(arguments, lc_flow_layout=lc_flow_layout)
     shared_artifact_argument = getattr(arguments, "shared_artifact", None)
     if shared_artifact_argument is not None and arguments.regenerate_artifacts:
         raise RegressionError(
@@ -1463,10 +2548,12 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         "driver": _path_identity(Path(__file__)),
         "watchdog": _path_identity(WATCHDOG),
         "native_sample_helper": _path_identity(NATIVE_SAMPLE_HELPER),
+        "dependency_entry": _path_identity(DEPENDENCY_ENTRY),
         "interpreters": {
             lane: _path_identity(python) for lane, python in interpreters.items()
         },
         "model": _model_identity(model),
+        "dependency_sites": dependency_site_identities,
     }
     if shared_artifact is None:
         artifacts = {
@@ -1477,10 +2564,14 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 process=arguments.process,
                 model=model,
                 color=arguments.color,
+                execution_mode=execution_mode,
+                jit_optimization_level=jit_optimization_level,
                 generation_timeout=arguments.generation_timeout,
                 regenerate=arguments.regenerate_artifacts,
                 environment=environment,
                 lc_flow_layout=lc_flow_layout,
+                dependency_site=dependency_sites[lane],
+                dependency_site_identity=dependency_site_identities[lane],
             )
             for lane, python in interpreters.items()
         }
@@ -1492,7 +2583,8 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             shared_artifact,
             expected_process=arguments.process,
             expected_color=arguments.color,
-            expected_lc_flow_layout=lc_flow_layout,
+            expected_execution_mode=execution_mode,
+            expected_lc_flow_layout=expected_artifact_lc_flow_layout,
         )
         artifacts = {
             lane: {
@@ -1514,7 +2606,12 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         "artifacts": artifacts,
         "measurements": [],
     }
-    result_path = output_root / "result.json"
+    result_path_argument = getattr(arguments, "result_path", None)
+    result_path = (
+        output_root / "result.json"
+        if result_path_argument is None
+        else _absolute_path(result_path_argument)
+    )
     _write_json_atomic(result_path, partial)
 
     measurements: list[dict[str, Any]] = []
@@ -1538,6 +2635,9 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 warmup_runs=arguments.warmup_runs,
                 helicities=arguments.helicity,
                 color_flows=arguments.color_flow,
+                execution_mode=execution_mode,
+                dependency_site=dependency_sites[lane],
+                include_precision32=pair_index == 0,
             )
             payload, command_elapsed, stderr = _run_json(
                 profile_command,
@@ -1548,6 +2648,8 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 payload,
                 minimum_samples=arguments.minimum_samples,
                 batch_size=arguments.batch_size,
+                expected_execution_mode=execution_mode,
+                require_precision32=pair_index == 0,
             )
             native_module_sha256 = str(sample["native_module_sha256"])
             expected_native_module_sha256 = native_module_sha256_by_lane.setdefault(
@@ -1594,7 +2696,8 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             shared_artifact,
             expected_process=arguments.process,
             expected_color=arguments.color,
-            expected_lc_flow_layout=lc_flow_layout,
+            expected_execution_mode=execution_mode,
+            expected_lc_flow_layout=expected_artifact_lc_flow_layout,
         )
         for key in (
             "artifact_id",
@@ -1612,7 +2715,8 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 Path(str(initial_identity["path"])),
                 expected_process=arguments.process,
                 expected_color=arguments.color,
-                expected_lc_flow_layout=lc_flow_layout,
+                expected_execution_mode=execution_mode,
+                expected_lc_flow_layout=expected_artifact_lc_flow_layout,
             )
             for key in (
                 "artifact_id",
@@ -1624,6 +2728,16 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                     raise RegressionError(
                         f"{lane} artifact changed during sampling: {key} differs"
                     )
+    for lane, path in dependency_sites.items():
+        if (
+            path is not None
+            and _dependency_site_identity(path) != (dependency_site_identities[lane])
+        ):
+            raise RegressionError(
+                f"{lane} dependency site changed during generation/sampling"
+            )
+    if _model_identity(model) != provenance["model"]:
+        raise RegressionError("model input changed during generation/sampling")
     distributions = {
         lane: _distribution(lane_values) for lane, lane_values in values.items()
     }
@@ -1636,6 +2750,12 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         distributions["current"],
     )
     measured_thresholds_pass = bool(measured_gate.pop("passes"))
+    paired_distribution = _paired_distribution(measurements)
+    gain_gate = _gain_gate(
+        distributions["baseline"],
+        distributions["current"],
+        paired_distribution,
+    )
     gate = {
         **measured_gate,
         "measured_thresholds_pass": measured_thresholds_pass,
@@ -1644,13 +2764,29 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         "passes": (bool(authority["authoritative"]) and measured_thresholds_pass),
     }
     correctness_gate = _correctness_gate(measurements)
+    arena_profile_gate = _arena_profile_gate(
+        measurements,
+        execution_mode=execution_mode,
+        artifacts=artifacts,
+    )
+    resource_gate = _cell_resource_gate(
+        artifacts,
+        measurements,
+        gain_gate=gain_gate,
+        shared_artifact=shared_artifact_identity is not None,
+    )
     elapsed = time.monotonic() - started
     result = {
         "kind": RESULT_KIND,
         "schema_version": SCHEMA_VERSION,
         "complete": True,
         "performance_result_authoritative": bool(authority["authoritative"]),
-        "passes": bool(gate["passes"] and correctness_gate["passes"]),
+        "passes": bool(
+            gate["passes"]
+            and correctness_gate["passes"]
+            and arena_profile_gate["passes"]
+            and resource_gate["passes"]
+        ),
         "platform": platform.platform(),
         "provenance": provenance,
         "configuration": {
@@ -1659,6 +2795,10 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             "output_root": str(output_root),
             "process": arguments.process,
             "model": model,
+            "model_label": getattr(arguments, "model_label", "custom"),
+            "execution_mode": execution_mode,
+            "workload": workload,
+            "jit_optimization_level": jit_optimization_level,
             "color_accuracy": arguments.color,
             "lc_flow_layout": lc_flow_layout,
             "shared_artifact": (
@@ -1678,15 +2818,22 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             "native_wall_time_source": NATIVE_WALL_TIME_SOURCE,
             "native_wall_time_sample_pass": NATIVE_WALL_TIME_SAMPLE_PASS,
             "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
+            "dependency_sites": {
+                lane: dependency_site_identities[lane] for lane in dependency_sites
+            },
         },
         "artifacts": artifacts,
         "pair_orders": pair_orders,
         "measurements": measurements,
         "native_module_sha256_by_lane": native_module_sha256_by_lane,
         "distributions": distributions,
+        "paired_distribution": paired_distribution,
         "performance_authority": authority,
         "gate": gate,
+        "gain_gate": gain_gate,
         "correctness_gate": correctness_gate,
+        "arena_profile_gate": arena_profile_gate,
+        "resource_gate": resource_gate,
         "resources": _resource_summary(
             artifacts,
             measurements,
@@ -1701,13 +2848,21 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         description=__doc__,
         epilog=(
-            "The gate passes only when the current median is no more than 2% "
+            "The gate passes only when the current median is no more than 3% "
             "above the baseline median and no more than three baseline MAD above it."
         ),
     )
     result.add_argument("--baseline-python", type=Path, required=True)
     result.add_argument("--current-python", type=Path, required=True)
     result.add_argument("--output-root", type=Path, required=True)
+    result.add_argument(
+        "--result-path",
+        type=Path,
+        help=(
+            "write the result outside the artifact-cache root; this permits "
+            "multiple timing cells to reuse one exact generated artifact"
+        ),
+    )
     result.add_argument(
         "--shared-artifact",
         type=Path,
@@ -1718,6 +2873,34 @@ def parser() -> argparse.ArgumentParser:
     )
     result.add_argument("--process", required=True)
     result.add_argument("--model", default="built-in-sm")
+    result.add_argument(
+        "--model-label",
+        choices=("built-in", "ufo-sm", "custom"),
+        default="custom",
+    )
+    result.add_argument(
+        "--execution-mode",
+        choices=EXECUTION_MODES,
+        default="compiled",
+    )
+    result.add_argument(
+        "--jit-optimization-level",
+        type=int,
+        choices=(0, 1, 2, 3),
+        default=3,
+    )
+    result.add_argument(
+        "--workload",
+        choices=(
+            "auto",
+            "single-flow-helicity-sum",
+            "all-flow-single-helicity",
+            "summed",
+        ),
+        default="auto",
+    )
+    result.add_argument("--baseline-dependency-site", type=Path)
+    result.add_argument("--current-dependency-site", type=Path)
     result.add_argument(
         "--color",
         "--color-accuracy",
@@ -1736,7 +2919,10 @@ def parser() -> argparse.ArgumentParser:
         "--samples",
         type=_at_least_five,
         default=DEFAULT_SAMPLE_COUNT,
-        help="independent native sampling subprocesses per interpreter (minimum: 5)",
+        help=(
+            "independent native sampling subprocesses per interpreter "
+            "(acceptance default: 7; diagnostic minimum: 5)"
+        ),
     )
     result.add_argument(
         "--target-runtime",

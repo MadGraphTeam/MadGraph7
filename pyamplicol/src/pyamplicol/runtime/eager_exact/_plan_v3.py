@@ -29,6 +29,7 @@ from pyamplicol.runtime.eager_exact._contracts import (
 )
 
 EAGER_EXACT_SECTIONS_ABI = "pyamplicol-eager-exact-sections-v1"
+EAGER_REDUCTION_GROUPS_ABI = "pyamplicol-eager-reduction-groups-v1"
 EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 EAGER_RUNTIME_LAYOUT_ABI = "pyamplicol-eager-runtime-layout-v1"
 EAGER_PLAN_V3_RUNTIME_CAPABILITY = "rusticol.eager-runtime-layout.complex-f64.v1"
@@ -39,13 +40,19 @@ _EAGER_PLAN_V3_RUNTIME_CAPABILITIES = sorted(
     )
 )
 _NATIVE_BINDING_NAME = "_load_eager_exact_sections_v1"
+_NATIVE_REDUCTION_BINDING_NAME = "_load_eager_reduction_groups_v1"
 
 
 class _NativeExactSectionsBinding(Protocol):
     def __call__(self, artifact_root: str, process_id: str, /) -> object: ...
 
 
+class _NativeReductionGroupsBinding(Protocol):
+    def __call__(self, artifact_root: str, process_id: str, /) -> object: ...
+
+
 _NativeExactSectionsLoader = Callable[[Path, str], object]
+_NativeReductionGroupsLoader = Callable[[Path, str], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +84,36 @@ def _load_eager_exact_sections_v1(
     return _parse_exact_sections(raw, process_id)
 
 
+def _load_eager_reduction_groups_v1(
+    artifact_root: Path,
+    process_id: str,
+    *,
+    loader: _NativeReductionGroupsLoader | None = None,
+) -> tuple[Mapping[str, object], ...]:
+    raw = (loader or _native_reduction_groups_loader)(artifact_root, process_id)
+    root = _mapping(raw, "compact eager reduction groups")
+    if root.get("abi") != EAGER_REDUCTION_GROUPS_ABI:
+        raise CompatibilityError(
+            f"unsupported compact eager reduction-groups ABI {root.get('abi')!r}"
+        )
+    if root.get("runtime_layout_abi") != EAGER_RUNTIME_LAYOUT_ABI:
+        raise CompatibilityError(
+            "unsupported compact eager reduction runtime-layout ABI "
+            f"{root.get('runtime_layout_abi')!r}"
+        )
+    if root.get("process_id") != process_id:
+        raise ArtifactError("compact eager reduction groups select the wrong process")
+    return tuple(
+        _mapping(value, f"compact eager reduction group {index}")
+        for index, value in enumerate(
+            _sequence(
+                root.get("reduction_groups"),
+                "compact eager reduction groups",
+            )
+        )
+    )
+
+
 def _native_exact_sections_loader(artifact_root: Path, process_id: str) -> object:
     try:
         module = importlib.import_module("pyamplicol._rusticol")
@@ -99,6 +136,32 @@ def _native_exact_sections_loader(artifact_root: Path, process_id: str) -> objec
     except Exception as exc:
         raise ArtifactError(
             f"could not load compact exact sections for process {process_id!r}: {exc}"
+        ) from exc
+
+
+def _native_reduction_groups_loader(artifact_root: Path, process_id: str) -> object:
+    try:
+        module = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(module)
+    except ImportError as exc:
+        raise CompatibilityError(
+            "compact eager reduction loading requires pyamplicol._rusticol"
+        ) from exc
+    candidate = getattr(module, _NATIVE_REDUCTION_BINDING_NAME, None)
+    if not callable(candidate):
+        raise CompatibilityError(
+            "compact eager reduction loading requires the private native binding "
+            f"{_NATIVE_REDUCTION_BINDING_NAME}"
+        )
+    binding = cast(_NativeReductionGroupsBinding, candidate)
+    try:
+        return binding(os.fspath(artifact_root), process_id)
+    except (ArtifactError, CompatibilityError):
+        raise
+    except Exception as exc:
+        raise ArtifactError(
+            f"could not load compact eager reduction groups for process "
+            f"{process_id!r}: {exc}"
         ) from exc
 
 
@@ -295,7 +358,9 @@ def _parse_stages(
     finalizations: tuple[_ExactFinalizationRow, ...],
 ) -> tuple[_ExactStageV3, ...]:
     stages = []
-    cursors = [0, 0, 0]
+    invocation_cursor = 0
+    attachment_cursor = 0
+    finalization_cursor = 0
     previous_stage = -1
     for index, raw in enumerate(_sequence(raw_stages, "compact eager stages")):
         context = f"compact eager stage {index}"
@@ -304,17 +369,42 @@ def _parse_stages(
         if stage_index <= previous_stage:
             raise ArtifactError("compact eager stage indices must increase")
         previous_stage = stage_index
-        ranges = []
-        for range_index, table in enumerate((invocations, attachments, finalizations)):
-            start = _integer(values[1 + 2 * range_index], f"{context} start")
-            count = _integer(values[2 + 2 * range_index], f"{context} count")
-            if start != cursors[range_index] or start + count > len(table):
-                raise ArtifactError(f"{context} has a non-contiguous table range")
-            cursors[range_index] = start + count
-            ranges.append(table[start : start + count])
-        attachment_start = _integer(values[3], f"{context} attachment start")
+
+        invocation_start = _integer(values[1], f"{context} start")
+        invocation_count = _integer(values[2], f"{context} count")
+        if (
+            invocation_start != invocation_cursor
+            or invocation_start + invocation_count > len(invocations)
+        ):
+            raise ArtifactError(f"{context} has a non-contiguous table range")
+        invocation_cursor = invocation_start + invocation_count
+        stage_invocation_rows = invocations[invocation_start:invocation_cursor]
+
+        attachment_start = _integer(values[3], f"{context} start")
+        attachment_count = _integer(values[4], f"{context} count")
+        if (
+            attachment_start != attachment_cursor
+            or attachment_start + attachment_count > len(attachments)
+        ):
+            raise ArtifactError(f"{context} has a non-contiguous table range")
+        attachment_cursor = attachment_start + attachment_count
+        stage_attachments = attachments[attachment_start:attachment_cursor]
+
+        finalization_start = _integer(values[5], f"{context} start")
+        finalization_count = _integer(values[6], f"{context} count")
+        if (
+            finalization_start != finalization_cursor
+            or finalization_start + finalization_count > len(finalizations)
+        ):
+            raise ArtifactError(f"{context} has a non-contiguous table range")
+        finalization_cursor = finalization_start + finalization_count
+        stage_finalizations = finalizations[
+            finalization_start:finalization_cursor
+        ]
+
         if any(
-            invocation.attachment_start < attachment_start for invocation in ranges[0]
+            invocation.attachment_start < attachment_start
+            for invocation in stage_invocation_rows
         ):
             raise ArtifactError(
                 f"{context} has an invocation before its attachment range"
@@ -332,17 +422,21 @@ def _parse_stages(
                 invocation.attachment_count,
                 invocation.selector_domain_id,
             )
-            for invocation in ranges[0]
+            for invocation in stage_invocation_rows
         )
         stages.append(
             _ExactStageV3(
                 stage_index,
                 stage_invocations,
-                tuple(ranges[1]),
-                tuple(ranges[2]),
+                stage_attachments,
+                stage_finalizations,
             )
         )
-    if cursors != [len(invocations), len(attachments), len(finalizations)]:
+    if (
+        invocation_cursor != len(invocations)
+        or attachment_cursor != len(attachments)
+        or finalization_cursor != len(finalizations)
+    ):
         raise ArtifactError("compact eager stages do not cover their exact tables")
     return tuple(stages)
 

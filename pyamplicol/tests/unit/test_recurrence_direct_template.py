@@ -437,6 +437,10 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
         prepared.by_id,
     )
     assert native_specs
+    assert all(
+        kernel_id == spec.prepared_kernel_id
+        for kernel_id, spec in native_specs.items()
+    )
     assert all(spec.role != "source" for spec in native_specs.values())
     assert all(
         spec.native_entry_point
@@ -444,12 +448,22 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
         for spec in native_specs.values()
     )
     if model_source == "built-in":
-        assert native_specs[20].parent_component_shapes == ((2, 2), (4, 2))
-        assert native_specs[22].parent_component_shapes == ((2, 2), (2, 4))
-        assert all(
-            len(native_specs[kernel_id].parent_component_shapes) == 2
-            for kernel_id in (20, 22, 29, 32, 40, 51)
+        # Kernel IDs are assigned in content-signature order and may therefore
+        # move when Symbolica changes an equivalent canonical spelling.  The
+        # callable shape inventory is the stable execution contract.
+        merged_parent_shapes = sorted(
+            spec.parent_component_shapes
+            for spec in native_specs.values()
+            if len(spec.parent_component_shapes) > 1
         )
+        assert merged_parent_shapes == [
+            ((2, 2), (2, 4)),
+            ((2, 2), (2, 4)),
+            ((2, 2), (2, 4)),
+            ((2, 2), (4, 2)),
+            ((2, 2), (4, 2)),
+            ((2, 2), (4, 2)),
+        ]
     direct = build_recurrence_direct_template_catalog(
         semantic,
         backend="jit",

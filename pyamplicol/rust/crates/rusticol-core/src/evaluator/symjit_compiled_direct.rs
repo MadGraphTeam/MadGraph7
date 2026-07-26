@@ -3,13 +3,13 @@
 //! Compiled-stage adapter for SymJIT's factor-free DirectApplication v3 ABI.
 //!
 //! This is deliberately narrower than the compiled execution engine. It owns
-//! one already-fused O3 application, validates its logical bindings once, and
-//! pins a fixed descriptor bundle to persistent Direct-Arena storage. The hot
-//! call does not gather inputs, scatter outputs, rebuild descriptors, or
-//! allocate.
+//! one already-fused O0 through O3 source application, validates its logical
+//! bindings once, lowers it to the fixed identity-overwrite Direct-Arena
+//! callable, and pins a descriptor bundle to persistent storage. The hot call
+//! does not gather inputs, scatter outputs, rebuild descriptors, or allocate.
 
 // Some ABI construction helpers remain test-only even though this adapter is
-// now the production compiled-JIT O3 execution path.
+// now the production compiled-JIT execution path.
 #![allow(dead_code)]
 
 use std::any::Any;
@@ -60,8 +60,8 @@ pub(crate) enum CompiledDirectScalarBinding {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct CompiledDirectOutputBinding(pub CompiledDirectArenaPlane);
 
-/// Raw-input routing used while lowering an ordinary compiled O3 application
-/// into the factor-free DirectApplication ABI.
+/// Raw-input routing used while lowering an ordinary compiled application into
+/// the factor-free DirectApplication ABI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CompiledDirectSourceInputBinding {
     Plane(u32),
@@ -94,9 +94,9 @@ pub(crate) struct BoundSymjitCompiledDirectStage {
 }
 
 impl LoadedSymjitCompiledDirectStage {
-    /// Lower one ordinary complex-f64 O3 application into DirectApplication
-    /// storage, then load it through the same authenticated direct path as a
-    /// natively-produced direct artifact.
+    /// Lower one ordinary complex-f64 O0 through O3 application into the fixed
+    /// identity-overwrite DirectApplication callable, then load it through the
+    /// same authenticated direct path as a natively-produced direct artifact.
     ///
     /// This is intentionally a cold-path bridge for the prototype. It accepts
     /// only the current source ABI and exactly preserves the already-fused
@@ -106,6 +106,7 @@ impl LoadedSymjitCompiledDirectStage {
         bytes: &[u8],
         display_path: impl AsRef<Path>,
         source_application_abi: &str,
+        source_optimization_level: u8,
         source_input_bindings: Vec<CompiledDirectSourceInputBinding>,
         input_bindings: Vec<CompiledDirectPlaneBinding>,
         scalar_bindings: Vec<CompiledDirectScalarBinding>,
@@ -166,6 +167,14 @@ impl LoadedSymjitCompiledDirectStage {
                 display_path.display()
             ))
         })?;
+        if direct.source_optimization_level() != Some(source_optimization_level) {
+            return Err(RusticolError::integrity(format!(
+                "compiled source application {} declares optimization level \
+                 {source_optimization_level} but stores optimization level {:?}",
+                display_path.display(),
+                direct.source_optimization_level()
+            )));
+        }
         if !input.is_empty() {
             return Err(RusticolError::integrity(format!(
                 "compiled source application {} has {} trailing bytes",
@@ -280,11 +289,11 @@ impl LoadedSymjitCompiledDirectStage {
 
         guard_symjit_panic(
             || application.prepare_simd(),
-            &display_path,
+            display_path,
             "prepare SIMD for",
         )?;
         let applet =
-            guard_symjit_panic(|| application.seal(), &display_path, "seal")?.map_err(|error| {
+            guard_symjit_panic(|| application.seal(), display_path, "seal")?.map_err(|error| {
                 RusticolError::evaluation(format!(
                     "could not seal compiled Direct-Arena application {}: {error}",
                     display_path.display()
@@ -627,9 +636,9 @@ mod tests {
     use std::time::Instant;
     use symjit::{Compiler, DirectApplicationMetadata, DirectInputBinding, Expr, Storage};
 
-    fn compiled_source_application() -> symjit::Application {
+    fn compiled_source_application_at(optimization_level: u8) -> symjit::Application {
         let mut config = Config::default();
-        config.set_opt_level(3);
+        config.set_opt_level(optimization_level);
         config.set_complex(true);
         config.set_symbolica(true);
         config.set_simd(true);
@@ -639,6 +648,10 @@ mod tests {
         Compiler::with_config(config)
             .translate(instructions.to_owned(), 2)
             .unwrap()
+    }
+
+    fn compiled_source_application() -> symjit::Application {
+        compiled_source_application_at(3)
     }
 
     fn compiled_application_bytes() -> Vec<u8> {
@@ -673,7 +686,11 @@ mod tests {
         config.set_fast_complex(false);
         let value = Expr::var("value");
         let source = Compiler::with_config(config)
-            .compile_params(&[], &[value.clone()], &[value])
+            .compile_params(
+                &[],
+                std::slice::from_ref(&value),
+                std::slice::from_ref(&value),
+            )
             .unwrap();
         assert_eq!(source.count_params, 2);
         assert_eq!(source.count_obs, 2);
@@ -879,6 +896,52 @@ mod tests {
         result.unwrap();
         assert_eq!(allocations, 0, "warmed compiled direct call allocated");
         assert_eq!(bytes, 0, "warmed compiled direct call allocated bytes");
+    }
+
+    #[test]
+    fn source_bridge_accepts_and_authenticates_jit_o0_through_o3() {
+        for optimization_level in 0..=3 {
+            let source = compiled_source_application_at(optimization_level);
+            let mut bytes = Vec::new();
+            source.save(&mut bytes).unwrap();
+            let (input_bindings, output_bindings) = compiled_bindings();
+            let loaded = LoadedSymjitCompiledDirectStage::load_source_bytes(
+                &bytes,
+                format!("compiled-o{optimization_level}-source.symjit"),
+                SYMJIT_APPLICATION_STORAGE_ABI,
+                optimization_level,
+                (0..4)
+                    .map(CompiledDirectSourceInputBinding::Plane)
+                    .collect(),
+                input_bindings,
+                vec![],
+                output_bindings,
+            )
+            .unwrap();
+            assert!(loaded.simd_lane_width > 1);
+        }
+
+        let source = compiled_source_application_at(1);
+        let mut bytes = Vec::new();
+        source.save(&mut bytes).unwrap();
+        let (input_bindings, output_bindings) = compiled_bindings();
+        let error = match LoadedSymjitCompiledDirectStage::load_source_bytes(
+            &bytes,
+            "compiled-mismatched-source.symjit",
+            SYMJIT_APPLICATION_STORAGE_ABI,
+            2,
+            (0..4)
+                .map(CompiledDirectSourceInputBinding::Plane)
+                .collect(),
+            input_bindings,
+            vec![],
+            output_bindings,
+        ) {
+            Ok(_) => panic!("mismatched source optimization level unexpectedly loaded"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), RusticolErrorKind::Integrity);
+        assert!(error.message().contains("stores optimization level"));
     }
 
     /// Manual raw-kernel A/B. There are deliberately no timing assertions:

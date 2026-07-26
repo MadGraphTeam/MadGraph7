@@ -33,9 +33,12 @@ AArch64 compressed funclets and the recurrence Direct-Arena application. The
 second adds the fused compiled DirectApplication storage-v3 contract and the
 table-aware eager DirectTableApplication contract. It also retains bounded,
 read-only loading of the accepted recurrence storage-v1 payloads; v3 is the
-only writer and v2 remains rejected. The build uses Symbolica and
-symbolica-community at the immutable planned-release revisions recorded in the
-lock. GammaLoop is pinned to the merged main revision that provides Spenso's
+only writer and v2 remains rejected. The fifth patch accepts authenticated
+compiled identity-overwrite sources at JIT O0 through O3 while retaining the
+fixed O3 direct callable; recurrence exact-factor sources remain O2. The build
+uses Symbolica and symbolica-community at the immutable planned-release
+revisions recorded in the lock. GammaLoop is pinned to the merged main revision
+that provides Spenso's
 cached symbolic-parallelism policy. Spynso3 initializes that policy in `Auto`
 mode, checking the license once and keeping symbolic tensor reductions serial
 for restricted users or parallel for licensed users. The matching Symbolica,

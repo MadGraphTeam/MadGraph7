@@ -384,8 +384,7 @@ impl EagerNativeRuntime {
     fn execute_full_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            return self
-                .direct_scheduler
+            self.direct_scheduler
                 .as_mut()
                 .ok_or_else(|| {
                     RusticolError::internal(
@@ -399,7 +398,7 @@ impl EagerNativeRuntime {
                     &self.model_parameters,
                     &mut self.amplitudes,
                     &mut self.reduced,
-                );
+                )
         }
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
@@ -434,8 +433,7 @@ impl EagerNativeRuntime {
             EagerDirectValidationMode::Direct => {
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
-                    return self
-                        .direct_scheduler
+                    self.direct_scheduler
                         .as_mut()
                         .ok_or_else(|| {
                             RusticolError::internal(
@@ -449,7 +447,7 @@ impl EagerNativeRuntime {
                             &self.model_parameters,
                             &mut self.amplitudes,
                             &mut self.reduced,
-                        );
+                        )
                 }
                 #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
@@ -515,8 +513,7 @@ impl EagerNativeRuntime {
     fn execute_full_totals_scheduler(&mut self, point_count: usize) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            return self
-                .direct_scheduler
+            self.direct_scheduler
                 .as_mut()
                 .ok_or_else(|| {
                     RusticolError::internal(
@@ -529,7 +526,7 @@ impl EagerNativeRuntime {
                     &self.momenta,
                     &self.model_parameters,
                     &mut self.reduced,
-                );
+                )
         }
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
@@ -572,8 +569,7 @@ impl EagerNativeRuntime {
     ) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            return self
-                .direct_scheduler
+            self.direct_scheduler
                 .as_mut()
                 .ok_or_else(|| {
                     RusticolError::internal(
@@ -587,7 +583,7 @@ impl EagerNativeRuntime {
                     &self.momenta,
                     &self.model_parameters,
                     &mut self.amplitudes,
-                );
+                )
         }
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
@@ -626,8 +622,7 @@ impl EagerNativeRuntime {
             EagerDirectValidationMode::Direct => {
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
-                    return self
-                        .direct_scheduler
+                    self.direct_scheduler
                         .as_mut()
                         .ok_or_else(|| {
                             RusticolError::internal(
@@ -641,7 +636,7 @@ impl EagerNativeRuntime {
                             &self.momenta,
                             &self.model_parameters,
                             &mut self.amplitudes,
-                        );
+                        )
                 }
                 #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
@@ -715,8 +710,7 @@ impl EagerNativeRuntime {
     ) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            return self
-                .direct_scheduler
+            self.direct_scheduler
                 .as_mut()
                 .ok_or_else(|| {
                     RusticolError::internal(
@@ -732,7 +726,7 @@ impl EagerNativeRuntime {
                     &self.momenta,
                     &self.model_parameters,
                     reduced,
-                );
+                )
         }
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
@@ -783,8 +777,7 @@ impl EagerNativeRuntime {
             EagerDirectValidationMode::Direct => {
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 {
-                    return self
-                        .direct_scheduler
+                    self.direct_scheduler
                         .as_mut()
                         .ok_or_else(|| {
                             RusticolError::internal(
@@ -800,7 +793,7 @@ impl EagerNativeRuntime {
                             &self.momenta,
                             &self.model_parameters,
                             reduced,
-                        );
+                        )
                 }
                 #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
@@ -870,7 +863,7 @@ impl EagerNativeRuntime {
             let scheduler = self.direct_scheduler.as_mut().ok_or_else(|| {
                 RusticolError::internal("production eager runtime has no Direct-Arena scheduler")
             })?;
-            return if let Some(active_groups) = active_groups {
+            if let Some(active_groups) = active_groups {
                 scheduler.evaluate_selected_profile_into(
                     active_groups,
                     point_count,
@@ -888,7 +881,7 @@ impl EagerNativeRuntime {
                     &mut self.amplitudes,
                     &mut self.reduced,
                 )
-            };
+            }
         }
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {
@@ -946,7 +939,7 @@ impl EagerNativeRuntime {
                     let scheduler = self.direct_scheduler.as_mut().ok_or_else(|| {
                         RusticolError::internal("eager direct mode has no Direct-Arena scheduler")
                     })?;
-                    return if let Some(active_groups) = active_groups {
+                    if let Some(active_groups) = active_groups {
                         scheduler.evaluate_selected_profile_into(
                             active_groups,
                             point_count,
@@ -964,7 +957,7 @@ impl EagerNativeRuntime {
                             &mut self.amplitudes,
                             &mut self.reduced,
                         )
-                    };
+                    }
                 }
                 #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
@@ -1043,7 +1036,7 @@ impl EagerNativeRuntime {
                         )?;
                     }
                     let _ = legacy;
-                    return Ok(direct);
+                    Ok(direct)
                 }
                 #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                 {
@@ -1494,6 +1487,7 @@ impl EagerNativeRuntime {
         result.map(|_| ())
     }
 
+    #[allow(dead_code)] // Retained as the row-major eager benchmark oracle.
     pub(super) fn run_f64(
         &mut self,
         common: &mut ExecutionRuntime,
@@ -1746,6 +1740,7 @@ impl EagerNativeRuntime {
         ))
     }
 
+    #[allow(dead_code)] // Retained as the row-major eager resolved-value oracle.
     pub(super) fn run_resolved_f64(
         &mut self,
         common: &mut ExecutionRuntime,
@@ -2228,9 +2223,17 @@ fn fill_selected_eager_group_ids(
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[cfg(test)]
+type EagerScheduleAuditKey = (Option<u32>, &'static str, Option<u32>);
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[cfg(test)]
+type EagerScheduleAuditCounts = (usize, usize, usize);
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[cfg(test)]
 fn aggregate_eager_schedule_audit(
     rows: Vec<crate::eager_runtime::EagerScheduleAuditRow>,
-) -> BTreeMap<(Option<u32>, &'static str, Option<u32>), (usize, usize, usize)> {
+) -> BTreeMap<EagerScheduleAuditKey, EagerScheduleAuditCounts> {
     let mut aggregated = BTreeMap::new();
     for row in rows {
         let counts = aggregated

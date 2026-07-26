@@ -19,6 +19,9 @@ import test_deployment as deployment  # noqa: E402
 def test_installed_smoke_uses_the_v1_builtin_model_name() -> None:
     assert "from pyamplicol.models import BuiltinSMModel" in deployment._INSTALLED_SMOKE
     assert "AmplicolSMLeadingColorModel" not in deployment._INSTALLED_SMOKE
+    assert 'build_info["selftest_fixture_bootstrap"] is False' in (
+        deployment._INSTALLED_SMOKE
+    )
 
 
 def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:
@@ -37,6 +40,8 @@ def test_f64_minimal_deployment_requires_symbolica_to_be_absent() -> None:
     assert "runtime.evaluate(expected[\"momenta\"])" in smoke
     assert "runtime.evaluate_resolved(expected[\"momenta\"])" in smoke
     assert "resolved.total()" in smoke
+    assert 'runtime.artifact_id == manifest["artifact_id"]' in smoke
+    assert 'runtime.execution_mode == "compiled"' in smoke
 
 
 def test_f64_minimal_deployment_installs_only_numpy_and_wheel(
@@ -82,11 +87,15 @@ def test_installed_backend_smoke_covers_precision_compiled_and_eager() -> None:
     assert "precision=80" in smoke
     assert 'Generator(config).generate("d d~ > z", artifact)' in smoke
     assert "resolved.total()[0] == total" in smoke
+    assert 'runtime.artifact_id == manifest["artifact_id"]' in smoke
+    assert 'runtime.execution_mode == "compiled"' in smoke
     assert "EvaluatorExecutionMode.EAGER" in smoke
     assert 'Generator(eager_config).generate("d d~ > z", eager_artifact)' in smoke
     assert '"pyamplicol-runtime-eager-execution"' in smoke
     assert '"model/eager-kernel-pack.json"' in smoke
     assert "eager_runtime.evaluate(momenta)" in smoke
+    assert 'eager_runtime.artifact_id == eager_manifest["artifact_id"]' in smoke
+    assert 'eager_runtime.execution_mode == "eager"' in smoke
     assert "abs(eager_reduced - eager_total)" in smoke
     assert "eager_runtime.evaluate(momenta, precision=80)" in smoke
 

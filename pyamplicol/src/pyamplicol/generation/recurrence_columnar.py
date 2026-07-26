@@ -18,11 +18,13 @@ from typing import Any, Final, Literal
 
 import numpy as np
 
+from ..color.public_flows import amplicol_legacy_two_line_public_word
 from .recurrence_fermion_pairing import FermionPairingCatalogV1
 
 RECURRENCE_BUILDER_INPUT_ABI: Final = "pyamplicol-recurrence-builder-input-v2"
 RECURRENCE_BUILDER_INPUT_SCHEMA_VERSION: Final = 1
 MISSING_U32: Final = (1 << 32) - 1
+_DYNAMIC_UNION_SOURCE_SPIN_STATE: Final = -(1 << 31)
 
 RecurrenceLCFlowLayout = Literal[
     "topology-replay",
@@ -114,7 +116,7 @@ class RecurrenceSourceStateV1:
         _checked_u32(self.state_index, "source-state index")
         _checked_i32(self.public_helicity, "public source helicity")
         _checked_i32(self.chirality, "source chirality")
-        _checked_i32(self.spin_state, "source spin state")
+        _checked_concrete_spin_state(self.spin_state, "source spin state")
         _checked_u32(
             self.current_state_template_id,
             "source current-state template ID",
@@ -1691,10 +1693,39 @@ def _validate_logical_relations(
             == (construction_word[0], *reversed(construction_word[1:]))
             and flow.source_slot_permutation == tuple(range(len(external_legs)))
         )
-        if mapped_word != flow.word_source_slots and not reflected_trace:
+        mapped_open_lines = tuple(
+            (
+                flow.source_slot_permutation[line.fundamental_source_slot],
+                flow.source_slot_permutation[line.antifundamental_source_slot],
+                tuple(
+                    flow.source_slot_permutation[source_slot]
+                    for source_slot in line.adjoint_source_slots
+                ),
+                tuple(
+                    flow.source_slot_permutation[source_slot]
+                    for source_slot in line.singlet_source_slots
+                ),
+            )
+            for line in construction_sector.open_strings
+        )
+        mapped_initial_source_slots = tuple(
+            flow.source_slot_permutation[leg.source_slot]
+            for leg in external_legs
+            if leg.is_initial
+        )
+        legacy_two_line_word = amplicol_legacy_two_line_public_word(
+            mapped_word,
+            mapped_open_lines,
+            mapped_initial_source_slots,
+        )
+        if (
+            mapped_word != flow.word_source_slots
+            and not reflected_trace
+            and legacy_two_line_word != flow.word_source_slots
+        ):
             raise RecurrenceColumnarInputError(
                 "public flow word is neither its gathered construction word nor "
-                "an anchored folded-trace reflection"
+                "an authenticated compatibility spelling"
             )
 
     roles = tuple(item.role for item in digests)
@@ -2589,6 +2620,15 @@ def _checked_i32(value: int, context: str) -> int:
     ):
         raise RecurrenceColumnarInputError(f"{context} does not fit i32: {value!r}")
     return value
+
+
+def _checked_concrete_spin_state(value: int, context: str) -> int:
+    result = _checked_i32(value, context)
+    if result == _DYNAMIC_UNION_SOURCE_SPIN_STATE:
+        raise RecurrenceColumnarInputError(
+            f"{context} uses the reserved dynamic-union sentinel"
+        )
+    return result
 
 
 def _hash_text(digest: Any, value: str) -> None:

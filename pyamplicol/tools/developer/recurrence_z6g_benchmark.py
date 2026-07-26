@@ -54,7 +54,9 @@ EXECUTION_MODES = ("compiled", "eager", "recurrence")
 LC_FLOW_LAYOUTS = ("topology-replay", "all-flow-union")
 VALIDATION_SEED = 12345
 RESULT_KIND = "pyamplicol-recurrence-z6g-benchmark"
-RESULT_SCHEMA = 5
+RESULT_SCHEMA = 6
+ARTIFACT_SEMANTIC_IDENTITY_SCHEMA = 3
+LOGICAL_REDUCTION_ORDER_ABI = "helicity-major-color-minor-v1"
 REUSE_SIGNATURE_KIND = "pyamplicol-benchmark-artifact-reuse-signature"
 REUSE_SIGNATURE_SCHEMA = 3
 PROFILE_SCHEDULE_KIND = "pyamplicol-interleaved-subprocess-profile-schedule"
@@ -65,8 +67,9 @@ RETAINED_WORKER_RESULT_KIND = "pyamplicol-retained-profile-worker-result"
 RETAINED_WORKER_RESULT_SCHEMA = 1
 PRESERVED_WORKER_RESULT_KIND = "pyamplicol-preserved-worker-result-evidence"
 PRESERVED_WORKER_RESULT_SCHEMA = 1
+CAPTURE_ACCEPTANCE_SCHEMA = 4
 M0_ACCEPTANCE_KIND = "pyamplicol-milestone-0-evidence-manifest"
-M0_ACCEPTANCE_SCHEMA = 3
+M0_ACCEPTANCE_SCHEMA = 4
 _WORKER_MARKER = "PYAMPLICOL_RECURRENCE_Z6G_WORKER_RESULT="
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _REVISION_PATTERN = re.compile(r"[0-9a-f]{40}")
@@ -887,6 +890,111 @@ def _ordered_physical_axis(
     }
 
 
+def _logical_physical_axis(
+    validated_axis: Mapping[str, object],
+    *,
+    require_structural_zero: bool,
+) -> dict[str, object]:
+    """Project a validated axis onto lane-independent physical fields."""
+
+    raw_entries = validated_axis.get("ordered_entries")
+    if not isinstance(raw_entries, list) or not raw_entries:
+        raise HarnessError("validated physical axis has no ordered entries")
+    entries: list[dict[str, object]] = []
+    for raw_entry in raw_entries:
+        if not isinstance(raw_entry, Mapping):
+            raise HarnessError("validated physical axis entry is invalid")
+        if require_structural_zero:
+            entry = {
+                "index": raw_entry["index"],
+                "id": raw_entry["id"],
+                "values": list(cast(list[int], raw_entry["values"])),
+                "coefficient": raw_entry["coefficient"],
+                "structural_zero": raw_entry["structural_zero"],
+            }
+        else:
+            entry = {
+                "index": raw_entry["index"],
+                "id": raw_entry["id"],
+                "kind": raw_entry["kind"],
+                "word": list(cast(list[int], raw_entry["word"])),
+                "coefficient": raw_entry["coefficient"],
+            }
+        entries.append(entry)
+    identifiers = [str(entry["id"]) for entry in entries]
+    return {
+        "count": len(identifiers),
+        "ordered_ids": identifiers,
+        "ordered_ids_sha256": _canonical_sha256(identifiers),
+        "ordered_entries": entries,
+        "ordered_entries_sha256": _canonical_sha256(entries),
+    }
+
+
+def _validated_logical_physical_axis(
+    axis: Mapping[str, object],
+    *,
+    label: str,
+    require_structural_zero: bool,
+) -> dict[str, object]:
+    """Revalidate a stored lane-independent physical-axis projection."""
+
+    raw_entries = axis.get("ordered_entries")
+    if not isinstance(raw_entries, list) or not raw_entries:
+        raise HarnessError(f"logical physical {label} axis is missing")
+    expanded: list[dict[str, object]] = []
+    expected_keys = (
+        {"index", "id", "values", "coefficient", "structural_zero"}
+        if require_structural_zero
+        else {"index", "id", "kind", "word", "coefficient"}
+    )
+    for raw_entry in raw_entries:
+        if not isinstance(raw_entry, Mapping) or set(raw_entry) != expected_keys:
+            raise HarnessError(f"logical physical {label} axis is invalid")
+        identifier = raw_entry.get("id")
+        structural_zero = (
+            raw_entry.get("structural_zero") if require_structural_zero else False
+        )
+        expanded.append(
+            {
+                **dict(raw_entry),
+                "representative_id": identifier,
+                "computed": not bool(structural_zero),
+            }
+        )
+    validated = _logical_physical_axis(
+        _ordered_physical_axis(
+            expanded,
+            label=label,
+            require_structural_zero=require_structural_zero,
+        ),
+        require_structural_zero=require_structural_zero,
+    )
+    if set(axis) != {
+        "count",
+        "ordered_ids",
+        "ordered_ids_sha256",
+        "ordered_entries",
+        "ordered_entries_sha256",
+    } or any(
+        (
+            not _is_exact_int(axis.get(field), cast(int, validated[field]))
+            if field == "count"
+            else _canonical_sha256(axis.get(field))
+            != _canonical_sha256(validated[field])
+        )
+        for field in (
+            "count",
+            "ordered_ids",
+            "ordered_ids_sha256",
+            "ordered_entries",
+            "ordered_entries_sha256",
+        )
+    ):
+        raise HarnessError(f"logical physical {label} axis is invalid")
+    return validated
+
+
 def _manifest_model_identity(manifest: Mapping[str, object]) -> dict[str, object]:
     model = manifest.get("model")
     if not isinstance(model, Mapping):
@@ -1171,6 +1279,634 @@ def _reduction_ordering_identity(
     }
 
 
+def _logical_reduction_ordering_identity(
+    reduction_kind: object,
+    *,
+    color_axis: Mapping[str, object],
+    helicity_axis: Mapping[str, object],
+    artifact: Path,
+) -> dict[str, object]:
+    """Describe public reduction order without encoding lane materialization."""
+
+    if not isinstance(reduction_kind, str) or not reduction_kind:
+        raise HarnessError(f"artifact logical reduction kind is invalid: {artifact}")
+    raw_color_ids = color_axis.get("ordered_ids")
+    raw_helicity_entries = helicity_axis.get("ordered_entries")
+    if not isinstance(raw_color_ids, list) or not isinstance(
+        raw_helicity_entries, list
+    ):
+        raise HarnessError(
+            f"artifact logical reduction has incomplete physical axes: {artifact}"
+        )
+    color_ids = [
+        str(identifier)
+        for identifier in raw_color_ids
+        if isinstance(identifier, str) and identifier
+    ]
+    live_helicity_ids = [
+        str(entry["id"])
+        for entry in raw_helicity_entries
+        if isinstance(entry, Mapping) and entry.get("structural_zero") is False
+    ]
+    coverage_errors: list[str] = []
+    if len(color_ids) != len(raw_color_ids) or len(set(color_ids)) != len(color_ids):
+        coverage_errors.append("physical color IDs are invalid")
+    if not live_helicity_ids or len(set(live_helicity_ids)) != len(live_helicity_ids):
+        coverage_errors.append("live physical helicity IDs are invalid")
+    pair_count = len(color_ids) * len(live_helicity_ids)
+    ordering = {
+        "kind": reduction_kind,
+        "pair_order_abi": LOGICAL_REDUCTION_ORDER_ABI,
+        "physical_color_count": len(color_ids),
+        "physical_color_ids_sha256": _canonical_sha256(color_ids),
+        "live_physical_helicity_count": len(live_helicity_ids),
+        "live_physical_helicity_ids_sha256": _canonical_sha256(live_helicity_ids),
+        "physical_pair_count": pair_count,
+    }
+    return {
+        "ordering": ordering,
+        "ordering_sha256": _canonical_sha256(ordering),
+        "coverage": {
+            "complete": not coverage_errors and pair_count > 0,
+            "expected_physical_pair_count": pair_count,
+            "observed_physical_pair_count": (pair_count if not coverage_errors else 0),
+            "errors": coverage_errors,
+        },
+    }
+
+
+def _load_compact_eager_reduction_groups(
+    artifact: Path,
+    process_id: str,
+) -> list[dict[str, object]]:
+    try:
+        from pyamplicol.runtime.eager_exact._plan_v3 import (
+            _load_eager_reduction_groups_v1,
+        )
+
+        groups = _load_eager_reduction_groups_v1(artifact, process_id)
+    except Exception as error:
+        raise HarnessError(
+            f"could not authenticate compact eager reduction: {artifact}"
+        ) from error
+    return [dict(group) for group in groups]
+
+
+def _load_compact_recurrence_reduction(
+    artifact: Path,
+    process_id: str,
+) -> Any:
+    try:
+        from pyamplicol.runtime.recurrence_exact._plan_v2 import (
+            _load_recurrence_exact_sections_v1,
+        )
+
+        return _load_recurrence_exact_sections_v1(artifact, process_id)
+    except Exception as error:
+        raise HarnessError(
+            f"could not authenticate compact recurrence reduction: {artifact}"
+        ) from error
+
+
+def _execution_reduction_identity(
+    reduction: Mapping[str, object],
+    *,
+    extensions: Mapping[str, object],
+    color_axis: Mapping[str, object],
+    helicity_axis: Mapping[str, object],
+    logical_color_axis: Mapping[str, object],
+    logical_helicity_axis: Mapping[str, object],
+    artifact: Path,
+    process_id: str,
+) -> dict[str, object]:
+    """Authenticate expanded or native lane-local reduction materialization."""
+
+    reduction_kind = reduction.get("kind")
+    raw_groups = reduction.get("groups")
+    if (
+        not isinstance(reduction_kind, str)
+        or not reduction_kind
+        or not isinstance(raw_groups, list)
+    ):
+        raise HarnessError(f"artifact execution reduction is invalid: {artifact}")
+    color_entries = color_axis.get("ordered_entries")
+    helicity_entries = helicity_axis.get("ordered_entries")
+    if not isinstance(color_entries, list) or not isinstance(
+        helicity_entries,
+        list,
+    ):
+        raise HarnessError(f"artifact execution reduction axes are invalid: {artifact}")
+    computed_color_count = sum(
+        isinstance(entry, Mapping) and entry.get("computed") is True
+        for entry in color_entries
+    )
+    live_helicity_count = sum(
+        isinstance(entry, Mapping) and entry.get("structural_zero") is False
+        for entry in helicity_entries
+    )
+    if computed_color_count <= 0 or live_helicity_count <= 0:
+        raise HarnessError(
+            f"artifact execution reduction axes are incomplete: {artifact}"
+        )
+    has_eager_descriptor = "native_reduction_groups" in extensions
+    has_recurrence_descriptor = "recurrence_runtime_reduction" in extensions
+    eager_descriptor = extensions.get("native_reduction_groups")
+    recurrence_descriptor = extensions.get("recurrence_runtime_reduction")
+    if raw_groups:
+        if has_eager_descriptor or has_recurrence_descriptor:
+            raise HarnessError(
+                f"expanded reduction duplicates a native descriptor: {artifact}"
+            )
+        expanded = _reduction_ordering_identity(
+            reduction,
+            color_axis=color_axis,
+            helicity_axis=helicity_axis,
+            artifact=artifact,
+        )
+        return {
+            "identity": {
+                "kind": "expanded-json-reduction-v1",
+                "reduction_kind": reduction_kind,
+                "group_count": len(raw_groups),
+                "computed_physical_color_count": computed_color_count,
+                "live_physical_helicity_count": live_helicity_count,
+                "materialized_ordering_sha256": expanded["ordering_sha256"],
+            },
+            "coverage": expanded["coverage"],
+        }
+
+    if has_eager_descriptor:
+        expected_keys = {
+            "kind",
+            "schema_version",
+            "storage_abi",
+            "runtime_layout_abi",
+            "container_path",
+            "group_member",
+            "entry_member",
+            "group_count",
+        }
+        group_count = (
+            eager_descriptor.get("group_count")
+            if isinstance(eager_descriptor, Mapping)
+            else None
+        )
+        if (
+            has_recurrence_descriptor
+            or not isinstance(eager_descriptor, Mapping)
+            or set(eager_descriptor) != expected_keys
+            or eager_descriptor.get("kind")
+            != "pyamplicol-eager-plan-v3-reduction-groups"
+            or not _is_exact_int(eager_descriptor.get("schema_version"), 1)
+            or eager_descriptor.get("storage_abi") != "pacbin-v1"
+            or eager_descriptor.get("runtime_layout_abi")
+            != "pyamplicol-eager-runtime-layout-v1"
+            or eager_descriptor.get("container_path") != "eager-runtime.pacbin"
+            or eager_descriptor.get("group_member") != "reductions/groups.bin"
+            or eager_descriptor.get("entry_member") != "reductions/entries.bin"
+            or isinstance(group_count, bool)
+            or not isinstance(group_count, int)
+            or group_count <= 0
+        ):
+            raise HarnessError(
+                f"compact eager reduction descriptor is invalid: {artifact}"
+            )
+        groups = _load_compact_eager_reduction_groups(artifact, process_id)
+        if len(groups) != group_count:
+            raise HarnessError(
+                f"compact eager reduction count is inconsistent: {artifact}"
+            )
+        hydrated = _reduction_ordering_identity(
+            {"kind": reduction_kind, "groups": groups},
+            color_axis=color_axis,
+            helicity_axis=helicity_axis,
+            artifact=artifact,
+        )
+        return {
+            "identity": {
+                "kind": "eager-plan-v3-pacbin-reduction-v1",
+                "reduction_kind": reduction_kind,
+                "descriptor": dict(eager_descriptor),
+                "group_count": len(groups),
+                "computed_physical_color_count": computed_color_count,
+                "live_physical_helicity_count": live_helicity_count,
+                "materialized_ordering_sha256": hydrated["ordering_sha256"],
+            },
+            "coverage": hydrated["coverage"],
+        }
+
+    if has_recurrence_descriptor:
+        expected_keys = {
+            "kind",
+            "runtime_layout_abi",
+            "container_path",
+            "plan_member_path",
+        }
+        if (
+            has_eager_descriptor
+            or not isinstance(recurrence_descriptor, Mapping)
+            or set(recurrence_descriptor) != expected_keys
+            or recurrence_descriptor.get("kind")
+            != "pyamplicol-recurrence-native-reduction-v2"
+            or recurrence_descriptor.get("runtime_layout_abi")
+            != "pyamplicol-recurrence-runtime-layout-v2"
+            or recurrence_descriptor.get("container_path")
+            != "recurrence-runtime.pacbin"
+            or recurrence_descriptor.get("plan_member_path")
+            != "schedule/recurrence-direct-schedule-v2.bin"
+        ):
+            raise HarnessError(
+                f"compact recurrence reduction descriptor is invalid: {artifact}"
+            )
+        sections = _load_compact_recurrence_reduction(artifact, process_id)
+        color_ids = cast(list[str], logical_color_axis["ordered_ids"])
+        live_entries = [
+            entry
+            for entry in cast(
+                list[Mapping[str, object]],
+                logical_helicity_axis["ordered_entries"],
+            )
+            if entry.get("structural_zero") is False
+        ]
+        live_values = [
+            tuple(cast(list[int], entry["values"])) for entry in live_entries
+        ]
+        resolved_helicities = tuple(sections.resolved_helicities)
+        public_helicities = tuple(sections.public_helicities)
+        section_values = [
+            tuple(
+                public_helicities[
+                    row.public_helicity_start : row.public_helicity_start
+                    + row.public_helicity_count
+                ]
+            )
+            for row in resolved_helicities
+        ]
+        public_flow_ids = tuple(sections.public_flow_ids)
+        strategy = sections.strategy
+        pair_count = len(color_ids) * len(live_values)
+        complete = (
+            len(public_flow_ids) == len(color_ids) and section_values == live_values
+        )
+        if strategy == "topology-replay":
+            replay_targets = tuple(sections.replay_targets)
+            complete = (
+                complete
+                and public_flow_ids == tuple(range(len(color_ids)))
+                and tuple(row.public_flow_id for row in replay_targets)
+                == public_flow_ids
+                and sections.amplitude_destination_count == len(live_values)
+                and len(sections.replay_helicity_map) == pair_count
+            )
+        elif strategy == "all-flow-union":
+            destination_sectors = {
+                row.target_sector_id for row in sections.amplitude_destinations
+            }
+            complete = (
+                complete
+                and destination_sectors == set(public_flow_ids)
+                and len(sections.amplitude_destinations) == len(destination_sectors)
+                and sections.amplitude_destination_count
+                == len(sections.amplitude_destinations)
+            )
+        else:
+            complete = False
+        if not complete or pair_count <= 0:
+            raise HarnessError(
+                f"compact recurrence reduction coverage is incomplete: {artifact}"
+            )
+        destination_rows = [
+            [row.target_sector_id, row.target_helicity_id]
+            for row in sections.amplitude_destinations
+        ]
+        replay_map = list(sections.replay_helicity_map)
+        return {
+            "identity": {
+                "kind": "recurrence-plan-v2-pacbin-reduction-v1",
+                "reduction_kind": reduction_kind,
+                "descriptor": dict(recurrence_descriptor),
+                "strategy": strategy,
+                "semantic_digest": sections.semantic_digest,
+                "runtime_layout_digest": sections.runtime_layout_digest,
+                "physical_color_count": len(color_ids),
+                "live_physical_helicity_count": len(live_values),
+                "public_flow_binding_count": len(public_flow_ids),
+                "public_flow_bindings": list(public_flow_ids),
+                "public_flow_bindings_sha256": _canonical_sha256(list(public_flow_ids)),
+                "construction_sector_count": len(set(public_flow_ids)),
+                "amplitude_destination_count": (sections.amplitude_destination_count),
+                "destination_row_count": len(destination_rows),
+                "destination_rows": destination_rows,
+                "destination_rows_sha256": _canonical_sha256(destination_rows),
+                "replay_helicity_map_count": len(replay_map),
+                "replay_helicity_map_sha256": _canonical_sha256(replay_map),
+            },
+            "coverage": {
+                "complete": True,
+                "expected_physical_pair_count": pair_count,
+                "observed_physical_pair_count": pair_count,
+                "errors": [],
+            },
+        }
+
+    raise HarnessError(
+        f"empty reduction groups have no authenticated native descriptor: {artifact}"
+    )
+
+
+def _validate_execution_reduction_summary(
+    identity: Mapping[str, object],
+    coverage: Mapping[str, object],
+    *,
+    logical_reduction: Mapping[str, object],
+    artifact: Path,
+) -> None:
+    """Revalidate the stored lane-local summary without reopening its artifact."""
+
+    logical_kind = logical_reduction.get("kind")
+    logical_pair_count = logical_reduction.get("physical_pair_count")
+    physical_color_count = logical_reduction.get("physical_color_count")
+    live_helicity_count = logical_reduction.get("live_physical_helicity_count")
+    expected_pair_count = coverage.get("expected_physical_pair_count")
+    observed_pair_count = coverage.get("observed_physical_pair_count")
+    if (
+        not isinstance(logical_kind, str)
+        or not logical_kind
+        or isinstance(logical_pair_count, bool)
+        or not isinstance(logical_pair_count, int)
+        or logical_pair_count <= 0
+        or isinstance(physical_color_count, bool)
+        or not isinstance(physical_color_count, int)
+        or physical_color_count <= 0
+        or isinstance(live_helicity_count, bool)
+        or not isinstance(live_helicity_count, int)
+        or live_helicity_count <= 0
+        or set(coverage)
+        != {
+            "complete",
+            "expected_physical_pair_count",
+            "observed_physical_pair_count",
+            "errors",
+        }
+        or coverage.get("complete") is not True
+        or isinstance(expected_pair_count, bool)
+        or not isinstance(expected_pair_count, int)
+        or expected_pair_count <= 0
+        or expected_pair_count > logical_pair_count
+        or not _is_exact_int(observed_pair_count, expected_pair_count)
+        or coverage.get("errors") != []
+    ):
+        raise HarnessError(
+            f"artifact execution reduction coverage is invalid: {artifact}"
+        )
+
+    kind = identity.get("kind")
+    if kind == "expanded-json-reduction-v1":
+        group_count = identity.get("group_count")
+        computed_color_count = identity.get("computed_physical_color_count")
+        materialized_sha256 = identity.get("materialized_ordering_sha256")
+        if (
+            set(identity)
+            != {
+                "kind",
+                "reduction_kind",
+                "group_count",
+                "computed_physical_color_count",
+                "live_physical_helicity_count",
+                "materialized_ordering_sha256",
+            }
+            or identity.get("reduction_kind") != logical_kind
+            or isinstance(group_count, bool)
+            or not isinstance(group_count, int)
+            or group_count <= 0
+            or group_count > observed_pair_count
+            or isinstance(computed_color_count, bool)
+            or not isinstance(computed_color_count, int)
+            or computed_color_count <= 0
+            or computed_color_count > physical_color_count
+            or not _is_exact_int(
+                identity.get("live_physical_helicity_count"),
+                live_helicity_count,
+            )
+            or expected_pair_count != computed_color_count * live_helicity_count
+            or not isinstance(materialized_sha256, str)
+            or _SHA256_PATTERN.fullmatch(materialized_sha256) is None
+        ):
+            raise HarnessError(
+                f"expanded execution reduction summary is invalid: {artifact}"
+            )
+        return
+
+    if kind == "eager-plan-v3-pacbin-reduction-v1":
+        descriptor = identity.get("descriptor")
+        group_count = identity.get("group_count")
+        computed_color_count = identity.get("computed_physical_color_count")
+        materialized_sha256 = identity.get("materialized_ordering_sha256")
+        if (
+            set(identity)
+            != {
+                "kind",
+                "reduction_kind",
+                "descriptor",
+                "group_count",
+                "computed_physical_color_count",
+                "live_physical_helicity_count",
+                "materialized_ordering_sha256",
+            }
+            or identity.get("reduction_kind") != logical_kind
+            or not isinstance(descriptor, Mapping)
+            or set(descriptor)
+            != {
+                "kind",
+                "schema_version",
+                "storage_abi",
+                "runtime_layout_abi",
+                "container_path",
+                "group_member",
+                "entry_member",
+                "group_count",
+            }
+            or descriptor.get("kind") != "pyamplicol-eager-plan-v3-reduction-groups"
+            or not _is_exact_int(descriptor.get("schema_version"), 1)
+            or descriptor.get("storage_abi") != "pacbin-v1"
+            or descriptor.get("runtime_layout_abi")
+            != "pyamplicol-eager-runtime-layout-v1"
+            or descriptor.get("container_path") != "eager-runtime.pacbin"
+            or descriptor.get("group_member") != "reductions/groups.bin"
+            or descriptor.get("entry_member") != "reductions/entries.bin"
+            or isinstance(group_count, bool)
+            or not isinstance(group_count, int)
+            or group_count <= 0
+            or group_count > observed_pair_count
+            or not _is_exact_int(descriptor.get("group_count"), group_count)
+            or isinstance(computed_color_count, bool)
+            or not isinstance(computed_color_count, int)
+            or computed_color_count <= 0
+            or computed_color_count > physical_color_count
+            or not _is_exact_int(
+                identity.get("live_physical_helicity_count"),
+                live_helicity_count,
+            )
+            or expected_pair_count != computed_color_count * live_helicity_count
+            or not isinstance(materialized_sha256, str)
+            or _SHA256_PATTERN.fullmatch(materialized_sha256) is None
+        ):
+            raise HarnessError(
+                f"compact eager execution reduction summary is invalid: {artifact}"
+            )
+        return
+
+    if kind == "recurrence-plan-v2-pacbin-reduction-v1":
+        descriptor = identity.get("descriptor")
+        strategy = identity.get("strategy")
+        semantic_digest = identity.get("semantic_digest")
+        runtime_layout_digest = identity.get("runtime_layout_digest")
+        public_flow_binding_count = identity.get("public_flow_binding_count")
+        public_flow_bindings = identity.get("public_flow_bindings")
+        public_flow_bindings_sha256 = identity.get("public_flow_bindings_sha256")
+        construction_sector_count = identity.get("construction_sector_count")
+        amplitude_destination_count = identity.get("amplitude_destination_count")
+        destination_row_count = identity.get("destination_row_count")
+        destination_rows = identity.get("destination_rows")
+        destination_rows_sha256 = identity.get("destination_rows_sha256")
+        replay_map_count = identity.get("replay_helicity_map_count")
+        replay_map_sha256 = identity.get("replay_helicity_map_sha256")
+        public_flow_bindings_are_valid = isinstance(
+            public_flow_bindings,
+            list,
+        ) and all(
+            not isinstance(value, bool) and isinstance(value, int) and value >= 0
+            for value in public_flow_bindings
+        )
+        destination_rows_are_valid = isinstance(destination_rows, list) and all(
+            isinstance(row, list)
+            and len(row) == 2
+            and all(
+                not isinstance(value, bool)
+                and isinstance(value, int)
+                and 0 <= value < 2**32
+                for value in row
+            )
+            for row in destination_rows
+        )
+        construction_sector_ids = (
+            set(public_flow_bindings) if public_flow_bindings_are_valid else set()
+        )
+        destination_sector_ids = (
+            [row[0] for row in destination_rows] if destination_rows_are_valid else []
+        )
+        destination_helicity_ids = (
+            [row[1] for row in destination_rows] if destination_rows_are_valid else []
+        )
+        if (
+            set(identity)
+            != {
+                "kind",
+                "reduction_kind",
+                "descriptor",
+                "strategy",
+                "semantic_digest",
+                "runtime_layout_digest",
+                "physical_color_count",
+                "live_physical_helicity_count",
+                "public_flow_binding_count",
+                "public_flow_bindings",
+                "public_flow_bindings_sha256",
+                "construction_sector_count",
+                "amplitude_destination_count",
+                "destination_row_count",
+                "destination_rows",
+                "destination_rows_sha256",
+                "replay_helicity_map_count",
+                "replay_helicity_map_sha256",
+            }
+            or identity.get("reduction_kind") != logical_kind
+            or not isinstance(descriptor, Mapping)
+            or set(descriptor)
+            != {
+                "kind",
+                "runtime_layout_abi",
+                "container_path",
+                "plan_member_path",
+            }
+            or descriptor.get("kind") != "pyamplicol-recurrence-native-reduction-v2"
+            or descriptor.get("runtime_layout_abi")
+            != "pyamplicol-recurrence-runtime-layout-v2"
+            or descriptor.get("container_path") != "recurrence-runtime.pacbin"
+            or descriptor.get("plan_member_path")
+            != "schedule/recurrence-direct-schedule-v2.bin"
+            or strategy not in {"topology-replay", "all-flow-union"}
+            or not isinstance(semantic_digest, str)
+            or _SHA256_PATTERN.fullmatch(semantic_digest) is None
+            or not isinstance(runtime_layout_digest, str)
+            or _SHA256_PATTERN.fullmatch(runtime_layout_digest) is None
+            or not _is_exact_int(
+                identity.get("physical_color_count"),
+                physical_color_count,
+            )
+            or not _is_exact_int(
+                identity.get("live_physical_helicity_count"),
+                live_helicity_count,
+            )
+            or not _is_exact_int(public_flow_binding_count, physical_color_count)
+            or not public_flow_bindings_are_valid
+            or len(public_flow_bindings) != physical_color_count
+            or not isinstance(public_flow_bindings_sha256, str)
+            or _SHA256_PATTERN.fullmatch(public_flow_bindings_sha256) is None
+            or public_flow_bindings_sha256 != _canonical_sha256(public_flow_bindings)
+            or isinstance(construction_sector_count, bool)
+            or not isinstance(construction_sector_count, int)
+            or construction_sector_count <= 0
+            or construction_sector_count > physical_color_count
+            or len(construction_sector_ids) != construction_sector_count
+            or construction_sector_ids != set(range(construction_sector_count))
+            or isinstance(amplitude_destination_count, bool)
+            or not isinstance(amplitude_destination_count, int)
+            or amplitude_destination_count <= 0
+            or not _is_exact_int(destination_row_count, amplitude_destination_count)
+            or not destination_rows_are_valid
+            or len(destination_rows) != amplitude_destination_count
+            or len({tuple(row) for row in destination_rows})
+            != amplitude_destination_count
+            or not isinstance(destination_rows_sha256, str)
+            or _SHA256_PATTERN.fullmatch(destination_rows_sha256) is None
+            or destination_rows_sha256 != _canonical_sha256(destination_rows)
+            or isinstance(replay_map_count, bool)
+            or not isinstance(replay_map_count, int)
+            or replay_map_count < 0
+            or not isinstance(replay_map_sha256, str)
+            or _SHA256_PATTERN.fullmatch(replay_map_sha256) is None
+            or expected_pair_count != logical_pair_count
+            or (
+                strategy == "topology-replay"
+                and (
+                    construction_sector_count != physical_color_count
+                    or public_flow_bindings != list(range(physical_color_count))
+                    or amplitude_destination_count != live_helicity_count
+                    or destination_helicity_ids != list(range(live_helicity_count))
+                    or not set(destination_sector_ids) <= construction_sector_ids
+                    or replay_map_count != logical_pair_count
+                )
+            )
+            or (
+                strategy == "all-flow-union"
+                and (
+                    amplitude_destination_count != construction_sector_count
+                    or set(destination_sector_ids) != construction_sector_ids
+                    or any(value != 2**32 - 1 for value in destination_helicity_ids)
+                    or replay_map_count != 0
+                    or replay_map_sha256 != _canonical_sha256([])
+                )
+            )
+        ):
+            raise HarnessError(
+                f"compact recurrence execution reduction summary is invalid: {artifact}"
+            )
+        return
+
+    raise HarnessError(f"artifact execution reduction summary is invalid: {artifact}")
+
+
 def _artifact_semantic_identity(
     artifact: Path,
     manifest: Mapping[str, object],
@@ -1202,14 +1938,22 @@ def _artifact_semantic_identity(
         str,
     ):
         raise HarnessError(f"artifact physical-axis coverage is invalid: {artifact}")
-    color_axis = _ordered_physical_axis(
+    execution_color_axis = _ordered_physical_axis(
         physics.get("color_components"),
         label="color-flow",
         require_structural_zero=False,
     )
-    helicity_axis = _ordered_physical_axis(
+    execution_helicity_axis = _ordered_physical_axis(
         physics.get("helicities"),
         label="helicity",
+        require_structural_zero=True,
+    )
+    color_axis = _logical_physical_axis(
+        execution_color_axis,
+        require_structural_zero=False,
+    )
+    helicity_axis = _logical_physical_axis(
+        execution_helicity_axis,
         require_structural_zero=True,
     )
     normalization = extensions.get("normalization")
@@ -1226,11 +1970,24 @@ def _artifact_semantic_identity(
     )
     specialized_axes = runtime_selector_semantics["generation_specialized_axes"]
     assert isinstance(specialized_axes, list)
-    reduction_identity = _reduction_ordering_identity(
-        reduction,
+    process_id = process.get("id")
+    if not isinstance(process_id, str) or not process_id:
+        raise HarnessError(f"artifact process ID is invalid: {artifact}")
+    reduction_identity = _logical_reduction_ordering_identity(
+        reduction.get("kind"),
         color_axis=color_axis,
         helicity_axis=helicity_axis,
         artifact=artifact,
+    )
+    execution_reduction = _execution_reduction_identity(
+        reduction,
+        extensions=extensions,
+        color_axis=execution_color_axis,
+        helicity_axis=execution_helicity_axis,
+        logical_color_axis=color_axis,
+        logical_helicity_axis=helicity_axis,
+        artifact=artifact,
+        process_id=process_id,
     )
     model_identity = _manifest_model_identity(manifest)
     manifest_extensions = manifest.get("extensions")
@@ -1244,7 +2001,6 @@ def _artifact_semantic_identity(
         if isinstance(generation, Mapping)
         else None
     )
-    process_id = process.get("id")
     matching_processes = (
         [
             dict(entry)
@@ -1283,7 +2039,7 @@ def _artifact_semantic_identity(
     physics_file_identity = _path_identity(physics_path)
     return {
         "kind": "pyamplicol-benchmark-artifact-semantic-identity",
-        "schema_version": 2,
+        "schema_version": ARTIFACT_SEMANTIC_IDENTITY_SCHEMA,
         "physics_file": {
             "relative_path": process["physics_path"],
             "size_bytes": physics_file_identity["size_bytes"],
@@ -1302,6 +2058,11 @@ def _artifact_semantic_identity(
         "reduction_ordering": reduction_identity["ordering"],
         "reduction_ordering_sha256": reduction_identity["ordering_sha256"],
         "reduction_coverage": reduction_identity["coverage"],
+        "execution_reduction_identity": execution_reduction["identity"],
+        "execution_reduction_identity_sha256": _canonical_sha256(
+            execution_reduction["identity"]
+        ),
+        "execution_reduction_coverage": execution_reduction["coverage"],
         "execution_schedule_ordering": execution_schedule_ordering,
         "execution_schedule_ordering_sha256": _canonical_sha256(
             execution_schedule_ordering
@@ -1543,11 +2304,156 @@ def _require_reusable_artifact(
     return identity, sidecar
 
 
+def _artifact_identity_from_bound_semantics(
+    artifact: Path,
+    *,
+    tree: Mapping[str, object],
+    semantic_identity: Mapping[str, object],
+) -> dict[str, object]:
+    """Recover cheap identity fields after exact tree/sidecar authentication.
+
+    The initial artifact bind validates every manifest payload and reconstructs
+    the lane-local semantic identity.  Its sibling reuse sidecar content
+    addresses that semantic identity and the complete artifact tree.  Once both
+    byte identities have been pinned, later subprocesses can recover the
+    immutable semantic body without hydrating a multi-gigabyte native plan.
+    """
+
+    manifest_path = artifact / "artifact.json"
+    manifest = _json_object(manifest_path, label="artifact manifest")
+    processes = manifest.get("processes")
+    if not isinstance(processes, list) or len(processes) != 1:
+        raise HarnessError(f"benchmark artifact must contain one process: {artifact}")
+    process = processes[0]
+    if not isinstance(process, Mapping):
+        raise HarnessError(f"artifact process record is invalid: {artifact}")
+    expression = process.get("expression")
+    process_id = process.get("id")
+    color_accuracy = process.get("color_accuracy")
+    if not isinstance(expression, str) or not expression:
+        raise HarnessError(f"artifact process expression is invalid: {artifact}")
+    if not isinstance(process_id, str) or not process_id:
+        raise HarnessError(f"artifact process ID is invalid: {artifact}")
+    model_identity = _manifest_model_identity(manifest)
+    bound_model_identity = semantic_identity.get("manifest_model_identity")
+    if (
+        not isinstance(bound_model_identity, Mapping)
+        or dict(bound_model_identity) != model_identity
+    ):
+        raise HarnessError(
+            f"artifact semantic model identity disagrees with its manifest: {artifact}"
+        )
+    semantic_identity_sha256 = _canonical_sha256(semantic_identity)
+    return {
+        "path": str(artifact.resolve()),
+        "artifact_id": manifest.get("artifact_id"),
+        "manifest": _path_identity(manifest_path),
+        "tree": dict(tree),
+        "process_id": process_id,
+        "process_expression": expression,
+        "color_accuracy": color_accuracy,
+        "producer": manifest.get("producer"),
+        "model_identity": model_identity,
+        "semantic_identity": dict(semantic_identity),
+        "semantic_identity_sha256": semantic_identity_sha256,
+    }
+
+
+def _require_bound_reusable_artifact(
+    artifact: Path,
+    *,
+    expected_tree_sha256: str,
+    expected_semantic_identity_sha256: str,
+    expected_reuse_semantic_signature_sha256: str,
+    expected_sidecar_sha256: str,
+    expected_signature: Mapping[str, object] | None,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    """Rebind an already authenticated artifact through exact byte identities.
+
+    This is deliberately not the initial reuse path.  The caller must supply
+    digests retained from a prior full semantic bind.  We hash the complete
+    artifact tree and the sibling reuse sidecar again, validate the sidecar's
+    self-addressed semantic/generation payload, and only then recover the
+    semantic body stored in that sidecar.
+    """
+
+    expected_tree_sha256 = _required_sha256(
+        expected_tree_sha256,
+        label="expected bound artifact tree",
+    )
+    expected_semantic_identity_sha256 = _required_sha256(
+        expected_semantic_identity_sha256,
+        label="expected bound artifact semantic identity",
+    )
+    expected_reuse_semantic_signature_sha256 = _required_sha256(
+        expected_reuse_semantic_signature_sha256,
+        label="expected bound reuse semantic signature",
+    )
+    expected_sidecar_sha256 = _required_sha256(
+        expected_sidecar_sha256,
+        label="expected bound reuse sidecar",
+    )
+    sidecar_path = _reuse_signature_path(artifact)
+    sidecar_identity_before = _path_identity(sidecar_path)
+    if sidecar_identity_before.get("sha256") != expected_sidecar_sha256:
+        raise HarnessError(
+            f"artifact reuse sidecar changed after semantic binding: {artifact}"
+        )
+    sidecar_payload = _json_object(
+        sidecar_path,
+        label="artifact reuse signature",
+    )
+    raw_signature = sidecar_payload.get("semantic_signature")
+    semantic_identity = (
+        raw_signature.get("artifact_semantic_identity")
+        if isinstance(raw_signature, Mapping)
+        else None
+    )
+    if not isinstance(semantic_identity, Mapping):
+        raise HarnessError(
+            f"artifact reuse signature has no bound semantic identity: {sidecar_path}"
+        )
+    tree = _tree_identity(artifact)
+    if tree.get("sha256") != expected_tree_sha256:
+        raise HarnessError(f"artifact tree changed after semantic binding: {artifact}")
+    identity = _artifact_identity_from_bound_semantics(
+        artifact,
+        tree=tree,
+        semantic_identity=semantic_identity,
+    )
+    sidecar = _validated_reuse_signature(
+        artifact,
+        artifact_identity=identity,
+        expected_signature=expected_signature,
+    )
+    if identity.get("semantic_identity_sha256") != expected_semantic_identity_sha256:
+        raise HarnessError(
+            f"artifact semantic identity changed after semantic binding: {artifact}"
+        )
+    if (
+        sidecar.get("semantic_signature_sha256")
+        != expected_reuse_semantic_signature_sha256
+    ):
+        raise HarnessError(
+            f"artifact reuse semantics changed after semantic binding: {artifact}"
+        )
+    sidecar_identity_after = _path_identity(sidecar_path)
+    if (
+        sidecar_identity_after != sidecar_identity_before
+        or sidecar_identity_after.get("sha256") != expected_sidecar_sha256
+    ):
+        raise HarnessError(
+            f"artifact reuse sidecar drifted during semantic binding: {artifact}"
+        )
+    return identity, sidecar, sidecar_identity_after
+
+
 _PROFILE_EXPECTATION_FIELDS = (
     "source_identity_sha256",
     "runtime_provenance_sha256",
     "interpreter_sha256",
     "native_extension_sha256",
+    "artifact_id",
     "artifact_tree_sha256",
     "artifact_semantic_identity_sha256",
     "reuse_semantic_signature_sha256",
@@ -1588,6 +2494,10 @@ def _profile_identity_expectations(
         "native_extension_sha256": _required_sha256(
             native.get("sha256"),
             label="native extension identity",
+        ),
+        "artifact_id": _required_sha256(
+            artifact_identity.get("artifact_id"),
+            label="artifact manifest identity",
         ),
         "artifact_tree_sha256": _required_sha256(
             tree.get("sha256"),
@@ -1655,17 +2565,31 @@ def _profile_worker_expectations_from_arguments(
 def _verify_profile_worker_environment(
     arguments: argparse.Namespace,
 ) -> dict[str, object]:
-    """Recompute every timing identity inside the worker before loading."""
+    """Recompute every byte identity inside the worker before loading.
+
+    Native artifact semantics were fully authenticated by the driver before it
+    scheduled any timing worker.  The worker rebinds that semantic body through
+    the exact artifact-tree and reuse-sidecar digests supplied by the driver,
+    avoiding a redundant native-plan hydration before every timed load.
+    """
 
     expected = _profile_worker_expectations_from_arguments(arguments)
     source_identity = _git_source_identity()
     runtime_provenance = _runtime_provenance(source_identity)
     artifact = arguments.artifact.resolve(strict=True)
-    artifact_identity = _artifact_identity(artifact)
-    reuse_signature = _validated_reuse_signature(
-        artifact,
-        artifact_identity=artifact_identity,
-        expected_signature=None,
+    artifact_identity, reuse_signature, reuse_sidecar_identity = (
+        _require_bound_reusable_artifact(
+            artifact,
+            expected_tree_sha256=expected["artifact_tree_sha256"],
+            expected_semantic_identity_sha256=expected[
+                "artifact_semantic_identity_sha256"
+            ],
+            expected_reuse_semantic_signature_sha256=expected[
+                "reuse_semantic_signature_sha256"
+            ],
+            expected_sidecar_sha256=expected["reuse_sidecar_sha256"],
+            expected_signature=None,
+        )
     )
     interpreter = runtime_provenance.get("interpreter")
     native = runtime_provenance.get("native_extension")
@@ -1681,6 +2605,7 @@ def _verify_profile_worker_environment(
         "runtime_provenance_sha256": _canonical_sha256(runtime_provenance),
         "interpreter_sha256": interpreter.get("sha256"),
         "native_extension_sha256": native.get("sha256"),
+        "artifact_id": artifact_identity.get("artifact_id"),
         "artifact_tree_sha256": tree.get("sha256"),
         "artifact_semantic_identity_sha256": artifact_identity.get(
             "semantic_identity_sha256"
@@ -1688,9 +2613,7 @@ def _verify_profile_worker_environment(
         "reuse_semantic_signature_sha256": reuse_signature.get(
             "semantic_signature_sha256"
         ),
-        "reuse_sidecar_sha256": _path_identity(_reuse_signature_path(artifact)).get(
-            "sha256"
-        ),
+        "reuse_sidecar_sha256": reuse_sidecar_identity.get("sha256"),
     }
     _validate_profile_worker_expectations(expected, observed)
     effective_contract = _validate_artifact_contract(
@@ -1711,6 +2634,68 @@ def _verify_profile_worker_environment(
         ],
         "effective_contract": effective_contract,
     }
+
+
+def _loaded_runtime_artifact_verification(
+    runtime: object,
+    *,
+    expected_artifact_id: object,
+    phase: str,
+) -> dict[str, object]:
+    """Bind an in-memory runtime to the manifest identity it authenticated.
+
+    The native loader validates the manifest identity, the exact declared tree,
+    and every payload before it publishes the runtime.  Comparing that retained
+    identity closes the path replacement window between the worker's fast tree
+    rebind and ``Runtime.load`` without rehydrating the eager semantic plan.
+    """
+
+    expected = _required_sha256(
+        expected_artifact_id,
+        label="expected loaded artifact identity",
+    )
+    observed = _required_sha256(
+        getattr(runtime, "artifact_id", None),
+        label="native loaded artifact identity",
+    )
+    if observed != expected:
+        raise HarnessError(
+            "profile worker loaded a different artifact after its pre-load "
+            "identity check"
+        )
+    return {
+        "kind": "pyamplicol-loaded-runtime-artifact-verification",
+        "schema_version": 1,
+        "phase": phase,
+        "checked_at_utc": _utc_now(),
+        "expected_artifact_id": expected,
+        "loaded_artifact_id": observed,
+        "passes": True,
+    }
+
+
+def _validate_loaded_runtime_artifact_verification(
+    value: object,
+    *,
+    expected_artifact_id: object,
+    phase: str,
+) -> None:
+    expected = _required_sha256(
+        expected_artifact_id,
+        label="expected retained loaded artifact identity",
+    )
+    if not isinstance(value, Mapping):
+        raise HarnessError("loaded runtime artifact verification is missing")
+    if (
+        value.get("kind") != "pyamplicol-loaded-runtime-artifact-verification"
+        or not _is_exact_int(value.get("schema_version"), 1)
+        or value.get("phase") != phase
+        or not _is_utc_timestamp(value.get("checked_at_utc"))
+        or value.get("expected_artifact_id") != expected
+        or value.get("loaded_artifact_id") != expected
+        or value.get("passes") is not True
+    ):
+        raise HarnessError("loaded runtime artifact verification is invalid")
 
 
 def _artifact_phases(path: Path) -> dict[str, float]:
@@ -2182,6 +3167,12 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
                 f"rebuild pyAmpliCol with recurrence support: {error}"
             ) from error
         raise
+    loaded_artifact_before_timing = _loaded_runtime_artifact_verification(
+        runtime,
+        expected_artifact_id=pre_timing_verification["expected"]["artifact_id"],
+        phase="after-native-load-before-timing",
+    )
+    pre_timing_verification["loaded_runtime_artifact"] = loaded_artifact_before_timing
     cold_load_seconds = time.perf_counter() - load_started
     peak_after_load = _resource_peak()
     physics = runtime.physics
@@ -2349,11 +3340,18 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
         measurement["inner_native_wall_blocks"] = raw_blocks
         profiles.append(measurement)
 
+    loaded_artifact_after_timing = _loaded_runtime_artifact_verification(
+        runtime,
+        expected_artifact_id=pre_timing_verification["expected"]["artifact_id"],
+        phase="after-timing",
+    )
+
     return {
         "mode": arguments.mode,
         "schedule_index": arguments.schedule_index,
         "schedule_round": arguments.schedule_round,
         "pre_timing_verification": pre_timing_verification,
+        "post_timing_loaded_runtime_artifact": loaded_artifact_after_timing,
         "timing_configuration": {
             "minimum_internal_samples": arguments.minimum_samples,
             "warmup_runs": arguments.warmup_runs,
@@ -2664,26 +3662,83 @@ def _recheck_driver_state(
         ):
             raise HarnessError(f"driver artifact drift baseline is invalid for {mode}")
         artifact = Path(raw_artifact)
-        observed_identity, observed_reuse = _require_reusable_artifact(
-            artifact,
-            expected_signature=expected_generation,
+        expected_tree = expected_identity.get("tree")
+        if not isinstance(expected_tree, Mapping):
+            raise HarnessError(f"driver artifact tree baseline is invalid for {mode}")
+        expected_sidecar_sha = _required_sha256(
+            baseline.get("reuse_sidecar_sha256"),
+            label=f"{mode} reuse sidecar baseline",
         )
+        observed_identity, observed_reuse, observed_sidecar_identity = (
+            _require_bound_reusable_artifact(
+                artifact,
+                expected_tree_sha256=_required_sha256(
+                    expected_tree.get("sha256"),
+                    label=f"{mode} artifact tree baseline",
+                ),
+                expected_semantic_identity_sha256=_required_sha256(
+                    expected_identity.get("semantic_identity_sha256"),
+                    label=f"{mode} artifact semantic baseline",
+                ),
+                expected_reuse_semantic_signature_sha256=_required_sha256(
+                    expected_reuse.get("semantic_signature_sha256"),
+                    label=f"{mode} reuse semantic baseline",
+                ),
+                expected_sidecar_sha256=expected_sidecar_sha,
+                expected_signature=expected_generation,
+            )
+        )
+        observed_tree = observed_identity.get("tree")
+        if not isinstance(observed_tree, Mapping):
+            raise HarnessError(f"{mode} bound artifact tree is incomplete")
         _assert_identity_unchanged(
-            f"{mode} artifact identity",
-            expected_identity,
+            f"{mode} artifact tree",
+            expected_tree,
+            observed_tree,
+        )
+        expected_semantic = expected_identity.get("semantic_identity")
+        observed_semantic = observed_identity.get("semantic_identity")
+        if not isinstance(expected_semantic, Mapping) or not isinstance(
+            observed_semantic,
+            Mapping,
+        ):
+            raise HarnessError(f"{mode} artifact semantic baseline is incomplete")
+        _assert_identity_unchanged(
+            f"{mode} artifact semantic identity",
+            expected_semantic,
+            observed_semantic,
+        )
+        expected_bound_identity = {
+            str(key): value
+            for key, value in expected_identity.items()
+            if key != "payloads"
+        }
+        _assert_identity_unchanged(
+            f"{mode} bound artifact identity",
+            expected_bound_identity,
             observed_identity,
+        )
+        expected_payloads = expected_identity.get("payloads")
+        if not isinstance(expected_payloads, list):
+            raise HarnessError(
+                f"driver artifact payload baseline is invalid for {mode}"
+            )
+        observed_full_identity = {
+            **observed_identity,
+            "payloads": list(expected_payloads),
+        }
+        _assert_identity_unchanged(
+            f"{mode} reconstructed full artifact identity",
+            expected_identity,
+            observed_full_identity,
         )
         _assert_identity_unchanged(
             f"{mode} artifact reuse signature",
             expected_reuse,
             observed_reuse,
         )
-        expected_sidecar_sha = _required_sha256(
-            baseline.get("reuse_sidecar_sha256"),
-            label=f"{mode} reuse sidecar baseline",
-        )
         observed_sidecar_sha = _required_sha256(
-            _path_identity(_reuse_signature_path(artifact)).get("sha256"),
+            observed_sidecar_identity.get("sha256"),
             label=f"{mode} observed reuse sidecar",
         )
         if observed_sidecar_sha != expected_sidecar_sha:
@@ -2691,7 +3746,7 @@ def _recheck_driver_state(
                 f"{mode} artifact reuse sidecar drifted during a worker or long run"
             )
         observed_artifacts[mode] = {
-            "artifact_identity_sha256": _canonical_sha256(observed_identity),
+            "artifact_identity_sha256": _canonical_sha256(observed_full_identity),
             "reuse_signature_sha256": _canonical_sha256(observed_reuse),
             "reuse_sidecar_sha256": observed_sidecar_sha,
         }
@@ -3379,6 +4434,11 @@ def _profile_schedule_contract(
                         expected_identities,
                         observed_identities,
                     )
+                    _validate_loaded_runtime_artifact_verification(
+                        verification.get("loaded_runtime_artifact"),
+                        expected_artifact_id=expected_identities.get("artifact_id"),
+                        phase="after-native-load-before-timing",
+                    )
                 except HarnessError:
                     errors.append(
                         f"profile schedule entry {index} contains identity drift"
@@ -3499,6 +4559,7 @@ def _compact_profile_verification(
             "artifact_semantic_identity_sha256"
         ),
         "effective_contract": verification.get("effective_contract"),
+        "loaded_runtime_artifact": verification.get("loaded_runtime_artifact"),
     }
 
 
@@ -3753,6 +4814,9 @@ def _aggregate_profile_workers(
             "worker_invocation": worker.get("worker_invocation"),
             "worker_process_record": dict(worker_process_record),
             "pre_timing_verification": _compact_profile_verification(verification),
+            "post_timing_loaded_runtime_artifact": worker.get(
+                "post_timing_loaded_runtime_artifact"
+            ),
             "lane_contract_sha256": _canonical_sha256(contract),
             "timing_configuration": worker.get("timing_configuration"),
             "worker_measurement": dict(measurement),
@@ -4042,6 +5106,9 @@ def _profile_measurement_contract(
                 timing_configuration = sample.get("timing_configuration")
                 schedule_index = sample.get("schedule_index")
                 verification = sample.get("pre_timing_verification")
+                post_timing_loaded_artifact = sample.get(
+                    "post_timing_loaded_runtime_artifact"
+                )
                 sample_round = sample.get("round")
                 invocation = sample.get("worker_invocation")
                 worker_command = sample.get("worker_command")
@@ -4126,6 +5193,27 @@ def _profile_measurement_contract(
                             f"profile batch {batch_size} subprocess sample "
                             f"{sample_index} artifact identity is not bound"
                         )
+                    else:
+                        try:
+                            _validate_loaded_runtime_artifact_verification(
+                                verification.get("loaded_runtime_artifact"),
+                                expected_artifact_id=expected_identities.get(
+                                    "artifact_id"
+                                ),
+                                phase="after-native-load-before-timing",
+                            )
+                            _validate_loaded_runtime_artifact_verification(
+                                post_timing_loaded_artifact,
+                                expected_artifact_id=expected_identities.get(
+                                    "artifact_id"
+                                ),
+                                phase="after-timing",
+                            )
+                        except HarnessError:
+                            errors.append(
+                                f"profile batch {batch_size} subprocess sample "
+                                f"{sample_index} loaded artifact identity is not bound"
+                            )
                 if (
                     isinstance(internal_count, bool)
                     or not isinstance(internal_count, int)
@@ -4651,10 +5739,15 @@ def _profile_artifact_semantic_contract(
         runtime_selectors = identity.get("runtime_selectors")
         reduction_ordering = identity.get("reduction_ordering")
         reduction_coverage = identity.get("reduction_coverage")
+        execution_reduction = identity.get("execution_reduction_identity")
+        execution_reduction_coverage = identity.get("execution_reduction_coverage")
         execution_ordering = identity.get("execution_schedule_ordering")
         if (
             identity.get("kind") != "pyamplicol-benchmark-artifact-semantic-identity"
-            or not _is_exact_int(identity.get("schema_version"), 2)
+            or not _is_exact_int(
+                identity.get("schema_version"),
+                ARTIFACT_SEMANTIC_IDENTITY_SCHEMA,
+            )
             or not isinstance(coverage, Mapping)
             or not isinstance(color_axis, Mapping)
             or not isinstance(helicity_axis, Mapping)
@@ -4664,6 +5757,8 @@ def _profile_artifact_semantic_contract(
             or not isinstance(runtime_selectors, Mapping)
             or not isinstance(reduction_ordering, Mapping)
             or not isinstance(reduction_coverage, Mapping)
+            or not isinstance(execution_reduction, Mapping)
+            or not isinstance(execution_reduction_coverage, Mapping)
             or not isinstance(execution_ordering, Mapping)
         ):
             errors.append(f"{mode} artifact semantic identity is incomplete")
@@ -4674,35 +5769,13 @@ def _profile_artifact_semantic_contract(
             ("physical_color_flows", color_axis, False),
             ("physical_helicities", helicity_axis, True),
         ):
-            ordered_entries = axis.get("ordered_entries")
             try:
-                validated_axis = _ordered_physical_axis(
-                    ordered_entries,
+                validated_axis = _validated_logical_physical_axis(
+                    axis,
                     label=label,
                     require_structural_zero=require_structural_zero,
                 )
             except HarnessError:
-                errors.append(f"{mode} {label} semantic identity is invalid")
-                axes_are_valid = False
-                continue
-            if any(
-                (
-                    not _is_exact_int(
-                        axis.get(field),
-                        cast(int, validated_axis[field]),
-                    )
-                    if field == "count"
-                    else _canonical_sha256(axis.get(field))
-                    != _canonical_sha256(validated_axis[field])
-                )
-                for field in (
-                    "count",
-                    "ordered_ids",
-                    "ordered_ids_sha256",
-                    "ordered_entries",
-                    "ordered_entries_sha256",
-                )
-            ):
                 errors.append(f"{mode} {label} semantic identity is invalid")
                 axes_are_valid = False
                 continue
@@ -4721,6 +5794,7 @@ def _profile_artifact_semantic_contract(
         selector_semantics_sha256 = identity.get("runtime_selector_semantics_sha256")
         runtime_selectors_sha256 = identity.get("runtime_selectors_sha256")
         reduction_ordering_sha256 = identity.get("reduction_ordering_sha256")
+        execution_reduction_sha256 = identity.get("execution_reduction_identity_sha256")
         execution_ordering_sha256 = identity.get("execution_schedule_ordering_sha256")
         try:
             validated_model_identity = _manifest_model_identity(
@@ -4758,23 +5832,28 @@ def _profile_artifact_semantic_contract(
                 for entry in manifest_payload_order
             )
         )
-        raw_reduction_groups = reduction_ordering.get("ordered_groups")
         try:
-            validated_reduction = (
-                _reduction_ordering_identity(
-                    {
-                        "kind": reduction_ordering.get("kind"),
-                        "groups": raw_reduction_groups,
-                    },
-                    color_axis=color_axis,
-                    helicity_axis=helicity_axis,
-                    artifact=Path(f"<{mode}-profile>"),
-                )
-                if isinstance(raw_reduction_groups, list)
-                else None
+            validated_reduction = _logical_reduction_ordering_identity(
+                reduction_ordering.get("kind"),
+                color_axis=color_axis,
+                helicity_axis=helicity_axis,
+                artifact=Path(f"<{mode}-profile>"),
             )
         except HarnessError:
             validated_reduction = None
+        execution_reduction_is_valid = False
+        if validated_reduction is not None:
+            try:
+                _validate_execution_reduction_summary(
+                    execution_reduction,
+                    execution_reduction_coverage,
+                    logical_reduction=validated_reduction["ordering"],
+                    artifact=Path(f"<{mode}-profile>"),
+                )
+            except HarnessError:
+                pass
+            else:
+                execution_reduction_is_valid = True
         if (
             normalization_sha256 != _canonical_sha256(normalization)
             or coverage.get("complete_physical_axes")
@@ -4801,6 +5880,8 @@ def _profile_artifact_semantic_contract(
             or reduction_ordering_sha256 != validated_reduction["ordering_sha256"]
             or _canonical_sha256(reduction_coverage)
             != _canonical_sha256(validated_reduction["coverage"])
+            or execution_reduction_sha256 != _canonical_sha256(execution_reduction)
+            or not execution_reduction_is_valid
             or not execution_ordering_is_valid
             or execution_ordering_sha256 != _canonical_sha256(execution_ordering)
             or reduction_coverage.get("complete") is not True
@@ -4816,6 +5897,7 @@ def _profile_artifact_semantic_contract(
             "runtime_selector_semantics_sha256": selector_semantics_sha256,
             "runtime_selectors_sha256": runtime_selectors_sha256,
             "reduction_ordering_sha256": reduction_ordering_sha256,
+            "execution_reduction_identity_sha256": (execution_reduction_sha256),
             "execution_schedule_ordering_sha256": execution_ordering_sha256,
         }
     common_physics = {
@@ -4834,10 +5916,12 @@ def _profile_artifact_semantic_contract(
         for mode, contract in lane_contracts.items()
     }
     common_values = list(common_physics.values())
-    lanes_match = bool(common_values) and all(
-        value == common_values[0] for value in common_values[1:]
+    lanes_match = (
+        bool(common_values)
+        and set(lane_contracts) == set(profiles)
+        and all(value == common_values[0] for value in common_values[1:])
     )
-    if common_values and not lanes_match:
+    if common_values and set(lane_contracts) == set(profiles) and not lanes_match:
         errors.append(
             "profile lanes have different model, ordered physical-axis entries, "
             "runtime-selector semantics, normalization, or reduction ordering"
@@ -4942,7 +6026,7 @@ def _capture_acceptance(
     )
     return {
         "kind": "pyamplicol-three-lane-layout-capture",
-        "schema_version": 3,
+        "schema_version": CAPTURE_ACCEPTANCE_SCHEMA,
         "complete": complete,
         "evidence_complete": evidence_complete,
         "passes": passes,

@@ -83,10 +83,7 @@ class CampaignSettings:
             raise ValueError("timeout_seconds must be positive")
         if self.max_rss_bytes is not None and self.max_rss_bytes <= 0:
             raise ValueError("max_rss_bytes must be positive")
-        if (
-            self.campaign_max_rss_bytes is not None
-            and self.campaign_max_rss_bytes <= 0
-        ):
+        if self.campaign_max_rss_bytes is not None and self.campaign_max_rss_bytes <= 0:
             raise ValueError("campaign_max_rss_bytes must be positive")
         if self.missing_only and self.rerun:
             raise ValueError("--missing-only and --rerun are mutually exclusive")
@@ -128,11 +125,7 @@ def select_cells(
 ) -> tuple[CellSpec, ...]:
     return tuple(
         sorted(
-            (
-                cell
-                for cell in catalog.measurement_cells()
-                if selection.matches(cell)
-            ),
+            (cell for cell in catalog.measurement_cells() if selection.matches(cell)),
             key=lambda cell: cell.cell_id,
         )
     )
@@ -213,11 +206,15 @@ def plan_campaign(
         if cell.cell_id in needed:
             return
         baseline = catalog.baseline_cell(cell)
-        if baseline is not None and _successful_current(
-            store,
-            baseline.cell_id,
-            expected_revision=expected_revision,
-        ) is None:
+        if (
+            baseline is not None
+            and _successful_current(
+                store,
+                baseline.cell_id,
+                expected_revision=expected_revision,
+            )
+            is None
+        ):
             include(baseline, explicitly_requested=False)
         needed[cell.cell_id] = cell
 
@@ -290,7 +287,10 @@ class CampaignScheduler:
         self.service = service
         self.settings = settings
         self.catalog = catalog
-        self.source_revision = source_revision(service.paths.repo_root)
+        self.source_revision = source_revision(
+            service.paths.repo_root,
+            require_clean=True,
+        )
         self._prepared_model_paths: dict[ModelKey, Path] = {}
 
     def _service_path_arguments(self) -> tuple[str, ...]:
@@ -310,8 +310,7 @@ class CampaignScheduler:
             for item in planned
             if item.cell.measurement.execution_mode
             in {ExecutionMode.EAGER, ExecutionMode.RECURRENCE}
-            and item.cell.measurement.model
-            in {ModelKey.BUILTIN_SM, ModelKey.UFO_SM}
+            and item.cell.measurement.model in {ModelKey.BUILTIN_SM, ModelKey.UFO_SM}
         }
         for model in sorted(models, key=lambda item: item.value):  # type: ignore[union-attr]
             assert model is not None
@@ -322,6 +321,9 @@ class CampaignScheduler:
             )
             command = (
                 sys.executable,
+                "-I",
+                "-S",
+                "-B",
                 os.fspath(self.service.paths.repo_root / "docs/result_tables.py"),
                 "--repo-root",
                 os.fspath(self.service.paths.repo_root),
@@ -378,9 +380,7 @@ class CampaignScheduler:
         for rank in sorted({item.rank for item in ordered}):
             wave = tuple(item for item in ordered if item.rank == rank)
             with ThreadPoolExecutor(max_workers=effective_workers) as executor:
-                futures = {
-                    executor.submit(self._run_cell, item): item for item in wave
-                }
+                futures = {executor.submit(self._run_cell, item): item for item in wave}
                 for future in as_completed(futures):
                     outcomes.append(future.result())
             self.service.publish(reset=False, merge_artifacts=True)
@@ -419,8 +419,7 @@ class CampaignScheduler:
                 and decision.current is not None
                 and current_is_fresh
                 and not self.settings.rerun
-                and decision.current.result.get("status")
-                == ResultStatus.OK.value
+                and decision.current.result.get("status") == ResultStatus.OK.value
             ):
                 return CellOutcome(cell.cell_id, "reused", decision.current.attempt_id)
 
@@ -464,9 +463,10 @@ class CampaignScheduler:
                 worker_log = attempt.path("worker.log")
                 command = [
                     sys.executable,
-                    os.fspath(
-                        self.service.paths.repo_root / "docs/result_tables.py"
-                    ),
+                    "-I",
+                    "-S",
+                    "-B",
+                    os.fspath(self.service.paths.repo_root / "docs/result_tables.py"),
                     "--repo-root",
                     os.fspath(self.service.paths.repo_root),
                     *self._service_path_arguments(),
@@ -494,9 +494,7 @@ class CampaignScheduler:
                     cell.measurement.model  # type: ignore[arg-type]
                 )
                 if prepared_model is not None:
-                    command.extend(
-                        ("--prepared-model", os.fspath(prepared_model))
-                    )
+                    command.extend(("--prepared-model", os.fspath(prepared_model)))
                 reusable_record = (
                     decision.current
                     if (
@@ -574,8 +572,7 @@ class CampaignScheduler:
                 (
                     None
                     if self.settings.campaign_max_rss_bytes is None
-                    else self.settings.campaign_max_rss_bytes
-                    // self.settings.workers
+                    else self.settings.campaign_max_rss_bytes // self.settings.workers
                 ),
             )
             if limit is not None

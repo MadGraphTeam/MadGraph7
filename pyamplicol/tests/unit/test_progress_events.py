@@ -116,6 +116,30 @@ def test_tty_progress_accepts_concurrent_phase_shape() -> None:
     assert "Building DAG" in stream.getvalue()
 
 
+def test_tty_message_stream_preserves_write_only_text_stream_semantics() -> None:
+    class FlushRecordingStream(io.StringIO):
+        flush_count = 0
+
+        def flush(self) -> None:
+            self.flush_count += 1
+            super().flush()
+
+    stream = FlushRecordingStream()
+    message_stream = TtyProgressSink(stream).message_stream
+
+    assert message_stream.write("diagnostic") == len("diagnostic")
+    message_stream.flush()
+    assert stream.getvalue() == "diagnostic"
+    assert stream.flush_count == 1
+    assert message_stream.writable()
+    assert not message_stream.readable()
+    assert not message_stream.seekable()
+    with pytest.raises(io.UnsupportedOperation):
+        message_stream.read()
+    with pytest.raises(io.UnsupportedOperation):
+        message_stream.tell()
+
+
 def test_tty_progress_renders_without_holding_the_task_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

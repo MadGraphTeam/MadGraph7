@@ -93,7 +93,12 @@ pub(super) fn load_eager_v3_native_runtime(
     let container = open_verified_eager_v3_runtime_container(artifact, evaluator_root, manifest)?;
     let decoded =
         super::eager_v3_decode::decode_eager_v3_runtime(&container, manifest, &pack.manifest)?;
-    let color_selector_ids = native_color_selector_ids(&decoded, physics)?;
+    let color_selector_ids = native_color_selector_ids(
+        &decoded.color_selectors,
+        &decoded.u32_sequence_ranges,
+        &decoded.u32_sequence_values,
+        physics,
+    )?;
     hydrate_native_reduction_groups(
         physics,
         &decoded.reduction_groups,
@@ -263,7 +268,7 @@ fn load_eager_v3_direct_scheduler(
             descriptor: Vec<u8>,
         },
         Native {
-            library_path: PathBuf,
+            library: Arc<crate::artifact::PinnedNativeLibrary>,
             function_name: String,
             source_application_abi: String,
             invocation_stride: u32,
@@ -350,7 +355,8 @@ fn load_eager_v3_direct_scheduler(
                 let library_path = direct.library_path.as_deref().ok_or_else(|| {
                     RusticolError::artifact("eager native DirectTable has no library path")
                 })?;
-                let physical_path = payloads.physical_path(library_path)?;
+                let library = payloads.load_native_library(library_path)?;
+                let display_path = library.display_path().to_path_buf();
                 let function_name = direct.function_name.clone().ok_or_else(|| {
                     RusticolError::artifact("eager native DirectTable has no function name")
                 })?;
@@ -379,7 +385,7 @@ fn load_eager_v3_direct_scheduler(
                 }
                 (
                     OwnedPreparedApplication::Native {
-                        library_path: physical_path.clone(),
+                        library,
                         function_name,
                         source_application_abi: direct.source_application_abi.clone(),
                         invocation_stride: direct.invocation_stride.unwrap_or(0),
@@ -391,7 +397,7 @@ fn load_eager_v3_direct_scheduler(
                             .unwrap_or_default(),
                         simd_lane_width: direct.simd_lane_width.unwrap_or(0),
                     },
-                    physical_path,
+                    display_path,
                 )
             }
             _ => unreachable!("prepared backend validated"),
@@ -425,7 +431,7 @@ fn load_eager_v3_direct_scheduler(
                     }
                 }
                 OwnedPreparedApplication::Native {
-                    library_path,
+                    library,
                     function_name,
                     source_application_abi,
                     invocation_stride,
@@ -434,7 +440,7 @@ fn load_eager_v3_direct_scheduler(
                     evaluator_state_sha256,
                     simd_lane_width,
                 } => crate::eager_runtime::EagerDirectPreparedApplication::Native {
-                    library_path,
+                    library,
                     function_name,
                     source_application_abi,
                     invocation_stride: *invocation_stride,
@@ -475,7 +481,12 @@ pub(super) fn load_eager_v3_exact_sections(
     let container = open_verified_eager_v3_runtime_container(artifact, evaluator_root, manifest)?;
     let decoded =
         super::eager_v3_decode::decode_eager_v3_runtime(&container, manifest, &pack.manifest)?;
-    let color_selector_ids = native_color_selector_ids(&decoded, physics)?;
+    let color_selector_ids = native_color_selector_ids(
+        &decoded.color_selectors,
+        &decoded.u32_sequence_ranges,
+        &decoded.u32_sequence_values,
+        physics,
+    )?;
     hydrate_native_reduction_groups(
         physics,
         &decoded.reduction_groups,
@@ -623,6 +634,44 @@ pub(super) fn load_eager_v3_exact_sections(
         attachments,
         finalizations,
         closures,
+    })
+}
+
+pub(super) fn load_eager_v3_reduction_groups(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &EagerV3ExecutionManifest,
+    physics: &mut ProcessPhysicsV1,
+) -> RusticolResult<Value> {
+    // Keep full artifact/container authentication, prepared-pack validation,
+    // and plan identity/count cross-checks, but materialize only the
+    // O(reduction) rows needed for public reduction groups. In particular,
+    // runtime-sized currents/stages/invocations/attachments/finalizations/
+    // closures remain borrowed PACBIN payloads and are never converted.
+    let pack = load_eager_v3_prepared_pack(artifact, manifest)?;
+    drop(pack);
+    let container = open_verified_eager_v3_runtime_container(artifact, evaluator_root, manifest)?;
+    let decoded = super::eager_v3_decode::decode_eager_v3_reduction_groups(&container, manifest)?;
+    validate_native_helicity_selectors(
+        &decoded.helicity_selectors,
+        &decoded.helicity_sequences,
+        physics,
+    )?;
+    let color_selector_ids = native_projected_color_selector_ids(
+        &decoded.color_selectors,
+        &decoded.color_sequences,
+        physics,
+    )?;
+    hydrate_native_reduction_groups(
+        physics,
+        &decoded.reduction_groups,
+        &decoded.reduction_entries,
+        &color_selector_ids,
+    )?;
+    serde_json::to_value(&physics.reduction.groups).map_err(|error| {
+        RusticolError::serialization(format!(
+            "could not serialize compact eager reduction groups: {error}"
+        ))
     })
 }
 
@@ -986,18 +1035,24 @@ fn hydrate_native_reduction_groups(
 }
 
 fn native_color_selector_ids(
-    decoded: &DecodedEagerRuntimeV3,
+    color_selectors: &[crate::EagerPlanColorSelectorRow],
+    u32_sequence_ranges: &[crate::EagerPlanCatalogRangeRow],
+    u32_sequence_values: &[u32],
     physics: &ProcessPhysicsV1,
 ) -> RusticolResult<Vec<String>> {
     let catalog = native_color_selector_catalog(physics)?;
-    decoded
-        .color_selectors
+    color_selectors
         .iter()
         .map(|selector| {
-            let word =
-                eager_u32_sequence(decoded, selector.word_sequence_id, "color selector word")?;
+            let word = eager_u32_sequence(
+                u32_sequence_ranges,
+                u32_sequence_values,
+                selector.word_sequence_id,
+                "color selector word",
+            )?;
             let representative_word = eager_u32_sequence(
-                decoded,
+                u32_sequence_ranges,
+                u32_sequence_values,
                 selector.representative_word_sequence_id,
                 "color selector representative word",
             )?;
@@ -1011,19 +1066,131 @@ fn native_color_selector_ids(
         .collect()
 }
 
+fn validate_native_helicity_selectors(
+    helicity_selectors: &[crate::EagerPlanHelicitySelectorRow],
+    helicity_sequences: &BTreeMap<u32, Vec<i32>>,
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<()> {
+    if helicity_selectors.len() != physics.helicities.len() {
+        return Err(RusticolError::integrity(format!(
+            "compact native plan contains {} helicity selectors, public physics contains {}",
+            helicity_selectors.len(),
+            physics.helicities.len()
+        )));
+    }
+    let helicity_by_id = physics
+        .helicities
+        .iter()
+        .map(|helicity| (helicity.id.as_str(), helicity))
+        .collect::<BTreeMap<_, _>>();
+
+    for (index, selector) in helicity_selectors.iter().enumerate() {
+        let expected_id = u32::try_from(index).map_err(|_| {
+            RusticolError::artifact("compact native helicity selector count exceeds u32")
+        })?;
+        if selector.selector_id != expected_id {
+            return Err(RusticolError::integrity(
+                "compact native helicity selector IDs are not dense",
+            ));
+        }
+        let helicity = &physics.helicities[index];
+        let values = projected_sequence(
+            helicity_sequences,
+            selector.values_sequence_id,
+            "helicity selector values",
+        )?;
+        if values != helicity.values.as_slice() {
+            return Err(RusticolError::integrity(format!(
+                "compact native helicity selector {} values disagree with public helicity {:?}",
+                selector.selector_id, helicity.id
+            )));
+        }
+        let representative = helicity_by_id
+            .get(helicity.representative_id.as_str())
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "public helicity {:?} references unknown representative {:?}",
+                    helicity.id, helicity.representative_id
+                ))
+            })?;
+        let representative_values = projected_sequence(
+            helicity_sequences,
+            selector.representative_sequence_id,
+            "helicity selector representative",
+        )?;
+        if representative_values != representative.values.as_slice() {
+            return Err(RusticolError::integrity(format!(
+                "compact native helicity selector {} representative disagrees with public representative {:?}",
+                selector.selector_id, representative.id
+            )));
+        }
+        if (selector.computed != 0) != helicity.computed
+            || (selector.structural_zero != 0) != helicity.structural_zero
+        {
+            return Err(RusticolError::integrity(format!(
+                "compact native helicity selector {} flags disagree with public helicity {:?}",
+                selector.selector_id, helicity.id
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn native_projected_color_selector_ids(
+    color_selectors: &[crate::EagerPlanColorSelectorRow],
+    color_sequences: &BTreeMap<u32, Vec<u32>>,
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<Vec<String>> {
+    let catalog = native_color_selector_catalog(physics)?;
+    color_selectors
+        .iter()
+        .map(|selector| {
+            let word = projected_sequence(
+                color_sequences,
+                selector.word_sequence_id,
+                "color selector word",
+            )?;
+            let representative_word = projected_sequence(
+                color_sequences,
+                selector.representative_word_sequence_id,
+                "color selector representative word",
+            )?;
+            resolve_native_color_selector_id(
+                &catalog,
+                word,
+                representative_word,
+                selector.computed != 0,
+            )
+        })
+        .collect()
+}
+
+fn projected_sequence<'a, T>(
+    sequences: &'a BTreeMap<u32, Vec<T>>,
+    sequence_id: u32,
+    context: &str,
+) -> RusticolResult<&'a [T]> {
+    sequences
+        .get(&sequence_id)
+        .map(Vec::as_slice)
+        .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "compact native {context} references unknown projected sequence {sequence_id}"
+            ))
+        })
+}
+
 fn eager_u32_sequence<'a>(
-    decoded: &'a DecodedEagerRuntimeV3,
+    ranges: &'a [crate::EagerPlanCatalogRangeRow],
+    values: &'a [u32],
     sequence_id: u32,
     context: &str,
 ) -> RusticolResult<&'a [u32]> {
-    let range = decoded
-        .u32_sequence_ranges
-        .get(sequence_id as usize)
-        .ok_or_else(|| {
-            RusticolError::integrity(format!(
-                "compact native {context} references unknown sequence {sequence_id}"
-            ))
-        })?;
+    let range = ranges.get(sequence_id as usize).ok_or_else(|| {
+        RusticolError::integrity(format!(
+            "compact native {context} references unknown sequence {sequence_id}"
+        ))
+    })?;
     let start = usize::try_from(range.start).map_err(|_| {
         RusticolError::artifact(format!("compact native {context} start exceeds usize"))
     })?;
@@ -1033,7 +1200,7 @@ fn eager_u32_sequence<'a>(
     let stop = start.checked_add(count).ok_or_else(|| {
         RusticolError::artifact(format!("compact native {context} range overflows"))
     })?;
-    decoded.u32_sequence_values.get(start..stop).ok_or_else(|| {
+    values.get(start..stop).ok_or_else(|| {
         RusticolError::integrity(format!("compact native {context} range is out of bounds"))
     })
 }
@@ -1175,7 +1342,8 @@ pub(super) fn open_verified_eager_v3_runtime_container(
             "eager runtime container metadata disagrees with its authenticated outer payload",
         ));
     }
-    super::eager_v3_manifest::open_eager_v3_runtime_container(evaluator_root, manifest)
+    let container_file = artifact.open_payload_file(&logical_path)?;
+    super::eager_v3_manifest::open_eager_v3_runtime_container(container_file, &path, manifest)
 }
 
 pub(super) fn prepare_plan_v3_parameter_state(
@@ -1516,6 +1684,31 @@ mod compact_reduction_tests {
         }
     }
 
+    fn helicity_selectors() -> Vec<crate::EagerPlanHelicitySelectorRow> {
+        vec![
+            crate::EagerPlanHelicitySelectorRow {
+                selector_id: 0,
+                values_sequence_id: 0,
+                representative_sequence_id: 0,
+                coefficient_factor_id: 0,
+                computed: 1,
+                structural_zero: 0,
+            },
+            crate::EagerPlanHelicitySelectorRow {
+                selector_id: 1,
+                values_sequence_id: 1,
+                representative_sequence_id: 1,
+                coefficient_factor_id: 0,
+                computed: 1,
+                structural_zero: 0,
+            },
+        ]
+    }
+
+    fn helicity_sequences() -> BTreeMap<u32, Vec<i32>> {
+        BTreeMap::from([(0, vec![1, -1, 1]), (1, vec![-1, 1, -1])])
+    }
+
     fn selector(
         owner_id: u32,
         helicity_id: u32,
@@ -1529,6 +1722,72 @@ mod compact_reduction_tests {
             factor_id: MISSING_U32,
             auxiliary_factor_id: MISSING_U32,
         }
+    }
+
+    #[test]
+    fn authenticates_compact_helicity_selectors_against_public_metadata() {
+        validate_native_helicity_selectors(
+            &helicity_selectors(),
+            &helicity_sequences(),
+            &compact_physics(),
+        )
+        .expect("matching compact/public helicities");
+    }
+
+    #[test]
+    fn corrupted_compact_helicity_values_fail_public_metadata_differential() {
+        let mut sequences = helicity_sequences();
+        sequences.insert(1, vec![1, 1, 1]);
+
+        let error = validate_native_helicity_selectors(
+            &helicity_selectors(),
+            &sequences,
+            &compact_physics(),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("values disagree"));
+    }
+
+    #[test]
+    fn corrupted_compact_helicity_representative_fails_public_metadata_differential() {
+        let mut physics = compact_physics();
+        physics.helicities[1].computed = false;
+        physics.helicities[1].representative_id = "helicity:0".to_string();
+        let mut selectors = helicity_selectors();
+        selectors[1].computed = 0;
+        selectors[1].representative_sequence_id = 0;
+        validate_native_helicity_selectors(&selectors, &helicity_sequences(), &physics)
+            .expect("matching alias representative");
+
+        selectors[1].representative_sequence_id = 1;
+        let error = validate_native_helicity_selectors(&selectors, &helicity_sequences(), &physics)
+            .unwrap_err();
+
+        assert!(error.to_string().contains("representative disagrees"));
+    }
+
+    #[test]
+    fn corrupted_compact_helicity_id_and_flags_fail_public_metadata_differential() {
+        let mut selectors = helicity_selectors();
+        selectors[1].selector_id = 7;
+        let id_error = validate_native_helicity_selectors(
+            &selectors,
+            &helicity_sequences(),
+            &compact_physics(),
+        )
+        .unwrap_err();
+        assert!(id_error.to_string().contains("IDs are not dense"));
+
+        let mut selectors = helicity_selectors();
+        selectors[1].structural_zero = 1;
+        let flag_error = validate_native_helicity_selectors(
+            &selectors,
+            &helicity_sequences(),
+            &compact_physics(),
+        )
+        .unwrap_err();
+        assert!(flag_error.to_string().contains("flags disagree"));
     }
 
     #[test]

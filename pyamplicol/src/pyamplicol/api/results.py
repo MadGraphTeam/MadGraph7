@@ -564,10 +564,10 @@ class BenchmarkProfileCounters:
     """Mean native profile work counts with an explicit normalization basis.
 
     Movement and materialization fields are means per profiled phase-space
-    point. Backend-call and allocation fields are means per profiled runtime
-    call. The native repeated profiler reports integer totals; normalizing
-    before aggregating samples keeps these values comparable across batch sizes
-    and repetition counts.
+    point. Backend-call, allocation, and compiled Direct-Arena fields are means
+    per profiled runtime call. The native repeated profiler reports integer
+    totals; normalizing before aggregating samples keeps these values comparable
+    across batch sizes and repetition counts.
     """
 
     sample_count: int
@@ -599,6 +599,11 @@ class BenchmarkProfileCounters:
     final_output_copy_values_per_point: float | None = None
     native_input_container_allocations_per_call: float | None = None
     evaluator_backend_calls_per_call: float | None = None
+    compiled_direct_arena_engines_per_call: float | None = None
+    compiled_direct_arena_calls_per_call: float | None = None
+    compiled_direct_arena_boundary_input_bytes_per_call: float | None = None
+    compiled_direct_arena_boundary_current_output_bytes_per_call: float | None = None
+    compiled_direct_arena_boundary_amplitude_output_bytes_per_call: float | None = None
     recurrence_momentum_scalar_values_per_point: float | None = None
     recurrence_schedule_executions_per_call: float | None = None
     recurrence_replay_schedule_executions_per_call: float | None = None
@@ -651,6 +656,11 @@ class BenchmarkProfileCounters:
             "final_output_copy_values_per_point",
             "native_input_container_allocations_per_call",
             "evaluator_backend_calls_per_call",
+            "compiled_direct_arena_engines_per_call",
+            "compiled_direct_arena_calls_per_call",
+            "compiled_direct_arena_boundary_input_bytes_per_call",
+            "compiled_direct_arena_boundary_current_output_bytes_per_call",
+            "compiled_direct_arena_boundary_amplitude_output_bytes_per_call",
             "recurrence_momentum_scalar_values_per_point",
             "recurrence_schedule_executions_per_call",
             "recurrence_replay_schedule_executions_per_call",

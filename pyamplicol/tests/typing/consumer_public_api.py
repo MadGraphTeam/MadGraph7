@@ -93,6 +93,11 @@ def exercise_runtime(artifact: Path) -> None:
     runtime = Runtime.load(artifact, model_parameters=PARAMETERS, mute_warnings=True)
     assert_type(runtime, Runtime)
     assert_type(load(artifact, process="ddbar_z"), Runtime)
+    assert_type(runtime.artifact_id, str)
+    assert_type(
+        runtime.execution_mode,
+        Literal["compiled", "eager", "recurrence"],
+    )
     physics = runtime.physics
     assert_type(physics, ProcessPhysics)
     assert_type(
@@ -202,6 +207,26 @@ def exercise_results(
         if result.timing_breakdown.counters is not None:
             assert_type(
                 result.timing_breakdown.counters.stage_input_copy_components_per_point,
+                float | None,
+            )
+            assert_type(
+                result.timing_breakdown.counters.compiled_direct_arena_engines_per_call,
+                float | None,
+            )
+            assert_type(
+                result.timing_breakdown.counters.compiled_direct_arena_calls_per_call,
+                float | None,
+            )
+            assert_type(
+                result.timing_breakdown.counters.compiled_direct_arena_boundary_input_bytes_per_call,
+                float | None,
+            )
+            assert_type(
+                result.timing_breakdown.counters.compiled_direct_arena_boundary_current_output_bytes_per_call,
+                float | None,
+            )
+            assert_type(
+                result.timing_breakdown.counters.compiled_direct_arena_boundary_amplitude_output_bytes_per_call,
                 float | None,
             )
     assert_type(result.environment, Mapping[str, object])

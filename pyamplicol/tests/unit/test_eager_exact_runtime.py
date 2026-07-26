@@ -40,6 +40,7 @@ from pyamplicol.runtime.eager_exact._plan_v3 import (
     EAGER_EXACT_SECTIONS_ABI,
     EAGER_PLAN_V3_ABI,
     EAGER_PLAN_V3_RUNTIME_CAPABILITY,
+    EAGER_REDUCTION_GROUPS_ABI,
     EAGER_RUNTIME_LAYOUT_ABI,
 )
 
@@ -843,6 +844,90 @@ def test_eager_exact_plan_v3_rejects_wrong_native_section_abi(
             _NativeRuntime(),
             kernel_loader=_loader([]),
             native_sections_loader=lambda _root, _process: sections,
+        )
+
+
+def test_eager_exact_plan_v3_preserves_attachment_start_diagnostic(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    sections = _build_artifact(artifact, compact_v3=True)
+    assert sections is not None
+    stages = sections["stages"]
+    assert isinstance(stages, list)
+    stage = stages[0]
+    assert isinstance(stage, list)
+    stage[3] = "invalid"
+
+    with pytest.raises(
+        ArtifactError,
+        match=r"compact eager stage 0 start must be an integer",
+    ):
+        eager_plan_v3._load_eager_exact_sections_v1(
+            artifact,
+            "synthetic",
+            loader=lambda _root, _process: sections,
+        )
+
+
+def test_eager_reduction_groups_use_bounded_native_bridge(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact"
+    groups = (
+        {
+            "id": "reduction:0",
+            "physical_color_ids": ["flow:1"],
+            "physical_helicity_ids": ["h:0"],
+        },
+    )
+    calls: list[tuple[Path, str]] = []
+
+    def load_groups(artifact_root: Path, process_id: str) -> object:
+        calls.append((artifact_root, process_id))
+        return {
+            "abi": EAGER_REDUCTION_GROUPS_ABI,
+            "runtime_layout_abi": EAGER_RUNTIME_LAYOUT_ABI,
+            "process_id": process_id,
+            "reduction_groups": groups,
+        }
+
+    loaded = eager_plan_v3._load_eager_reduction_groups_v1(
+        artifact,
+        "synthetic",
+        loader=load_groups,
+    )
+
+    assert calls == [(artifact, "synthetic")]
+    assert loaded == groups
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    (
+        ("abi", "pyamplicol-eager-reduction-groups-v0", "reduction-groups ABI"),
+        ("runtime_layout_abi", "wrong-layout", "runtime-layout ABI"),
+        ("process_id", "wrong-process", "wrong process"),
+        ("reduction_groups", None, "must be an array"),
+    ),
+)
+def test_eager_reduction_groups_reject_malformed_native_payload(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    payload: dict[str, object] = {
+        "abi": EAGER_REDUCTION_GROUPS_ABI,
+        "runtime_layout_abi": EAGER_RUNTIME_LAYOUT_ABI,
+        "process_id": "synthetic",
+        "reduction_groups": (),
+    }
+    payload[field] = value
+
+    with pytest.raises((ArtifactError, CompatibilityError), match=match):
+        eager_plan_v3._load_eager_reduction_groups_v1(
+            tmp_path / "artifact",
+            "synthetic",
+            loader=lambda _root, _process: payload,
         )
 
 

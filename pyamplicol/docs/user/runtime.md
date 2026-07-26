@@ -53,6 +53,8 @@ stable process/alias ID:
 from pyamplicol import Runtime
 
 runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > z g g")
+print(runtime.artifact_id)     # authenticated 64-character manifest identity
+print(runtime.execution_mode)  # compiled, eager, or recurrence
 print(runtime.physics.process)  # d d~ > Z g g
 print(runtime.physics.external_particles)
 print(runtime.physics.helicity_ids)
@@ -65,6 +67,23 @@ ordering.
 
 Artifact schema, payload paths and hashes, target compatibility, and runtime ABI
 are validated before executable state is loaded.
+`runtime.artifact_id` is the lowercase SHA-256 identity authenticated by that
+load, and `runtime.execution_mode` is the native lane selected from the same
+validated artifact metadata. Both properties fail closed with `EvaluationError`
+if an injected backend cannot provide the identity. They belong to the public
+`Runtime` facade; the structural `RuntimeBackend` protocol intentionally keeps
+its older minimum surface so existing third-party backends remain loadable.
+
+On Unix, loading a PACBIN-backed artifact copies the container into anonymous
+memory, removes write access from that mapping, and authenticates the retained
+read-only bytes before parsing them. This guarantees that later replacement,
+mutation, or truncation of the artifact path cannot change the running
+evaluator. The process needs virtual memory and RAM or swap equal to the PACBIN
+file size for the loaded runtime's lifetime; no temporary filesystem space is
+required.
+Native CPP/ASM evaluator libraries use the analogous
+`PYAMPLICOL_NATIVE_SNAPSHOT_ROOT`, whose filesystem must also permit executable
+mappings.
 
 ## Model Parameters
 
@@ -264,6 +283,11 @@ movement, backend calls, reduction/materialized/output values, selector
 gather/scatter work, observed reusable-scratch capacity changes, and explicit
 native output allocations. Movement and materialization are normalized per
 profiled point; backend/allocation activity is normalized per runtime call.
+Compiled artifacts also report Direct-Arena engine and call counts plus input,
+current-output, and amplitude-output boundary bytes per runtime call. Those
+boundary counters must remain zero for the fused Arena path, and Arena calls
+must cover every evaluator backend call; nonzero boundary traffic or incomplete
+call coverage is rejected rather than displayed as a valid optimized profile.
 The observed scratch count is deliberately a lower bound over instrumented
 reusable buffers, not a process-wide allocator count.
 `BenchmarkResult.timing_breakdown` preserves the same information as typed

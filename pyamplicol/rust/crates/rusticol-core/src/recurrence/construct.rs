@@ -22,14 +22,14 @@ use super::{
     AuthenticatedRecurrenceBuilderInput, CanonicalMomentumLinearForm, CheckedTableRange,
     ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
     ClosureProofMetadataV2, ContributionKey, CurrentCoreKey, CurrentHelicityIdentity,
-    CurrentSourceBinding, DynamicLCColorState, DynamicLCColorStateId, DynamicLCColorStateInterner,
-    ExactComplexRational, ExactRational, LCColorComponent, LCColorComponentKind,
-    LCColorComponentOperation, LCColorComponentRole, LCColorParentPort, LCColorPortWiring,
-    LCColorSourceSeed, LCColorSourceSeedOperation, LCColorTransitionWitness, LCColorWitnessTermId,
-    MomentumTerm, RecurrenceAmplitudeDestination, RecurrenceClosureTerm, RecurrenceContribution,
-    RecurrenceCurrent, RecurrenceFinalization, RecurrenceNodeKind, RecurrenceProgram,
-    RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy,
-    ReflectionCertificateV1, SemanticDigest, SourceStateAssignment,
+    CurrentSourceBinding, DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS, DynamicLCColorState,
+    DynamicLCColorStateId, DynamicLCColorStateInterner, ExactComplexRational, ExactRational,
+    LCColorComponent, LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole,
+    LCColorParentPort, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
+    LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm, RecurrenceAmplitudeDestination,
+    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
+    RecurrenceNodeKind, RecurrenceProgram, RecurrenceReplayTarget, RecurrenceResolvedHelicity,
+    RecurrenceStrategy, ReflectionCertificateV1, SemanticDigest, SourceStateAssignment,
     ThreeLineTraversalCertificateV1, ThreeLineTraversalKindV1, closure_component_factor_digest_v2,
     closure_selector_domain_digest_v2,
 };
@@ -473,6 +473,9 @@ struct PendingReflectionCertificate {
 }
 
 impl PendingReflectionCertificate {
+    // The pair constructor authenticates both orbit members and both color
+    // witnesses explicitly; retaining the parallel arguments makes swaps visible.
+    #[allow(clippy::too_many_arguments)]
     fn reciprocal_pair(
         id: u32,
         canonical_old_current_id: u32,
@@ -1303,6 +1306,20 @@ struct StructuralTransition {
     result: StructuralState,
 }
 
+fn structural_state_matches(required: StructuralState, actual: StructuralState) -> bool {
+    required.state_template_id == actual.state_template_id
+        && (required.spin_state_class == actual.spin_state_class
+            || actual.spin_state_class == DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS)
+}
+
+fn structural_parent_states_match(
+    required: [StructuralState; 2],
+    actual: [StructuralState; 2],
+) -> bool {
+    structural_state_matches(required[0], actual[0])
+        && structural_state_matches(required[1], actual[1])
+}
+
 /// A cheap closure-rooted state/spin grammar used before materializing full
 /// current, color, helicity-ancestry, and contribution objects.
 ///
@@ -1365,8 +1382,11 @@ impl StructuralDemandIndex {
                     for left in left_states.iter().copied() {
                         for right in right_states.iter().copied() {
                             for transition in &transitions {
-                                if transition.parents == [left, right]
-                                    || transition.parents == [right, left]
+                                if structural_parent_states_match(transition.parents, [left, right])
+                                    || structural_parent_states_match(
+                                        transition.parents,
+                                        [right, left],
+                                    )
                                 {
                                     additions
                                         .entry(support.clone())
@@ -1469,9 +1489,13 @@ impl StructuralDemandIndex {
                                     .iter()
                                     .filter(|transition| transition.result == target_state)
                                 {
-                                    if transition.parents == [left, right]
-                                        || transition.parents == [right, left]
-                                    {
+                                    if structural_parent_states_match(
+                                        transition.parents,
+                                        [left, right],
+                                    ) || structural_parent_states_match(
+                                        transition.parents,
+                                        [right, left],
+                                    ) {
                                         demanded.insert((left_support.clone(), left));
                                         demanded.insert((right_support.clone(), right));
                                     }
@@ -1568,12 +1592,13 @@ fn structural_closure_admits(
                 "direct recurrence requires binary quantum-flow contracts",
             ));
         }
-        if ordered_parents
-            == [
+        if structural_parent_states_match(
+            [
                 StructuralState::new(states[0], spins[0]),
                 StructuralState::new(states[1], spins[1]),
-            ]
-        {
+            ],
+            ordered_parents,
+        ) {
             return Ok(true);
         }
     }
@@ -2186,13 +2211,31 @@ fn union_full_spin_state_class(
     if result_spins.is_empty() {
         result_spins.extend(entries.iter().map(|(state, _)| state.spin_state));
     }
-    if result_spins.len() != 1 {
+    union_spin_state_class(contract.id, &result_spins)
+}
+
+fn union_spin_state_class(contract_id: u32, result_spins: &BTreeSet<i32>) -> RusticolResult<i32> {
+    if result_spins.is_empty() {
         return Err(invalid(format!(
-            "runtime-helicity contract {} has ambiguous full-state spin classes {:?}",
-            contract.id, result_spins
+            "runtime-helicity contract {} has no full-state spin class",
+            contract_id
         )));
     }
-    Ok(*result_spins.iter().next().expect("checked nonempty"))
+    if result_spins.contains(&DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS) {
+        return Err(invalid(format!(
+            "runtime-helicity contract {} contains the reserved dynamic source-spin sentinel",
+            contract_id
+        )));
+    }
+    Ok(if result_spins.len() == 1 {
+        *result_spins.iter().next().expect("checked nonempty")
+    } else {
+        // One all-flow source current stores the full runtime-helicity vector.
+        // Its selected chiral embedding is populated at execution time, so a
+        // static source spin class would incorrectly discard the other
+        // certified branch during recurrence construction.
+        DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3350,6 +3393,9 @@ fn pairing_reconstruction_factor(_rule: Option<FermionPairingRuleRow>) -> ExactC
     ExactComplexRational::ONE
 }
 
+// Closure certification deliberately receives each authenticated catalog and
+// proof table separately so that no unchecked aggregate can cross this boundary.
+#[allow(clippy::too_many_arguments)]
 fn closure_reflection_certificate_id(
     sector: ProcessPhysicalLCSectorRow,
     closed: &[LCColorComponent],
@@ -4669,12 +4715,19 @@ fn quantum_flow_matches(
         let _ = catalog.flavour_flow(flavours[index], "quantum parent flavour")?;
         let _ = quantum_numbers[index];
         if states[index] != parents[index].current_state_template_id()
-            || spins[index] != parents[index].spin_state_class()
+            || !quantum_parent_spin_matches(spins[index], parents[index])
         {
             return Ok(false);
         }
     }
     Ok(true)
+}
+
+fn quantum_parent_spin_matches(required_spin: i32, parent: &CurrentCoreKey) -> bool {
+    required_spin == parent.spin_state_class()
+        || (parent.node_kind() == RecurrenceNodeKind::Source
+            && parent.helicity_identity().strategy() == RecurrenceStrategy::AllFlowUnion
+            && parent.spin_state_class() == DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS)
 }
 
 fn quantum_flow_result_flavour(
@@ -5441,6 +5494,56 @@ mod tests {
         let mut incompatible = right;
         incompatible.lc_color_seed_provenance_sequence_id += 1;
         assert!(!same_union_source_dispatch_semantics(left, incompatible));
+    }
+
+    #[test]
+    fn all_flow_union_source_spin_class_is_dynamic_for_chiral_variants() {
+        assert_eq!(
+            union_spin_state_class(25, &BTreeSet::from([-1, 1])).unwrap(),
+            DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS
+        );
+        assert_eq!(
+            union_spin_state_class(25, &BTreeSet::from([-1])).unwrap(),
+            -1
+        );
+        assert!(
+            union_spin_state_class(25, &BTreeSet::from([DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS]),)
+                .is_err()
+        );
+
+        let mut colors = DynamicLCColorStateInterner::default();
+        let color_id = colors
+            .intern(DynamicLCColorState::new(0, None, vec![]).unwrap())
+            .unwrap();
+        let source = CurrentCoreKey::new(
+            digest(202),
+            RecurrenceNodeKind::Source,
+            17,
+            color_id,
+            vec![0],
+            CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                source_slot: 0,
+                coefficient: 1,
+            }])
+            .unwrap(),
+            CurrentHelicityIdentity::all_flow_union(DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS),
+            vec![0],
+            0,
+            vec![],
+            CurrentSourceBinding::runtime_dispatch(25, vec![0, 1]).unwrap(),
+            None,
+        )
+        .unwrap();
+
+        assert!(quantum_parent_spin_matches(-1, &source));
+        assert!(quantum_parent_spin_matches(1, &source));
+        assert!(structural_parent_states_match(
+            [StructuralState::new(17, -1), StructuralState::new(19, 0),],
+            [
+                StructuralState::new(17, DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS),
+                StructuralState::new(19, 0),
+            ],
+        ));
     }
 
     #[test]

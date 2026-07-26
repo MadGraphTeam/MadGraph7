@@ -39,6 +39,121 @@ def test_prepared_model_bootstrap_rejects_ambiguous_values(
         backend._prepared_model_bootstrap("candidate")
 
 
+def test_selftest_fixture_bootstrap_requires_explicit_candidate_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP", "1")
+
+    with pytest.raises(RuntimeError, match=r"explicit.*context"):
+        backend._selftest_fixture_bootstrap("candidate")
+
+    monkeypatch.setenv(
+        "PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT",
+        backend._SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT,
+    )
+    with pytest.raises(RuntimeError, match=r"explicit.*context"):
+        backend._selftest_fixture_bootstrap("candidate")
+    assert (
+        backend._selftest_fixture_bootstrap(
+            "candidate",
+            explicit_context=True,
+        )
+        is True
+    )
+    with pytest.raises(RuntimeError, match="non-publishable candidate"):
+        backend._selftest_fixture_bootstrap(
+            "release",
+            explicit_context=True,
+        )
+
+
+def test_selftest_fixture_bootstrap_rejects_raw_context_without_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT",
+        backend._SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT,
+    )
+
+    with pytest.raises(RuntimeError, match="context requires the bootstrap flag"):
+        backend._selftest_fixture_bootstrap("candidate")
+
+
+def test_pep517_rejects_raw_selftest_fixture_bootstrap_escape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "candidate")
+    monkeypatch.setenv("PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP", "1")
+    monkeypatch.setenv(
+        "PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT",
+        backend._SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT,
+    )
+
+    with pytest.raises(RuntimeError, match=r"explicit.*context"):
+        backend._from_overlay(lambda: None, with_sdk=False)
+
+
+def test_selftest_fixture_bootstrap_rejects_ambiguous_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP", "true")
+
+    with pytest.raises(RuntimeError, match="must be either '0' or '1'"):
+        backend._selftest_fixture_bootstrap(
+            "candidate",
+            explicit_context=True,
+        )
+
+
+def test_selftest_fixture_bootstrap_marks_exact_candidate_and_strips_fixture(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "src" / "pyamplicol"
+    package.mkdir(parents=True)
+    build_info_path = package / "_build_info.json"
+    build_info_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "selftest_fixture_bootstrap": False,
+                "source_revision": "a" * 40,
+            }
+        ),
+        encoding="utf-8",
+    )
+    fixture = package / "assets" / "selftest" / "portable-64le"
+    fixture.mkdir(parents=True)
+    (fixture / "expected.json").write_text("{}\n", encoding="utf-8")
+
+    backend._mark_selftest_fixture_bootstrap(tmp_path)
+
+    build_info = json.loads(build_info_path.read_text(encoding="utf-8"))
+    assert build_info["selftest_fixture_bootstrap"] is True
+    assert not fixture.exists()
+
+
+def test_selftest_fixture_bootstrap_rejects_dirty_candidate(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "src" / "pyamplicol"
+    package.mkdir(parents=True)
+    (package / "_build_info.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "selftest_fixture_bootstrap": False,
+                "source_revision": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="exact clean source revision"):
+        backend._mark_selftest_fixture_bootstrap(tmp_path)
+
+
 def test_prepared_model_bootstrap_strips_only_generated_payloads(
     tmp_path: Path,
 ) -> None:
@@ -130,6 +245,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
             )
         )
         assert build_info["publishable"] is False
+        assert build_info["selftest_fixture_bootstrap"] is False
         assert len(build_info["candidate_fingerprint"]) == 12
         assert len(build_info["native_build_inputs_sha256"]) == 64
         assert build_info["source_checkout"] == str(ROOT.resolve())
@@ -247,6 +363,37 @@ def test_selftest_staging_rejects_an_unavailable_target() -> None:
         pytest.raises(RuntimeError, match="unsupported self-test target"),
     ):
         backend._stage_selftest_fixture(overlay, "x86_64-unknown-test")
+
+
+def test_selftest_staging_applies_the_arena_execution_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[Path] = []
+
+    def reject(
+        fixture: Path,
+        manifest: object,
+        *,
+        source_root: Path,
+    ) -> None:
+        assert isinstance(manifest, dict)
+        assert source_root.name == "source"
+        calls.append(fixture)
+        raise RuntimeError("Arena execution contract sentinel")
+
+    monkeypatch.setattr(
+        backend,
+        "_validate_portable_selftest_executions",
+        reject,
+    )
+    with (
+        backend._overlay("release") as (overlay, _target),
+        pytest.raises(RuntimeError, match="Arena execution contract sentinel"),
+    ):
+        backend._stage_selftest_fixture(overlay, "aarch64-apple-darwin")
+
+    assert len(calls) == 1
+    assert calls[0].name == "aarch64-apple-darwin"
 
 
 @pytest.mark.parametrize("target", sorted(backend._PORTABLE_SELFTEST_TARGETS))

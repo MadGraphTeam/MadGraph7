@@ -803,6 +803,33 @@ def test_record_rejects_stale_semantic_digest() -> None:
         replace(source, helicity=-1)
 
 
+def test_concrete_source_and_quantum_spins_reject_dynamic_union_sentinel() -> None:
+    sentinel = -(1 << 31)
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="source spin_state uses the reserved dynamic-union sentinel",
+    ):
+        replace(_source_templates()[0], spin_state=sentinel, semantic_digest="")
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="quantum-flow spin states uses the reserved dynamic-union sentinel",
+    ):
+        replace(
+            _flow_template(),
+            input_spin_states=(sentinel, 1),
+            semantic_digest="",
+        )
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="quantum-flow result spin state uses the reserved dynamic-union sentinel",
+    ):
+        replace(
+            _flow_template(),
+            result_spin_state=sentinel,
+            semantic_digest="",
+        )
+
+
 def test_catalog_rejects_stale_catalog_digest() -> None:
     catalog = _catalog()
     stale_header = replace(catalog.header, catalog_digest="f" * 64)

@@ -1333,10 +1333,10 @@ fn load_stage(
                         "compiled Direct-Arena leaf references an absent stage input",
                     )
                 })?;
-            if component.kind == "value" {
-                if !structural_zero_components.contains(&component.global_component) {
-                    input_currents.insert(component.global_component);
-                }
+            if component.kind == "value"
+                && !structural_zero_components.contains(&component.global_component)
+            {
+                input_currents.insert(component.global_component);
             }
             input_components.push(component);
         }
@@ -1361,10 +1361,10 @@ fn load_stage(
                 required_defuns,
                 ..
             } => {
-                if *optimization_level != 3 {
+                if *optimization_level > 3 {
                     return Err(RusticolError::compatibility(
-                        "compiled-plane-arena-v1 requires compiled JIT optimization level 3; \
-                         regenerate with evaluator.jit.optimization_level=3",
+                        "compiled-plane-arena-v1 supports compiled JIT optimization levels 0 \
+                         through 3",
                     ));
                 }
                 validate_manifest_metadata(&SymjitApplicationMetadata {
@@ -1384,6 +1384,8 @@ fn load_stage(
                 if direct_leaf.application_path != *application_path
                     || direct_leaf.source_application_abi != *application_abi
                     || direct_leaf.source_application_abi != direct.source_application_abi
+                    || direct_leaf.optimization_level != *optimization_level
+                    || direct_leaf.direct_codegen_optimization_level != 3
                 {
                     return Err(RusticolError::integrity(
                         "compiled SymJIT Direct-Arena leaf identity is inconsistent",
@@ -1411,6 +1413,7 @@ fn load_stage(
                         bytes.as_ref(),
                         PathBuf::from(source.display_name()),
                         &direct_leaf.source_application_abi,
+                        direct_leaf.optimization_level,
                         source_inputs,
                         plane_bindings,
                         scalar_bindings,
@@ -1438,6 +1441,7 @@ fn load_stage(
                 }
                 application.validate(function_name, input_len, output_len)?;
                 if direct_leaf.optimization_level != 3
+                    || direct_leaf.direct_codegen_optimization_level != 3
                     || direct_leaf.application_path != application.library_path
                     || direct_leaf.source_application_abi != application.application_abi
                     || direct.source_application_abi != application.application_abi
@@ -1460,7 +1464,7 @@ fn load_stage(
                     )?;
                 }
                 let outputs = native_output_bindings(&canonical_outputs)?;
-                let library = payloads.physical_path(&application.library_path)?;
+                let library = payloads.load_native_library(&application.library_path)?;
                 LoadedCompiledDirectLeaf::Native(LoadedNativeCompiledDirectStage::load(
                     library,
                     function_name,
@@ -2024,6 +2028,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
                     application_path: application_path.clone(),
                     source_application_abi: application_abi.clone(),
                     optimization_level,
+                    direct_codegen_optimization_level: 3,
                     input_len,
                     output_len,
                     input_indices: leaf.input_indices.clone(),
@@ -2159,7 +2164,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 &[0],
                 1,
                 1,
-                0,
+                4,
                 0,
                 1,
                 129,
@@ -2168,7 +2173,19 @@ extern "C" int native_direct_leaf_direct_application_v1(
             let input = (0..129)
                 .map(|point| Complex::new(point as f64 + 0.25, 0.5 - point as f64))
                 .collect::<Vec<_>>();
-            direct.begin_tile_from_state(129, 1, &input).unwrap();
+            let state = input
+                .iter()
+                .flat_map(|value| {
+                    [
+                        *value,
+                        Complex::new(0.0, 0.0),
+                        Complex::new(0.0, 0.0),
+                        Complex::new(0.0, 0.0),
+                        Complex::new(0.0, 0.0),
+                    ]
+                })
+                .collect::<Vec<_>>();
+            direct.begin_tile_from_state(129, 5, &state).unwrap();
             direct.evaluate_all(129).unwrap();
             let mut output = vec![Complex::new(0.0, 0.0); 129];
             direct
@@ -2442,11 +2459,11 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 (point_count * 2 * std::mem::size_of::<f64>()) as u64
             );
             traffic_after_extract.leaf.validate_direct().unwrap();
-            for point in 0..point_count {
+            for (point, direct_value) in direct_amplitude.iter().enumerate() {
                 let row = point * GLOBAL_PARAMETERS;
                 assert_close(direct_state[row + 1], legacy[row + 1]);
                 assert_close(direct_state[row + 2], legacy[row + 2]);
-                assert_close(direct_amplitude[point], legacy[row + 3]);
+                assert_close(*direct_value, legacy[row + 3]);
             }
 
             if point_count == 129 {

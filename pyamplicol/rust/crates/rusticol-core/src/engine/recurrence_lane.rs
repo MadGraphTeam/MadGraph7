@@ -41,6 +41,9 @@ pub(super) struct RecurrenceNativeRuntime {
     color_transform_im: Vec<f64>,
 }
 
+// Boxing the contracted-color payload would add an indirection to every
+// contracted recurrence tile; this enum is instantiated only once per runtime.
+#[allow(clippy::large_enum_variant)]
 enum RecurrenceNativeSelectors {
     TopologyReplay {
         replay_selectors: Vec<DirectReplaySelectorPlan>,
@@ -1651,6 +1654,9 @@ fn contracted_destination_helicity_map(
     Ok(destination_physics_helicity)
 }
 
+// These arguments are the authenticated tile views and selector/reduction
+// contract; grouping them would obscure ownership without reducing call state.
+#[allow(clippy::too_many_arguments)]
 fn contract_color_tile(
     output: &DirectRecurrenceTileOutput<'_>,
     contraction: &RecurrenceColorContraction,

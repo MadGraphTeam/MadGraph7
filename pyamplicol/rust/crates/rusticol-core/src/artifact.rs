@@ -14,10 +14,16 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(test)]
 use std::fmt::Write as _;
-use std::fs::{self, File};
-use std::io::{BufReader, Read};
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(feature = "f64-compiled")]
+use std::sync::Mutex;
+#[cfg(feature = "f64-compiled")]
+use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(feature = "f64-compiled")]
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
 const EVALUATOR_PAYLOAD_CONTAINER_EXTENSION: &str = "evaluator_payload_container";
@@ -28,6 +34,10 @@ const SUPPORTED_ARTIFACT_TARGETS: [&str; 3] = [
     "x86_64-apple-darwin",
     "x86_64-unknown-linux-gnu",
 ];
+#[cfg(feature = "f64-compiled")]
+const NATIVE_LIBRARY_SNAPSHOT_ATTEMPTS: u64 = 128;
+#[cfg(feature = "f64-compiled")]
+static NEXT_NATIVE_LIBRARY_SNAPSHOT: AtomicU64 = AtomicU64::new(0);
 
 fn rusticol_package_version() -> &'static str {
     option_env!("PYAMPLICOL_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
@@ -217,8 +227,10 @@ pub struct VerifiedArtifact {
     root: PathBuf,
     manifest_path: PathBuf,
     manifest: ArtifactManifest,
-    payloads: BTreeMap<String, Payload>,
+    payloads: Arc<BTreeMap<String, Payload>>,
     evaluator_payload_container: Option<Arc<PacbinReader>>,
+    #[cfg(feature = "f64-compiled")]
+    native_library_cache: Arc<Mutex<BTreeMap<String, Arc<PinnedNativeLibrary>>>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -237,10 +249,266 @@ struct EvaluatorPayloadContainerExtension {
 #[derive(Clone, Debug)]
 pub(crate) enum EvaluatorPayloadSource {
     File(PathBuf),
+    AuthenticatedFile {
+        root: PathBuf,
+        payload: Payload,
+    },
     Packed {
         container: Arc<PacbinReader>,
         logical_path: String,
     },
+}
+
+/// A dynamic library loaded only from process-private snapshot bytes.
+///
+/// The original artifact path is retained solely for diagnostics. Symbol
+/// lookup always addresses `library`, which was opened from an authenticated
+/// private materialization that is unlinked immediately on Unix.
+pub(crate) struct PinnedNativeLibrary {
+    #[cfg(feature = "f64-compiled")]
+    library: Option<libloading::Library>,
+    display_path: PathBuf,
+    #[cfg(feature = "f64-compiled")]
+    temporary: Option<TemporaryNativeLibrary>,
+}
+
+impl std::fmt::Debug for PinnedNativeLibrary {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PinnedNativeLibrary")
+            .field("display_path", &self.display_path)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "f64-compiled")]
+impl std::ops::Deref for PinnedNativeLibrary {
+    type Target = libloading::Library;
+
+    fn deref(&self) -> &Self::Target {
+        self.library
+            .as_ref()
+            .expect("pinned native library is live until Drop")
+    }
+}
+
+impl PinnedNativeLibrary {
+    #[cfg(feature = "f64-compiled")]
+    fn from_bytes(bytes: &[u8], display_path: PathBuf) -> RusticolResult<Arc<Self>> {
+        let mut failures = Vec::new();
+        for root in native_library_snapshot_roots() {
+            let temporary = match TemporaryNativeLibrary::create(bytes, &display_path, &root) {
+                Ok(temporary) => temporary,
+                Err(error) => {
+                    failures.push(format!("{}: {error}", root.display()));
+                    continue;
+                }
+            };
+            let library = match unsafe { libloading::Library::new(&temporary.path) } {
+                Ok(library) => library,
+                Err(error) => {
+                    failures.push(format!("{}: {error}", root.display()));
+                    continue;
+                }
+            };
+            #[cfg(unix)]
+            let temporary = {
+                temporary.remove_now()?;
+                None
+            };
+            #[cfg(not(unix))]
+            let temporary = Some(temporary);
+            return Ok(Arc::new(Self {
+                library: Some(library),
+                display_path,
+                temporary,
+            }));
+        }
+        Err(RusticolError::evaluation(format!(
+            "could not load authenticated native evaluator library {}; snapshot roots failed: {}. \
+             The snapshot filesystem must be writable and executable (not mounted noexec); set \
+             PYAMPLICOL_NATIVE_SNAPSHOT_ROOT to a private executable filesystem",
+            display_path.display(),
+            failures.join("; ")
+        )))
+    }
+
+    pub(crate) fn display_path(&self) -> &Path {
+        &self.display_path
+    }
+
+    #[cfg(all(test, feature = "f64-compiled"))]
+    pub(crate) fn from_test_path(path: &Path) -> RusticolResult<Arc<Self>> {
+        let bytes = fs::read(path).map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not read native-library test fixture {}: {error}",
+                path.display()
+            ))
+        })?;
+        Self::from_bytes(&bytes, path.to_path_buf())
+    }
+}
+
+#[cfg(feature = "f64-compiled")]
+impl Drop for PinnedNativeLibrary {
+    fn drop(&mut self) {
+        // Windows does not permit removal while the library is loaded. Drop
+        // the handle first, then let the retained materialization guard clean
+        // up. Unix snapshots are already unlinked after successful dlopen.
+        drop(self.library.take());
+        drop(self.temporary.take());
+    }
+}
+
+#[cfg(feature = "f64-compiled")]
+struct TemporaryNativeLibrary {
+    directory: PathBuf,
+    path: PathBuf,
+    active: bool,
+}
+
+#[cfg(feature = "f64-compiled")]
+impl TemporaryNativeLibrary {
+    fn create(bytes: &[u8], display_path: &Path, root: &Path) -> RusticolResult<Self> {
+        if !root.is_dir() {
+            return Err(RusticolError::artifact(format!(
+                "native-library snapshot root {} is not a directory",
+                root.display()
+            )));
+        }
+        let suffix = display_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("bin");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        for _ in 0..NATIVE_LIBRARY_SNAPSHOT_ATTEMPTS {
+            let sequence = NEXT_NATIVE_LIBRARY_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
+            let directory = root.join(format!(
+                ".pyamplicol-native-{}-{now}-{sequence}",
+                std::process::id()
+            ));
+            let mut builder = fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt as _;
+                builder.mode(0o700);
+            }
+            match builder.create(&directory) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(RusticolError::artifact(format!(
+                        "could not create private native-library snapshot directory {}: {error}",
+                        directory.display()
+                    )));
+                }
+            }
+            let path = directory.join(format!("payload.{suffix}"));
+            let result = (|| {
+                let mut options = OpenOptions::new();
+                options.create_new(true).write(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt as _;
+                    options.mode(0o600);
+                }
+                let mut file = options.open(&path).map_err(|error| {
+                    RusticolError::artifact(format!(
+                        "could not create native-library snapshot {}: {error}",
+                        path.display()
+                    ))
+                })?;
+                file.write_all(bytes).map_err(|error| {
+                    RusticolError::artifact(format!(
+                        "could not write native-library snapshot {}: {error}",
+                        path.display()
+                    ))
+                })?;
+                file.flush().map_err(|error| {
+                    RusticolError::artifact(format!(
+                        "could not flush native-library snapshot {}: {error}",
+                        path.display()
+                    ))
+                })?;
+                drop(file);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    fs::set_permissions(&path, fs::Permissions::from_mode(0o500)).map_err(
+                        |error| {
+                            RusticolError::artifact(format!(
+                                "could not protect native-library snapshot {}: {error}",
+                                path.display()
+                            ))
+                        },
+                    )?;
+                }
+                Ok(Self {
+                    directory: directory.clone(),
+                    path: path.clone(),
+                    active: true,
+                })
+            })();
+            if result.is_err() {
+                let _ = fs::remove_file(&path);
+                let _ = fs::remove_dir(&directory);
+            }
+            return result;
+        }
+        Err(RusticolError::artifact(
+            "could not allocate a unique private native-library snapshot",
+        ))
+    }
+
+    #[cfg(unix)]
+    fn remove_now(mut self) -> RusticolResult<()> {
+        fs::remove_file(&self.path).map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not unlink loaded native-library snapshot {}: {error}",
+                self.path.display()
+            ))
+        })?;
+        fs::remove_dir(&self.directory).map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not remove native-library snapshot directory {}: {error}",
+                self.directory.display()
+            ))
+        })?;
+        self.active = false;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "f64-compiled")]
+fn native_library_snapshot_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(configured) =
+        std::env::var_os("PYAMPLICOL_NATIVE_SNAPSHOT_ROOT").filter(|value| !value.is_empty())
+    {
+        let configured = PathBuf::from(configured);
+        if !roots.contains(&configured) {
+            roots.push(configured);
+        }
+    }
+    let system = std::env::temp_dir();
+    if !roots.contains(&system) {
+        roots.push(system);
+    }
+    roots
+}
+
+#[cfg(feature = "f64-compiled")]
+impl Drop for TemporaryNativeLibrary {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = fs::remove_file(&self.path);
+            let _ = fs::remove_dir(&self.directory);
+        }
+    }
 }
 
 impl EvaluatorPayloadSource {
@@ -252,6 +520,11 @@ impl EvaluatorPayloadSource {
                     path.display()
                 ))
             }),
+            Self::AuthenticatedFile { root, payload } => {
+                authenticate_payload(root, payload, true, || {}).map(|bytes| {
+                    Cow::Owned(bytes.expect("authenticated evaluator bytes were requested"))
+                })
+            }
             Self::Packed {
                 container,
                 logical_path,
@@ -262,6 +535,9 @@ impl EvaluatorPayloadSource {
     pub(crate) fn display_name(&self) -> String {
         match self {
             Self::File(path) => path.display().to_string(),
+            Self::AuthenticatedFile { root, payload } => {
+                root.join(&payload.path).display().to_string()
+            }
             Self::Packed { logical_path, .. } => format!("evaluators.pacbin:{logical_path}"),
         }
     }
@@ -273,6 +549,9 @@ pub(crate) struct EvaluatorPayloadStore {
     artifact_root: PathBuf,
     relative_root: PathBuf,
     container: Option<Arc<PacbinReader>>,
+    payloads: Option<Arc<BTreeMap<String, Payload>>>,
+    #[cfg(feature = "f64-compiled")]
+    native_library_cache: Arc<Mutex<BTreeMap<String, Arc<PinnedNativeLibrary>>>>,
 }
 
 impl EvaluatorPayloadStore {
@@ -281,6 +560,9 @@ impl EvaluatorPayloadStore {
             artifact_root: root.to_path_buf(),
             relative_root: root.to_path_buf(),
             container: None,
+            payloads: None,
+            #[cfg(feature = "f64-compiled")]
+            native_library_cache: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -296,17 +578,69 @@ impl EvaluatorPayloadStore {
                 logical_path,
             });
         }
+        if let Some(payloads) = &self.payloads {
+            let payload = payloads.get(&logical_path).ok_or_else(|| {
+                RusticolError::security(format!(
+                    "evaluator payload {logical_path:?} is not declared by the verified artifact"
+                ))
+            })?;
+            if payload.role != PayloadRole::EvaluatorState {
+                return Err(RusticolError::security(format!(
+                    "evaluator payload {logical_path:?} has role {:?}, expected evaluator-state",
+                    payload.role
+                )));
+            }
+            return Ok(EvaluatorPayloadSource::AuthenticatedFile {
+                root: self.artifact_root.clone(),
+                payload: payload.clone(),
+            });
+        }
         Ok(EvaluatorPayloadSource::File(path))
     }
 
-    pub(crate) fn physical_path(&self, value: &str) -> RusticolResult<PathBuf> {
-        match self.source(value)? {
-            EvaluatorPayloadSource::File(path) => Ok(path),
-            EvaluatorPayloadSource::Packed { logical_path, .. } => {
-                Err(RusticolError::compatibility(format!(
-                    "native evaluator library {logical_path:?} cannot be loaded from pacbin storage"
-                )))
+    pub(crate) fn load_native_library(
+        &self,
+        value: &str,
+    ) -> RusticolResult<Arc<PinnedNativeLibrary>> {
+        #[cfg(not(feature = "f64-compiled"))]
+        {
+            let _ = value;
+            return Err(RusticolError::compatibility(
+                "native evaluator libraries require the f64-compiled feature",
+            ));
+        }
+        #[cfg(feature = "f64-compiled")]
+        {
+            let relative = confined_evaluator_path(value)?;
+            let path = self.relative_root.join(relative);
+            let logical_path = artifact_logical_path(&self.artifact_root, &path)?;
+            if let Some(library) = self
+                .native_library_cache
+                .lock()
+                .map_err(|_| {
+                    RusticolError::evaluation("native evaluator library cache is poisoned")
+                })?
+                .get(&logical_path)
+                .cloned()
+            {
+                return Ok(library);
             }
+            let source = self.source(value)?;
+            if let EvaluatorPayloadSource::Packed { logical_path, .. } = &source {
+                return Err(RusticolError::compatibility(format!(
+                    "native evaluator library {logical_path:?} cannot be loaded from pacbin storage"
+                )));
+            }
+            let display_path = PathBuf::from(source.display_name());
+            let bytes = source.read()?;
+            let loaded = PinnedNativeLibrary::from_bytes(bytes.as_ref(), display_path)?;
+            let mut cache = self.native_library_cache.lock().map_err(|_| {
+                RusticolError::evaluation("native evaluator library cache is poisoned")
+            })?;
+            Ok(cache
+                .entry(logical_path)
+                .or_insert_with(|| Arc::clone(&loaded))
+                .clone())
         }
     }
 }
@@ -411,17 +745,30 @@ impl VerifiedArtifact {
         }
         validate_references(&manifest, &payloads)?;
         validate_artifact_tree(&root, &payloads)?;
+        let evaluator_container_path = manifest
+            .extensions
+            .get(EVALUATOR_PAYLOAD_CONTAINER_EXTENSION)
+            .and_then(Value::as_object)
+            .and_then(|extension| extension.get("path"))
+            .and_then(Value::as_str);
         for payload in payloads.values() {
-            validate_payload(&root, payload)?;
+            if evaluator_container_path == Some(payload.path.as_str()) {
+                validate_payload_declaration(payload)?;
+            } else {
+                validate_payload(&root, payload)?;
+            }
         }
         let evaluator_payload_container =
             load_evaluator_payload_container(&root, &manifest, &payloads)?;
+        let payloads = Arc::new(payloads);
         Ok(Self {
             root,
             manifest_path,
             manifest,
             payloads,
             evaluator_payload_container,
+            #[cfg(feature = "f64-compiled")]
+            native_library_cache: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
 
@@ -449,10 +796,29 @@ impl VerifiedArtifact {
 
     pub fn read_payload(&self, path: &str) -> RusticolResult<Vec<u8>> {
         let payload = self.payload(path)?;
-        validate_payload(&self.root, payload)?;
-        fs::read(self.root.join(path)).map_err(|error| {
-            RusticolError::artifact(format!("could not read payload {path:?}: {error}"))
-        })
+        authenticate_payload(&self.root, payload, true, || {})
+            .map(|bytes| bytes.expect("authenticated payload bytes were requested"))
+    }
+
+    /// Open one declared loose payload and pin the checked file description.
+    ///
+    /// Callers that stream or map a payload must authenticate this returned
+    /// file, rather than reopening `path`, so path replacement cannot change
+    /// the bytes between declaration checks and use.
+    pub(crate) fn open_payload_file(&self, path: &str) -> RusticolResult<File> {
+        let payload = self.payload(path)?;
+        open_checked_payload(&self.root, payload)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn read_payload_with_pre_read_hook(
+        &self,
+        path: &str,
+        hook: impl FnOnce(),
+    ) -> RusticolResult<Vec<u8>> {
+        let payload = self.payload(path)?;
+        authenticate_payload(&self.root, payload, true, hook)
+            .map(|bytes| bytes.expect("authenticated payload bytes were requested"))
     }
 
     pub(crate) fn payload_path(&self, path: &str) -> RusticolResult<PathBuf> {
@@ -474,6 +840,9 @@ impl VerifiedArtifact {
             artifact_root: self.root.clone(),
             relative_root: relative_root.to_path_buf(),
             container: self.evaluator_payload_container.clone(),
+            payloads: Some(self.payloads.clone()),
+            #[cfg(feature = "f64-compiled")]
+            native_library_cache: self.native_library_cache.clone(),
         })
     }
 
@@ -533,7 +902,17 @@ fn load_evaluator_payload_container(
             "evaluator payload container must be a root evaluator-state octet-stream payload",
         ));
     }
-    let reader = PacbinReader::open_trusted(root.join(&extension.path))?;
+    let expected_payload_sha = parse_sha256(
+        &payload.sha256,
+        "evaluator payload container payload SHA-256",
+    )?;
+    let container_path = root.join(&extension.path);
+    let container_file = open_checked_payload(root, payload)?;
+    let reader = PacbinReader::open_file_with_sha256(
+        container_file,
+        &container_path,
+        &expected_payload_sha,
+    )?;
     let index = reader.index();
     if index.version() != 1
         || u64::try_from(index.members().len()).unwrap_or(u64::MAX) != extension.member_count
@@ -1305,6 +1684,97 @@ fn metadata_is_executable(metadata: &fs::Metadata) -> bool {
 }
 
 fn validate_payload(root: &Path, payload: &Payload) -> RusticolResult<()> {
+    authenticate_payload(root, payload, false, || {}).map(|_| ())
+}
+
+fn authenticate_payload(
+    root: &Path,
+    payload: &Payload,
+    retain_bytes: bool,
+    pre_read_hook: impl FnOnce(),
+) -> RusticolResult<Option<Vec<u8>>> {
+    validate_payload_declaration(payload)?;
+    let mut file = open_checked_payload(root, payload)?;
+    pre_read_hook();
+
+    let expected_size = usize::try_from(payload.size_bytes).map_err(|_| {
+        RusticolError::security(format!(
+            "payload {:?} is too large for this platform",
+            payload.path
+        ))
+    })?;
+    let mut retained = if retain_bytes {
+        let mut bytes = Vec::new();
+        bytes.try_reserve_exact(expected_size).map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not allocate {} bytes for payload {:?}: {error}",
+                payload.size_bytes, payload.path
+            ))
+        })?;
+        Some(bytes)
+    } else {
+        None
+    };
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0_u8; (1024 * 1024).min(expected_size.max(1))];
+    let mut consumed = 0_usize;
+    while consumed < expected_size {
+        let remaining = expected_size - consumed;
+        let chunk_size = remaining.min(buffer.len());
+        let count = loop {
+            match file.read(&mut buffer[..chunk_size]) {
+                Ok(count) => break count,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(error) => {
+                    return Err(RusticolError::artifact(format!(
+                        "could not read payload {:?}: {error}",
+                        payload.path
+                    )));
+                }
+            }
+        };
+        if count == 0 {
+            return Err(RusticolError::integrity(format!(
+                "payload {:?} changed while being read: expected {} bytes, read {consumed}",
+                payload.path, payload.size_bytes
+            )));
+        }
+        digest.update(&buffer[..count]);
+        if let Some(bytes) = &mut retained {
+            bytes.extend_from_slice(&buffer[..count]);
+        }
+        consumed += count;
+    }
+    let mut extra = [0_u8; 1];
+    let extra_count = loop {
+        match file.read(&mut extra) {
+            Ok(count) => break count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => {
+                return Err(RusticolError::artifact(format!(
+                    "could not finish reading payload {:?}: {error}",
+                    payload.path
+                )));
+            }
+        }
+    };
+    if extra_count != 0 {
+        return Err(RusticolError::integrity(format!(
+            "payload {:?} changed while being read: it exceeds the declared {} bytes",
+            payload.path, payload.size_bytes
+        )));
+    }
+    let actual = format!("{:x}", digest.finalize());
+    if actual != payload.sha256 {
+        return Err(RusticolError::integrity(format!(
+            "payload {:?} has SHA-256 {actual}, expected {}",
+            payload.path, payload.sha256
+        )));
+    }
+    Ok(retained)
+}
+
+fn validate_payload_declaration(payload: &Payload) -> RusticolResult<()> {
     validate_sha256(&payload.sha256, &format!("payload {} sha256", payload.path))?;
     if payload.media_type.is_empty() {
         return Err(RusticolError::artifact(format!(
@@ -1332,6 +1802,10 @@ fn validate_payload(root: &Path, payload: &Payload) -> RusticolResult<()> {
             payload.path, payload.role
         )));
     }
+    Ok(())
+}
+
+fn open_checked_payload(root: &Path, payload: &Payload) -> RusticolResult<File> {
     let path = root.join(&payload.path);
     reject_symlink_chain(&path)?;
     let canonical = path.canonicalize().map_err(|error| {
@@ -1346,7 +1820,23 @@ fn validate_payload(root: &Path, payload: &Payload) -> RusticolResult<()> {
             payload.path
         )));
     }
-    let metadata = fs::metadata(&canonical).map_err(|error| {
+    #[cfg(unix)]
+    let file = {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            .open(&path)
+    };
+    #[cfg(not(unix))]
+    let file = OpenOptions::new().read(true).open(&path);
+    let file = file.map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not open payload {:?}: {error}",
+            payload.path
+        ))
+    })?;
+    let metadata = file.metadata().map_err(|error| {
         RusticolError::security(format!(
             "could not inspect payload {:?}: {error}",
             payload.path
@@ -1376,35 +1866,30 @@ fn validate_payload(root: &Path, payload: &Payload) -> RusticolResult<()> {
             )));
         }
     }
-    let file = File::open(&canonical).map_err(|error| {
-        RusticolError::artifact(format!(
-            "could not open payload {:?}: {error}",
+    reject_symlink_chain(&path)?;
+    let path_metadata = fs::symlink_metadata(&path).map_err(|error| {
+        RusticolError::security(format!(
+            "could not re-inspect payload {:?}: {error}",
             payload.path
         ))
     })?;
-    let mut reader = BufReader::with_capacity(1024 * 1024, file);
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
-    loop {
-        let count = reader.read(&mut buffer).map_err(|error| {
-            RusticolError::artifact(format!(
-                "could not hash payload {:?}: {error}",
-                payload.path
-            ))
-        })?;
-        if count == 0 {
-            break;
-        }
-        digest.update(&buffer[..count]);
-    }
-    let actual = format!("{:x}", digest.finalize());
-    if actual != payload.sha256 {
-        return Err(RusticolError::integrity(format!(
-            "payload {:?} has SHA-256 {actual}, expected {}",
-            payload.path, payload.sha256
+    if path_metadata.file_type().is_symlink() || !path_metadata.file_type().is_file() {
+        return Err(RusticolError::security(format!(
+            "payload {:?} is not a regular non-symlink file",
+            payload.path
         )));
     }
-    Ok(())
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if metadata.dev() != path_metadata.dev() || metadata.ino() != path_metadata.ino() {
+            return Err(RusticolError::security(format!(
+                "payload {:?} was replaced while being opened",
+                payload.path
+            )));
+        }
+    }
+    Ok(file)
 }
 
 fn validate_relative_path(value: &str, description: &str) -> RusticolResult<()> {
@@ -1454,6 +1939,23 @@ fn validate_sha256(value: &str, description: &str) -> RusticolResult<()> {
         )));
     }
     Ok(())
+}
+
+fn parse_sha256(value: &str, description: &str) -> RusticolResult<[u8; 32]> {
+    validate_sha256(value, description)?;
+    let mut digest = [0_u8; 32];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        digest[index] = (hex_nibble(pair[0]) << 4) | hex_nibble(pair[1]);
+    }
+    Ok(digest)
+}
+
+fn hex_nibble(value: u8) -> u8 {
+    match value {
+        b'0'..=b'9' => value - b'0',
+        b'a'..=b'f' => value - b'a' + 10,
+        _ => unreachable!("SHA-256 validation precedes hexadecimal decoding"),
+    }
 }
 
 fn validate_public_id(value: &str, description: &str) -> RusticolResult<()> {

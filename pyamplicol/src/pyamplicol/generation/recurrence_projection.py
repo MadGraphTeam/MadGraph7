@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from ..color.plan import GenericColorPlan, LCColorTopologyReplayPlan
+from ..color.public_flows import amplicol_legacy_two_line_public_word
 from ..models.base import Model, Vertex
 from ..models.recurrence_template import (
     CurrentStateTemplateV1,
@@ -810,7 +811,7 @@ def _project_physical_sectors(
                 f"LC sector {sector.id} has no physical color word"
             )
         word = sector.word_labels or words[0]
-        public_id = (
+        construction_public_id = (
             "flow:" + ",".join(str(int(label)) for label in word)
             if word
             else "flow:singlet"
@@ -835,6 +836,36 @@ def _project_physical_sectors(
         trace_source_slots = slots(sector.trace_labels, "LC trace")
         singlet_source_slots = slots(sector.singlet_labels, "LC singlets")
         word_source_slots = slots(word, "LC color word")
+        public_word_source_slots = (
+            amplicol_legacy_two_line_public_word(
+                word_source_slots,
+                tuple(
+                    (
+                        line.fundamental_source_slot,
+                        line.antifundamental_source_slot,
+                        line.adjoint_source_slots,
+                        line.singlet_source_slots,
+                    )
+                    for line in open_strings
+                ),
+                tuple(
+                    source_slot
+                    for source_slot, leg in enumerate(external_legs)
+                    if leg.is_initial
+                ),
+            )
+            if process.color_accuracy == "lc"
+            else word_source_slots
+        )
+        public_word_labels = tuple(
+            int(process.legs[source_slot].label)
+            for source_slot in public_word_source_slots
+        )
+        public_flow_id = (
+            "flow:" + ",".join(str(label) for label in public_word_labels)
+            if public_word_labels
+            else "flow:singlet"
+        )
         closure_source_slot, closure_proof_digest = _closure_anchor_contract(
             sector_id=int(sector.id),
             sector_kind=sector.kind,
@@ -846,7 +877,7 @@ def _project_physical_sectors(
         result.append(
             RecurrencePhysicalLCSectorV1(
                 sector_id=int(sector.id),
-                public_id=public_id,
+                public_id=construction_public_id,
                 kind=sector.kind,
                 closure_source_slot=closure_source_slot,
                 closure_proof_algorithm=_CLOSURE_ANCHOR_PROOF_ALGORITHM,
@@ -861,9 +892,9 @@ def _project_physical_sectors(
         public_flows.append(
             RecurrencePublicLCFlowV1(
                 flow_id=len(public_flows),
-                public_id=public_id,
+                public_id=public_flow_id,
                 construction_sector_id=int(sector.id),
-                word_source_slots=slots(word, "LC public color word"),
+                word_source_slots=public_word_source_slots,
                 source_slot_permutation=identity_permutation,
             )
         )

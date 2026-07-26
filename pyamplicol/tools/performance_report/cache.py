@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -15,6 +16,26 @@ from .models import CellSpec, ResultStatus
 
 CACHE_SCHEMA_VERSION = 3
 REPORT_VERSION = "0.2.0"
+_EXECUTION_TIMING_ABI = "pyamplicol-report-execution-timing-v1"
+_COMPILED_ARENA_EXECUTION_TIME_SOURCE = (
+    "runtime_profile_core_compiled_direct_arena_orchestration_time"
+)
+_LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
+    {
+        "observed_module_count",
+        "observations",
+        "observations_sha256",
+    }
+)
+_RUNTIME_POSTFLIGHT_FIELDS = frozenset(
+    {
+        "runtime_identity_sha256",
+        "runtime_identity_stable_sha256",
+        "runtime_identity_postflight_stable_sha256",
+        "runtime_identity_postflight_loaded_module_origin_policy",
+        "runtime_identity_postflight_match",
+    }
+)
 
 
 def _canonical_json(value: object) -> bytes:
@@ -28,6 +49,100 @@ def _canonical_json(value: object) -> bytes:
 
 def digest_json(value: object) -> str:
     return hashlib.sha256(_canonical_json(value)).hexdigest()
+
+
+def _stable_runtime_identity(identity: Mapping[str, object]) -> dict[str, object]:
+    stable = dict(identity)
+    raw_policy = stable.get("loaded_module_origin_policy")
+    if isinstance(raw_policy, Mapping):
+        stable["loaded_module_origin_policy"] = {
+            field: value
+            for field, value in raw_policy.items()
+            if field not in _LOADED_ORIGIN_OBSERVATION_FIELDS
+        }
+    return stable
+
+
+def _loaded_origin_policy(
+    value: object,
+    name: str,
+) -> tuple[Mapping[str, object], list[object]]:
+    policy = _required_mapping(value, name)
+    observations = policy.get("observations")
+    count = policy.get("observed_module_count")
+    if (
+        policy.get("kind") != "pyamplicol-loaded-module-origin-policy-v1"
+        or policy.get("all_loaded_origins_authenticated") is not True
+        or policy.get("native_image_origin_bound") is not True
+        or policy.get("loaded_bytecode_eligible") is not False
+        or isinstance(count, bool)
+        or not isinstance(count, int)
+        or count < 1
+        or not isinstance(observations, list)
+        or len(observations) != count
+        or policy.get("observations_sha256") != digest_json(observations)
+    ):
+        raise ValueError(f"{name} is not authenticated loaded-origin evidence")
+    return policy, observations
+
+
+def _validate_runtime_identity_postflight(
+    provenance: Mapping[str, object],
+    validation: Mapping[str, object],
+) -> None:
+    """Require the initial/post-evaluation runtime identity binding."""
+
+    raw_identity = provenance.get("runtime_identity")
+    if raw_identity is None:
+        if (
+            provenance.get("method") == "original-amplicol-generated-library"
+            or validation.get("method") == "independent-original-amplicol-oracle"
+            or (
+                "source_revision" not in provenance
+                and not (_RUNTIME_POSTFLIGHT_FIELDS & provenance.keys())
+            )
+        ):
+            return
+        raise ValueError("successful pyAmpliCol measurement requires runtime_identity")
+    identity = _required_mapping(raw_identity, "provenance.runtime_identity")
+    if provenance.get("runtime_identity_sha256") != digest_json(identity):
+        raise ValueError("provenance.runtime_identity_sha256 does not match")
+    stable_digest = digest_json(_stable_runtime_identity(identity))
+    if provenance.get("runtime_identity_stable_sha256") != stable_digest:
+        raise ValueError("provenance.runtime_identity_stable_sha256 does not match")
+    if provenance.get("runtime_identity_postflight_stable_sha256") != stable_digest:
+        raise ValueError(
+            "provenance.runtime_identity postflight stable SHA-256 differs"
+        )
+    if provenance.get("runtime_identity_postflight_match") is not True:
+        raise ValueError("provenance.runtime_identity_postflight_match must be true")
+
+    initial_policy, initial_observations = _loaded_origin_policy(
+        identity.get("loaded_module_origin_policy"),
+        "provenance.runtime_identity.loaded_module_origin_policy",
+    )
+    postflight_policy, postflight_observations = _loaded_origin_policy(
+        provenance.get("runtime_identity_postflight_loaded_module_origin_policy"),
+        ("provenance.runtime_identity_postflight_loaded_module_origin_policy"),
+    )
+    stable_initial_policy = {
+        field: value
+        for field, value in initial_policy.items()
+        if field not in _LOADED_ORIGIN_OBSERVATION_FIELDS
+    }
+    stable_postflight_policy = {
+        field: value
+        for field, value in postflight_policy.items()
+        if field not in _LOADED_ORIGIN_OBSERVATION_FIELDS
+    }
+    if stable_postflight_policy != stable_initial_policy:
+        raise ValueError("provenance runtime postflight origin policy changed")
+    postflight_keys = {_canonical_json(record) for record in postflight_observations}
+    if any(
+        _canonical_json(record) not in postflight_keys
+        for record in initial_observations
+    ):
+        raise ValueError("provenance runtime postflight lost a loaded-module origin")
 
 
 def empty_measurement() -> dict[str, object]:
@@ -125,6 +240,91 @@ def _required_number_or_none(value: object, name: str) -> float | None:
     return number
 
 
+def _validate_execution_timing(
+    value: object,
+    *,
+    execution_seconds_per_point: float | None,
+) -> None:
+    timing = _required_mapping(value, "measurement.provenance.execution_timing")
+    expected_fields = {
+        "abi",
+        "status",
+        "ratio_eligible",
+        "raw_seconds_per_point",
+        "source",
+        "compiled_direct_arena_active",
+        "sample_count",
+        "native_profile_points_per_sample",
+        "sample_contract",
+    }
+    if set(timing) != expected_fields:
+        raise ValueError(
+            "measurement.provenance.execution_timing fields do not match contract"
+        )
+    raw = timing.get("raw_seconds_per_point")
+    if (
+        isinstance(raw, bool)
+        or not isinstance(raw, (int, float))
+        or not math.isfinite(float(raw))
+        or float(raw) < 0.0
+    ):
+        raise ValueError("measurement.provenance.execution_timing raw time is invalid")
+    sample_count = timing.get("sample_count")
+    if (
+        isinstance(sample_count, bool)
+        or not isinstance(sample_count, int)
+        or sample_count < 1
+    ):
+        raise ValueError(
+            "measurement.provenance.execution_timing sample_count is invalid"
+        )
+    native_points = timing.get("native_profile_points_per_sample")
+    if native_points is not None and (
+        isinstance(native_points, bool)
+        or not isinstance(native_points, int)
+        or native_points < 1
+    ):
+        raise ValueError(
+            "measurement.provenance.execution_timing native point count is invalid"
+        )
+    sample_contract = timing.get("sample_contract")
+    if not isinstance(sample_contract, str) or not sample_contract:
+        raise ValueError(
+            "measurement.provenance.execution_timing sample contract is invalid"
+        )
+    if timing.get("abi") != _EXECUTION_TIMING_ABI:
+        raise ValueError("measurement.provenance.execution_timing ABI is invalid")
+    if timing.get("status") == "below_timer_resolution":
+        if (
+            execution_seconds_per_point is not None
+            or float(raw) != 0.0
+            or timing.get("ratio_eligible") is not False
+            or timing.get("compiled_direct_arena_active") is not True
+            or timing.get("source") != _COMPILED_ARENA_EXECUTION_TIME_SOURCE
+            or native_points is None
+        ):
+            raise ValueError(
+                "measurement.provenance.execution_timing below-resolution "
+                "record is not an authenticated compiled Direct-Arena zero"
+            )
+        return
+    if timing.get("status") != "measured":
+        raise ValueError(
+            "measurement.provenance.execution_timing status is unsupported"
+        )
+    if (
+        execution_seconds_per_point is None
+        or float(raw) != execution_seconds_per_point
+        or timing.get("ratio_eligible") is not (execution_seconds_per_point > 0.0)
+        or not isinstance(timing.get("compiled_direct_arena_active"), bool)
+        or not isinstance(timing.get("source"), str)
+        or not timing.get("source")
+    ):
+        raise ValueError(
+            "measurement.provenance.execution_timing measured record is inconsistent"
+        )
+
+
 def validate_measurement(value: object) -> None:
     measurement = _required_mapping(value, "measurement")
     expected_keys = set(empty_measurement())
@@ -173,6 +373,25 @@ def validate_measurement(value: object) -> None:
         validation = _required_mapping(measurement["validation"], "validation")
         if validation.get("status") != ResultStatus.OK.value:
             raise ValueError("successful measurement requires successful validation")
+        provenance = _required_mapping(
+            measurement["provenance"], "measurement.provenance"
+        )
+        execution_seconds = _required_number_or_none(
+            measurement["execution_seconds_per_point"],
+            "measurement.execution_seconds_per_point",
+        )
+        raw_execution_timing = provenance.get("execution_timing")
+        if raw_execution_timing is not None:
+            _validate_execution_timing(
+                raw_execution_timing,
+                execution_seconds_per_point=execution_seconds,
+            )
+        elif execution_seconds is None and "source_revision" in provenance:
+            raise ValueError(
+                "successful pyAmpliCol measurement with unavailable execution "
+                "timing requires below-resolution provenance"
+            )
+        _validate_runtime_identity_postflight(provenance, validation)
         if measurement["failure"] is not None:
             raise ValueError("successful measurement cannot contain failure metadata")
     elif measurement["failure"] is None:

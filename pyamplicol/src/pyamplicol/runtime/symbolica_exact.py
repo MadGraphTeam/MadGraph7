@@ -592,8 +592,11 @@ class SymbolicaExactExecutor:
 
         amplitude = cast(Mapping[str, object], stage_set["amplitude_stage"])
         assert self._amplitude_evaluator is not None
-        return self._amplitude_evaluator.evaluate(
-            _pack_stage_inputs(state, amplitude), precision
+        return _canonical_amplitude_outputs(
+            self._amplitude_evaluator.evaluate(
+                _pack_stage_inputs(state, amplitude), precision
+            ),
+            amplitude,
         )
 
     def _evaluate_helicity_quotient(
@@ -2232,6 +2235,104 @@ def _assign_stage_outputs(
         if output_stop > len(outputs) or component_stop > len(state):
             raise ArtifactError("stage output slot is out of range")
         state[component_start:component_stop] = outputs[output_start:output_stop]
+
+
+def _canonical_amplitude_outputs(
+    outputs: Sequence[_ComplexDecimal],
+    stage: Mapping[str, object],
+) -> tuple[_ComplexDecimal, ...]:
+    """Scatter evaluator-ordered amplitudes into canonical root order."""
+
+    output_length = _strict_nonnegative_integer(
+        stage.get("output_length"), "amplitude evaluator output length"
+    )
+    if len(outputs) != output_length:
+        raise ArtifactError(
+            "amplitude evaluator output mapping has an inconsistent buffer length"
+        )
+    canonical: list[_ComplexDecimal | None] = [None] * output_length
+    seen_evaluator_outputs: set[int] = set()
+
+    def bind(evaluator_output: int, canonical_output: int) -> None:
+        if (
+            evaluator_output >= output_length
+            or canonical_output >= output_length
+            or evaluator_output in seen_evaluator_outputs
+            or canonical[canonical_output] is not None
+        ):
+            raise ArtifactError(
+                "amplitude evaluator output mapping is not a permutation"
+            )
+        seen_evaluator_outputs.add(evaluator_output)
+        canonical[canonical_output] = outputs[evaluator_output]
+
+    direct = stage.get("compiled_plane_arena")
+    if direct is not None:
+        if not isinstance(direct, Mapping):
+            raise ArtifactError(
+                "compiled plane-arena amplitude metadata is not an object"
+            )
+        for raw_binding in _mapping_sequence(
+            direct,
+            "output_bindings",
+            "compiled plane-arena amplitude output bindings",
+        ):
+            if not isinstance(raw_binding, Mapping):
+                raise ArtifactError(
+                    "compiled plane-arena amplitude output binding is invalid"
+                )
+            if raw_binding.get("arena") != "amplitude":
+                raise ArtifactError(
+                    "compiled plane-arena amplitude binding names the wrong arena"
+                )
+            bind(
+                _strict_nonnegative_integer(
+                    raw_binding.get("output_index"),
+                    "amplitude evaluator output index",
+                ),
+                _strict_nonnegative_integer(
+                    raw_binding.get("component"),
+                    "canonical amplitude output index",
+                ),
+            )
+    else:
+        for raw_slot in _mapping_sequence(
+            stage, "output_slots", "amplitude evaluator output slots"
+        ):
+            if not isinstance(raw_slot, Mapping):
+                raise ArtifactError("amplitude evaluator output slot is invalid")
+            output_start = _strict_nonnegative_integer(
+                raw_slot.get("output_start"), "amplitude evaluator output start"
+            )
+            output_stop = _strict_nonnegative_integer(
+                raw_slot.get("output_stop"), "amplitude evaluator output stop"
+            )
+            component_start = _strict_nonnegative_integer(
+                raw_slot.get("component_start"),
+                "amplitude evaluator component start",
+            )
+            component_stop = _strict_nonnegative_integer(
+                raw_slot.get("component_stop"),
+                "amplitude evaluator component stop",
+            )
+            if (
+                output_stop < output_start
+                or component_stop < component_start
+                or output_stop - output_start != component_stop - component_start
+                or output_stop > output_length
+                or component_stop > output_length
+            ):
+                raise ArtifactError(
+                    "amplitude evaluator output and component ranges disagree"
+                )
+            for offset in range(output_stop - output_start):
+                bind(output_start + offset, component_start + offset)
+
+    if len(seen_evaluator_outputs) != output_length or any(
+        value is None for value in canonical
+    ):
+        raise ArtifactError("amplitude evaluator output mapping is incomplete")
+    return cast(tuple[_ComplexDecimal, ...], tuple(canonical))
 
 
 def _fill_momenta(

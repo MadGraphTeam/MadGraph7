@@ -74,6 +74,18 @@ def test_native_benchmark_duration_is_retained_as_publication_evidence() -> None
             "repetitions_per_sample": 100,
             "measured_point_count": 64000,
             "interrupted": False,
+            "evaluator_time_raw_seconds_per_point": 1.0e-6,
+            "evaluator_time_status": "measured",
+            "evaluator_time_ratio_eligible": True,
+            "evaluator_time_source": (
+                "runtime_profile_core_evaluator_call_time"
+            ),
+            "compiled_direct_arena_active": False,
+            "evaluator_sample_count": 5,
+            "native_profile_points_per_sample": 128,
+            "timing_sample_contract": (
+                "paired_unprofiled_headline_profiled_attribution_v1"
+            ),
         },
     )
 

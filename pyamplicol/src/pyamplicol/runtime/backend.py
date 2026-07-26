@@ -333,6 +333,24 @@ class RusticolRuntimeBackend:
         return self._execution_mode
 
     @property
+    def artifact_id(self) -> str:
+        """Return the manifest identity authenticated by the native loader."""
+
+        value = getattr(self._runtime, "artifact_id", None)
+        if not isinstance(value, str) or len(value) != 64:
+            raise CompatibilityError(
+                "native runtime has no authenticated artifact identity; "
+                "reinstall pyAmpliCol from the current source revision"
+            )
+        try:
+            int(value, 16)
+        except ValueError as exc:
+            raise ArtifactError(
+                "native runtime carries an invalid artifact identity"
+            ) from exc
+        return value
+
+    @property
     def supports_profiling(self) -> bool:
         """Whether this installed native runtime exposes the optional profiler."""
 

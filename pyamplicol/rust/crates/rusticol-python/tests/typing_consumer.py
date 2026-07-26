@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 
-from typing import assert_type
 from collections.abc import Mapping
+from typing import assert_type
 
 from pyamplicol._rusticol import (
     ColorFlow,
@@ -18,6 +18,7 @@ from pyamplicol._rusticol import (
 def consume_runtime(runtime: Runtime) -> None:
     momenta = [[[10.0, 0.0, 0.0, 10.0]] * 3]
 
+    assert_type(runtime.artifact_id, str)
     assert_type(runtime.evaluate(momenta), list[float])
     assert_type(runtime.evaluate(momenta, precision=16), list[float])
     assert_type(runtime.profile(momenta, precision=16), Mapping[str, object])

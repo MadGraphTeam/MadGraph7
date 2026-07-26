@@ -25,7 +25,7 @@ lc_flow_layout = "topology-replay"
 
 [generation]
 output = "."
-mode = "replace"
+mode = "error"
 workers = 1
 emit_api_bundle = true
 
@@ -45,7 +45,7 @@ output_chunk_size = 512
 
 [evaluator.optimization]
 horner_iterations = 10
-cores = 12
+cores = 1
 max_horner_variables = 1000
 max_common_pair_cache_entries = 5000000
 max_common_pair_distance = 1000
@@ -53,6 +53,7 @@ collect_factors = "auto"
 
 [evaluator.jit]
 optimization_level = 2
+compress = true
 
 [evaluator.cpp]
 optimization = "O3"

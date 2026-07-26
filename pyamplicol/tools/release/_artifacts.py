@@ -56,6 +56,10 @@ from audit_sdist import (
     REQUIRED_SDIST_MEMBERS,
     prepared_model_asset_members,
 )
+from prepare_selftest_fixture import (
+    validate_portable_artifact_capabilities,
+    validate_portable_execution_manifest,
+)
 
 MAX_WHEEL_BYTES = 95_000_000
 EXPECTED_DISTRIBUTION = "pyamplicol"
@@ -155,6 +159,8 @@ _SYSTEM_LIBRARIES = {
 }
 _MACOS_FRAMEWORKS = {"CoreFoundation", "IOKit", "Security", "SystemConfiguration"}
 _CANONICAL_DEPENDENCY_LOCK = Path("dependencies/release-lock.toml")
+_CONTRIBUTOR_DEPENDENCY_LOCK = Path("dependencies/contributor-lock.toml")
+_CANDIDATE_INSTALL_STATE = Path("dependencies/install-state.json")
 _REQUIRED_PACKAGE_RESOURCES = {
     "pyamplicol/assets/schemas/README.md",
     "pyamplicol/assets/schemas/artifact-manifest-v3.schema.json",
@@ -473,11 +479,115 @@ def _locked_python_dependencies(lock: dict[str, Any]) -> dict[str, str]:
     return dependencies
 
 
+def _candidate_dependency_overrides() -> dict[str, str]:
+    release_path = ROOT / _CANONICAL_DEPENDENCY_LOCK
+    contributor_path = ROOT / _CONTRIBUTOR_DEPENDENCY_LOCK
+    state_path = ROOT / _CANDIDATE_INSTALL_STATE
+    missing = [
+        path for path in (contributor_path, state_path) if not path.is_file()
+    ]
+    if missing:
+        raise ArtifactError(
+            "candidate dependency provenance is incomplete: "
+            + ", ".join(str(path) for path in missing)
+        )
+    try:
+        with contributor_path.open("rb") as stream:
+            contributor = tomllib.load(stream)
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
+        raise ArtifactError(
+            f"candidate dependency provenance is invalid: {error}"
+        ) from error
+    if contributor.get("schema_version") != 1:
+        raise ArtifactError(
+            "candidate dependency provenance has an unsupported contributor lock"
+        )
+    if (
+        not isinstance(state, dict)
+        or state.get("schema_version") != 1
+        or state.get("publishable") is not False
+    ):
+        raise ArtifactError(
+            "candidate dependency provenance requires non-publishable schema-v1 "
+            "installer state"
+        )
+    expected_digests = {
+        "release_lock_sha256": hashlib.sha256(release_path.read_bytes()).hexdigest(),
+        "contributor_lock_sha256": hashlib.sha256(
+            contributor_path.read_bytes()
+        ).hexdigest(),
+    }
+    if any(state.get(key) != value for key, value in expected_digests.items()):
+        raise ArtifactError(
+            "candidate dependency provenance is not bound to the current locks"
+        )
+
+    release = _dependency_lock()
+    dependencies = _locked_python_dependencies(release)
+    release_symbolica = release.get("symbolica")
+    candidate_symbolica = contributor.get("symbolica")
+    if not isinstance(release_symbolica, dict) or not isinstance(
+        candidate_symbolica, dict
+    ):
+        raise ArtifactError(
+            "candidate dependency provenance has no Symbolica contract"
+        )
+    distribution = release_symbolica.get("python_distribution")
+    release_version = release_symbolica.get("python_version")
+    candidate_version = candidate_symbolica.get("candidate_version")
+    candidate_revision = candidate_symbolica.get("candidate_revision")
+    source_url = candidate_symbolica.get("source_url")
+    if not all(
+        isinstance(value, str) and value
+        for value in (
+            distribution,
+            release_version,
+            candidate_version,
+            candidate_revision,
+            source_url,
+        )
+    ):
+        raise ArtifactError(
+            "candidate dependency provenance has an invalid Symbolica contract"
+        )
+    name = canonicalize_name(distribution)
+    try:
+        normalized_release = str(Version(release_version))
+        normalized_candidate = str(Version(candidate_version))
+    except InvalidVersion as error:
+        raise ArtifactError(
+            "candidate dependency provenance has an invalid Symbolica version"
+        ) from error
+    if dependencies.get(name) != normalized_release:
+        raise ArtifactError(
+            "release dependency inventory disagrees with its Symbolica contract"
+        )
+    sources = state.get("sources")
+    source = sources.get("symbolica") if isinstance(sources, dict) else None
+    if (
+        not isinstance(source, dict)
+        or source.get("revision") != candidate_revision
+        or source.get("url") != source_url
+    ):
+        raise ArtifactError(
+            "candidate dependency provenance is not bound to the pinned Symbolica "
+            "source"
+        )
+    return {name: normalized_candidate}
+
+
 def _validate_runtime_requirements(
     raw_requirements: list[str],
     lock: dict[str, Any],
+    *,
+    mode: str,
 ) -> None:
     dependencies = _locked_python_dependencies(lock)
+    if mode == "candidate":
+        dependencies.update(_candidate_dependency_overrides())
+    elif mode != "release":
+        raise ArtifactError(f"unsupported dependency contract mode: {mode}")
     requirements: dict[str, Requirement] = {}
 
     def marker_uses_extra(items: Any) -> bool:
@@ -630,6 +740,7 @@ def _validate_prepared_model_assets(
             f"missing={missing}, extra={extra}"
         )
 
+    portable_bundle: bytes | None = None
     for architecture in PREPARED_MODEL_ARCHITECTURES:
         stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
         metadata_name = f"{prepared_prefix}{stem}.metadata.json"
@@ -643,7 +754,7 @@ def _validate_prepared_model_assets(
             or metadata.get("id") != PREPARED_MODEL_ASSET_BASENAME
             or metadata.get("model") != "built-in-sm"
             or metadata.get("backend") != "jit"
-            or metadata.get("jit_optimization_level") != 3
+            or metadata.get("jit_optimization_level") != 2
             or metadata.get("bundle") != PurePosixPath(bundle_name).name
         ):
             raise ArtifactError(
@@ -682,10 +793,10 @@ def _validate_prepared_model_assets(
             )
 
         expected_target = {
-            "portable": False,
+            "portable": True,
             "word_bits": 64,
             "endianness": "little",
-            "target_triple": f"symjit-storage-v3-{architecture}",
+            "target_triple": "symjit-storage-v3-portable",
             "cpu_features": [],
         }
         if metadata.get("target") != expected_target:
@@ -707,6 +818,12 @@ def _validate_prepared_model_assets(
             raise ArtifactError(
                 f"prepared-model bundle hash/size is invalid: {bundle_name}"
             )
+        if portable_bundle is not None and bundle != portable_bundle:
+            raise ArtifactError(
+                "prepared-model architecture aliases must contain "
+                "byte-identical portable bundles"
+            )
+        portable_bundle = bundle
 
 
 def _prepared_pack_compiler_digest(
@@ -1010,6 +1127,15 @@ def _validate_selftest_fixture(
     runtime = manifest.get("runtime")
     if not isinstance(producer, dict) or not isinstance(runtime, dict):
         raise ArtifactError("wheel self-test producer/runtime metadata is invalid")
+    try:
+        validate_portable_artifact_capabilities(
+            manifest,
+            context="wheel self-test artifact manifest",
+        )
+    except RuntimeError as error:
+        raise ArtifactError(
+            f"wheel self-test Arena artifact contract is invalid: {error}"
+        ) from error
     target = producer.get("target")
     if (
         producer.get("version") != version
@@ -1116,6 +1242,7 @@ def _validate_selftest_fixture(
         raise ArtifactError("wheel self-test artifact has no payload inventory")
     declared: set[str] = set()
     direct_symjit = 0
+    execution_manifests: list[tuple[str, str]] = []
     artifact_prefix = f"{prefix}/artifact/"
     for index, payload in enumerate(payloads):
         if not isinstance(payload, dict):
@@ -1146,6 +1273,10 @@ def _validate_selftest_fixture(
             )
         if payload.get("media_type") == "application/vnd.symjit.application":
             direct_symjit += 1
+        if payload.get("role") == "evaluator-manifest" and relative.endswith(
+            "/execution.json"
+        ):
+            execution_manifests.append((relative, member))
     container = manifest.get("extensions", {}).get("evaluator_payload_container")
     if container is not None:
         direct_symjit += _validate_selftest_evaluator_container(
@@ -1168,6 +1299,21 @@ def _validate_selftest_fixture(
         )
     if direct_symjit == 0:
         raise ArtifactError("wheel self-test artifact has no direct SymJIT application")
+    if not execution_manifests:
+        raise ArtifactError(
+            "wheel self-test artifact has no compiled execution manifest"
+        )
+    for relative, member in execution_manifests:
+        execution = _json_object(entries, member)
+        try:
+            validate_portable_execution_manifest(
+                execution,
+                context=f"wheel self-test execution manifest {relative}",
+            )
+        except RuntimeError as error:
+            raise ArtifactError(
+                f"wheel self-test Arena execution contract is invalid: {error}"
+            ) from error
 
 
 @lru_cache(maxsize=1)
@@ -1612,7 +1758,7 @@ def audit_wheel(
     raw_requirements = list(metadata.get_all("Requires-Dist", []))
     _reject_direct_requirements(raw_requirements)
     dependency_lock = _dependency_lock()
-    _validate_runtime_requirements(raw_requirements, dependency_lock)
+    _validate_runtime_requirements(raw_requirements, dependency_lock, mode=mode)
     _validate_legal_members(entries, metadata_name, metadata)
     if str(metadata.get("License-Expression", "")) != "0BSD":
         raise ArtifactError("wheel metadata must declare License-Expression: 0BSD")
@@ -1626,6 +1772,10 @@ def audit_wheel(
         if candidate_info != ["pyamplicol/_build_info.json"]:
             raise ArtifactError("candidate wheel must contain one _build_info.json")
         build_info = _json_object(entries, candidate_info[0])
+        if build_info.get("selftest_fixture_bootstrap") is not False:
+            raise ArtifactError(
+                "candidate self-test fixture bootstrap wheels are not deployable"
+            )
         if (
             build_info.get("publishable") is not False
             or build_info.get("version") != version

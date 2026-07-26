@@ -16,6 +16,7 @@ from tools.performance_report.models import (
 )
 from tools.performance_report.render import (
     BaselineCandidateAdapter,
+    _ratio_value,
     render_all_matrix_tables,
     render_all_tables,
     render_all_z_ladders,
@@ -29,6 +30,25 @@ from tools.performance_report.validation_summary import (
 )
 
 
+def test_below_resolution_execution_timing_is_never_ratioed() -> None:
+    baseline = {
+        "status": ResultStatus.OK.value,
+        "execution_seconds_per_point": 1.0e-6,
+    }
+    candidate = {
+        "status": ResultStatus.OK.value,
+        "execution_seconds_per_point": 1.0e-9,
+        "provenance": {
+            "execution_timing": {
+                "status": "below_timer_resolution",
+                "ratio_eligible": False,
+            }
+        },
+    }
+
+    assert _ratio_value(candidate, baseline, "execution_seconds_per_point") is None
+
+
 @pytest.fixture
 def reset_caches() -> dict[str, dict[str, object]]:
     return build_reset_caches()
@@ -39,9 +59,7 @@ def _cache_by_dataset(
     dataset_id: str,
 ) -> dict[str, object]:
     return next(
-        payload
-        for payload in caches.values()
-        if payload["dataset_id"] == dataset_id
+        payload for payload in caches.values() if payload["dataset_id"] == dataset_id
     )
 
 
@@ -107,9 +125,7 @@ def _mark_below_resolution(measurement: dict[str, object]) -> None:
 
 def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
     rendered = render_all_matrix_tables(reset_caches)
-    expected = [
-        dataset.table_name for dataset in REPORT_CATALOG.matrix_datasets
-    ]
+    expected = [dataset.table_name for dataset in REPORT_CATALOG.matrix_datasets]
 
     assert len(rendered) == 12
     assert list(rendered) == expected
@@ -137,9 +153,7 @@ def test_matrix_tables_are_fixed_nonsplittable_blocks(reset_caches) -> None:
         assert tex.count(r"\begin{minipage}{\linewidth}") == tex.count(
             r"\end{minipage}"
         )
-        assert tex.count(r"\clearpage") == tex.count(
-            r"\begin{minipage}{\linewidth}"
-        )
+        assert tex.count(r"\clearpage") == tex.count(r"\begin{minipage}{\linewidth}")
         assert r"\begin{tabular}" in tex
         assert tex.index(r"\clearpage") < tex.index(r"\subsection{")
         assert tex.index(r"\subsection{") < tex.index(

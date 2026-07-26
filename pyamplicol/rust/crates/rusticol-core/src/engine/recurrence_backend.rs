@@ -285,7 +285,7 @@ fn load_native_executor(
         })?;
     let binding_coupling = native_binding_coupling(binding, kernel)?;
     LoadedNativeDirectExecutor::load(
-        payloads.physical_path(library_path)?,
+        payloads.load_native_library(library_path)?,
         direct_role(&template.role)?,
         prepared_kernel_id,
         exported_symbol,

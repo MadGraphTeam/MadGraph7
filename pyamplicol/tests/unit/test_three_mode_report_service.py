@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,30 @@ from tools.performance_report.service import (
 def _service(tmp_path: Path) -> ReportService:
     repo = tmp_path / "repo"
     (repo / "docs/results").mkdir(parents=True)
-    return ReportService(ReportPaths.from_repo(repo))
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "report-tests@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Report Tests"),
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("# report fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "README.md"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "commit", "-q", "-m", "Initialize fixture"),
+        cwd=repo,
+        check=True,
+    )
+    return ReportService(
+        ReportPaths.from_repo(
+            repo,
+            artifact_root=tmp_path / "artifacts",
+        )
+    )
 
 
 def test_reset_publishes_only_canonical_na_caches_and_seventeen_tables(
@@ -46,14 +70,59 @@ def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None
     service = _service(tmp_path)
     service.publish(reset=True, merge_artifacts=False)
     cell = service.catalog.measurement_cells()[0]
+    observations = [
+        {
+            "module": "pyamplicol",
+            "kind": "package-member",
+            "root_index": 0,
+            "path": "__init__.py",
+            "size": 1,
+            "sha256": "1" * 64,
+        }
+    ]
+    loaded_origin_policy = {
+        "kind": "pyamplicol-loaded-module-origin-policy-v1",
+        "all_loaded_origins_authenticated": True,
+        "native_image_origin_bound": True,
+        "loaded_bytecode_eligible": False,
+        "observed_module_count": 1,
+        "observations": observations,
+        "observations_sha256": hashlib.sha256(
+            json.dumps(
+                observations,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("ascii")
+        ).hexdigest(),
+    }
     runtime_identity = {
         "extension": {
             "path": str(service.paths.repo_root / "native/_rusticol.so"),
-        }
+        },
+        "loaded_module_origin_policy": loaded_origin_policy,
     }
     runtime_identity_sha256 = hashlib.sha256(
         json.dumps(
             runtime_identity,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    ).hexdigest()
+    stable_runtime_identity = json.loads(json.dumps(runtime_identity))
+    stable_policy = stable_runtime_identity["loaded_module_origin_policy"]
+    for field in (
+        "observed_module_count",
+        "observations",
+        "observations_sha256",
+    ):
+        stable_policy.pop(field)
+    runtime_identity_stable_sha256 = hashlib.sha256(
+        json.dumps(
+            stable_runtime_identity,
             allow_nan=False,
             ensure_ascii=True,
             separators=(",", ":"),
@@ -89,6 +158,16 @@ def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None
                 },
                 "runtime_identity": runtime_identity,
                 "runtime_identity_sha256": runtime_identity_sha256,
+                "runtime_identity_stable_sha256": (
+                    runtime_identity_stable_sha256
+                ),
+                "runtime_identity_postflight_stable_sha256": (
+                    runtime_identity_stable_sha256
+                ),
+                "runtime_identity_postflight_loaded_module_origin_policy": (
+                    loaded_origin_policy
+                ),
+                "runtime_identity_postflight_match": True,
             },
         }
     )

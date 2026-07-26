@@ -8,6 +8,7 @@
 //! packing, scattering, or allocation. Callers must retain this owner for as
 //! long as a copied [`DirectExecutorHandle`] can be invoked.
 
+use crate::artifact::PinnedNativeLibrary;
 use crate::recurrence::direct_backend::{
     DirectClosureExecutor, DirectContributionExecutor, DirectExecutorHandle,
     DirectFinalizationExecutor,
@@ -16,6 +17,7 @@ use crate::recurrence::{DIRECT_NONE_U32, DirectExecutorRole};
 use crate::{RusticolError, RusticolResult};
 use std::path::Path;
 use std::ptr;
+use std::sync::Arc;
 
 const NATIVE_DIRECT_SYMBOL_PREFIX: &str = "pyamplicol_recurrence_direct";
 
@@ -32,7 +34,7 @@ struct NativeDirectBindingContextV1 {
 /// copied handle, so runtime integration must retain the owner beside the
 /// `DirectExecutorCatalog`.
 pub(crate) struct LoadedNativeDirectExecutor {
-    _library: libloading::Library,
+    _library: Arc<PinnedNativeLibrary>,
     _binding_context: Option<Box<NativeDirectBindingContextV1>>,
     handle: DirectExecutorHandle,
     #[cfg(test)]
@@ -49,7 +51,7 @@ impl LoadedNativeDirectExecutor {
     /// role and prepared-kernel ID. This makes role confusion fail before the
     /// dynamic library is opened.
     pub(crate) fn load(
-        path: impl AsRef<Path>,
+        library: Arc<PinnedNativeLibrary>,
         role: DirectExecutorRole,
         prepared_kernel_id: u32,
         exported_symbol: &str,
@@ -70,16 +72,7 @@ impl LoadedNativeDirectExecutor {
             ));
         }
 
-        let path = path.as_ref();
-        // Prepared native libraries are authenticated artifact payloads before
-        // reaching this bounded adapter. Retaining `library` in the returned
-        // owner keeps copied function pointers valid.
-        let library = unsafe { libloading::Library::new(path) }.map_err(|error| {
-            RusticolError::evaluation(format!(
-                "could not load native Direct-Arena library {}: {error}",
-                path.display()
-            ))
-        })?;
+        let path = library.display_path();
         let binding_context = binding_coupling.map(|(coupling_re, coupling_im)| {
             Box::new(NativeDirectBindingContextV1 {
                 coupling_re,
@@ -211,6 +204,7 @@ unsafe fn load_export<T: Copy>(
 pub(crate) mod tests {
     use super::*;
     use crate::RusticolErrorKind;
+    use crate::artifact::EvaluatorPayloadStore;
     use crate::recurrence::direct_backend::{
         DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
     };
@@ -402,6 +396,10 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
         (directory, library)
     }
 
+    fn pinned(path: &Path) -> Arc<PinnedNativeLibrary> {
+        PinnedNativeLibrary::from_test_path(path).unwrap()
+    }
+
     fn empty_views() -> (
         DirectArenaView,
         DirectMomentumView,
@@ -468,10 +466,11 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
 
     #[test]
     fn symbol_authentication_rejects_empty_invalid_and_wrong_role_names() {
-        let nonexistent = std::path::Path::new("/native-direct-library-must-not-be-opened");
+        let (directory, library_path) = native_fixture();
+        let library = pinned(&library_path);
         for symbol in ["", "not-a-c-symbol", "contains\0nul"] {
             let error = expect_load_error(LoadedNativeDirectExecutor::load(
-                nonexistent,
+                Arc::clone(&library),
                 DirectExecutorRole::Contribution,
                 CONTRIBUTION_ID,
                 symbol,
@@ -483,7 +482,7 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
         let contribution_symbol =
             native_direct_symbol_name(DirectExecutorRole::Contribution, CONTRIBUTION_ID).unwrap();
         let error = expect_load_error(LoadedNativeDirectExecutor::load(
-            nonexistent,
+            Arc::clone(&library),
             DirectExecutorRole::Closure,
             CONTRIBUTION_ID,
             &contribution_symbol,
@@ -493,7 +492,7 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
         assert!(error.message().contains("expected"));
 
         let error = expect_load_error(LoadedNativeDirectExecutor::load(
-            nonexistent,
+            Arc::clone(&library),
             DirectExecutorRole::Contribution,
             CONTRIBUTION_ID,
             &contribution_symbol,
@@ -502,18 +501,24 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
         assert_eq!(error.kind(), RusticolErrorKind::Integrity);
 
         let error = expect_load_error(LoadedNativeDirectExecutor::load(
-            nonexistent,
+            library,
             DirectExecutorRole::Source,
             0,
             "pyamplicol_recurrence_direct_source_k00000000_v1",
             None,
         ));
         assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn native_role_exports_load_and_remain_callable_while_owners_move() {
-        let (directory, library) = native_fixture();
+        let (directory, library_path) = native_fixture();
+        let store = EvaluatorPayloadStore::directory(&directory);
+        let relative_library = library_path.file_name().unwrap().to_str().unwrap();
+        let library = store.load_native_library(relative_library).unwrap();
+        let cached_library = store.load_native_library(relative_library).unwrap();
+        assert!(Arc::ptr_eq(&library, &cached_library));
         let specifications = [
             (DirectExecutorRole::Contribution, CONTRIBUTION_ID, 1008),
             (DirectExecutorRole::Finalization, FINALIZATION_ID, 2008),
@@ -523,14 +528,21 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
         let mut handles = Vec::new();
         for (role, prepared_kernel_id, _) in specifications {
             let symbol = native_direct_symbol_name(role, prepared_kernel_id).unwrap();
-            let owner =
-                LoadedNativeDirectExecutor::load(&library, role, prepared_kernel_id, &symbol, None)
-                    .unwrap();
+            let owner = LoadedNativeDirectExecutor::load(
+                Arc::clone(&library),
+                role,
+                prepared_kernel_id,
+                &symbol,
+                None,
+            )
+            .unwrap();
             assert_eq!(owner.role(), role);
             assert_eq!(owner.prepared_kernel_id(), prepared_kernel_id);
             handles.push(owner.handle());
             owners.push(owner);
         }
+
+        fs::write(&library_path, b"replaced-after-authenticated-load").unwrap();
 
         let (arena, momenta, parameters, factors) = empty_views();
         for ((role, _, expected), handle) in specifications.into_iter().zip(handles.iter().copied())
@@ -585,7 +597,7 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
         let contribution_symbol =
             native_direct_symbol_name(DirectExecutorRole::Contribution, CONTRIBUTION_ID).unwrap();
         let first_context = LoadedNativeDirectExecutor::load(
-            &library,
+            Arc::clone(&library),
             DirectExecutorRole::Contribution,
             CONTRIBUTION_ID,
             &contribution_symbol,
@@ -594,7 +606,7 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
         .unwrap();
         let first_handle = first_context.handle();
         let second_context = LoadedNativeDirectExecutor::load(
-            &library,
+            Arc::clone(&library),
             DirectExecutorRole::Contribution,
             CONTRIBUTION_ID,
             &contribution_symbol,
@@ -654,7 +666,7 @@ int __CLOSURE_SYMBOL__(DIRECT_ARGS) {
         let missing_symbol =
             native_direct_symbol_name(DirectExecutorRole::Contribution, 23).unwrap();
         let error = expect_load_error(LoadedNativeDirectExecutor::load(
-            &library,
+            library,
             DirectExecutorRole::Contribution,
             23,
             &missing_symbol,

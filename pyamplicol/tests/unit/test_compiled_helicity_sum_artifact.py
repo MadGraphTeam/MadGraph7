@@ -16,6 +16,7 @@ from pyamplicol._internal.versions import (
     COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
     COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY,
     COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
+    COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EVALUATOR_RUNTIME_CAPABILITIES,
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
@@ -33,6 +34,7 @@ from pyamplicol.generation.contracts import RuntimeExpressionSchema
 from pyamplicol.generation.evaluator_container import PacbinReader
 from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.generation.service import _ProcessSelection
+from pyamplicol.generation.stage_artifacts import _compiled_plane_arena_stage
 from pyamplicol.models import BuiltinSMModel, compile_model_source
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
@@ -101,6 +103,14 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
         "evaluator_state_path": state.relative_to(root).as_posix(),
         "evaluator_state_runtime_capability": (SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY),
     }
+    input_component = {
+        "kind": "momentum",
+        "source_id": 0,
+        "component": 0,
+        "global_component": 0,
+        "parameter_index": 0,
+        "real_valued": True,
+    }
     amplitude_stage = {
         "stage_index": 0,
         "stage_kind": "amplitude",
@@ -108,11 +118,22 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
         "evaluator_label": label,
         "parameter_layout": "stage-local-value-momentum",
         "output_length": 1,
-        "output_slots": [],
+        "output_slots": [
+            {
+                "value_slot_id": -1,
+                "current_id": -1,
+                "variant": "amplitude-root",
+                "component_start": 0,
+                "component_stop": 1,
+                "output_start": 0,
+                "output_stop": 1,
+                "color_selector_domain_ids": [],
+            }
+        ],
         "input_value_slot_ids": [],
         "output_value_slot_ids": [],
         "interaction_ids": [],
-        "input_components": [],
+        "input_components": [input_component],
         "parameter_count": 1,
         "value_parameter_count": 0,
         "momentum_parameter_count": 1,
@@ -122,6 +143,9 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
         "blockers": [],
         "evaluator": evaluator,
     }
+    direct = _compiled_plane_arena_stage(amplitude_stage)
+    assert direct is not None
+    amplitude_stage["compiled_plane_arena"] = direct
     return {
         "kind": "generic-dag-stage-evaluator-artifacts",
         "runtime_available": True,
@@ -133,7 +157,10 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
         "real_valued_inputs": [],
         "parameter_layout": "stage-local-value-momentum",
         "stage_count": 1,
-        "required_runtime_capabilities": [SYMJIT_F64_RUNTIME_CAPABILITY],
+        "required_runtime_capabilities": [
+            COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
+            SYMJIT_F64_RUNTIME_CAPABILITY,
+        ],
         "stages": [],
         "amplitude_stage": amplitude_stage,
     }
@@ -229,6 +256,41 @@ def _materialize_without_symbolica(
     )
     assert calls == expected_calls
     return artifact
+
+
+def test_mock_symjit_manifest_preserves_the_compiled_arena_invariant(
+    tmp_path: Path,
+) -> None:
+    manifest = _symjit_stage_manifest(tmp_path, label="authenticated")
+    amplitude_stage = manifest["amplitude_stage"]
+    assert isinstance(amplitude_stage, dict)
+    evaluator = amplitude_stage["evaluator"]
+    assert isinstance(evaluator, dict)
+    direct = amplitude_stage["compiled_plane_arena"]
+    assert isinstance(direct, dict)
+    leaves = direct["leaves"]
+    assert isinstance(leaves, list)
+    assert leaves == [
+        {
+            "application_path": evaluator["application_path"],
+            "source_application_abi": evaluator["application_abi"],
+            "optimization_level": evaluator["optimization_level"],
+            "direct_codegen_optimization_level": 3,
+            "input_len": evaluator["input_len"],
+            "output_len": evaluator["output_len"],
+            "input_indices": [0],
+            "output_start": 0,
+            "output_stop": 1,
+        }
+    ]
+    assert (
+        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY
+        in manifest["required_runtime_capabilities"]
+    )
+
+    del amplitude_stage["compiled_plane_arena"]
+    with pytest.raises(ValueError, match="compiled f64 artifacts require"):
+        artifact_writer._stage_evaluator_set(manifest)
 
 
 def _payload_paths(value: object) -> set[str]:
@@ -702,6 +764,7 @@ def test_compiled_process_capabilities_use_primary_execution_lane(
 ) -> None:
     artifact = _materialize_without_symbolica(monkeypatch, tmp_path)
     assert artifact_writer._compiled_process_runtime_capabilities(artifact) == (
+        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
         COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
         COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
         COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,
@@ -918,6 +981,7 @@ def test_writer_emits_selector_and_fused_sum_lanes_and_owns_all_payloads(
     for relative in referenced:
         assert f"processes/dual_lane/{relative}" in members
     assert execution["required_runtime_capabilities"] == [
+        COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
         COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY,
         COMPILED_HELICITY_DUAL_LANE_CAPABILITY,
         COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY,

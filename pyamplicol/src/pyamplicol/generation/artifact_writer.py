@@ -693,8 +693,7 @@ def write_schema_v3_artifact(
                 effective_bytes=effective_bytes,
             )
         retain_recurrence_templates = (
-            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY
-            in required_runtime_capabilities
+            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in required_runtime_capabilities
         )
         eager_kernel_ids = _prepared_kernel_ids(
             output,
@@ -1183,9 +1182,7 @@ def _prepared_kernel_ids(
             # than process-local.  Retaining them therefore requires their
             # complete prepared-kernel inventory, including bindings that a
             # particular process schedule does not happen to exercise.
-            kernel_ids.update(
-                kernel.kernel_id for kernel in bundle.kernel_pack.kernels
-            )
+            kernel_ids.update(kernel.kernel_id for kernel in bundle.kernel_pack.kernels)
     return frozenset(kernel_ids)
 
 
@@ -2478,6 +2475,7 @@ def _stage_evaluator_set(record: Mapping[str, object]) -> dict[str, object]:
     ]
     has_direct_capability = COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY in declared
     direct_evaluator_capabilities = {
+        SYMJIT_F64_RUNTIME_CAPABILITY,
         SYMBOLICA_CPP_RUNTIME_CAPABILITY,
         SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     }
@@ -2584,6 +2582,7 @@ def _compiled_plane_arena_stage(
                 "application_path",
                 "source_application_abi",
                 "optimization_level",
+                "direct_codegen_optimization_level",
                 "input_len",
                 "output_len",
                 "input_indices",
@@ -2624,6 +2623,7 @@ def _compiled_plane_arena_stage(
         input_indices = list(_sequence(leaf_map["input_indices"]))
         if (
             leaf_map["source_application_abi"] != result["source_application_abi"]
+            or leaf_map["direct_codegen_optimization_level"] != 3
             or len(input_indices) != int(leaf_map["input_len"])
             or leaf_map["output_start"] != output_cursor
             or leaf_map["output_stop"] != output_cursor + int(leaf_map["output_len"])

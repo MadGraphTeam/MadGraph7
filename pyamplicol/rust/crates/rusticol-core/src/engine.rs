@@ -954,6 +954,7 @@ struct CompiledPlaneLeafManifest {
     application_path: String,
     source_application_abi: String,
     optimization_level: u8,
+    direct_codegen_optimization_level: u8,
     input_len: usize,
     output_len: usize,
     input_indices: Vec<usize>,
@@ -2589,6 +2590,11 @@ struct RuntimeProfile {
     amplitude_evaluator_output_gather_component_count: u64,
     amplitude_output_remap_component_count: u64,
     evaluator_backend_call_count: u64,
+    compiled_direct_arena_engine_count: u64,
+    compiled_direct_arena_call_count: u64,
+    compiled_direct_arena_boundary_input_bytes: u64,
+    compiled_direct_arena_boundary_current_output_bytes: u64,
+    compiled_direct_arena_boundary_amplitude_output_bytes: u64,
     reduction_input_component_count: u64,
     resolved_materialized_component_count: u64,
     total_materialized_value_count: u64,
@@ -2684,6 +2690,14 @@ impl RuntimeProfile {
         self.amplitude_output_remap_component_count +=
             sector.amplitude_output_remap_component_count;
         self.evaluator_backend_call_count += sector.evaluator_backend_call_count;
+        self.compiled_direct_arena_engine_count += sector.compiled_direct_arena_engine_count;
+        self.compiled_direct_arena_call_count += sector.compiled_direct_arena_call_count;
+        self.compiled_direct_arena_boundary_input_bytes +=
+            sector.compiled_direct_arena_boundary_input_bytes;
+        self.compiled_direct_arena_boundary_current_output_bytes +=
+            sector.compiled_direct_arena_boundary_current_output_bytes;
+        self.compiled_direct_arena_boundary_amplitude_output_bytes +=
+            sector.compiled_direct_arena_boundary_amplitude_output_bytes;
         self.reduction_input_component_count += sector.reduction_input_component_count;
         self.resolved_materialized_component_count += sector.resolved_materialized_component_count;
         self.total_materialized_value_count += sector.total_materialized_value_count;
@@ -3119,6 +3133,14 @@ pub struct NativeRuntimeProfile {
     pub amplitude_evaluator_output_gather_component_count: u64,
     pub amplitude_output_remap_component_count: u64,
     pub evaluator_backend_call_count: u64,
+    /// Number of compiled Direct-Arena engines authenticated for this profile.
+    pub compiled_direct_arena_engine_count: u64,
+    /// Calls observed directly on compiled Direct-Arena evaluator leaves.
+    pub compiled_direct_arena_call_count: u64,
+    /// Developer-adapter traffic is forbidden in the production Arena lane.
+    pub compiled_direct_arena_boundary_input_bytes: u64,
+    pub compiled_direct_arena_boundary_current_output_bytes: u64,
+    pub compiled_direct_arena_boundary_amplitude_output_bytes: u64,
     pub reduction_input_component_count: u64,
     pub selector_gather_point_count: u64,
     pub selector_gather_bytes: u64,
@@ -3233,6 +3255,14 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
                 .amplitude_evaluator_output_gather_component_count,
             amplitude_output_remap_component_count: profile.amplitude_output_remap_component_count,
             evaluator_backend_call_count: profile.evaluator_backend_call_count,
+            compiled_direct_arena_engine_count: profile.compiled_direct_arena_engine_count,
+            compiled_direct_arena_call_count: profile.compiled_direct_arena_call_count,
+            compiled_direct_arena_boundary_input_bytes: profile
+                .compiled_direct_arena_boundary_input_bytes,
+            compiled_direct_arena_boundary_current_output_bytes: profile
+                .compiled_direct_arena_boundary_current_output_bytes,
+            compiled_direct_arena_boundary_amplitude_output_bytes: profile
+                .compiled_direct_arena_boundary_amplitude_output_bytes,
             reduction_input_component_count: profile.reduction_input_component_count,
             selector_gather_point_count: 0,
             selector_gather_bytes: 0,
@@ -3487,6 +3517,14 @@ impl NativeRuntimeProfile {
             other.amplitude_evaluator_output_gather_component_count;
         self.amplitude_output_remap_component_count += other.amplitude_output_remap_component_count;
         self.evaluator_backend_call_count += other.evaluator_backend_call_count;
+        self.compiled_direct_arena_engine_count += other.compiled_direct_arena_engine_count;
+        self.compiled_direct_arena_call_count += other.compiled_direct_arena_call_count;
+        self.compiled_direct_arena_boundary_input_bytes +=
+            other.compiled_direct_arena_boundary_input_bytes;
+        self.compiled_direct_arena_boundary_current_output_bytes +=
+            other.compiled_direct_arena_boundary_current_output_bytes;
+        self.compiled_direct_arena_boundary_amplitude_output_bytes +=
+            other.compiled_direct_arena_boundary_amplitude_output_bytes;
         self.reduction_input_component_count += other.reduction_input_component_count;
         self.selector_gather_point_count += other.selector_gather_point_count;
         self.selector_gather_bytes += other.selector_gather_bytes;
@@ -3630,6 +3668,7 @@ impl NativeDecimalResolvedEvaluation {
 /// instances can be used from separate threads.
 pub struct NativeRuntime {
     root: PathBuf,
+    artifact_id: String,
     runtime: ExecutionRuntime,
     execution_lane: NativeExecutionLane,
     process: String,
@@ -3653,6 +3692,7 @@ enum NativeExecutionLane {
 }
 
 impl NativeExecutionLane {
+    #[cfg(feature = "symbolica-runtime")]
     const fn is_eager(&self) -> bool {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
@@ -3664,6 +3704,7 @@ impl NativeExecutionLane {
         }
     }
 
+    #[cfg(feature = "symbolica-runtime")]
     const fn is_recurrence(&self) -> bool {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {

@@ -449,6 +449,11 @@ impl Runtime {
     }
 
     #[getter]
+    fn artifact_id(&self) -> &str {
+        self.runtime.artifact_id()
+    }
+
+    #[getter]
     fn process_id(&self) -> String {
         self.runtime.metadata().process_key
     }
@@ -1218,6 +1223,26 @@ fn runtime_profile_to_python<'py>(
         profile.evaluator_backend_call_count,
     )?;
     payload.set_item(
+        "compiled_direct_arena_engine_count",
+        profile.compiled_direct_arena_engine_count,
+    )?;
+    payload.set_item(
+        "compiled_direct_arena_call_count",
+        profile.compiled_direct_arena_call_count,
+    )?;
+    payload.set_item(
+        "compiled_direct_arena_boundary_input_bytes",
+        profile.compiled_direct_arena_boundary_input_bytes,
+    )?;
+    payload.set_item(
+        "compiled_direct_arena_boundary_current_output_bytes",
+        profile.compiled_direct_arena_boundary_current_output_bytes,
+    )?;
+    payload.set_item(
+        "compiled_direct_arena_boundary_amplitude_output_bytes",
+        profile.compiled_direct_arena_boundary_amplitude_output_bytes,
+    )?;
+    payload.set_item(
         "reduction_input_component_count",
         profile.reduction_input_component_count,
     )?;
@@ -1297,6 +1322,27 @@ fn _eager_direct_descriptor_v1(
     )
     .map_err(python_error)?;
     Ok(PyBytes::new(py, &descriptor).unbind())
+}
+
+#[pyfunction]
+fn _load_eager_reduction_groups_v1(
+    py: Python<'_>,
+    artifact_root: PathBuf,
+    process_id: String,
+) -> PyResult<Py<PyAny>> {
+    let result_process_id = process_id.clone();
+    let reduction_groups = py
+        .detach(move || NativeRuntime::load_eager_reduction_groups(artifact_root, &process_id))
+        .map_err(python_error)?;
+    let result = PyDict::new(py);
+    result.set_item("abi", "pyamplicol-eager-reduction-groups-v1")?;
+    result.set_item("runtime_layout_abi", "pyamplicol-eager-runtime-layout-v1")?;
+    result.set_item("process_id", result_process_id)?;
+    result.set_item(
+        "reduction_groups",
+        json_value_to_python(py, &reduction_groups)?,
+    )?;
+    Ok(result.into_any().unbind())
 }
 
 #[pyfunction]
@@ -1849,6 +1895,7 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(target_info, module)?)?;
     module.add_function(wrap_pyfunction!(_preflight_eager_kernel_pack, module)?)?;
     module.add_function(wrap_pyfunction!(_eager_direct_descriptor_v1, module)?)?;
+    module.add_function(wrap_pyfunction!(_load_eager_reduction_groups_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_load_eager_exact_sections_v1, module)?)?;
     module.add_function(wrap_pyfunction!(
         _load_recurrence_exact_sections_v1,

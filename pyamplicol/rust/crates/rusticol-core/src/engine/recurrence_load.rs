@@ -440,7 +440,9 @@ fn load_plan(
 
     let process_remap = validate_process_binding(artifact, evaluator_root, manifest)?;
 
-    let reader = PacbinReader::open(&path)?;
+    let expected_file_sha = decode_sha256(&container.sha256)?;
+    let container_file = artifact.open_payload_file(&container.path)?;
+    let reader = PacbinReader::open_file_with_sha256(container_file, &path, &expected_file_sha)?;
     let index = reader.index();
     if index.file_size() != container.size_bytes
         || reader.container_size() as u64 != container.size_bytes

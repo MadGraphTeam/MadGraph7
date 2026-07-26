@@ -136,6 +136,11 @@ def test_builtin_yang_mills_kernel_evaluation_relations_are_exact() -> None:
     )
     assert model.vertex_evaluation_equivalence(5).input_order == (1, 0)
     assert model.vertex_evaluation_equivalence(7).input_order == (0, 1)
+    assert model.vertex_evaluation_equivalence(21).class_id == (
+        model.vertex_evaluation_equivalence(22).class_id
+    )
+    assert model.vertex_evaluation_equivalence(21).input_order == (0, 1)
+    assert model.vertex_evaluation_equivalence(22).input_order == (1, 0)
 
 
 @pytest.mark.parametrize("kind,result_particle_id", ((10, 6), (11, -6)))

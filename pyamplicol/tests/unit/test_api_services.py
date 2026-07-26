@@ -270,6 +270,17 @@ def test_runtime_rejects_global_and_per_point_selector_on_same_axis() -> None:
         runtime.evaluate([], color_flows=("c0",), color_flow_by_point=("c0",))
 
 
+def test_runtime_identity_is_optional_for_backend_conformance_but_fails_closed() -> (
+    None
+):
+    runtime = Runtime(_RuntimeBackend())
+
+    with pytest.raises(EvaluationError, match="authenticated artifact identity"):
+        _ = runtime.artifact_id
+    with pytest.raises(EvaluationError, match="valid execution mode"):
+        _ = runtime.execution_mode
+
+
 @pytest.mark.parametrize("precision", (True, False, 1.5, "32"))
 def test_runtime_rejects_non_integer_precision(precision: object) -> None:
     runtime = Runtime(_RuntimeBackend())

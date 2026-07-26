@@ -22,8 +22,20 @@ sys.path.insert(0, str(ROOT / "tools" / "release"))
 _LOCK = tomllib.loads(
     (ROOT / "dependencies" / "release-lock.toml").read_text(encoding="utf-8")
 )
+_CONTRIBUTOR_LOCK = tomllib.loads(
+    (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
+)
 _DEFAULT_REQUIREMENTS = [
     f"{entry['distribution']}=={entry['version']}"
+    for entry in _LOCK["python_dependencies"]
+]
+_CANDIDATE_REQUIREMENTS = [
+    (
+        f"{entry['distribution']}=="
+        f"{_CONTRIBUTOR_LOCK['symbolica']['candidate_version']}"
+        if entry["distribution"] == _LOCK["symbolica"]["python_distribution"]
+        else f"{entry['distribution']}=={entry['version']}"
+    )
     for entry in _LOCK["python_dependencies"]
 ]
 _LEGAL_FILES = (
@@ -141,6 +153,49 @@ from audit_sdist import (  # noqa: E402
 )
 
 
+@pytest.fixture
+def candidate_dependency_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contributor_path = tmp_path / "contributor-lock.toml"
+    state_path = tmp_path / "install-state.json"
+    contributor_data = (
+        ROOT / "dependencies" / "contributor-lock.toml"
+    ).read_bytes()
+    contributor_path.write_bytes(contributor_data)
+    symbolica = _CONTRIBUTOR_LOCK["symbolica"]
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "release_lock_sha256": hashlib.sha256(
+                    (ROOT / "dependencies" / "release-lock.toml").read_bytes()
+                ).hexdigest(),
+                "contributor_lock_sha256": hashlib.sha256(
+                    contributor_data
+                ).hexdigest(),
+                "sources": {
+                    "symbolica": {
+                        "url": symbolica["source_url"],
+                        "revision": symbolica["candidate_revision"],
+                    }
+                },
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        artifacts,
+        "_CONTRIBUTOR_DEPENDENCY_LOCK",
+        contributor_path,
+    )
+    monkeypatch.setattr(artifacts, "_CANDIDATE_INSTALL_STATE", state_path)
+
+
 def _record_hash(data: bytes) -> str:
     digest = hashlib.sha256(data).digest()
     encoded = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
@@ -157,7 +212,7 @@ def _prepared_model_files(
     for architecture in PREPARED_MODEL_ARCHITECTURES:
         stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
         bundle_name = f"{stem}.pyamplicol-model"
-        bundle = f"synthetic {architecture} prepared model\n".encode()
+        bundle = b"synthetic portable prepared model\n"
         metadata = {
             "schema_version": 1,
             "prepared_model_bundle_schema": 1,
@@ -165,7 +220,7 @@ def _prepared_model_files(
             "id": PREPARED_MODEL_ASSET_BASENAME,
             "model": "built-in-sm",
             "backend": "jit",
-            "jit_optimization_level": 3,
+            "jit_optimization_level": 2,
             "bundle": bundle_name,
             "bundle_size": len(bundle),
             "bundle_sha256": hashlib.sha256(bundle).hexdigest(),
@@ -180,10 +235,10 @@ def _prepared_model_files(
                 )
             },
             "target": {
-                "portable": False,
+                "portable": True,
                 "word_bits": 64,
                 "endianness": "little",
-                "target_triple": f"symjit-storage-v3-{architecture}",
+                "target_triple": "symjit-storage-v3-portable",
                 "cpu_features": [],
             },
         }
@@ -212,6 +267,132 @@ def _modified_prepared_metadata(
     return metadata_name, (json.dumps(metadata, sort_keys=True) + "\n").encode()
 
 
+def _selftest_arena_stage(
+    *,
+    amplitude: bool,
+    direct_codegen_optimization_level: int,
+) -> dict[str, object]:
+    application_path = "evaluator.symjit"
+    arena = "amplitude" if amplitude else "current"
+    output_component = 0 if amplitude else 2
+    input_component = {
+        "parameter_index": 0,
+        "kind": "value",
+        "source_id": 0,
+        "component": 0,
+        "global_component": 0,
+        "real_valued": False,
+    }
+    evaluator = {
+        "kind": "symjit-application-evaluator",
+        "runtime_capability": "symjit.application.complex-f64.v1",
+        "application_abi": "symjit-application-storage-v3",
+        "application_path": application_path,
+        "compiler_type": "native",
+        "translation_mode": "indirect",
+        "optimization_level": 2,
+        "element_layout": "complex-f64",
+        "batch_layout": "row-major",
+        "input_len": 1,
+        "output_len": 1,
+    }
+    return {
+        "stage_kind": "amplitude-roots" if amplitude else "current-combine",
+        "parameter_layout": "stage-local-value-momentum",
+        "parameter_count": 1,
+        "output_length": 1,
+        "input_components": [input_component],
+        "output_slots": [
+            {
+                "output_start": 0,
+                "output_stop": 1,
+                "component_start": output_component,
+                "component_stop": output_component + 1,
+            }
+        ],
+        "evaluator": evaluator,
+        "compiled_plane_arena": {
+            "schema_version": 1,
+            "kind": "compiled-plane-arena-stage",
+            "application_abi": "symjit-direct-application-storage-v3",
+            "source_application_abi": "symjit-application-storage-v3",
+            "element_layout": "split-complex-component-major",
+            "output_operation": "overwrite",
+            "output_factor": "identity",
+            "input_output_aliasing": "forbidden",
+            "output_output_aliasing": "forbidden",
+            "input_bindings": [input_component],
+            "output_bindings": [
+                {
+                    "output_index": 0,
+                    "arena": arena,
+                    "component": output_component,
+                }
+            ],
+            "leaves": [
+                {
+                    "application_path": application_path,
+                    "source_application_abi": "symjit-application-storage-v3",
+                    "optimization_level": 2,
+                    "direct_codegen_optimization_level": (
+                        direct_codegen_optimization_level
+                    ),
+                    "input_len": 1,
+                    "output_len": 1,
+                    "input_indices": [0],
+                    "output_start": 0,
+                    "output_stop": 1,
+                }
+            ],
+        },
+    }
+
+
+def _selftest_execution(
+    *,
+    missing_arena_capability: str | None = None,
+    missing_symjit_capability: str | None = None,
+    direct_codegen_optimization_level: int = 3,
+) -> dict[str, object]:
+    arena_capability = "compiled-plane-arena-v1"
+    symjit_capability = "symjit.application.complex-f64.v1"
+    execution_capabilities: list[str] = []
+    stage_capabilities: list[str] = []
+    if missing_arena_capability != "execution":
+        execution_capabilities.append(arena_capability)
+    if missing_symjit_capability != "execution":
+        execution_capabilities.append(symjit_capability)
+    if missing_arena_capability != "stage_evaluators":
+        stage_capabilities.append(arena_capability)
+    if missing_symjit_capability != "stage_evaluators":
+        stage_capabilities.append(symjit_capability)
+    return {
+        "required_runtime_capabilities": execution_capabilities,
+        "compiled": {
+            "kind": "generic-dag-stage-blueprint",
+            "stage_evaluators": {
+                "kind": "generic-dag-stage-evaluator-artifacts",
+                "required_runtime_capabilities": stage_capabilities,
+                "stage_count": 2,
+                "stages": [
+                    _selftest_arena_stage(
+                        amplitude=False,
+                        direct_codegen_optimization_level=(
+                            direct_codegen_optimization_level
+                        ),
+                    )
+                ],
+                "amplitude_stage": _selftest_arena_stage(
+                    amplitude=True,
+                    direct_codegen_optimization_level=(
+                        direct_codegen_optimization_level
+                    ),
+                ),
+            },
+        },
+    }
+
+
 def _selftest_files(
     rust_target: str,
     version: str,
@@ -228,9 +409,25 @@ def _selftest_files(
     compiled_model_source_kind: str = _BUILTIN_MODEL_SOURCE_KIND,
     compiled_model_source_digest: str | None = None,
     omitted_api_payload: str | None = None,
+    missing_arena_capability: str | None = None,
+    missing_symjit_capability: str | None = None,
+    direct_codegen_optimization_level: int = 3,
 ) -> dict[str, bytes]:
     payload_path = "processes/smoke/evaluator.symjit"
     payload = b"synthetic trusted SymJIT application"
+    execution_path = "processes/smoke/execution.json"
+    execution = (
+        json.dumps(
+            _selftest_execution(
+                missing_arena_capability=missing_arena_capability,
+                missing_symjit_capability=missing_symjit_capability,
+                direct_codegen_optimization_level=(direct_codegen_optimization_level),
+            ),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
     compiled_model_path = "model/compiled-model.json"
     compiled_model = (
         json.dumps(
@@ -337,6 +534,16 @@ def _selftest_files(
         if model_compiled_model_schema is None
         else model_compiled_model_schema
     )
+    artifact_capabilities = []
+    process_capabilities = []
+    if missing_arena_capability != "artifact_runtime":
+        artifact_capabilities.append("compiled-plane-arena-v1")
+    if missing_symjit_capability != "artifact_runtime":
+        artifact_capabilities.append("symjit.application.complex-f64.v1")
+    if missing_arena_capability != "process":
+        process_capabilities.append("compiled-plane-arena-v1")
+    if missing_symjit_capability != "process":
+        process_capabilities.append("symjit.application.complex-f64.v1")
     manifest = {
         "schema_version": 3,
         "artifact_id": "0" * 64,
@@ -350,8 +557,14 @@ def _selftest_files(
         "runtime": {
             "engine": "rusticol",
             "engine_version": version,
-            "required_runtime_capabilities": ["symjit.application.complex-f64.v1"],
+            "required_runtime_capabilities": artifact_capabilities,
         },
+        "processes": [
+            {
+                "id": "smoke",
+                "required_runtime_capabilities": process_capabilities,
+            }
+        ],
         "payloads": [
             {
                 "path": compiled_model_path,
@@ -367,6 +580,13 @@ def _selftest_files(
                 "size_bytes": len(payload),
                 "sha256": hashlib.sha256(payload).hexdigest(),
                 "target": {"triple": rust_target, "cpu_features": []},
+            },
+            {
+                "path": execution_path,
+                "role": "evaluator-manifest",
+                "media_type": "application/json",
+                "size_bytes": len(execution),
+                "sha256": hashlib.sha256(execution).hexdigest(),
             },
             *[
                 {
@@ -400,6 +620,7 @@ def _selftest_files(
         ).encode(),
         f"{prefix}/artifact/{compiled_model_path}": compiled_model,
         f"{prefix}/artifact/{payload_path}": payload,
+        f"{prefix}/artifact/{execution_path}": execution,
     }
     files.update(
         {
@@ -439,13 +660,23 @@ def _wheel(
     compiled_model_source_kind: str = _BUILTIN_MODEL_SOURCE_KIND,
     compiled_model_source_digest: str | None = None,
     omitted_selftest_api_payload: str | None = None,
+    selftest_missing_arena_capability: str | None = None,
+    selftest_missing_symjit_capability: str | None = None,
+    selftest_direct_codegen_optimization_level: int = 3,
+    selftest_fixture_bootstrap: bool = False,
 ) -> Path:
     if requirement is not None and requirements is not None:
         raise ValueError("use requirement or requirements, not both")
     runtime_requirements = (
         [requirement]
         if requirement is not None
-        else list(_DEFAULT_REQUIREMENTS if requirements is None else requirements)
+        else list(
+            (
+                _CANDIDATE_REQUIREMENTS if candidate else _DEFAULT_REQUIREMENTS
+            )
+            if requirements is None
+            else requirements
+        )
     )
     declared_legal_files = _LEGAL_FILES if license_files is None else license_files
     dist_info = f"pyamplicol-{version}.dist-info"
@@ -533,6 +764,11 @@ def _wheel(
             compiled_model_source_kind=compiled_model_source_kind,
             compiled_model_source_digest=compiled_model_source_digest,
             omitted_api_payload=omitted_selftest_api_payload,
+            missing_arena_capability=selftest_missing_arena_capability,
+            missing_symjit_capability=selftest_missing_symjit_capability,
+            direct_codegen_optimization_level=(
+                selftest_direct_codegen_optimization_level
+            ),
         )
     )
     for relative in _LEGAL_FILES:
@@ -558,6 +794,7 @@ def _wheel(
             {
                 "schema_version": 1,
                 "publishable": False,
+                "selftest_fixture_bootstrap": selftest_fixture_bootstrap,
                 "source_checkout": "/Users/developer/pyamplicol",
                 "version": version,
             }
@@ -675,6 +912,7 @@ def test_required_sdist_keeps_the_portable_source_selftest() -> None:
         "examples/data/pp_zjj_momenta.json",
         "src/pyamplicol/assets/api_templates/rust/Makefile",
         "src/pyamplicol/assets/api_templates/rust/check_standalone.rs",
+        "tools/release/prepare_selftest_fixture.py",
         "tests/fixtures/reference/analytic-oracles-v2.json",
         "tests/fixtures/reference/legacy-fortran-v2.json",
         "tests/fixtures/reference/physics-v2.json",
@@ -725,11 +963,27 @@ def test_wheel_rejects_wrong_prepared_model_target_class(tmp_path: Path) -> None
     metadata_name, metadata = _modified_prepared_metadata(
         prefix,
         "x86_64",
-        target_values={"target_triple": "portable-symjit-mir", "portable": True},
+        target_values={
+            "target_triple": "symjit-storage-v3-x86_64",
+            "portable": False,
+        },
     )
     wheel = _wheel(tmp_path, extra_files={metadata_name: metadata})
 
     with pytest.raises(ArtifactError, match="target class is invalid"):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
+def test_wheel_rejects_prepared_model_o3_drift(tmp_path: Path) -> None:
+    prefix = "pyamplicol/assets/prepared_models"
+    metadata_name, metadata = _modified_prepared_metadata(
+        prefix,
+        "aarch64",
+        values={"jit_optimization_level": 3},
+    )
+    wheel = _wheel(tmp_path, extra_files={metadata_name: metadata})
+
+    with pytest.raises(ArtifactError, match="metadata identity is invalid"):
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
@@ -756,8 +1010,33 @@ def test_wheel_rejects_prepared_model_bundle_identity_drift(
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
+def test_wheel_rejects_divergent_portable_prepared_model_aliases(
+    tmp_path: Path,
+) -> None:
+    prefix = "pyamplicol/assets/prepared_models"
+    stem = f"{PREPARED_MODEL_ASSET_BASENAME}-x86_64"
+    bundle_name = f"{prefix}/{stem}.pyamplicol-model"
+    metadata_name = f"{prefix}/{stem}.metadata.json"
+    prepared_files = _prepared_model_files(prefix)
+    divergent_bundle = prepared_files[bundle_name] + b"divergent"
+    metadata = json.loads(prepared_files[metadata_name])
+    metadata["bundle_size"] = len(divergent_bundle)
+    metadata["bundle_sha256"] = hashlib.sha256(divergent_bundle).hexdigest()
+    wheel = _wheel(
+        tmp_path,
+        extra_files={
+            bundle_name: divergent_bundle,
+            metadata_name: (json.dumps(metadata, sort_keys=True) + "\n").encode(),
+        },
+    )
+
+    with pytest.raises(ArtifactError, match="byte-identical portable bundles"):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
 def test_release_and_candidate_wheels_are_distinct_and_audited(
     tmp_path: Path,
+    candidate_dependency_provenance: None,
 ) -> None:
     release = _wheel(tmp_path)
     report = audit_wheel(release, mode="release", native_scan=False)
@@ -772,11 +1051,70 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
     )
     candidate_report = audit_wheel(candidate, mode="candidate", native_scan=False)
     assert candidate_report.version == candidate_version
-    with pytest.raises(ArtifactError, match="release wheel"):
+    with pytest.raises(ArtifactError, match=r"locked version 2\.1\.0"):
         audit_wheel(candidate, mode="release", native_scan=False)
 
 
-def test_host_native_linux_tag_is_candidate_only(tmp_path: Path) -> None:
+def test_candidate_and_release_symbolica_pins_are_mode_specific(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+) -> None:
+    candidate_version = "0.1.0.dev0+candidate.0123456789ab"
+    release_pin = _wheel(
+        tmp_path,
+        version=candidate_version,
+        candidate=True,
+        requirements=_DEFAULT_REQUIREMENTS,
+    )
+    with pytest.raises(ArtifactError, match=r"excludes locked version 2\.2\.0"):
+        audit_wheel(release_pin, mode="candidate", native_scan=False)
+
+    release_pin.unlink()
+    candidate_pin = _wheel(
+        tmp_path,
+        requirements=_CANDIDATE_REQUIREMENTS,
+    )
+    with pytest.raises(ArtifactError, match=r"excludes locked version 2\.1\.0"):
+        audit_wheel(candidate_pin, mode="release", native_scan=False)
+
+
+def test_candidate_dependency_provenance_fails_closed(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+) -> None:
+    state_path = artifacts.ROOT / artifacts._CANDIDATE_INSTALL_STATE
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["contributor_lock_sha256"] = "0" * 64
+    state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+    candidate = _wheel(
+        tmp_path,
+        version="0.1.0.dev0+candidate.0123456789ab",
+        candidate=True,
+    )
+
+    with pytest.raises(ArtifactError, match="not bound to the current locks"):
+        audit_wheel(candidate, mode="candidate", native_scan=False)
+
+
+def test_candidate_wheel_rejects_selftest_fixture_bootstrap_marker(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+) -> None:
+    candidate = _wheel(
+        tmp_path,
+        version="0.1.0.dev0+candidate.0123456789ab",
+        candidate=True,
+        selftest_fixture_bootstrap=True,
+    )
+
+    with pytest.raises(ArtifactError, match="bootstrap wheels are not deployable"):
+        audit_wheel(candidate, mode="candidate", native_scan=False)
+
+
+def test_host_native_linux_tag_is_candidate_only(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+) -> None:
     candidate = _wheel(
         tmp_path,
         version="0.1.0.dev0+candidate.0123456789ab",
@@ -794,6 +1132,7 @@ def test_host_native_linux_tag_is_candidate_only(tmp_path: Path) -> None:
 
 def test_candidate_allows_only_rustup_standard_library_source_paths(
     tmp_path: Path,
+    candidate_dependency_provenance: None,
 ) -> None:
     candidate_version = "0.1.0.dev0+candidate.0123456789ab"
     rustup_location = (
@@ -962,6 +1301,74 @@ def test_wheel_selftest_compiled_model_matches_release_schema(tmp_path: Path) ->
     wheel = _wheel(tmp_path, compiled_model_schema=expected - 1)
 
     with pytest.raises(ArtifactError, match=f"release schema {expected}"):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
+@pytest.mark.parametrize(
+    ("owner", "contract"),
+    (
+        ("artifact_runtime", "artifact"),
+        ("process", "artifact"),
+        ("execution", "execution"),
+        ("stage_evaluators", "execution"),
+    ),
+)
+def test_wheel_selftest_requires_complete_arena_capability(
+    tmp_path: Path,
+    owner: str,
+    contract: str,
+) -> None:
+    wheel = _wheel(
+        tmp_path,
+        selftest_missing_arena_capability=owner,
+    )
+
+    with pytest.raises(
+        ArtifactError,
+        match=rf"Arena {contract} contract.*must require compiled-plane-arena-v1",
+    ):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
+@pytest.mark.parametrize(
+    ("owner", "contract"),
+    (
+        ("artifact_runtime", "artifact"),
+        ("process", "artifact"),
+        ("execution", "execution"),
+        ("stage_evaluators", "execution"),
+    ),
+)
+def test_wheel_selftest_requires_complete_symjit_capability(
+    tmp_path: Path,
+    owner: str,
+    contract: str,
+) -> None:
+    wheel = _wheel(
+        tmp_path,
+        selftest_missing_symjit_capability=owner,
+    )
+
+    with pytest.raises(
+        ArtifactError,
+        match=(
+            rf"Arena {contract} contract.*must require "
+            r"symjit\.application\.complex-f64\.v1"
+        ),
+    ):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+
+def test_wheel_selftest_requires_o3_arena_direct_codegen(tmp_path: Path) -> None:
+    wheel = _wheel(
+        tmp_path,
+        selftest_direct_codegen_optimization_level=2,
+    )
+
+    with pytest.raises(
+        ArtifactError,
+        match=r"Arena execution contract.*direct codegen.*optimization level 3",
+    ):
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
@@ -1310,6 +1717,7 @@ def test_wheel_requires_standard_license_metadata_and_allows_extra_notices(
 
 def test_candidate_sdk_version_must_match_staged_package_exactly(
     tmp_path: Path,
+    candidate_dependency_provenance: None,
 ) -> None:
     version = "0.1.0.dev0+candidate.0123456789ab"
     wheel = _wheel(
@@ -1482,6 +1890,7 @@ def test_sdist_rejects_contributor_dependency_material(
         "schemas/artifact-manifest-v3.schema.json",
         "src/pyamplicol/assets/selftest/portable-64le/expected.json",
         "src/pyamplicol/assets/selftest/portable-64le/artifact/artifact.json",
+        "tools/release/prepare_selftest_fixture.py",
         "src/pyamplicol/assets/api_templates/rust/check_standalone.rs",
         "tests/integration/test_examples.py",
         "tools/release/test_deployment.py",

@@ -311,6 +311,7 @@ impl EagerExecutionRuntime {
             + self.schedule.closure_packets.len()
     }
 
+    #[allow(dead_code)] // Retained for the opt-in Direct-Arena/packet schedule oracle.
     pub(crate) fn schedule_audit(
         &mut self,
         active_groups: Option<&[u32]>,
@@ -618,6 +619,7 @@ impl EagerExecutionRuntime {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)] // Retained for the packet-scheduler selector oracle.
     pub(crate) fn evaluate_selected_active_amplitudes_into<B: EagerKernelBackend>(
         &mut self,
         backend: &mut B,
@@ -743,6 +745,7 @@ impl EagerExecutionRuntime {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)] // Retained for the packet-scheduler profiling oracle.
     pub(crate) fn evaluate_selected_amplitudes_profile_into<B: EagerKernelBackend>(
         &mut self,
         backend: &mut B,
@@ -1082,6 +1085,7 @@ impl EagerExecutionRuntime {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)] // Retained for the packet-scheduler profiling oracle.
     pub(crate) fn evaluate_profile_into<B: EagerKernelBackend>(
         &mut self,
         backend: &mut B,

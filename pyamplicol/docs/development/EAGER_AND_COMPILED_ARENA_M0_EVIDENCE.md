@@ -15,10 +15,10 @@ only one measurement subprocess and is not sufficient for this gate.
 
 One request combines exactly six distinct JSON files:
 
-1. built-in SM, topology replay, schema-5 Z+6g capture;
-2. built-in SM, all-flow union, schema-5 Z+6g capture;
-3. equivalent UFO-SM, topology replay, schema-5 Z+6g capture;
-4. equivalent UFO-SM, all-flow union, schema-5 Z+6g capture;
+1. built-in SM, topology replay, schema-6 Z+6g capture;
+2. built-in SM, all-flow union, schema-6 Z+6g capture;
+3. equivalent UFO-SM, topology replay, schema-6 Z+6g capture;
+4. equivalent UFO-SM, all-flow union, schema-6 Z+6g capture;
 5. fresh AmpliCol selected-flow/helicity-sum raw evidence;
 6. fresh AmpliCol all-flow/single-helicity raw evidence.
 
@@ -48,12 +48,14 @@ Generation-model identities follow an exact role matrix. Built-in compiled
 captures use `built-in-sm-source` and execute the requested O3 process-local
 stages. Built-in eager and recurrence captures use the packaged
 `built-in-sm-jit-o2` prepared model and must agree exactly. Every UFO-SM lane
-uses the same explicit portable prepared-model file identity. Prepared-model
-applications therefore execute at their immutable portable O2 level while the
-process-generation request and semantic generation signature remain O3. A
-different supported identity kind remains invalid even if configuration,
-generation signatures, both layout captures, and the request pin are all
-rewritten consistently.
+uses the same explicit portable prepared-model file identity. Compiled mode
+still materializes its process-local stages at the requested O3 level when
+that explicit bundle supplies the model; eager and recurrence execute the
+bundle's immutable portable O2 applications. The process-generation request
+and semantic generation signature remain O3 for every lane. A different
+supported identity kind remains invalid even if configuration, generation
+signatures, both layout captures, and the request pin are all rewritten
+consistently.
 
 The topology-replay workload selects one physical flow at runtime and sums
 helicities. The all-flow-union workload selects one source-ordered helicity at
@@ -147,7 +149,7 @@ Runtime provenance is hashed after removing location-only `path`,
 `resolved_path`, `checkout`, and `working_directory` fields. All versions,
 sizes, build inputs, dependency identities, and content hashes remain in that
 semantic identity. The generation-model identity uses the same path stripping.
-Host identity is the exact schema-5 host object.
+Host identity is the exact schema-6 host object.
 
 ## AmpliCol raw-evidence schema
 

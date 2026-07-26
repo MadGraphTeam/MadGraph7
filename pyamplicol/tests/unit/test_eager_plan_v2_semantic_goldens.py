@@ -570,14 +570,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 69,
         },
         "digests": {
-            "exact": "31b66d618e241e7556bf64d2e7666e3c0093638130f6d3eabdfcb717aeab7fb0",
+            "exact": "b88e25d6e5ea38e0236214b9bf3819bb39af0e3ed07974fd5bfc199d72ede151",
             "layout": "d7315911d47d8765b6927f60daceaeaf6253b10467eeb6750d972040494ed232",
             "reductions": "56631bb2966cc4e1c93acc745458f76e18c7f9dde39d3eaf2687a39456933b52",
             "resolved": "4347816ea9472a7c77bd4638259933ac67a562a9fa7478795233da6dc43cab7b",
-            "selectors": "9dcb69de3d4a90f321803eeab3c9adbdec2daa2bd47ba3389b682e83aafd78f3",
-            "tables": "24b944da5afd681ba4e91d2b0120570ef3ea13d25f60861a0f356cbc70e971cc",
+            "selectors": "75a7aefa991e100a68ae1b02bfaccf6061abd7a6c5bcb1fa81958306aa40a70d",
+            "tables": "5cc960af0634e6d8c31badf74f69c778cc3e2a5c89bf77cd92215c836f1b691b",
         },
-        "semantic_sha256": "1b4f917d2431921443359986b385b74889dc7e693e4d64d0a88a44f932d1827d",
+        "semantic_sha256": "159815a017c6d2760b8a9f51cdec689988fbb7cc9b556232e8c4b7424af63759",
     },
     "lc-all-flow-union": {
         "counts": {
@@ -598,14 +598,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 117,
         },
         "digests": {
-            "exact": "3f00e8d0ab95958f7b396544f861304affd5dd6c9606cb8790d597fe6fe1fbf9",
+            "exact": "a7fb382acdbff7e6a9f0cc5aee4da3ecb5ab169bc51ad11e4a0dd808e68f7772",
             "layout": "a853478261d8e35a684e32b7d62a65bf110b30b7947038edaf5a20f4d3a5ba31",
             "reductions": "3702ceb56c38b667fba9186ce8fe5d0517879f999091b5c934de28d8f3d5d40e",
             "resolved": "f038d7b438a5b59baabc439fb712dbe3fd455f433f20e9da7490e574acc22927",
-            "selectors": "3ef749f39eac6664cdb93980aad31cb5cd9af43827c3c79fd24b7dc090631a52",
-            "tables": "ebef820462620188bfb615af18d5e673ceab75985a382744df70c1a17504eec3",
+            "selectors": "b67fca860ca8a143cf6f63160fa78d57de01f7ffd9d27f0eba378647d483b3da",
+            "tables": "1c6e620fbd32c611af8fcf5042f6875eb73ebf4ec11d5faf729e86836f28b7ba",
         },
-        "semantic_sha256": "745c4c88ee5ea0282ba31256de84fa339292c4cd120fd4b60a9a4c466c7cb035",
+        "semantic_sha256": "e700e383227259ad182627eb3c4aec32c4e9a4dffc80eedadf1c506f9afbf2cc",
     },
     "nlc-contracted": {
         "counts": {
@@ -626,14 +626,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 73,
         },
         "digests": {
-            "exact": "0596dde559b322fd5341142d288d5dbc8e33fb9610d31fe7d9f9be375fd3d6f0",
+            "exact": "b27b0cad1501b6a7e8b5af85536106b07a186a352c2106711c187594988660fd",
             "layout": "2500a3dc283495b7c86405a25ce5de90841d026f27a2a38ee0644b98739696df",
             "reductions": "513d22dc4c4cb819e3e2b15ee87fbdb5e50cefaa33c10a7b1b9457a95cc46c16",
             "resolved": "8992b3b811e142e32f5ea1b1bdf1101bb91ccf8b353db7f6be48626473532ffb",
             "selectors": "a24b39783b6fdacd1579979cd7b9978351f8cb402d983828d179d0bbda836a19",
-            "tables": "fbed8d4586abbc1ec8cd6656c310611e8337992574d66221b267fb616e3aeb85",
+            "tables": "614fe6783c43e62fda3c6ae4b7766b5a9d4e5d74a25fd4af484fa95b749d502f",
         },
-        "semantic_sha256": "09e7c8ed5d5dce6c5cb16df33a1a95bf204c70718f4ec575c2478ed3b47fb049",
+        "semantic_sha256": "0c2d33d935b9e35598c576ce032d2c986f1f663a0569e6a4932dab1fa79453e6",
     },
     "full-contracted": {
         "counts": {
@@ -654,14 +654,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 73,
         },
         "digests": {
-            "exact": "0596dde559b322fd5341142d288d5dbc8e33fb9610d31fe7d9f9be375fd3d6f0",
+            "exact": "b27b0cad1501b6a7e8b5af85536106b07a186a352c2106711c187594988660fd",
             "layout": "b68828f7c57130df4fd916691cb30df937a4f8f6009a69b133bbe58b923aa8dd",
             "reductions": "aee94cd71574e24ee90fef2f8070e3fded7b4f61ec02789d1d6cd60602e3350a",
             "resolved": "c5608596ba42ddfdbad9e0a5c27db395519b32704386767f4b25100b4375a30c",
             "selectors": "9ca1b90505098cc6f19d87eba29baa552da47173ff2658f359e27de838bc1ca2",
-            "tables": "7b7c4f181b6525e9356cdb5648bc80085e890018c778d3a55262fd00d0b4faf3",
+            "tables": "6a7710cc016be365d0cc68a0d588766c4da4a6f890731bb15ed1312d22028d5d",
         },
-        "semantic_sha256": "8d17b7de733096b91c859909c5ed08410249357915a6593b7ad13b98b3ba84e8",
+        "semantic_sha256": "94754ee82ff1bade48c19c3c2a217d3e92b03d948182e4c1082600fc0f9530f6",
     },
 }
 
