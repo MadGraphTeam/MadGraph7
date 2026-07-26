@@ -2918,31 +2918,27 @@ C     crossing carried by FLAV_IDX moves across.
           its tables describe the *uncrossed* final state, so for this process
           it emits COMP_OLD=1 and returns 1 whatever flavor array it is given.
           It is therefore computed at runtime by GET_IDENT_CROSS, from the two
-          tables below.
+          per-particle tables below.
 
-        BASEPID_CROSS_TABLE gives, per slot of the crossed process, the
-        representative PDG of the particle landing there (conjugated when the
-        leg swapped between the initial and the final state), which identifies
-        its flavor group. SRC_CROSS_TABLE gives the FLAVOR entry to read for
-        that slot: FLAVOR is not permuted by the crossing, so slot k must look
-        up the position of the original leg that moved into it. Two crossed
-        final legs are identical iff they share both.
-
-        Both tables are flattened as CROSS*NEXTERNAL + (slot-1).
+        The per-slot representative PDG (BASEPID) and FLAVOR source slot (SRC)
+        GET_IDENT_CROSS needs are not tabulated per crossing: they follow from
+        the crossing's own PERM/IC (the same GET_SPINCOL_CROSS decodes) applied
+        to two NEXTERNAL-long base tables. IDS_BASE is the base process PDG of
+        each leg; ANTIPID_BASE is its charge conjugate (used for a leg that
+        swapped between the initial and the final state). Slot k of crossing
+        CROSS then reads leg PERM(k), conjugated when IC(k) flipped, and looks
+        up FLAVOR(PERM(k)); two crossed final legs are identical iff they share
+        both. This drops the two NCROSS*NEXTERNAL-long tables.
 
         A crossing that cannot be applied gets a 0 spin*color entry, which
         SMATRIX maps to a null matrix element.
         """
         tables = self.compute_crossing_tables(matrix_element)
-        spincol = tables['spincol']
-        basepid = tables['basepid']
-        # SRC_CROSS_TABLE is 1-based in the fortran (FLAVOR is indexed 1..N).
-        source = [s + 1 for s in tables['source']]
 
         return '\n'.join([
-            self.format_integer_data_lines('SPINCOL_CROSS_TABLE', spincol),
-            self.format_integer_data_lines('BASEPID_CROSS_TABLE', basepid),
-            self.format_integer_data_lines('SRC_CROSS_TABLE', source)])
+            self.format_integer_data_lines('SPINCOL_PART', tables['spincol_part']),
+            self.format_integer_data_lines('IDS_BASE', tables['ids_base']),
+            self.format_integer_data_lines('ANTIPID_BASE', tables['antipid_base'])])
 
     def compute_crossing_tables(self, matrix_element):
         """Build the crossing tables as plain python int lists (model-agnostic).
@@ -3026,6 +3022,26 @@ C     crossing carried by FLAV_IDX moves across.
             perm_flat.extend(perm)
             ic_flat.extend(ic)
 
+        # Per-particle spin*color (states * |color repr|), for every base leg.
+        # It is conjugation-invariant (a particle and its antiparticle share
+        # both), so a crossing's initial-state spin*color is just the product of
+        # these over the legs that land in the initial slots -- which is how
+        # GET_SPINCOL_CROSS recomputes SPINCOL_CROSS_TABLE at runtime from the
+        # NEXTERNAL-long SPINCOL_PART instead of the NCROSS-long table.
+        spincol_part = []
+        for slot in range(nexternal):
+            pol = polarizations[slot]
+            nspin = len(pol) if pol else \
+                len(particle(leg_ids[slot]).get_helicity_states())
+            spincol_part.append(nspin * abs(particle(leg_ids[slot]).get('color')))
+
+        # Per-particle base PDG and its charge conjugate, one entry per base
+        # leg. GET_IDENT_CROSS rebuilds BASEPID_CROSS_TABLE / SRC_CROSS_TABLE at
+        # runtime from these two NEXTERNAL-long tables plus the crossing PERM/IC,
+        # instead of storing the two NCROSS*NEXTERNAL-long tables.
+        ids_base = list(leg_ids)
+        antipid_base = [particle(pid).get_anti_pdg_code() for pid in leg_ids]
+
         # Sanity: for the identity crossing, spin*color times the identical
         # factor of the representative flavor must rebuild the static IDEN,
         # else this and get_denominator_factor have drifted apart.
@@ -3038,8 +3054,34 @@ C     crossing carried by FLAV_IDX moves across.
             'Crossing denominator disagrees with get_denominator_factor: ' \
             '%s*%s vs %s' % (spincol[0], rep_identical,
                              matrix_element.get_denominator_factor())
+        # Sanity: the small per-particle tables reproduce the per-crossing
+        # tables the runtime routines used to read. SPINCOL_PART -> the
+        # initial-state spin*color; IDS_BASE/ANTIPID_BASE plus the crossing
+        # PERM/IC -> BASEPID_CROSS_TABLE / SRC_CROSS_TABLE (checked for the
+        # applicable crossings, the only ones GET_IDENT_CROSS is ever asked).
+        for cross in range((nexternal + 1) * (nexternal + 1)):
+            perm, ic, valid = \
+                ProcessExporterFortran.get_crossing_permutation(cross, nexternal)
+            expect = 0 if not valid else 1
+            if valid:
+                for slot in range(ninitial):
+                    expect *= spincol_part[perm[slot]]
+            assert expect == spincol[cross] or spincol[cross] == 0, \
+                'SPINCOL_PART product %s != SPINCOL_CROSS_TABLE %s at CROSS %d' \
+                % (expect, spincol[cross], cross)
+            if not valid:
+                continue
+            for slot in range(nexternal):
+                bp = ids_base[perm[slot]] if ic[slot] == 1 \
+                    else antipid_base[perm[slot]]
+                assert bp == basepid[cross * nexternal + slot] and \
+                    perm[slot] == source[cross * nexternal + slot], \
+                    'IDS_BASE/ANTIPID_BASE rebuild != BASEPID/SRC at CROSS ' \
+                    '%d slot %d' % (cross, slot)
 
-        return {'spincol': spincol, 'basepid': basepid, 'source': source,
+        return {'spincol': spincol, 'spincol_part': spincol_part,
+                'ids_base': ids_base, 'antipid_base': antipid_base,
+                'basepid': basepid, 'source': source,
                 'perm': perm_flat, 'ic': ic_flat,
                 'nexternal': nexternal, 'ninitial': ninitial}
 

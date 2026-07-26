@@ -149,32 +149,65 @@ C     index (see its contract).
 
 
       INTEGER FUNCTION %(proc_prefix)sGET_SPINCOL_CROSS(CROSS)
-C     Initial state spin*color average of the crossed process.
+C     Initial-state spin*color average of the crossed process.
 C
 C     Crossing changes which particles sit in the initial state (pulling a
 C     gluon in takes the color average from 3 to 8), but every particle of a
-C     flavor group shares its spin and color, so this half of the denominator
-C     depends on CROSS only and is tabulated at generation time. The other
-C     half, the identical final state factor, is flavor dependent: see
-C     GET_IDENT_CROSS. A 0 entry marks a crossing that cannot be applied.
+C     flavor group shares its spin and color, and conjugation preserves both.
+C     So this half of the denominator is just the product of the per-particle
+C     spin*color (SPINCOL_PART, one entry per external leg) over the two legs
+C     the crossing puts in the initial state -- no per-crossing table needed.
+C     A crossing that cannot be applied (out of range, or an overlapping swap)
+C     returns 0, which SMATRIX / GET_PDG_FOR_FLAVOR map to a null result. The
+C     flavor-dependent half is GET_IDENT_CROSS.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER NCROSS
       PARAMETER (NCROSS=(NEXTERNAL+1)*(NEXTERNAL+1))
-      INTEGER CROSS, I
-C     The three tables are emitted together; each routine keeps its own copy
-C     rather than sharing a COMMON, which would need a BLOCK DATA unit to be
-C     initialised by DATA.
-      INTEGER SPINCOL_CROSS_TABLE(0:NCROSS-1)
-      INTEGER BASEPID_CROSS_TABLE(0:NCROSS*NEXTERNAL-1)
-      INTEGER SRC_CROSS_TABLE(0:NCROSS*NEXTERNAL-1)
+      INTEGER CROSS, XI, XJ, XK, XT, FACTOR, I
+      INTEGER PERM(NEXTERNAL)
+C     The DATA tables are emitted together (SPINCOL_PART here, plus the
+C     IDS_BASE/ANTIPID_BASE tables GET_IDENT_CROSS reads); each routine keeps
+C     its own copy rather than sharing a COMMON, which would need a BLOCK DATA
+C     unit to be DATA-initialised.
+      INTEGER SPINCOL_PART(0:NEXTERNAL-1)
+      INTEGER IDS_BASE(0:NEXTERNAL-1)
+      INTEGER ANTIPID_BASE(0:NEXTERNAL-1)
 %(iden_cross_lines)s
 
-      IF (CROSS .LT. 0 .OR. CROSS .GT. NCROSS-1) THEN
+C     CROSS = XI*(NEXTERNAL+1) + XJ, with XI, XJ the crossing partners of
+C     particles 1 and 2 (0 = leave alone; XI==1 / XJ==2 swap a particle with
+C     itself, also a no-op). Reject out-of-range and the overlapping-swap codes
+C     (both transpositions {1,XI} and {2,XJ} active AND sharing a slot -> a
+C     3-cycle the consumers read with opposite orientation: pure redundancy).
+      XI = CROSS / (NEXTERNAL+1)
+      XJ = MOD(CROSS, NEXTERNAL+1)
+      IF (CROSS .LT. 0 .OR. CROSS .GT. NCROSS-1 .OR.
+     &    (XI.NE.0 .AND. XI.NE.1 .AND. XJ.NE.0 .AND. XJ.NE.2 .AND.
+     &     (XI.EQ.2 .OR. XJ.EQ.1 .OR. XI.EQ.XJ))) THEN
         %(proc_prefix)sGET_SPINCOL_CROSS = 0
-      ELSE
-        %(proc_prefix)sGET_SPINCOL_CROSS = SPINCOL_CROSS_TABLE(CROSS)
+        RETURN
       ENDIF
+C     Build the slot->leg map (identity plus the crossing's two transpositions)
+C     and multiply the per-particle spin*color of the legs in the initial slots.
+      DO XK = 1, NEXTERNAL
+        PERM(XK) = XK
+      ENDDO
+      IF (XI.NE.0 .AND. XI.NE.1) THEN
+        XT = PERM(1)
+        PERM(1) = PERM(XI)
+        PERM(XI) = XT
+      ENDIF
+      IF (XJ.NE.0 .AND. XJ.NE.2) THEN
+        XT = PERM(2)
+        PERM(2) = PERM(XJ)
+        PERM(XJ) = XT
+      ENDIF
+      FACTOR = 1
+      DO XK = 1, NINCOMING
+        FACTOR = FACTOR * SPINCOL_PART(PERM(XK)-1)
+      ENDDO
+      %(proc_prefix)sGET_SPINCOL_CROSS = FACTOR
 
       RETURN
       END
@@ -190,23 +223,59 @@ C     cannot be reused for this: its tables describe the uncrossed final state.
 C
 C     Two crossed final legs are identical when they carry the same flavor
 C     group (same representative PDG, conjugated already when the leg swapped
-C     side) and the same position inside it. FLAVOR is not permuted by the
-C     crossing, so slot K reads the position of the original leg that moved
-C     into it, via SRC_CROSS_TABLE.
+C     side) and the same position inside it. Neither the per-slot representative
+C     PDG nor the FLAVOR source slot is tabulated per crossing: both follow from
+C     the crossing PERM/IC (as GET_SPINCOL_CROSS / GET_CROSS_PERM build it)
+C     applied to two NEXTERNAL-long base tables -- IDS_BASE, the base PDG of each
+C     leg, and ANTIPID_BASE, its charge conjugate for a leg that swapped side.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
-      INTEGER NCROSS
-      PARAMETER (NCROSS=(NEXTERNAL+1)*(NEXTERNAL+1))
       INTEGER CROSS
       INTEGER FLAVOR(NEXTERNAL)
-      INTEGER SPINCOL_CROSS_TABLE(0:NCROSS-1)
-      INTEGER BASEPID_CROSS_TABLE(0:NCROSS*NEXTERNAL-1)
-      INTEGER SRC_CROSS_TABLE(0:NCROSS*NEXTERNAL-1)
+C     SPINCOL_PART is unused here (GET_SPINCOL_CROSS owns it) but must be
+C     declared because the shared DATA block below initialises it.
+      INTEGER SPINCOL_PART(0:NEXTERNAL-1)
+      INTEGER IDS_BASE(0:NEXTERNAL-1)
+      INTEGER ANTIPID_BASE(0:NEXTERNAL-1)
 %(iden_cross_lines)s
-      INTEGER K, L, N, FACT, OFF, I
+      INTEGER K, L, N, FACT, XI, XJ, XT, I
+      INTEGER PERM(NEXTERNAL), ICS(NEXTERNAL), BPID(NEXTERNAL)
       LOGICAL USED(NEXTERNAL)
 
-      OFF = CROSS*NEXTERNAL
+C     Rebuild the slot->leg map PERM and its initial/final sign flips ICS from
+C     CROSS (identity plus the crossing's two transpositions), exactly as in
+C     GET_SPINCOL_CROSS, then read each slot's representative PDG straight off
+C     IDS_BASE (ANTIPID_BASE where the leg changed side).
+      XI = CROSS / (NEXTERNAL+1)
+      XJ = MOD(CROSS, NEXTERNAL+1)
+      DO K = 1, NEXTERNAL
+        PERM(K) = K
+        ICS(K) = 1
+      ENDDO
+      IF (XI.NE.0 .AND. XI.NE.1) THEN
+        XT = PERM(1)
+        PERM(1) = PERM(XI)
+        PERM(XI) = XT
+        ICS(1) = -ICS(1)
+        ICS(XI) = -ICS(XI)
+      ENDIF
+      IF (XJ.NE.0 .AND. XJ.NE.2) THEN
+        XT = PERM(2)
+        PERM(2) = PERM(XJ)
+        PERM(XJ) = XT
+        ICS(2) = -ICS(2)
+        ICS(XJ) = -ICS(XJ)
+      ENDIF
+      DO K = 1, NEXTERNAL
+        IF (ICS(K).EQ.1) THEN
+          BPID(K) = IDS_BASE(PERM(K)-1)
+        ELSE
+          BPID(K) = ANTIPID_BASE(PERM(K)-1)
+        ENDIF
+      ENDDO
+
+C     FLAVOR is not permuted by the crossing, so slot K reads FLAVOR(PERM(K)),
+C     the actual flavor of the original leg that moved into it.
       DO K = 1, NEXTERNAL
         USED(K) = .FALSE.
       ENDDO
@@ -216,9 +285,8 @@ C     into it, via SRC_CROSS_TABLE.
         N = 1
         DO L = K+1, NEXTERNAL
           IF (USED(L)) CYCLE
-          IF (BASEPID_CROSS_TABLE(OFF+K-1).EQ.BASEPID_CROSS_TABLE(OFF+L
-     $     -1) .AND. FLAVOR(SRC_CROSS_TABLE(OFF+K-1))
-     $     .EQ.FLAVOR(SRC_CROSS_TABLE(OFF+L-1))) THEN
+          IF (BPID(K).EQ.BPID(L) .AND.
+     $        FLAVOR(PERM(K)).EQ.FLAVOR(PERM(L))) THEN
             USED(L) = .TRUE.
             N = N + 1
             FACT = FACT * N
