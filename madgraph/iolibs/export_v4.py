@@ -3317,7 +3317,11 @@ C     crossing carried by FLAV_IDX moves across.
         the CROSS_GHIDX routine), so only the per-crossing yes/no survives as
         DATA. A whole compute_ghremap block is either fully derivable or fully
         None, so this loses nothing."""
-        remap = self.compute_ghremap(matrix_element, allow_reverse)
+        # Reference the class explicitly (not self) so a non-Fortran self (the
+        # C++ standalone exporter) can reuse this via
+        # ProcessExporterFortran.compute_ghfilt, exactly like compute_ghremap.
+        remap = ProcessExporterFortran.compute_ghremap(
+            self, matrix_element, allow_reverse)
         nexternal = matrix_element.get_nexternal_ninitial()[0]
         ncross = (nexternal + 1) * (nexternal + 1)
         ncomb = len(remap) // ncross

@@ -1470,14 +1470,14 @@ class OneProcessExporterCPP(object):
         ic_init = self._cpp_int_array2d(tables['ic'], nexternal)
         basepid_init = self._cpp_int_array(tables['basepid'])
         src_init = self._cpp_int_array(tables['source'])
-        # GHREMAP: the C++ NHEL table is emitted with allow_reverse False (see
-        # get_helicity_matrix), so the remap must be built in that order. A
-        # non-filterable crossing (initial-initial swap or inapplicable) gets
-        # -1, a "no filter" sentinel the loop treats as "compute this row".
-        ghremap_init = self._cpp_int_array(
-            [-1 if row is None else row
-             for row in ProcessExporterFortran.compute_ghremap(
-                 self, matrix_element, allow_reverse=False)])
+        # Good-helicity remap: instead of the baked ghremap[ncross*ncomb] row
+        # table, keep only the per-crossing filterable flag and resolve the
+        # gating identity row at runtime (see cross_ghidx_setup) -- the same
+        # NCROSS*NCOMB -> NCROSS shrink the fortran path does via CROSS_GHIDX.
+        # allow_reverse False so it matches the order helicities[] is emitted in.
+        ghfilt_init = self._cpp_int_array(
+            ProcessExporterFortran.compute_ghfilt(
+                self, matrix_element, allow_reverse=False))
 
         cross_tables_decode = (
             "// Crossing symmetry: flavor_id carries a flavor AND a crossing.\n"
@@ -1491,12 +1491,13 @@ class OneProcessExporterCPP(object):
             "static const int spincol_cross[ncross] = %(spincol)s;\n"
             "static const int cross_perm[ncross][nexternal] = %(perm)s;\n"
             "static const int cross_ic[ncross][nexternal] = %(ic)s;\n"
-            "// GHREMAP[cross*ncomb+ihel] = the identity helicity row whose\n"
-            "// goodhel bit gates crossed row ihel (sigma^-1); -1 = the crossing\n"
-            "// is not filterable, so that row is always computed and never\n"
-            "// trains. For cross 0 it is the identity: the uncrossed path is\n"
-            "// unchanged. See ProcessExporterFortran.compute_ghremap.\n"
-            "static const int ghremap[ncross * ncomb] = %(ghremap)s;\n"
+            "// ghfilt[cross] = 1 if this crossing's good-helicity filter is a\n"
+            "// clean bijection of the identity rows, 0 otherwise (initial-\n"
+            "// initial swap, inapplicable, or non-bijection). The gating\n"
+            "// identity row itself is recomputed per row at runtime (see the\n"
+            "// good-helicity loop) rather than stored as an ncross*ncomb table.\n"
+            "// See ProcessExporterFortran.compute_ghfilt.\n"
+            "static const int ghfilt[ncross] = %(ghfilt)s;\n"
             "int cross = flavor_id / nflavors;\n"
             "int flav_use = flavor_id %% nflavors;\n"
             "// A null spin*color entry (out of range, impossible, or an\n"
@@ -1504,7 +1505,7 @@ class OneProcessExporterCPP(object):
             "if (cross < 0 || cross >= ncross || spincol_cross[cross] == 0)\n"
             "    return 0.;"
         ) % {'ncross': ncross, 'spincol': spincol_init,
-             'perm': perm_init, 'ic': ic_init, 'ghremap': ghremap_init}
+             'perm': perm_init, 'ic': ic_init, 'ghfilt': ghfilt_init}
 
         cross_perm_block = (
             "int perm[nexternal];\n"
@@ -1573,11 +1574,37 @@ class OneProcessExporterCPP(object):
             'cross_member_decl': '  int ident_cross(int cross, const int* flavor);',
             'ident_cross_function': ident_cross_function,
             # The good-helicity filter is shared per flavor but consulted and
-            # trained through GHREMAP (sigma^-1): a crossed row is good iff its
-            # identity counterpart is. ghidx = -1 disables the filter for a
-            # non-filterable crossing (compute the row, never train). For cross
-            # 0 ghidx == ihel, so this is exactly the historical filter.
-            'cross_ghidx_setup': 'int ghidx = ghremap[cross*ncomb + ihel];\n        ',
+            # trained through the crossing's row permutation sigma^-1: a crossed
+            # row is good iff its identity counterpart is. Rather than store the
+            # whole sigma^-1 (ghremap[ncross*ncomb]), recompute the gating
+            # identity row here: inverse-permute + sign-flip the crossed row's
+            # config (perm/ic already hold cross_perm[cross]/cross_ic[cross]),
+            # then find the identity row carrying it. ghidx = -1 disables the
+            # filter for a non-filterable crossing (ghfilt[cross] == 0: compute
+            # the row, never train). For cross 0 perm/ic are the identity so
+            # ghidx == ihel, exactly the historical filter. The search is only
+            # reached while scanning (ntry < 10), so it is off the hot path.
+            'cross_ghidx_setup':
+                'int ghidx = -1;\n'
+                '        if (ghfilt[cross]){\n'
+                '            int tgt[nexternal];\n'
+                '            for(int k = 0; k < nexternal; k++){\n'
+                '                tgt[perm[k]] = ic[k] * helicities[ihel][k];\n'
+                '            }\n'
+                '            for(int r = 0; r < ncomb; r++){\n'
+                '                bool same = true;\n'
+                '                for(int k = 0; k < nexternal; k++){\n'
+                '                    if (helicities[r][k] != tgt[k]){\n'
+                '                        same = false;\n'
+                '                    }\n'
+                '                }\n'
+                '                if (same){\n'
+                '                    ghidx = r;\n'
+                '                    break;\n'
+                '                }\n'
+                '            }\n'
+                '        }\n'
+                '        ',
             'cross_goodhel_gate':
                 'ghidx < 0 || goodhel[flav_use][ghidx] || ntry[flav_use] < 2',
             'cross_goodhel_train':
