@@ -21,7 +21,6 @@ python3 docs/result_tables.py reset --compile
 python3 docs/result_tables.py render --compile
 python3 docs/result_tables.py recover --compile
 python3 docs/result_tables.py populate --dry-run --missing-only
-python3 docs/result_tables.py final-audit --expected-source-revision "$(git rev-parse HEAD)"
 ```
 
 `reset` reconstructs all canonical N/A caches. `render` preserves validated
@@ -39,6 +38,10 @@ artifact reuse/retiming/regeneration, per-cell time and RAM limits, and
 the dependency-ordered schedule before starting work. LC defaults to both
 runtime-selected workloads; `--workload selected-flow` and
 `--workload all-flow` restrict it to one.
+
+`final-audit` is valid only through an initialized architecture profile. The
+complete profile-scoped measurement and publication lifecycle is documented
+below.
 
 ## Architecture-specific workspaces
 
@@ -64,12 +67,13 @@ measurement grid:
 python3 docs/result_tables.py init-profile macbook_M3 --reset-measurements
 git add docs/performance_reports/macbook_M3
 git commit -m "Initialize macbook_M3 performance report"
-git push origin HEAD
+MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
 ```
 
-That pushed commit is the measured-source checkpoint. From a clean checkout of
-that exact commit, run the project's clean build and native-install gate.
-Initialization records the runtime as pending rather than guessing from
+That commit is the measured-source checkpoint. Keep
+`MEASURED_SOURCE_REVISION` unchanged for the rest of the campaign. From a clean
+checkout of that exact commit, run the project's clean build and native-install
+gate. Initialization records the runtime as pending rather than guessing from
 possibly unavailable distribution metadata. After the build, authenticate the
 installed runtime against the checkpoint and replace the pending generated
 metadata:
@@ -77,7 +81,7 @@ metadata:
 ```bash
 python3 docs/performance_reports/macbook_M3/result_tables.py \
   refresh-profile-environment \
-  --expected-source-revision "$(git rev-parse HEAD)"
+  --expected-source-revision "$MEASURED_SOURCE_REVISION"
 ```
 
 The refresh changes only generated environment JSON/TeX and therefore leaves
@@ -110,6 +114,31 @@ Inspect the audit result and visually review the refreshed PDF after every
 multiplicity before continuing. Do not replace the four invocations with one
 combined `1..4` campaign.
 
+After all four audits and visual reviews pass, stage only the allowed
+publication outputs, create the report-only descendant, and authenticate both
+commits before pushing:
+
+```bash
+git add \
+  docs/performance_reports/macbook_M3/report_environment.json \
+  docs/performance_reports/macbook_M3/report_environment.tex \
+  docs/performance_reports/macbook_M3/results/*.json \
+  docs/performance_reports/macbook_M3/result_*_table.tex \
+  docs/performance_reports/macbook_M3/result_validation_summary.tex \
+  docs/performance_reports/macbook_M3/pyAmpliCol.pdf
+git diff --cached --check
+git commit -m "Publish macbook_M3 performance report"
+PUBLICATION_REVISION="$(git rev-parse HEAD)"
+python3 docs/performance_reports/macbook_M3/result_tables.py final-audit \
+  --expected-source-revision "$MEASURED_SOURCE_REVISION" \
+  --publication-revision "$PUBLICATION_REVISION" &&
+git push origin HEAD
+```
+
+Do not stage profile prose, entry points, manifests, evaluator source,
+`.artifacts/`, logs, locks, coordination state, or LaTeX auxiliary files.
+`git push` must run only after `final-audit` succeeds.
+
 Create an independent cluster workspace from the same publication sources but
 with empty measurement caches:
 
@@ -119,16 +148,17 @@ python3 docs/result_tables.py init-profile cluster_EPYC \
   --source-profile macbook_M3 --reset-measurements
 git add docs/performance_reports/cluster_EPYC
 git commit -m "Initialize cluster_EPYC performance report"
-git push origin HEAD
+MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
 ```
 
-Again, clean-build and install that exact pushed checkpoint, authenticate its
-runtime, and measure one multiplicity at a time:
+Again, keep `MEASURED_SOURCE_REVISION` unchanged, clean-build and install that
+exact checkpoint, authenticate its runtime, and measure one multiplicity at a
+time:
 
 ```bash
 python3 docs/performance_reports/cluster_EPYC/result_tables.py \
   refresh-profile-environment \
-  --expected-source-revision "$(git rev-parse HEAD)"
+  --expected-source-revision "$MEASURED_SOURCE_REVISION"
 
 python3 docs/performance_reports/cluster_EPYC/result_tables.py populate \
   --n-final 1 --missing-only --artifact-policy reuse \
@@ -153,6 +183,29 @@ python3 docs/performance_reports/cluster_EPYC/result_tables.py audit
 
 Inspect the audit result and visually review the refreshed cluster PDF after
 every multiplicity before continuing.
+
+After all four audits and visual reviews pass, publish and validate only the
+cluster profile outputs before pushing:
+
+```bash
+git add \
+  docs/performance_reports/cluster_EPYC/report_environment.json \
+  docs/performance_reports/cluster_EPYC/report_environment.tex \
+  docs/performance_reports/cluster_EPYC/results/*.json \
+  docs/performance_reports/cluster_EPYC/result_*_table.tex \
+  docs/performance_reports/cluster_EPYC/result_validation_summary.tex \
+  docs/performance_reports/cluster_EPYC/pyAmpliCol.pdf
+git diff --cached --check
+git commit -m "Publish cluster_EPYC performance report"
+PUBLICATION_REVISION="$(git rev-parse HEAD)"
+python3 docs/performance_reports/cluster_EPYC/result_tables.py final-audit \
+  --expected-source-revision "$MEASURED_SOURCE_REVISION" \
+  --publication-revision "$PUBLICATION_REVISION" &&
+git push origin HEAD
+```
+
+Do not stage any other path, and do not push until the profile-scoped
+`final-audit` completes successfully.
 
 The copied `result_tables.py` detects its enclosing profile automatically.
 Every coordinator and child worker uses that profile's raw caches, artifact

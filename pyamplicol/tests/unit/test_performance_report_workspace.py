@@ -152,6 +152,29 @@ def test_profile_readme_requires_four_audited_five_second_campaigns(
     assert "1..4" in readme
     assert "--artifact-policy regenerate" not in readme
     assert "visually review" in readme
+    assert 'MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"' in readme
+    assert 'PUBLICATION_REVISION="$(git rev-parse HEAD)"' in readme
+    assert (
+        "python3 docs/performance_reports/macbook_M3/result_tables.py "
+        "final-audit \\" in readme
+    )
+    assert (
+        '--expected-source-revision "$MEASURED_SOURCE_REVISION" \\\n'
+        '  --publication-revision "$PUBLICATION_REVISION" &&\n'
+        "git push origin HEAD"
+    ) in readme
+    assert "python3 docs/result_tables.py final-audit" not in readme
+    assert readme.count("git push origin HEAD") == 1
+    assert readme.index("git push origin HEAD") > readme.index(" final-audit \\")
+    for path in (
+        "report_environment.json",
+        "report_environment.tex",
+        "results/*.json",
+        "result_*_table.tex",
+        "result_validation_summary.tex",
+        "pyAmpliCol.pdf",
+    ):
+        assert f"docs/performance_reports/macbook_M3/{path}" in readme
 
 
 def test_root_report_readme_requires_separate_mac_and_cluster_campaigns() -> None:
@@ -171,6 +194,47 @@ def test_root_report_readme_requires_separate_mac_and_cluster_campaigns() -> Non
     assert "--n-final 1..4" not in readme
     assert "--artifact-policy regenerate" not in readme
     assert "visually review the refreshed PDF after every" in readme
+    assert "python3 docs/result_tables.py final-audit" not in readme
+    assert readme.count('MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"') == 2
+    assert readme.count('PUBLICATION_REVISION="$(git rev-parse HEAD)"') == 2
+    assert readme.count(
+        '--expected-source-revision "$MEASURED_SOURCE_REVISION" \\'
+    ) == 2
+    assert readme.count(
+        '--publication-revision "$PUBLICATION_REVISION" &&\n'
+        "git push origin HEAD"
+    ) == 2
+
+    mac_start = readme.index("Create the first Mac workspace")
+    cluster_start = readme.index("Create an independent cluster workspace")
+    for profile, lifecycle in (
+        ("macbook_M3", readme[mac_start:cluster_start]),
+        ("cluster_EPYC", readme[cluster_start:]),
+    ):
+        final_command = (
+            f"python3 docs/performance_reports/{profile}/result_tables.py "
+            "final-audit \\"
+        )
+        assert final_command in lifecycle
+        assert lifecycle.count("git push origin HEAD") == 1
+        assert lifecycle.index("git push origin HEAD") > lifecycle.index(
+            final_command
+        )
+        assert lifecycle.index("MEASURED_SOURCE_REVISION=") < lifecycle.index(
+            "refresh-profile-environment"
+        )
+        assert lifecycle.index("PUBLICATION_REVISION=") > lifecycle.index(
+            f'git commit -m "Publish {profile} performance report"'
+        )
+        for path in (
+            "report_environment.json",
+            "report_environment.tex",
+            "results/*.json",
+            "result_*_table.tex",
+            "result_validation_summary.tex",
+            "pyAmpliCol.pdf",
+        ):
+            assert f"docs/performance_reports/{profile}/{path}" in lifecycle
 
 
 def _commit_all(repo: Path, message: str) -> str:

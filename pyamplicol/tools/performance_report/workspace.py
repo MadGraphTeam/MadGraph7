@@ -165,15 +165,23 @@ python3 docs/performance_reports/{profile}/result_tables.py render --compile
 python3 docs/performance_reports/{profile}/result_tables.py audit
 ```
 
-Before measuring a new profile, commit and push this complete initialized
-workspace as the measured-source checkpoint, then perform the project's clean
-build and native-install gate for that exact commit. Authenticate and record
-the installed measurement runtime before starting a campaign:
+Before measuring, commit this complete initialized workspace and save its exact
+identity. Do not push yet:
+
+```bash
+git add docs/performance_reports/{profile}
+git commit -m "Initialize {profile} performance report"
+MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
+```
+
+Keep `MEASURED_SOURCE_REVISION` unchanged for the rest of the campaign. Perform
+the project's clean build and native-install gate for that exact commit, then
+authenticate and record the installed measurement runtime:
 
 ```bash
 python3 docs/performance_reports/{profile}/result_tables.py \\
   refresh-profile-environment \\
-  --expected-source-revision "$(git rev-parse HEAD)"
+  --expected-source-revision "$MEASURED_SOURCE_REVISION"
 ```
 
 Initialization deliberately labels the runtime metadata as pending: the exact
@@ -193,14 +201,33 @@ After each populate command, inspect its audit result and visually review the
 newly refreshed PDF before continuing to the next multiplicity. Do not replace
 these four invocations with one combined `1..4` campaign.
 
+After all four audits and visual reviews pass, stage only the allowed
+publication outputs, create the report-only descendant, save its identity, and
+run the complete profile-scoped audit:
+
+```bash
+git add \\
+  docs/performance_reports/{profile}/report_environment.json \\
+  docs/performance_reports/{profile}/report_environment.tex \\
+  docs/performance_reports/{profile}/results/*.json \\
+  docs/performance_reports/{profile}/result_*_table.tex \\
+  docs/performance_reports/{profile}/result_validation_summary.tex \\
+  docs/performance_reports/{profile}/pyAmpliCol.pdf
+git diff --cached --check
+git commit -m "Publish {profile} performance report"
+PUBLICATION_REVISION="$(git rev-parse HEAD)"
+python3 docs/performance_reports/{profile}/result_tables.py final-audit \\
+  --expected-source-revision "$MEASURED_SOURCE_REVISION" \\
+  --publication-revision "$PUBLICATION_REVISION" &&
+git push origin HEAD
+```
+
 The copied entry point selects this profile automatically. It still requires a
 pyAmpliCol source checkout and installed native extension because measurements
-exercise the public runtime APIs. After the final audit and visual review,
-commit only the authenticated `report_environment.json` and
-`report_environment.tex`, raw JSON caches, generated table and
-validation-summary TeX, and reviewed PDF as the report-only descendant of the
-measured-source checkpoint. Never add `.artifacts/`, worker attempts, logs,
-locks, coordination state, or LaTeX auxiliary files.
+exercise the public runtime APIs. Never stage profile prose, entry points,
+manifests, evaluator source, `.artifacts/`, worker attempts, logs, locks,
+coordination state, or LaTeX auxiliary files. Push only after `final-audit`
+succeeds.
 """
 
 
