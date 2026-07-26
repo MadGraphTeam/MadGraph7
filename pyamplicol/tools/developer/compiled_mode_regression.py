@@ -45,12 +45,13 @@ NATIVE_WALL_TIME_SAMPLE_PASS = "runtime._benchmark_f64_wall_time"
 PAIRED_TIMING_SAMPLE_CONTRACT = "paired_unprofiled_headline_profiled_attribution_v1"
 PROFILE_ATTRIBUTION_SAMPLE_PASS = "runtime.profile_repeated"
 NATIVE_SAMPLE_RESULT_KIND = "pyamplicol-compiled-mode-native-sample"
-NATIVE_SAMPLE_SCHEMA_VERSION = 3
+NATIVE_SAMPLE_SCHEMA_VERSION = 4
 INSTALLATION_IDENTITY_KIND = "pyamplicol-installed-distribution-identity"
 INSTALLATION_IDENTITY_SCHEMA_VERSION = 2
 RESULT_KIND = "pyamplicol-compiled-mode-regression"
 CACHE_KIND = "pyamplicol-compiled-mode-regression-artifact-cache"
-SCHEMA_VERSION = 4
+CACHE_SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 DEFAULT_GENERATION_TIMEOUT = 300.0
 DEFAULT_PROFILE_TIMEOUT = 120.0
 DEFAULT_TARGET_RUNTIME = 5.0
@@ -63,6 +64,16 @@ GAIN_RELATIVE_THRESHOLD = 0.10
 MATERIAL_RESOURCE_GROWTH_THRESHOLD = 0.03
 VALIDATION_SEED = 20260719
 VALIDATION_SAMPLE_COUNT = 8
+CORRECTNESS_POINT_DERIVATION_KIND = (
+    "pyamplicol-compiled-mode-correctness-point-derivation"
+)
+CORRECTNESS_POINT_DERIVATION_SCHEMA_VERSION = 1
+CORRECTNESS_POINT_DERIVATION_CONTRACT = (
+    "authenticated-first-validation-point-massive-rambo-v1"
+)
+CORRECTNESS_SEED_START = 20260726
+MAX_CORRECTNESS_SEED_ATTEMPTS = 256
+PRECISION32_CORRECTNESS_POLICY = "first-current-sample-exact-oracle-direct-all-f64-v1"
 DEFAULT_LC_FLOW_LAYOUT = "topology-replay"
 CORRECTNESS_RELATIVE_TOLERANCE = 1.0e-12
 CORRECTNESS_ABSOLUTE_TOLERANCE = 1.0e-15
@@ -1068,7 +1079,7 @@ def _ensure_artifact(
     if (
         cache is not None
         and cache.get("kind") == CACHE_KIND
-        and cache.get("schema_version") == SCHEMA_VERSION
+        and cache.get("schema_version") == CACHE_SCHEMA_VERSION
         and cache.get("signature") == signature
     ):
         try:
@@ -1115,7 +1126,7 @@ def _ensure_artifact(
         cache_path,
         {
             "kind": CACHE_KIND,
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": CACHE_SCHEMA_VERSION,
             "signature": signature,
             "artifact_id": metadata["artifact_id"],
             "artifact_tree_sha256": tree_identity["sha256"],
@@ -1398,6 +1409,340 @@ def _validated_numerical_result(
     }
 
 
+def _validated_sha256(value: object, *, label: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise RegressionError(f"{label} must be a lowercase SHA-256 digest")
+    return value
+
+
+def _validated_canonical_float_hex(
+    value: object,
+    *,
+    label: str,
+    positive: bool,
+) -> str:
+    if not isinstance(value, str):
+        raise RegressionError(f"{label} must be a canonical f64 hexadecimal value")
+    try:
+        converted = float.fromhex(value)
+    except ValueError as error:
+        raise RegressionError(
+            f"{label} must be a canonical f64 hexadecimal value"
+        ) from error
+    if (
+        not math.isfinite(converted)
+        or converted.hex() != value
+        or (converted <= 0.0 if positive else converted < 0.0)
+    ):
+        qualifier = "positive" if positive else "non-negative"
+        raise RegressionError(f"{label} must be canonical, finite, and {qualifier}")
+    return value
+
+
+def _require_exact_keys(
+    mapping: Mapping[str, Any],
+    expected: frozenset[str],
+    *,
+    label: str,
+) -> None:
+    observed = frozenset(str(key) for key in mapping)
+    if observed != expected or any(not isinstance(key, str) for key in mapping):
+        raise RegressionError(
+            f"{label} fields differ: "
+            f"missing={sorted(expected - observed)!r}, "
+            f"unexpected={sorted(observed - expected)!r}"
+        )
+
+
+def _validated_correctness_point_derivation(
+    value: object,
+    *,
+    precision16: Mapping[str, Any],
+    precision32: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    label = "correctness point derivation"
+    if not isinstance(value, Mapping):
+        raise RegressionError(f"native sample has no {label}")
+    _require_exact_keys(
+        value,
+        frozenset(
+            {
+                "kind",
+                "schema_version",
+                "contract",
+                "source_validation",
+                "numpy",
+                "sqrt_s_f64_hex",
+                "external_mass_f64_hex",
+                "final_state_mass_f64_hex",
+                "seed_start",
+                "seed_attempt_limit",
+                "attempt_count",
+                "selected_seeds",
+                "point_sha256",
+                "invariant_sha256",
+                "batch_sha256",
+                "sha256",
+            }
+        ),
+        label=label,
+    )
+    _require_equal(
+        value,
+        "kind",
+        CORRECTNESS_POINT_DERIVATION_KIND,
+        label=f"{label} kind",
+    )
+    _require_equal(
+        value,
+        "schema_version",
+        CORRECTNESS_POINT_DERIVATION_SCHEMA_VERSION,
+        label=f"{label} schema_version",
+    )
+    _require_equal(
+        value,
+        "contract",
+        CORRECTNESS_POINT_DERIVATION_CONTRACT,
+        label=f"{label} contract",
+    )
+
+    source = value.get("source_validation")
+    if not isinstance(source, Mapping):
+        raise RegressionError(f"{label} has no authenticated source identity")
+    _require_exact_keys(
+        source,
+        frozenset(
+            {
+                "file_sha256",
+                "canonical_sha256",
+                "size_bytes",
+                "process_id",
+                "process_expression",
+                "external_pdgs",
+                "point_count",
+                "selected_point_index",
+                "selected_point_sha256",
+            }
+        ),
+        label=f"{label} source_validation",
+    )
+    for key in ("file_sha256", "canonical_sha256", "selected_point_sha256"):
+        _validated_sha256(
+            source.get(key),
+            label=f"{label} source_validation {key}",
+        )
+    source_size = source.get("size_bytes")
+    if (
+        isinstance(source_size, bool)
+        or not isinstance(source_size, int)
+        or source_size <= 0
+    ):
+        raise RegressionError(f"{label} source_validation size_bytes must be positive")
+    for key in ("process_id", "process_expression"):
+        source_text = source.get(key)
+        if not isinstance(source_text, str) or not source_text.strip():
+            raise RegressionError(f"{label} source_validation {key} must be non-empty")
+    source_pdgs = source.get("external_pdgs")
+    if (
+        not isinstance(source_pdgs, Sequence)
+        or isinstance(source_pdgs, (str, bytes))
+        or len(source_pdgs) < 4
+        or any(isinstance(pdg, bool) or not isinstance(pdg, int) for pdg in source_pdgs)
+    ):
+        raise RegressionError(f"{label} source_validation external_pdgs are invalid")
+    source_point_count = source.get("point_count")
+    if (
+        isinstance(source_point_count, bool)
+        or not isinstance(source_point_count, int)
+        or source_point_count <= 0
+    ):
+        raise RegressionError(f"{label} source_validation point_count must be positive")
+    _require_equal(
+        source,
+        "selected_point_index",
+        0,
+        label=f"{label} source_validation selected_point_index",
+    )
+
+    numpy_identity = value.get("numpy")
+    if not isinstance(numpy_identity, Mapping):
+        raise RegressionError(f"{label} has no NumPy identity")
+    _require_exact_keys(
+        numpy_identity,
+        frozenset(
+            {
+                "module",
+                "version",
+                "origin_file_name",
+                "origin_size_bytes",
+                "origin_sha256",
+                "random_generator",
+                "bit_generator",
+            }
+        ),
+        label=f"{label} NumPy identity",
+    )
+    _require_equal(
+        numpy_identity,
+        "module",
+        "numpy",
+        label=f"{label} NumPy module",
+    )
+    _require_equal(
+        numpy_identity,
+        "random_generator",
+        "default_rng",
+        label=f"{label} NumPy random_generator",
+    )
+    _require_equal(
+        numpy_identity,
+        "bit_generator",
+        "PCG64",
+        label=f"{label} NumPy bit_generator",
+    )
+    numpy_version = numpy_identity.get("version")
+    origin_file_name = numpy_identity.get("origin_file_name")
+    if not isinstance(numpy_version, str) or not numpy_version:
+        raise RegressionError(f"{label} NumPy version is invalid")
+    if (
+        not isinstance(origin_file_name, str)
+        or not origin_file_name
+        or "/" in origin_file_name
+        or "\\" in origin_file_name
+    ):
+        raise RegressionError(f"{label} NumPy origin must be path-free")
+    origin_size = numpy_identity.get("origin_size_bytes")
+    if (
+        isinstance(origin_size, bool)
+        or not isinstance(origin_size, int)
+        or origin_size <= 0
+    ):
+        raise RegressionError(f"{label} NumPy origin size is invalid")
+    _validated_sha256(
+        numpy_identity.get("origin_sha256"),
+        label=f"{label} NumPy origin_sha256",
+    )
+
+    sqrt_s_hex = _validated_canonical_float_hex(
+        value.get("sqrt_s_f64_hex"),
+        label=f"{label} sqrt_s_f64_hex",
+        positive=True,
+    )
+    sqrt_s = float.fromhex(sqrt_s_hex)
+    external_mass_hex = value.get("external_mass_f64_hex")
+    final_mass_hex = value.get("final_state_mass_f64_hex")
+    if (
+        not isinstance(external_mass_hex, Sequence)
+        or isinstance(external_mass_hex, (str, bytes))
+        or len(external_mass_hex) != len(source_pdgs)
+        or not isinstance(final_mass_hex, Sequence)
+        or isinstance(final_mass_hex, (str, bytes))
+        or len(final_mass_hex) != len(source_pdgs) - 2
+    ):
+        raise RegressionError(f"{label} mass vectors have invalid lengths")
+    validated_external_masses = [
+        _validated_canonical_float_hex(
+            mass,
+            label=f"{label} external mass {index}",
+            positive=False,
+        )
+        for index, mass in enumerate(external_mass_hex)
+    ]
+    validated_final_masses = [
+        _validated_canonical_float_hex(
+            mass,
+            label=f"{label} final-state mass {index}",
+            positive=False,
+        )
+        for index, mass in enumerate(final_mass_hex)
+    ]
+    if validated_final_masses != validated_external_masses[2:]:
+        raise RegressionError(f"{label} final-state masses are inconsistent")
+    if math.fsum(float.fromhex(mass) for mass in validated_final_masses) >= sqrt_s:
+        raise RegressionError(f"{label} final-state masses are not below threshold")
+
+    _require_equal(
+        value,
+        "seed_start",
+        CORRECTNESS_SEED_START,
+        label=f"{label} seed_start",
+    )
+    _require_equal(
+        value,
+        "seed_attempt_limit",
+        MAX_CORRECTNESS_SEED_ATTEMPTS,
+        label=f"{label} seed_attempt_limit",
+    )
+    attempts = value.get("attempt_count")
+    if (
+        isinstance(attempts, bool)
+        or not isinstance(attempts, int)
+        or not VALIDATION_SAMPLE_COUNT <= attempts <= MAX_CORRECTNESS_SEED_ATTEMPTS
+    ):
+        raise RegressionError(f"{label} attempt_count is invalid")
+    selected_seeds = value.get("selected_seeds")
+    if (
+        not isinstance(selected_seeds, Sequence)
+        or isinstance(selected_seeds, (str, bytes))
+        or len(selected_seeds) != VALIDATION_SAMPLE_COUNT
+        or any(
+            isinstance(seed, bool) or not isinstance(seed, int)
+            for seed in selected_seeds
+        )
+        or list(selected_seeds) != sorted(set(selected_seeds))
+        or selected_seeds[0] < CORRECTNESS_SEED_START
+        or selected_seeds[-1] >= CORRECTNESS_SEED_START + MAX_CORRECTNESS_SEED_ATTEMPTS
+        or selected_seeds[-1] != CORRECTNESS_SEED_START + attempts - 1
+    ):
+        raise RegressionError(f"{label} selected_seeds are invalid")
+
+    hashes: dict[str, list[str]] = {}
+    for key in ("point_sha256", "invariant_sha256"):
+        raw_hashes = value.get(key)
+        if (
+            not isinstance(raw_hashes, Sequence)
+            or isinstance(raw_hashes, (str, bytes))
+            or len(raw_hashes) != VALIDATION_SAMPLE_COUNT
+        ):
+            raise RegressionError(f"{label} {key} has the wrong length")
+        validated_hashes = [
+            _validated_sha256(digest, label=f"{label} {key}[{index}]")
+            for index, digest in enumerate(raw_hashes)
+        ]
+        if len(set(validated_hashes)) != VALIDATION_SAMPLE_COUNT:
+            raise RegressionError(f"{label} {key} values are not distinct")
+        hashes[key] = validated_hashes
+    batch_sha256 = _validated_sha256(
+        value.get("batch_sha256"),
+        label=f"{label} batch_sha256",
+    )
+    for numerical_label, numerical in (
+        ("precision-16", precision16),
+        ("precision-32", precision32),
+    ):
+        if numerical is None:
+            continue
+        if numerical.get("point_sha256") != hashes["point_sha256"]:
+            raise RegressionError(
+                f"{label} point hashes differ from {numerical_label} evidence"
+            )
+        if numerical.get("batch_sha256") != batch_sha256:
+            raise RegressionError(
+                f"{label} batch digest differs from {numerical_label} evidence"
+            )
+    derivation_sha256 = _validated_sha256(
+        value.get("sha256"),
+        label=f"{label} sha256",
+    )
+    digest_basis = {key: entry for key, entry in value.items() if key != "sha256"}
+    if _canonical_sha256(digest_basis) != derivation_sha256:
+        raise RegressionError(f"{label} digest does not authenticate its metadata")
+    return {
+        **digest_basis,
+        "sha256": derivation_sha256,
+    }
+
+
 def _native_profile_sample(
     payload: Mapping[str, Any],
     *,
@@ -1641,6 +1986,11 @@ def _native_profile_sample(
         color_flows=color_flows,
         required=require_precision32,
     )
+    correctness_point_derivation = _validated_correctness_point_derivation(
+        payload.get("correctness_point_derivation"),
+        precision16=warmed_numerical_result,
+        precision32=precision32_numerical_result,
+    )
     return {
         "wall_seconds_per_point": headline_mean,
         "wall_samples_seconds_per_point": headline_values,
@@ -1666,6 +2016,7 @@ def _native_profile_sample(
         "batch_sha256": batch_sha256,
         "helicities": list(helicities),
         "color_flows": list(color_flows),
+        "correctness_point_derivation": correctness_point_derivation,
         "warmed_numerical_result": warmed_numerical_result,
         "precision32_numerical_result": precision32_numerical_result,
     }
@@ -2045,8 +2396,18 @@ def _correctness_gate(
     reference16 = baseline_reference.get("warmed_numerical_result")
     if not isinstance(reference16, Mapping):
         raise RegressionError("baseline measurement has no warmed numerical result")
+    reference_derivation = baseline_reference.get("correctness_point_derivation")
+    if not isinstance(reference_derivation, Mapping):
+        raise RegressionError(
+            "baseline measurement has no correctness point derivation"
+        )
     comparisons: list[dict[str, Any]] = []
     for measurement in measurements:
+        if measurement.get("correctness_point_derivation") != reference_derivation:
+            raise RegressionError(
+                "correctness measurements do not share a byte-identical "
+                "point derivation"
+            )
         candidate16 = measurement.get("warmed_numerical_result")
         if not isinstance(candidate16, Mapping):
             raise RegressionError("measurement has no warmed numerical result")
@@ -2064,51 +2425,51 @@ def _correctness_gate(
         for measurement in measurements
         if isinstance(measurement.get("precision32_numerical_result"), Mapping)
     ]
-    if {measurement.get("lane") for measurement in precision32_measurements} != {
-        "baseline",
-        "current",
-    }:
+    if (
+        len(precision32_measurements) != 1
+        or precision32_measurements[0].get("lane") != "current"
+        or precision32_measurements[0].get("pair_index") != 1
+    ):
         raise RegressionError(
-            "correctness comparison requires precision-32 evidence from both lanes"
+            "correctness comparison requires exactly one precision-32 "
+            "exact-oracle result from current pair 1 and none from baseline"
         )
-    baseline32_measurement = next(
-        measurement
-        for measurement in precision32_measurements
-        if measurement.get("lane") == "baseline"
-    )
-    reference32 = baseline32_measurement["precision32_numerical_result"]
+    current32_measurement = precision32_measurements[0]
+    reference32 = current32_measurement["precision32_numerical_result"]
     assert isinstance(reference32, Mapping)
-    for measurement in precision32_measurements:
-        candidate32 = measurement["precision32_numerical_result"]
-        candidate16 = measurement["warmed_numerical_result"]
-        assert isinstance(candidate32, Mapping)
-        assert isinstance(candidate16, Mapping)
+    direct_oracle_comparison_count = 0
+    for measurement in measurements:
+        candidate16 = measurement.get("warmed_numerical_result")
+        if not isinstance(candidate16, Mapping):
+            raise RegressionError("measurement has no warmed numerical result")
         comparisons.append(
             _numerical_comparison(
                 reference32,
-                candidate32,
-                kind="precision32-cross-lane",
-                lane=measurement.get("lane"),
-                pair_index=measurement.get("pair_index"),
-            )
-        )
-        comparisons.append(
-            _numerical_comparison(
                 candidate16,
-                candidate32,
-                kind="precision16-vs-precision32",
+                kind="precision16-vs-current-exact-precision32",
                 lane=measurement.get("lane"),
                 pair_index=measurement.get("pair_index"),
             )
         )
+        direct_oracle_comparison_count += 1
     return {
         "relative_tolerance": CORRECTNESS_RELATIVE_TOLERANCE,
         "absolute_tolerance": CORRECTNESS_ABSOLUTE_TOLERANCE,
         "reference_lane": "baseline",
         "reference_pair_index": baseline_reference.get("pair_index"),
-        "precision32_lane_count": len(
-            {measurement.get("lane") for measurement in precision32_measurements}
+        "point_derivation_sha256": reference_derivation.get("sha256"),
+        "correctness_batch_sha256": reference_derivation.get("batch_sha256"),
+        "precision32_lane_count": 1,
+        "precision32_measurement_count": 1,
+        "precision32_policy": PRECISION32_CORRECTNESS_POLICY,
+        "precision32_authority_basis": (
+            "final-candidate-current-exact-oracle-directly-validates-every-"
+            "f64-measurement"
         ),
+        "precision32_reference_lane": "current",
+        "precision32_reference_pair_index": current32_measurement.get("pair_index"),
+        "precision32_direct_oracle_scope": "every-f64-measurement",
+        "precision32_direct_oracle_comparison_count": (direct_oracle_comparison_count),
         "comparison_count": len(comparisons),
         "maximum_absolute_error": max(
             (float(comparison["maximum_absolute_error"]) for comparison in comparisons),
@@ -2625,6 +2986,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
         pair_orders.append(list(order))
         for order_index, lane in enumerate(order):
             artifact = artifacts[lane]
+            request_precision32 = pair_index == 0 and lane == "current"
             profile_command = _profile_command(
                 interpreters[lane],
                 artifact=Path(str(artifact["path"])),
@@ -2637,7 +2999,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 color_flows=arguments.color_flow,
                 execution_mode=execution_mode,
                 dependency_site=dependency_sites[lane],
-                include_precision32=pair_index == 0,
+                include_precision32=request_precision32,
             )
             payload, command_elapsed, stderr = _run_json(
                 profile_command,
@@ -2649,8 +3011,18 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 minimum_samples=arguments.minimum_samples,
                 batch_size=arguments.batch_size,
                 expected_execution_mode=execution_mode,
-                require_precision32=pair_index == 0,
+                require_precision32=request_precision32,
             )
+            observed_precision32 = isinstance(
+                sample.get("precision32_numerical_result"),
+                Mapping,
+            )
+            if observed_precision32 is not request_precision32:
+                raise RegressionError(
+                    "native sample precision-32 evidence does not match the "
+                    f"{PRECISION32_CORRECTNESS_POLICY} request policy for "
+                    f"{lane} pair {pair_index + 1}"
+                )
             native_module_sha256 = str(sample["native_module_sha256"])
             expected_native_module_sha256 = native_module_sha256_by_lane.setdefault(
                 lane,
@@ -2663,7 +3035,12 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
                 )
             if measurements:
                 reference = measurements[0]
-                for key in ("batch_sha256", "helicities", "color_flows"):
+                for key in (
+                    "batch_sha256",
+                    "helicities",
+                    "color_flows",
+                    "correctness_point_derivation",
+                ):
                     if sample[key] != reference[key]:
                         raise RegressionError(
                             "native samples do not share byte-identical inputs: "
@@ -2818,6 +3195,7 @@ def run_regression(arguments: argparse.Namespace) -> dict[str, Any]:
             "native_wall_time_source": NATIVE_WALL_TIME_SOURCE,
             "native_wall_time_sample_pass": NATIVE_WALL_TIME_SAMPLE_PASS,
             "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
+            "precision32_correctness_policy": PRECISION32_CORRECTNESS_POLICY,
             "dependency_sites": {
                 lane: dependency_site_identities[lane] for lane in dependency_sites
             },

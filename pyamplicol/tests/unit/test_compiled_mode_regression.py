@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,57 @@ from tools.developer import compiled_mode_sample
 WATCHDOG_STDERR = (
     "memory-watchdog: command finished exit=0 peak_rss=1.250 GiB peak_processes=2\n"
 )
+
+
+def _correctness_derivation(
+    point_sha256: list[str],
+    *,
+    batch_sha256: str = "d" * 64,
+) -> dict[str, object]:
+    value: dict[str, object] = {
+        "kind": regression.CORRECTNESS_POINT_DERIVATION_KIND,
+        "schema_version": regression.CORRECTNESS_POINT_DERIVATION_SCHEMA_VERSION,
+        "contract": regression.CORRECTNESS_POINT_DERIVATION_CONTRACT,
+        "source_validation": {
+            "file_sha256": "1" * 64,
+            "canonical_sha256": "2" * 64,
+            "size_bytes": 1024,
+            "process_id": "d_dbar_to_z",
+            "process_expression": "d d~ > z",
+            "external_pdgs": [1, -1, 21, 21],
+            "point_count": 1,
+            "selected_point_index": 0,
+            "selected_point_sha256": "3" * 64,
+        },
+        "numpy": {
+            "module": "numpy",
+            "version": "2.4.2",
+            "origin_file_name": "__init__.py",
+            "origin_size_bytes": 4096,
+            "origin_sha256": "4" * 64,
+            "random_generator": "default_rng",
+            "bit_generator": "PCG64",
+        },
+        "sqrt_s_f64_hex": (1000.0).hex(),
+        "external_mass_f64_hex": [(0.0).hex()] * 4,
+        "final_state_mass_f64_hex": [(0.0).hex()] * 2,
+        "seed_start": regression.CORRECTNESS_SEED_START,
+        "seed_attempt_limit": regression.MAX_CORRECTNESS_SEED_ATTEMPTS,
+        "attempt_count": regression.VALIDATION_SAMPLE_COUNT,
+        "selected_seeds": list(
+            range(
+                regression.CORRECTNESS_SEED_START,
+                regression.CORRECTNESS_SEED_START + regression.VALIDATION_SAMPLE_COUNT,
+            )
+        ),
+        "point_sha256": point_sha256,
+        "invariant_sha256": [
+            f"{index + 100:064x}" for index in range(regression.VALIDATION_SAMPLE_COUNT)
+        ],
+        "batch_sha256": batch_sha256,
+    }
+    value["sha256"] = regression._canonical_sha256(value)
+    return value
 
 
 def _write_artifact(
@@ -82,6 +134,7 @@ def _profile_payload(
     numerical_values: tuple[float, ...] = (2.5,),
     native_module_sha256: str = "a" * 64,
     execution_mode: str = "compiled",
+    include_precision32: bool = True,
 ) -> dict[str, object]:
     sample_count = 5
     repetitions = 11
@@ -94,13 +147,12 @@ def _profile_payload(
     )
 
     def numerical_result(precision: int) -> dict[str, object]:
+        point_sha256 = [f"{index:064x}" for index in range(1, len(expanded_values) + 1)]
         return {
             "precision": precision,
             "point_count": len(expanded_values),
             "distinct_point_count": len(expanded_values),
-            "point_sha256": [
-                f"{index:064x}" for index in range(1, len(expanded_values) + 1)
-            ],
+            "point_sha256": point_sha256,
             "batch_sha256": "d" * 64,
             "values_f64": list(expanded_values),
             "values_f64_hex": [value.hex() for value in expanded_values],
@@ -126,8 +178,13 @@ def _profile_payload(
         "uncertainty": {"standard_deviation": wall / 100.0},
         "evaluator_time_per_point": wall / 2.0,
         "evaluator_uncertainty": {"standard_deviation": wall / 200.0},
+        "correctness_point_derivation": _correctness_derivation(
+            [f"{index:064x}" for index in range(1, len(expanded_values) + 1)]
+        ),
         "warmed_numerical_result": numerical_result(16),
-        "precision32_numerical_result": numerical_result(32),
+        "precision32_numerical_result": (
+            numerical_result(32) if include_precision32 else None
+        ),
         "cold_load_seconds": 0.01,
         "timing_breakdown": {
             "sample_count": sample_count,
@@ -202,6 +259,18 @@ def _profile_payload(
             },
         },
     }
+
+
+def _profile_payload_for_command(
+    command: tuple[str, ...],
+    wall: float,
+    **kwargs: object,
+) -> dict[str, object]:
+    return _profile_payload(
+        wall,
+        include_precision32="--include-precision32" in command,
+        **kwargs,
+    )
 
 
 def test_parser_exposes_required_lanes_and_plan_defaults(tmp_path: Path) -> None:
@@ -566,14 +635,15 @@ def test_correctness_gate_compares_warmed_values_at_contract_tolerances() -> Non
     ) -> dict[str, object]:
         def numerical_result(precision: int) -> dict[str, object]:
             values = [value] * regression.VALIDATION_SAMPLE_COUNT
+            point_sha256 = [
+                f"{index:064x}"
+                for index in range(1, regression.VALIDATION_SAMPLE_COUNT + 1)
+            ]
             return {
                 "precision": precision,
                 "point_count": regression.VALIDATION_SAMPLE_COUNT,
                 "distinct_point_count": regression.VALIDATION_SAMPLE_COUNT,
-                "point_sha256": [
-                    f"{index:064x}"
-                    for index in range(1, regression.VALIDATION_SAMPLE_COUNT + 1)
-                ],
+                "point_sha256": point_sha256,
                 "batch_sha256": "d" * 64,
                 "values_f64": values,
                 "values_f64_hex": [entry.hex() for entry in values],
@@ -591,8 +661,16 @@ def test_correctness_gate_compares_warmed_values_at_contract_tolerances() -> Non
         return {
             "lane": lane,
             "pair_index": pair_index,
+            "correctness_point_derivation": _correctness_derivation(
+                [
+                    f"{index:064x}"
+                    for index in range(1, regression.VALIDATION_SAMPLE_COUNT + 1)
+                ]
+            ),
             "warmed_numerical_result": numerical_result(16),
-            "precision32_numerical_result": numerical_result(32),
+            "precision32_numerical_result": (
+                numerical_result(32) if lane == "current" and pair_index == 1 else None
+            ),
         }
 
     passing = regression._correctness_gate(
@@ -630,11 +708,10 @@ def test_native_sample_rejects_inconsistent_totals_and_resolved_shape() -> None:
         regression._native_profile_sample(inconsistent_shape, minimum_samples=5)
 
 
-def test_correctness_gate_compares_precision32_cross_lane() -> None:
+def test_correctness_gate_uses_current_precision32_exact_oracle() -> None:
     baseline = regression._native_profile_sample(
-        _profile_payload(1.0),
+        _profile_payload(1.0, include_precision32=False),
         minimum_samples=5,
-        require_precision32=True,
     )
     current_payload = _profile_payload(1.0)
     precise = current_payload["precision32_numerical_result"]
@@ -658,19 +735,435 @@ def test_correctness_gate_compares_precision32_cross_lane() -> None:
         )
     )
     assert result["passes"] is False
+    assert result["precision32_policy"] == regression.PRECISION32_CORRECTNESS_POLICY
+    assert result["precision32_authority_basis"].startswith(
+        "final-candidate-current-exact-oracle"
+    )
+    assert result["precision32_direct_oracle_scope"] == "every-f64-measurement"
+    assert result["precision32_direct_oracle_comparison_count"] == 2
     assert any(
-        comparison["kind"] == "precision32-cross-lane"
+        comparison["kind"] == "precision16-vs-current-exact-precision32"
         and comparison["lane"] == "current"
         and comparison["passes"] is False
         for comparison in result["comparisons"]
     )
 
 
-def test_correctness_batch_requires_eight_distinct_points() -> None:
-    points = tuple((index,) for index in range(8))
-    assert compiled_mode_sample._correctness_batch(points) == points
-    with pytest.raises(compiled_mode_sample.SampleError, match="8 distinct"):
-        compiled_mode_sample._correctness_batch(((1,),) * 8)
+def test_correctness_gate_does_not_treat_tolerance_as_transitive() -> None:
+    baseline_value = 1.0
+    current_value = 1.0 + 0.9e-12
+    oracle_value = 1.0 + 1.8e-12
+    baseline = regression._native_profile_sample(
+        _profile_payload(
+            1.0,
+            numerical_values=(baseline_value,),
+            include_precision32=False,
+        ),
+        minimum_samples=5,
+    )
+    current_payload = _profile_payload(
+        1.0,
+        numerical_values=(current_value,),
+    )
+    precise = current_payload["precision32_numerical_result"]
+    assert isinstance(precise, dict)
+    precise["values_f64"] = [oracle_value] * regression.VALIDATION_SAMPLE_COUNT
+    precise["values_f64_hex"] = [
+        oracle_value.hex()
+    ] * regression.VALIDATION_SAMPLE_COUNT
+    resolved = precise["resolved"]
+    assert isinstance(resolved, dict)
+    resolved["totals_complex"] = [
+        [oracle_value, 0.0]
+    ] * regression.VALIDATION_SAMPLE_COUNT
+    resolved["values_complex"] = [
+        [[[oracle_value, 0.0]]]
+    ] * regression.VALIDATION_SAMPLE_COUNT
+    current = regression._native_profile_sample(
+        current_payload,
+        minimum_samples=5,
+        require_precision32=True,
+    )
+    baseline_measurement = {"lane": "baseline", "pair_index": 1, **baseline}
+    current_measurement = {"lane": "current", "pair_index": 1, **current}
+    current_exact = current["precision32_numerical_result"]
+    assert isinstance(current_exact, dict)
+
+    assert regression._numerical_comparison(
+        baseline["warmed_numerical_result"],
+        current["warmed_numerical_result"],
+        kind="test-baseline-vs-current",
+        lane="current",
+        pair_index=1,
+    )["passes"]
+    assert regression._numerical_comparison(
+        current_exact,
+        current["warmed_numerical_result"],
+        kind="test-current-vs-oracle",
+        lane="current",
+        pair_index=1,
+    )["passes"]
+
+    result = regression._correctness_gate((baseline_measurement, current_measurement))
+
+    assert result["passes"] is False
+    assert any(
+        comparison["kind"] == "precision16-vs-current-exact-precision32"
+        and comparison["lane"] == "baseline"
+        and comparison["passes"] is False
+        for comparison in result["comparisons"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("baseline_precision32", "current_precision32"),
+    ((True, True), (False, False)),
+)
+def test_correctness_gate_rejects_precision32_policy_drift(
+    baseline_precision32: bool,
+    current_precision32: bool,
+) -> None:
+    baseline = regression._native_profile_sample(
+        _profile_payload(1.0, include_precision32=baseline_precision32),
+        minimum_samples=5,
+    )
+    current = regression._native_profile_sample(
+        _profile_payload(1.0, include_precision32=current_precision32),
+        minimum_samples=5,
+    )
+    with pytest.raises(regression.RegressionError, match="exactly one precision-32"):
+        regression._correctness_gate(
+            (
+                {"lane": "baseline", "pair_index": 1, **baseline},
+                {"lane": "current", "pair_index": 1, **current},
+            )
+        )
+
+
+def _validation_source(
+    point: tuple[tuple[float, float, float, float], ...],
+) -> compiled_mode_sample.ValidationMomentaSource:
+    return compiled_mode_sample.ValidationMomentaSource(
+        points=(point,),
+        identity={
+            "file_sha256": "1" * 64,
+            "canonical_sha256": "2" * 64,
+            "size_bytes": 1024,
+            "process_id": "fixture",
+            "process_expression": "a b > c d",
+            "external_pdgs": [1, -1, 21, 21],
+            "point_count": 1,
+            "selected_point_index": 0,
+            "selected_point_sha256": "3" * 64,
+        },
+    )
+
+
+def _two_body_point(
+    first_mass: float,
+    second_mass: float,
+) -> tuple[tuple[float, float, float, float], ...]:
+    sqrt_s = 1000.0
+    first_energy = (
+        sqrt_s * sqrt_s + first_mass * first_mass - second_mass * second_mass
+    ) / (2.0 * sqrt_s)
+    second_energy = sqrt_s - first_energy
+    spatial = (first_energy * first_energy - first_mass * first_mass) ** 0.5
+    return (
+        (500.0, 0.0, 0.0, 500.0),
+        (500.0, 0.0, 0.0, -500.0),
+        (first_energy, spatial, 0.0, 0.0),
+        (second_energy, -spatial, 0.0, 0.0),
+    )
+
+
+@pytest.mark.parametrize(("first_mass", "second_mass"), ((0.0, 0.0), (100.0, 200.0)))
+def test_correctness_batch_derives_eight_deterministic_varied_invariant_points(
+    first_mass: float,
+    second_mass: float,
+) -> None:
+    source = _validation_source(_two_body_point(first_mass, second_mass))
+
+    first_batch, first_derivation = compiled_mode_sample._correctness_batch(source)
+    second_batch, second_derivation = compiled_mode_sample._correctness_batch(source)
+
+    assert first_batch == second_batch
+    assert first_derivation == second_derivation
+    assert len(first_batch) == regression.VALIDATION_SAMPLE_COUNT
+    assert len(set(first_derivation["point_sha256"])) == len(first_batch)
+    assert len(set(first_derivation["invariant_sha256"])) == len(first_batch)
+    assert first_derivation["batch_sha256"] == compiled_mode_sample._canonical_sha256(
+        first_batch
+    )
+    assert "/" not in json.dumps(first_derivation["numpy"])
+    for point in first_batch:
+        incoming = compiled_mode_sample._sum_momenta(point[:2])
+        outgoing = compiled_mode_sample._sum_momenta(point[2:])
+        assert outgoing == pytest.approx(incoming, rel=0.0, abs=1.0e-8)
+        observed_mass_squared = [
+            compiled_mode_sample._validated_mass_squared(
+                momentum,
+                label="test particle",
+            )
+            for momentum in point
+        ]
+        assert observed_mass_squared == pytest.approx(
+            [0.0, 0.0, first_mass * first_mass, second_mass * second_mass],
+            rel=1.0e-10,
+            abs=1.0e-7,
+        )
+
+
+def test_correctness_batch_snaps_massless_roundoff_before_rambo() -> None:
+    noisy_spatial = math.nextafter(64.0, 0.0)
+    point = (
+        (64.0, 0.0, 0.0, 64.0),
+        (64.0, 0.0, 0.0, -64.0),
+        (64.0, noisy_spatial, 0.0, 0.0),
+        (64.0, -noisy_spatial, 0.0, 0.0),
+    )
+    raw_mass_squared = compiled_mode_sample._minkowski_square(point[2])
+    assert raw_mass_squared > 0.0
+    assert math.sqrt(raw_mass_squared) == pytest.approx(9.5367431640625e-7)
+
+    batch, derivation = compiled_mode_sample._correctness_batch(
+        _validation_source(point)
+    )
+
+    zero_hex = (0.0).hex()
+    assert derivation["external_mass_f64_hex"] == [zero_hex] * 4
+    assert derivation["final_state_mass_f64_hex"] == [zero_hex] * 2
+    for candidate in batch:
+        assert [
+            compiled_mode_sample._validated_mass_squared(
+                momentum,
+                label="test particle",
+            )
+            for momentum in candidate
+        ] == [0.0] * 4
+
+
+@pytest.mark.parametrize(
+    ("point", "message"),
+    (
+        (
+            (
+                (500.0, 0.0, 0.0, 500.0),
+                (500.0, 0.0, 0.0, -400.0),
+                (500.0, 500.0, 0.0, 0.0),
+                (500.0, -500.0, 0.0, 0.0),
+            ),
+            "center-of-mass",
+        ),
+        (
+            (
+                (500.0, 0.0, 0.0, 500.0),
+                (500.0, 0.0, 0.0, -500.0),
+                (500.0, 0.0, 0.0, 0.0),
+                (500.0, 0.0, 0.0, 0.0),
+            ),
+            "strictly above",
+        ),
+    ),
+)
+def test_correctness_batch_rejects_invalid_source_kinematics(
+    point: tuple[tuple[float, float, float, float], ...],
+    message: str,
+) -> None:
+    with pytest.raises(compiled_mode_sample.SampleError, match=message):
+        compiled_mode_sample._correctness_batch(_validation_source(point))
+
+
+def test_correctness_batch_has_bounded_seed_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+
+    def reject_point(*_args: object, **_kwargs: object) -> object:
+        nonlocal attempts
+        attempts += 1
+        raise compiled_mode_sample.SampleError("rejected fixture")
+
+    monkeypatch.setattr(
+        compiled_mode_sample,
+        "_massive_rambo_final_state",
+        reject_point,
+    )
+    with pytest.raises(compiled_mode_sample.SampleError, match="256 deterministic"):
+        compiled_mode_sample._correctness_batch(
+            _validation_source(_two_body_point(0.0, 0.0))
+        )
+    assert attempts == compiled_mode_sample.MAX_CORRECTNESS_SEED_ATTEMPTS
+
+
+def _write_validation_momenta_artifact(
+    root: Path,
+    *,
+    external_pdgs: list[object] | None = None,
+) -> tuple[Path, tuple[tuple[float, float, float, float], ...]]:
+    process_root = root / "processes" / "fixture"
+    process_root.mkdir(parents=True)
+    point = _two_body_point(0.0, 0.0)
+    pdgs = [1, -1, 21, 21]
+    validation = {
+        "schema_version": 1,
+        "kind": "pyamplicol-rusticol-validation-momenta",
+        "process_id": "fixture",
+        "process": "d d~ > g g",
+        "seed": 12345,
+        "available": True,
+        "error": None,
+        "points": [
+            [
+                {
+                    "pdg": pdg,
+                    "momentum": [str(component) for component in momentum],
+                }
+                for pdg, momentum in zip(pdgs, point, strict=True)
+            ]
+        ],
+    }
+    validation_path = process_root / "validation-momenta.json"
+    validation_path.write_text(json.dumps(validation), encoding="utf-8")
+    manifest = {
+        "processes": [
+            {
+                "id": "fixture",
+                "expression": "d d~ > g g",
+                "external_pdgs": external_pdgs or pdgs,
+            }
+        ],
+        "payloads": [
+            {
+                "path": "processes/fixture/validation-momenta.json",
+                "role": "validation-momenta",
+                "process_id": "fixture",
+                "sha256": regression._sha256_file(validation_path),
+                "size_bytes": validation_path.stat().st_size,
+            }
+        ],
+    }
+    (root / "artifact.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return validation_path, point
+
+
+def test_validation_momenta_authenticates_payload_and_keeps_timing_source(
+    tmp_path: Path,
+) -> None:
+    validation_path, point = _write_validation_momenta_artifact(tmp_path)
+
+    source = compiled_mode_sample._validation_momenta(
+        tmp_path,
+        process="fixture",
+    )
+    timing_batch = compiled_mode_sample._benchmark_batch(source.points, 3)
+    correctness_batch, derivation = compiled_mode_sample._correctness_batch(source)
+
+    assert source.points == (point,)
+    assert source.identity["file_sha256"] == regression._sha256_file(validation_path)
+    assert source.identity["selected_point_sha256"] == (
+        compiled_mode_sample._canonical_sha256(point)
+    )
+    assert timing_batch == (point, point, point)
+    assert all(candidate != point for candidate in correctness_batch)
+    assert derivation["source_validation"] == source.identity
+
+
+def test_validation_momenta_rejects_digest_and_pdg_tampering(
+    tmp_path: Path,
+) -> None:
+    digest_root = tmp_path / "digest"
+    validation_path, _point = _write_validation_momenta_artifact(digest_root)
+    validation_path.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(
+        compiled_mode_sample.SampleError,
+        match="does not match its manifest digest",
+    ):
+        compiled_mode_sample._validation_momenta(
+            digest_root,
+            process="fixture",
+        )
+
+    pdg_root = tmp_path / "pdg"
+    _write_validation_momenta_artifact(
+        pdg_root,
+        external_pdgs=[1, -1, 21, "21"],
+    )
+    with pytest.raises(
+        compiled_mode_sample.SampleError,
+        match="integer PDGs",
+    ):
+        compiled_mode_sample._validation_momenta(
+            pdg_root,
+            process="fixture",
+        )
+
+
+def test_native_sample_rejects_correctness_derivation_tampering() -> None:
+    duplicate_invariant = _profile_payload(1.0)
+    derivation = duplicate_invariant["correctness_point_derivation"]
+    assert isinstance(derivation, dict)
+    invariants = derivation["invariant_sha256"]
+    assert isinstance(invariants, list)
+    invariants[0] = invariants[1]
+    derivation["sha256"] = regression._canonical_sha256(
+        {key: value for key, value in derivation.items() if key != "sha256"}
+    )
+    with pytest.raises(regression.RegressionError, match="not distinct"):
+        regression._native_profile_sample(
+            duplicate_invariant,
+            minimum_samples=5,
+        )
+
+    mismatched_batch = _profile_payload(1.0)
+    derivation = mismatched_batch["correctness_point_derivation"]
+    assert isinstance(derivation, dict)
+    derivation["batch_sha256"] = "e" * 64
+    derivation["sha256"] = regression._canonical_sha256(
+        {key: value for key, value in derivation.items() if key != "sha256"}
+    )
+    with pytest.raises(regression.RegressionError, match="batch digest differs"):
+        regression._native_profile_sample(mismatched_batch, minimum_samples=5)
+
+    pathful_numpy = _profile_payload(1.0)
+    derivation = pathful_numpy["correctness_point_derivation"]
+    assert isinstance(derivation, dict)
+    numpy_identity = derivation["numpy"]
+    assert isinstance(numpy_identity, dict)
+    numpy_identity["origin_file_name"] = "/tmp/numpy/__init__.py"
+    derivation["sha256"] = regression._canonical_sha256(
+        {key: value for key, value in derivation.items() if key != "sha256"}
+    )
+    with pytest.raises(regression.RegressionError, match="path-free"):
+        regression._native_profile_sample(pathful_numpy, minimum_samples=5)
+
+
+def test_correctness_gate_rejects_cross_lane_derivation_mismatch() -> None:
+    baseline = regression._native_profile_sample(
+        _profile_payload(1.0, include_precision32=False),
+        minimum_samples=5,
+    )
+    current_payload = _profile_payload(1.0)
+    derivation = current_payload["correctness_point_derivation"]
+    assert isinstance(derivation, dict)
+    source = derivation["source_validation"]
+    assert isinstance(source, dict)
+    source["file_sha256"] = "f" * 64
+    derivation["sha256"] = regression._canonical_sha256(
+        {key: value for key, value in derivation.items() if key != "sha256"}
+    )
+    current = regression._native_profile_sample(
+        current_payload,
+        minimum_samples=5,
+    )
+
+    with pytest.raises(regression.RegressionError, match="byte-identical"):
+        regression._correctness_gate(
+            (
+                {"lane": "baseline", "pair_index": 1, **baseline},
+                {"lane": "current", "pair_index": 1, **current},
+            )
+        )
 
 
 def test_dependency_site_identity_tracks_distribution_content(tmp_path: Path) -> None:
@@ -810,7 +1303,7 @@ def test_matching_artifact_cache_avoids_generation(
         cache_path,
         {
             "kind": regression.CACHE_KIND,
-            "schema_version": regression.SCHEMA_VERSION,
+            "schema_version": regression.CACHE_SCHEMA_VERSION,
             "signature": signature,
             "artifact_id": "artifact-id",
             "artifact_tree_sha256": tree_identity["sha256"],
@@ -980,7 +1473,11 @@ def test_run_regression_reuses_one_read_only_shared_artifact(
         assert "PYTHONPATH" not in environment
         assert Path(command[2]) == artifact
         observed_commands.append(command)
-        return _profile_payload(1.0, batch_size=4), 0.25, WATCHDOG_STDERR
+        return (
+            _profile_payload_for_command(command, 1.0, batch_size=4),
+            0.25,
+            WATCHDOG_STDERR,
+        )
 
     monkeypatch.setattr(regression, "_ensure_artifact", unexpected_generation)
     monkeypatch.setattr(regression, "_run_json", fake_run)
@@ -1053,7 +1550,11 @@ def test_run_regression_rejects_native_module_change_within_lane(
             "b" * 64 if lane == "baseline" and lane_calls[lane] > 1 else "a" * 64
         )
         return (
-            _profile_payload(1.0, native_module_sha256=native_sha256),
+            _profile_payload_for_command(
+                command,
+                1.0,
+                native_module_sha256=native_sha256,
+            ),
             0.25,
             WATCHDOG_STDERR,
         )
@@ -1143,7 +1644,11 @@ def test_run_regression_reports_independent_alternating_samples(
         lane = artifact.parent.name
         observed_order.append(lane)
         value = next(baseline_values if lane == "baseline" else current_values)
-        return _profile_payload(value), 0.25, WATCHDOG_STDERR
+        return (
+            _profile_payload_for_command(command, value),
+            0.25,
+            WATCHDOG_STDERR,
+        )
 
     monkeypatch.setattr(regression, "_ensure_artifact", fake_ensure)
     monkeypatch.setattr(regression, "_run_json", fake_run)
@@ -1203,6 +1708,19 @@ def test_run_regression_reports_independent_alternating_samples(
         "current": "a" * 64,
     }
     assert result["configuration"]["lc_flow_layout"] == "topology-replay"
+    assert result["configuration"]["precision32_correctness_policy"] == (
+        regression.PRECISION32_CORRECTNESS_POLICY
+    )
+    precision32_commands = [
+        measurement
+        for measurement in result["measurements"]
+        if "--include-precision32" in measurement["command"]["argv"]
+    ]
+    assert [
+        (measurement["lane"], measurement["pair_index"])
+        for measurement in precision32_commands
+    ] == [("current", 1)]
+    assert result["correctness_gate"]["precision32_measurement_count"] == 1
     assert result["configuration"]["native_wall_time_sample_pass"] == (
         regression.NATIVE_WALL_TIME_SAMPLE_PASS
     )
@@ -1260,13 +1778,17 @@ def test_run_regression_rehashes_generated_artifacts_after_sampling(
         environment: dict[str, str],
     ) -> tuple[dict[str, object], float, str]:
         nonlocal sample_calls
-        del command, timeout, environment
+        del timeout, environment
         sample_calls += 1
         if sample_calls == 10:
             (output_root / "current" / "artifact" / "late-file.bin").write_bytes(
                 b"mutation"
             )
-        return _profile_payload(1.0), 0.25, WATCHDOG_STDERR
+        return (
+            _profile_payload_for_command(command, 1.0),
+            0.25,
+            WATCHDOG_STDERR,
+        )
 
     monkeypatch.setattr(regression, "_ensure_artifact", fake_ensure)
     monkeypatch.setattr(regression, "_run_json", fake_run)
@@ -1318,6 +1840,7 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
         def __init__(self) -> None:
             self._native_module = SimpleNamespace(__file__=str(native_module))
             self.wall_calls: list[tuple[int, int, dict[str, object]]] = []
+            self.wall_batches: list[tuple[object, ...]] = []
             self.profile_calls: list[tuple[int, int, dict[str, object]]] = []
             self.evaluate_calls: list[tuple[int, dict[str, object]]] = []
 
@@ -1331,6 +1854,7 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
             **kwargs: object,
         ) -> float:
             self.wall_calls.append((id(batch), repetitions, dict(kwargs)))
+            self.wall_batches.append(batch)
             return repetitions * 0.01
 
         def profile_repeated(
@@ -1376,10 +1900,13 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
     )
     monkeypatch.setattr(
         compiled_mode_sample,
+        "_load_public_runtime",
+        lambda *_args, **_kwargs: runtime,
+    )
+    monkeypatch.setattr(
+        compiled_mode_sample,
         "_validation_momenta",
-        lambda *_args, **_kwargs: tuple(
-            ((float(index), 0.0, 0.0, 1.0),) for index in range(1, 9)
-        ),
+        lambda *_args, **_kwargs: _validation_source(_two_body_point(0.0, 0.0)),
     )
     monkeypatch.setattr(
         compiled_mode_sample,
@@ -1400,6 +1927,7 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
         batch_size=2,
         minimum_samples=5,
         warmup_runs=1,
+        include_precision32=True,
         helicity=["h:-1,+1"],
         color_flow=["flow:1,2"],
     )
@@ -1420,13 +1948,30 @@ def test_native_sample_helper_pairs_direct_wall_and_profile_calls(
     assert measured["wall_seconds_per_point"] == pytest.approx(0.005)
     assert measured["paired_profile_wall_seconds_per_point"] == pytest.approx(0.007)
     assert measured["warmed_numerical_result"]["values_f64"] == [2.5] * 8
+    assert measured["precision32_numerical_result"]["values_f64"] == [2.5] * 8
+    derivation = measured["correctness_point_derivation"]
+    assert (
+        derivation["batch_sha256"]
+        == (measured["warmed_numerical_result"]["batch_sha256"])
+    )
+    assert (
+        derivation["point_sha256"]
+        == (measured["warmed_numerical_result"]["point_sha256"])
+    )
     assert len(runtime.wall_calls) == 7
+    source_point = _two_body_point(0.0, 0.0)
+    assert all(batch == (source_point, source_point) for batch in runtime.wall_batches)
     assert len(runtime.profile_calls) == 6
-    assert len(runtime.evaluate_calls) == 2
+    assert len(runtime.evaluate_calls) == 4
     assert runtime.evaluate_calls[0][1] == {
         "helicities": ("h:-1,+1",),
         "color_flows": ("flow:1,2",),
         "precision": 16,
+    }
+    assert runtime.evaluate_calls[2][1] == {
+        "helicities": ("h:-1,+1",),
+        "color_flows": ("flow:1,2",),
+        "precision": 32,
     }
     for wall_call, profile_call in zip(
         runtime.wall_calls[-5:],
