@@ -227,6 +227,8 @@ def test_prepare_finalize_and_audit_class_c_bridge(
     ) -> dict[str, str]:
         assert expected_source_revision == descendant
         del runtime_auditor
+        with store.named_lock("measurement-lineage", timeout=0.0):
+            pass
         (profile / "report_environment.json").write_text(
             json.dumps(new_environment, sort_keys=True) + "\n",
             encoding="ascii",

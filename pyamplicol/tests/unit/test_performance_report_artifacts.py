@@ -303,6 +303,24 @@ def test_named_filesystem_lock_times_out_across_processes(tmp_path: Path) -> Non
     assert outcome == "timeout"
 
 
+def test_named_filesystem_lock_is_reentrant_in_same_thread(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    competing = ArtifactStore(
+        artifact_root=store.artifact_root,
+        lock_root=store.lock_root,
+    )
+
+    with (
+        store.named_lock("measurement-lineage"),
+        competing.named_lock("measurement-lineage", timeout=0.0),
+        store.named_lock("measurement-lineage", timeout=0.0),
+    ):
+        pass
+
+    with store.named_lock("measurement-lineage", timeout=0.0):
+        pass
+
+
 def test_cell_and_named_locks_use_separate_explicit_roots(tmp_path: Path) -> None:
     store = _store(tmp_path)
     with store.cell_lock("cell"), store.named_lock("report-writer"):

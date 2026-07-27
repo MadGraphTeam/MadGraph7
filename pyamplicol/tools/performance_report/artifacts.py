@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 import time
 import uuid
 from collections.abc import Iterable, Iterator, Mapping
@@ -45,6 +46,7 @@ _CURRENT_KEYS = {
 _FILE_KEYS = {"path", "size", "sha256"}
 _BASED_ON_KEYS = {"attempt_id", "manifest_sha256"}
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
+_LOCK_STATE = threading.local()
 
 
 class ArtifactStoreError(RuntimeError):
@@ -65,6 +67,18 @@ class ArtifactAction(StrEnum):
     REUSE_CURRENT = "reuse-current"
     RETIME_CURRENT = "retime-current"
     GENERATE = "generate"
+
+
+def _thread_lock_depths() -> dict[Path, int]:
+    process_id = os.getpid()
+    if getattr(_LOCK_STATE, "process_id", None) != process_id:
+        _LOCK_STATE.process_id = process_id
+        _LOCK_STATE.depths = {}
+    depths = getattr(_LOCK_STATE, "depths", None)
+    if depths is None:
+        depths = {}
+        _LOCK_STATE.depths = depths
+    return depths
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,8 +255,22 @@ def _filesystem_lock(
         raise ValueError("lock timeout must be non-negative or None")
     if poll_interval <= 0:
         raise ValueError("lock poll interval must be positive")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    stream: BinaryIO = path.open("a+b")
+    lock_path = path.expanduser().resolve(strict=False)
+    depths = _thread_lock_depths()
+    depth = depths.get(lock_path, 0)
+    if depth:
+        depths[lock_path] = depth + 1
+        try:
+            yield
+        finally:
+            remaining = depths[lock_path] - 1
+            if remaining:
+                depths[lock_path] = remaining
+            else:
+                del depths[lock_path]
+        return
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    stream: BinaryIO = lock_path.open("a+b")
     deadline = None if timeout is None else time.monotonic() + timeout
     try:
         while True:
@@ -254,7 +282,7 @@ def _filesystem_lock(
                     raise
                 if deadline is not None and time.monotonic() >= deadline:
                     raise LockTimeoutError(
-                        f"timed out acquiring filesystem lock {path}"
+                        f"timed out acquiring filesystem lock {lock_path}"
                     ) from error
                 remaining = (
                     poll_interval
@@ -262,8 +290,10 @@ def _filesystem_lock(
                     else min(poll_interval, max(0.0, deadline - time.monotonic()))
                 )
                 time.sleep(remaining)
+        depths[lock_path] = 1
         yield
     finally:
+        depths.pop(lock_path, None)
         try:
             fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
         finally:
