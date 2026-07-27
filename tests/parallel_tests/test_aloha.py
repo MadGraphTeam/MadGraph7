@@ -1084,7 +1084,7 @@ class testLorentzObject(unittest.TestCase):
         analytical2= analytical2.expand()
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                globals()[name] = eval(str(cexpr))   
             except:
                 pass
         
@@ -1214,7 +1214,7 @@ class testLorentzObject(unittest.TestCase):
         M1 = math.sqrt(P1_0 **2 - P1_1 **2 -P1_2 **2 -P1_3 **2)
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                globals()[name] = eval(str(cexpr))   
             except:
                 pass
         for ind in zero.listindices():
@@ -1337,7 +1337,7 @@ class testLorentzObject(unittest.TestCase):
         OM1 = 1.0/48#(P1_0 **2 - P1_1 **2 -P1_2 **2 -P1_3 **2)
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                globals()[name] = eval(str(cexpr))   
             except:
                 pass
         
@@ -2854,7 +2854,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         P2_0,P2_1,P2_2,P2_3 = 101, 111, 121, 134
         P3_0,P3_1,P3_2,P3_3 = 1001, 1106, 1240, 1320
         for name, cexpr in abstract_ZP.contracted.items():
-            exec('%s = %s' % (name, cexpr))
+            globals()[name] = eval(str(cexpr))
 
         for ind in expr.listindices():
             self.assertEqual(eval(str(expr.get_rep(ind))), 178727040j)
@@ -2920,10 +2920,10 @@ class test_aloha_creation(IOTests.IOTestManager):
         M3 = 500
         
         #for name, cexpr in one_exp.contracted.items():
-        #    exec('%s = %s' % (name, cexpr))
+        #    globals()[name] = eval(str(cexpr))
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))            
+                globals()[name] = eval(str(cexpr))            
             except:
                 pass
         for ind in one_exp.listindices():
@@ -3017,7 +3017,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         M3 = 500
         
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            globals()[name] = eval(str(cexpr)) 
         
         for ind in zero.listindices():
             self.assertAlmostEqual(eval(str(zero.get_rep(ind))),0)
@@ -3082,7 +3082,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         P3_0,P3_1,P3_2,P3_3 = 10, 11, 12, 13
         
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            globals()[name] = eval(str(cexpr)) 
         
         for ind in abstract.expr.listindices():                        
             self.assertAlmostEqual(eval(str(abstract.expr.get_rep(ind))) -
@@ -3116,7 +3116,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         
         #evaluate all contraction 
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr))
+            globals()[name] = eval(str(cexpr))
             
         # evaluate FFV_0
         val_V = eval(str(V.expr.get_rep((0,))))
@@ -3174,7 +3174,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         s4 = -j*((OM3*(P3_3*((F2_1*((F1_3*(-P3_0-P3_3))+(F1_4*(-P3_1-1*j*P3_2))))+(F2_2*((F1_3*(-P3_1+1*j*P3_2))+(F1_4*(-P3_0+P3_3)))))))+(-(F1_3*F2_1)+(F1_4*F2_2)))
 
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            globals()[name] = eval(str(cexpr)) 
 
         self.assertEqual(s1, eval(str(abstract_M.expr.get_rep([0]))))
         self.assertEqual(s2, eval(str(abstract_M.expr.get_rep([1]))))    
@@ -3193,7 +3193,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         zero = abstract_6.expr - abstract_M.expr - \
                                                     2* abstract_P.expr   
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            globals()[name] = eval(str(cexpr)) 
         for ind in zero.listindices():
             self.assertEqual(eval(str(zero.get_rep(ind))),0)
         
