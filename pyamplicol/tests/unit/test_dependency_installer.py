@@ -85,21 +85,29 @@ def test_symjit_fork_revision_archive_tree_and_patch_are_pinned() -> None:
     payload = module._lock()
     patches = module._contributor_patches(payload)
 
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch.name == "symjit-allow-direct-complex-stack-spills"
-    assert patch.target == "symjit"
-    assert patch.relative_path == (
+    assert [patch.name for patch in patches] == [
+        "symjit-allow-direct-complex-stack-spills",
+        "symjit-normalize-direct-complex-scratch-outputs",
+    ]
+    assert all(patch.target == "symjit" for patch in patches)
+    assert patches[0].relative_path == (
         "patches/symjit/0001-allow-direct-complex-stack-spills.patch"
     )
-    assert patch.applies_to_revision == payload["symjit"]["candidate_revision"]
+    assert patches[1].relative_path == (
+        "patches/symjit/0002-normalize-direct-complex-scratch-outputs.patch"
+    )
+    assert all(
+        patch.applies_to_revision == payload["symjit"]["candidate_revision"]
+        for patch in patches
+    )
     assert len(module._patch_closure_sha256(patches)) == 64
     assert len(payload["symjit"]["candidate_revision"]) == 40
     assert len(payload["symjit"]["archive_sha256"]) == 64
     assert len(payload["symjit"]["source_tree_sha256"]) == 64
     assert len(payload["symjit"]["candidate_tree_sha256"]) == 64
-    assert payload["symjit"]["source_tree_sha256"] != (
-        payload["symjit"]["candidate_tree_sha256"]
+    assert (
+        payload["symjit"]["source_tree_sha256"]
+        != payload["symjit"]["candidate_tree_sha256"]
     )
     assert payload["symjit"]["release_status"] == "fork-pr-candidate"
 

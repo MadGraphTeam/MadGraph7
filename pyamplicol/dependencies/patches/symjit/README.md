@@ -32,6 +32,11 @@ The active contributor patch
 complex stack spills to retain SymJIT scratch registers while keeping the
 allocated-general-register requirement for direct output planes. It is pinned
 by digest and applied only to the exact locked fork revision.
+`0002-normalize-direct-complex-scratch-outputs.patch` preserves that output
+requirement while safely materializing allocator-produced scratch outputs
+through a checked four-slot stack frame and a preserved general-register pair.
+This handles stored O2 applications without assuming that any general register
+is dead at the output boundary.
 
 The direct application input format is for trusted bytecode. It is not a
 sandbox or hostile-input parser. Shape, range, and alias checks remain because

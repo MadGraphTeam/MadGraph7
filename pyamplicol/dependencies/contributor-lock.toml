@@ -9,6 +9,13 @@ path = "patches/symjit/0001-allow-direct-complex-stack-spills.patch"
 sha256 = "9edc26b3ec5b6cc0956a3187d076bc9ec6a07aa1d5600dfb86deecfab5f9a12a"
 applies_to_revision = "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
 
+[[patches]]
+name = "symjit-normalize-direct-complex-scratch-outputs"
+target = "symjit"
+path = "patches/symjit/0002-normalize-direct-complex-scratch-outputs.patch"
+sha256 = "ef3a65de64711640a37644016d9e6ff7ee4d5ec02bd0304b2aadc1da8611a629"
+applies_to_revision = "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
+
 [abis]
 symbolica_serialization = "symbolica-bincode2-v1"
 symjit_application = "symjit-application-storage-v3"
@@ -34,7 +41,7 @@ archive_sha256 = "070ff7fc04d5cdc5ab769d7a47b3da04cbc2b97d87136d303180c95b9eb380
 candidate_revision = "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
 application_storage_version = 3
 source_tree_sha256 = "e42d648d995c61881e560aefc50f80a995e86fb24a67ed9b0f0b5a80d6773fcf"
-candidate_tree_sha256 = "6eeebf4bb5bd03b13cab9528b18eb02496a6af24c238c710365089da4a997bd3"
+candidate_tree_sha256 = "fdf06a56cffe301df93b7e08a85f6d5cf956842959fc9a5a95fa9bc61c43246d"
 upstream_pr = "https://github.com/siravan/symjit/pull/12"
 release_status = "fork-pr-candidate"
 license = "MIT"
