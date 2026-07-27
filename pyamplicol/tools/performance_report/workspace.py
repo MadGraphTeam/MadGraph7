@@ -44,6 +44,7 @@ WORKSPACE_MANIFEST = "report-workspace.json"
 ENVIRONMENT_SCHEMA = "pyamplicol-performance-report-environment-v1"
 ENVIRONMENT_JSON = "report_environment.json"
 ENVIRONMENT_TEX = "report_environment.tex"
+MEASUREMENT_LINEAGE_JSON = "measurement_lineage.json"
 STANDALONE_BUILDER = "build_pdf.py"
 TABLE_FILLING_RUNBOOK = "TABLE_FILLING.md"
 PROFILE_PARENT = PROFILE_REPORT_ROOT
@@ -120,6 +121,20 @@ def _copy_publication_members(
         if not path.is_file() or path.is_symlink():
             raise ReportWorkspaceError(f"unsafe result-cache member: {path}")
         shutil.copy2(path, output_results / path.name)
+
+
+def _copy_measurement_lineage(source: Path, destination: Path) -> None:
+    measurement_lineage = source / MEASUREMENT_LINEAGE_JSON
+    if not measurement_lineage.exists():
+        return
+    if not measurement_lineage.is_file() or measurement_lineage.is_symlink():
+        raise ReportWorkspaceError(
+            f"unsafe measurement-lineage member: {measurement_lineage}"
+        )
+    shutil.copy2(
+        measurement_lineage,
+        destination / MEASUREMENT_LINEAGE_JSON,
+    )
 
 
 def _install_standalone_builder(destination: Path) -> None:
@@ -210,7 +225,8 @@ Create a portable copy, including raw data, TeX, and the reviewed PDF, from a
 source checkout with:
 
 ```bash
-python3 {CANONICAL_REPORT_ENTRYPOINT.as_posix()} export-profile {profile} /absolute/output/path
+python3 {CANONICAL_REPORT_ENTRYPOINT.as_posix()} \
+  export-profile {profile} /absolute/output/path
 ```
 
 The copied entry point selects this profile automatically. Measurements still
@@ -528,6 +544,7 @@ def _workspace_manifest(
         "tracked_content": [
             "*.tex",
             ENVIRONMENT_JSON,
+            MEASUREMENT_LINEAGE_JSON,
             "results/*.json",
             "README.md",
             TABLE_FILLING_RUNBOOK,
@@ -590,6 +607,12 @@ def initialize_profile(
         source_paths = ReportPaths.from_repo(root, profile=source_profile)
         source_service = ReportService(source_paths)
         with source_service.store.named_lock("report-writer"):
+            source_lineage = source / MEASUREMENT_LINEAGE_JSON
+            if source_lineage.exists() and not reset_measurements:
+                raise ReportWorkspaceError(
+                    "a profile with mixed Class-C source lineage can only seed a "
+                    "new profile with reset_measurements=True"
+                )
             source_service.audit()
             _copy_publication_members(source, staging)
         _install_standalone_builder(staging)
@@ -1037,6 +1060,7 @@ def export_profile(
                 service=source_service,
             )
             _copy_publication_members(source, staging)
+            _copy_measurement_lineage(source, staging)
             for name in (
                 "README.md",
                 TABLE_FILLING_RUNBOOK,

@@ -271,6 +271,7 @@ def render_validation_summary(
     caches: Mapping[str, CachePayload] | Iterable[CachePayload],
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
+    authenticated_source_lineage: tuple[str, str] | None = None,
 ) -> str:
     """Render a compact summary immediately before the performance tables."""
 
@@ -381,7 +382,20 @@ def render_validation_summary(
         ]
     )
     revision = summary.uniform_source_revision
-    if revision is None:
+    if (
+        authenticated_source_lineage is not None
+        and summary.successful_source_identity_count == summary.passed_total
+        and set(summary.source_revisions).issubset(
+            set(authenticated_source_lineage)
+        )
+    ):
+        ancestor, descendant = authenticated_source_lineage
+        source_text = (
+            rf"\nolinkurl{{{ancestor}}} \(\rightarrow\) "
+            rf"\nolinkurl{{{descendant}}} "
+            r"\textcolor{ReportGreen}{(authenticated Class-C lineage)}"
+        )
+    elif revision is None:
         source_text = (
             r"\textcolor{ReportOrange}{source identity is incomplete or mixed}"
         )

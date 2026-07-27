@@ -58,6 +58,11 @@ from .campaign_policy import (
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import shared_validation_points
+from .measurement_lineage import (
+    MeasurementLineage,
+    MeasurementLineageError,
+    load_and_audit_measurement_lineage,
+)
 from .models import (
     Accuracy,
     CellSpec,
@@ -2080,6 +2085,91 @@ def _audit_runtime_identity(
         )
 
 
+def _runtime_for_measurement_source(
+    active_runtime: Mapping[str, object],
+    provenance: Mapping[str, object],
+    *,
+    source_revision: str,
+    measurement_lineage: MeasurementLineage | None,
+) -> Mapping[str, object]:
+    """Project invariant descendant runtime fields onto a retained A identity."""
+
+    if (
+        measurement_lineage is None
+        or source_revision == measurement_lineage.descendant_revision
+    ):
+        return active_runtime
+    if source_revision != measurement_lineage.ancestor_revision:
+        raise FinalAuditError(
+            f"measurement source {source_revision} is outside the source bridge"
+        )
+    identity = _mapping(
+        provenance.get("runtime_identity"),
+        "retained ancestor provenance.runtime_identity",
+    )
+    package_tree = identity.get("python_package_tree")
+    if not isinstance(package_tree, Mapping):
+        raise FinalAuditError(
+            "retained ancestor runtime identity lacks its Python package tree"
+        )
+    candidate = identity.get("candidate_build_identity")
+    candidate_digest = identity.get("candidate_build_identity_sha256")
+    native_extension = identity.get("native_extension")
+    native_target = identity.get("native_target")
+    native_features = (
+        native_target.get("cpu_features")
+        if isinstance(native_target, Mapping)
+        else None
+    )
+    environment = measurement_lineage.environment_for_source(source_revision)
+    if (
+        not isinstance(candidate, Mapping)
+        or candidate.get("source_revision") != source_revision
+        or candidate_digest != digest_json(candidate)
+        or not isinstance(native_extension, Mapping)
+        or not isinstance(native_target, Mapping)
+        or not isinstance(native_features, list)
+        or not all(isinstance(feature, str) for feature in native_features)
+        or environment is None
+        or package_tree.get("sha256")
+        != environment.get("python_package_tree_sha256")
+        or identity.get("package_version") != environment.get("pyamplicol")
+        or candidate.get("candidate_fingerprint")
+        != environment.get("candidate_fingerprint")
+        or candidate.get("native_build_inputs_sha256")
+        != environment.get("native_build_inputs_sha256")
+        or identity.get("native_build_inputs_sha256")
+        != environment.get("native_build_inputs_sha256")
+        or native_extension.get("sha256")
+        != environment.get("native_extension_sha256")
+        or native_target.get("triple") != environment.get("native_target")
+        or (", ".join(native_features) or "baseline")
+        != environment.get("native_cpu_features")
+    ):
+        raise FinalAuditError(
+            "retained ancestor runtime identity differs from its authenticated "
+            "Class-C environment"
+        )
+    if (
+        identity.get("native_build_inputs_sha256")
+        != active_runtime.get("native_build_inputs_sha256")
+        or native_extension != active_runtime.get("native_extension")
+        or native_target != active_runtime.get("native_target")
+    ):
+        raise FinalAuditError(
+            "retained ancestor runtime changes a Class-C invariant native identity"
+        )
+    projected = dict(active_runtime)
+    projected["package_version"] = identity.get("package_version")
+    projected["python_package_tree"] = package_tree
+    projected["candidate_build_identity"] = candidate
+    projected["candidate_build_identity_sha256"] = candidate_digest
+    origin_policy = identity.get("loaded_module_origin_policy")
+    if isinstance(origin_policy, Mapping):
+        projected["loaded_module_origin_policy"] = origin_policy
+    return projected
+
+
 def _audit_effective_config(
     cell: CellSpec,
     provenance: Mapping[str, object],
@@ -3999,6 +4089,19 @@ def _audit_final_report_locked(
         expected_source_tree: str | None = str(
             raw_publication_lineage["measurement_source_tree"]
         )
+        try:
+            measurement_lineage = load_and_audit_measurement_lineage(
+                root,
+                report.paths.docs_dir,
+                report.store,
+                expected_active_source_revision=expected_source_revision,
+                catalog=catalog,
+            )
+            report.bind_measurement_lineage(measurement_lineage)
+        except MeasurementLineageError as error:
+            raise FinalAuditError(
+                f"cannot authenticate measurement source bridge: {error}"
+            ) from error
     else:
         report_profile = None
         active_policy = campaign_policy or STRICT_POLICY
@@ -4007,6 +4110,7 @@ def _audit_final_report_locked(
             expected_source_revision,
         )
         expected_source_tree = None
+        measurement_lineage = None
     policy_profile = report_profile or (
         MACBOOK_M3_PROFILE
         if active_policy is MACBOOK_M3_POLICY
@@ -4045,6 +4149,7 @@ def _audit_final_report_locked(
         )
     published_measurements: dict[str, Mapping[str, object]] = {}
     measurements: dict[str, Mapping[str, object]] = {}
+    measurement_sources: dict[str, tuple[str, str | None]] = {}
     measurement_states: dict[str, PolicyMeasurementState] = {}
     errors: list[str] = []
     for cell in cells:
@@ -4076,18 +4181,42 @@ def _audit_final_report_locked(
             current.result,
             f"{cell.cell_id}.current.result",
         )
+        if measurement_lineage is None:
+            cell_source = (expected_source_revision, expected_source_tree)
+        else:
+            authorized = measurement_lineage.source_for_current(
+                current,
+                active_revision=expected_source_revision,
+                active_tree=expected_source_tree or "",
+            )
+            if authorized is None:
+                errors.append(
+                    f"{cell.cell_id}: current is not authorized by the "
+                    "measurement source bridge"
+                )
+                continue
+            cell_source = authorized
+            if (
+                cell.cell_id in measurement_lineage.required_descendant_cell_ids
+                and cell_source[0] != expected_source_revision
+            ):
+                errors.append(
+                    f"{cell.cell_id}: Class-C impact/agreement target has not "
+                    "been remeasured at the descendant source"
+                )
+                continue
         policy_errors = (
             *_publication_policy_errors(
                 f"{cell.cell_id}.published_measurement",
                 published,
-                expected_source_revision=expected_source_revision,
-                expected_source_tree=expected_source_tree,
+                expected_source_revision=cell_source[0],
+                expected_source_tree=cell_source[1],
             ),
             *_publication_policy_errors(
                 f"{cell.cell_id}.current.result",
                 current_measurement,
-                expected_source_revision=expected_source_revision,
-                expected_source_tree=expected_source_tree,
+                expected_source_revision=cell_source[0],
+                expected_source_tree=cell_source[1],
             ),
         )
         if policy_errors:
@@ -4099,16 +4228,16 @@ def _audit_final_report_locked(
                 policy_profile,
                 cell,
                 published,
-                expected_source_revision=expected_source_revision,
-                expected_source_tree=expected_source_tree,
+                expected_source_revision=cell_source[0],
+                expected_source_tree=cell_source[1],
             )
             current_state = validate_policy_measurement(
                 active_policy,
                 policy_profile,
                 cell,
                 current_measurement,
-                expected_source_revision=expected_source_revision,
-                expected_source_tree=expected_source_tree,
+                expected_source_revision=cell_source[0],
+                expected_source_tree=cell_source[1],
             )
             if published_state is not current_state:
                 raise FinalAuditError(
@@ -4129,6 +4258,7 @@ def _audit_final_report_locked(
             continue
         published_measurements[cell.cell_id] = published
         measurements[cell.cell_id] = current_measurement
+        measurement_sources[cell.cell_id] = cell_source
         measurement_states[cell.cell_id] = current_state
     if errors:
         rendered = "\n".join(f"- {message}" for message in errors[:50])
@@ -4318,8 +4448,8 @@ def _audit_final_report_locked(
                 cell,
                 measurement,
                 baseline=baseline,
-                expected_source_revision=expected_source_revision,
-                expected_source_tree=expected_source_tree,
+                expected_source_revision=measurement_sources[cell.cell_id][0],
+                expected_source_tree=measurement_sources[cell.cell_id][1],
                 expected_legacy_revision=expected_legacy_revision,
                 active_runtime=active_runtime,
                 report_paths=report.paths,
@@ -4432,11 +4562,19 @@ def _audit_final_report_locked(
                     f"{reference.cell.cell_id}.provenance",
                 )
                 assert active_runtime is not None
+                source_revision = measurement_sources[
+                    reference.cell.cell_id
+                ][0]
                 _audit_runtime_identity(
                     reference.cell,
                     provenance,
-                    expected_source_revision=expected_source_revision,
-                    active_runtime=active_runtime,
+                    expected_source_revision=source_revision,
+                    active_runtime=_runtime_for_measurement_source(
+                        active_runtime,
+                        provenance,
+                        source_revision=source_revision,
+                        measurement_lineage=measurement_lineage,
+                    ),
                     artifact=evidence,
                 )
         except Exception as error:
@@ -4611,6 +4749,32 @@ def _audit_final_report_locked(
         "status": (ResultStatus.OK.value if final_gate_complete else "incomplete"),
         "expected_source_revision": expected_source_revision,
         "measurement_source_revision": expected_source_revision,
+        "measurement_source_lineage": (
+            None
+            if measurement_lineage is None
+            else {
+                "schema": measurement_lineage.payload["schema"],
+                "impact": measurement_lineage.payload["impact"],
+                "ancestor_revision": measurement_lineage.ancestor_revision,
+                "ancestor_tree": measurement_lineage.ancestor_tree,
+                "descendant_revision": measurement_lineage.descendant_revision,
+                "descendant_tree": measurement_lineage.descendant_tree,
+                "retained_ancestor_current_count": sum(
+                    source[0] == measurement_lineage.ancestor_revision
+                    for source in measurement_sources.values()
+                ),
+                "descendant_current_count": sum(
+                    source[0] == measurement_lineage.descendant_revision
+                    for source in measurement_sources.values()
+                ),
+                "invalidated_cell_count": len(
+                    measurement_lineage.invalidated_cell_ids
+                ),
+                "recompare_cell_count": len(
+                    measurement_lineage.recompare_cell_ids
+                ),
+            }
+        ),
         "publication_revision": publication_lineage["publication_revision"],
         "publication_lineage": publication_lineage,
         "report_profile": report_profile,

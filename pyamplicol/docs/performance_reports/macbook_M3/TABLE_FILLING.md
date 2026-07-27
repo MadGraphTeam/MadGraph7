@@ -193,6 +193,53 @@ env -u PYTHONPATH -u PYTHONHOME PYAMPLICOL_BUILD_MODE=candidate \
 The refresh must authenticate the source/tree, wheel, native build inputs,
 installed distribution, native module, target, and candidate fingerprint.
 
+### Bounded Class-C correction of an existing campaign
+
+Do not reset a substantially completed profile when the reviewed HZZ
+orientation correction is the only executable change. Stop every worker and
+publisher, retain every immutable attempt, advance the clean checkout from the
+measured ancestor `A` to the reviewed descendant `D`, and—while the installed
+runtime and `report_environment.json` still authenticate `A`—prepare the
+fail-closed bridge:
+
+```bash
+set -euo pipefail
+A='full-ancestor-measurement-SHA'
+D="$(git rev-parse HEAD)"
+test "$D" != "$A"
+.venv/bin/python docs/performance_reports/macbook_M3/result_tables.py \
+  prepare-class-c-bridge \
+  --ancestor-revision "$A" --descendant-revision "$D" \
+  --impact hzz-orientation-v1
+```
+
+The command authenticates the exact `A..D` path/status/mode/blob diff, frozen
+workspace policy, complete attempt history, current pins, and active
+recurrence-schedule reachability. It fails if a worker is in flight or any
+unreviewed executable/dependency/runtime path changed. Now perform the exact
+candidate build/install sequence from this section for `D`, without deleting
+the profile artifact or coordination roots, and finalize:
+
+```bash
+set -euo pipefail
+.venv/bin/python docs/performance_reports/macbook_M3/result_tables.py \
+  finalize-class-c-bridge \
+  --ancestor-revision "$A" --descendant-revision "$D"
+.venv/bin/python docs/performance_reports/macbook_M3/result_tables.py \
+  audit-source-bridge --expected-active-source-revision "$D"
+```
+
+Resume only the scheduler-selected descendant closure: the 20 built-in
+`dd_zzz_jets` recurrence cells at \(n\geq3\), followed by their 20 UFO-SM
+direct-agreement peers. Use `--missing-only --artifact-policy regenerate` and
+the one-cell discipline below. A dry run over
+`--process-key dd_zzz_jets --mode recurrence --n-final 3 --n-final 4
+--n-final 5 --n-final 6 --n-final 7 --n-final 8 --n-final 9`
+must initially schedule exactly 40 bridge targets and must schedule zero after
+both groups close. Never rewrite provenance, copy caches, or remove an
+ancestor attempt. Final audit authorizes every retained `A` current by its
+immutable pin and requires all 40 targets from `D`.
+
 ## 3. Keep a live PDF beside the running worker
 
 The Mac filler launches cells individually. The broad filters in Sections 4--6

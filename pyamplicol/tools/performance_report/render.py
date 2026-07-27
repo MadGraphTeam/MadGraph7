@@ -2313,12 +2313,14 @@ def render_all_tables(
     caches: Mapping[str, CachePayload] | Iterable[CachePayload],
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
+    authenticated_source_lineage: tuple[str, str] | None = None,
 ) -> dict[str, str]:
     cache_source = caches if isinstance(caches, Mapping) else tuple(caches)
     return {
         SUMMARY_TABLE_NAME: render_validation_summary(
             cache_source,
             catalog=catalog,
+            authenticated_source_lineage=authenticated_source_lineage,
         ),
         **render_all_best_mode_tables(cache_source, catalog=catalog),
         **render_all_matrix_tables(cache_source, catalog=catalog),

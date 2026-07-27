@@ -20,6 +20,7 @@ _PUBLICATION_ONLY_COMMANDS = {
     "export-profile",
     "validate",
     "audit",
+    "audit-source-bridge",
     "reset",
     "render",
     "recover",

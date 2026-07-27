@@ -15,15 +15,20 @@ from pathlib import Path
 from .artifacts import ArtifactStore, CurrentRecord
 from .cache import (
     build_reset_caches,
+    reset_entry,
     schema_document,
     validate_cache,
     validate_measurement,
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
-from .measurement import source_revision
+from .measurement_lineage import (
+    MeasurementLineage,
+    load_and_audit_measurement_lineage,
+)
 from .publication import portable_publication_value
 from .render import render_all_tables, summarize_visible_completeness
 from .report_policy import publication_measurement_policy_issues
+from .source_identity import require_eligible_report_source
 
 
 class ReportServiceError(RuntimeError):
@@ -122,6 +127,66 @@ class ReportService:
             artifact_root=paths.artifact_root,
             lock_root=paths.coordination_root,
         )
+        self._authenticated_measurement_lineage: MeasurementLineage | None = None
+        self._measurement_lineage_bound = False
+
+    def bind_measurement_lineage(
+        self,
+        lineage: MeasurementLineage | None,
+    ) -> None:
+        """Reuse one already fully audited bridge through a campaign transaction."""
+
+        self._authenticated_measurement_lineage = lineage
+        self._measurement_lineage_bound = True
+
+    def _measurement_lineage(self) -> MeasurementLineage | None:
+        if self._measurement_lineage_bound:
+            return self._authenticated_measurement_lineage
+        try:
+            relative = self.paths.docs_dir.relative_to(
+                self.paths.repo_root / PROFILE_REPORT_ROOT
+            )
+        except ValueError:
+            return None
+        if (
+            len(relative.parts) != 1
+            or _PROFILE_RE.fullmatch(relative.parts[0]) is None
+            or ".." in relative.parts[0]
+        ):
+            return None
+        if not (
+            self.paths.docs_dir / "measurement_lineage.json"
+        ).exists() and not self.store.recover_current_records():
+            self.bind_measurement_lineage(None)
+            return None
+        source = require_eligible_report_source(self.paths.repo_root)
+        lineage = load_and_audit_measurement_lineage(
+            self.paths.repo_root,
+            self.paths.docs_dir,
+            self.store,
+            expected_active_source_revision=source.revision,
+            catalog=self.catalog,
+        )
+        self.bind_measurement_lineage(lineage)
+        return lineage
+
+    def _render_tables(
+        self,
+        caches: Mapping[str, Mapping[str, object]],
+    ) -> dict[str, str]:
+        lineage = self._measurement_lineage()
+        source_lineage = (
+            None
+            if lineage is None
+            else (lineage.ancestor_revision, lineage.descendant_revision)
+        )
+        if source_lineage is None:
+            return render_all_tables(caches, catalog=self.catalog)
+        return render_all_tables(
+            caches,
+            catalog=self.catalog,
+            authenticated_source_lineage=source_lineage,
+        )
 
     def reset_payloads(self) -> dict[str, dict[str, object]]:
         return build_reset_caches(self.catalog)
@@ -172,16 +237,26 @@ class ReportService:
         records: tuple[CurrentRecord, ...] | None = None,
     ) -> int:
         records = self.store.recover_current_records() if records is None else records
-        expected_revision = source_revision(
-            self.paths.repo_root,
-            require_clean=True,
-        )
+        source = require_eligible_report_source(self.paths.repo_root)
+        expected_revision = source.revision
+        lineage = self._measurement_lineage()
         by_cell = {
             record.cell_id: record
             for record in records
-            if isinstance(record.result.get("provenance"), Mapping)
-            and record.result["provenance"].get("report_source_revision")
-            == expected_revision
+            if (
+                lineage.source_for_current(
+                    record,
+                    active_revision=source.revision,
+                    active_tree=source.tree,
+                )
+                is not None
+                if lineage is not None
+                else (
+                    isinstance(record.result.get("provenance"), Mapping)
+                    and record.result["provenance"].get("report_source_revision")
+                    == expected_revision
+                )
+            )
         }
         cells_by_id = {
             cell.cell_id: cell for cell in self.catalog.measurement_cells()
@@ -192,6 +267,14 @@ class ReportService:
             assert isinstance(entries, list)
             for entry in entries:
                 assert isinstance(entry, dict)
+                cell_id = str(entry["cell_id"])
+                if (
+                    lineage is not None
+                    and cell_id in lineage.required_descendant_cell_ids
+                ):
+                    entry["measurement"] = reset_entry(cells_by_id[cell_id])[
+                        "measurement"
+                    ]
                 record = by_cell.get(str(entry["cell_id"]))
                 if record is None:
                     continue
@@ -290,12 +373,12 @@ class ReportService:
             caches = self.reset_payloads() if reset else self.load_caches()
             if merge_artifacts and not reset:
                 self.merge_current(caches)
-            tables = render_all_tables(caches, catalog=self.catalog)
+            tables = self._render_tables(caches)
             return self._snapshot_files(caches, tables)
 
     def validate(self) -> dict[str, object]:
         caches = self.load_caches()
-        tables = render_all_tables(caches, catalog=self.catalog)
+        tables = self._render_tables(caches)
         statuses: Counter[str] = Counter()
         for payload in caches.values():
             for entry in payload["entries"]:  # type: ignore[index]
@@ -343,7 +426,7 @@ class ReportService:
         result = self.validate()
         caches = self.load_caches()
         self.validate_publication_policy(caches)
-        rendered = render_all_tables(caches, catalog=self.catalog)
+        rendered = self._render_tables(caches)
         visible_completeness = summarize_visible_completeness(
             caches,
             catalog=self.catalog,

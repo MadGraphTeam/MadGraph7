@@ -35,6 +35,7 @@ from .campaign_policy import (
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import failure_measurement
+from .measurement_lineage import MeasurementLineage
 from .models import (
     Accuracy,
     ArtifactPolicy,
@@ -194,7 +195,9 @@ def _successful_current(
     cell_id: str,
     *,
     expected_revision: str | None = None,
+    expected_tree: str | None = None,
     expected_cell: CellSpec | None = None,
+    measurement_lineage: MeasurementLineage | None = None,
 ) -> CurrentRecord | None:
     current = store.load_current(cell_id, missing_ok=True)
     if current is None or current.result.get("status") != ResultStatus.OK.value:
@@ -205,10 +208,24 @@ def _successful_current(
         return None
     if expected_revision is not None:
         provenance = current.result.get("provenance")
-        if (
-            not isinstance(provenance, Mapping)
-            or provenance.get("report_source_revision") != expected_revision
-        ):
+        if measurement_lineage is not None and expected_tree is not None:
+            source = measurement_lineage.source_for_current(
+                current,
+                active_revision=expected_revision,
+                active_tree=expected_tree,
+            )
+        else:
+            source = (
+                (expected_revision, expected_tree or "")
+                if isinstance(provenance, Mapping)
+                and provenance.get("report_source_revision") == expected_revision
+                and (
+                    expected_tree is None
+                    or provenance.get("report_source_tree") == expected_tree
+                )
+                else None
+            )
+        if source is None:
             return None
     return current
 
@@ -220,13 +237,16 @@ def _policy_current(
     settings: CampaignSettings,
     expected_revision: str | None,
     expected_tree: str | None = None,
+    measurement_lineage: MeasurementLineage | None = None,
 ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
     if settings.campaign_policy is STRICT_POLICY:
         current = _successful_current(
             store,
             cell.cell_id,
             expected_revision=expected_revision,
+            expected_tree=expected_tree,
             expected_cell=cell,
+            measurement_lineage=measurement_lineage,
         )
         return (
             None
@@ -236,6 +256,17 @@ def _policy_current(
     current = store.load_current(cell.cell_id, missing_ok=True)
     if current is None or expected_revision is None:
         return None
+    expected_source = (
+        measurement_lineage.source_for_current(
+            current,
+            active_revision=expected_revision,
+            active_tree=expected_tree or "",
+        )
+        if measurement_lineage is not None and expected_tree is not None
+        else (expected_revision, expected_tree)
+    )
+    if expected_source is None:
+        return None
     try:
         validate_measurement(current.result, expected_cell=cell)
         state = validate_policy_measurement(
@@ -243,8 +274,8 @@ def _policy_current(
             settings.report_profile or "",
             cell,
             current.result,
-            expected_source_revision=expected_revision,
-            expected_source_tree=expected_tree,
+            expected_source_revision=expected_source[0],
+            expected_source_tree=expected_source[1],
         )
     except (CampaignPolicyError, ValueError):
         return None
@@ -276,6 +307,7 @@ def _resource_frontier_source(
     catalog: ReportCatalog,
     expected_revision: str | None,
     expected_tree: str | None,
+    measurement_lineage: MeasurementLineage | None = None,
     lane_cells: Sequence[CellSpec] | None = None,
 ) -> tuple[CellSpec, CurrentRecord, PolicyMeasurementState] | None:
     """Return the first authenticated lower-multiplicity hard resource censor."""
@@ -301,6 +333,7 @@ def _resource_frontier_source(
             settings=settings,
             expected_revision=expected_revision,
             expected_tree=expected_tree,
+            measurement_lineage=measurement_lineage,
         )
         if current is None:
             continue
@@ -339,6 +372,8 @@ def _fresh_equivalent_current(
     *,
     catalog: ReportCatalog,
     expected_revision: str,
+    expected_tree: str | None = None,
+    measurement_lineage: MeasurementLineage | None = None,
 ) -> CurrentRecord | None:
     if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
         return None
@@ -347,7 +382,9 @@ def _fresh_equivalent_current(
             store,
             equivalent.cell_id,
             expected_revision=expected_revision,
+            expected_tree=expected_tree,
             expected_cell=equivalent,
+            measurement_lineage=measurement_lineage,
         )
         if current is not None:
             return current
@@ -362,6 +399,7 @@ def plan_campaign(
     catalog: ReportCatalog = REPORT_CATALOG,
     expected_revision: str | None = None,
     expected_tree: str | None = None,
+    measurement_lineage: MeasurementLineage | None = None,
 ) -> tuple[PlannedCell, ...]:
     requested_ids = {cell.cell_id for cell in requested}
     needed: dict[str, CellSpec] = {}
@@ -400,6 +438,7 @@ def plan_campaign(
                 settings=settings,
                 expected_revision=expected_revision,
                 expected_tree=expected_tree,
+                measurement_lineage=measurement_lineage,
             )
             for dependency in cell_dependencies
         }
@@ -426,6 +465,7 @@ def plan_campaign(
             settings=settings,
             expected_revision=expected_revision,
             expected_tree=expected_tree,
+            measurement_lineage=measurement_lineage,
         )
         frontier_source = _resource_frontier_source(
             store,
@@ -434,6 +474,7 @@ def plan_campaign(
             catalog=catalog,
             expected_revision=expected_revision,
             expected_tree=expected_tree,
+            measurement_lineage=measurement_lineage,
             lane_cells=resource_lanes.get(_resource_lane_key(cell), ()),
         )
         expected_frontier = (
@@ -621,6 +662,8 @@ class CampaignScheduler:
         *,
         settings: CampaignSettings,
         catalog: ReportCatalog = REPORT_CATALOG,
+        measurement_lineage: MeasurementLineage | None = None,
+        measurement_lineage_authenticated: bool = False,
     ) -> None:
         self.service = service
         self.settings = settings
@@ -630,6 +673,19 @@ class CampaignScheduler:
         )
         self.source_revision = self.source_identity.revision
         self.source_tree = self.source_identity.tree
+        self.measurement_lineage = (
+            measurement_lineage
+            if measurement_lineage_authenticated
+            else (
+                None
+                if settings.report_profile is None
+                else service._measurement_lineage()
+            )
+        )
+        self.measurement_source_tree = (
+            self.source_tree if self.measurement_lineage is not None else None
+        )
+        self.service.bind_measurement_lineage(self.measurement_lineage)
         self._prepared_model_paths: dict[ModelKey, Path] = {}
         self._resource_lanes: dict[tuple[object, ...], tuple[CellSpec, ...]] = {}
         if settings.campaign_policy.allow_terminal_censors:
@@ -650,7 +706,8 @@ class CampaignScheduler:
             cell,
             settings=self.settings,
             expected_revision=self.source_revision,
-            expected_tree=self.source_tree,
+            expected_tree=self.measurement_source_tree,
+            measurement_lineage=self.measurement_lineage,
         )
 
     def _prepare_legacy_workspace(self, attempt_id: str) -> Path:
@@ -823,7 +880,8 @@ class CampaignScheduler:
                 settings=self.settings,
                 catalog=self.catalog,
                 expected_revision=self.source_revision,
-                expected_tree=self.source_tree,
+                expected_tree=self.measurement_source_tree,
+                measurement_lineage=self.measurement_lineage,
                 lane_cells=self._resource_lanes.get(
                     _resource_lane_key(cell),
                     (),
@@ -875,6 +933,8 @@ class CampaignScheduler:
                     cell,
                     catalog=self.catalog,
                     expected_revision=self.source_revision,
+                    expected_tree=self.measurement_source_tree,
+                    measurement_lineage=self.measurement_lineage,
                 )
                 if (
                     not self.settings.rerun

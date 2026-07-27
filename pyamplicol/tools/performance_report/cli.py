@@ -19,6 +19,15 @@ from .campaign_policy import (
     X86_EPYC_POLICY_NAME,
 )
 from .catalog import REPORT_CATALOG
+from .measurement_lineage import (
+    CLASS_C_HZZ_IMPACT,
+    MeasurementLineageError,
+    audit_measurement_lineage,
+    class_c_pending_path,
+    finalize_class_c_bridge,
+    load_and_audit_measurement_lineage,
+    prepare_class_c_bridge,
+)
 from .models import Accuracy, ArtifactPolicy, ExecutionMode, ModelKey, Workload
 from .prepared import ensure_report_prepared_model
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
@@ -118,6 +127,31 @@ def _parser() -> argparse.ArgumentParser:
         help="authenticate and record the exact installed measurement runtime",
     )
     refresh_environment.add_argument("--expected-source-revision", required=True)
+
+    prepare_bridge = subparsers.add_parser(
+        "prepare-class-c-bridge",
+        help="snapshot an exact frozen campaign before one bounded source correction",
+    )
+    prepare_bridge.add_argument("--ancestor-revision", required=True)
+    prepare_bridge.add_argument("--descendant-revision", required=True)
+    prepare_bridge.add_argument(
+        "--impact",
+        choices=(CLASS_C_HZZ_IMPACT,),
+        required=True,
+    )
+
+    finalize_bridge = subparsers.add_parser(
+        "finalize-class-c-bridge",
+        help="authenticate the corrected runtime and publish its source lineage",
+    )
+    finalize_bridge.add_argument("--ancestor-revision", required=True)
+    finalize_bridge.add_argument("--descendant-revision", required=True)
+
+    audit_bridge = subparsers.add_parser(
+        "audit-source-bridge",
+        help="audit one finalized mixed-source profile without changing it",
+    )
+    audit_bridge.add_argument("--expected-active-source-revision", required=True)
 
     export = subparsers.add_parser(
         "export-profile",
@@ -447,6 +481,74 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print(json.dumps(environment, allow_nan=False, sort_keys=True))
         return 0
+    if args.command == "prepare-class-c-bridge":
+        if args.report_profile is None:
+            parser.error("prepare-class-c-bridge requires --report-profile")
+        prepared = prepare_class_c_bridge(
+            repo_root,
+            service.paths.docs_dir,
+            service.store,
+            ancestor_revision=args.ancestor_revision,
+            descendant_revision=args.descendant_revision,
+            impact=args.impact,
+        )
+        pending = class_c_pending_path(
+            service.store,
+            ancestor_revision=str(prepared["ancestor_revision"]),
+            descendant_revision=str(prepared["descendant_revision"]),
+        )
+        print(
+            json.dumps(
+                {
+                    "pending_locator": pending.relative_to(
+                        service.paths.artifact_root
+                    ).as_posix(),
+                    "current_snapshot_sha256": prepared[
+                        "current_snapshot_sha256"
+                    ],
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "finalize-class-c-bridge":
+        if args.report_profile is None:
+            parser.error("finalize-class-c-bridge requires --report-profile")
+        pending = class_c_pending_path(
+            service.store,
+            ancestor_revision=args.ancestor_revision,
+            descendant_revision=args.descendant_revision,
+        )
+        finalized = finalize_class_c_bridge(
+            repo_root,
+            service.paths.docs_dir,
+            service.store,
+            pending_path=pending,
+            expected_active_source_revision=args.descendant_revision,
+        )
+        print(
+            json.dumps(
+                {
+                    "lineage": (
+                        service.paths.docs_dir / "measurement_lineage.json"
+                    ).relative_to(repo_root).as_posix(),
+                    "descendant_revision": finalized["descendant_revision"],
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "audit-source-bridge":
+        if args.report_profile is None:
+            parser.error("audit-source-bridge requires --report-profile")
+        result = audit_measurement_lineage(
+            repo_root,
+            service.paths.docs_dir,
+            service.store,
+            expected_active_source_revision=args.expected_active_source_revision,
+        )
+        print(json.dumps(result, allow_nan=False, sort_keys=True))
+        return 0
     if args.command == "final-audit":
         from .final_audit import audit_final_report
 
@@ -490,6 +592,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             source_identity = require_eligible_report_source(repo_root)
             expected_revision = source_identity.revision
+            measurement_lineage = (
+                None
+                if args.report_profile is None
+                else load_and_audit_measurement_lineage(
+                    repo_root,
+                    service.paths.docs_dir,
+                    service.store,
+                    expected_active_source_revision=expected_revision,
+                )
+            )
             if args.report_profile is None:
                 campaign_policy = STRICT_POLICY
             else:
@@ -522,7 +634,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 campaign_policy=campaign_policy,
                 report_profile=args.report_profile,
             )
-        except (ValueError, ReportWorkspaceError) as error:
+        except (ValueError, ReportWorkspaceError, MeasurementLineageError) as error:
             parser.error(str(error))
         planned = plan_campaign(
             requested,
@@ -530,6 +642,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             settings=settings,
             expected_revision=expected_revision,
             expected_tree=source_identity.tree,
+            measurement_lineage=measurement_lineage,
         )
         if args.dry_run:
             print(
@@ -560,6 +673,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.report_profile,
                 expected_source_revision=expected_revision,
             )
+        service.bind_measurement_lineage(measurement_lineage)
         result = CampaignScheduler(service, settings=settings).run(planned)
         if args.refresh_pdf == "end":
             _compile_pdf(service)

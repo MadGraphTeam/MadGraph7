@@ -120,6 +120,7 @@ def _generated_publication_member(
     if name == "pyAmpliCol.pdf":
         return True
     if allow_environment and name in {
+        "measurement_lineage.json",
         "report_environment.json",
         "report_environment.tex",
     }:
