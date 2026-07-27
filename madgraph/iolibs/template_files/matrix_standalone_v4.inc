@@ -93,6 +93,21 @@ C     FLAV_USE is the flavor part of FLAV_IDX.
       LOGICAL GOODHEL(NCOMB,NFLAV)
       DATA NTRY/NNTRY_FLAV*0/
       DATA GOODHEL/NGOODHEL_FLAV*.FALSE./
+C     C-parity helicity de-duplication (see the SMATRIX loop): FLIP(IHEL) is the
+C     row with every helicity negated (built once, an involution); CSYM(IHEL,J)
+C     stays true while that flipped partner has an identical |M|^2 at every scan
+C     point (parity/C symmetry); TSTORE caches the per-row |M|^2 within a scan
+C     point; DEDUP turns the reuse on in the fast phase only.
+C     NTRY_CSYM counts only the uncrossed (cross 0) calls: CSYM is built and
+C     applied for the base process only, because a crossing permutes/sign-flips
+C     the helicities so FLIP (a base-row negation) is no longer the crossed
+C     C-parity partner. Crossed flavours therefore keep the full helicity sum.
+      INTEGER FLIP(NCOMB), JHEL, KHEL, NTRY_CSYM(NFLAV)
+      LOGICAL CSYM(NCOMB,NFLAV), HELSAME, DEDUP
+      REAL*8 TSTORE(NCOMB)
+      DATA FLIP/NCOMB*0/
+      DATA CSYM/NGOODHEL_FLAV*.TRUE./
+      DATA NTRY_CSYM/NNTRY_FLAV*0/
 
 C
 C GLOBAL VARIABLES
@@ -125,10 +140,12 @@ c---------
 if (HELRESET) then
    do i=1,NFLAV
       NTRY(i) = 0
+      NTRY_CSYM(i) = 0
    enddo
    do i=1,NCOMB
       do j=1,NFLAV
          GOODHEL(I,j) = .false.
+         CSYM(I,j) = .true.
       enddo
    enddo
    HELRESET = .false.
@@ -151,7 +168,27 @@ C     The helicity filter is deliberately shared by every crossing of a given
 C     flavor, so it is indexed by FLAV_USE rather than by the full FLAV_IDX.
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_USE, FLAVOR)
       CALL %(proc_prefix)sFILL_NHEL()
+C     C-parity partner of each helicity row (all helicities negated): an
+C     involution, self-paired when every helicity is 0. Fixed per process, so
+C     built once (FLIP starts at 0).
+      IF (FLIP(1).EQ.0) THEN
+        DO IHEL=1,NCOMB
+          FLIP(IHEL)=IHEL
+          DO JHEL=1,NCOMB
+            HELSAME=.TRUE.
+            DO KHEL=1,NEXTERNAL
+              IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,IHEL)) HELSAME=.FALSE.
+            ENDDO
+            IF (HELSAME) THEN
+              FLIP(IHEL)=JHEL
+              EXIT
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDIF
       IF(USERHEL.EQ.-1) NTRY(FLAV_USE)=NTRY(FLAV_USE)+1
+      IF(USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV)
+     &   NTRY_CSYM(FLAV_USE)=NTRY_CSYM(FLAV_USE)+1
       DO IHEL=1,NEXTERNAL
          JC(IHEL) = +1
       ENDDO
@@ -169,6 +206,11 @@ C     For this reason, we simply remove the filterin when there is only three ex
           ENDDO
         ENDDO
       ENDIF
+C     C-parity de-duplication is only safe for the plain unpolarized helicity
+C     sum of the uncrossed process (FLAV_IDX in [1,NFLAV]) and only once its own
+C     scan has settled (NTRY_CSYM>=20).
+      DEDUP = NTRY_CSYM(FLAV_USE).GE.20 .AND. USERHEL.EQ.-1
+     &        .AND. POLARIZATIONS(0,0).EQ.-1 .AND. FLAV_IDX.LE.NFLAV
       ANS = 0D0
           DO IHEL=1,NCOMB
              IF (USERHEL.EQ.-1.OR.USERHEL.EQ.HELALLOW(IHEL)) THEN
@@ -176,9 +218,22 @@ C     For this reason, we simply remove the filterin when there is only three ex
                     IF(NTRY(FLAV_USE).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
                     ENDIF
+C                   Fast phase: a row whose fully flipped C-parity partner has an
+C                   identical |M|^2 (CSYM) is computed once, at the lower index,
+C                   and counted twice -- skip the higher-index partner here.
+                    IF (DEDUP.AND.CSYM(IHEL,FLAV_USE).AND.
+     &                  IHEL.GT.FLIP(IHEL)) CYCLE
 C                   MATRIX/GET_AMP get already crossed arrays and the reduced
 C                   flavor index: the crossing was applied once, above.
 %(smatrix_matrix_call)s
+C                   Scan phase (uncrossed only): cache |M|^2 to test the
+C                   C-parity partner below.
+                    IF (FLAV_IDX.LE.NFLAV.AND.NTRY_CSYM(FLAV_USE).LT.20)
+     &                  TSTORE(IHEL)=T
+C                   Fast phase: the representative carries its skipped partner's
+C                   identical contribution.
+                    IF (DEDUP.AND.CSYM(IHEL,FLAV_USE).AND.IHEL.LT.FLIP(IHEL))
+     &                  T=T+T
                     IF(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL)) THEN
                         ANS=ANS+T
                     ENDIF
@@ -186,6 +241,22 @@ C                   flavor index: the crossing was applied once, above.
                 ENDIF
              ENDIF
           ENDDO
+C     Scan phase: drop the C-parity pairing of any row whose fully flipped
+C     partner gave a different |M|^2 (parity/C violation). One mismatch at any
+C     scan point permanently invalidates the pair (robust, like the zero-filter).
+      IF (USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV
+     &    .AND.NTRY_CSYM(FLAV_USE).LT.20
+     &    .AND.POLARIZATIONS(0,0).EQ.-1) THEN
+        DO IHEL=1,NCOMB
+          IF (FLIP(IHEL).GT.IHEL) THEN
+            IF (ABS(TSTORE(IHEL)-TSTORE(FLIP(IHEL))).GT.
+     &          1D-6*(ABS(TSTORE(IHEL))+ABS(TSTORE(FLIP(IHEL))))) THEN
+              CSYM(IHEL,FLAV_USE)=.FALSE.
+              CSYM(FLIP(IHEL),FLAV_USE)=.FALSE.
+            ENDIF
+          ENDIF
+        ENDDO
+      ENDIF
 %(smatrix_iden_line)s
       IF(USERHEL.NE.-1) THEN
           ANS=ANS*HELAVGFACTOR
