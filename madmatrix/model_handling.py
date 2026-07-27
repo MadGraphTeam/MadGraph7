@@ -2373,6 +2373,84 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             'sigmakin_perlane_decl': '',
             'sigmakin_ihel_expr': 'cGoodHel[ighel]',
             'calc_jamps_ihlane_arg': '',
+            # ---- C-parity good-helicity de-duplication (uncrossed only) ----
+            # Two helicity rows that are exact mirrors (every helicity negated)
+            # give an identical |M|^2 under a parity/C-conserving amplitude, so
+            # one need not be recomputed. This is the NON-crossing path: cGoodHel
+            # stays the full good-helicity list (the per-helicity event-selection
+            # CDF and selected_hel_code stay exact), but calculate_jamps is called
+            # only for the lower-index representative of each surviving C-pair and
+            # its |M|^2 is reused for the partner -- halving the expensive kernel
+            # calls for a C-symmetric process. csym is detected in the (serial)
+            # getGoodHel scan (thread-safe), so sigmaKin only reads the tables.
+            # The crossing path keeps the full sum (see the crossing return): its
+            # per-lane SIMD loop already runs cNGoodMaxCross times regardless of a
+            # single crossing's list, so reusing a base-row |M|^2 would not save a
+            # kernel call there anyway.
+            'csym_statics':
+                '#ifndef MGONGPUCPP_GPUIMPL\n'
+                '  static int cFlip[ncomb];      // C-parity partner: every helicity negated (an involution)\n'
+                '  static bool cCsymBad[ncomb];  // latched: |M(ihel)| != |M(cFlip)| at some scan point\n'
+                '  static bool cCsymPair[ncomb]; // good, distinct, C-symmetric pair member (reuse its partner)\n'
+                '#endif',
+            'csym_gh_flip':
+                '    fptype me_scan[ncomb][neppV]; // per-hel |M|^2 of this scan page, for the C-parity test\n'
+                '    for( int _h = 0; _h < ncomb; _h++ ) {\n'
+                '      cFlip[_h] = _h;\n'
+                '      cCsymBad[_h] = false;\n'
+                '      for( int _j = 0; _j < ncomb; _j++ ) {\n'
+                '        bool _same = true;\n'
+                '        for( int _k = 0; _k < npar; _k++ ) if( cHel[_j][_k] != -cHel[_h][_k] ) _same = false;\n'
+                '        if( _same ) { cFlip[_h] = _j; break; }\n'
+                '      }\n'
+                '    }\n',
+            'csym_gh_record':
+                '        for( int _ie = 0; _ie < neppV; ++_ie ) me_scan[ihel][_ie] = allMEs[ievt00 + _ie];\n',
+            'csym_gh_check':
+                '      for( int _h = 0; _h < ncomb; _h++ ) {\n'
+                '        if( cFlip[_h] > _h ) {\n'
+                '          for( int _ie = 0; _ie < neppV; ++_ie ) {\n'
+                '            const fptype _a = me_scan[_h][_ie];\n'
+                '            const fptype _b = me_scan[cFlip[_h]][_ie];\n'
+                '            fptype _d = _a - _b; if( _d < (fptype)0. ) _d = -_d;\n'
+                '            fptype _aa = _a < (fptype)0. ? -_a : _a;\n'
+                '            fptype _bb = _b < (fptype)0. ? -_b : _b;\n'
+                '            if( _d > (fptype)1e-6 * ( _aa + _bb ) ) { cCsymBad[_h] = true; cCsymBad[cFlip[_h]] = true; }\n'
+                '          }\n'
+                '        }\n'
+                '      }\n',
+            'csym_pairbuild':
+                '#ifndef MGONGPUCPP_GPUIMPL\n'
+                '    for( int _h = 0; _h < ncomb; _h++ )\n'
+                '      cCsymPair[_h] = ( !cCsymBad[_h] ) && ( cFlip[_h] != _h ) && isGoodHel[_h] && isGoodHel[cFlip[_h]];\n'
+                '#endif\n',
+            'csym_me_decl':
+                '      fptype_sv meOfIhel[ncomb] = {}; // per-good-hel |M|^2 (page 1), for C-parity reuse\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '      fptype_sv meOfIhel2[ncomb] = {};\n'
+                '#endif\n',
+            'csym_skip':
+                '        if( cCsymPair[ihel] && ihel > cFlip[ihel] ) {\n'
+                '          // C-parity partner: reuse the representative\'s |M|^2 (identical), skip calculate_jamps.\n'
+                '          fptype_sv& _me1 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
+                '          _me1 = _me1 + meOfIhel[cFlip[ihel]];\n'
+                '          MEs_ighel[ighel] = _me1;\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '          fptype_sv& _me2 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );\n'
+                '          _me2 = _me2 + meOfIhel2[cFlip[ihel]];\n'
+                '          MEs_ighel2[ighel] = _me2;\n'
+                '#endif\n'
+                '          continue;\n'
+                '        }\n'
+                '        const fptype_sv _me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '        const fptype_sv _me2before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );\n'
+                '#endif\n',
+            'csym_record':
+                '        meOfIhel[ihel] = MEs_ighel[ighel] - _me1before;\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '        meOfIhel2[ihel] = MEs_ighel2[ighel] - _me2before;\n'
+                '#endif\n',
         }
         if not getattr(self, 'use_crossing', False):
             return plain
@@ -2628,6 +2706,20 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             'sigmakin_perlane_decl': '',
             'sigmakin_ihel_expr': '0',
             'calc_jamps_ihlane_arg': ', ighel',
+            # C-parity good-helicity de-duplication is disabled under crossing:
+            # the per-lane SIMD loop already runs cNGoodMaxCross times whatever a
+            # single crossing's good-hel list is, so reusing a base-row |M|^2
+            # would save no kernel call, and a base-row FLIP is not the crossed
+            # C-parity partner anyway. Every csym hole is therefore empty here,
+            # leaving the validated crossing path byte-for-byte unchanged.
+            'csym_statics': '',
+            'csym_gh_flip': '',
+            'csym_gh_record': '',
+            'csym_gh_check': '',
+            'csym_pairbuild': '',
+            'csym_me_decl': '',
+            'csym_skip': '',
+            'csym_record': '',
         }
 
 #------------------------------------------------------------------------------------
