@@ -2581,6 +2581,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'smatrix_hel_cross_decode': '',
                 'hel_matrix_call_args': 'P ,IFLAV, TS, AMP2, JAMP2, IVEC',
                 'hel_matrix_ic_param': '',
+                # No crossing: every call is the uncrossed base process, so the
+                # C-parity de-duplication is always applicable.
+                'me_csym_cross_ok': '.TRUE.',
+                'hel_csym_cross_ok': '.TRUE.',
             })
             return
 
@@ -2717,6 +2721,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 ) % {'cp': cp},
             'hel_matrix_call_args': 'PUSE ,IC, FLAV_USE, TS, AMP2, JAMP2, IVEC',
             'hel_matrix_ic_param': 'IC,',
+            # C-parity de-duplication only for the uncrossed base process
+            # (CROSSUSE 0): a crossing permutes/sign-flips the helicities, so a
+            # base-row FLIP is not the crossed C-parity partner. Crossed
+            # dependents keep the full helicity sum.
+            'me_csym_cross_ok': 'CROSSUSE.EQ.0',
+            'hel_csym_cross_ok': 'CROSSUSE.EQ.0',
         })
 
     # (decl, decode, apply) for GET_PDG_FOR_FLAVOR without crossing: FLAV_IDX_IN

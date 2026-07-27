@@ -81,7 +81,20 @@ C       row-level information to apply the identical-particle correction.
 	DATA NB_FAIL /0/
         double precision get_channel_cut
         external get_channel_cut
-	
+C       C-parity helicity de-duplication of the init full-sum loop (uncrossed
+C       base process only): FLIP(I) is the helicity row with every helicity
+C       negated (an involution built once); CSYM stays true while that flipped
+C       partner has an identical |M|^2 at every scan point; DEDUP turns the
+C       reuse on once the scan has settled (NTRY>=20). A surviving pair is
+C       evaluated once at the lower index and counted twice; its |M|^2 is
+C       copied to the partner's TS() so the event-helicity CDF/DS grid stay exact.
+        INTEGER FLIP(NCOMB), JHEL, KHEL, NCSYM
+        PARAMETER (NCSYM=NCOMB*MAXFLAVPERPROC*MAXSPROC)
+        LOGICAL CSYM(NCOMB,MAXFLAVPERPROC,MAXSPROC), HELSAME, DEDUP
+        SAVE FLIP, CSYM
+        DATA FLIP/NCOMB*0/
+        DATA CSYM/NCSYM*.TRUE./
+
 c
 C       This is just to temporarily store the reference grid for helicity of the DiscreteSampler so as to obtain its number of entries with ref_helicity_grid%n_tot_entries
 	    type(SampledDimension) ref_helicity_grid
@@ -133,7 +146,29 @@ C ----------
 %(smatrix_me_cross_decode)s
     CALL GET_FLAVOR%(proc_id)s(%(me_flav_key)s, FLAVOR)
     NTRY(%(me_flav_key)s,%(proc_id)s)=NTRY(%(me_flav_key)s,%(proc_id)s)+1
-     
+C   C-parity partner of each helicity row (all helicities negated), built once.
+    IF (FLIP(1).EQ.0) THEN
+      DO I=1,NCOMB
+        FLIP(I)=I
+        DO JHEL=1,NCOMB
+          HELSAME=.TRUE.
+          DO KHEL=1,NEXTERNAL
+            IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,I)) HELSAME=.FALSE.
+          ENDDO
+          IF (HELSAME) THEN
+            FLIP(I)=JHEL
+            EXIT
+          ENDIF
+        ENDDO
+      ENDDO
+    ENDIF
+    IF (NTRY(%(me_flav_key)s,%(proc_id)s).EQ.1) THEN
+      DO I=1,NCOMB
+        CSYM(I,%(me_flav_key)s,%(proc_id)s)=.TRUE.
+      ENDDO
+    ENDIF
+    DEDUP = NTRY(%(me_flav_key)s,%(proc_id)s).GE.20 .AND. (%(me_csym_cross_ok)s)
+
     IF (multi_channel) THEN
         DO I=1,NDIAGS
             AMP2(I)=0D0
@@ -153,6 +188,9 @@ C ----------
     IF ((ISHEL.EQ.0.and.ISUM_HEL.eq.0).or.(DS_get_dim_status('Helicity').eq.0).or.(HEL_PICKED.eq.-1)) THEN
       DO I=1,NCOMB
          IF (GOODHEL(%(me_goodhel_idx)s,%(me_flav_key)s,%(proc_id)s) .OR. NTRY(%(me_flav_key)s,%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)%(smatrix_me_goodhel_or)s) THEN
+C           Fast phase: skip the higher-index C-parity partner (computed once at
+C           the lower index, counted twice below).
+            IF (DEDUP.AND.CSYM(I,%(me_flav_key)s,%(proc_id)s).AND.I.GT.FLIP(I)) CYCLE
             T=MATRIX%(proc_id)s(%(me_matrix_args)s)
             %(beam_polarization)s
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
@@ -160,8 +198,30 @@ C ----------
 			endif
             ANS=ANS+DABS(T)
             TS(I)=T
+C           The representative carries its skipped partner's identical |M|^2:
+C           copy TS(FLIP) (so the event-helicity CDF/DS grid pick both) and
+C           count it once more in ANS.
+            IF (DEDUP.AND.CSYM(I,%(me_flav_key)s,%(proc_id)s).AND.I.LT.FLIP(I)) THEN
+              ANS=ANS+DABS(T)
+              TS(FLIP(I))=T
+			  IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES)
+     &          call DS_add_entry('Helicity',FLIP(I),T)
+            ENDIF
          ENDIF
       ENDDO
+C     Scan phase: drop the C-parity pairing of any row whose fully flipped
+C     partner gave a different |M|^2 (parity/C/polarization breaking). One
+C     mismatch at any scan point permanently invalidates the pair.
+      IF (%(me_csym_cross_ok)s.AND.NTRY(%(me_flav_key)s,%(proc_id)s).LT.20) THEN
+        DO I=1,NCOMB
+          IF (FLIP(I).GT.I) THEN
+            IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))) THEN
+              CSYM(I,%(me_flav_key)s,%(proc_id)s)=.FALSE.
+              CSYM(FLIP(I),%(me_flav_key)s,%(proc_id)s)=.FALSE.
+            ENDIF
+          ENDIF
+        ENDDO
+      ENDIF
       IF(NTRY(%(me_flav_key)s,%(proc_id)s).EQ.(MAXTRIES+1).and.DS_get_dim_status('Helicity').ne.-1) THEN
          call reset_cumulative_variable() ! avoid biais of the initialization
       ENDIF
