@@ -1875,6 +1875,7 @@ def test_sdist_rejects_prepared_payload_compiler_drift(tmp_path: Path) -> None:
         "dependencies/install_dependencies.py",
         "dependencies/patches/symbolica/fix.patch",
         "dependencies/python-runtime-lock.toml",
+        "release_assets/prepared_models/built-in-sm-jit-o2-aarch64.metadata.json",
         "src/pyamplicol/_build_info.json",
     ],
 )

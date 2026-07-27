@@ -150,6 +150,7 @@ exclude = [
   "flake.nix",
   "outputs/**",
   "PYPI_DEPLOYMENT_TEST/**",
+  "release_assets/**",
   "target/**",
 ]
 

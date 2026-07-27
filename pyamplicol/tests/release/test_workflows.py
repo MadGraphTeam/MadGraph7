@@ -544,6 +544,8 @@ def test_release_prepared_model_workflow_is_manual_and_non_publishable() -> None
     assert "bootstrap-wheel" in workflow
     assert "eager_portability.py produce" in workflow
     assert "--asset-mode release" in workflow
+    assert "Verify source-store output layout" in workflow
+    assert "release_assets/prepared_models" in workflow
     assert "runner: ubuntu-24.04" in workflow
     assert "runner: macos-15" in workflow
     assert "architecture: x86_64" in workflow

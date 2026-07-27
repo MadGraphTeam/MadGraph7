@@ -67,6 +67,14 @@ jobs:
           --asset-mode release
           --expected-system ${{ matrix.system }}
           --expected-machine ${{ matrix.machine }}
+      - name: Verify source-store output layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_root=".artifacts/release-prepared-output/${{ matrix.architecture }}/release_assets/prepared_models"
+          test -f "${asset_root}/built-in-sm-jit-o2-${{ matrix.architecture }}.metadata.json"
+          test -f "${asset_root}/built-in-sm-jit-o2-${{ matrix.architecture }}.pyamplicol-model"
+          test "$(find "${asset_root}" -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pyamplicol-release-prepared-${{ matrix.architecture }}

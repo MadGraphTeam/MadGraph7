@@ -143,6 +143,13 @@ def audit_bootstrap_wheel(
             raise ReleasePreparedModelError(
                 "bootstrap wheel contains stale prepared-model payloads"
             )
+        if any(
+            name == "release_assets" or name.startswith("release_assets/")
+            for name in names
+        ):
+            raise ReleasePreparedModelError(
+                "bootstrap wheel contains the release prepared-model source store"
+            )
     return {
         "candidate_fingerprint": None,
         "native_build_inputs_sha256": native_digest,

@@ -7,6 +7,8 @@ import ast
 import hashlib
 import importlib.util
 import json
+import os
+import shutil
 import sys
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -15,6 +17,8 @@ from types import ModuleType
 from typing import Any, cast
 
 _ASSET_DIRECTORY = Path("src/pyamplicol/assets/prepared_models")
+_RELEASE_STORE_CONTAINER = Path("release_assets")
+_RELEASE_STORE_DIRECTORY = _RELEASE_STORE_CONTAINER / "prepared_models"
 _EXPECTED_ARCHITECTURES = ("aarch64", "x86_64")
 _METADATA_KEYS = frozenset(
     {
@@ -53,6 +57,85 @@ _EXPECTED_FILES = frozenset(
         ),
     )
 )
+_PROJECTED_RELEASE_STORE_FILES = _EXPECTED_FILES - {"__init__.py"}
+_EXPECTED_RELEASE_STORE_FILES = _PROJECTED_RELEASE_STORE_FILES | {"README.md"}
+
+
+def project_release_packaged_prepared_model_store(
+    overlay: Path,
+    *,
+    require_store: bool,
+) -> bool:
+    """Project source-owned release packs over candidate package assets."""
+
+    container = overlay / _RELEASE_STORE_CONTAINER
+    store = overlay / _RELEASE_STORE_DIRECTORY
+    if not os.path.lexists(container):
+        if require_store:
+            raise RuntimeError(
+                "release prepared-model source store is missing; generate and "
+                "commit both architecture pairs before building release artifacts"
+            )
+        return False
+    if container.is_symlink() or not container.is_dir():
+        raise RuntimeError("release prepared-model store container is unsafe")
+    container_entries = {path.name for path in container.iterdir()}
+    if container_entries != {"prepared_models"}:
+        raise RuntimeError(
+            "release prepared-model store container inventory is invalid"
+        )
+    if not store.is_dir() or store.is_symlink():
+        raise RuntimeError("release prepared-model source store is missing or unsafe")
+    store_entries = tuple(store.iterdir())
+    actual_files = {path.name for path in store_entries}
+    if actual_files != _EXPECTED_RELEASE_STORE_FILES:
+        missing = sorted(_EXPECTED_RELEASE_STORE_FILES - actual_files)
+        unexpected = sorted(actual_files - _EXPECTED_RELEASE_STORE_FILES)
+        details: list[str] = []
+        if missing:
+            details.append("missing: " + ", ".join(missing))
+        if unexpected:
+            details.append("unexpected: " + ", ".join(unexpected))
+        raise RuntimeError(
+            "release prepared-model source store inventory is invalid ("
+            + "; ".join(details)
+            + ")"
+        )
+    if any(path.is_symlink() or not path.is_file() for path in store_entries):
+        raise RuntimeError(
+            "release prepared-model source store entries must be regular files"
+        )
+    readme = store / "README.md"
+    if not readme.is_file() or readme.is_symlink():
+        raise RuntimeError("release prepared-model store README is unsafe")
+
+    package_assets = overlay / _ASSET_DIRECTORY
+    if not package_assets.is_dir() or package_assets.is_symlink():
+        raise RuntimeError("candidate prepared-model package assets are missing")
+    package_entries = tuple(package_assets.iterdir())
+    if {path.name for path in package_entries} != _EXPECTED_FILES:
+        raise RuntimeError(
+            "candidate prepared-model package asset inventory is invalid"
+        )
+    if any(path.is_symlink() or not path.is_file() for path in package_entries):
+        raise RuntimeError(
+            "candidate prepared-model package assets must be regular files"
+        )
+    for name in sorted(_PROJECTED_RELEASE_STORE_FILES):
+        shutil.copy2(store / name, package_assets / name)
+    shutil.rmtree(container)
+    return True
+
+
+def discard_release_packaged_prepared_model_store(overlay: Path) -> None:
+    """Remove the auxiliary store from a candidate or bootstrap overlay."""
+
+    container = overlay / _RELEASE_STORE_CONTAINER
+    if not os.path.lexists(container):
+        return
+    if container.is_symlink() or not container.is_dir():
+        raise RuntimeError("release prepared-model store container is unsafe")
+    shutil.rmtree(container)
 
 
 def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
@@ -816,6 +899,8 @@ def _plain_json(value: object) -> object:
 
 
 __all__ = [
+    "discard_release_packaged_prepared_model_store",
+    "project_release_packaged_prepared_model_store",
     "stage_packaged_prepared_models",
     "write_candidate_packaged_prepared_model_asset",
     "write_release_packaged_prepared_model_asset",

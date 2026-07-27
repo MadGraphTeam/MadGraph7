@@ -225,6 +225,7 @@ _FORBIDDEN_SDIST_MEMBERS = {
 _FORBIDDEN_SDIST_PREFIXES = (
     "dependencies/checkouts/",
     "dependencies/patches/",
+    "release_assets/",
 )
 
 

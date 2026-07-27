@@ -15,6 +15,7 @@ def _bootstrap_wheel(
     *,
     publishable: bool = False,
     include_prepared_payload: bool = False,
+    include_release_store: bool = False,
 ) -> Path:
     marker = {
         "candidate_fingerprint": None,
@@ -39,6 +40,10 @@ def _bootstrap_wheel(
     if include_prepared_payload:
         members[
             "pyamplicol/assets/prepared_models/built-in-sm-jit-o2-x86_64.metadata.json"
+        ] = b"{}\n"
+    if include_release_store:
+        members[
+            "release_assets/prepared_models/built-in-sm-jit-o2-x86_64.metadata.json"
         ] = b"{}\n"
     with zipfile.ZipFile(path, "w") as archive:
         for name, payload in members.items():
@@ -85,6 +90,24 @@ def test_release_bootstrap_wheel_rejects_prepared_payloads(tmp_path: Path) -> No
     with pytest.raises(
         producer.ReleasePreparedModelError,
         match="stale prepared-model payloads",
+    ):
+        producer.audit_bootstrap_wheel(
+            wheel,
+            expected_source_revision="a" * 40,
+        )
+
+
+def test_release_bootstrap_wheel_rejects_auxiliary_source_store(
+    tmp_path: Path,
+) -> None:
+    wheel = _bootstrap_wheel(
+        tmp_path / "pyamplicol-0.1.0.whl",
+        include_release_store=True,
+    )
+
+    with pytest.raises(
+        producer.ReleasePreparedModelError,
+        match="release prepared-model source store",
     ):
         producer.audit_bootstrap_wheel(
             wheel,

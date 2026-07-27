@@ -24,7 +24,11 @@ from package_version import (
     canonical_package_version,
     check_contributor_lock_consistency,
 )
-from prepared_models import stage_packaged_prepared_models
+from prepared_models import (
+    discard_release_packaged_prepared_model_store,
+    project_release_packaged_prepared_model_store,
+    stage_packaged_prepared_models,
+)
 from sdk import build_sdk
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +48,7 @@ ALLOWLIST = (
     "justfile",
     "licenses",
     "pyproject.toml",
+    "release_assets",
     "rust",
     "rust-toolchain.toml",
     "schemas",
@@ -1217,6 +1222,7 @@ def _overlay(
     mode: str,
     *,
     release_prepared_model_bootstrap: bool = False,
+    project_release_prepared_models: bool = False,
 ) -> Iterator[tuple[Path, Path]]:
     with TemporaryDirectory(prefix="pyamplicol-build-") as temporary:
         root = Path(temporary)
@@ -1227,6 +1233,13 @@ def _overlay(
             else None
         )
         _copy_allowlisted_source(source)
+        if mode == "release" and project_release_prepared_models:
+            project_release_packaged_prepared_model_store(
+                source,
+                require_store=os.path.lexists(ROOT / ".git"),
+            )
+        else:
+            discard_release_packaged_prepared_model_store(source)
         _stage_cargo_inputs(
             source,
             mode,
@@ -1384,11 +1397,18 @@ def _from_overlay(
         # context accepted by this gate.
         _selftest_fixture_bootstrap(mode)
         _check_dependencies(mode)
-        overlay_context = (
-            _overlay(mode, release_prepared_model_bootstrap=True)
-            if release_prepared_model_bootstrap
-            else _overlay(mode)
-        )
+        if release_prepared_model_bootstrap:
+            overlay_context = _overlay(
+                mode,
+                release_prepared_model_bootstrap=True,
+            )
+        elif mode == "release":
+            overlay_context = _overlay(
+                mode,
+                project_release_prepared_models=True,
+            )
+        else:
+            overlay_context = _overlay(mode)
         with overlay_context as (overlay, target_dir):
             environment = {
                 "CARGO_HOME": str(target_dir.parent / "cargo-home"),

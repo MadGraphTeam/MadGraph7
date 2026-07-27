@@ -15,6 +15,8 @@ sys.path.insert(0, str(ROOT / "build_backend"))
 
 import prepared_models as prepared_models_module  # noqa: E402
 from prepared_models import (  # noqa: E402
+    discard_release_packaged_prepared_model_store,
+    project_release_packaged_prepared_model_store,
     stage_packaged_prepared_models,
     write_candidate_packaged_prepared_model_asset,
     write_release_packaged_prepared_model_asset,
@@ -84,6 +86,17 @@ def _release_overlay(tmp_path: Path) -> Path:
     shutil.copy2(ROOT / "Cargo.toml", overlay / "Cargo.toml")
     shutil.copy2(ROOT / "Cargo.lock", overlay / "Cargo.lock")
     return overlay
+
+
+def _release_store(overlay: Path) -> Path:
+    store = overlay / "release_assets" / "prepared_models"
+    store.mkdir(parents=True)
+    (store / "README.md").write_text("release source store\n", encoding="utf-8")
+    source = overlay / "src/pyamplicol/assets/prepared_models"
+    for path in source.iterdir():
+        if path.name != "__init__.py":
+            shutil.copy2(path, store / path.name)
+    return store
 
 
 def _release_bundle(overlay: Path, package_version: str = "0.1.0") -> object:
@@ -235,6 +248,124 @@ def test_release_source_ready_asset_rejects_candidate_producer_version(
             tmp_path / "prepared",
             architecture="aarch64",
         )
+
+
+def test_release_source_store_projects_over_candidate_package_assets(
+    tmp_path: Path,
+) -> None:
+    overlay = _release_overlay(tmp_path)
+    package_assets = overlay / "src/pyamplicol/assets/prepared_models"
+    package_init = (package_assets / "__init__.py").read_bytes()
+    store = _release_store(overlay)
+    expected: dict[str, bytes] = {}
+    for path in store.iterdir():
+        if path.name == "README.md":
+            continue
+        payload = f"release:{path.name}\n".encode()
+        path.write_bytes(payload)
+        expected[path.name] = payload
+
+    assert project_release_packaged_prepared_model_store(
+        overlay,
+        require_store=True,
+    )
+
+    assert not (overlay / "release_assets").exists()
+    assert (package_assets / "__init__.py").read_bytes() == package_init
+    assert {
+        path.name: path.read_bytes()
+        for path in package_assets.iterdir()
+        if path.name != "__init__.py"
+    } == expected
+
+
+def test_release_source_store_is_required_only_for_source_checkout(
+    tmp_path: Path,
+) -> None:
+    overlay = _release_overlay(tmp_path)
+
+    with pytest.raises(RuntimeError, match="source store is missing"):
+        project_release_packaged_prepared_model_store(
+            overlay,
+            require_store=True,
+        )
+
+    assert (
+        project_release_packaged_prepared_model_store(
+            overlay,
+            require_store=False,
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "inventory is invalid"),
+        ("unexpected", "inventory is invalid"),
+        ("container", "container inventory is invalid"),
+    ],
+)
+def test_release_source_store_rejects_incomplete_or_mixed_inventory(
+    tmp_path: Path,
+    mutation: str,
+    match: str,
+) -> None:
+    overlay = _release_overlay(tmp_path)
+    store = _release_store(overlay)
+    if mutation == "missing":
+        next(store.glob("*.metadata.json")).unlink()
+    elif mutation == "unexpected":
+        (store / "candidate-only.json").write_text("{}\n", encoding="utf-8")
+    else:
+        (overlay / "release_assets" / "candidate-pack").mkdir()
+
+    with pytest.raises(RuntimeError, match=match):
+        project_release_packaged_prepared_model_store(
+            overlay,
+            require_store=True,
+        )
+
+
+def test_release_source_store_rejects_stale_release_identity(
+    tmp_path: Path,
+) -> None:
+    overlay = _release_overlay(tmp_path)
+    store = _release_store(overlay)
+    for metadata_path in store.glob("*.metadata.json"):
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["build_contract"] = {
+            "candidate_fingerprint": None,
+            "mode": "release",
+            "sources": {
+                "symbolica": "2.2.0",
+                "symjit": "0" * 40,
+            },
+        }
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    project_release_packaged_prepared_model_store(
+        overlay,
+        require_store=True,
+    )
+
+    with pytest.raises(RuntimeError, match="release source identity is stale"):
+        stage_packaged_prepared_models(overlay, "release")
+
+
+def test_store_discard_preserves_canonical_package_assets(
+    tmp_path: Path,
+) -> None:
+    overlay = _release_overlay(tmp_path)
+    package_assets = overlay / "src/pyamplicol/assets/prepared_models"
+    before = {path.name: path.read_bytes() for path in package_assets.iterdir()}
+    _release_store(overlay)
+
+    discard_release_packaged_prepared_model_store(overlay)
+
+    assert not (overlay / "release_assets").exists()
+    assert {path.name: path.read_bytes() for path in package_assets.iterdir()} == before
 
 
 def test_candidate_wheel_staging_accepts_exact_packaged_model(

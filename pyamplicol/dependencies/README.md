@@ -15,11 +15,19 @@ a local checkout.
 workspace-level SymJIT source override and fully resolved Cargo lock, including
 the full Git revision, before release artifacts are built.
 
-Source-owned release prepared-model packs are regenerated only through the
-manual `release-prepared-models.yml` workflow. Its temporary bootstrap wheel is
-explicitly non-publishable and omits all existing packs; the resulting
-architecture pairs derive their dependency identity from `release-lock.toml`
-and canonical `Cargo.lock`, never from contributor state.
+The package-owned prepared models under
+`src/pyamplicol/assets/prepared_models` remain candidate inputs in a source
+checkout. Release prepared-model pairs are held separately under the
+source-only `release_assets/prepared_models` store and are regenerated only
+through the manual `release-prepared-models.yml` workflow. Its temporary
+bootstrap wheel is explicitly non-publishable and omits both stores; the
+resulting architecture pairs derive their dependency identity from
+`release-lock.toml` and canonical `Cargo.lock`, never from contributor state.
+A release overlay projects the complete release pair set over the canonical
+package paths, deletes the auxiliary store, and validates the result. The
+retained sdist therefore contains only canonical release payloads; contributor
+and bootstrap builds continue to use or omit the candidate payloads exactly as
+before.
 
 ## Candidate Development Mode
 
