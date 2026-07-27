@@ -46,6 +46,8 @@ _RECURRENCE_CAPABILITIES = {
     "rusticol.recurrence-color.lc.v1",
     "rusticol.recurrence-direct-arena.complex-f64.v1",
 }
+# The immutable physics-v2 oracle was captured with the former rounded default.
+_HISTORICAL_REFERENCE_ALPHA_EW = 0.007546771114
 _THREE_LINE_HELICITY_SUM_BY_FLOW = {
     "flow:2,1,3,4,5,6": 1.7260373034739047e-11,
     "flow:2,1,3,6,5,4": 1.6570372188601389e-11,
@@ -187,7 +189,12 @@ def _generate_direct_arena_runtime(
         artifact,
         expected_layout=lc_flow_layout,
     )
-    return Runtime.load(artifact)
+    runtime = Runtime.load(artifact)
+    if model_source == "built-in":
+        runtime.set_model_parameters(
+            {"normalization.alpha_ew": _HISTORICAL_REFERENCE_ALPHA_EW}
+        )
+    return runtime
 
 
 def _reference_case(case_id: str) -> dict[str, Any]:

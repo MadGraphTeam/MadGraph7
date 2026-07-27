@@ -41,6 +41,8 @@ _SAME_FLAVOUR_PROCESS = "d d~ > d d~"
 _NEUTRAL_CURRENT_PROCESS = "d d~ > e+ e-"
 _CHARGED_CURRENT_PROCESS = "u d~ > e+ ve"
 _TWO_QUARK_LINE_PROCESS = "d d~ > t t~"
+# The immutable physics-v2 oracle was captured with the former rounded default.
+_HISTORICAL_REFERENCE_ALPHA_EW = 0.007546771114
 _CONTRACTED_COLOR_PROCESSES = (
     _PROCESS,
     _THREE_LINE_PROCESS,
@@ -906,6 +908,9 @@ def test_builtin_neutral_current_recurrence_matches_legacy_oracle(
         reference_point[2],
     )
     runtime = Runtime.load(artifact)
+    runtime.set_model_parameters(
+        {"normalization.alpha_ew": _HISTORICAL_REFERENCE_ALPHA_EW}
+    )
     resolved = runtime.evaluate_resolved((point,))
     helicity_values = {
         helicity.id: helicity.values for helicity in runtime.physics.helicities
@@ -1115,6 +1120,40 @@ def test_builtin_and_ufo_contracted_recurrence_have_matching_structure(
     assert _contracted_structure_signature(
         artifacts[0]
     ) == _contracted_structure_signature(artifacts[1])
+
+
+def test_builtin_and_ufo_full_neutral_current_defaults_agree(
+    tmp_path: Path,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Keep the two SM frontends on one exact electroweak normalization."""
+
+    process = "d d~ > z"
+    points = _validation_points(process)
+    runtimes = []
+    for label, model in (
+        ("builtin", builtin_sm_recurrence_jit_o2_model),
+        ("ufo", ufo_sm_recurrence_jit_o2_model),
+    ):
+        artifact = tmp_path / label
+        Generator(
+            _generation_config(
+                "recurrence",
+                color_accuracy="full",
+            )
+        ).generate(process, artifact, model=model)
+        runtimes.append(Runtime.load(artifact))
+
+    builtin_total = runtimes[0].evaluate(points)
+    ufo_total = runtimes[1].evaluate(points)
+    assert builtin_total == pytest.approx(ufo_total, rel=1.0e-12, abs=1.0e-15)
+    for runtime, total in zip(runtimes, (builtin_total, ufo_total), strict=True):
+        assert runtime.evaluate_resolved(points).total() == pytest.approx(
+            total,
+            rel=1.0e-12,
+            abs=1.0e-15,
+        )
 
 
 @pytest.mark.parametrize(

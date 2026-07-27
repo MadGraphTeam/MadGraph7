@@ -19,9 +19,10 @@ def test_builtin_sm_normalization_uses_the_compiled_alpha_ew_default() -> None:
 
     assert model.alpha_ew == 1.0 / 132.507
     assert parameter_defaults["alpha_ew"] == (model.alpha_ew, 0.0)
-    assert model.runtime_normalization_parameter_defaults()[
-        "normalization.alpha_ew"
-    ] == parameter_defaults["alpha_ew"][0]
+    assert (
+        model.runtime_normalization_parameter_defaults()["normalization.alpha_ew"]
+        == parameter_defaults["alpha_ew"][0]
+    )
 
 
 def test_model_builtin_sm_preserves_production_tables_and_couplings() -> None:

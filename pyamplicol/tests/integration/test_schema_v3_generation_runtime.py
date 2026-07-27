@@ -85,6 +85,8 @@ NAMED_CASE_IDS = {
     "scalars_2to2_lc": "case:scalars_2to2:lc",
     "scalar_gravity_2to2_lc": "case:scalar_gravity_2to2:lc",
 }
+# The immutable physics-v2 oracle was captured with the former rounded default.
+_HISTORICAL_REFERENCE_ALPHA_EW = 0.007546771114
 
 
 def _unavailable(reason: str) -> NoReturn:
@@ -406,6 +408,9 @@ def test_current_source_generates_and_evaluates_schema_v3(
     _assert_reusable_reduction_coverage(execution, physics)
 
     runtime = Runtime.load(artifact)
+    runtime.set_model_parameters(
+        {"normalization.alpha_ew": _HISTORICAL_REFERENCE_ALPHA_EW}
+    )
     momenta = tuple(
         tuple(tuple(float(component) for component in vector) for vector in point)
         for point in reference_momenta
