@@ -2587,6 +2587,39 @@ class CompleteForCmd(cmd.CompleteCmd):
                                 'non_propagating', '--']
             return self.list_completion(text, opt)
 
+    def find_launch_mode(self, args):
+        """identify the output type of the directory a launch command operates
+        on, so that complete_launch can propose mode-specific options.
+        Returns the mode (as returned by find_output_type) or None when it
+        cannot be determined (e.g. no directory given yet)."""
+
+        # locate the directory argument (first non-option argument after launch)
+        path = None
+        for arg in args[1:]:
+            if arg.startswith('-'):
+                continue
+            candidates = [arg, pjoin(MG5DIR, arg)]
+            if MG4DIR:
+                candidates.append(pjoin(MG4DIR, arg))
+            for candidate in candidates:
+                if os.path.isdir(candidate):
+                    path = os.path.realpath(candidate)
+                    break
+            if path:
+                break
+
+        # fall back to the latest exported directory (default launch target)
+        if path is None and self._done_export:
+            path = self._done_export[0]
+
+        if path is None:
+            return None
+
+        try:
+            return self.find_output_type(path)
+        except Exception:
+            return None
+
     def complete_launch(self, text, line, begidx, endidx,formatting=True):
         """ complete the launch command"""
         args = self.split_arg(line[0:begidx])
@@ -2611,13 +2644,23 @@ class CompleteForCmd(cmd.CompleteCmd):
         if len(args) >= 2:
             out={}
 
-        if line[0:begidx].endswith('--laststep='):
+        mode = self.find_launch_mode(args)
+
+        if mode and mode.startswith('standalone') and mode != 'standalone_mg7':
+            # standalone outputs are run through SALauncher/MadLoopLauncher:
+            # only force + the timing analysis options are relevant.
+            opt = ['-f', '--force', '--timings=', '--nb_run=']
+            out['Options'] = self.list_completion(text, opt, line)
+        elif line[0:begidx].endswith('--laststep='):
             opt = ['parton', 'pythia', 'pgs','delphes','auto']
             out['Options'] = self.list_completion(text, opt, line)
         else:
             opt = ['--cluster', '--multicore', '-i', '--name=', '-f','-m', '-n',
-               '-p','--parton','--interactive', '--laststep=parton', '--laststep=pythia',
+               '--interactive', '--laststep=parton', '--laststep=pythia',
                '--laststep=pgs', '--laststep=delphes','--laststep=auto']
+            if mode == 'aMC@NLO':
+                # parton-level run (-p/--parton) is an (a)MC@NLO-only option
+                opt += ['-p', '--parton']
             out['Options'] = self.list_completion(text, opt, line)
 
 
