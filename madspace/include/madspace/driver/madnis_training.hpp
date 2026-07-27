@@ -62,6 +62,7 @@ public:
 
     // Status histories, one entry appended every config.log_interval batches,
     // for reporting training progress (e.g. to a StatusFile).
+    const std::vector<std::size_t>& status_batches() const { return _status_batches; }
     const std::vector<double>& status_losses() const { return _status_losses; }
     const std::vector<std::size_t>& status_channel_counts() const {
         return _status_channel_counts;
@@ -141,6 +142,7 @@ private:
     std::vector<double> _lr_history;
     std::vector<bool> _buffered_history;
     std::size_t _loss_history_index = 0;
+    std::vector<std::size_t> _status_batches;
     std::vector<double> _status_losses;
     std::vector<std::size_t> _status_channel_counts;
     std::vector<double> _status_learning_rates;

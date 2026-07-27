@@ -73,6 +73,7 @@ void MadnisTraining::train_step(std::size_t batch_index) {
     TensorVec results = _optimizer->step(training_batch);
     update_history(results, channel_sizes, learning_rate, used_buffered);
     if ((batch_index + 1) % _config.log_interval == 0) {
+        _status_batches.push_back(batch_index + 1);
         _status_losses.push_back(average_loss());
         _status_channel_counts.push_back(active_channel_count());
         _status_learning_rates.push_back(average_learning_rate());
@@ -956,13 +957,9 @@ void MultiMadnisTraining::write_status(
 
     nlohmann::json trainings = nlohmann::json::array();
     for (std::size_t i = 0; auto& subproc : _subprocesses) {
-        std::size_t batches_done = i < subproc_index ? _config.batches
-            : i == subproc_index
-            ? batch_index + 1
-            : 0;
         trainings.push_back(
             {{"subprocess", i},
-             {"batch", batches_done},
+             {"batch", subproc.status_batches()},
              {"batch_count", _config.batches},
              {"losses", subproc.status_losses()},
              {"channel_counts", subproc.status_channel_counts()},
