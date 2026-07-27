@@ -595,6 +595,7 @@ def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
 def _matrix_macros() -> list[str]:
     return [
         r"\providecommand{\matrixentryfont}{\fontsize{6.8pt}{7.8pt}\selectfont}",
+        r"\providecommand{\matrixentryfontlc}{\fontsize{6.5pt}{7.5pt}\selectfont}",
         r"\providecommand{\matrixpunct}[1]{\textcolor{black}{\texttt{#1}}}",
         (
             r"\providecommand{\matrixratio}[2]{\matrixpunct{(}"
@@ -632,9 +633,9 @@ def _matrix_macros() -> list[str]:
         ),
         (
             r"\providecommand{\matrixcelllc}[6]{"
-            r"\begingroup\matrixentryfont"
+            r"\begingroup\matrixentryfontlc"
             r"\begin{tabular}[t]{"
-            r"@{}l@{\hspace{0.035in}}l@{\hspace{0.035in}}l@{}}"
+            r"@{}l@{\hspace{0.03in}}l@{\hspace{0.03in}}l@{}}"
             r"#1&#2&#3\\#4&#5&#6"
             r"\end{tabular}\endgroup}"
         ),

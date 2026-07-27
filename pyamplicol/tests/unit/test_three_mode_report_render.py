@@ -677,6 +677,9 @@ def test_matrix_tables_are_fixed_nonsplittable_blocks(reset_caches) -> None:
         )
         assert tex.count(r"\clearpage") == tex.count(r"\begin{minipage}{\linewidth}")
         assert r"\begin{tabular}" in tex
+        assert r"\fontsize{6.5pt}{7.5pt}\selectfont" in tex
+        assert r"\begingroup\matrixentryfontlc" in tex
+        assert r"\hspace{0.03in}" in tex
         assert tex.index(r"\clearpage") < tex.index(r"\subsection{")
         assert tex.index(r"\subsection{") < tex.index(
             r"\noindent\begin{minipage}{\linewidth}"
