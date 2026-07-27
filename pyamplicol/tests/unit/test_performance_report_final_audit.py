@@ -54,6 +54,7 @@ from tools.performance_report.final_audit import (
     _ensure_exact_cli_python,
     _python_package_tree_identity,
     _real_nonnegative,
+    _runtime_for_measurement_source,
     _runtime_namespace_paths,
     _shared_artifact_contract,
     audit_final_report,
@@ -1570,6 +1571,90 @@ def _candidate_measurement(artifact: Path) -> dict[str, object]:
         }
     )
     return result
+
+
+def test_class_c_runtime_projection_authenticates_relinked_endpoint(
+    tmp_path: Path,
+) -> None:
+    active = _active_runtime()
+    measurement = _candidate_measurement(tmp_path)
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    identity = deepcopy(provenance["runtime_identity"])
+    assert isinstance(identity, dict)
+    ancestor_revision = "b" * 40
+    candidate = identity["candidate_build_identity"]
+    package_tree = identity["python_package_tree"]
+    native_extension = identity["native_extension"]
+    assert isinstance(candidate, dict)
+    assert isinstance(package_tree, dict)
+    assert isinstance(native_extension, dict)
+    candidate["source_revision"] = ancestor_revision
+    candidate["source_checkout"] = "/ancestor/repo"
+    identity["source_revision"] = ancestor_revision
+    identity["candidate_build_identity_sha256"] = digest_json(candidate)
+    package_tree["root"] = "/ancestor/runtime/pyamplicol"
+    package_tree["roots"] = [
+        "/ancestor/runtime/pyamplicol",
+        "/ancestor/site-packages/pyamplicol",
+    ]
+    package_tree["sha256"] = "8" * 64
+    native_extension["path"] = "/ancestor/runtime/_rusticol.so"
+    native_extension["sha256"] = "7" * 64
+    ancestor_environment = {
+        "python_package_tree_sha256": package_tree["sha256"],
+        "pyamplicol": identity["package_version"],
+        "candidate_fingerprint": candidate["candidate_fingerprint"],
+        "native_build_inputs_sha256": identity["native_build_inputs_sha256"],
+        "native_extension_sha256": native_extension["sha256"],
+        "native_target": identity["native_target"]["triple"],
+        "native_cpu_features": "baseline",
+    }
+    lineage = SimpleNamespace(
+        ancestor_revision=ancestor_revision,
+        descendant_revision=_REVISION,
+        environment_for_source=lambda revision: (
+            ancestor_environment if revision == ancestor_revision else None
+        ),
+    )
+    retained_provenance = _runtime_identity_provenance(identity)
+
+    projected = _runtime_for_measurement_source(
+        active,
+        retained_provenance,
+        source_revision=ancestor_revision,
+        measurement_lineage=lineage,
+    )
+
+    assert projected["native_extension"] == native_extension
+    assert projected["native_extension"] != active["native_extension"]
+    _audit_runtime_identity(
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        retained_provenance,
+        expected_source_revision=ancestor_revision,
+        active_runtime=projected,
+        artifact=None,
+    )
+
+    tampered_environment = dict(ancestor_environment)
+    tampered_environment["native_extension_sha256"] = "6" * 64
+    tampered_lineage = SimpleNamespace(
+        ancestor_revision=ancestor_revision,
+        descendant_revision=_REVISION,
+        environment_for_source=lambda revision: (
+            tampered_environment if revision == ancestor_revision else None
+        ),
+    )
+    with pytest.raises(
+        FinalAuditError,
+        match="retained ancestor runtime identity differs",
+    ):
+        _runtime_for_measurement_source(
+            active,
+            retained_provenance,
+            source_revision=ancestor_revision,
+            measurement_lineage=tampered_lineage,
+        )
 
 
 def test_portable_artifact_locator_resolves_only_within_profile_root(

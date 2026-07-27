@@ -2153,7 +2153,6 @@ def _runtime_for_measurement_source(
     if (
         identity.get("native_build_inputs_sha256")
         != active_runtime.get("native_build_inputs_sha256")
-        or native_extension != active_runtime.get("native_extension")
         or native_target != active_runtime.get("native_target")
     ):
         raise FinalAuditError(
@@ -2164,6 +2163,11 @@ def _runtime_for_measurement_source(
     projected["python_package_tree"] = package_tree
     projected["candidate_build_identity"] = candidate
     projected["candidate_build_identity_sha256"] = candidate_digest
+    # The ancestor and descendant extensions are independently authenticated by
+    # their endpoint environments.  A fresh relink need not be byte-identical,
+    # so retained ancestor measurements must be checked against their own
+    # extension identity rather than the active descendant's output file.
+    projected["native_extension"] = native_extension
     origin_policy = identity.get("loaded_module_origin_policy")
     if isinstance(origin_policy, Mapping):
         projected["loaded_module_origin_policy"] = origin_policy
