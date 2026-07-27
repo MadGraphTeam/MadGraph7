@@ -64,8 +64,10 @@ The **Validated release artifacts** workflow is also manually dispatched. Its
 defined release path verifies published dependency inputs, runs the full source
 gate and independent Fortran oracle, retains one source distribution, builds
 the three target wheels from that source distribution, tests installed wheels
-on CPython 3.11 and 3.14, and collects the unchanged package files. It currently
-fails closed while the release dependency contract below remains unverified.
+on CPython 3.11 and 3.14, and collects the unchanged package files. The
+dependency contract is now patchless and pinned to a verified immutable
+SymJIT fork revision. The workflow still fails closed until release-mode
+prepared-model assets and the remaining platform gates below are complete.
 
 ## Remaining Integration Gates
 
@@ -113,8 +115,12 @@ fails closed while the release dependency contract below remains unverified.
 
 ## Publication Gates
 
-- The exact published Symbolica Python/Rust combination and SymJIT application
-  compatibility remain unverified in the release dependency contract.
+- The exact Symbolica 2.2.0 Python/Rust combination and immutable SymJIT fork
+  revision are verified in the release dependency contract, with no local
+  patches or installer source rewrites.
+- The checked-in built-in-SM prepared packs remain candidate-bound and must be
+  regenerated under the release dependency identity before a release sdist or
+  wheel can pass the fail-closed package audit.
 - `ufo-model-loader==0.1.7` is the verified published loader input.
 - Every supported wheel target must complete clean installation, Python
   self-test, generated Python/Rust/C++/Fortran driver tests, and native SDK

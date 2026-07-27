@@ -6,10 +6,10 @@ SymJIT capabilities; pyAmpliCol recurrence roles and artifact policy remain in
 Rusticol. They are retained as a reviewable record and are no longer applied
 by pyAmpliCol's contributor installer.
 
-The same four commits are published on
+The complete integration series is published on
 `ValentinHirschi/symjit_changes_for_pyamplicol` branch
 `pyamplicol-generic-direct-apis` at
-`89efdb806e7fcd9ac68a9d38f3f2880adf1987d2` and proposed upstream in
+`60a9d66fbfb2181d36a5747c389714eccc187244` and proposed upstream in
 `siravan/symjit#12`.
 
 ## Upstream submission order
@@ -26,17 +26,13 @@ The same four commits are published on
    table-driven direct application for repeated row/point execution and
    multi-destination fan-out on AArch64 and x86-64.
 
-All four upstream patches are already present in the locked fork revision.
-The active contributor patch
-`0001-allow-direct-complex-stack-spills.patch` additionally permits internal
-complex stack spills to retain SymJIT scratch registers while keeping the
-allocated-general-register requirement for direct output planes. It is pinned
-by digest and applied only to the exact locked fork revision.
-`0002-normalize-direct-complex-scratch-outputs.patch` preserves that output
-requirement while safely materializing allocator-produced scratch outputs
-through a checked four-slot stack frame and a preserved general-register pair.
-This handles stored O2 applications without assuming that any general register
-is dead at the output boundary.
+All four archived upstream patches are already present in the locked fork
+revision. Three subsequent fork commits permit internal complex stack spills,
+safely materialize allocator-produced scratch outputs through a checked
+four-slot stack frame and preserved general-register pair, and make this
+pyAmpliCol integration branch `rlib`-only. The contributor installer applies
+no patches and performs no source rewrite: its pristine archive and candidate
+tree identities are required to match exactly.
 
 The direct application input format is for trusted bytecode. It is not a
 sandbox or hostile-input parser. Shape, range, and alias checks remain because

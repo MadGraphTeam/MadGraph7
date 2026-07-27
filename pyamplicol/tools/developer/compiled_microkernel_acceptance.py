@@ -21,6 +21,7 @@ import json
 import math
 import statistics
 import sys
+import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -35,16 +36,14 @@ DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
 SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
 DIRECT_TABLE_BINDING_ABI = "symjit-direct-table-binding-v1"
 DIRECT_TABLE_DESCRIPTOR_ABI = "symjit-direct-table-descriptor-v1"
-DEPENDENCY_REVISION = "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
-DEPENDENCY_ARCHIVE_SHA256 = (
-    "070ff7fc04d5cdc5ab769d7a47b3da04cbc2b97d87136d303180c95b9eb380cd"
-)
-DEPENDENCY_SOURCE_TREE_SHA256 = (
-    "e42d648d995c61881e560aefc50f80a995e86fb24a67ed9b0f0b5a80d6773fcf"
-)
-DEPENDENCY_CANDIDATE_TREE_SHA256 = (
-    "820675246517cd49198495936327768da7a7a1d25f8bf20749c21aad1c2f56da"
-)
+
+_ROOT = Path(__file__).resolve().parents[2]
+with (_ROOT / "dependencies" / "contributor-lock.toml").open("rb") as _stream:
+    _LOCKED_SYMJIT = tomllib.load(_stream)["symjit"]
+DEPENDENCY_REVISION = str(_LOCKED_SYMJIT["candidate_revision"])
+DEPENDENCY_ARCHIVE_SHA256 = str(_LOCKED_SYMJIT["archive_sha256"])
+DEPENDENCY_SOURCE_TREE_SHA256 = str(_LOCKED_SYMJIT["source_tree_sha256"])
+DEPENDENCY_CANDIDATE_TREE_SHA256 = str(_LOCKED_SYMJIT["candidate_tree_sha256"])
 
 TARGET_PROCESS = "u u~ > Z+6g"
 TARGET_FLOW = "flow:2,4,5,6,7,8,9,1"

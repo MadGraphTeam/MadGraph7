@@ -93,7 +93,7 @@ release_status = "verified"
 version = "2.21.1"
 repository = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git"
 branch = "pyamplicol-generic-direct-apis"
-revision = "89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
+revision = "60a9d66fbfb2181d36a5747c389714eccc187244"
 upstream_pr = "https://github.com/siravan/symjit/pull/12"
 release_status = "verified-git-revision"
 

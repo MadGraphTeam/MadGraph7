@@ -73,6 +73,7 @@ def candidate_dependency_provenance(
                 "contributor_lock_sha256": hashlib.sha256(
                     contributor_data
                 ).hexdigest(),
+                "patches": [],
                 "sources": {
                     "symbolica": {
                         "url": symbolica["source_url"],

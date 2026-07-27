@@ -9,7 +9,7 @@ the generic APIs and keeps all amplitude-specific policy in Rusticol.
 
 The series is based on SymJIT 2.21.1 commit
 `48197f32536c894b51ef25b2cf05ddd05c22675f` and ends at fork revision
-`89efdb806e7fcd9ac68a9d38f3f2880adf1987d2`.
+`60a9d66fbfb2181d36a5747c389714eccc187244`.
 
 ## Ownership boundary
 
@@ -44,12 +44,18 @@ overwrite, live input, and identity scaling.
 3. Add generic direct plane applications: 2,758 insertions and 111 deletions.
 4. Add generic table-driven direct applications: 5,602 insertions and
    2 deletions.
+5. Permit scratch registers for internal complex stack spills while retaining
+   the general-register direct-destination guard.
+6. Normalize scratch-register direct outputs through a checked, reusable
+   four-slot stack frame without clobbering live registers.
+7. Make the pyAmpliCol integration branch `rlib`-only so contributor installs
+   use the immutable fork without rewriting its manifest.
 
-The table layer is intentionally last and can be reviewed separately if the
-maintainer prefers a smaller initial review. All four commits are on
+The table layer and each follow-up are independently reviewable. All seven
+commits are on
 `ValentinHirschi/symjit_changes_for_pyamplicol:pyamplicol-generic-direct-apis`
 and are proposed in `siravan/symjit#12`. The contributor installer applies no
-patches.
+patches or source rewrites.
 
 ## Trusted input and validation
 
@@ -72,9 +78,10 @@ format.
 
 ## Validation
 
-The clean upstream series was replayed from the exact base commit. On
-AArch64, SymJIT passed 45 unit tests and 4 integration tests. The same tree
-passed `cargo check --target x86_64-apple-darwin --all-targets`.
+The clean upstream series was replayed from the exact base commit. On AArch64,
+the final fork passed Cargo metadata, library check, all 23 focused direct
+tests, and all 49 library tests. The earlier four-commit portability series
+also passed `cargo check --target x86_64-apple-darwin --all-targets`.
 
 Rusticol, configured against the separated generic tree, passed 561 tests with
 5 ignored. This covers the recurrence role mapping, compiled direct

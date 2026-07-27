@@ -28,14 +28,15 @@ the candidate revisions and resulting source-tree identity and are not
 eligible for PyPI publication.
 
 The contributor build uses the checksummed fork archive for SymJIT 2.21.1 at
-revision `89efdb806e7fcd9ac68a9d38f3f2880adf1987d2` on branch
+revision `60a9d66fbfb2181d36a5747c389714eccc187244` on branch
 `pyamplicol-generic-direct-apis`. The fork contains the ordered generic SymJIT
-commit series and builds as both `cdylib` and `rlib`; the installer verifies
-the archive tree, selects only `rlib` in its managed contributor checkout to
-avoid Cargo output collisions, and verifies that configured tree. The changes
-provide deterministic AArch64 compressed funclets, generic direct split-plane
-applications, and a generic table-driven direct application on AArch64 and
-x86-64. The direct
+commit series and is an `rlib`-only pyAmpliCol integration branch. The
+installer verifies and uses the pristine archive tree without rewriting it or
+applying patches. The changes provide deterministic AArch64 compressed
+funclets, generic direct split-plane applications, a generic table-driven
+direct application on AArch64 and x86-64, and safe lowering for stored direct
+applications whose internal spills or mapped outputs retain scratch
+registers. The direct
 contracts expose overwrite/accumulate, live/before-write input, and
 identity/complex-scalar policies; Rusticol owns the mapping from pyAmpliCol
 recurrence roles to those policies. The previously unreleased direct contracts

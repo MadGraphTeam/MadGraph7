@@ -503,14 +503,19 @@ def _candidate_dependency_overrides() -> dict[str, str]:
         raise ArtifactError(
             "candidate dependency provenance has an unsupported contributor lock"
         )
+    if contributor.get("patches") != []:
+        raise ArtifactError(
+            "candidate dependency provenance must disable local source patches"
+        )
     if (
         not isinstance(state, dict)
         or state.get("schema_version") != 1
         or state.get("publishable") is not False
+        or state.get("patches") != []
     ):
         raise ArtifactError(
-            "candidate dependency provenance requires non-publishable schema-v1 "
-            "installer state"
+            "candidate dependency provenance requires patchless, non-publishable "
+            "schema-v1 installer state"
         )
     expected_digests = {
         "release_lock_sha256": hashlib.sha256(release_path.read_bytes()).hexdigest(),

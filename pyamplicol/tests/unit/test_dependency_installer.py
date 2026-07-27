@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import os
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -80,36 +82,37 @@ def test_venv_reset_bootstraps_with_the_unmoved_base_interpreter(
     assert module._venv_bootstrap_python() == base_python
 
 
-def test_symjit_fork_revision_archive_tree_and_patch_are_pinned() -> None:
+def test_symjit_fork_revision_archive_and_pristine_tree_are_pinned() -> None:
     module = _module()
     payload = module._lock()
-    patches = module._contributor_patches(payload)
+    symjit = payload["symjit"]
 
-    assert [patch.name for patch in patches] == [
-        "symjit-allow-direct-complex-stack-spills",
-        "symjit-normalize-direct-complex-scratch-outputs",
-    ]
-    assert all(patch.target == "symjit" for patch in patches)
-    assert patches[0].relative_path == (
-        "patches/symjit/0001-allow-direct-complex-stack-spills.patch"
+    assert payload["patches"] == []
+    assert not tuple((module.DEPENDENCIES / "patches" / "symjit").glob("*.patch"))
+    assert symjit["candidate_revision"] == ("60a9d66fbfb2181d36a5747c389714eccc187244")
+    assert symjit["archive_sha256"] == (
+        "a1db9882368c18e3db349181889304f47a8fb1af186ee5722b06690568f374ba"
     )
-    assert patches[1].relative_path == (
-        "patches/symjit/0002-normalize-direct-complex-scratch-outputs.patch"
+    assert symjit["source_tree_sha256"] == (
+        "feb5e65bd48df88dff37ee6e3e981226a9d507e554114b77035fe51951d51387"
     )
-    assert all(
-        patch.applies_to_revision == payload["symjit"]["candidate_revision"]
-        for patch in patches
-    )
-    assert len(module._patch_closure_sha256(patches)) == 64
-    assert len(payload["symjit"]["candidate_revision"]) == 40
-    assert len(payload["symjit"]["archive_sha256"]) == 64
-    assert len(payload["symjit"]["source_tree_sha256"]) == 64
-    assert len(payload["symjit"]["candidate_tree_sha256"]) == 64
-    assert (
-        payload["symjit"]["source_tree_sha256"]
-        != payload["symjit"]["candidate_tree_sha256"]
-    )
-    assert payload["symjit"]["release_status"] == "fork-pr-candidate"
+    assert symjit["candidate_tree_sha256"] == symjit["source_tree_sha256"]
+    assert hashlib.sha256(b"[]").hexdigest() == module._EMPTY_PATCH_CLOSURE_SHA256
+    assert symjit["release_status"] == "fork-pr-candidate"
+
+
+def test_contributor_lock_rejects_any_local_patch_contract() -> None:
+    module = _module()
+    payload = module._lock()
+
+    module._require_patchless_contributor_lock(payload)
+    for patches in (None, {}, [{"target": "symjit"}]):
+        modified = {**payload, "patches": patches}
+        with pytest.raises(
+            module.SetupError,
+            match="local source patching is unsupported",
+        ):
+            module._require_patchless_contributor_lock(modified)
 
 
 def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> None:
@@ -173,120 +176,6 @@ def test_tracked_symjit_direct_patch_lineage_replays_cleanly(tmp_path: Path) -> 
         check=True,
     ).stdout.strip()
     assert digest == "e0575ed72913a692ba2c946fa6a5ec740da458a2"
-
-
-def test_contributor_patch_application_is_exact_idempotent_and_fails_on_drift(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    dependencies = tmp_path / "dependencies"
-    checkouts = dependencies / "checkouts"
-    target = checkouts / "symjit"
-    target.mkdir(parents=True)
-    source = target / "value.txt"
-    source.write_text("before\n", encoding="utf-8")
-    patch_path = dependencies / "patches" / "symjit" / "change.patch"
-    patch_path.parent.mkdir(parents=True)
-    patch_path.write_text(
-        "diff --git a/value.txt b/value.txt\n"
-        "--- a/value.txt\n"
-        "+++ b/value.txt\n"
-        "@@ -1 +1 @@\n"
-        "-before\n"
-        "+after\n",
-        encoding="utf-8",
-    )
-    revision = "a" * 40
-    source_tree_sha256 = module._source_tree_sha256(target)
-    payload = {
-        "symjit": {
-            "candidate_revision": revision,
-            "source_tree_sha256": source_tree_sha256,
-            "candidate_tree_sha256": "f" * 64,
-        },
-        "patches": [
-            {
-                "name": "test-patch",
-                "target": "symjit",
-                "path": "patches/symjit/change.patch",
-                "sha256": hashlib.sha256(patch_path.read_bytes()).hexdigest(),
-                "applies_to_revision": revision,
-            }
-        ],
-    }
-    monkeypatch.setattr(module, "DEPENDENCIES", dependencies)
-    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
-    runner = module.Runner(dry_run=False)
-
-    module._apply_contributor_patches(runner, payload)
-    assert source.read_text(encoding="utf-8") == "after\n"
-    module._apply_contributor_patches(runner, payload)
-    assert source.read_text(encoding="utf-8") == "after\n"
-
-    source.write_text("ambient drift\n", encoding="utf-8")
-    with pytest.raises(module.SetupError, match="neither cleanly applicable"):
-        module._apply_contributor_patches(runner, payload)
-
-    patch_path.write_bytes(patch_path.read_bytes() + b"# tampered\n")
-    with pytest.raises(module.SetupError, match="digest mismatch"):
-        module._contributor_patches(payload)
-
-
-def test_overlapping_contributor_patch_series_is_idempotent_by_tree_identity(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    dependencies = tmp_path / "dependencies"
-    checkouts = dependencies / "checkouts"
-    target = checkouts / "symjit"
-    target.mkdir(parents=True)
-    source = target / "value.txt"
-    source.write_text("first\nsecond\n", encoding="utf-8")
-    patch_directory = dependencies / "patches" / "symjit"
-    patch_directory.mkdir(parents=True)
-    first = patch_directory / "first.patch"
-    first.write_text(
-        "--- a/value.txt\n+++ b/value.txt\n@@ -1,2 +1,2 @@\n-first\n+FIRST\n second\n",
-        encoding="utf-8",
-    )
-    second = patch_directory / "second.patch"
-    second.write_text(
-        "--- a/value.txt\n+++ b/value.txt\n@@ -1,2 +1,2 @@\n FIRST\n-second\n+SECOND\n",
-        encoding="utf-8",
-    )
-    revision = "a" * 40
-
-    def patch_entry(name: str, path: Path) -> dict[str, str]:
-        return {
-            "name": name,
-            "target": "symjit",
-            "path": f"patches/symjit/{path.name}",
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-            "applies_to_revision": revision,
-        }
-
-    payload = {
-        "symjit": {
-            "candidate_revision": revision,
-            "source_tree_sha256": "0" * 64,
-            "candidate_tree_sha256": "1" * 64,
-        },
-        "patches": [
-            patch_entry("first", first),
-            patch_entry("second", second),
-        ],
-    }
-    monkeypatch.setattr(module, "DEPENDENCIES", dependencies)
-    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
-    runner = module.Runner(dry_run=False)
-
-    module._apply_contributor_patches(runner, payload)
-    assert source.read_text(encoding="utf-8") == "FIRST\nSECOND\n"
-    payload["symjit"]["candidate_tree_sha256"] = module._source_tree_sha256(target)
-    module._apply_contributor_patches(runner, payload)
-    assert source.read_text(encoding="utf-8") == "FIRST\nSECOND\n"
 
 
 def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(
@@ -418,14 +307,13 @@ def test_dependency_only_cli_skips_the_project_wheel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _module()
-    payload: dict[str, object] = {}
+    payload: dict[str, object] = {"patches": []}
     monkeypatch.setattr(module, "_lock", lambda: payload)
     monkeypatch.setattr(module, "_sources", lambda *_args, **_kwargs: ())
     for name in (
         "_ensure_just",
         "_ensure_venv",
         "_materialize_symjit",
-        "_apply_contributor_patches",
         "_configure_sources",
         "_verify_symjit_tree",
         "_write_cargo_config",
@@ -459,34 +347,83 @@ def test_toml_section_replacement_is_idempotent() -> None:
     assert once.count('b = "2"') == 1
 
 
-def test_archive_checkout_patch_does_not_discover_parent_repository(
+def test_symjit_rlib_manifest_validation_does_not_rewrite_source(
     tmp_path: Path,
 ) -> None:
     module = _module()
-    repository = tmp_path / "repository"
-    repository.mkdir()
-    subprocess.run(
-        ["git", "init", "--quiet"],
-        cwd=repository,
-        check=True,
+    manifest = tmp_path / "Cargo.toml"
+    pristine = (
+        b'[package]\nname = "symjit"\nversion = "2.21.1"\n\n'
+        b'[lib]\ncrate-type = ["rlib"]\n'
     )
-    parent_payload = repository / "payload.txt"
-    parent_payload.write_text("old\n", encoding="utf-8")
-    checkout = repository / "checkouts" / "dependency"
-    checkout.mkdir(parents=True)
-    checkout_payload = checkout / "payload.txt"
-    checkout_payload.write_text("old\n", encoding="utf-8")
-    patch = repository / "change.patch"
-    patch.write_text(
-        "--- a/payload.txt\n+++ b/payload.txt\n@@ -1 +1 @@\n-old\n+new\n",
+    manifest.write_bytes(pristine)
+
+    module._require_symjit_rlib_manifest(manifest)
+
+    assert manifest.read_bytes() == pristine
+
+    manifest.write_text(
+        '[package]\nname = "symjit"\nversion = "2.21.1"\n\n'
+        '[lib]\ncrate-type = ["rlib", "cdylib"]\n',
         encoding="utf-8",
     )
+    with pytest.raises(module.SetupError, match="rlib-only"):
+        module._require_symjit_rlib_manifest(manifest)
 
-    module._apply_patch(module.Runner(dry_run=False), checkout, patch)
-    module._apply_patch(module.Runner(dry_run=False), checkout, patch)
 
-    assert checkout_payload.read_text(encoding="utf-8") == "new\n"
-    assert parent_payload.read_text(encoding="utf-8") == "old\n"
+def test_symjit_archive_materialization_preserves_the_pristine_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    prefix = "symjit-test-revision"
+    files = {
+        "Cargo.toml": (
+            b'[package]\nname = "symjit"\nversion = "2.21.1"\n\n'
+            b'[lib]\ncrate-type = ["rlib"]\n'
+        ),
+        "rust/direct.rs": b"pub fn direct() {}\n",
+    }
+    archive_stream = io.BytesIO()
+    with tarfile.open(fileobj=archive_stream, mode="w:gz") as archive:
+        for relative, content in files.items():
+            entry = tarfile.TarInfo(f"{prefix}/{relative}")
+            entry.size = len(content)
+            archive.addfile(entry, io.BytesIO(content))
+    archive_bytes = archive_stream.getvalue()
+
+    expected = tmp_path / "expected"
+    for relative, content in files.items():
+        path = expected / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    tree_sha256 = module._source_tree_sha256(expected)
+    payload = {
+        "symjit": {
+            "candidate_version": "2.21.1",
+            "source_url": "https://example.invalid/symjit.tar.gz",
+            "archive_sha256": hashlib.sha256(archive_bytes).hexdigest(),
+            "archive_prefix": prefix,
+            "source_tree_sha256": tree_sha256,
+            "candidate_tree_sha256": tree_sha256,
+        }
+    }
+    monkeypatch.setattr(module, "CHECKOUTS", tmp_path / "checkouts")
+    monkeypatch.setattr(
+        module.urllib.request,
+        "urlopen",
+        lambda _url: io.BytesIO(archive_bytes),
+    )
+
+    module._materialize_symjit(module.Runner(dry_run=False), payload)
+
+    installed = module.CHECKOUTS / "symjit"
+    assert module._source_tree_sha256(installed) == tree_sha256
+    assert {
+        path.relative_to(installed).as_posix(): path.read_bytes()
+        for path in installed.rglob("*")
+        if path.is_file()
+    } == files
 
 
 def test_candidate_community_lock_is_resolved_from_the_upstream_lock(

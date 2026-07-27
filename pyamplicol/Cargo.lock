@@ -1021,7 +1021,7 @@ dependencies = [
 [[package]]
 name = "symjit"
 version = "2.21.1"
-source = "git+https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git?rev=89efdb806e7fcd9ac68a9d38f3f2880adf1987d2#89efdb806e7fcd9ac68a9d38f3f2880adf1987d2"
+source = "git+https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git?rev=60a9d66fbfb2181d36a5747c389714eccc187244#60a9d66fbfb2181d36a5747c389714eccc187244"
 dependencies = [
  "anyhow",
  "hashbrown 0.16.1",

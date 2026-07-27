@@ -115,8 +115,6 @@ def test_candidate_gate_uses_revisions_and_pinned_symjit_tree_fingerprint(
     module = _module()
     contributor = module._load_contributor_lock()
     revisions = module._candidate_revisions(contributor)
-    patch_state, patch_issues = module._candidate_patch_contract(contributor)
-    assert patch_issues == []
     state_path = tmp_path / "install-state.json"
     candidate_lock = tmp_path / "candidate-Cargo.lock"
     cargo_config = tmp_path / "candidate-cargo-config.toml"
@@ -132,7 +130,7 @@ def test_candidate_gate_uses_revisions_and_pinned_symjit_tree_fingerprint(
         {
             "version": contributor["symjit"]["candidate_version"],
             "archive_sha256": contributor["symjit"]["archive_sha256"],
-            "patch_sha256": module._patch_closure_sha256(patch_state),
+            "patch_sha256": module._EMPTY_PATCH_CLOSURE_SHA256,
             "worktree_sha256": contributor["symjit"]["candidate_tree_sha256"],
         }
     )
@@ -145,7 +143,7 @@ def test_candidate_gate_uses_revisions_and_pinned_symjit_tree_fingerprint(
                     module.CONTRIBUTOR_LOCK_PATH.read_bytes()
                 ).hexdigest(),
                 "sources": source_state,
-                "patches": patch_state,
+                "patches": [],
             }
         ),
         encoding="utf-8",
@@ -180,16 +178,9 @@ def test_candidate_gate_uses_revisions_and_pinned_symjit_tree_fingerprint(
     assert module._candidate_issues(module._load_lock()) == []
 
 
-def test_candidate_patch_contract_rejects_tampered_patch(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_candidate_contract_rejects_any_local_patch_contract() -> None:
     module = _module()
     contributor = copy.deepcopy(module._load_contributor_lock())
-    dependencies = tmp_path / "dependencies"
-    patch = dependencies / "patches" / "symjit" / "change.patch"
-    patch.parent.mkdir(parents=True)
-    patch.write_bytes(b"tampered patch\n")
     contributor["patches"] = [
         {
             "name": "synthetic",
@@ -199,11 +190,10 @@ def test_candidate_patch_contract_rejects_tampered_patch(
             "applies_to_revision": contributor["symjit"]["candidate_revision"],
         }
     ]
-    monkeypatch.setattr(module, "DEPENDENCIES_PATH", dependencies)
 
-    _, issues = module._candidate_patch_contract(contributor)
+    issues = module._candidate_contributor_contract_issues(contributor)
 
-    assert [issue.code for issue in issues] == ["candidate-patch-digest"]
+    assert [issue.code for issue in issues] == ["candidate-patch-contract"]
 
 
 def test_candidate_contributor_contract_pins_arena_abis_and_both_tree_states() -> None:
@@ -223,6 +213,13 @@ def test_candidate_contributor_contract_pins_arena_abis_and_both_tree_states() -
     assert {
         issue.code
         for issue in module._candidate_contributor_contract_issues(wrong_tree)
+    } == {"candidate-source-tree"}
+
+    divergent_tree = copy.deepcopy(contributor)
+    divergent_tree["symjit"]["source_tree_sha256"] = "0" * 64
+    assert {
+        issue.code
+        for issue in module._candidate_contributor_contract_issues(divergent_tree)
     } == {"candidate-source-tree"}
 
 

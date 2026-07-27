@@ -3,12 +3,26 @@ from __future__ import annotations
 
 import copy
 import json
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from tools.developer import compiled_microkernel_acceptance as acceptance
+
+
+def test_dependency_identity_is_read_from_the_contributor_lock() -> None:
+    root = Path(__file__).resolve().parents[2]
+    with (root / "dependencies" / "contributor-lock.toml").open("rb") as stream:
+        symjit = tomllib.load(stream)["symjit"]
+
+    assert symjit["candidate_revision"] == acceptance.DEPENDENCY_REVISION
+    assert symjit["archive_sha256"] == acceptance.DEPENDENCY_ARCHIVE_SHA256
+    assert symjit["source_tree_sha256"] == acceptance.DEPENDENCY_SOURCE_TREE_SHA256
+    assert (
+        symjit["candidate_tree_sha256"] == acceptance.DEPENDENCY_CANDIDATE_TREE_SHA256
+    )
 
 
 def _digest(character: str) -> str:

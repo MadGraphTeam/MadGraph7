@@ -176,6 +176,7 @@ def candidate_dependency_provenance(
                 "contributor_lock_sha256": hashlib.sha256(
                     contributor_data
                 ).hexdigest(),
+                "patches": [],
                 "sources": {
                     "symbolica": {
                         "url": symbolica["source_url"],
@@ -1087,6 +1088,24 @@ def test_candidate_dependency_provenance_fails_closed(
     )
 
     with pytest.raises(ArtifactError, match="not bound to the current locks"):
+        audit_wheel(candidate, mode="candidate", native_scan=False)
+
+
+def test_candidate_dependency_provenance_rejects_local_patch_state(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+) -> None:
+    state_path = artifacts.ROOT / artifacts._CANDIDATE_INSTALL_STATE
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["patches"] = [{"target": "symjit"}]
+    state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+    candidate = _wheel(
+        tmp_path,
+        version="0.1.0.dev0+candidate.0123456789ab",
+        candidate=True,
+    )
+
+    with pytest.raises(ArtifactError, match="patchless"):
         audit_wheel(candidate, mode="candidate", native_scan=False)
 
 
