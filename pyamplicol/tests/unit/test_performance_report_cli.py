@@ -53,6 +53,7 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     populate = _parser().parse_args(("populate",))
     assert populate.target_runtime == 5.0
     assert populate.generation_time_limit_seconds is None
+    assert populate.fast_lineage is False
 
     worker = _parser().parse_args(
         (
@@ -429,4 +430,111 @@ def test_profile_population_requires_the_active_authenticated_environment(
     assert len(scheduler_settings) == 1
     assert scheduler_settings[0].max_rss_bytes == 30_000_000_000
     assert scheduler_settings[0].campaign_max_rss_bytes is None
+    assert json.loads(capsys.readouterr().out)["planned"] == 3
+
+
+def test_profile_fast_lineage_skips_historical_replay(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = tmp_path / "repo"
+    _initialize_git_repo(repo)
+    expected_revision = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    expected_tree = subprocess.run(
+        ("git", "rev-parse", "HEAD^{tree}"),
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    lineage = SimpleNamespace()
+    loaded: list[tuple[Path, Path, str, str]] = []
+    bound: list[object] = []
+
+    def load_fast(
+        root: Path,
+        docs_dir: Path,
+        *,
+        expected_active_revision: str,
+        expected_active_tree: str,
+    ):
+        loaded.append(
+            (
+                root,
+                docs_dir,
+                expected_active_revision,
+                expected_active_tree,
+            )
+        )
+        return lineage
+
+    class FakeScheduler:
+        def __init__(self, service, *, settings) -> None:
+            assert settings.report_profile == "macbook_M3"
+            bound.append(service._authenticated_measurement_lineage)
+
+        def run(self, planned):
+            return SimpleNamespace(planned=planned, outcomes=(), failed=())
+
+    monkeypatch.setattr(
+        "tools.performance_report.cli.load_measurement_lineage",
+        load_fast,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.load_and_audit_measurement_lineage",
+        lambda *_args, **_kwargs: pytest.fail("historical replay was called"),
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.require_active_profile_environment",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.load_profile_campaign_policy",
+        lambda *_args, **_kwargs: MACBOOK_M3_POLICY,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.CampaignScheduler",
+        FakeScheduler,
+    )
+
+    assert (
+        main(
+            (
+                "--repo-root",
+                str(repo),
+                "--report-profile",
+                "macbook_M3",
+                "populate",
+                "--fast-lineage",
+                "--dataset",
+                "matrix_compiled_builtin_sm_lc",
+                "--process-key",
+                "dd_z_jets",
+                "--n-final",
+                "1",
+                "--workload",
+                "selected-flow",
+                "--max-ram-gb",
+                "30",
+            )
+        )
+        == 0
+    )
+
+    assert loaded == [
+        (
+            repo.resolve(),
+            repo / "docs/performance_reports/macbook_M3",
+            expected_revision,
+            expected_tree,
+        )
+    ]
+    assert bound == [lineage]
     assert json.loads(capsys.readouterr().out)["planned"] == 3

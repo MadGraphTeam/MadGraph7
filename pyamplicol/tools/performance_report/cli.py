@@ -26,6 +26,7 @@ from .measurement_lineage import (
     class_c_pending_path,
     finalize_class_c_bridge,
     load_and_audit_measurement_lineage,
+    load_measurement_lineage,
     prepare_class_c_bridge,
 )
 from .models import Accuracy, ArtifactPolicy, ExecutionMode, ModelKey, Workload
@@ -296,6 +297,11 @@ def _parser() -> argparse.ArgumentParser:
         help="compatibility alias for --campaign-max-ram-gib",
     )
     populate.add_argument("--allow-symbolica-parallel", action="store_true")
+    populate.add_argument(
+        "--fast-lineage",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     populate.add_argument("--dry-run", action="store_true")
     populate.add_argument(
         "--refresh-pdf",
@@ -592,16 +598,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             source_identity = require_eligible_report_source(repo_root)
             expected_revision = source_identity.revision
-            measurement_lineage = (
-                None
-                if args.report_profile is None
-                else load_and_audit_measurement_lineage(
+            if args.fast_lineage and args.report_profile is None:
+                parser.error("--fast-lineage requires --report-profile")
+            if args.report_profile is None:
+                measurement_lineage = None
+            elif args.fast_lineage:
+                measurement_lineage = load_measurement_lineage(
+                    repo_root,
+                    service.paths.docs_dir,
+                    expected_active_revision=expected_revision,
+                    expected_active_tree=source_identity.tree,
+                )
+                if measurement_lineage is None:
+                    raise MeasurementLineageError(
+                        "--fast-lineage requires a finalized measurement lineage"
+                    )
+            else:
+                measurement_lineage = load_and_audit_measurement_lineage(
                     repo_root,
                     service.paths.docs_dir,
                     service.store,
                     expected_active_source_revision=expected_revision,
                 )
-            )
             if args.report_profile is None:
                 campaign_policy = STRICT_POLICY
             else:
