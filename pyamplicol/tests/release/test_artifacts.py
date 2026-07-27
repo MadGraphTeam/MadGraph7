@@ -212,7 +212,7 @@ def _prepared_model_files(
     for architecture in PREPARED_MODEL_ARCHITECTURES:
         stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
         bundle_name = f"{stem}.pyamplicol-model"
-        bundle = b"synthetic portable prepared model\n"
+        bundle = f"synthetic portable {architecture} prepared model\n".encode()
         metadata = {
             "schema_version": 1,
             "prepared_model_bundle_schema": 1,
@@ -1010,28 +1010,14 @@ def test_wheel_rejects_prepared_model_bundle_identity_drift(
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
-def test_wheel_rejects_divergent_portable_prepared_model_aliases(
+def test_wheel_accepts_independently_serialized_portable_prepared_model_assets(
     tmp_path: Path,
 ) -> None:
-    prefix = "pyamplicol/assets/prepared_models"
-    stem = f"{PREPARED_MODEL_ASSET_BASENAME}-x86_64"
-    bundle_name = f"{prefix}/{stem}.pyamplicol-model"
-    metadata_name = f"{prefix}/{stem}.metadata.json"
-    prepared_files = _prepared_model_files(prefix)
-    divergent_bundle = prepared_files[bundle_name] + b"divergent"
-    metadata = json.loads(prepared_files[metadata_name])
-    metadata["bundle_size"] = len(divergent_bundle)
-    metadata["bundle_sha256"] = hashlib.sha256(divergent_bundle).hexdigest()
-    wheel = _wheel(
-        tmp_path,
-        extra_files={
-            bundle_name: divergent_bundle,
-            metadata_name: (json.dumps(metadata, sort_keys=True) + "\n").encode(),
-        },
-    )
+    wheel = _wheel(tmp_path)
 
-    with pytest.raises(ArtifactError, match="byte-identical portable bundles"):
-        audit_wheel(wheel, mode="release", native_scan=False)
+    report = audit_wheel(wheel, mode="release", native_scan=False)
+
+    assert report.target == "manylinux_2_28_x86_64"
 
 
 def test_release_and_candidate_wheels_are_distinct_and_audited(

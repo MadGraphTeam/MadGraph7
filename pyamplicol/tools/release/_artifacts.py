@@ -740,7 +740,6 @@ def _validate_prepared_model_assets(
             f"missing={missing}, extra={extra}"
         )
 
-    portable_bundle: bytes | None = None
     for architecture in PREPARED_MODEL_ARCHITECTURES:
         stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
         metadata_name = f"{prepared_prefix}{stem}.metadata.json"
@@ -818,12 +817,6 @@ def _validate_prepared_model_assets(
             raise ArtifactError(
                 f"prepared-model bundle hash/size is invalid: {bundle_name}"
             )
-        if portable_bundle is not None and bundle != portable_bundle:
-            raise ArtifactError(
-                "prepared-model architecture aliases must contain "
-                "byte-identical portable bundles"
-            )
-        portable_bundle = bundle
 
 
 def _prepared_pack_compiler_digest(
