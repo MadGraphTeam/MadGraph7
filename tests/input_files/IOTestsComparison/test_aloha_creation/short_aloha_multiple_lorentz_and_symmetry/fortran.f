@@ -20,7 +20,11 @@ entry VVS1_2(V2, S3, COUP, M1, W1,V1)
     V1%P(:) = +V2%P(:)+S3%P(:)
 P1(:) = -V1 % P (:)
  TMP0 = (V2 % W(1)*P1(0)-V2 % W(2)*P1(1)-V2 % W(3)*P1(2)-V2 % W(4)*P1(3))
-    denom = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1 * (M1 -CI* W1))
+    if (dble(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2).gt.0d0) then
+       denom = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1 * (M1 -CI* W1))
+    else
+       denom = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1**2)
+    endif
     V1%W(1)= denom*S3 % W(1)*(-CI*(V2 % W(1))+CI*(P1(0)*OM1*TMP0))
     V1%W(2)= denom*S3 % W(1)*(-CI*(V2 % W(2))+CI*(P1(1)*OM1*TMP0))
     V1%W(3)= denom*S3 % W(1)*(-CI*(V2 % W(3))+CI*(P1(2)*OM1*TMP0))
