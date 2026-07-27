@@ -383,10 +383,11 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         if r"\textbf{summary: generation}" in line
     )
     assert (
-        r"\providecommand{\bestmodesummary}[2]{"
-        r"\begin{tabular}[t]{@{}l@{}}#1\\[-0.16em]#2\end{tabular}}"
+        r"\providecommand{\bestmodesummarypair}[3]{"
+        r"\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}"
+        r"#1&#2\\[-0.16em]\multicolumn{2}{@{}l@{}}{#3}\end{tabular}}"
     ) in tex
-    assert r"\bestmodesummary{" in generation_summary
+    assert r"\bestmodesummarypair{" in generation_summary
     assert r"}{\bestmodemix{A:0/B:1/C:0}}" in generation_summary
     assert r"}{\bestmodemix{A:0/B:0/C:1}}" in generation_summary
     assert r"\matrixratio{ReportGreen}{0.4}\bestmodemix" not in generation_summary
