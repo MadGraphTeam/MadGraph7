@@ -39,6 +39,24 @@ def test_prepared_model_bootstrap_rejects_ambiguous_values(
         backend._prepared_model_bootstrap("candidate")
 
 
+def test_release_prepared_model_bootstrap_requires_explicit_release_context() -> None:
+    assert backend._release_prepared_model_bootstrap("release", None) is False
+    with pytest.raises(RuntimeError, match="explicit producer context"):
+        backend._release_prepared_model_bootstrap("release", "wrong")
+    with pytest.raises(RuntimeError, match="requires release dependency mode"):
+        backend._release_prepared_model_bootstrap(
+            "candidate",
+            backend._RELEASE_PREPARED_MODEL_BOOTSTRAP_CONTEXT,
+        )
+    assert (
+        backend._release_prepared_model_bootstrap(
+            "release",
+            backend._RELEASE_PREPARED_MODEL_BOOTSTRAP_CONTEXT,
+        )
+        is True
+    )
+
+
 def test_selftest_fixture_bootstrap_requires_explicit_candidate_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -355,6 +373,53 @@ def test_release_overlay_skips_contributor_native_digest(monkeypatch) -> None:
     monkeypatch.setattr(backend, "_native_build_inputs_digest", unexpected_digest)
     with backend._overlay("release") as (overlay, _target):
         assert not (overlay / "src/pyamplicol/_build_info.json").exists()
+
+
+def test_release_prepared_model_bootstrap_overlay_is_non_publishable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backend, "_clean_source_revision", lambda: "b" * 40)
+    monkeypatch.setattr(backend, "_native_build_inputs_digest", lambda _root: "c" * 64)
+
+    with backend._overlay(
+        "release",
+        release_prepared_model_bootstrap=True,
+    ) as (overlay, _target):
+        build_info = json.loads(
+            (overlay / "src/pyamplicol/_build_info.json").read_text(encoding="utf-8")
+        )
+
+        assert build_info == {
+            "candidate_fingerprint": None,
+            "native_build_inputs_sha256": "c" * 64,
+            "publishable": False,
+            "release_prepared_model_bootstrap": True,
+            "schema_version": 1,
+            "selftest_fixture_bootstrap": False,
+            "source_checkout": str(ROOT.resolve()),
+            "source_revision": "b" * 40,
+            "version": "0.1.0",
+        }
+        assert (overlay / "Cargo.lock").read_bytes() == (
+            ROOT / "Cargo.lock"
+        ).read_bytes()
+        assert not (overlay / ".cargo/config.toml").exists()
+
+
+def test_release_prepared_model_bootstrap_rejects_dirty_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backend, "_clean_source_revision", lambda: None)
+    monkeypatch.setattr(backend, "_native_build_inputs_digest", lambda _root: "c" * 64)
+
+    with (
+        pytest.raises(RuntimeError, match="exact clean Git revision"),
+        backend._overlay(
+            "release",
+            release_prepared_model_bootstrap=True,
+        ),
+    ):
+        pass
 
 
 def test_selftest_staging_rejects_an_unavailable_target() -> None:

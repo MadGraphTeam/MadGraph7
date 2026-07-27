@@ -144,17 +144,58 @@ def write_candidate_packaged_prepared_model_asset(
     *,
     architecture: str,
 ) -> tuple[Path, Path]:
+    """Write one candidate source-ready architecture pack."""
+
+    return _write_packaged_prepared_model_asset(
+        overlay,
+        bundle_path,
+        output_directory,
+        architecture=architecture,
+        mode="candidate",
+    )
+
+
+def write_release_packaged_prepared_model_asset(
+    overlay: Path,
+    bundle_path: Path,
+    output_directory: Path,
+    *,
+    architecture: str,
+) -> tuple[Path, Path]:
+    """Write one release source-ready architecture pack."""
+
+    return _write_packaged_prepared_model_asset(
+        overlay,
+        bundle_path,
+        output_directory,
+        architecture=architecture,
+        mode="release",
+    )
+
+
+def _write_packaged_prepared_model_asset(
+    overlay: Path,
+    bundle_path: Path,
+    output_directory: Path,
+    *,
+    architecture: str,
+    mode: str,
+) -> tuple[Path, Path]:
     """Write one source-ready architecture pack and its derived metadata."""
 
+    if mode not in {"candidate", "release"}:
+        raise RuntimeError(f"unsupported prepared-model build mode: {mode}")
     if architecture not in _EXPECTED_ARCHITECTURES:
         raise RuntimeError(f"unsupported prepared-model architecture: {architecture}")
     package_root = overlay / "src" / "pyamplicol"
-    contributor_path = overlay / "dependencies" / "contributor-lock.toml"
     release_path = overlay / "dependencies" / "release-lock.toml"
-    with contributor_path.open("rb") as stream:
-        contributor = tomllib.load(stream)
     with release_path.open("rb") as stream:
         release = tomllib.load(stream)
+    contributor: Mapping[str, Any] | None = None
+    if mode == "candidate":
+        contributor_path = overlay / "dependencies" / "contributor-lock.toml"
+        with contributor_path.open("rb") as stream:
+            contributor = tomllib.load(stream)
 
     contract = _load_prepared_contract(package_root / "models" / "prepared.py")
     source_bundle = bundle_path.resolve(strict=True)
@@ -187,14 +228,24 @@ def write_candidate_packaged_prepared_model_asset(
     package_version = _required_string(
         compiled_producer.get("pyamplicol"), "compiled_model producer version"
     )
-    marker = "+candidate."
-    if marker not in package_version:
-        raise RuntimeError("source-ready prepared assets require a candidate bundle")
-    candidate_fingerprint = package_version.rsplit(marker, maxsplit=1)[1]
-    if len(candidate_fingerprint) != 12 or any(
-        character not in "0123456789abcdef" for character in candidate_fingerprint
-    ):
-        raise RuntimeError("prepared bundle has an invalid candidate fingerprint")
+    candidate_fingerprint: str | None = None
+    if mode == "candidate":
+        marker = "+candidate."
+        if marker not in package_version:
+            raise RuntimeError(
+                "source-ready prepared assets require a candidate bundle"
+            )
+        candidate_fingerprint = package_version.rsplit(marker, maxsplit=1)[1]
+        if len(candidate_fingerprint) != 12 or any(
+            character not in "0123456789abcdef" for character in candidate_fingerprint
+        ):
+            raise RuntimeError("prepared bundle has an invalid candidate fingerprint")
+    else:
+        release_version = _release_package_version(overlay, release)
+        if package_version != release_version or package_version != "0.1.0":
+            raise RuntimeError(
+                "release prepared assets require bundle producer version '0.1.0'"
+            )
     if pack.producer.get("version") != package_version:
         raise RuntimeError("prepared kernel-pack package version is inconsistent")
 
@@ -221,17 +272,24 @@ def write_candidate_packaged_prepared_model_asset(
     if compiled_source.get("digest") != source_digest:
         raise RuntimeError("prepared built-in model source digest is stale")
 
+    if mode == "candidate":
+        assert contributor is not None
+        symbolica_version = str(contributor["symbolica"]["candidate_version"])
+        symjit_version = str(contributor["symjit"]["candidate_version"])
+    else:
+        symbolica_version = _cargo_package_version(overlay, "symbolica")
+        symjit_version = _symjit_version(overlay)
     dependencies = {
         "symbolica_serialization_abi": _literal_assignment(
             package_root / "_internal" / "versions.py",
             "SYMBOLICA_SERIALIZATION_ABI",
         ),
-        "symbolica_version": contributor["symbolica"]["candidate_version"],
+        "symbolica_version": symbolica_version,
         "symjit_application_abi": _literal_assignment(
             package_root / "_internal" / "versions.py",
             "SYMJIT_APPLICATION_ABI",
         ),
-        "symjit_version": contributor["symjit"]["candidate_version"],
+        "symjit_version": symjit_version,
         "ufo_model_loader_version": release["ufo_model_loader"][
             "required_version"
         ],
@@ -245,19 +303,23 @@ def write_candidate_packaged_prepared_model_asset(
         if pack.dependency_abis.get(key) != expected:
             raise RuntimeError(f"prepared kernel-pack dependency {key} is stale")
 
+    if mode == "candidate":
+        assert contributor is not None
+        sources = {
+            "symbolica": contributor["symbolica"]["candidate_revision"],
+            "symbolica-community": contributor["symbolica"]["community_revision"],
+            "symjit": contributor["symjit"]["candidate_revision"],
+        }
+    else:
+        sources = _release_sources(overlay, release)
+
     metadata_name, bundle_name = _asset_names(architecture)
     metadata: dict[str, object] = {
         "backend": "jit",
         "build_contract": {
             "candidate_fingerprint": candidate_fingerprint,
-            "mode": "candidate",
-            "sources": {
-                "symbolica": contributor["symbolica"]["candidate_revision"],
-                "symbolica-community": contributor["symbolica"][
-                    "community_revision"
-                ],
-                "symjit": contributor["symjit"]["candidate_revision"],
-            },
+            "mode": mode,
+            "sources": sources,
         },
         "bundle": bundle_name,
         "bundle_sha256": hashlib.sha256(bundle_bytes).hexdigest(),
@@ -355,6 +417,11 @@ def _validate_bundle(
     build_contract = _mapping(
         metadata.get("build_contract"), "metadata.build_contract"
     )
+    _require_exact_keys(
+        build_contract,
+        frozenset({"candidate_fingerprint", "mode", "sources"}),
+        "metadata.build_contract",
+    )
     if build_contract.get("mode") != mode:
         raise RuntimeError(
             "packaged prepared model was built for "
@@ -374,6 +441,12 @@ def _validate_bundle(
         raise RuntimeError(
             "packaged prepared model does not match the active exact dependency lock; "
             "regenerate the built-in portable JIT O2 prepared-model asset"
+        )
+    sources = _mapping(build_contract.get("sources"), "metadata.build_contract.sources")
+    if mode == "release" and dict(sources) != _release_sources(overlay):
+        raise RuntimeError(
+            "packaged prepared model release source identity is stale; "
+            "regenerate it with the active release lock"
         )
 
     compiled = dict(bundle.compiled_model)
@@ -508,6 +581,73 @@ def _validate_dependency_contract(
 
 def _symjit_version(overlay: Path) -> str:
     return _cargo_package_version(overlay, "symjit")
+
+
+def _release_package_version(
+    overlay: Path, release: Mapping[str, Any] | None = None
+) -> str:
+    if release is None:
+        with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
+            release = tomllib.load(stream)
+    with (overlay / "Cargo.toml").open("rb") as stream:
+        cargo = tomllib.load(stream)
+    cargo_version = _required_string(
+        cargo["workspace"]["package"]["version"], "Cargo package version"
+    )
+    locked_version = _required_string(
+        release["project"]["version"], "release-lock project version"
+    )
+    if cargo_version != locked_version:
+        raise RuntimeError(
+            "release package version differs between Cargo.toml and release-lock.toml"
+        )
+    return cargo_version
+
+
+def _release_sources(
+    overlay: Path, release: Mapping[str, Any] | None = None
+) -> dict[str, str]:
+    """Return the release source identity without consulting contributor state."""
+
+    if release is None:
+        with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
+            release = tomllib.load(stream)
+    symbolica = _required_string(
+        release["symbolica"]["rust_version"], "release-lock Symbolica version"
+    )
+    symjit_version = _required_string(
+        release["symjit"]["version"], "release-lock SymJIT version"
+    )
+    symjit_revision = _required_string(
+        release["symjit"]["revision"], "release-lock SymJIT revision"
+    )
+    if _cargo_package_version(overlay, "symbolica") != symbolica:
+        raise RuntimeError(
+            "Cargo.lock Symbolica version differs from release-lock.toml"
+        )
+    if _cargo_package_version(overlay, "symjit") != symjit_version:
+        raise RuntimeError("Cargo.lock SymJIT version differs from release-lock.toml")
+    with (overlay / "Cargo.lock").open("rb") as stream:
+        cargo_lock = tomllib.load(stream)
+    packages = cargo_lock.get("package")
+    if not isinstance(packages, list):
+        raise RuntimeError("Cargo.lock has no package array")
+    symjit_packages = [
+        package
+        for package in packages
+        if isinstance(package, dict) and package.get("name") == "symjit"
+    ]
+    if len(symjit_packages) != 1:
+        raise RuntimeError("Cargo.lock must contain exactly one symjit package")
+    source = _required_string(
+        symjit_packages[0].get("source"), "Cargo.lock SymJIT source"
+    )
+    if not source.endswith(f"#{symjit_revision}"):
+        raise RuntimeError("Cargo.lock SymJIT source differs from release-lock.toml")
+    return {
+        "symbolica": symbolica,
+        "symjit": symjit_revision,
+    }
 
 
 def _cargo_package_version(overlay: Path, package_name: str) -> str:
@@ -678,4 +818,5 @@ def _plain_json(value: object) -> object:
 __all__ = [
     "stage_packaged_prepared_models",
     "write_candidate_packaged_prepared_model_asset",
+    "write_release_packaged_prepared_model_asset",
 ]

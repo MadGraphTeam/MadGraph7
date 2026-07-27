@@ -524,6 +524,35 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "continue-on-error" not in workflow
 
 
+def test_release_prepared_model_workflow_is_manual_and_non_publishable() -> None:
+    workflow = (WORKFLOWS / "release-prepared-models.yml").read_text(encoding="utf-8")
+    trigger = workflow.split("on:\n", maxsplit=1)[1].split(
+        "\npermissions:\n", maxsplit=1
+    )[0]
+
+    assert trigger.strip() == "workflow_dispatch:"
+    assert "contents: read" in workflow
+    assert "persist-credentials: false" in workflow
+    assert "id-token: write" not in workflow
+    assert "secrets." not in workflow
+    assert "publish-pypi" not in workflow
+    assert "gh-action-pypi-publish" not in workflow
+    assert "git push" not in workflow
+    assert "PYAMPLICOL_BUILD_MODE: release" in workflow
+    assert "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP" not in workflow
+    assert "prepare_release_prepared_models.py" in workflow
+    assert "bootstrap-wheel" in workflow
+    assert "eager_portability.py produce" in workflow
+    assert "--asset-mode release" in workflow
+    assert "runner: ubuntu-24.04" in workflow
+    assert "runner: macos-15" in workflow
+    assert "architecture: x86_64" in workflow
+    assert "architecture: aarch64" in workflow
+    assert workflow.count(MEMORY_WATCHDOG) == 2
+    assert "if-no-files-found: error" in workflow
+    assert "retention-days: 14" in workflow
+
+
 def test_complete_source_gate_covers_every_required_suite_serially() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 

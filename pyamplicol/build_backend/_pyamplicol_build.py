@@ -123,6 +123,7 @@ _PORTABLE_SELFTEST_TARGETS = frozenset(
     }
 )
 _SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT = "build-current-candidate-site-v1"
+_RELEASE_PREPARED_MODEL_BOOTSTRAP_CONTEXT = "release-prepared-model-producer-v1"
 _CANDIDATE_SOURCES = {
     "gammaloop",
     "symbolica",
@@ -212,6 +213,25 @@ def _prepared_model_bootstrap(mode: str) -> bool:
     return value == "1"
 
 
+def _release_prepared_model_bootstrap(
+    mode: str,
+    context: str | None,
+) -> bool:
+    """Authorize only the dedicated release prepared-model producer."""
+
+    if context is None:
+        return False
+    if mode != "release":
+        raise RuntimeError(
+            "release prepared-model bootstrap requires release dependency mode"
+        )
+    if context != _RELEASE_PREPARED_MODEL_BOOTSTRAP_CONTEXT:
+        raise RuntimeError(
+            "release prepared-model bootstrap requires the explicit producer context"
+        )
+    return True
+
+
 def _selftest_fixture_bootstrap(
     mode: str,
     *,
@@ -245,7 +265,7 @@ def _selftest_fixture_bootstrap(
 
 
 def _strip_prepared_model_payloads(overlay: Path) -> None:
-    """Remove stale bundles from a candidate wheel used only to create replacements."""
+    """Remove stale bundles from a bootstrap wheel used only to create replacements."""
 
     root = overlay / "src" / "pyamplicol" / "assets" / "prepared_models"
     if not root.is_dir() or root.is_symlink():
@@ -1001,6 +1021,47 @@ def _mark_candidate(
     )
 
 
+def _mark_release_prepared_model_bootstrap(
+    overlay: Path,
+    base_version: str,
+    *,
+    native_build_inputs_sha256: str,
+) -> None:
+    """Mark a release-version wheel as regeneration-only and non-publishable."""
+
+    if base_version != "0.1.0":
+        raise RuntimeError(
+            "release prepared-model bootstrap requires package version '0.1.0'"
+        )
+    source_revision = _clean_source_revision()
+    if source_revision is None:
+        raise RuntimeError(
+            "release prepared-model bootstrap requires an exact clean Git revision"
+        )
+    package = overlay / "src" / "pyamplicol"
+    package.mkdir(parents=True, exist_ok=True)
+    (package / "_build_info.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "candidate_fingerprint": None,
+                "native_build_inputs_sha256": native_build_inputs_sha256,
+                "release_prepared_model_bootstrap": True,
+                "selftest_fixture_bootstrap": False,
+                "source_checkout": str(ROOT.resolve()),
+                "source_revision": source_revision,
+                "version": base_version,
+            },
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def _clean_source_revision() -> str | None:
     """Return the exact source revision only for a clean Git checkout.
 
@@ -1152,12 +1213,18 @@ def _stage_cargo_inputs(
 
 
 @contextmanager
-def _overlay(mode: str) -> Iterator[tuple[Path, Path]]:
+def _overlay(
+    mode: str,
+    *,
+    release_prepared_model_bootstrap: bool = False,
+) -> Iterator[tuple[Path, Path]]:
     with TemporaryDirectory(prefix="pyamplicol-build-") as temporary:
         root = Path(temporary)
         source = root / "source"
         native_build_inputs_sha256 = (
-            _native_build_inputs_digest(ROOT) if mode == "candidate" else None
+            _native_build_inputs_digest(ROOT)
+            if mode == "candidate" or release_prepared_model_bootstrap
+            else None
         )
         _copy_allowlisted_source(source)
         _stage_cargo_inputs(
@@ -1165,6 +1232,16 @@ def _overlay(mode: str) -> Iterator[tuple[Path, Path]]:
             mode,
             native_build_inputs_sha256=native_build_inputs_sha256,
         )
+        if release_prepared_model_bootstrap:
+            if native_build_inputs_sha256 is None:
+                raise RuntimeError(
+                    "release prepared-model bootstrap has no native source identity"
+                )
+            _mark_release_prepared_model_bootstrap(
+                source,
+                canonical_package_version(source),
+                native_build_inputs_sha256=native_build_inputs_sha256,
+            )
         yield source, root / "cargo-target"
 
 
@@ -1292,17 +1369,27 @@ def _from_overlay(
     *args: Any,
     with_sdk: bool,
     validate_prepared_models: bool = False,
+    release_prepared_model_bootstrap_context: str | None = None,
     **kwargs: Any,
 ) -> _Result:
     with _delegating():
         mode = _build_mode()
         prepared_model_bootstrap = _prepared_model_bootstrap(mode)
+        release_prepared_model_bootstrap = _release_prepared_model_bootstrap(
+            mode,
+            release_prepared_model_bootstrap_context,
+        )
         # A raw environment escape is never sufficient for a PEP 517 build.
         # Only the dedicated local regeneration helper supplies the explicit
         # context accepted by this gate.
         _selftest_fixture_bootstrap(mode)
         _check_dependencies(mode)
-        with _overlay(mode) as (overlay, target_dir):
+        overlay_context = (
+            _overlay(mode, release_prepared_model_bootstrap=True)
+            if release_prepared_model_bootstrap
+            else _overlay(mode)
+        )
+        with overlay_context as (overlay, target_dir):
             environment = {
                 "CARGO_HOME": str(target_dir.parent / "cargo-home"),
                 "CARGO_ENCODED_RUSTFLAGS": _rust_remap_flags(overlay, target_dir),
@@ -1329,7 +1416,7 @@ def _from_overlay(
                     _stage_packaged_examples(overlay)
                     _stage_python_stub(overlay)
                     _stage_runtime_resources(overlay)
-                    if prepared_model_bootstrap:
+                    if prepared_model_bootstrap or release_prepared_model_bootstrap:
                         _strip_prepared_model_payloads(overlay)
                     else:
                         stage_packaged_prepared_models(overlay, mode)
@@ -1355,6 +1442,24 @@ def build_wheel(
         with_sdk=True,
     )
     return filename
+
+
+def build_release_prepared_model_bootstrap_wheel(
+    wheel_directory: str,
+    *,
+    bootstrap_context: str,
+    config_settings: Mapping[str, Any] | None = None,
+) -> str:
+    """Build a release-version wheel usable only to regenerate prepared packs."""
+
+    return _from_overlay(
+        maturin.build_wheel,
+        wheel_directory,
+        config_settings,
+        None,
+        with_sdk=True,
+        release_prepared_model_bootstrap_context=bootstrap_context,
+    )
 
 
 def build_sdist(

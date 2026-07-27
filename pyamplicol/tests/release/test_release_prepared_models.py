@@ -1,0 +1,118 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+import json
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from tools.release import prepare_release_prepared_models as producer
+
+
+def _bootstrap_wheel(
+    path: Path,
+    *,
+    publishable: bool = False,
+    include_prepared_payload: bool = False,
+) -> Path:
+    marker = {
+        "candidate_fingerprint": None,
+        "native_build_inputs_sha256": "b" * 64,
+        "publishable": publishable,
+        "release_prepared_model_bootstrap": True,
+        "schema_version": 1,
+        "selftest_fixture_bootstrap": False,
+        "source_checkout": str(producer.ROOT.resolve()),
+        "source_revision": "a" * 40,
+        "version": "0.1.0",
+    }
+    members = {
+        "pyamplicol/_build_info.json": (
+            json.dumps(marker, sort_keys=True) + "\n"
+        ).encode(),
+        "pyamplicol/assets/prepared_models/__init__.py": b"",
+        "pyamplicol-0.1.0.dist-info/METADATA": (
+            b"Metadata-Version: 2.4\nName: pyamplicol\nVersion: 0.1.0\n\n"
+        ),
+    }
+    if include_prepared_payload:
+        members[
+            "pyamplicol/assets/prepared_models/built-in-sm-jit-o2-x86_64.metadata.json"
+        ] = b"{}\n"
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, payload in members.items():
+            archive.writestr(name, payload)
+    return path
+
+
+def test_release_bootstrap_wheel_is_explicitly_non_publishable(tmp_path: Path) -> None:
+    wheel = _bootstrap_wheel(tmp_path / "pyamplicol-0.1.0.whl")
+
+    result = producer.audit_bootstrap_wheel(
+        wheel,
+        expected_source_revision="a" * 40,
+    )
+
+    assert result["version"] == "0.1.0"
+    assert result["publishable"] is False
+    assert result["release_prepared_model_bootstrap"] is True
+    assert result["candidate_fingerprint"] is None
+
+
+def test_release_bootstrap_wheel_rejects_publishable_marker(tmp_path: Path) -> None:
+    wheel = _bootstrap_wheel(
+        tmp_path / "pyamplicol-0.1.0.whl",
+        publishable=True,
+    )
+
+    with pytest.raises(
+        producer.ReleasePreparedModelError,
+        match="marker publishable is invalid",
+    ):
+        producer.audit_bootstrap_wheel(
+            wheel,
+            expected_source_revision="a" * 40,
+        )
+
+
+def test_release_bootstrap_wheel_rejects_prepared_payloads(tmp_path: Path) -> None:
+    wheel = _bootstrap_wheel(
+        tmp_path / "pyamplicol-0.1.0.whl",
+        include_prepared_payload=True,
+    )
+
+    with pytest.raises(
+        producer.ReleasePreparedModelError,
+        match="stale prepared-model payloads",
+    ):
+        producer.audit_bootstrap_wheel(
+            wheel,
+            expected_source_revision="a" * 40,
+        )
+
+
+def test_release_bootstrap_builder_rejects_candidate_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP", "1")
+
+    with pytest.raises(
+        producer.ReleasePreparedModelError,
+        match="cannot be combined",
+    ):
+        producer.build_bootstrap_wheel(tmp_path / "wheel")
+
+
+def test_release_bootstrap_builder_rejects_candidate_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "candidate")
+
+    with pytest.raises(
+        producer.ReleasePreparedModelError,
+        match="requires PYAMPLICOL_BUILD_MODE=release",
+    ):
+        producer.build_bootstrap_wheel(tmp_path / "wheel")

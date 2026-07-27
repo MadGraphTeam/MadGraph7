@@ -1,0 +1,75 @@
+name: Release prepared-model pack generation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-prepared-models-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  produce-release-packs:
+    name: Produce release prepared-model pack (${{ matrix.architecture }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            architecture: x86_64
+            system: Linux
+            machine: x86_64
+          - runner: macos-15
+            architecture: aarch64
+            system: Darwin
+            machine: arm64
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - name: Verify exact release dependency inputs
+        run: python tools/release/check_dependencies.py
+      - name: Install pinned build tools
+        run: python -m pip install "maturin==1.14.1" "packaging==26.2"
+      - name: Build the non-publishable release bootstrap wheel
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python tools/release/prepare_release_prepared_models.py
+          bootstrap-wheel
+          .artifacts/release-prepared-bootstrap
+      - name: Install the isolated bootstrap runtime
+        run: |
+          python -m venv .artifacts/release-prepared-runtime
+          .artifacts/release-prepared-runtime/bin/python -m pip install \
+            .artifacts/release-prepared-bootstrap/pyamplicol-*.whl
+      - name: Produce and validate the release source-ready pack
+        run: >-
+          .artifacts/release-prepared-runtime/bin/python
+          tools/ci/memory_watchdog.py --limit-gib 30 --
+          .artifacts/release-prepared-runtime/bin/python
+          tools/ci/eager_portability.py produce
+          .artifacts/release-prepared-output/${{ matrix.architecture }}
+          --python .artifacts/release-prepared-runtime/bin/python
+          --asset-mode release
+          --expected-system ${{ matrix.system }}
+          --expected-machine ${{ matrix.machine }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-release-prepared-${{ matrix.architecture }}
+          path: .artifacts/release-prepared-output/${{ matrix.architecture }}/
+          if-no-files-found: error
+          retention-days: 14

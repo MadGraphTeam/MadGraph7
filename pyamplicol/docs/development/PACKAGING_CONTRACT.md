@@ -24,8 +24,10 @@ unchanged.
 ## Dependency Modes
 
 Release mode reads `dependencies/release-lock.toml` and accepts only exact
-published package/crate versions and compatible ABI metadata. Git, path,
-editable, and candidate dependencies are forbidden.
+published package/crate versions and compatible ABI metadata. An immutable Git
+revision is permitted only when both the release lock and canonical
+`Cargo.lock` name the same repository and full commit. Path, editable,
+floating-Git, and candidate dependencies are forbidden.
 
 Candidate mode is available only from a full source checkout. It reads the
 repository-only contributor contract and produces explicitly non-publishable
@@ -35,6 +37,27 @@ from release wheels and source distributions.
 Release and candidate Cargo resolution are physically separate. A release
 command must fail closed when exact published inputs are unavailable; it must
 never fall back to contributor state.
+
+## Release Prepared-Model Production
+
+Normal release wheel and source-distribution hooks require both checked-in
+architecture packs to match the active release lock. Missing, candidate, or
+stale packs are build errors; the PEP 517 interface has no release bypass.
+
+When those source-owned packs must be regenerated, manually dispatch
+`.github/workflows/release-prepared-models.yml`. Its dedicated backend entry
+point creates a temporary release-version bootstrap wheel with the packs
+removed. That wheel is explicitly marked `publishable: false` and
+`release_prepared_model_bootstrap: true`, requires an exact clean Git revision,
+and is rejected by the ordinary release artifact audit. It exists only long
+enough to run the architecture-local producer.
+
+The producer writes `mode: release`, an explicit null candidate fingerprint,
+package and bundle producer version `0.1.0`, and a source identity derived only
+from `dependencies/release-lock.toml` and canonical `Cargo.lock`. The workflow
+uploads the generated pairs for review; it cannot commit, publish, or mutate
+the repository. Both architecture pairs must be committed in a later reviewed
+source change before an ordinary release build can succeed.
 
 ## Wheel Contents
 

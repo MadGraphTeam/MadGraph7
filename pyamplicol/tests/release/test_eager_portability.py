@@ -535,6 +535,32 @@ def test_producer_rejects_an_unexpected_architecture_before_building(
     assert not (tmp_path / "transfer").exists()
 
 
+def test_producer_cli_accepts_explicit_release_asset_mode(tmp_path: Path) -> None:
+    arguments = portability._parser().parse_args(
+        [
+            "produce",
+            str(tmp_path / "transfer"),
+            "--asset-mode",
+            "release",
+        ]
+    )
+
+    assert arguments.asset_mode == "release"
+
+
+def test_release_asset_dispatch_reaches_real_writer(tmp_path: Path) -> None:
+    bundle = tmp_path / "invalid.pyamplicol-model"
+    bundle.write_bytes(b"not a prepared-model bundle")
+
+    with pytest.raises(RuntimeError, match="prepared-model bundle is invalid"):
+        portability._write_source_ready_asset(
+            bundle,
+            tmp_path / "output",
+            architecture="x86_64",
+            asset_mode="release",
+        )
+
+
 def test_consumer_accepts_portable_pack_across_architectures(
     tmp_path: Path,
     contracts: portability.RuntimeContracts,

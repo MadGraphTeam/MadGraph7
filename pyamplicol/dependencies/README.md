@@ -15,6 +15,12 @@ a local checkout.
 workspace-level SymJIT source override and fully resolved Cargo lock, including
 the full Git revision, before release artifacts are built.
 
+Source-owned release prepared-model packs are regenerated only through the
+manual `release-prepared-models.yml` workflow. Its temporary bootstrap wheel is
+explicitly non-publishable and omits all existing packs; the resulting
+architecture pairs derive their dependency identity from `release-lock.toml`
+and canonical `Cargo.lock`, never from contributor state.
+
 ## Candidate Development Mode
 
 `just dev-install` uses immutable Symbolica/GammaLoop source revisions and the
