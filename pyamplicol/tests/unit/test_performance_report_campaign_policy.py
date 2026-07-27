@@ -20,6 +20,7 @@ from tools.performance_report.campaign_policy import (
     CampaignPolicyError,
     PolicyCensorKind,
     PolicyMeasurementState,
+    _validate_generation_phase,
     dependency_reference,
     generation_limit_exempt,
     policy_censor_measurement,
@@ -259,6 +260,34 @@ def test_policy_censors_are_canonical_and_tamper_evident() -> None:
             expected_source_revision=_REVISION,
             expected_source_tree=_TREE,
         )
+
+
+def test_completed_reused_artifact_accepts_zero_work_generation_phase() -> None:
+    phase_evidence = {
+        "abi": "pyamplicol-report-generation-phase-evidence-v1",
+        "phase_state_abi": "pyamplicol-report-worker-phase-state-v1",
+        "configured_timeout_seconds": X86_EPYC_GENERATION_LIMIT_SECONDS,
+        "supervisor_reason": "completed",
+        "authenticated": True,
+        "run_id": "run-1",
+        "worker_pid": 123,
+        "final_sequence": 2,
+        "final_phase": "post-generation",
+        "generation_started_monotonic_ns": 10,
+        "generation_finished_monotonic_ns": 10,
+        "generation_elapsed_seconds": 0.0,
+        "final_state_sha256": "3" * 64,
+        "error": None,
+    }
+
+    assert (
+        _validate_generation_phase(
+            phase_evidence,
+            X86_EPYC_POLICY,
+            expected_reason="completed",
+        )
+        is phase_evidence
+    )
 
 
 def test_missing_only_reuses_exact_dependency_censor_and_rebinds_changes(

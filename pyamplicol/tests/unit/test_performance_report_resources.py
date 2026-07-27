@@ -313,6 +313,42 @@ def test_generation_limit_excludes_preparation_and_post_generation(
     assert result.generation_phase.generation_elapsed_seconds == 1.0
 
 
+def test_supervisor_accepts_completed_zero_work_generation_phase(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock()
+    clock.now = 10.0
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / "phase.json")
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+    )
+    with reporter.generation():
+        pass
+    process.returncode = 0
+
+    result = supervise_worker(
+        ("worker",),
+        generation_timeout_seconds=2.0,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=clock.sleep,
+    )
+
+    assert result.reason == "completed"
+    assert result.returncode == 0
+    assert result.generation_phase is not None
+    assert result.generation_phase.authenticated
+    assert result.generation_phase.final_sequence == 2
+    assert result.generation_phase.final_phase == "post-generation"
+    assert result.generation_phase.generation_elapsed_seconds == 0.0
+
+
 def test_generation_limit_terminates_only_active_generation(
     tmp_path: Path,
 ) -> None:

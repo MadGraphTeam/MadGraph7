@@ -11,13 +11,25 @@ from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import (
     _baseline_matrix_element,
     _baseline_selector_contract,
+    _reuse_artifact_for_measurement,
     _stable_runtime_identity,
     _validate_runtime_identity_postflight,
     failure_measurement,
+    measure_pyamplicol_cell,
     source_revision,
 )
-from tools.performance_report.models import ResultStatus
-from tools.performance_report.runner import RunnerError, SelectorContract
+from tools.performance_report.models import ExecutionMode, ResultStatus
+from tools.performance_report.phase_state import (
+    WorkerPhaseChannel,
+    WorkerPhaseReporter,
+    read_worker_phase_state,
+)
+from tools.performance_report.runner import (
+    GeneratedArtifact,
+    RunnerError,
+    RunnerSettings,
+    SelectorContract,
+)
 
 
 def _contract() -> SelectorContract:
@@ -59,6 +71,97 @@ def test_failure_measurement_preserves_compact_cache_shape() -> None:
         "kind": "RuntimeError",
         "message": "over limit",
     }
+
+
+def test_reused_artifact_closes_current_worker_generation_phase(
+    tmp_path: Path,
+) -> None:
+    channel = WorkerPhaseChannel.create(tmp_path / "phase.json")
+    ticks = iter((100, 200, 300))
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=42,
+        clock_ns=lambda: next(ticks),
+    )
+    artifact = GeneratedArtifact(
+        path=tmp_path / "artifact",
+        process_id="process",
+        generation_seconds=6.5,
+        model_preparation_seconds=1.0,
+        model_preparation_reused=True,
+        requested_config={},
+        effective_config={},
+    )
+
+    assert (
+        _reuse_artifact_for_measurement(
+            artifact,
+            phase_reporter=reporter,
+        )
+        is artifact
+    )
+    state = read_worker_phase_state(channel, expected_pid=42)
+
+    assert state.phase == "post-generation"
+    assert state.sequence == 2
+    assert state.generation_started_monotonic_ns == 200
+    assert state.generation_finished_monotonic_ns == 300
+    assert state.generation_elapsed_seconds(now_seconds=1.0) == 1.0e-7
+
+
+def test_measurement_routes_reused_artifact_through_phase_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import tools.performance_report.measurement as report_measurement
+
+    cell = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+    )
+    artifact = GeneratedArtifact(
+        path=tmp_path / "artifact",
+        process_id="process",
+        generation_seconds=6.5,
+        model_preparation_seconds=1.0,
+        model_preparation_reused=True,
+        requested_config={},
+        effective_config={},
+    )
+    reporter = object()
+    observed: list[tuple[GeneratedArtifact, object]] = []
+
+    def reuse(
+        value: GeneratedArtifact,
+        *,
+        phase_reporter: object,
+    ) -> GeneratedArtifact:
+        observed.append((value, phase_reporter))
+        return value
+
+    def stop_after_selection(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("selection observed")
+
+    monkeypatch.setattr(report_measurement, "_reuse_artifact_for_measurement", reuse)
+    monkeypatch.setattr(
+        report_measurement,
+        "validate_artifact_contract",
+        stop_after_selection,
+    )
+
+    with pytest.raises(RuntimeError, match="selection observed"):
+        measure_pyamplicol_cell(
+            cell,
+            artifact_path=tmp_path / "unused",
+            settings=RunnerSettings(),
+            repo_root=tmp_path,
+            baseline=None,
+            reused_artifact=artifact,
+            phase_reporter=reporter,  # type: ignore[arg-type]
+        )
+
+    assert observed == [(artifact, reporter)]
 
 
 def test_catalog_contains_no_amplicol_candidate_matrix_cell() -> None:

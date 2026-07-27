@@ -146,6 +146,22 @@ def generated_artifact_from_measurement(
     )
 
 
+def _reuse_artifact_for_measurement(
+    artifact: GeneratedArtifact,
+    *,
+    phase_reporter: WorkerPhaseReporter | None,
+) -> GeneratedArtifact:
+    """Close the local generation phase when no generation work is needed."""
+
+    if phase_reporter is not None:
+        # The inherited generation_seconds remains the cost of producing the
+        # reusable artifact.  This empty local interval only gives the current
+        # supervised worker an authenticated terminal phase state.
+        with phase_reporter.generation():
+            pass
+    return artifact
+
+
 def _pointwise_tolerance(cell: CellSpec) -> float:
     if cell.dataset_id.startswith("matrix_recurrence_") or cell.dataset_id.startswith(
         "z_"
@@ -261,13 +277,20 @@ def measure_pyamplicol_cell(
 ) -> dict[str, object]:
     """Generate or retime one complete-coverage pyAmpliCol artifact."""
 
-    generated = reused_artifact or generate_artifact(
-        cell,
-        artifact_path,
-        settings=settings,
-        repo_root=repo_root,
-        prepared_model_path=prepared_model_path,
-        phase_reporter=phase_reporter,
+    generated = (
+        generate_artifact(
+            cell,
+            artifact_path,
+            settings=settings,
+            repo_root=repo_root,
+            prepared_model_path=prepared_model_path,
+            phase_reporter=phase_reporter,
+        )
+        if reused_artifact is None
+        else _reuse_artifact_for_measurement(
+            reused_artifact,
+            phase_reporter=phase_reporter,
+        )
     )
     validate_artifact_contract(cell, generated.path)
     runtime = _load_runtime(generated.path, generated.process_id)
