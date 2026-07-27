@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -24,8 +25,15 @@ from typing import Any
 
 from .agreements import incoming_agreement_edges
 from .artifacts import ATTEMPT_SCHEMA, ArtifactStore, CurrentRecord
+from .cache import _validate_runtime_identity_postflight, validate_measurement
 from .catalog import REPORT_CATALOG, ReportCatalog
-from .models import ArtifactPolicy, CellSpec, ExecutionMode, ModelKey
+from .models import (
+    ArtifactPolicy,
+    CellSpec,
+    ExecutionMode,
+    ModelKey,
+    ResultStatus,
+)
 from .source_identity import require_eligible_report_source
 
 MEASUREMENT_LINEAGE_SCHEMA = "pyamplicol-performance-measurement-lineage-v1"
@@ -743,10 +751,14 @@ def _validate_payload_shape(payload: Mapping[str, object]) -> None:
     records = reachability.get("records")
     reached_ids = reachability.get("reached_cell_ids")
     existing_target_ids = reachability.get("existing_catalog_target_ids")
+    invalidated_failure_ids = reachability.get(
+        "invalidated_validation_failed_current_ids"
+    )
     if (
         not isinstance(records, list)
         or not isinstance(reached_ids, list)
         or not isinstance(existing_target_ids, list)
+        or not isinstance(invalidated_failure_ids, list)
         or reachability.get("inspected_current_count") != len(records)
     ):
         raise MeasurementLineageError(
@@ -834,10 +846,17 @@ def _validate_payload_shape(payload: Mapping[str, object]) -> None:
         record_ids != sorted(set(record_ids))
         or reached_ids != sorted(derived_reached)
         or existing_target_ids != sorted(set(existing_target_ids))
+        or invalidated_failure_ids
+        != sorted(set(invalidated_failure_ids))
         or any(
             not isinstance(value, str) or value not in set(record_ids)
             for value in existing_target_ids
         )
+        or any(
+            not isinstance(value, str) or not value
+            for value in invalidated_failure_ids
+        )
+        or set(invalidated_failure_ids) & set(record_ids)
     ):
         raise MeasurementLineageError(
             "measurement-lineage recurrence reachability sets are inconsistent"
@@ -1920,6 +1939,177 @@ def _artifact_member(root: Path, relative: object, *, context: str) -> Path:
     return resolved
 
 
+def _validate_numerical_validation_failure(
+    record: CurrentRecord,
+    cell: CellSpec,
+) -> None:
+    """Validate one completed pointwise failure selected for replacement."""
+
+    validation = record.result.get("validation")
+    failure = record.result.get("failure")
+    artifact = record.result.get("artifact")
+    provenance = record.result.get("provenance")
+    try:
+        validate_measurement(record.result, expected_cell=cell)
+    except ValueError as error:
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure failure measurement schema is invalid"
+        ) from error
+    if (
+        record.result.get("status") != ResultStatus.VALIDATION_FAILED.value
+        or not isinstance(validation, Mapping)
+        or validation.get("status")
+        != ResultStatus.VALIDATION_FAILED.value
+        or not isinstance(failure, Mapping)
+        or set(failure) != {"kind", "message"}
+        or failure.get("kind") != "MeasurementValidationError"
+        or failure.get("message")
+        != "candidate or same-artifact numerical validation failed"
+        or not isinstance(artifact, Mapping)
+        or set(artifact) != {"path", "process_id", "policy"}
+        or not isinstance(artifact.get("path"), str)
+        or not artifact["path"]
+        or not isinstance(artifact.get("process_id"), str)
+        or not artifact["process_id"]
+        or artifact.get("policy") != "generated"
+        or not isinstance(provenance, Mapping)
+    ):
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure current is not an authenticated "
+            "numerical-validation failure"
+        )
+
+    pointwise = validation.get("pointwise")
+    resolved_sum = validation.get("resolved_sum")
+    if (
+        not isinstance(pointwise, Mapping)
+        or set(pointwise)
+        != {
+            "status",
+            "candidate",
+            "baseline",
+            "absolute_difference",
+            "relative_difference",
+            "relative_tolerance",
+            "absolute_tolerance",
+        }
+        or not isinstance(resolved_sum, Mapping)
+        or set(resolved_sum)
+        != {
+            "status",
+            "maximum_absolute_difference",
+            "maximum_relative_difference",
+            "relative_tolerance",
+            "absolute_tolerance",
+        }
+    ):
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure failure lacks complete pointwise/resolved "
+            "validation evidence"
+        )
+    raw_numbers = (
+        pointwise["candidate"],
+        pointwise["baseline"],
+        pointwise["absolute_difference"],
+        pointwise["relative_difference"],
+        pointwise["relative_tolerance"],
+        pointwise["absolute_tolerance"],
+        resolved_sum["maximum_absolute_difference"],
+        resolved_sum["maximum_relative_difference"],
+        resolved_sum["relative_tolerance"],
+        resolved_sum["absolute_tolerance"],
+    )
+    matrix_element = record.result.get("matrix_element")
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) < 0.0
+        for value in raw_numbers
+    ) or (
+        isinstance(matrix_element, bool)
+        or not isinstance(matrix_element, (int, float))
+        or not math.isfinite(float(matrix_element))
+        or float(matrix_element) < 0.0
+    ):
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure validation evidence is not finite and "
+            "nonnegative"
+        )
+    (
+        candidate,
+        baseline,
+        absolute,
+        relative,
+        relative_tolerance,
+        absolute_tolerance,
+        maximum_absolute,
+        maximum_relative,
+        resolved_relative_tolerance,
+        resolved_absolute_tolerance,
+    ) = (float(value) for value in raw_numbers)
+    recomputed_absolute = abs(candidate - baseline)
+    recomputed_relative = recomputed_absolute / max(abs(baseline), 1.0e-300)
+    if (
+        float(matrix_element) != candidate
+        or absolute != recomputed_absolute
+        or relative != recomputed_relative
+        or (
+            recomputed_absolute <= absolute_tolerance
+            or recomputed_relative <= relative_tolerance
+        )
+        or pointwise.get("status") != ResultStatus.VALIDATION_FAILED.value
+        or (
+            maximum_absolute > resolved_absolute_tolerance
+            and maximum_relative > resolved_relative_tolerance
+        )
+        or resolved_sum.get("status") != ResultStatus.OK.value
+    ):
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure validation evidence is numerically "
+            "inconsistent"
+        )
+
+    try:
+        artifact_root = Path(str(artifact["path"])).expanduser().resolve(strict=True)
+        expected_artifact_root = (
+            record.manifest_path.parent / "artifact"
+        ).resolve(strict=True)
+    except OSError as error:
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure failure artifact is unavailable"
+        ) from error
+    if (
+        Path(str(artifact["path"])).expanduser().is_symlink()
+        or not artifact_root.is_dir()
+        or artifact_root != expected_artifact_root
+    ):
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure failure artifact is not its canonical "
+            "attempt artifact"
+        )
+    try:
+        _validate_runtime_identity_postflight(provenance, validation)
+    except ValueError as error:
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure failure runtime identity is invalid"
+        ) from error
+    _source_epoch(record)
+    _runtime_identity_evidence(record)
+
+
+def _authenticate_replaceable_validation_failure(
+    store: ArtifactStore,
+    record: CurrentRecord,
+    cell: CellSpec,
+) -> None:
+    """Authenticate one immutable current selected for replacement."""
+
+    _validate_numerical_validation_failure(record, cell)
+    _current_pin(record)
+    _attempt_owner_evidence(store, record)
+
+
 def _default_recurrence_reachability(
     record: CurrentRecord,
     cell: CellSpec,
@@ -2165,6 +2355,9 @@ def _hzz_reachability_certificate(
 ) -> dict[str, object]:
     by_id = {cell.cell_id: cell for cell in catalog.measurement_cells()}
     target_ids = {cell.cell_id for cell in hzz_impacted_cells(catalog=catalog)}
+    replacement_ids = target_ids | {
+        cell.cell_id for cell in hzz_agreement_closure(catalog=catalog)
+    }
     inspect = (
         inspector
         if inspector is not None
@@ -2178,6 +2371,7 @@ def _hzz_reachability_certificate(
     records: list[dict[str, object]] = []
     reached_ids: set[str] = set()
     existing_target_ids: set[str] = set()
+    invalidated_failure_ids: set[str] = set()
     for current in store.recover_current_records():
         cell = by_id.get(current.cell_id)
         if cell is None:
@@ -2185,15 +2379,21 @@ def _hzz_reachability_certificate(
                 f"artifact store current is absent from the report catalog: "
                 f"{current.cell_id}"
             )
+        status = current.result.get("status")
+        if status != ResultStatus.OK.value:
+            if current.cell_id not in replacement_ids:
+                raise MeasurementLineageError(
+                    "current outside the exact HZZ replacement closure is not "
+                    f"successful: {current.cell_id}"
+                )
+            _authenticate_replaceable_validation_failure(store, current, cell)
+            invalidated_failure_ids.add(current.cell_id)
+            continue
         if (
             cell.measurement.execution_mode is not ExecutionMode.RECURRENCE
             or cell.measurement.model is not ModelKey.BUILTIN_SM
         ):
             continue
-        if current.result.get("status") != "ok":
-            raise MeasurementLineageError(
-                f"built-in recurrence current is not successful: {current.cell_id}"
-            )
         raw = dict(inspect(current, cell))
         matched = raw.get("matched_contract_ids")
         if (
@@ -2221,6 +2421,9 @@ def _hzz_reachability_certificate(
         "records": sorted(records, key=lambda item: str(item.get("cell_id"))),
         "reached_cell_ids": sorted(reached_ids),
         "existing_catalog_target_ids": sorted(existing_target_ids),
+        "invalidated_validation_failed_current_ids": sorted(
+            invalidated_failure_ids
+        ),
     }
     certificate["sha256"] = _digest(certificate)
     return certificate
@@ -2994,11 +3197,17 @@ def load_measurement_lineage(
         )
     target_ids = {cell.cell_id for cell in impacted_cells}
     closure_ids = {cell.cell_id for cell in agreement_cells}
+    validation_failure_ids = set(
+        reachability["invalidated_validation_failed_current_ids"]  # type: ignore[arg-type]
+    )
     current_ids = set().union(*groups)
     expected_invalidated = current_ids & target_ids
     expected_recompare = (current_ids & closure_ids) - expected_invalidated
     if (
-        groups[1] != expected_invalidated
+        not validation_failure_ids
+        <= expected_invalidated | expected_recompare
+        or validation_failure_ids & groups[0]
+        or groups[1] != expected_invalidated
         or groups[2] != expected_recompare
         or groups[0] != current_ids - expected_invalidated - expected_recompare
     ):
@@ -3183,6 +3392,54 @@ def audit_measurement_lineage(
     certificate = payload["reachability_certificate"]
     assert isinstance(certificate, Mapping)
     by_cell = {cell.cell_id: cell for cell in catalog.measurement_cells()}
+    validation_failure_ids = set(
+        certificate["invalidated_validation_failed_current_ids"]  # type: ignore[arg-type]
+    )
+    historical_status_errors: list[str] = []
+    for field in (
+        "retained_currents",
+        "invalidated_currents",
+        "recompare_currents",
+    ):
+        for pin in payload[field]:  # type: ignore[index]
+            assert isinstance(pin, Mapping)
+            cell_id = str(pin["cell_id"])
+            key = (cell_id, str(pin["attempt_id"]))
+            inventory = inventory_by_key.get(key)
+            if inventory is None:
+                historical_status_errors.append(cell_id)
+                continue
+            try:
+                manifest_path = _artifact_member(
+                    store.artifact_root,
+                    inventory["manifest_locator"],
+                    context="historical pinned attempt manifest",
+                )
+                historical = store._validate_attempt_manifest(
+                    manifest_path,
+                    expected_cell_id=cell_id,
+                    expected_attempt_id=key[1],
+                    expected_digest=str(inventory["manifest_sha256"]),
+                )
+                if cell_id in validation_failure_ids:
+                    cell = by_cell.get(cell_id)
+                    if cell is None:
+                        raise MeasurementLineageError(
+                            f"{cell_id}: historical failure is absent from the catalog"
+                        )
+                    _validate_numerical_validation_failure(historical, cell)
+                elif historical.result.get("status") != ResultStatus.OK.value:
+                    raise MeasurementLineageError(
+                        f"{cell_id}: non-successful current was selected for "
+                        "retention or replacement without failure evidence"
+                    )
+            except Exception:
+                historical_status_errors.append(cell_id)
+    if historical_status_errors:
+        raise MeasurementLineageError(
+            "historical current status or validation-failure evidence changed: "
+            + ", ".join(historical_status_errors[:8])
+        )
     inspect = (
         reachability_inspector
         if reachability_inspector is not None

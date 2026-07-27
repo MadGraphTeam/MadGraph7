@@ -13,6 +13,7 @@ from tools.performance_report.artifacts import (
     ArtifactStore,
     ArtifactStoreError,
 )
+from tools.performance_report.cache import digest_json, empty_measurement
 from tools.performance_report.campaign_policy import MACBOOK_M3_POLICY
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement_lineage import (
@@ -57,6 +58,17 @@ def _write(repo: Path, relative: str, value: str | bytes) -> None:
         path.write_text(value, encoding="utf-8")
 
 
+def _lineage_digest(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(f"{encoded}\n".encode("ascii")).hexdigest()
+
+
 def _runtime(package_tree: str, *, fingerprint: str = "candidate-fixture") -> dict:
     return {
         "package_version": "0.1.0",
@@ -71,6 +83,95 @@ def _runtime(package_tree: str, *, fingerprint: str = "candidate-fixture") -> di
             "cpu_features": ["neon"],
         },
     }
+
+
+def _validation_failed_result(
+    ancestor: str,
+    ancestor_tree: str,
+    artifact_root: Path,
+    *,
+    failure_kind: str = "MeasurementValidationError",
+) -> dict[str, object]:
+    observations = [{"module": "fixture", "origin": "authenticated"}]
+    origin_policy = {
+        "kind": "pyamplicol-loaded-module-origin-policy-v1",
+        "all_loaded_origins_authenticated": True,
+        "native_image_origin_bound": True,
+        "loaded_bytecode_eligible": False,
+        "observed_module_count": len(observations),
+        "observations": observations,
+        "observations_sha256": digest_json(observations),
+    }
+    identity = {"loaded_module_origin_policy": origin_policy}
+    identity_sha256 = digest_json(identity)
+    stable_policy = {
+        key: value
+        for key, value in origin_policy.items()
+        if key
+        not in {
+            "observed_module_count",
+            "observations",
+            "observations_sha256",
+        }
+    }
+    stable_identity_sha256 = digest_json({"loaded_module_origin_policy": stable_policy})
+    measurement = empty_measurement()
+    measurement.update(
+        {
+            "status": "validation_failed",
+            "generation_seconds": 1.0,
+            "wall_seconds_per_point": 1.0,
+            "execution_seconds_per_point": 1.0,
+            "matrix_element": 4.0,
+            "sample_count": 1,
+            "standard_error_seconds_per_point": 0.1,
+            "relative_standard_error": 0.1,
+            "artifact": {
+                "path": str(artifact_root),
+                "process_id": "fixture-process",
+                "policy": "generated",
+            },
+            "validation": {
+                "status": "validation_failed",
+                "resolved_sum": {
+                    "status": "ok",
+                    "maximum_absolute_difference": 0.0,
+                    "maximum_relative_difference": 0.0,
+                    "relative_tolerance": 1.0e-12,
+                    "absolute_tolerance": 1.0e-15,
+                },
+                "pointwise": {
+                    "status": "validation_failed",
+                    "candidate": 4.0,
+                    "baseline": 1.0,
+                    "absolute_difference": 3.0,
+                    "relative_difference": 3.0,
+                    "relative_tolerance": 1.0e-12,
+                    "absolute_tolerance": 1.0e-15,
+                },
+                "direct_agreements": [],
+            },
+            "provenance": {
+                "report_source_revision": ancestor,
+                "report_source_tree": ancestor_tree,
+                "report_measured_source_revision": ancestor,
+                "report_measured_source_tree": ancestor_tree,
+                "runtime_identity": identity,
+                "runtime_identity_sha256": identity_sha256,
+                "runtime_identity_stable_sha256": stable_identity_sha256,
+                "runtime_identity_postflight_stable_sha256": (stable_identity_sha256),
+                "runtime_identity_postflight_loaded_module_origin_policy": (
+                    origin_policy
+                ),
+                "runtime_identity_postflight_match": True,
+            },
+            "failure": {
+                "kind": failure_kind,
+                "message": "candidate or same-artifact numerical validation failed",
+            },
+        }
+    )
+    return measurement
 
 
 def _repository(tmp_path: Path) -> tuple[Path, Path, ArtifactStore, str, str]:
@@ -240,6 +341,213 @@ def test_required_descendant_closure_is_exact_even_without_currents(
     assert not (expected & current_ids)
 
 
+def test_prepare_partitions_exact_epyc_validation_failures_for_replacement(
+    tmp_path: Path,
+) -> None:
+    repo, profile, store, ancestor, descendant = _repository(tmp_path)
+    ancestor_tree = _git(repo, "rev-parse", f"{ancestor}^{{tree}}")
+    failed_ids = {
+        "matrix-recurrence-builtin-sm-full-n3-dd-zzz-jets-contracted",
+        "matrix-recurrence-builtin-sm-lc-n3-dd-zzz-jets-selected-flow",
+    }
+    for cell_id in sorted(failed_ids):
+        attempt = store.new_attempt(cell_id, ArtifactPolicy.REGENERATE)
+        attempt.write_json("artifact/execution.json", {"fixture": True})
+        attempt.publish(
+            _validation_failed_result(
+                ancestor,
+                ancestor_tree,
+                attempt.root / "artifact",
+            ),
+            artifact_paths=("artifact/execution.json",),
+        )
+
+    prepared = prepare_class_c_bridge(
+        repo,
+        profile,
+        store,
+        ancestor_revision=ancestor,
+        descendant_revision=descendant,
+        impact=CLASS_C_HZZ_IMPACT,
+    )
+
+    reachability = prepared["reachability_certificate"]
+    assert isinstance(reachability, dict)
+    assert set(reachability["invalidated_validation_failed_current_ids"]) == failed_ids
+    assert failed_ids == {
+        str(pin["cell_id"]) for pin in prepared["invalidated_currents"]
+    }
+    assert not failed_ids & {
+        str(pin["cell_id"]) for pin in prepared["retained_currents"]
+    }
+
+
+def test_prepare_rejects_validation_failure_outside_hzz_closure(
+    tmp_path: Path,
+) -> None:
+    repo, profile, store, ancestor, descendant = _repository(tmp_path)
+    ancestor_tree = _git(repo, "rev-parse", f"{ancestor}^{{tree}}")
+    outside = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.measurement.model is ModelKey.BUILTIN_SM
+        and cell.process_key != "dd_zzz_jets"
+    )
+    attempt = store.new_attempt(outside.cell_id, ArtifactPolicy.REGENERATE)
+    attempt.write_json("artifact/execution.json", {"fixture": True})
+    attempt.publish(
+        _validation_failed_result(
+            ancestor,
+            ancestor_tree,
+            attempt.root / "artifact",
+        ),
+        artifact_paths=("artifact/execution.json",),
+    )
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="outside the exact HZZ replacement closure",
+    ):
+        prepare_class_c_bridge(
+            repo,
+            profile,
+            store,
+            ancestor_revision=ancestor,
+            descendant_revision=descendant,
+            impact=CLASS_C_HZZ_IMPACT,
+        )
+
+
+def test_prepare_rejects_wrong_failure_class_inside_hzz_closure(
+    tmp_path: Path,
+) -> None:
+    repo, profile, store, ancestor, descendant = _repository(tmp_path)
+    ancestor_tree = _git(repo, "rev-parse", f"{ancestor}^{{tree}}")
+    cell_id = "matrix-recurrence-builtin-sm-full-n3-dd-zzz-jets-contracted"
+    attempt = store.new_attempt(cell_id, ArtifactPolicy.REGENERATE)
+    attempt.write_json("artifact/execution.json", {"fixture": True})
+    attempt.publish(
+        _validation_failed_result(
+            ancestor,
+            ancestor_tree,
+            attempt.root / "artifact",
+            failure_kind="UnexpectedFailure",
+        ),
+        artifact_paths=("artifact/execution.json",),
+    )
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="not an authenticated numerical-validation failure",
+    ):
+        prepare_class_c_bridge(
+            repo,
+            profile,
+            store,
+            ancestor_revision=ancestor,
+            descendant_revision=descendant,
+            impact=CLASS_C_HZZ_IMPACT,
+        )
+
+
+def test_prepare_rejects_in_closure_failure_runtime_digest_tamper(
+    tmp_path: Path,
+) -> None:
+    repo, profile, store, ancestor, descendant = _repository(tmp_path)
+    ancestor_tree = _git(repo, "rev-parse", f"{ancestor}^{{tree}}")
+    cell_id = "matrix-recurrence-builtin-sm-full-n3-dd-zzz-jets-contracted"
+    attempt = store.new_attempt(cell_id, ArtifactPolicy.REGENERATE)
+    attempt.write_json("artifact/execution.json", {"fixture": True})
+    result = _validation_failed_result(
+        ancestor,
+        ancestor_tree,
+        attempt.root / "artifact",
+    )
+    provenance = result["provenance"]
+    assert isinstance(provenance, dict)
+    provenance["runtime_identity_sha256"] = "0" * 64
+    attempt.publish(result, artifact_paths=("artifact/execution.json",))
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="runtime identity is invalid",
+    ):
+        prepare_class_c_bridge(
+            repo,
+            profile,
+            store,
+            ancestor_revision=ancestor,
+            descendant_revision=descendant,
+            impact=CLASS_C_HZZ_IMPACT,
+        )
+
+
+def test_lineage_rejects_failed_pin_moved_into_retained_group(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, profile, store, ancestor, descendant = _repository(tmp_path)
+    ancestor_tree = _git(repo, "rev-parse", f"{ancestor}^{{tree}}")
+    cell_id = "matrix-recurrence-builtin-sm-full-n3-dd-zzz-jets-contracted"
+    attempt = store.new_attempt(cell_id, ArtifactPolicy.REGENERATE)
+    attempt.write_json("artifact/execution.json", {"fixture": True})
+    attempt.publish(
+        _validation_failed_result(
+            ancestor,
+            ancestor_tree,
+            attempt.root / "artifact",
+        ),
+        artifact_paths=("artifact/execution.json",),
+    )
+    pending = _prepare(repo, profile, store, ancestor, descendant)
+    _finalize(monkeypatch, repo, profile, store, descendant, pending)
+
+    lineage_path = profile / MEASUREMENT_LINEAGE_FILENAME
+    raw = json.loads(lineage_path.read_text(encoding="ascii"))
+    payload = raw["payload"]
+    failed_pin = next(
+        pin for pin in payload["invalidated_currents"] if pin["cell_id"] == cell_id
+    )
+    payload["invalidated_currents"].remove(failed_pin)
+    payload["retained_currents"].append(failed_pin)
+    payload["retained_currents"].sort(key=lambda pin: pin["cell_id"])
+    snapshot = {
+        field: payload[field]
+        for field in (
+            "retained_currents",
+            "invalidated_currents",
+            "recompare_currents",
+            "attempt_inventory",
+            "no_attempt_cells",
+        )
+    }
+    payload["current_snapshot_sha256"] = _lineage_digest(snapshot)
+    raw["payload_sha256"] = _lineage_digest(payload)
+    lineage_path.write_text(
+        json.dumps(
+            raw,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="ascii",
+    )
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="current groups do not match",
+    ):
+        load_measurement_lineage(
+            repo,
+            profile,
+            expected_active_revision=descendant,
+            expected_active_tree=_git(repo, "rev-parse", "HEAD^{tree}"),
+        )
+
+
 def test_attempt_artifact_byte_tamper_blocks_finalization(tmp_path: Path) -> None:
     repo, profile, store, ancestor, descendant = _repository(tmp_path)
     pending = _prepare(repo, profile, store, ancestor, descendant)
@@ -296,9 +604,7 @@ def test_failed_refresh_rolls_back_environment_and_lineage_bytes(
     lineage_path = profile / MEASUREMENT_LINEAGE_FILENAME
     tex_path.write_bytes(b"exact ancestor tex bytes\n")
     lineage_path.write_bytes(b"exact prior lineage bytes\n")
-    before = {
-        path: path.read_bytes() for path in (json_path, tex_path, lineage_path)
-    }
+    before = {path: path.read_bytes() for path in (json_path, tex_path, lineage_path)}
     expected = _authenticated_environment_payload(
         "macbook_M3",
         expected_source_revision=descendant,
@@ -553,11 +859,13 @@ def test_recurrence_reachability_accepts_exact_matrix_peer_artifact_owner(
     assert evidence["owner_cell_id"] == owner_cell.cell_id
     assert evidence["owner_attempt_id"] == owner.attempt_id
     assert evidence["owner_current_locator"].endswith("/current.json")
-    assert evidence["consumer_runtime_identity_sha256"] != (
-        evidence["owner_runtime_identity_sha256"]
+    assert (
+        evidence["consumer_runtime_identity_sha256"]
+        != (evidence["owner_runtime_identity_sha256"])
     )
-    assert evidence["consumer_runtime_identity_stable_sha256"] == (
-        evidence["owner_runtime_identity_stable_sha256"]
+    assert (
+        evidence["consumer_runtime_identity_stable_sha256"]
+        == (evidence["owner_runtime_identity_stable_sha256"])
     )
 
 
