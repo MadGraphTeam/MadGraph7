@@ -38,11 +38,16 @@ def _git(repo: Path, *arguments: str) -> str:
     ).stdout.strip()
 
 
-def _runtime(package_tree: str) -> dict[str, object]:
+def _runtime(
+    package_tree: str,
+    *,
+    native_build_inputs: str = "a" * 64,
+    native_extension: str = "b" * 64,
+) -> dict[str, object]:
     return {
         "package_version": "0.1.0",
-        "native_build_inputs_sha256": "a" * 64,
-        "native_extension": {"sha256": "b" * 64},
+        "native_build_inputs_sha256": native_build_inputs,
+        "native_extension": {"sha256": native_extension},
         "python_package_tree": {"sha256": package_tree},
         "candidate_build_identity": {
             "candidate_fingerprint": "candidate-fixture"
@@ -203,10 +208,14 @@ def test_prepare_finalize_and_audit_class_c_bridge(
         REPORT_CATALOG.measurement_cells()
     ) - 1
 
+    relinked_runtime = _runtime(
+        "d" * 64,
+        native_extension="e" * 64,
+    )
     new_environment = _authenticated_environment_payload(
         "macbook_M3",
         expected_source_revision=descendant,
-        active_runtime=_runtime("d" * 64),
+        active_runtime=relinked_runtime,
     )
 
     def fake_refresh(
@@ -238,10 +247,15 @@ def test_prepare_finalize_and_audit_class_c_bridge(
         store,
         pending_path=pending,
         expected_active_source_revision=descendant,
-        runtime_auditor=lambda _revision, _root: _runtime("d" * 64),
+        runtime_auditor=lambda _revision, _root: relinked_runtime,
     )
 
     assert finalized["state"] == "finalized"
+    assert (
+        finalized["ancestor_environment"]["native_extension_sha256"]
+        != finalized["descendant_environment"]["native_extension_sha256"]
+    )
+    assert "native_extension_sha256" not in finalized["runtime_invariant_fields"]
     assert (profile / MEASUREMENT_LINEAGE_FILENAME).is_file()
     lineage = load_measurement_lineage(
         repo,
@@ -262,6 +276,42 @@ def test_prepare_finalize_and_audit_class_c_bridge(
         store,
         expected_active_source_revision=descendant,
     )["runtime_invariants_match"] is True
+
+
+def test_class_c_bridge_rejects_changed_native_build_inputs(
+    tmp_path: Path,
+) -> None:
+    repo, profile, store, ancestor = _repository(tmp_path)
+    descendant = _git(repo, "rev-parse", "HEAD")
+    prepare_class_c_bridge(
+        repo,
+        profile,
+        store,
+        ancestor_revision=ancestor,
+        descendant_revision=descendant,
+        impact=CLASS_C_HZZ_IMPACT,
+    )
+    pending = class_c_pending_path(
+        store,
+        ancestor_revision=ancestor,
+        descendant_revision=descendant,
+    )
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="dependency/native/host runtime identity",
+    ):
+        finalize_class_c_bridge(
+            repo,
+            profile,
+            store,
+            pending_path=pending,
+            expected_active_source_revision=descendant,
+            runtime_auditor=lambda _revision, _root: _runtime(
+                "d" * 64,
+                native_build_inputs="f" * 64,
+            ),
+        )
 
 
 def test_class_c_bridge_rejects_disallowed_source_change(tmp_path: Path) -> None:

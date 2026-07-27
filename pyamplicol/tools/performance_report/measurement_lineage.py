@@ -162,6 +162,11 @@ _ENVIRONMENT_KEYS = {
     "candidate_fingerprint",
 }
 
+# A fresh native relink is authenticated by its exact build-input digest,
+# candidate fingerprint, target, and CPU feature set.  The raw extension digest
+# is intentionally recorded in each endpoint environment but is not invariant:
+# Mach-O UUIDs, temporary build paths, and signatures make that output
+# byte-nondeterministic even when every native input is unchanged.
 _ENVIRONMENT_INVARIANT_FIELDS = (
     "schema",
     "profile",
@@ -176,7 +181,6 @@ _ENVIRONMENT_INVARIANT_FIELDS = (
     "native_target",
     "native_cpu_features",
     "native_build_inputs_sha256",
-    "native_extension_sha256",
     "candidate_fingerprint",
 )
 
