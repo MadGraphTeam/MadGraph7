@@ -9,8 +9,8 @@
     }
   },
   "bundle": "built-in-sm-jit-o2-aarch64.pyamplicol-model",
-  "bundle_sha256": "11049d9d8f1c0ba0bb8f44fd785e129a8c02a67b07f40700bfd6a229f1e2c02a",
-  "bundle_size": 7428132,
+  "bundle_sha256": "15d5ebf32af1016956b377b71cc3ec5610550365d78c99625a575264679d1284",
+  "bundle_size": 7344641,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
     "symbolica_version": "2.2.0",
@@ -21,14 +21,14 @@
   "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
   "id": "built-in-sm-jit-o2",
   "jit_optimization_level": 2,
-  "kernel_count": 60,
+  "kernel_count": 59,
   "model": "built-in-sm",
   "prepared_model_bundle_schema": 1,
   "producer": {
     "compiled_model_schema": 9,
     "model_compiler_sha256": "230dbc4dca1c55c1287f26d8d31b02f6215e1a7ee0af7ea9b00734bbbfe205b7",
     "model_compiler_version": 13,
-    "model_source_digest": "f0177ea32e6f4e4a8b5f8d1cd8604bba0d1c8e559f5afbaa8eea3c0e34d681c0",
+    "model_source_digest": "7f6fc84e6d7c4eda6c531b9901ab891abd67c3c0e2ad9d492b30ece760352ba8",
     "package_version": "0.1.0",
     "prepared_pack_compiler_sha256": "bdd94616a872665cd0203790976c3d21aabb48e0379fc14ca9242f45e6ea57de"
   },
