@@ -264,6 +264,43 @@ def test_verified_fermion_pair_transition_mirrors_are_not_double_counted() -> No
     }
 
 
+def test_verified_scalar_vector_transition_mirrors_are_not_double_counted() -> None:
+    model = BuiltinSMModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+    states = {state.template_id: state for state in catalog.current_states}
+
+    transitions = tuple(
+        transition
+        for transition in catalog.transitions
+        if transition.equivalence_class == "builtin-sm:scalar-vector-to-vector"
+        and tuple(
+            states[state_id].particle_id
+            for state_id in transition.input_state_template_ids
+        )
+        == (25, 23)
+        and states[transition.result_state_template_id].particle_id == 23
+    )
+
+    # One H/Z -> Z transition survives for each physical Z spin state.
+    # The mirrored (H, Z) and (Z, H) model orientations are evaluator aliases,
+    # not two independently accumulated Higgsstrahlung contributions.
+    assert len(transitions) == 3
+    assert {transition.canonical_input_order for transition in transitions} == {(0, 1)}
+    assert {
+        next(
+            flow.input_spin_states
+            for flow in catalog.quantum_flows
+            if flow.template_id == transition.quantum_flow_template_id
+        )
+        for transition in transitions
+    } == {(0, -1), (0, 0), (0, 1)}
+
+
 def test_concatenate_keep_alias_retains_canonical_parent_order() -> None:
     one = ExactComplexRationalV1.one()
 

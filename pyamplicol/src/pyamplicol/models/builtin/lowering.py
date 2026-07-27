@@ -440,6 +440,17 @@ class BuiltinSMLoweringMixin:
                 input_order=input_order,
             )
 
+        scalar_vector_orientations = {
+            18: (0, 1),
+            19: (1, 0),
+        }
+        input_order = scalar_vector_orientations.get(kind)
+        if input_order is not None:
+            return VertexEvaluationEquivalence(
+                class_id="builtin-sm:scalar-vector-to-vector",
+                input_order=input_order,
+            )
+
         return super().vertex_evaluation_equivalence(kind)
 
     def vertex_component_expression(

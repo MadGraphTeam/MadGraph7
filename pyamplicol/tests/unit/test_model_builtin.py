@@ -154,6 +154,37 @@ def test_builtin_yang_mills_kernel_evaluation_relations_are_exact() -> None:
     )
     assert model.vertex_evaluation_equivalence(21).input_order == (0, 1)
     assert model.vertex_evaluation_equivalence(22).input_order == (1, 0)
+    assert model.vertex_evaluation_equivalence(18).class_id == (
+        model.vertex_evaluation_equivalence(19).class_id
+    )
+    assert model.vertex_evaluation_equivalence(18).input_order == (0, 1)
+    assert model.vertex_evaluation_equivalence(19).input_order == (1, 0)
+
+
+def test_builtin_higgs_vector_kernel_orientations_are_exact_aliases() -> None:
+    model = BuiltinSMModel()
+    scalar = (1.25 - 0.75j,)
+    vector = (2.0 + 0.5j, -1.0j, 0.25 - 0.5j, -3.0)
+    coupling = (model.mass(23) * model.weak_coupling_over_cosine(), 0.0)
+
+    scalar_vector = model.vertex_component_expression(
+        18,
+        scalar,
+        vector,
+        result_particle_id=23,
+        result_chirality=0,
+        coupling=coupling,
+    )
+    vector_scalar = model.vertex_component_expression(
+        19,
+        vector,
+        scalar,
+        result_particle_id=23,
+        result_chirality=0,
+        coupling=coupling,
+    )
+
+    assert vector_scalar == pytest.approx(scalar_vector, rel=0.0, abs=0.0)
 
 
 @pytest.mark.parametrize("kind,result_particle_id", ((10, 6), (11, -6)))
