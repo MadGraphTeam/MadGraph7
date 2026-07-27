@@ -483,7 +483,13 @@ class ProcessExporterFortran(VirtualExporter):
         allowed_flavors = matrix_element.compute_flavor_masks()
         process = matrix_element.get('processes')[0]
         model = process.get('model')
-        leg_ids = [leg.get('id') for leg in process.get('legs')]
+        # compute_flavor_masks() is indexed by the FULL external legs, so for a
+        # decay chain (p p > w+ w-, w+ > j j, w- > j j) the flavor tuple spans the
+        # 6 decay leaves, not the 4 core legs of process.get('legs'). Expand the
+        # decays so leg_ids lines up with the flavor tuple (a no-op without decays).
+        legs = process.get_legs_with_decays() if hasattr(process, 'get_legs_with_decays') \
+            else process.get('legs')
+        leg_ids = [leg.get('id') for leg in legs]
         nexternal = len(leg_ids)
 
         if not allowed_flavors:
