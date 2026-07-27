@@ -37,6 +37,10 @@ from pyamplicol.reporting import (
 _MAX_SAMPLE_RUNTIME_SECONDS = 0.25
 _MAX_CALIBRATION_BLOCKS = 2
 _MAX_REPETITIONS_PER_SAMPLE = 1_000_000_000
+# The calibrated runtime may be optimistic or the host may speed up after
+# warmup. Keep extending complete blocks, but fail closed if timing changes so
+# drastically that four times the initial plan still cannot reach the target.
+_MAX_TARGET_RUNTIME_SAMPLE_FACTOR = 4
 _CALIBRATION_LOWER_RATIO = 0.8
 _CALIBRATION_UPPER_RATIO = 1.25
 _MIN_CLOCK_INTERVAL_SECONDS = 1.0e-12
@@ -340,11 +344,16 @@ class BenchmarkBackend:
                 )
             active_task_id = task_id
             repetitions = calibration.repetitions_per_sample
+            initial_planned_sample_count = calibration.sample_count
+            planned_sample_count = initial_planned_sample_count
+            maximum_sample_count = (
+                initial_planned_sample_count * _MAX_TARGET_RUNTIME_SAMPLE_FACTOR
+            )
             native_profile_sample_limit = (
-                calibration.sample_count
+                planned_sample_count
                 if repeated_profiler is not None
                 else min(
-                    calibration.sample_count,
+                    planned_sample_count,
                     max(
                         1,
                         min(
@@ -355,7 +364,8 @@ class BenchmarkBackend:
                 )
             )
             try:
-                for sample_index in range(calibration.sample_count):
+                sample_index = 0
+                while sample_index < planned_sample_count:
                     native_sample: _NativeProfileSample | None = None
                     profile_duration = 0.0
                     duration = measure_repetitions(repetitions)
@@ -424,12 +434,40 @@ class BenchmarkBackend:
                                 + (native_sample.amplitude_evaluator_call_time or 0.0)
                             )
                         evaluator_elapsed += profile_duration
+                    sample_index += 1
+                    if (
+                        sample_index == planned_sample_count
+                        and elapsed < self._config.target_runtime
+                    ):
+                        if planned_sample_count >= maximum_sample_count:
+                            raise EvaluationError(
+                                "runtime benchmark could not reach its target "
+                                f"duration of {self._config.target_runtime:g}s "
+                                f"within {maximum_sample_count} complete blocks"
+                            )
+                        mean_block_seconds = elapsed / len(samples)
+                        additional_samples = max(
+                            1,
+                            math.ceil(
+                                (self._config.target_runtime - elapsed)
+                                / max(
+                                    mean_block_seconds,
+                                    _MIN_CLOCK_INTERVAL_SECONDS,
+                                )
+                            ),
+                        )
+                        planned_sample_count = min(
+                            maximum_sample_count,
+                            planned_sample_count + additional_samples,
+                        )
+                        if repeated_profiler is not None:
+                            native_profile_sample_limit = planned_sample_count
                     if self._progress is not None:
                         self._progress.emit(
                             ProgressUpdate(
                                 task_id,
                                 completed=len(samples),
-                                total=calibration.sample_count,
+                                total=planned_sample_count,
                                 message=_sample_progress_message(
                                     samples,
                                     elapsed_seconds=elapsed,
@@ -450,7 +488,7 @@ class BenchmarkBackend:
                             success=False,
                             message=(
                                 f"interrupted after {len(samples)}/"
-                                f"{calibration.sample_count} complete blocks; "
+                                f"{planned_sample_count} complete blocks; "
                                 "reporting partial statistics"
                             ),
                         )
@@ -665,9 +703,13 @@ class BenchmarkBackend:
                 "elapsed_seconds": elapsed,
                 "interrupted": interrupted,
                 "completed_sample_count": len(samples),
-                "completion_fraction": len(samples) / calibration.sample_count,
+                "completion_fraction": len(samples) / planned_sample_count,
                 "warmup_elapsed_seconds": warmup_elapsed,
-                "planned_sample_count": calibration.sample_count,
+                "planned_sample_count": planned_sample_count,
+                "initial_planned_sample_count": initial_planned_sample_count,
+                "adaptive_extension_sample_count": (
+                    planned_sample_count - initial_planned_sample_count
+                ),
                 "repetitions_per_sample": calibration.repetitions_per_sample,
                 "measured_evaluation_count": measured_evaluations,
                 "measured_point_count": measured_evaluations * len(batch),

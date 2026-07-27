@@ -231,6 +231,30 @@ class _TimedRuntimeWithNativeWall(_TimedRuntimeWithProfile):
         return repetitions * 0.5e-3
 
 
+class _TimedRuntimeWithCalibrationUndershoot(_TimedRuntimeWithNativeWall):
+    def __init__(self, clock: _Clock) -> None:
+        super().__init__(clock)
+        self.native_wall_calls = 0
+
+    def _benchmark_f64_wall_time(
+        self,
+        momenta: object,
+        repetitions: int,
+        *,
+        helicities: object,
+        color_flows: object,
+        precision: int,
+    ) -> float:
+        assert len(momenta) == 2  # type: ignore[arg-type]
+        assert helicities is None
+        assert color_flows is None
+        assert precision == 16
+        self.native_wall_calls += 1
+        if self.native_wall_calls == 1:
+            return 1.0
+        return repetitions * 0.233
+
+
 class _TimedRuntimeWithRepeatedProfile(_TimedRuntimeWithNativeWall):
     repeated_profile_calls = 0
 
@@ -513,6 +537,60 @@ def test_benchmark_calibrates_blocks_and_repetitions_toward_target(
         in events
     )
     assert ProgressStart("runtime-benchmark", "Profiling runtime", 4) in events
+
+
+def test_benchmark_extends_complete_blocks_when_calibration_undershoots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithCalibrationUndershoot(clock)
+    config = BenchmarkConfig(
+        target_runtime=5.0,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=20,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.sample_count == 22
+    assert result.environment["elapsed_seconds"] == pytest.approx(5.126)
+    assert result.environment["elapsed_seconds"] >= config.target_runtime
+    assert result.environment["initial_planned_sample_count"] == 20
+    assert result.environment["adaptive_extension_sample_count"] == 2
+    assert result.environment["completed_sample_count"] == 22
+    assert result.environment["planned_sample_count"] == 22
+    assert result.environment["completion_fraction"] == pytest.approx(1.0)
+
+
+def test_benchmark_fails_closed_when_target_extension_cap_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    monkeypatch.setattr(benchmark_module, "_MAX_TARGET_RUNTIME_SAMPLE_FACTOR", 1)
+    runtime = _TimedRuntimeWithCalibrationUndershoot(clock)
+
+    with pytest.raises(
+        EvaluationError,
+        match="could not reach its target duration of 5s within 20 complete blocks",
+    ):
+        BenchmarkBackend(
+            BenchmarkConfig(
+                target_runtime=5.0,
+                batch_size=2,
+                warmup_runs=1,
+                minimum_samples=20,
+            ),
+            None,
+        ).run(
+            runtime,
+            points=(((1.0, 0.0, 0.0, 1.0),),),
+        )
 
 
 def test_native_profile_calls_are_bounded_independently_of_wall_repetitions(
