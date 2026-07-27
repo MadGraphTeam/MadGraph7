@@ -196,6 +196,7 @@ class MadgraphProcess:
                 break
             except FileExistsError:
                 run_index += 1
+        self.status_file = ms.StatusFile(os.path.join(self.run_path, "info.json"))
 
     def init_context(self) -> None:
         device_names = self.run_card["run"]["devices"]
@@ -415,7 +416,7 @@ class MadgraphProcess:
         event_generator = ms.EventGenerator(
             contexts=self.contexts,
             channels=channel_generators,
-            status_file=os.path.join(self.run_path, "info.json"),
+            status_file=self.status_file,
             config=self.event_generator_config,
         )
         unused_globals = (
@@ -547,6 +548,7 @@ class MadgraphProcess:
             config=config,
             integrands=integrands,
             cwnets=cwnets,
+            status_file=self.status_file,
         )
         madnis_training.train()
         for phasespace, active_channels in zip(

@@ -1,11 +1,13 @@
 #pragma once
 
 #include <chrono>
+#include <memory>
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/adam_optimizer.hpp"
 #include "madspace/driver/format.hpp"
 #include "madspace/driver/logger.hpp"
+#include "madspace/driver/status_file.hpp"
 #include "madspace/phasespace.hpp"
 
 namespace madspace {
@@ -53,6 +55,29 @@ public:
     std::vector<std::size_t> active_channels() const;
     std::size_t active_channel_count() const { return _channels.size(); }
     double average_loss() const;
+    double average_learning_rate() const;
+    double buffered_fraction() const;
+    std::size_t generated_event_count() const { return _generated_event_count; }
+    std::size_t buffer_event_count() const;
+
+    // Status histories, one entry appended every config.log_interval batches,
+    // for reporting training progress (e.g. to a StatusFile).
+    const std::vector<double>& status_losses() const { return _status_losses; }
+    const std::vector<std::size_t>& status_channel_counts() const {
+        return _status_channel_counts;
+    }
+    const std::vector<double>& status_learning_rates() const {
+        return _status_learning_rates;
+    }
+    const std::vector<double>& status_buffered_fractions() const {
+        return _status_buffered_fractions;
+    }
+    const std::vector<std::size_t>& status_generated_events() const {
+        return _status_generated_events;
+    }
+    const std::vector<std::size_t>& status_buffer_sizes() const {
+        return _status_buffer_sizes;
+    }
 
 private:
     struct SampleBatch {
@@ -93,8 +118,12 @@ private:
     TensorVec build_buffered_training_batch(const std::vector<size_t>& counts);
     void process_job_results(const std::vector<std::size_t>& job_ids);
     void buffer_store(ChannelData& channel, SampleBatch& samples);
-    void
-    update_history(const TensorVec& results, const std::vector<std::size_t>& counts);
+    void update_history(
+        const TensorVec& results,
+        const std::vector<std::size_t>& counts,
+        double learning_rate,
+        bool buffered
+    );
     void drop_channels();
     void freeze_cwnet();
 
@@ -109,7 +138,16 @@ private:
     std::vector<ChannelData> _channels;
     std::unordered_map<std::size_t, SampleJob> _running_jobs;
     std::vector<double> _loss_history;
+    std::vector<double> _lr_history;
+    std::vector<bool> _buffered_history;
     std::size_t _loss_history_index = 0;
+    std::vector<double> _status_losses;
+    std::vector<std::size_t> _status_channel_counts;
+    std::vector<double> _status_learning_rates;
+    std::vector<double> _status_buffered_fractions;
+    std::vector<std::size_t> _status_generated_events;
+    std::vector<std::size_t> _status_buffer_sizes;
+    std::size_t _generated_event_count = 0;
     std::size_t _job_id = 0;
     Tensor _generator_params;
     std::vector<std::size_t> _arg_permutation;
@@ -124,7 +162,8 @@ public:
         ContextPtr optimizer_context,
         const MadnisTraining::Config& config,
         const nested_vector2<std::shared_ptr<Integrand>>& integrands,
-        const std::vector<std::optional<ChannelWeightNetwork>>& cwnets
+        const std::vector<std::optional<ChannelWeightNetwork>>& cwnets,
+        std::shared_ptr<StatusFile> status_file = nullptr
     );
     void train();
     nested_vector2<std::size_t> active_channels() const;
@@ -137,6 +176,7 @@ private:
         double loss,
         std::size_t chan_count
     );
+    void write_status(std::size_t subproc_index, std::size_t batch_index, bool done);
 
     MadnisTraining::Config _config;
     std::vector<MadnisTraining> _subprocesses;
@@ -145,6 +185,7 @@ private:
     std::chrono::time_point<std::chrono::steady_clock> _last_print_time;
     PrettyBox _pretty_box_upper;
     PrettyBox _pretty_box_lower;
+    std::shared_ptr<StatusFile> _status_file;
 };
 
 } // namespace madspace

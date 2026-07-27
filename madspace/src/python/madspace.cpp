@@ -1383,6 +1383,13 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("active_channels", &MadnisTraining::active_channels)
         .def("active_channel_count", &MadnisTraining::active_channel_count);
 
+    py::classh<StatusFile>(m, "StatusFile")
+        .def(
+            py::init<const std::string&, double>(),
+            py::arg("file_name"),
+            py::arg("min_interval_sec") = 10.0
+        );
+
     py::classh<MultiMadnisTraining>(m, "MultiMadnisTraining")
         .def(
             py::init<
@@ -1390,12 +1397,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 ContextPtr,
                 const MadnisTraining::Config&,
                 const nested_vector2<std::shared_ptr<Integrand>>&,
-                const std::vector<std::optional<ChannelWeightNetwork>>&>(),
+                const std::vector<std::optional<ChannelWeightNetwork>>&,
+                std::shared_ptr<StatusFile>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("config"),
             py::arg("integrands"),
-            py::arg("cwnets")
+            py::arg("cwnets"),
+            py::arg("status_file") = std::shared_ptr<StatusFile>()
         )
         .def("train", &MultiMadnisTraining::train)
         .def("active_channels", &MultiMadnisTraining::active_channels);
@@ -1711,11 +1720,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const std::vector<ContextPtr>&,
                 const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
-                const std::string&,
+                std::shared_ptr<StatusFile>,
                 const GeneratorConfig&>(),
             py::arg("contexts"),
             py::arg("channels"),
-            py::arg("status_file") = "",
+            py::arg("status_file") = std::shared_ptr<StatusFile>(),
             py::arg_v(
                 "config",
                 EventGenerator::default_config,

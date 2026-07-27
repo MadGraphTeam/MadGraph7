@@ -1,7 +1,6 @@
 #include "madspace/driver/event_generator.hpp"
 
 #include <cmath>
-#include <filesystem>
 #include <format>
 #include <ranges>
 
@@ -15,7 +14,7 @@ const GeneratorConfig EventGenerator::default_config = {};
 EventGenerator::EventGenerator(
     const std::vector<ContextPtr>& contexts,
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
-    const std::string& status_file,
+    std::shared_ptr<StatusFile> status_file,
     const GeneratorConfig& config
 ) :
     _config(config),
@@ -723,20 +722,13 @@ void EventGenerator::fill_lhe_event(
 }
 
 void EventGenerator::init_status(const std::string& status) {
-    _last_status_time = std::chrono::steady_clock::now();
     write_status(status, true);
 }
 
 void EventGenerator::write_status(const std::string& status, bool force_write) {
-    auto now = std::chrono::steady_clock::now();
-    using namespace std::chrono_literals;
-    if (now - _last_status_time < 10s && !force_write) {
+    if (!_status_file) {
         return;
     }
-    _last_status_time = now;
-
-    std::string status_tmp_file = std::format("{}.tmp", _status_file);
-    std::ofstream f(status_tmp_file);
     nlohmann::json j{
         {"status", status},
         {"process", _status},
@@ -744,10 +736,7 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
         {"run_times", _timing_data},
         {"histograms", histograms()},
     };
-    f << j.dump();
-    // rename atomically deletes the old file and replaces it with the new one
-    // such that the status file exists at all times
-    std::filesystem::rename(status_tmp_file, _status_file);
+    _status_file->write(j, force_write);
 }
 
 void EventGenerator::print_survey_init() {
