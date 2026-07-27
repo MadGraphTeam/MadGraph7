@@ -117,8 +117,12 @@ C ----------
     TS(:) = 0d0
 
     call MATRIX%(proc_id)s(%(hel_matrix_call_args)s)
+C   C-parity de-duplication: a dropped partner's HELAS calls were never
+C   generated, so its TS() is 0 here; copy the representative's identical |M|^2
+C   back into it (the recycled MATRIX above computed only the representatives).
+${csym_reuse}
     DO I=1,NCOMB
-       T=TS(I)  
+       T=TS(I)
        DO JJ=1,nincoming
           IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
              T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0 ! NB_SPIN_STATE(JJ)/2d0 is added for polarised beam

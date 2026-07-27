@@ -202,7 +202,8 @@ class gensym(object):
             zero_gc = list()
             all_zampperhel = set()
             all_bad_amps_perhel = set()
-            
+            all_csym_pairs = set()
+
             for line in stdout.splitlines():
                 if "="  not in line and ":" not in line:
                     continue
@@ -212,6 +213,9 @@ class gensym(object):
                         zero_gc.append(lsplit[0])
                 if 'Matrix Element/Good Helicity:' in line:
                     all_hel.add(tuple(line.split()[3:5]))
+                if 'CSYM PAIR:' in line:
+                    # (me_index, representative_hel, dropped_partner_hel)
+                    all_csym_pairs.add(tuple(line.split()[2:5]))
                 if 'Amplitude/ZEROAMP:' in line:
                     all_zamp.add(tuple(line.split()[1:3]))
                 if 'HEL/ZEROAMP:' in line:
@@ -232,8 +236,18 @@ class gensym(object):
                 
             all_good_hels = collections.defaultdict(list)
             for me_index, hel in all_hel:
-                all_good_hels[me_index].append(int(hel))                           
-                               
+                all_good_hels[me_index].append(int(hel))
+
+            # C-parity de-duplication: (representative -> dropped partner) pairs
+            # per matrix element, reported by matrix<i>_orig.f. rep < flip, and
+            # both are good helicities with |M(rep)|^2 == |M(flip)|^2 at every
+            # scan point. The partner keeps its row (helicity table / |M|^2 sum)
+            # but its amplitudes are dropped from the recycled optim and its
+            # |M|^2 reused from the representative.
+            all_csym = collections.defaultdict(list)
+            for me_index, rep, flip in all_csym_pairs:
+                all_csym[me_index].append((int(rep), int(flip)))
+
             #print(all_hel)
             if self.run_card['hel_zeroamp']:
                 all_bad_amps = collections.defaultdict(list)
@@ -313,16 +327,37 @@ class gensym(object):
                 if perms:
                     good_set = set(range(1, len(perms[0]) + 1))
                 good_hels = [str(x) for x in sorted(good_set)]
+
+                mtext = open(matrix_file).read()
+                nb_amp = int(re.findall(r'PARAMETER \(NGRAPHS=(\d+)\)', mtext)[0])
+
                 if self.run_card['hel_zeroamp']:
-                    
                     bad_amps = [str(x) for x in sorted(all_bad_amps[me_index])]
                     bad_amps_perhel = [x for x in sorted(all_bad_amps_perhel[me_index])]
                 else:
-                    bad_amps = [] 
+                    bad_amps = []
                     bad_amps_perhel = []
+
+                # C-parity de-duplication: for each surviving pair KEEP both rows
+                # in the helicity table (so the |M|^2 sum and the event-helicity
+                # CDF stay complete) but drop the partner's amplitudes -- add every
+                # (partner, graph) to bad_amps_perhel so its HELAS calls are never
+                # generated -- and reuse the representative's |M|^2 for it. The
+                # reuse indices are the OPTIM's re-indexed positions in good_hels
+                # (helicity indices are renumbered 1..len(good_hels) in the optim).
+                # Disabled for a crossing-class base (perms), which keeps every
+                # config unoptimised.
+                csym_reuse_pairs = []
+                if not perms and all_csym[me_index]:
+                    opt_index = {h: i + 1 for i, h in enumerate(sorted(good_set))}
+                    bad_set = set(bad_amps_perhel)
+                    for rep, flip in all_csym[me_index]:
+                        if rep in good_set and flip in good_set:
+                            for a in range(1, nb_amp + 1):
+                                bad_set.add((flip, a))
+                            csym_reuse_pairs.append((opt_index[rep], opt_index[flip]))
+                    bad_amps_perhel = sorted(bad_set)
                 if __debug__:
-                    mtext = open(matrix_file).read()
-                    nb_amp = int(re.findall(r'PARAMETER \(NGRAPHS=(\d+)\)', mtext)[0])
                     logger.debug('(%s) nb_hel: %s zero amp: %s bad_amps_hel: %s/%s', split_file[-1], len(good_hels),len(bad_amps),len(bad_amps_perhel), len(good_hels)*nb_amp )
                 if len(good_hels) == 1:
                     files.cp(matrix_file, matrix_file.replace('orig','optim'))
@@ -331,6 +366,12 @@ class gensym(object):
                 
                 gauge = self.cmd.proc_characteristics['gauge']
                 recycler = hel_recycle.HelicityRecycler(good_hels, bad_amps, bad_amps_perhel, gauge=gauge)
+                # C-parity de-duplication: copy each dropped partner's |M|^2 from
+                # its representative (both are real fortran helicity indices).
+                if csym_reuse_pairs:
+                    recycler.template_dict['csym_reuse'] = '\n'.join(
+                        '      TS(%d) = TS(%d)' % (flip, rep)
+                        for rep, flip in sorted(csym_reuse_pairs)) + '\n'
                 # In case of bugs you can play around with these:
                 recycler.hel_filt = self.run_card['hel_filtering']
                 recycler.amp_splt = self.run_card['hel_splitamp']

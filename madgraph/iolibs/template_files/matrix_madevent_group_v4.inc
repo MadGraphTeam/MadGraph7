@@ -222,6 +222,18 @@ C     mismatch at any scan point permanently invalidates the pair.
           ENDIF
         ENDDO
       ENDIF
+C     Report the surviving C-parity pairs to the helicity-recycling optimizer
+C     (parsed by gen_ximprove): once the scan has settled (NTRY=20), each
+C     representative I<FLIP(I) with a non-zero |M|^2 whose flipped partner is
+C     C-symmetric. The optimizer drops the partner's amplitudes from
+C     matrix<i>_optim.f and reuses TS(rep) for it.
+      IF (init_mode.AND.%(me_csym_cross_ok)s.AND.NTRY(%(me_flav_key)s,%(proc_id)s).EQ.20) THEN
+        DO I=1,NCOMB
+          IF (CSYM(I,%(me_flav_key)s,%(proc_id)s).AND.I.LT.FLIP(I).AND.DABS(TS(I)).GT.ANS*LIMHEL/NCOMB) THEN
+            PRINT *, 'CSYM PAIR: %(proc_id)s ', I, FLIP(I)
+          ENDIF
+        ENDDO
+      ENDIF
       IF(NTRY(%(me_flav_key)s,%(proc_id)s).EQ.(MAXTRIES+1).and.DS_get_dim_status('Helicity').ne.-1) THEN
          call reset_cumulative_variable() ! avoid biais of the initialization
       ENDIF
