@@ -1445,6 +1445,9 @@ class OneProcessExporterCPP(object):
             'cross_cw_sig_extra': '',
             'cross_member_decl': '',
             'ident_cross_function': '',
+            # No crossing: every call is the uncrossed process, so the C-parity
+            # de-duplication is always allowed.
+            'csym_dedup_ok': 'true',
             # Historical good-helicity filter (byte-identical to pre-crossing).
             'cross_ghidx_setup': '',
             'cross_goodhel_gate':
@@ -1627,6 +1630,10 @@ class OneProcessExporterCPP(object):
                 '  int spincol_cross(int cross);\n'
                 '  int ident_cross(int cross, const int* flavor);',
             'ident_cross_function': ident_cross_function,
+            # C-parity de-duplication only for the uncrossed process (cross 0):
+            # a crossing permutes/sign-flips the helicities so a base-row flip
+            # is not the crossed C-parity partner (crossed flavors: full sum).
+            'csym_dedup_ok': 'cross == 0',
             # The good-helicity filter is shared per flavor but consulted and
             # trained through the crossing's row permutation sigma^-1: a crossed
             # row is good iff its identity counterpart is. Rather than store the

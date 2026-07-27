@@ -66,6 +66,20 @@ private:
   int igood[nflavors][ncomb];
   int jhel[nflavors];
 
+  // C-parity de-duplication of the helicity sum (uncrossed process only, see
+  // sigmaKin): flip[ihel] is the helicity row with every helicity negated (an
+  // involution, built once); csym_bad[flav][ihel] latches true once
+  // |M(ihel)| != |M(flip)| at any scan point (parity/C violation); the good
+  // helicities of a flavor are then reduced to the lower-index representative
+  // of every surviving C-parity pair (igoodrep/nrep) carrying a doubled weight
+  // (repwgt), so the recycling sum computes one of the pair and counts it twice.
+  int flip[ncomb];
+  bool flip_ready;
+  bool csym_bad[nflavors][ncomb];
+  int igoodrep[nflavors][ncomb];
+  int nrep[nflavors];
+  int repwgt[nflavors][ncomb];
+
   // function to compute missing symmetry factors after flavor consolidation
   int broken_sym(const int* flavor);
 %(cross_member_decl)s
