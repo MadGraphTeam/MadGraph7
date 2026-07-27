@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <iostream>
 #include <string>
 
 #include "madspace/util.hpp"
@@ -34,12 +35,14 @@ public:
             println("[ERROR] {}", message);
             break;
         }
+        std::cout << std::flush;
     }
     static void debug(const std::string& message) { log(level_debug, message); }
     static void info(const std::string& message) { log(level_info, message); }
     static void warning(const std::string& message) { log(level_warning, message); }
     static void error(const std::string& message) { log(level_error, message); }
     static void set_log_handler(LogHandlerFunc func) { _log_handler = func; }
+    static void clear_log_handler() { _log_handler = std::nullopt; }
 
 private:
     static inline std::optional<LogHandlerFunc> _log_handler = std::nullopt;
