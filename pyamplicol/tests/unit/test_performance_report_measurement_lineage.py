@@ -224,8 +224,10 @@ def test_prepare_finalize_and_audit_class_c_bridge(
         *,
         expected_source_revision: str,
         runtime_auditor: object,
+        _skip_workspace_validation: bool,
     ) -> dict[str, str]:
         assert expected_source_revision == descendant
+        assert _skip_workspace_validation is True
         del runtime_auditor
         with store.named_lock("measurement-lineage", timeout=0.0):
             pass

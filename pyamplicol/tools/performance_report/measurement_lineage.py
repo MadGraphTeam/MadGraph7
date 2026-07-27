@@ -2842,6 +2842,7 @@ def _finalize_class_c_bridge_locked(
             profile,
             expected_source_revision=active,
             runtime_auditor=lambda _revision, _root: raw_runtime,
+            _skip_workspace_validation=True,
         )
         if refreshed != descendant_environment:
             raise MeasurementLineageError(

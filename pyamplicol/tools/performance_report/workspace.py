@@ -762,6 +762,7 @@ def refresh_profile_environment(
     *,
     expected_source_revision: str,
     runtime_auditor: Callable[[str, Path], Mapping[str, object]] | None = None,
+    _skip_workspace_validation: bool = False,
 ) -> dict[str, str]:
     """Authenticate and record the exact installed measurement runtime."""
 
@@ -771,7 +772,8 @@ def refresh_profile_environment(
         raise ReportWorkspaceError(
             "profile environment source revision must be a full Git SHA"
         )
-    _validate_workspace(root, validated)
+    if not _skip_workspace_validation:
+        _validate_workspace(root, validated)
     source = inspect_report_source(root)
     if not source.eligible or source.revision != expected_source_revision:
         raise ReportWorkspaceError(
