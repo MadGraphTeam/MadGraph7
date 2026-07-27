@@ -871,6 +871,12 @@ class HelasWavefunction(base_objects.PhysicsObject):
             self['lcut_size'] = self.get_lcut_size()  
 
         if name in ['spin', 'mass', 'width', 'self_antipart']:
+            # onshell_zero_width (a runtime annotation set post-generation on an
+            # internal propagator whose particle is also an external/on-shell
+            # state) forces a ZERO width there -- see
+            # HelasMatrixElement.set_onshell_particles_width_to_zero.
+            if name == 'width' and getattr(self, 'onshell_zero_width', False):
+                return 'ZERO'
             return self['particle'].get(name)
         elif name == 'pdg_code':
             return self['particle'].get_pdg_code()
@@ -5344,6 +5350,35 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """Gives a list of all widths used by this ME (from propagator)"""
 
         return set([(d.get('mass'),d.get('width')) for d in self.get_all_wavefunctions()])
+
+
+    def set_onshell_particles_width_to_zero(self):
+        """Drop the width of any internal propagator whose particle is also an
+        external (initial/final) state of the process.
+
+        An external particle is an on-shell asymptotic state, so treating an
+        internal propagator of the same field as an unstable resonance
+        (the i*M*Gamma in its denominator) is inconsistent: e.g. the s/u-channel
+        top in t a > t a. This mirrors the T-channel width drop but is keyed on
+        the particle being external rather than on the propagator momentum being
+        spacelike. It is applied by setting the propagator wavefunction's width
+        to ZERO, which every UFO backend reads for the propagator's W argument
+        (see HelasWavefunction.get_helas_call_dict); in the complex-mass scheme
+        the same ZERO makes that propagator use the real mass. Controlled by the
+        zerowidth_external option; returns True if any width was dropped."""
+        external_pdgs = set()
+        for proc in self.get('processes'):
+            for leg in proc.get('legs'):
+                external_pdgs.add(abs(leg.get('id')))
+        dropped = False
+        for wf in self.get_all_wavefunctions():
+            # a wavefunction with no mothers is an external leg (no propagator,
+            # hence no width); only internal propagators carry the i*M*Gamma.
+            if wf.get('mothers') and wf.get('width') != 'ZERO' \
+                    and abs(wf.get_pdg_code()) in external_pdgs:
+                wf.onshell_zero_width = True
+                dropped = True
+        return dropped
 
 
     def get_coupling_for_flv(self, flv, model):

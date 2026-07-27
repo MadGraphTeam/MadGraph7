@@ -950,7 +950,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("zerowidth_tchannel <value>",'$MG:color:GREEN')
         logger.info(" > (default: True) [Used ONLY for tree-level output with madevent]")
         logger.info(" > set the width to zero for all T-channel propagator --no impact on complex-mass scheme mode")
-        logger.info("auto_convert_model <value>",'$MG:color:GREEN')   
+        logger.info("zerowidth_external <value>",'$MG:color:GREEN')
+        logger.info(" > (default: True) [tree-level output] drop the width of an internal")
+        logger.info(" > propagator whose particle is also an external (initial/final) state")
+        logger.info("auto_convert_model <value>",'$MG:color:GREEN')
         logger.info(" > (default: False) If set on True any python2 UFO model will be automatically converted to pyton3 format")   
         logger.info("nlo_mixed_expansion <value>",'$MG:color:GREEN') 
         logger.info("deactivates mixed expansion support at NLO, goes back to MG5aMCv2 behavior")
@@ -3157,6 +3160,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'max_npoint_for_channel',
                     'max_t_for_channel',
                     'zerowidth_tchannel',
+                    'zerowidth_external',
                     'default_unset_couplings',
                     'nlo_mixed_expansion'
                     ]
@@ -3240,6 +3244,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'default_unset_couplings': 99, # 99 means infinity
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
+                          'zerowidth_external': True,
                           'nlo_mixed_expansion':True,
                           'apply_flavor_grouping': True 
                         }
@@ -9248,6 +9253,27 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
         aloha.t_channel_width = not self.options[args[0]]
 
+    def help_set2_zerowidth_external(self):
+        logger.info("zerowidth_external <value>",'$MG:color:GREEN')
+        logger.info(" > (default: True) [generation/output-time option for tree-level output]")
+        logger.info(" > drop the width in the propagator denominator of any internal propagator")
+        logger.info(" > whose particle also appears as an external (initial/final) state -- an")
+        logger.info(" > external particle is an on-shell asymptotic state, so its internal")
+        logger.info(" > propagator (e.g. the s/u-channel top in t a > t a) must not carry the")
+        logger.info(" > i*M*Gamma resonance term. In the complex-mass scheme the real mass is")
+        logger.info(" > used there too. External legs themselves have no width argument.")
+
+    def set2_zerowidth_external(self, args, log=True):
+        """Set whether the width should be dropped for internal propagators whose
+        particle is also an external state. Default True. Applied at output time
+        per matrix element (HelasMatrixElement.set_onshell_particles_width_to_zero),
+        so it is a code-generation option like zerowidth_tchannel.
+        Example: set zerowidth_external False
+        """
+        args = ['zerowidth_external'] + args
+        self.check_set(args)
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
+
     def set2_store_rwgt_info(self,args, log=True):
         """Set whether the code should generate systematics information in the output LHE file at NLO
         Default is set to False.
@@ -10142,6 +10168,24 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             not getattr(self._curr_exporter, 'use_flavor_mask', True)
 
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
+
+        # zerowidth_external: an external (initial/final) particle is an on-shell
+        # asymptotic state, so an internal propagator of the same field must not
+        # carry the i*M*Gamma resonance term (e.g. the s/u-channel top in
+        # t a > t a). Drop that width per matrix element before any backend
+        # writes the propagator calls (all UFO backends read the wavefunction
+        # width). Tree-level only; complex-mass scheme then uses the real mass.
+        if self.options.get('zerowidth_external', True) and \
+                self._curr_matrix_elements.get_matrix_elements():
+            n_dropped = 0
+            for me in self._curr_matrix_elements.get_matrix_elements():
+                if me.set_onshell_particles_width_to_zero():
+                    n_dropped += 1
+            if n_dropped:
+                logger.info("Some on-shell (external) particle widths have been "
+                            "set to zero in their internal propagators [new]\n if "
+                            "you want to keep them set \"zerowidth_external\" to "
+                            "False", '$MG:BOLD')
 
         calls = 0
 
