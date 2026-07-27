@@ -5366,15 +5366,26 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         (see HelasWavefunction.get_helas_call_dict); in the complex-mass scheme
         the same ZERO makes that propagator use the real mass. Controlled by the
         zerowidth_external option; returns True if any width was dropped."""
+        # The asymptotic external states are the decay LEAVES: in a decay chain
+        # (d d~ > z z, z > e+ e-) the core final z is not asymptotic, it is a
+        # resonance decaying to e+ e-, so expand the decays (a no-op without
+        # them). Using the core legs would wrongly flag the resonance's field.
         external_pdgs = set()
         for proc in self.get('processes'):
-            for leg in proc.get('legs'):
+            legs = proc.get_legs_with_decays() \
+                if hasattr(proc, 'get_legs_with_decays') else proc.get('legs')
+            for leg in legs:
                 external_pdgs.add(abs(leg.get('id')))
         dropped = False
         for wf in self.get_all_wavefunctions():
             # a wavefunction with no mothers is an external leg (no propagator,
             # hence no width); only internal propagators carry the i*M*Gamma.
+            # A decay-chain resonance (onshell is True: produced on shell then
+            # decayed) MUST keep its Breit-Wigner width even if the same field
+            # also appears as an asymptotic external leg (e.g. one top decays
+            # while the other is final).
             if wf.get('mothers') and wf.get('width') != 'ZERO' \
+                    and wf.get('onshell') is not True \
                     and abs(wf.get_pdg_code()) in external_pdgs:
                 wf.onshell_zero_width = True
                 dropped = True
