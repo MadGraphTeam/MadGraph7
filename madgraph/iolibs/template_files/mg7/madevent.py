@@ -493,9 +493,6 @@ class MadgraphProcess:
         madnis_args = self.run_card["madnis"]
         if not madnis_args["enable"]:
             return
-        if madnis_args.get("old", False):
-            self.train_madnis_old()
-            return
 
         gen_args = self.run_card["generation"]
         run_args = self.run_card["run"]
@@ -558,49 +555,6 @@ class MadgraphProcess:
             phasespace.channels = [
                 phasespace.channels[index] for index in active_channels
             ]
-        self.phasespaces = madnis_phasespaces
-        for context in self.contexts[1:]:
-            context.copy_globals_from(self.contexts[0])
-        self.event_generator = self.build_event_generator(madnis_phasespaces)
-
-    def train_madnis_old(self) -> None:
-        madnis_args = self.run_card["madnis"]
-        if not madnis_args["enable"]:
-            return
-
-        if len(self.subprocesses) > 1:
-            self.madnis_lower_box = ms.PrettyBox(
-                "Subprocesses", len(self.subprocesses) + 1, [12, 12, 12, 0],
-            )
-            self.madnis_lower_box.set_row(0, ["Subprocess", "Loss", "Channels", "Batch"])
-            self.madnis_upper_box = ms.PrettyBox(
-                "MadNIS training", 2, [18, 0], self.madnis_lower_box.line_count
-            )
-            self.madnis_upper_box.set_column(0, ["Subprocesses:", "Run time:"])
-            self.madnis_upper_box.print_first()
-            self.madnis_lower_box.print_first()
-        else:
-            self.madnis_box = ms.PrettyBox(
-                "MadNIS training", 4, [18, 0]
-            )
-            self.madnis_box.set_column(0, ["Batch:", "Loss:", "Channels:", "Run time:"])
-            self.madnis_box.print_first()
-
-        self.last_update_time = 0
-        self.madnis_wall_time = time.time()
-        self.madnis_cpu_time = time.process_time()
-
-        madnis_phasespaces = []
-        for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
-            phasespace = subproc.build_madnis(phasespace)
-            if len(self.subprocesses) > 1:
-                status_func = lambda *args: self.update_madnis_status_multi(
-                    subproc.subproc_id, *args
-                )
-            else:
-                status_func = self.update_madnis_status_single
-            subproc.train_madnis(phasespace, status_func)
-            madnis_phasespaces.append(phasespace)
         self.phasespaces = madnis_phasespaces
         for context in self.contexts[1:]:
             context.copy_globals_from(self.contexts[0])
