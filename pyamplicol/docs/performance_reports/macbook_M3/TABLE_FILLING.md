@@ -35,6 +35,46 @@ The committed profile is a reset scaffold. Never reuse another source epoch's
 measurements, evaluator artifacts, prepared models, or coordination state.
 `--artifact-policy reuse` means reuse only within this campaign.
 
+## Frozen-campaign fast mode
+
+This section supersedes the per-cell approval, recovery, dry-run, cache-render,
+and PDF-refresh instructions later in this runbook once the campaign has an
+authenticated finalized measurement lineage.
+
+- Keep the measured checkout, installed package, prepared models, artifact
+  root, and coordination root pinned to the measured-source revision. A newer
+  report-controller revision is observational and must not relabel that
+  measured source.
+- Run later `populate` batches from a disposable controller checkout with
+  `--fast-lineage`. Route both `src/pyamplicol` and
+  `dependencies/checkouts` from that controller to the live measured checkout;
+  authenticate those two resolved paths before launch.
+- Use `--workers 1 --cell-cores 1 --refresh-pdf never` and continuously feed
+  the next independent cell. Do not wait for routine user approval between
+  cells, batches, multiplicities, or phases.
+- Per cell, retain only the immutable result/attempt, finite target-runtime
+  evidence, numerical-agreement result, active source/runtime identity, and
+  atomic `current.json` publication. Do not run `recover`, `audit`, `validate`,
+  a post-plan, cache rendering, PDF compilation, or visual QA after each cell.
+- Run one lightweight audit and exact zero-plan at a batch, resource-lane,
+  multiplicity, or phase boundary. Compile and inspect the PDF every two hours,
+  at a frontier or phase boundary, at final completion, or immediately after a
+  real renderer warning. `recover` is for interruption recovery or an explicit
+  checkpoint.
+- A cell-local failure preserves its attempt and holds only that cell and its
+  dependency descendants; independent work continues. Never reset, relabel, or
+  restart the whole campaign for a scoped defect.
+- Controller-only descendants do not require PREPARE, a native rebuild,
+  runtime restaging, or a source bridge. Executable-source descendants use the
+  authenticated scoped bridge and rerun only its certified closure.
+- The HZZ orientation repair has 40 recurrence targets. Its scheduler closure
+  also includes any missing original-AmpliCol baselines; those prerequisites
+  are expected and are not bridge-scope expansion.
+
+The default CLI remains strict. `--fast-lineage` is an explicit campaign
+operation after full startup/bridge authentication; standalone final audit and
+publication remain exhaustive.
+
 ## Support lane for both machines
 
 Before measuring, reserve a dedicated local subagent named
