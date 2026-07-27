@@ -3639,7 +3639,11 @@ C       This is dummy particle used in multiparticle vertices
 
 """)
 
-        # Test leshouche.inc output
+        # Test leshouche.inc output.
+        # The madevent exporter drops the ICOLUP colour-flow table from
+        # leshouche.inc when the matrix element carries a canonical colour code
+        # (drop_icolup): addmothers.f now rebuilds the Les Houches colour tags
+        # from colorflow.inc instead. leshouche.inc keeps only IDUP and MOTHUP.
         writer = writers.FortranWriter(self.give_pos('leshouche'))
         exporter.write_leshouche_file(writer, matrix_element)
         writer.close()
@@ -3648,18 +3652,27 @@ C       This is dummy particle used in multiparticle vertices
                          """      DATA (IDUP(I,1,1),I=1,6)/2,-2,2,-2,2,-2/
       DATA (MOTHUP(1,I),I=1, 6)/  0,  0,  1,  1,  1,  1/
       DATA (MOTHUP(2,I),I=1, 6)/  0,  0,  2,  2,  2,  2/
-      DATA (ICOLUP(1,I,1,1),I=1, 6)/501,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,1,1),I=1, 6)/  0,501,  0,502,  0,503/
-      DATA (ICOLUP(1,I,2,1),I=1, 6)/501,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,2,1),I=1, 6)/  0,501,  0,503,  0,502/
-      DATA (ICOLUP(1,I,3,1),I=1, 6)/502,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,3,1),I=1, 6)/  0,501,  0,501,  0,503/
-      DATA (ICOLUP(1,I,4,1),I=1, 6)/503,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,4,1),I=1, 6)/  0,501,  0,501,  0,502/
-      DATA (ICOLUP(1,I,5,1),I=1, 6)/502,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,5,1),I=1, 6)/  0,501,  0,503,  0,501/
-      DATA (ICOLUP(1,I,6,1),I=1, 6)/503,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,6,1),I=1, 6)/  0,501,  0,502,  0,501/
+""")
+
+        # Test colorflow.inc output: the six colour flows that used to be the
+        # ICOLUP rows above are now encoded by the canonical colour code, which
+        # addmothers.f decodes back into the very same tags. The old rows, for
+        # reference (colour anti-colour per external leg, one flow per line):
+        #   501   0 502   0 503   0 /   0 501   0 502   0 503
+        #   501   0 502   0 503   0 /   0 501   0 503   0 502
+        #   502   0 502   0 503   0 /   0 501   0 501   0 503
+        #   503   0 502   0 503   0 /   0 501   0 501   0 502
+        #   502   0 502   0 503   0 /   0 501   0 503   0 501
+        #   503   0 502   0 503   0 /   0 501   0 502   0 501
+        writer = writers.FortranWriter(self.give_pos('colorflow'))
+        exporter.write_colorflow_file(writer, matrix_element)
+        writer.close()
+
+        self.assertFileContains('colorflow',
+                         """      DATA NCOLSLOT(1)/3/
+      DATA (ICOLCSL(I,1),I=1,3)/2,3,5/
+      DATA (ICOLASL(I,1),I=1,3)/1,4,6/
+      DATA (ICOLCODE(I,1),I=1,6)/21,15,19,7,11,5/
 """)
 
         # Test pdf output (for auto_dsig.f)
@@ -10086,8 +10099,12 @@ C
       F1%P(:) = +F2%P(:)+V3%P(:)
       P1(:) = -F1 % P (:)
       F1 % FLV_INDEX = F2 % FLV_INDEX
-      DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1 * (M1 -CI
-     $ * W1))"""
+      IF (DBLE(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1 * (M1
+     $   -CI* W1))
+      ELSE
+        DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1**2)
+      ENDIF"""
 
         abstract_M = create_aloha.AbstractRoutineBuilder(FFV1).compute_routine(1)
         abstract_M.add_symmetry(2)
@@ -10095,8 +10112,12 @@ C
         
         self.assertTrue(os.path.exists('/tmp/FFV1_1.f'))
         textfile = open('/tmp/FFV1_1.f','r').read()
-        split_sol = solution.split('\n')
-        self.assertEqual(split_sol, textfile.split('\n')[:len(split_sol)])
+        # rstrip each line: the ALOHA line wrapper can leave a trailing space
+        # (e.g. after "(M1 " when the width term spills to a continuation), and
+        # that cosmetic whitespace is not what this test is checking.
+        split_sol = [l.rstrip() for l in solution.split('\n')]
+        split_cur = [l.rstrip() for l in textfile.split('\n')[:len(split_sol)]]
+        self.assertEqual(split_sol, split_cur)
 
 
 class UFO_model_to_mg4_Test(unittest.TestCase):
