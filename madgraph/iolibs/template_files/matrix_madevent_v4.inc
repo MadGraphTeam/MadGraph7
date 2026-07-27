@@ -61,6 +61,19 @@ C
     INTEGER IDUM, NGOOD, J, JJ
     REAL     XRAN1
     EXTERNAL XRAN1
+C   C-parity helicity de-duplication of the init full-sum loop (see below):
+C   FLIP(I) is the helicity row with every helicity negated (an involution
+C   built once); CSYM(I,IFLAV) stays true while that flipped partner has an
+C   identical |M|^2 at every scan point (parity/C symmetry); DEDUP turns the
+C   reuse on once the per-flavor scan has settled (NTRY>=20). A surviving pair
+C   is evaluated once at the lower index and counted twice; its |M|^2 is copied
+C   to the partner's TS() so the event-helicity CDF and the DS grid stay exact.
+    INTEGER FLIP(NCOMB), JHEL, KHEL, NCSYM
+    PARAMETER (NCSYM=NCOMB*MAXFLAVPERPROC)
+    LOGICAL CSYM(NCOMB,MAXFLAVPERPROC), HELSAME, DEDUP
+    SAVE FLIP, CSYM
+    DATA FLIP/NCOMB*0/
+    DATA CSYM/NCSYM*.TRUE./
     INTEGER FLAVOR(NEXTERNAL)
     INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
 C   Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
@@ -100,6 +113,29 @@ C BEGIN CODE
 C ----------
     CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
     NTRY(IFLAV)=NTRY(IFLAV)+1
+C   C-parity partner of each helicity row (all helicities negated): an
+C   involution, self-paired when every helicity is 0. Fixed per process, so
+C   built once (FLIP starts at 0).
+    IF (FLIP(1).EQ.0) THEN
+      DO I=1,NCOMB
+        FLIP(I)=I
+        DO JHEL=1,NCOMB
+          HELSAME=.TRUE.
+          DO KHEL=1,NEXTERNAL
+            IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,I)) HELSAME=.FALSE.
+          ENDDO
+          IF (HELSAME) THEN
+            FLIP(I)=JHEL
+            EXIT
+          ENDIF
+        ENDDO
+      ENDDO
+    ENDIF
+    IF (NTRY(IFLAV).EQ.1) THEN
+      DO I=1,NCOMB
+        CSYM(I,IFLAV)=.TRUE.
+      ENDDO
+    ENDIF
     DO I=1,NEXTERNAL
        JC(I) = +1
     ENDDO
@@ -120,9 +156,20 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
     ENDDO
 
 !   If the helicity grid status is 0, this means that it is not yet initialized.
+!   C-parity de-duplication of this init full-sum loop is only safe once the
+!   per-flavor scan has settled (NTRY>=20, still within MAXTRIES=25 so the reuse
+!   overlaps the grid build). A crossing is a separate subprocess directory in
+!   madevent, so every IFLAV row here is the uncrossed base process; polarized
+!   beams are self-excluded because the beam_polarization scaling makes the
+!   flipped partner's |M|^2 differ, so CSYM never survives the scan.
+    DEDUP = NTRY(IFLAV).GE.20
     IF (ISUM_HEL.EQ.0.or.(DS_get_dim_status('Helicity').eq.0)) THEN
         DO I=1,NCOMB
            IF (GOODHEL(I,IFLAV) .OR. NTRY(IFLAV) .LE. MAXTRIES.OR.(ISUM_HEL.NE.0)) THEN
+C            Fast phase: a row whose fully flipped C-parity partner has an
+C            identical |M|^2 is computed once, at the lower index, and counted
+C            twice -- skip the higher-index partner here.
+             IF (DEDUP.AND.CSYM(I,IFLAV).AND.I.GT.FLIP(I)) CYCLE
                T=MATRIX%(proc_id)s(P,NHEL(1,I),IFLAV, IVEC)
             %(beam_polarization)s
              IF (ISUM_HEL.NE.0) then
@@ -130,8 +177,29 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
              endif
              ANS=ANS+DABS(T)
              TS(I)=T
+C            The representative carries its skipped partner's identical
+C            contribution: copy |M|^2 to TS(FLIP) (so the per-helicity CDF and
+C            the DS grid pick both members), and count it once more in ANS.
+             IF (DEDUP.AND.CSYM(I,IFLAV).AND.I.LT.FLIP(I)) THEN
+               ANS=ANS+DABS(T)
+               TS(FLIP(I))=T
+               IF (ISUM_HEL.NE.0) call DS_add_entry('Helicity',FLIP(I),T)
+             ENDIF
            ENDIF
         ENDDO
+C       Scan phase: drop the C-parity pairing of any row whose fully flipped
+C       partner gave a different |M|^2 (parity/C/polarization breaking). One
+C       mismatch at any scan point permanently invalidates the pair.
+        IF (NTRY(IFLAV).LT.20) THEN
+          DO I=1,NCOMB
+            IF (FLIP(I).GT.I) THEN
+              IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))) THEN
+                CSYM(I,IFLAV)=.FALSE.
+                CSYM(FLIP(I),IFLAV)=.FALSE.
+              ENDIF
+            ENDIF
+          ENDDO
+        ENDIF
         IF(NTRY(IFLAV).EQ.(MAXTRIES+1)) THEN
            call reset_cumulative_variable() ! avoid biais of the initialization
         ENDIF
