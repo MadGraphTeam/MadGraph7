@@ -2435,7 +2435,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         is deliberately not listed here.
 
         Works for both Process and ProcessDefinition (same attributes), and
-        recurses into decay chains, whose constraints bind just as much.
+        recurses into decay chains, whose constraints bind just as much. A decay
+        chain itself does NOT break crossing: p p > t t~ j j, t > ... still
+        crosses at the production level (force-onshell decays ride along on the
+        legs they hang off), so crossing stays enabled -- the crossing tables
+        just have to be built over the full decay leaves (see
+        compute_crossing_tables) so the identical-particle/denominator factors
+        reflect the real final state.
         """
         if process.get('required_s_channels') or \
            process.get('forbidden_s_channels'):
@@ -2981,7 +2987,14 @@ C     crossing carried by FLAV_IDX moves across.
         """
         process = matrix_element.get('processes')[0]
         model = process.get('model')
-        legs = process.get('legs')
+        # For a decay chain the crossing acts at the production level but the
+        # matrix element (and its NEXTERNAL) is over the decay *leaves*, so the
+        # crossing tables must span the leaves too: the two z of e+ e- > z z
+        # look like an identical pair on the core legs, yet z > mu+ mu- and
+        # z > e+ e- make the real final state non-identical (denominator 4, not
+        # 8). get_legs_with_decays() is the plain legs for a non-decay process.
+        legs = process.get_legs_with_decays() \
+            if hasattr(process, 'get_legs_with_decays') else process.get('legs')
         nexternal = len(legs)
         leg_ids = [leg.get('id') for leg in legs]
         # polarization restricts the number of helicity states of a leg; it is
@@ -3060,16 +3073,28 @@ C     crossing carried by FLAV_IDX moves across.
 
         # Sanity: for the identity crossing, spin*color times the identical
         # factor of the representative flavor must rebuild the static IDEN,
-        # else this and get_denominator_factor have drifted apart.
-        rep_final = [leg_ids[slot] for slot in range(ninitial, nexternal)]
-        rep_identical = 1
-        for pdg in set(rep_final):
-            rep_identical *= math.factorial(rep_final.count(pdg))
-        assert spincol[0] * rep_identical == \
-            matrix_element.get_denominator_factor(), \
-            'Crossing denominator disagrees with get_denominator_factor: ' \
-            '%s*%s vs %s' % (spincol[0], rep_identical,
-                             matrix_element.get_denominator_factor())
+        # else this and get_denominator_factor have drifted apart. A decay
+        # chain is exempt: its identical-particle factor lives at the resonance
+        # level (two z decaying the same way count once, differently not at
+        # all), which no count over the decay leaves nor the core legs
+        # reproduces -- and it never reaches GET_IDENT_CROSS anyway, since a
+        # decay chain records no crossing (only cross=0, normalised by the
+        # static IDEN). Just check the initial spin*color still divides IDEN.
+        if process.get('decay_chains'):
+            assert matrix_element.get_denominator_factor() % spincol[0] == 0, \
+                'Crossing initial spin*color does not divide IDEN: ' \
+                '%s vs %s' % (spincol[0],
+                              matrix_element.get_denominator_factor())
+        else:
+            rep_final = [leg_ids[slot] for slot in range(ninitial, nexternal)]
+            rep_identical = 1
+            for pdg in set(rep_final):
+                rep_identical *= math.factorial(rep_final.count(pdg))
+            assert spincol[0] * rep_identical == \
+                matrix_element.get_denominator_factor(), \
+                'Crossing denominator disagrees with get_denominator_factor: ' \
+                '%s*%s vs %s' % (spincol[0], rep_identical,
+                                 matrix_element.get_denominator_factor())
         # Sanity: the small per-particle tables reproduce the per-crossing
         # tables the runtime routines used to read. SPINCOL_PART -> the
         # initial-state spin*color; IDS_BASE/ANTIPID_BASE plus the crossing
