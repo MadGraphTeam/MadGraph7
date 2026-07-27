@@ -17,7 +17,7 @@ def build_model_payload() -> tuple[dict[str, object], dict[str, tuple[float, flo
     particles = []
     parameters: dict[str, tuple[float, float]] = {
         "alpha_s": (0.118, 0.0),
-        "alpha_ew": (1.0 / 132.507, 0.0),
+        "alpha_ew": (float(model.alpha_ew), 0.0),
     }
     for _key, particle in sorted(model.particles.items()):
         mass_name = (

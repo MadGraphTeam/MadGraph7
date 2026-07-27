@@ -8,8 +8,20 @@ import pytest
 import pyamplicol.models as models
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.base import Model, Vertex
+from pyamplicol.models.builtin.adapters import build_model_payload
 from pyamplicol.models.builtin.model import BuiltinModel
 from pyamplicol.models.loading import compile_model_source
+
+
+def test_builtin_sm_normalization_uses_the_compiled_alpha_ew_default() -> None:
+    model = BuiltinSMModel()
+    _payload, parameter_defaults = build_model_payload()
+
+    assert model.alpha_ew == 1.0 / 132.507
+    assert parameter_defaults["alpha_ew"] == (model.alpha_ew, 0.0)
+    assert model.runtime_normalization_parameter_defaults()[
+        "normalization.alpha_ew"
+    ] == parameter_defaults["alpha_ew"][0]
 
 
 def test_model_builtin_sm_preserves_production_tables_and_couplings() -> None:

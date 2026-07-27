@@ -596,7 +596,7 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
     name: str = "built-in-sm-leading-color"
     alpha_s_mz: float = 0.119
     alpha_s_me_check: float = 0.118
-    alpha_ew: float = 0.007546771114
+    alpha_ew: float = 1.0 / 132.507
     sin_weak: float = 0.47143025548407230
     sqrt_s: float = 14000.0
 
