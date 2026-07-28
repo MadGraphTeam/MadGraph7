@@ -281,6 +281,33 @@ fn interaction_evaluation_count_matches_the_persisted_plan() {
 }
 
 #[test]
+fn materialization_census_matches_the_persisted_plan() {
+    for (path, replacement) in [
+        (
+            &["plan", "materialization_census", "basis"][..],
+            json!("dynamic"),
+        ),
+        (
+            &[
+                "plan",
+                "materialization_census",
+                "final",
+                "invocation_count",
+            ][..],
+            json!(16),
+        ),
+        (
+            &["plan", "materialization_census", "final_equals_peak"][..],
+            json!(false),
+        ),
+    ] {
+        let mut fixture = Fixture::new();
+        set_value(&mut fixture.manifest, path, replacement);
+        assert!(fixture.parse().is_err(), "{path:?}");
+    }
+}
+
+#[test]
 fn traversal_and_unknown_fields_are_rejected_during_manifest_parse() {
     let mut fixture = Fixture::new();
     fixture.manifest["plan"]["runtime_container"]["path"] = json!("../eager-runtime.pacbin");
@@ -457,6 +484,7 @@ fn manifest_value(outer: &ArtifactProcess, metadata: &ContainerMetadata) -> Valu
                 "index_sha256": metadata.index_sha256,
             },
             "inspection_summary": inspection_summary(outer),
+            "materialization_census": materialization_census(),
         },
         "dag_summary": {
             "current_count": 11,
@@ -466,6 +494,26 @@ fn manifest_value(outer: &ArtifactProcess, metadata: &ContainerMetadata) -> Valu
             "amplitude_root_count": 5,
             "truncated": false,
         },
+    })
+}
+
+fn materialization_census() -> Value {
+    let counts = json!({
+        "source_count": 4,
+        "current_count": 11,
+        "interaction_count": 23,
+        "amplitude_root_count": 5,
+        "invocation_count": 17,
+        "attachment_count": 19,
+        "closure_count": 5,
+        "finalization_count": 11,
+    });
+    json!({
+        "abi": "pyamplicol-fully-resident-materialization-census-v1",
+        "basis": "immutable-fully-resident-eager-plan",
+        "final": counts.clone(),
+        "peak": counts,
+        "final_equals_peak": true,
     })
 }
 

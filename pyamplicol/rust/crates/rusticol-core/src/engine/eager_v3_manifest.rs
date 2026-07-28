@@ -14,7 +14,7 @@ use crate::eager_layout::{
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::path::Path;
 
@@ -74,6 +74,7 @@ pub(super) struct EagerV3PlanSummary {
     pub(super) required_runtime_capabilities: Vec<String>,
     pub(super) runtime_container: EagerV3RuntimeContainer,
     pub(super) inspection_summary: EagerV3InspectionSummary,
+    pub(super) materialization_census: EagerV3MaterializationCensus,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -99,6 +100,16 @@ pub(super) struct EagerV3DagSummary {
     pub(super) interaction_evaluation_count: u64,
     pub(super) amplitude_root_count: u64,
     pub(super) truncated: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct EagerV3MaterializationCensus {
+    pub(super) abi: String,
+    pub(super) basis: String,
+    pub(super) r#final: BTreeMap<String, u64>,
+    pub(super) peak: BTreeMap<String, u64>,
+    pub(super) final_equals_peak: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -186,6 +197,9 @@ impl EagerV3ExecutionManifest {
         self.runtime_options.validate()?;
         self.plan.validate(&self.key)?;
         self.dag_summary.validate()?;
+        self.plan
+            .materialization_census
+            .validate(&self.plan.inspection_summary, &self.dag_summary)?;
         if self.plan.inspection_summary.current_count != self.dag_summary.current_count
             || self.plan.inspection_summary.source_count != self.dag_summary.source_count
             || self.plan.inspection_summary.invocation_count
@@ -313,6 +327,49 @@ impl EagerV3DagSummary {
         if self.truncated {
             return Err(RusticolError::compatibility(
                 "truncated DAGs cannot be loaded as eager plan-v3 artifacts",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl EagerV3MaterializationCensus {
+    fn validate(
+        &self,
+        inspection: &EagerV3InspectionSummary,
+        dag: &EagerV3DagSummary,
+    ) -> RusticolResult<()> {
+        if self.abi != "pyamplicol-fully-resident-materialization-census-v1"
+            || self.basis != "immutable-fully-resident-eager-plan"
+        {
+            return Err(RusticolError::compatibility(
+                "eager materialization census ABI or basis is unsupported",
+            ));
+        }
+        let expected = BTreeMap::from([
+            ("amplitude_root_count".to_string(), dag.amplitude_root_count),
+            ("attachment_count".to_string(), inspection.attachment_count),
+            ("closure_count".to_string(), inspection.closure_count),
+            ("current_count".to_string(), dag.current_count),
+            (
+                "finalization_count".to_string(),
+                inspection.finalization_count,
+            ),
+            ("interaction_count".to_string(), dag.interaction_count),
+            ("invocation_count".to_string(), inspection.invocation_count),
+            ("source_count".to_string(), dag.source_count),
+        ]);
+        validate_counts(
+            "eager materialization census",
+            &self.r#final.values().copied().collect::<Vec<_>>(),
+        )?;
+        validate_counts(
+            "eager materialization census peak",
+            &self.peak.values().copied().collect::<Vec<_>>(),
+        )?;
+        if !self.final_equals_peak || self.r#final != expected || self.peak != expected {
+            return Err(RusticolError::integrity(
+                "eager materialization census disagrees with the persisted plan",
             ));
         }
         Ok(())
