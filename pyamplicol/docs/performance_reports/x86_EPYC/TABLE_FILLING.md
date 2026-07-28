@@ -389,25 +389,25 @@ COMMON=(--missing-only --artifact-policy regenerate --cell-cores 1 \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
 "${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
-  --mode recurrence --model built-in-sm --accuracy lc \
+  --mode recurrence --model builtin_sm --accuracy lc \
   --workload selected-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
 "${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
-  --mode recurrence --model built-in-sm --accuracy lc \
+  --mode recurrence --model builtin_sm --accuracy lc \
   --workload all-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
 "${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
-  --mode recurrence --model ufo-sm --accuracy lc --workload both \
+  --mode recurrence --model ufo_sm --accuracy lc --workload both \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
 "${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
-  --mode compiled --model built-in-sm --accuracy lc --workload all-flow \
+  --mode compiled --model builtin_sm --accuracy lc --workload all-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
 "${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
-  --mode eager --model built-in-sm --accuracy lc --workload all-flow \
+  --mode eager --model builtin_sm --accuracy lc --workload all-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py audit
