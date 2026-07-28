@@ -137,7 +137,22 @@ authenticated finalized measurement lineage.
   options. The planner also omits selected cells whose unresolved dependency
   closure reaches an excluded ID, so a batch cannot silently reselect the held
   closure. Never reset, relabel, or restart the whole campaign for a scoped
-  defect.
+  defect. Before filtering a new batch, run
+  `classify_prior_held_cells()` from
+  `tools.performance_report.campaign_holds` over the historical hold records
+  and persist its disposition records. Aggregate every digest-pinned reason
+  observed for a cell; never retain only the first summary. The helper
+  considers a cell
+  re-admittable only when every historical reason is exactly
+  `authenticated non-ok dependency`; any other nonempty reason remains held,
+  while a malformed hold record aborts classification. It also requires exact
+  40--64 digit hexadecimal source revision/tree identities or an
+  authenticated-lineage callback. It releases only never-attempted targets
+  whose complete catalog baseline and direct
+  agreement/equivalence prerequisite closure is authenticated `ok`. Existing
+  attempts/currents, missing or terminal prerequisites, active scoped holds,
+  unknown catalog identities, and malformed evidence remain fail-closed. The
+  Mac runbook contains the wrapper integration template.
 - A completed `worker-result.json` is not current evidence if its controller
   disappeared before attempt sealing. The publisher intentionally ignores such
   an orphan. Recovery must validate the original result and attempt files,

@@ -151,7 +151,132 @@ authenticated finalized measurement lineage.
   options. The planner also omits selected cells whose unresolved dependency
   closure reaches an excluded ID, so a batch cannot silently reselect the held
   closure. Never reset, relabel, or restart the whole campaign for a scoped
-  defect.
+  defect. A dependency-derived historical hold is not permanent: each new
+  batch must reclassify it with the checked-in helper before filtering the
+  master plan:
+
+  ```python
+  from tools.performance_report.artifacts import ArtifactStore
+  from tools.performance_report.campaign_holds import (
+      classify_prior_held_cells,
+      prior_held_history_record,
+  )
+  from tools.performance_report.catalog import REPORT_CATALOG
+  from tools.performance_report.measurement_lineage import (
+      load_measurement_lineage,
+  )
+
+  hold_store = ArtifactStore(
+      artifact_root=shared.ARTIFACT_ROOT,
+      lock_root=shared.COORDINATION_ROOT,
+  )
+  hold_observations = {}
+  pattern = "campaign-controller-G-fast-catalog-*-5765/batch-summary.json"
+  for summary_path in sorted(shared.ARTIFACT_ROOT.glob(pattern)):
+      summary = json.loads(summary_path.read_text(encoding="ascii"))
+      held_cells = summary.get("held_cells")
+      shared.require(
+          isinstance(held_cells, dict),
+          f"completed summary has invalid held cells: {summary_path}",
+      )
+      for cell_id, record in held_cells.items():
+          shared.require(
+              isinstance(cell_id, str)
+              and cell_id
+              and isinstance(record, dict)
+              and record.get("cell_id") == cell_id
+              and isinstance(record.get("reason"), str)
+              and record["reason"],
+              f"completed summary has invalid hold: {summary_path}",
+          )
+          hold_observations.setdefault(cell_id, []).append(
+              {
+                  "reason": record["reason"],
+                  "summary_path": str(summary_path),
+                  "summary_sha256": shared.sha256(summary_path),
+              }
+          )
+  prior_held = {
+      cell_id: prior_held_history_record(cell_id, observations)
+      for cell_id, observations in hold_observations.items()
+  }
+  active_scoped_hold_ids = {
+      cell.cell_id
+      for cell in REPORT_CATALOG.measurement_cells()
+      if signed_zero_continuity_hold(cell.cell_id)
+  }
+  measurement_lineage = load_measurement_lineage(
+      shared.LIVE_ROOT,
+      (
+          shared.LIVE_ROOT
+          / "docs/performance_reports/macbook_M3"
+      ),
+      expected_active_revision=shared.EXPECTED_SOURCE_HEAD,
+      expected_active_tree=shared.EXPECTED_SOURCE_TREE,
+  )
+  shared.require(
+      measurement_lineage is not None,
+      "fast controller has no authenticated finalized lineage",
+  )
+  prior_dispositions = classify_prior_held_cells(
+      hold_store,
+      prior_held,
+      active_scoped_hold_ids=active_scoped_hold_ids,
+      authenticate_current=lambda _cell, current: (
+          measurement_lineage.source_for_current(
+              current,
+              active_revision=shared.EXPECTED_SOURCE_HEAD,
+              active_tree=shared.EXPECTED_SOURCE_TREE,
+          )
+          is not None
+      ),
+  )
+  prior_disposition_records = {
+      cell_id: disposition.as_dict()
+      for cell_id, disposition in prior_dispositions.items()
+  }
+  still_held_ids = {
+      cell_id
+      for cell_id, disposition in prior_dispositions.items()
+      if not disposition.eligible
+  }
+  readmitted_ids = set(prior_held) - still_held_ids
+  prior_held = {
+      cell_id: record
+      for cell_id, record in prior_held.items()
+      if cell_id in still_held_ids
+  }
+  ```
+
+  After constructing the wrapper's existing `selected_record`, persist the
+  exact classification and released set before writing `selected-plan.json`:
+
+  ```python
+  selected_record["prior_held_dispositions"] = prior_disposition_records
+  selected_record["readmitted_prior_held_ids"] = sorted(readmitted_ids)
+  ```
+
+  Replace the wrapper's old first-record `setdefault()` aggregation with the
+  complete history above; otherwise a later exact-plan or signed-zero reason
+  can be hidden by an earlier dependency reason. Persist
+  `prior_disposition_records` in the new batch plan. A cell is re-admittable
+  only when every digest-pinned historical reason is exactly
+  `authenticated non-ok dependency`; exact-plan, signed-zero, and unknown
+  nonempty reasons remain held. Re-admission requires no target attempt or
+  current and an authenticated `ok` current for the complete catalog baseline
+  and direct agreement/equivalence prerequisite closure. Missing, error, skip,
+  unsupported, source-stale, malformed, or actively held prerequisites remain
+  blocking. An orphaned/failed target attempt also remains blocking even when
+  the target has no current. Unknown cells, dependency cycles, malformed hold
+  records, and malformed currents abort classification rather than silently
+  releasing a hold. The helper refuses to classify without either exact
+  40--64 digit hexadecimal single-source revision/tree identities or a current
+  authenticator. The frozen-G
+  controller must use the exact finalized lineage envelope already bound by
+  its authenticated source route, as shown above. Other finalized
+  mixed-lineage controllers must pass `authenticate_current` backed by their
+  fully audited `MeasurementLineage.source_for_current()` result; never force
+  retained ancestor records to impersonate the active descendant source.
 - A completed `worker-result.json` is not current evidence if its controller
   disappeared before attempt sealing. The publisher intentionally ignores such
   an orphan. Recovery must validate the original result and attempt files,
