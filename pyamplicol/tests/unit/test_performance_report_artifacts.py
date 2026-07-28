@@ -349,3 +349,76 @@ def test_manifest_shape_is_stable_and_records_policy_lineage(tmp_path: Path) -> 
         "attempt_id": first.attempt_id,
         "manifest_sha256": first.manifest_sha256,
     }
+
+
+def test_seal_existing_worker_result_publishes_same_authenticated_attempt(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    attempt = store.new_attempt("cell", ArtifactPolicy.REUSE)
+    attempt.write_json(
+        "worker-result.json",
+        {"status": "ok", "validation": {"status": "ok"}},
+    )
+    attempt.path("worker.log").write_text("completed\n", encoding="utf-8")
+    worker_result = attempt.root / "worker-result.json"
+    digest = hashlib.sha256(worker_result.read_bytes()).hexdigest()
+
+    current = store.seal_existing_worker_result(
+        "cell",
+        attempt.attempt_id,
+        worker_result_sha256=digest,
+        artifact_policy=ArtifactPolicy.REUSE,
+        validate_result=lambda result, root: (
+            None
+            if result["status"] == "ok" and (root / "worker.log").is_file()
+            else (_ for _ in ()).throw(ValueError("incomplete evidence"))
+        ),
+    )
+
+    assert current.attempt_id == attempt.attempt_id
+    assert current.artifact_policy is ArtifactPolicy.REUSE
+    assert current.result == {
+        "status": "ok",
+        "validation": {"status": "ok"},
+    }
+    assert {artifact.relative_path for artifact in current.artifacts} == {
+        "result.json",
+        "worker-result.json",
+        "worker.log",
+    }
+    assert json.loads((attempt.root / "result.json").read_text()) == current.result
+    assert store.load_current("cell") == current
+
+
+@pytest.mark.parametrize("mutation", ("digest", "wrong-cell", "incomplete"))
+def test_seal_existing_worker_result_rejects_untrusted_or_incomplete_evidence(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    store = _store(tmp_path)
+    attempt = store.new_attempt("cell", ArtifactPolicy.REUSE)
+    attempt.write_json("worker-result.json", {"status": "ok"})
+    worker_result = attempt.root / "worker-result.json"
+    digest = hashlib.sha256(worker_result.read_bytes()).hexdigest()
+
+    with pytest.raises((ArtifactStoreError, ValueError)):
+        store.seal_existing_worker_result(
+            "other-cell" if mutation == "wrong-cell" else "cell",
+            attempt.attempt_id,
+            worker_result_sha256=(
+                "0" * 64 if mutation == "digest" else digest
+            ),
+            artifact_policy=ArtifactPolicy.REUSE,
+            validate_result=(
+                (lambda _result, _root: (_ for _ in ()).throw(
+                    ValueError("incomplete evidence")
+                ))
+                if mutation == "incomplete"
+                else lambda _result, _root: None
+            ),
+        )
+
+    assert not (attempt.root / "result.json").exists()
+    assert not (attempt.root / "manifest.json").exists()
+    assert store.load_current("cell", missing_ok=True) is None

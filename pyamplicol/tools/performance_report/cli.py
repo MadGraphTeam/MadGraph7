@@ -4,20 +4,25 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from .artifacts import ArtifactStoreError
+from .cache import validate_measurement
 from .campaign_policy import (
     MACBOOK_M3_POLICY_NAME,
     STRICT_POLICY,
     STRICT_POLICY_NAME,
     X86_EPYC_POLICY_NAME,
+    PolicyMeasurementState,
+    validate_policy_measurement,
 )
 from .catalog import REPORT_CATALOG
 from .measurement_lineage import (
@@ -31,7 +36,14 @@ from .measurement_lineage import (
     load_measurement_lineage,
     prepare_class_c_bridge,
 )
-from .models import Accuracy, ArtifactPolicy, ExecutionMode, ModelKey, Workload
+from .models import (
+    Accuracy,
+    ArtifactPolicy,
+    ExecutionMode,
+    ModelKey,
+    ResultStatus,
+    Workload,
+)
 from .prepared import ensure_report_prepared_model
 from .publisher import (
     DEFAULT_EXPECTED_PAGE_COUNT,
@@ -195,6 +207,20 @@ def _parser() -> argparse.ArgumentParser:
         help="audit one finalized mixed-source profile without changing it",
     )
     audit_bridge.add_argument("--expected-active-source-revision", required=True)
+
+    seal_orphan = subparsers.add_parser(
+        "seal-existing-worker-result",
+        help="authenticate and seal one completed controller-orphaned worker result",
+    )
+    seal_orphan.add_argument("--cell-id", required=True)
+    seal_orphan.add_argument("--attempt-id", required=True)
+    seal_orphan.add_argument("--worker-result-sha256", required=True)
+    seal_orphan.add_argument(
+        "--artifact-policy",
+        choices=tuple(policy.value for policy in ArtifactPolicy),
+        required=True,
+    )
+    seal_orphan.add_argument("--expected-source-revision", required=True)
 
     export = subparsers.add_parser(
         "export-profile",
@@ -667,6 +693,96 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_active_source_revision=args.expected_active_source_revision,
         )
         print(json.dumps(result, allow_nan=False, sort_keys=True))
+        return 0
+    if args.command == "seal-existing-worker-result":
+        if args.report_profile is None:
+            parser.error(
+                "seal-existing-worker-result requires --report-profile"
+            )
+        source = require_eligible_report_source(repo_root)
+        if source.revision != args.expected_source_revision:
+            parser.error(
+                "active source does not match --expected-source-revision"
+            )
+        require_active_profile_environment(
+            repo_root,
+            args.report_profile,
+            expected_source_revision=source.revision,
+        )
+        try:
+            cell = REPORT_CATALOG.cell(args.cell_id)
+        except KeyError:
+            parser.error(f"unknown --cell-id {args.cell_id!r}")
+        policy = load_profile_campaign_policy(
+            repo_root,
+            args.report_profile,
+            expected_source_revision=source.revision,
+        )
+
+        def validate_orphan_result(
+            result: Mapping[str, object],
+            attempt_root: Path,
+        ) -> None:
+            validate_measurement(result, expected_cell=cell)
+            provenance = result.get("provenance")
+            artifact = result.get("artifact")
+            if (
+                result.get("status") != ResultStatus.OK.value
+                or not isinstance(provenance, Mapping)
+                or provenance.get("report_source_revision") != source.revision
+                or provenance.get("report_source_tree") != source.tree
+                or provenance.get("report_measured_source_revision")
+                != source.revision
+                or provenance.get("report_measured_source_tree") != source.tree
+                or not isinstance(artifact, Mapping)
+                or artifact.get("path")
+                != os.fspath(attempt_root / "artifact")
+                or provenance.get("worker_log")
+                != os.fspath(attempt_root / "worker.log")
+                or not (attempt_root / "artifact").is_dir()
+                or (attempt_root / "artifact").is_symlink()
+                or not (attempt_root / "worker.log").is_file()
+                or (attempt_root / "worker.log").is_symlink()
+            ):
+                raise ValueError(
+                    "orphan worker result lacks exact source/artifact/log evidence"
+                )
+            state = validate_policy_measurement(
+                policy,
+                args.report_profile,
+                cell,
+                result,
+                expected_source_revision=source.revision,
+                expected_source_tree=source.tree,
+            )
+            if state is not PolicyMeasurementState.SUCCESS:
+                raise ValueError(
+                    "orphan worker result is not a successful policy measurement"
+                )
+
+        try:
+            record = service.store.seal_existing_worker_result(
+                args.cell_id,
+                args.attempt_id,
+                worker_result_sha256=args.worker_result_sha256,
+                artifact_policy=ArtifactPolicy(args.artifact_policy),
+                validate_result=validate_orphan_result,
+            )
+        except (ValueError, OSError, ArtifactStoreError) as error:
+            parser.error(str(error))
+        print(
+            json.dumps(
+                {
+                    "cell_id": record.cell_id,
+                    "attempt_id": record.attempt_id,
+                    "manifest_sha256": record.manifest_sha256,
+                    "result_sha256": hashlib.sha256(
+                        record.result_path.read_bytes()
+                    ).hexdigest(),
+                },
+                sort_keys=True,
+            )
+        )
         return 0
     if args.command == "final-audit":
         from .final_audit import audit_final_report

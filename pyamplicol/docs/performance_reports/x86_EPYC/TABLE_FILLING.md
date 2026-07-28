@@ -276,19 +276,44 @@ immutable pin and requires all 40 targets from `D`.
 Use this second Class-C impact only for the measured EPYC ancestor and the
 reviewed summary-cap descendant. Stop all workers and the publisher first. The
 four `GenerationError` currents, including their exact reported byte counts,
-must still be current; every other current must be successful. The prepare
-step fails closed on any fifth unsuccessful current, any changed failure
-message, or any path outside the reviewed `A..D` allowlist.
+must still be current. Seal the one completed controller-orphaned AmpliCol
+worker result before freezing the bridge. The audited predecessor preserves
+accepted currents from both of its source epochs; all other terminal currents
+are digest-covered but receive no new source authorization. In addition to the
+summary-cap closure, the bridge admits only the signed-zero helicity repair's
+16 AmpliCol reference cells, eight directly blocked recurrence cells, and their
+exact 40-cell agreement closure for `dd_epemzh_jets` and `dd_ttzh_jets` at
+\(n=4,\ldots,7\). The prepare step
+fails closed on any changed current, failure message, predecessor pin, or path
+outside the reviewed `A..D` allowlist.
 
 ```bash
 set -euo pipefail
 A='be11d8304fdc04893dc0e23e9619be848126e3bc'
 FIX='b61e68e92eff2f2a77bfc7830c12cd99ceeaa71a'
-D="$(git rev-parse HEAD)"
+test "$(git rev-parse HEAD)" = "$A"
+git fetch origin main codex/recurrence-summary-cap-continuity
+D="$(git rev-parse origin/codex/recurrence-summary-cap-continuity)"
+test "$(git rev-parse origin/main)" = "$D"
+CONTROLLER_PARENT="$(mktemp -d)"
+CONTROLLER="$CONTROLLER_PARENT/summary-cap-controller"
+git worktree add --detach "$CONTROLLER" "$D"
+.venv/bin/python \
+  "$CONTROLLER/docs/performance_reports/x86_EPYC/result_tables.py" \
+  --repo-root "$PWD" --report-profile x86_EPYC \
+  seal-existing-worker-result \
+  --cell-id reference-amplicol-lc-n8-gg-gluons-selected-flow \
+  --attempt-id 83e5c9c7-dbf6-4d61-b724-f4580df2cfa3 \
+  --worker-result-sha256 \
+  5f3a42f9e3d034efedd8b670e7acbf2b54a427449106dbabc29050f3d93afbe6 \
+  --artifact-policy regenerate --expected-source-revision "$A"
+.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
+  audit-source-bridge --expected-active-source-revision "$A"
+git merge --ff-only "$D"
+test "$(git rev-parse HEAD)" = "$D"
 test "$D" != "$A"
 git merge-base --is-ancestor "$A" "$FIX"
 git merge-base --is-ancestor "$FIX" "$D"
-test -z "$(git status --short)"
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
   prepare-class-c-bridge \
   --ancestor-revision "$A" --descendant-revision "$D" \
@@ -338,18 +363,66 @@ COMMON=(--missing-only --artifact-policy regenerate --cell-cores 1 \
   --cell-id matrix-recurrence-ufo-sm-lc-n9-dd-z-jets-all-flow \
   --cell-id matrix-recurrence-ufo-sm-lc-n9-ud-w-jets-selected-flow \
   --cell-id matrix-recurrence-ufo-sm-lc-n9-ud-w-jets-all-flow
+```
+
+Then run the signed-zero closure in dependency order: eight selected-flow and
+eight all-flow AmpliCol references, eight built-in recurrence selected-flow
+cells, eight built-in recurrence all-flow cells, 16 UFO-SM recurrence cells,
+and eight all-flow cells in each compiled and eager mode. These selectors are
+exact and must each schedule 8, 8, 8, 8, 16, 8, and 8 cells respectively:
+
+```bash
+set -euo pipefail
+RUNNER=(taskset -c 0-9 .venv/bin/python \
+  docs/performance_reports/x86_EPYC/result_tables.py populate)
+COMMON=(--missing-only --artifact-policy regenerate --cell-cores 1 \
+  --target-runtime 5 --max-ram-gb 100 --allow-symbolica-parallel \
+  --refresh-pdf end)
+"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+  --mode amplicol --accuracy lc \
+  --workload selected-flow \
+  --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
+  --n-final 4 --n-final 5 --n-final 6 --n-final 7
+"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+  --mode amplicol --accuracy lc \
+  --workload all-flow \
+  --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
+  --n-final 4 --n-final 5 --n-final 6 --n-final 7
+"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+  --mode recurrence --model built-in-sm --accuracy lc \
+  --workload selected-flow \
+  --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
+  --n-final 4 --n-final 5 --n-final 6 --n-final 7
+"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+  --mode recurrence --model built-in-sm --accuracy lc \
+  --workload all-flow \
+  --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
+  --n-final 4 --n-final 5 --n-final 6 --n-final 7
+"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+  --mode recurrence --model ufo-sm --accuracy lc --workload both \
+  --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
+  --n-final 4 --n-final 5 --n-final 6 --n-final 7
+"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+  --mode compiled --model built-in-sm --accuracy lc --workload all-flow \
+  --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
+  --n-final 4 --n-final 5 --n-final 6 --n-final 7
+"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+  --mode eager --model built-in-sm --accuracy lc --workload all-flow \
+  --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
+  --n-final 4 --n-final 5 --n-final 6 --n-final 7
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py audit
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
   audit-source-bridge --expected-active-source-revision "$D"
 ```
 
-Repeat the same three `populate` invocations with `--dry-run`; each must
-report zero scheduled cells.
+Repeat all ten `populate` invocations with `--dry-run`; each must report zero
+scheduled cells.
 
 Do not reset, relabel, copy, or rewrite any current or attempt. The bridge
-retains accepted ancestor currents by their byte digests, invalidates only the
-four exact failures, and requires only the reviewed 12-cell agreement closure
-from `D`.
+retains every accepted ancestor current by its byte digest, including the
+newly sealed orphan, carries the audited HZZ predecessor, and requires only the
+reviewed 80-cell union (four summary-cap failures plus 12 dependents, and 24
+signed-zero direct targets plus 40 dependents) from `D`.
 
 ## 4. Keep a live PDF beside the workers
 

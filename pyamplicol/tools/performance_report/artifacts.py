@@ -12,7 +12,7 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
@@ -386,6 +386,93 @@ class ArtifactStore:
             artifact_policy=policy,
             based_on=based_on,
         )
+
+    def seal_existing_worker_result(
+        self,
+        cell_id: str,
+        attempt_id: str,
+        *,
+        worker_result_sha256: str,
+        artifact_policy: ArtifactPolicy,
+        validate_result: Callable[[Mapping[str, Any], Path], None],
+    ) -> CurrentRecord:
+        """Seal one controller-orphaned worker result without rerunning it."""
+
+        validated_cell = _validate_cell_id(cell_id)
+        validated_attempt = _validate_uuid(attempt_id, field="attempt_id")
+        expected_worker_digest = _validate_sha256(
+            worker_result_sha256,
+            field="worker_result_sha256",
+        )
+        cell_root = self._cell_root(validated_cell)
+        attempt_root = cell_root / "attempts" / validated_attempt
+        with self.cell_lock(validated_cell):
+            pointer_path = cell_root / "current.json"
+            if pointer_path.exists() or pointer_path.is_symlink():
+                raise ArtifactStoreError(
+                    "orphan sealing cannot replace an existing current"
+                )
+            if (
+                attempt_root.is_symlink()
+                or not attempt_root.is_dir()
+                or attempt_root.parent.is_symlink()
+            ):
+                raise ArtifactStoreError(
+                    "orphan attempt is not its canonical regular directory"
+                )
+            for reserved in ("result.json", "manifest.json"):
+                path = attempt_root / reserved
+                if path.exists() or path.is_symlink():
+                    raise ArtifactStoreError(
+                        f"orphan attempt already contains {reserved}"
+                    )
+            _, worker_result = _resolve_member(
+                attempt_root,
+                "worker-result.json",
+                field="worker-result.json",
+            )
+            if _sha256(worker_result) != expected_worker_digest:
+                raise ArtifactStoreError("worker-result.json digest mismatch")
+            result = _read_json_object(
+                worker_result,
+                description="orphan worker result",
+            )
+            validate_result(result, attempt_root)
+            artifact_paths: list[str] = []
+            for path in sorted(attempt_root.rglob("*")):
+                if path.is_symlink():
+                    raise ArtifactStoreError(
+                        f"orphan attempt contains a symbolic link: {path}"
+                    )
+                if path.is_file():
+                    artifact_paths.append(
+                        path.relative_to(attempt_root).as_posix()
+                    )
+                elif not path.is_dir():
+                    raise ArtifactStoreError(
+                        f"orphan attempt contains a special file: {path}"
+                    )
+            if "worker-result.json" not in artifact_paths:
+                raise ArtifactStoreError(
+                    "orphan attempt lacks worker-result.json"
+                )
+            attempt = ArtifactAttempt(
+                store=self,
+                cell_id=validated_cell,
+                attempt_id=validated_attempt,
+                root=attempt_root,
+                artifact_policy=artifact_policy,
+                based_on=None,
+            )
+            record = attempt.publish(
+                result,
+                artifact_paths=artifact_paths,
+            )
+            if _sha256(worker_result) != expected_worker_digest:
+                raise ArtifactStoreError(
+                    "worker-result.json changed during orphan sealing"
+                )
+            return record
 
     def load_current(
         self,

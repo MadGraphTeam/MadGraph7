@@ -24,6 +24,7 @@ _PUBLICATION_ONLY_COMMANDS = {
     "reset",
     "render",
     "recover",
+    "seal-existing-worker-result",
     "publish-snapshot",
     "validate-snapshot",
 }
