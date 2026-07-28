@@ -284,6 +284,72 @@ struct PendingCurrent {
     reflection_certificate_id: Option<u32>,
 }
 
+/// Exact runtime-value identity after erasing only dynamic LC colour.
+///
+/// The physical-sector domain is part of the identity.  Without it, folding
+/// two colour fragments from disjoint selector domains would make every
+/// contribution of either fragment live in both domains.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ProjectedCurrentIdentity {
+    color_erased_key: CurrentCoreKey,
+    selector_sector_ids: Box<[u32]>,
+    source_builder_id: Option<u32>,
+}
+
+/// Exact contribution identity after mapping parents to projected values.
+///
+/// `color_witness_term_id` is deliberately absent.  Every remaining runtime
+/// field and the exact coefficient participates in equality.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ProjectedContributionIdentity {
+    destination_projection_id: u32,
+    transition_template_id: u32,
+    parent_projection_ids: Box<[u32]>,
+    parent_state_template_ids: Box<[u32]>,
+    parent_momenta: Box<[CanonicalMomentumLinearForm]>,
+    result_state_template_id: u32,
+    quantum_flow_witness_id: u32,
+    runtime_coupling_binding_digest: SemanticDigest,
+    output_projection_id: u32,
+    exact_factor: ExactComplexRational,
+}
+
+#[derive(Clone, Debug)]
+struct PendingProjectedContribution {
+    identity: ProjectedContributionIdentity,
+    representative_destination_builder_id: u32,
+    representative_key: ContributionKey,
+    destination_builder_ids: BTreeSet<u32>,
+    builder_parent_tuples: BTreeSet<Box<[u32]>>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ProjectedClosureIdentity {
+    target_sector_id: u32,
+    complete_source_states: Box<[SourceStateAssignment]>,
+    closure_template_id: u32,
+    quantum_flow_template_id: Option<u32>,
+    parent_projection_ids: Box<[u32]>,
+    exact_factor: ExactComplexRational,
+}
+
+#[derive(Clone, Debug)]
+struct PendingProjectedClosure {
+    identity: ProjectedClosureIdentity,
+    representative_key: PendingClosureKey,
+    representative_group: PendingClosureGroup,
+    builder_parent_tuples: BTreeSet<Box<[u32]>>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingColorProjection {
+    old_to_projection: BTreeMap<u32, u32>,
+    projection_members: Vec<Box<[u32]>>,
+    projection_sector_ids: Vec<Box<[u32]>>,
+    contributions: BTreeMap<ProjectedContributionIdentity, PendingProjectedContribution>,
+    closures: BTreeMap<ProjectedClosureIdentity, PendingProjectedClosure>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CurrentReflectionProof {
     phase: ExactComplexRational,
@@ -4089,6 +4155,275 @@ fn pending_closure_candidate_identity_digest(
     )
 }
 
+fn pending_selector_sector_domains(
+    pending: &[PendingCurrent],
+    pending_closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+) -> RusticolResult<Vec<BTreeSet<u32>>> {
+    let mut domains = vec![BTreeSet::new(); pending.len()];
+    let mut queue = VecDeque::new();
+    for (key, group) in pending_closures {
+        if group.exact_factor.is_zero() {
+            continue;
+        }
+        for parent in key.parent_current_ids.iter().copied() {
+            let domain = domains
+                .get_mut(parent as usize)
+                .ok_or_else(|| invalid("closure references an absent pending current"))?;
+            if domain.insert(key.target_sector_id) {
+                queue.push_back(parent);
+            }
+        }
+    }
+    while let Some(current_id) = queue.pop_front() {
+        let sectors = domains
+            .get(current_id as usize)
+            .ok_or_else(|| invalid("selector-domain queue references an absent current"))?
+            .clone();
+        for (contribution, factor) in &pending[current_id as usize].contributions {
+            if factor.is_zero() {
+                continue;
+            }
+            for parent in contribution.parent_current_ids.iter().copied() {
+                let domain = domains
+                    .get_mut(parent as usize)
+                    .ok_or_else(|| invalid("contribution references an absent pending parent"))?;
+                let before = domain.len();
+                domain.extend(sectors.iter().copied());
+                if domain.len() != before {
+                    queue.push_back(parent);
+                }
+            }
+        }
+    }
+    Ok(domains)
+}
+
+fn projected_contribution_identity(
+    destination_projection_id: u32,
+    pending_key: &PendingContributionKey,
+    exact_factor: ExactComplexRational,
+    old_to_projection: &BTreeMap<u32, u32>,
+) -> RusticolResult<ProjectedContributionIdentity> {
+    let parent_projection_ids = pending_key
+        .parent_current_ids
+        .iter()
+        .map(|old_id| {
+            old_to_projection
+                .get(old_id)
+                .copied()
+                .ok_or_else(|| invalid("projected contribution has a dead parent"))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let key = &pending_key.key;
+    Ok(ProjectedContributionIdentity {
+        destination_projection_id,
+        transition_template_id: key.transition_template_id(),
+        parent_projection_ids: parent_projection_ids.into_boxed_slice(),
+        parent_state_template_ids: key.parent_state_template_ids().into(),
+        parent_momenta: key.parent_momenta().into(),
+        result_state_template_id: key.result_state_template_id(),
+        quantum_flow_witness_id: key.quantum_flow_witness_id(),
+        runtime_coupling_binding_digest: key.runtime_coupling_binding_digest(),
+        output_projection_id: key.output_projection_id(),
+        exact_factor,
+    })
+}
+
+fn rectangular_parent_domain_is_complete(
+    parent_projection_ids: &[u32],
+    builder_parent_tuples: &BTreeSet<Box<[u32]>>,
+    old_to_projection: &BTreeMap<u32, u32>,
+    projection_members: &[Box<[u32]>],
+) -> RusticolResult<bool> {
+    let expected_count =
+        parent_projection_ids
+            .iter()
+            .try_fold(1usize, |count, projection_id| {
+                let member_count = projection_members
+                    .get(*projection_id as usize)
+                    .ok_or_else(|| {
+                        invalid("rectangular proof references an absent projection class")
+                    })?
+                    .len();
+                count
+                    .checked_mul(member_count)
+                    .ok_or_else(|| invalid("rectangular parent-product count exceeds usize"))
+            })?;
+    if expected_count != builder_parent_tuples.len() {
+        return Ok(false);
+    }
+    for tuple in builder_parent_tuples {
+        if tuple.len() != parent_projection_ids.len() {
+            return Err(invalid(
+                "rectangular proof parent tuple has inconsistent arity",
+            ));
+        }
+        for (old_id, expected_projection_id) in tuple.iter().zip(parent_projection_ids.iter()) {
+            if old_to_projection.get(old_id) != Some(expected_projection_id) {
+                return Ok(false);
+            }
+        }
+    }
+    // The tuples are unique by construction.  Membership in the declared
+    // classes plus cardinality equal to the complete Cartesian product proves
+    // that no combination is missing.
+    Ok(true)
+}
+
+fn plan_topology_replay_color_projection(
+    pending: &[PendingCurrent],
+    pending_closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+) -> RusticolResult<Option<PendingColorProjection>> {
+    let selector_domains = pending_selector_sector_domains(pending, pending_closures)?;
+    let canonical_color_id = DynamicLCColorStateId::from_interner(0);
+    let mut identity_to_projection = BTreeMap::<ProjectedCurrentIdentity, u32>::new();
+    let mut old_to_projection = BTreeMap::new();
+    let mut projection_members = Vec::<Vec<u32>>::new();
+    let mut projection_sector_ids = Vec::<Box<[u32]>>::new();
+
+    for (old_id, current) in pending.iter().enumerate() {
+        let sectors = &selector_domains[old_id];
+        if sectors.is_empty() {
+            continue;
+        }
+        let old_id =
+            u32::try_from(old_id).map_err(|_| invalid("pending current ID exceeds u32"))?;
+        let identity = ProjectedCurrentIdentity {
+            color_erased_key: current_key_with_dynamic_color(&current.key, canonical_color_id)?,
+            selector_sector_ids: sectors.iter().copied().collect(),
+            source_builder_id: (current.key.node_kind() == RecurrenceNodeKind::Source)
+                .then_some(old_id),
+        };
+        let projection_id =
+            if let Some(projection_id) = identity_to_projection.get(&identity).copied() {
+                projection_id
+            } else {
+                let projection_id = u32::try_from(projection_members.len())
+                    .map_err(|_| invalid("projected current count exceeds u32"))?;
+                projection_sector_ids.push(identity.selector_sector_ids.clone());
+                projection_members.push(Vec::new());
+                identity_to_projection.insert(identity, projection_id);
+                projection_id
+            };
+        projection_members[projection_id as usize].push(old_id);
+        old_to_projection.insert(old_id, projection_id);
+    }
+    if projection_members.iter().all(|members| members.len() == 1) {
+        return Ok(None);
+    }
+    let projection_members = projection_members
+        .into_iter()
+        .map(Vec::into_boxed_slice)
+        .collect::<Vec<_>>();
+
+    let mut contributions =
+        BTreeMap::<ProjectedContributionIdentity, PendingProjectedContribution>::new();
+    for (old_id, projection_id) in &old_to_projection {
+        for (pending_key, factor) in &pending[*old_id as usize].contributions {
+            if factor.is_zero() {
+                continue;
+            }
+            let identity = projected_contribution_identity(
+                *projection_id,
+                pending_key,
+                *factor,
+                &old_to_projection,
+            )?;
+            let parent_tuple = pending_key.parent_current_ids.clone();
+            match contributions.entry(identity.clone()) {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(PendingProjectedContribution {
+                        identity,
+                        representative_destination_builder_id: *old_id,
+                        representative_key: pending_key.key.clone(),
+                        destination_builder_ids: BTreeSet::from([*old_id]),
+                        builder_parent_tuples: BTreeSet::from([parent_tuple]),
+                    });
+                }
+                std::collections::btree_map::Entry::Occupied(mut entry) => {
+                    let projected = entry.get_mut();
+                    projected.destination_builder_ids.insert(*old_id);
+                    if !projected.builder_parent_tuples.insert(parent_tuple) {
+                        // Two builder rows with the same complete numeric
+                        // identity and old-parent tuple are additive, not an
+                        // alias.  Retain the unprojected program.
+                        return Ok(None);
+                    }
+                }
+            }
+        }
+    }
+    for projected in contributions.values() {
+        if !rectangular_parent_domain_is_complete(
+            &projected.identity.parent_projection_ids,
+            &projected.builder_parent_tuples,
+            &old_to_projection,
+            &projection_members,
+        )? {
+            return Ok(None);
+        }
+    }
+
+    let mut closures = BTreeMap::<ProjectedClosureIdentity, PendingProjectedClosure>::new();
+    for (key, group) in pending_closures {
+        if group.exact_factor.is_zero() {
+            continue;
+        }
+        let parent_projection_ids = key
+            .parent_current_ids
+            .iter()
+            .map(|old_id| {
+                old_to_projection
+                    .get(old_id)
+                    .copied()
+                    .ok_or_else(|| invalid("projected closure has a dead parent"))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let identity = ProjectedClosureIdentity {
+            target_sector_id: key.target_sector_id,
+            complete_source_states: key.complete_source_states.clone(),
+            closure_template_id: key.closure_template_id,
+            quantum_flow_template_id: key.quantum_flow_template_id,
+            parent_projection_ids: parent_projection_ids.into_boxed_slice(),
+            exact_factor: group.exact_factor,
+        };
+        let parent_tuple = key.parent_current_ids.clone();
+        match closures.entry(identity.clone()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(PendingProjectedClosure {
+                    identity,
+                    representative_key: key.clone(),
+                    representative_group: group.clone(),
+                    builder_parent_tuples: BTreeSet::from([parent_tuple]),
+                });
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                if !entry.get_mut().builder_parent_tuples.insert(parent_tuple) {
+                    return Ok(None);
+                }
+            }
+        }
+    }
+    for projected in closures.values() {
+        if !rectangular_parent_domain_is_complete(
+            &projected.identity.parent_projection_ids,
+            &projected.builder_parent_tuples,
+            &old_to_projection,
+            &projection_members,
+        )? {
+            return Ok(None);
+        }
+    }
+
+    Ok(Some(PendingColorProjection {
+        old_to_projection,
+        projection_members,
+        projection_sector_ids,
+        contributions,
+        closures,
+    }))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn append_closure_proof_group(
     key: &PendingClosureKey,
@@ -6780,6 +7115,197 @@ mod tests {
         assert_eq!(
             replay_momentum_signs(&[-1, -1, 1, 1], &[0, 1, 3, 2]).unwrap(),
             [1, 1, 1, 1]
+        );
+    }
+
+    fn projection_test_current(
+        node_kind: RecurrenceNodeKind,
+        state: u32,
+        color: u32,
+        support: &[u32],
+    ) -> PendingCurrent {
+        let helicity_identity = CurrentHelicityIdentity::topology_replay(
+            0,
+            support
+                .iter()
+                .copied()
+                .map(|slot| SourceStateAssignment::new(slot, 0))
+                .collect(),
+        )
+        .unwrap();
+        let key = CurrentCoreKey::new(
+            digest(230),
+            node_kind,
+            state,
+            DynamicLCColorStateId::from_interner(color),
+            support.to_vec(),
+            CanonicalMomentumLinearForm::new(
+                support
+                    .iter()
+                    .copied()
+                    .map(|source_slot| MomentumTerm {
+                        source_slot,
+                        coefficient: 1,
+                    })
+                    .collect(),
+            )
+            .unwrap(),
+            helicity_identity,
+            vec![0],
+            0,
+            vec![],
+            if node_kind == RecurrenceNodeKind::Source {
+                CurrentSourceBinding::FixedTemplate(support[0])
+            } else {
+                CurrentSourceBinding::None
+            },
+            None,
+        )
+        .unwrap();
+        PendingCurrent {
+            key,
+            source_exact_factor: (node_kind == RecurrenceNodeKind::Source)
+                .then_some(ExactComplexRational::ONE),
+            contributions: BTreeMap::new(),
+            realized_pairing_rule_ids: BTreeSet::new(),
+            reflection: CurrentReflection::Unavailable,
+            reflection_certificate_id: None,
+        }
+    }
+
+    fn add_projection_test_contribution(
+        currents: &mut [PendingCurrent],
+        destination: u32,
+        transition: u32,
+        parents: [u32; 2],
+        witness: u32,
+    ) {
+        let parent_keys = parents.map(|id| &currents[id as usize].key);
+        let destination_key = &currents[destination as usize].key;
+        let key = ContributionKey::new(
+            transition,
+            parents.to_vec(),
+            parent_keys
+                .iter()
+                .map(|key| key.current_state_template_id())
+                .collect(),
+            parent_keys
+                .iter()
+                .map(|key| key.momentum().clone())
+                .collect(),
+            destination_key.current_state_template_id(),
+            transition,
+            LCColorWitnessTermId::new(transition, witness),
+            digest(
+                231_u8
+                    .checked_add(u8::try_from(transition).unwrap())
+                    .unwrap(),
+            ),
+            0,
+        )
+        .unwrap();
+        currents[destination as usize].contributions.insert(
+            PendingContributionKey {
+                parent_current_ids: parents.into(),
+                key,
+            },
+            ExactComplexRational::ONE,
+        );
+    }
+
+    fn projection_test_graph(
+        omit_last_contribution: bool,
+        omit_last_closure: bool,
+    ) -> (
+        Vec<PendingCurrent>,
+        BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    ) {
+        let mut currents = vec![
+            projection_test_current(RecurrenceNodeKind::Source, 0, 0, &[0]),
+            projection_test_current(RecurrenceNodeKind::Source, 0, 1, &[1]),
+            projection_test_current(RecurrenceNodeKind::Source, 0, 2, &[2]),
+            projection_test_current(RecurrenceNodeKind::Current, 1, 3, &[0, 1]),
+            projection_test_current(RecurrenceNodeKind::Current, 1, 4, &[0, 1]),
+            projection_test_current(RecurrenceNodeKind::Current, 2, 5, &[0, 1, 2]),
+            projection_test_current(RecurrenceNodeKind::Current, 2, 6, &[0, 1, 2]),
+        ];
+        // The first projected value is a sum of two distinct exact kernels.
+        add_projection_test_contribution(&mut currents, 3, 10, [0, 1], 0);
+        add_projection_test_contribution(&mut currents, 4, 11, [0, 1], 0);
+        // The next value has one common bilinear kernel over the complete
+        // Cartesian product {3,4} x {2}.
+        add_projection_test_contribution(&mut currents, 5, 20, [3, 2], 0);
+        if !omit_last_contribution {
+            add_projection_test_contribution(&mut currents, 6, 20, [4, 2], 1);
+        }
+        let mut closures = BTreeMap::new();
+        for parent in [5, 6] {
+            if omit_last_closure && parent == 6 {
+                continue;
+            }
+            closures.insert(
+                PendingClosureKey {
+                    target_sector_id: 0,
+                    complete_source_states: Box::new([]),
+                    closure_template_id: 0,
+                    quantum_flow_template_id: None,
+                    parent_current_ids: vec![parent, 0].into_boxed_slice(),
+                },
+                PendingClosureGroup {
+                    contributions: vec![],
+                    exact_factor: ExactComplexRational::ONE,
+                },
+            );
+        }
+        (currents, closures)
+    }
+
+    #[test]
+    fn topology_replay_color_projection_requires_complete_rectangles() {
+        let (currents, closures) = projection_test_graph(false, false);
+        let projection = plan_topology_replay_color_projection(&currents, &closures)
+            .unwrap()
+            .unwrap();
+        assert_eq!(projection.projection_members.len(), 5);
+        assert_eq!(
+            projection.old_to_projection[&3],
+            projection.old_to_projection[&4]
+        );
+        assert_eq!(
+            projection.old_to_projection[&5],
+            projection.old_to_projection[&6]
+        );
+        assert_eq!(projection.contributions.len(), 3);
+        assert_eq!(projection.closures.len(), 1);
+        assert_eq!(
+            projection
+                .closures
+                .values()
+                .next()
+                .unwrap()
+                .builder_parent_tuples
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn topology_replay_color_projection_rejects_a_missing_internal_tuple() {
+        let (currents, closures) = projection_test_graph(true, false);
+        assert!(
+            plan_topology_replay_color_projection(&currents, &closures)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn topology_replay_color_projection_rejects_a_missing_closure_tuple() {
+        let (currents, closures) = projection_test_graph(false, true);
+        assert!(
+            plan_topology_replay_color_projection(&currents, &closures)
+                .unwrap()
+                .is_none()
         );
     }
 }
