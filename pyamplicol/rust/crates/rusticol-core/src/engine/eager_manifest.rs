@@ -446,6 +446,8 @@ impl EagerExecutionManifest {
     }
 
     pub(super) fn compiled_metadata_manifest(&self) -> ExecutionManifest {
+        let materialization_census =
+            ExecutionMaterializationCensus::from_summary(&self.dag_summary);
         ExecutionManifest {
             schema_version: self.schema_version,
             kind: "pyamplicol-runtime-execution".to_string(),
@@ -464,6 +466,7 @@ impl EagerExecutionManifest {
                 stage_evaluators: None,
             },
             dag_summary: self.dag_summary.clone(),
+            materialization_census,
             runtime_schema: self.runtime_schema.clone(),
             physics_reduction: None,
             helicity_sum_execution: None,

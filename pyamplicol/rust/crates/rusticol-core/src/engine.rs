@@ -392,6 +392,7 @@ struct ExecutionManifest {
     external_pdg_order: Vec<i32>,
     compiled: EvaluatorSetManifest,
     dag_summary: ExecutionSummary,
+    materialization_census: ExecutionMaterializationCensus,
     runtime_schema: ExecutionPlan,
     #[serde(default)]
     physics_reduction: Option<crate::Reduction>,
@@ -1017,8 +1018,44 @@ struct ExecutionSummary {
     current_count: usize,
     source_count: usize,
     interaction_count: usize,
+    interaction_evaluation_count: usize,
     amplitude_root_count: usize,
     truncated: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExecutionMaterializationCensus {
+    abi: String,
+    basis: String,
+    r#final: BTreeMap<String, usize>,
+    peak: BTreeMap<String, usize>,
+    final_equals_peak: bool,
+}
+
+impl ExecutionMaterializationCensus {
+    fn from_summary(summary: &ExecutionSummary) -> Self {
+        let counts = BTreeMap::from([
+            (
+                "amplitude_root_count".to_string(),
+                summary.amplitude_root_count,
+            ),
+            ("current_count".to_string(), summary.current_count),
+            ("interaction_count".to_string(), summary.interaction_count),
+            (
+                "interaction_evaluation_count".to_string(),
+                summary.interaction_evaluation_count,
+            ),
+            ("source_count".to_string(), summary.source_count),
+        ]);
+        Self {
+            abi: "pyamplicol-fully-resident-materialization-census-v1".to_string(),
+            basis: "immutable-fully-resident-compiled-dag".to_string(),
+            r#final: counts.clone(),
+            peak: counts,
+            final_equals_peak: true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]

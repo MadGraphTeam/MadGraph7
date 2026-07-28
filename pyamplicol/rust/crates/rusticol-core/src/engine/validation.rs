@@ -49,6 +49,48 @@ fn validate_execution_manifest(manifest: &ExecutionManifest) -> RusticolResult<(
             "generic DAG schema-v3 artifact was truncated during current construction",
         ));
     }
+    if manifest.dag_summary.interaction_evaluation_count > manifest.dag_summary.interaction_count {
+        return Err(RusticolError::integrity(
+            "generic DAG interaction-evaluation count exceeds its interaction count",
+        ));
+    }
+    let expected_materialization = BTreeMap::from([
+        (
+            "amplitude_root_count".to_string(),
+            manifest.dag_summary.amplitude_root_count,
+        ),
+        (
+            "current_count".to_string(),
+            manifest.dag_summary.current_count,
+        ),
+        (
+            "interaction_count".to_string(),
+            manifest.dag_summary.interaction_count,
+        ),
+        (
+            "interaction_evaluation_count".to_string(),
+            manifest.dag_summary.interaction_evaluation_count,
+        ),
+        (
+            "source_count".to_string(),
+            manifest.dag_summary.source_count,
+        ),
+    ]);
+    if manifest.materialization_census.abi != "pyamplicol-fully-resident-materialization-census-v1"
+        || manifest.materialization_census.basis != "immutable-fully-resident-compiled-dag"
+    {
+        return Err(RusticolError::compatibility(
+            "compiled materialization census ABI or basis is unsupported",
+        ));
+    }
+    if !manifest.materialization_census.final_equals_peak
+        || manifest.materialization_census.r#final != expected_materialization
+        || manifest.materialization_census.peak != expected_materialization
+    {
+        return Err(RusticolError::integrity(
+            "compiled materialization census disagrees with the persisted DAG",
+        ));
+    }
     if manifest.external_pdg_order.len() != manifest.runtime_schema.external_particles.len() {
         return Err(RusticolError::artifact(
             "generic runtime schema external particle count does not match external_pdg_order",
@@ -159,6 +201,41 @@ fn validate_execution_manifest(manifest: &ExecutionManifest) -> RusticolResult<(
         validate_execution_manifest(lane.execution.as_ref())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod execution_summary_tests {
+    use super::*;
+
+    fn manifest() -> ExecutionManifest {
+        serde_json::from_value(crate::artifact::tests::minimal_execution_manifest(
+            "p0",
+            "a b > c",
+            SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
+            crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
+        ))
+        .expect("deserialize compiled execution summary fixture")
+    }
+
+    #[test]
+    fn compiled_summary_and_materialization_census_round_trip() {
+        validate_execution_manifest(&manifest()).expect("validate exact compiled census");
+
+        let mut excessive = manifest();
+        excessive.dag_summary.interaction_evaluation_count = 1;
+        let error = validate_execution_manifest(&excessive).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+        assert!(error.to_string().contains("exceeds"));
+
+        let mut inconsistent = manifest();
+        inconsistent
+            .materialization_census
+            .r#final
+            .insert("interaction_evaluation_count".to_string(), 1);
+        let error = validate_execution_manifest(&inconsistent).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+        assert!(error.to_string().contains("disagrees"));
+    }
 }
 
 fn validate_lc_topology_replay(manifest: &ExecutionManifest) -> RusticolResult<()> {

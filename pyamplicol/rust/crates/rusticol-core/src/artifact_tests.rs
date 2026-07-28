@@ -726,8 +726,28 @@ pub(crate) fn minimal_execution_manifest(
             "current_count": 2,
             "source_count": 2,
             "interaction_count": 0,
+            "interaction_evaluation_count": 0,
             "amplitude_root_count": 1,
             "truncated": false,
+        },
+        "materialization_census": {
+            "abi": "pyamplicol-fully-resident-materialization-census-v1",
+            "basis": "immutable-fully-resident-compiled-dag",
+            "final": {
+                "current_count": 2,
+                "source_count": 2,
+                "interaction_count": 0,
+                "interaction_evaluation_count": 0,
+                "amplitude_root_count": 1,
+            },
+            "peak": {
+                "current_count": 2,
+                "source_count": 2,
+                "interaction_count": 0,
+                "interaction_evaluation_count": 0,
+                "amplitude_root_count": 1,
+            },
+            "final_equals_peak": true,
         },
         "runtime_schema": runtime_schema,
     })
