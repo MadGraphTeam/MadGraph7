@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -56,6 +57,15 @@ class CandidateFinalWork:
 
 
 @dataclass(frozen=True)
+class FinalWorkComparison:
+    current_delta_count: int
+    interaction_delta_count: int
+    current_savings_fraction: float
+    interaction_savings_fraction: float
+    classification: str
+
+
+@dataclass(frozen=True)
 class RecurrenceConstructionWork:
     peak_current_count: int
     peak_contribution_attempt_count: int
@@ -71,9 +81,32 @@ class StructuralWorkCertificate:
     external_pdg_order: tuple[int, ...]
     legacy: LegacyReplayWork
     candidate: CandidateFinalWork
+    final_work_comparison: FinalWorkComparison
     recurrence_construction: RecurrenceConstructionWork | None
     limits: dict[str, float]
     status: str
+
+
+@dataclass(frozen=True)
+class AdjacentMultiplicityCensus:
+    schema: str
+    mode: str
+    lower_n_final: int
+    higher_n_final: int
+    legacy_current_growth: float
+    candidate_current_growth: float
+    normalized_current_growth: float
+    legacy_interaction_growth: float
+    candidate_interaction_growth: float
+    normalized_interaction_growth: float
+    normalized_peak_current_growth: float | None
+    limits: dict[str, float]
+    status: str
+
+
+MAX_UNPROVEN_FINAL_TO_LEGACY = 1.05
+MAX_ADJACENT_FINAL_GROWTH = 1.05
+MAX_ADJACENT_PEAK_GROWTH = 1.25
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -225,15 +258,48 @@ def candidate_final_work(
     )
 
 
+def _final_work_comparison(
+    legacy: LegacyReplayWork,
+    candidate: CandidateFinalWork,
+) -> FinalWorkComparison:
+    current_delta = candidate.current_count - legacy.replay_current_count
+    interaction_delta = (
+        candidate.interaction_count - legacy.replay_interaction_count
+    )
+    classification = (
+        "proven-recycling"
+        if current_delta <= 0 and interaction_delta <= 0
+        else "within-structural-tolerance"
+    )
+    return FinalWorkComparison(
+        current_delta_count=current_delta,
+        interaction_delta_count=interaction_delta,
+        current_savings_fraction=-current_delta / legacy.replay_current_count,
+        interaction_savings_fraction=(
+            -interaction_delta / legacy.replay_interaction_count
+        ),
+        classification=classification,
+    )
+
+
 def certify(
     legacy_artifact: Path,
     candidate_artifact: Path,
     *,
-    max_final_to_legacy: float = 1.0,
+    max_final_to_legacy: float = MAX_UNPROVEN_FINAL_TO_LEGACY,
     max_peak_current_to_legacy: float = 1.5,
     max_peak_to_final_current: float = 4.0,
     max_peak_to_final_contribution: float = 6.0,
 ) -> StructuralWorkCertificate:
+    if (
+        not math.isfinite(max_final_to_legacy)
+        or max_final_to_legacy <= 0.0
+        or max_final_to_legacy > MAX_UNPROVEN_FINAL_TO_LEGACY
+    ):
+        raise StructuralWorkError(
+            "unreviewed final-work budget must be positive and no greater "
+            f"than {MAX_UNPROVEN_FINAL_TO_LEGACY:.2f}x legacy replay"
+        )
     legacy = legacy_replay_work(legacy_artifact)
     execution_path = _single_file(candidate_artifact, "execution.json")
     execution = _read_json(execution_path)
@@ -284,8 +350,102 @@ def certify(
         external_pdg_order=tuple(external),
         legacy=legacy,
         candidate=candidate,
+        final_work_comparison=_final_work_comparison(legacy, candidate),
         recurrence_construction=construction,
         limits=limits,
+        status="ok",
+    )
+
+
+def adjacent_multiplicity_census(
+    lower: StructuralWorkCertificate,
+    higher: StructuralWorkCertificate,
+    *,
+    max_normalized_final_growth: float = MAX_ADJACENT_FINAL_GROWTH,
+    max_normalized_peak_growth: float = MAX_ADJACENT_PEAK_GROWTH,
+) -> AdjacentMultiplicityCensus:
+    lower_n_final = len(lower.external_pdg_order) - 2
+    higher_n_final = len(higher.external_pdg_order) - 2
+    if higher_n_final != lower_n_final + 1:
+        raise StructuralWorkError(
+            "structural-work census requires adjacent final-state multiplicities"
+        )
+    if lower.candidate.mode != higher.candidate.mode:
+        raise StructuralWorkError(
+            "structural-work census requires one candidate generation mode"
+        )
+    for value, label in [
+        (max_normalized_final_growth, "adjacent final-work growth"),
+        (max_normalized_peak_growth, "adjacent construction-peak growth"),
+    ]:
+        if not math.isfinite(value) or value <= 0.0:
+            raise StructuralWorkError(f"{label} limit must be positive and finite")
+
+    legacy_current_growth = (
+        higher.legacy.replay_current_count / lower.legacy.replay_current_count
+    )
+    candidate_current_growth = (
+        higher.candidate.current_count / lower.candidate.current_count
+    )
+    legacy_interaction_growth = (
+        higher.legacy.replay_interaction_count
+        / lower.legacy.replay_interaction_count
+    )
+    candidate_interaction_growth = (
+        higher.candidate.interaction_count / lower.candidate.interaction_count
+    )
+    normalized_current_growth = (
+        candidate_current_growth / legacy_current_growth
+    )
+    normalized_interaction_growth = (
+        candidate_interaction_growth / legacy_interaction_growth
+    )
+    normalized_peak_current_growth = None
+    if (
+        lower.recurrence_construction is not None
+        and higher.recurrence_construction is not None
+    ):
+        peak_growth = (
+            higher.recurrence_construction.peak_current_count
+            / lower.recurrence_construction.peak_current_count
+        )
+        normalized_peak_current_growth = peak_growth / legacy_current_growth
+
+    failures = []
+    if normalized_current_growth > max_normalized_final_growth:
+        failures.append(
+            "adjacent final-current growth exceeds legacy-normalized budget"
+        )
+    if normalized_interaction_growth > max_normalized_final_growth:
+        failures.append(
+            "adjacent final-interaction growth exceeds legacy-normalized budget"
+        )
+    if (
+        normalized_peak_current_growth is not None
+        and normalized_peak_current_growth > max_normalized_peak_growth
+    ):
+        failures.append(
+            "adjacent construction-peak growth exceeds legacy-normalized budget"
+        )
+    if failures:
+        raise StructuralWorkError("; ".join(failures))
+
+    return AdjacentMultiplicityCensus(
+        schema="pyamplicol-adjacent-structural-work-census-v1",
+        mode=lower.candidate.mode,
+        lower_n_final=lower_n_final,
+        higher_n_final=higher_n_final,
+        legacy_current_growth=legacy_current_growth,
+        candidate_current_growth=candidate_current_growth,
+        normalized_current_growth=normalized_current_growth,
+        legacy_interaction_growth=legacy_interaction_growth,
+        candidate_interaction_growth=candidate_interaction_growth,
+        normalized_interaction_growth=normalized_interaction_growth,
+        normalized_peak_current_growth=normalized_peak_current_growth,
+        limits={
+            "max_normalized_final_growth": max_normalized_final_growth,
+            "max_normalized_peak_growth": max_normalized_peak_growth,
+        },
         status="ok",
     )
 
@@ -294,7 +454,11 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("legacy_artifact", type=Path)
     parser.add_argument("candidate_artifact", type=Path)
-    parser.add_argument("--max-final-to-legacy", type=float, default=1.0)
+    parser.add_argument(
+        "--max-final-to-legacy",
+        type=float,
+        default=MAX_UNPROVEN_FINAL_TO_LEGACY,
+    )
     parser.add_argument("--max-peak-current-to-legacy", type=float, default=1.5)
     parser.add_argument("--max-peak-to-final-current", type=float, default=4.0)
     parser.add_argument("--max-peak-to-final-contribution", type=float, default=6.0)
