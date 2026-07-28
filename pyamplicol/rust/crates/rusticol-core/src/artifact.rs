@@ -160,6 +160,7 @@ pub enum PayloadRole {
     EvaluatorState,
     ModelParameters,
     ValidationMomenta,
+    StructuralSourceProof,
     ApiSource,
     ApiBuildFile,
     SdkMetadata,
@@ -1535,6 +1536,11 @@ fn validate_references(
     manifest: &ArtifactManifest,
     payloads: &BTreeMap<String, Payload>,
 ) -> RusticolResult<()> {
+    let process_ids = manifest
+        .processes
+        .iter()
+        .map(|process| process.id.as_str())
+        .collect::<BTreeSet<_>>();
     require_payload_role(
         payloads,
         &manifest.configuration.requested_path,
@@ -1560,6 +1566,19 @@ fn validate_references(
             PayloadRole::RuntimePhysics,
             Some(&process.id),
         )?;
+    }
+    for payload in payloads
+        .values()
+        .filter(|payload| payload.role == PayloadRole::StructuralSourceProof)
+    {
+        if let Some(process_id) = payload.process_id.as_deref()
+            && !process_ids.contains(process_id)
+        {
+            return Err(RusticolError::artifact(format!(
+                "structural-source-proof payload {:?} belongs to unknown process {process_id:?}",
+                payload.path
+            )));
+        }
     }
     if let Some(api_path) = &manifest.runtime.api_bundle_path {
         let prefix = format!("{}/", api_path.trim_end_matches('/'));
@@ -1790,6 +1809,33 @@ fn validate_payload_declaration(payload: &Payload) -> RusticolResult<()> {
             "evaluator-state payload {:?} is missing required target metadata",
             payload.path
         )));
+    }
+    if payload.role == PayloadRole::StructuralSourceProof {
+        let process_id = payload.process_id.as_deref().ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "structural-source-proof payload {:?} is missing required process id",
+                payload.path
+            ))
+        })?;
+        let expected_path = format!("processes/{process_id}/structural-source-proof.json");
+        if payload.path != expected_path {
+            return Err(RusticolError::artifact(format!(
+                "structural-source-proof payload {:?} must use exact path {expected_path:?}",
+                payload.path
+            )));
+        }
+        if payload.media_type != "application/json" {
+            return Err(RusticolError::artifact(format!(
+                "structural-source-proof payload {:?} must use media type application/json",
+                payload.path
+            )));
+        }
+        if payload.target.is_some() {
+            return Err(RusticolError::artifact(format!(
+                "structural-source-proof payload {:?} may not declare target metadata",
+                payload.path
+            )));
+        }
     }
     if payload.executable
         && !matches!(

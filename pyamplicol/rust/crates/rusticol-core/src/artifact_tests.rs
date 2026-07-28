@@ -200,6 +200,28 @@ fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+fn add_structural_source_proof(artifact: &mut TestArtifact) {
+    let path = "processes/p0/structural-source-proof.json";
+    let bytes = br#"{"schema":"pyamplicol-generation-structural-source-proof-v1"}"#;
+    let output = artifact.root.join(path);
+    fs::create_dir_all(output.parent().expect("structural proof parent"))
+        .expect("create structural proof parent");
+    fs::write(output, bytes).expect("write structural proof");
+    artifact.manifest["payloads"]
+        .as_array_mut()
+        .expect("payload array")
+        .push(json!({
+            "path": path,
+            "role": "structural-source-proof",
+            "media_type": "application/json",
+            "size_bytes": bytes.len(),
+            "sha256": sha256(bytes),
+            "executable": false,
+            "process_id": "p0",
+        }));
+    artifact.write_manifest();
+}
+
 #[cfg(feature = "f64-symjit")]
 fn decode_hex(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
@@ -1894,6 +1916,65 @@ fn required_nullable_and_target_fields_remain_strict() {
     let error = VerifiedArtifact::open(&missing_target.root).unwrap_err();
     assert_eq!(error.kind(), crate::RusticolErrorKind::Artifact);
     assert!(error.to_string().contains("target"));
+}
+
+#[test]
+fn clean_source_structural_proof_payload_roundtrips_with_exact_declaration() {
+    let mut valid = TestArtifact::new();
+    add_structural_source_proof(&mut valid);
+    let verified = VerifiedArtifact::open(&valid.root).expect("valid structural proof artifact");
+    let payload = verified
+        .payloads
+        .get("processes/p0/structural-source-proof.json")
+        .expect("verified structural proof payload");
+    assert_eq!(payload.role, PayloadRole::StructuralSourceProof);
+    assert_eq!(payload.media_type, "application/json");
+    assert_eq!(payload.process_id.as_deref(), Some("p0"));
+    assert!(payload.target.is_none());
+
+    for (field, value, message) in [
+        ("path", json!("structural-source-proof.json"), "exact path"),
+        (
+            "media_type",
+            json!("application/octet-stream"),
+            "media type",
+        ),
+        ("process_id", json!("missing"), "unknown process"),
+        (
+            "target",
+            json!({"triple": current_target_triple(), "cpu_features": []}),
+            "target metadata",
+        ),
+    ] {
+        let mut malformed = TestArtifact::new();
+        add_structural_source_proof(&mut malformed);
+        let payload = malformed.manifest["payloads"]
+            .as_array_mut()
+            .expect("payload array")
+            .last_mut()
+            .expect("structural proof payload");
+        payload[field] = value;
+        malformed.write_manifest();
+        let error = VerifiedArtifact::open(&malformed.root).unwrap_err();
+        assert!(
+            error.to_string().contains(message),
+            "{field} rejection did not mention {message:?}: {error}"
+        );
+    }
+
+    let mut missing_process = TestArtifact::new();
+    add_structural_source_proof(&mut missing_process);
+    missing_process.manifest["payloads"]
+        .as_array_mut()
+        .expect("payload array")
+        .last_mut()
+        .expect("structural proof payload")
+        .as_object_mut()
+        .expect("payload object")
+        .remove("process_id");
+    missing_process.write_manifest();
+    let error = VerifiedArtifact::open(&missing_process.root).unwrap_err();
+    assert!(error.to_string().contains("required process id"));
 }
 
 #[test]
