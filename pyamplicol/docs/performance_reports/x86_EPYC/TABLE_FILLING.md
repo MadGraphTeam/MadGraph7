@@ -64,6 +64,12 @@ authenticated finalized measurement lineage.
   evidence, numerical-agreement result, active source/runtime identity, and
   atomic `current.json` publication. Do not run `recover`, `audit`, `validate`,
   a post-plan, cache rendering, PDF compilation, or visual QA after each cell.
+- Gate a successful one-cell `populate` with `snapshot-cell-boundary` before
+  launch and `accept-cell-boundary --expected-attempt-id ...` afterward. The
+  checked-in commands authenticate the exact immutable-attempt inventory delta,
+  atomic current, manifest, result, and worker-result hashes without reading a
+  rendered profile/cache or synchronously invoking the publisher. See the Mac
+  runbook for the complete command template.
 - Start one report-only publisher beside the campaign. It snapshots stable
   `current.json` identities without a campaign writer lock, renders and
   compiles in a disposable copy, then holds the report lock only while
@@ -116,7 +122,8 @@ authenticated finalized measurement lineage.
   before the controller records its fast boundary, authenticate the current
   pointer, immutable manifest, and result hashes, then write only the missing
   boundary record. Resume with `--missing-only`; never rerun or duplicate the
-  already successful cell.
+  already successful cell. Feed the preserved `pre-populate-current.json` and
+  attempt ID to `accept-cell-boundary`; publication remains asynchronous.
 - Periodic publisher validation is deliberately limited to cache schema,
   snapshot/file consistency, reproducible table rendering, successful TeX
   compilation, exactly 59 pages, and no overfull boxes. Run

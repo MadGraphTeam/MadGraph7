@@ -507,6 +507,28 @@ class ArtifactStore:
             )
         return tuple(records)
 
+    def cell_attempt_ids(self, cell_id: str) -> tuple[str, ...]:
+        """Return the canonical immutable-attempt inventory for one cell."""
+
+        cell_root = self._cell_root(cell_id)
+        attempts_root = cell_root / "attempts"
+        if not attempts_root.exists():
+            return ()
+        if attempts_root.is_symlink() or not attempts_root.is_dir():
+            raise ManifestValidationError(
+                f"attempt inventory is not a regular directory: {attempts_root}"
+            )
+        attempt_ids: list[str] = []
+        for path in sorted(attempts_root.iterdir()):
+            if path.is_symlink() or not path.is_dir():
+                raise ManifestValidationError(
+                    f"attempt inventory contains a non-directory: {path}"
+                )
+            attempt_ids.append(
+                _validate_uuid(path.name, field="attempt inventory member")
+            )
+        return tuple(attempt_ids)
+
     def _validate_current_pointer(
         self,
         pointer_path: Path,

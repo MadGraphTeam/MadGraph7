@@ -15,6 +15,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from .artifacts import ArtifactStoreError
+from .boundary import (
+    authenticate_current_delta,
+    load_cell_boundary,
+    snapshot_cell_boundary,
+)
 from .cache import validate_measurement
 from .campaign_policy import (
     MACBOOK_M3_POLICY_NAME,
@@ -181,6 +186,22 @@ def _parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "validate-snapshot",
         help="validate the published cache/table/PDF snapshot identities",
+    )
+    snapshot_boundary = subparsers.add_parser(
+        "snapshot-cell-boundary",
+        help="snapshot one authoritative current and immutable-attempt inventory",
+    )
+    snapshot_boundary.add_argument("--cell-id", required=True)
+    accept_boundary = subparsers.add_parser(
+        "accept-cell-boundary",
+        help="authenticate a new current without consulting report caches",
+    )
+    accept_boundary.add_argument("--cell-id", required=True)
+    accept_boundary.add_argument("--expected-attempt-id", required=True)
+    accept_boundary.add_argument(
+        "--before-snapshot",
+        type=Path,
+        required=True,
     )
 
     initialize = subparsers.add_parser(
@@ -765,6 +786,36 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sort_keys=True,
             )
         )
+        return 0
+    if args.command == "snapshot-cell-boundary":
+        if args.cell_id not in {
+            cell.cell_id for cell in REPORT_CATALOG.measurement_cells()
+        }:
+            parser.error(f"unknown --cell-id {args.cell_id!r}")
+        print(
+            json.dumps(
+                snapshot_cell_boundary(service.store, args.cell_id),
+                allow_nan=False,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "accept-cell-boundary":
+        try:
+            cell = REPORT_CATALOG.cell(args.cell_id)
+        except KeyError:
+            parser.error(f"unknown --cell-id {args.cell_id!r}")
+        accepted = authenticate_current_delta(
+            service.store,
+            cell_id=cell.cell_id,
+            expected_attempt_id=args.expected_attempt_id,
+            before=load_cell_boundary(args.before_snapshot),
+            validate_result=lambda result: validate_measurement(
+                result,
+                expected_cell=cell,
+            ),
+        )
+        print(json.dumps(accepted, allow_nan=False, sort_keys=True))
         return 0
     if args.command == "validate":
         print(json.dumps(service.validate(), sort_keys=True))

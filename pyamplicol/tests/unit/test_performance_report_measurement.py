@@ -11,8 +11,8 @@ from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import (
     _baseline_matrix_element,
     _baseline_selector_contract,
-    _reuse_artifact_for_measurement,
     _require_nonzero_lc_all_flow_baseline,
+    _reuse_artifact_for_measurement,
     _stable_runtime_identity,
     _validate_runtime_identity_postflight,
     failure_measurement,

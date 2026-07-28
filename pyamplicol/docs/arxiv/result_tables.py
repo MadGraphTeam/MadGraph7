@@ -26,6 +26,8 @@ _PUBLICATION_ONLY_COMMANDS = {
     "recover",
     "publish-snapshot",
     "validate-snapshot",
+    "snapshot-cell-boundary",
+    "accept-cell-boundary",
 }
 _GLOBAL_OPTIONS_WITH_VALUE = {
     "--repo-root",

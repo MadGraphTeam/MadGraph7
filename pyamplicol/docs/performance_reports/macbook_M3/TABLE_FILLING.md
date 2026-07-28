@@ -56,6 +56,30 @@ authenticated finalized measurement lineage.
   evidence, numerical-agreement result, active source/runtime identity, and
   atomic `current.json` publication. Do not run `recover`, `audit`, `validate`,
   a post-plan, cache rendering, PDF compilation, or visual QA after each cell.
+- Before each one-cell `populate`, write a checked-in-controller boundary
+  snapshot; after `populate`, accept the reported attempt only through the
+  authoritative current/attempt delta:
+
+  ```sh
+  "$PYTHON" "$CONTROLLER/docs/performance_reports/macbook_M3/result_tables.py" \
+    --repo-root "$MEASURED_ROOT" --report-profile macbook_M3 \
+    --artifact-root "$ARTIFACT_ROOT" \
+    --coordination-root "$COORDINATION_ROOT" \
+    snapshot-cell-boundary --cell-id "$CELL_ID" >"$BEFORE_SNAPSHOT"
+
+  "$PYTHON" "$CONTROLLER/docs/performance_reports/macbook_M3/result_tables.py" \
+    --repo-root "$MEASURED_ROOT" --report-profile macbook_M3 \
+    --artifact-root "$ARTIFACT_ROOT" \
+    --coordination-root "$COORDINATION_ROOT" \
+    accept-cell-boundary --cell-id "$CELL_ID" \
+    --expected-attempt-id "$ATTEMPT_ID" \
+    --before-snapshot "$BEFORE_SNAPSHOT"
+  ```
+
+  The acceptance command locks the cell and authenticates an exact one-attempt
+  inventory delta, the atomic current identity, the immutable manifest, result,
+  and worker-result hashes, and the measurement schema. It never reads a
+  rendered profile/cache and never invokes the asynchronous publisher.
 - Start one report-only publisher beside the campaign. It snapshots stable
   `current.json` identities without a campaign writer lock, renders and
   compiles in a disposable copy, then holds the report lock only while
@@ -108,7 +132,12 @@ authenticated finalized measurement lineage.
   before the controller records its fast boundary, authenticate the current
   pointer, immutable manifest, and result hashes, then write only the missing
   boundary record. Resume with `--missing-only`; never rerun or duplicate the
-  already successful cell.
+  already successful cell. Pass the existing
+  `pre-populate-current.json` and the attempt ID from `populate.json` to
+  `accept-cell-boundary`; its output is the authoritative `after_current`
+  record. Atomically finish `fast-boundary.json`, then resume the same batch.
+  Run `recover --compile` only at a chosen publication/recovery boundary, not
+  to decide whether the cell succeeded.
 - Periodic publisher validation is deliberately limited to cache schema,
   snapshot/file consistency, reproducible table rendering, successful TeX
   compilation, exactly 59 pages, and no overfull boxes. Run
