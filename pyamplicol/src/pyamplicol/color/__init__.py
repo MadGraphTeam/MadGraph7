@@ -21,6 +21,7 @@ from .plan import (
     LCOpenColorLine,
     build_color_plan,
     build_lc_topology_replay_plan,
+    color_topology_replay_partitions,
 )
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
     "build_lc_topology_replay_plan",
     "color_contraction_factor",
     "color_contraction_factors",
+    "color_topology_replay_partitions",
     "exact_color_contraction_factor",
     "exact_color_contraction_factors",
 ]

@@ -6,6 +6,7 @@ from __future__ import annotations
 from .plan_build import build_color_plan
 from .plan_replay import (
     build_lc_topology_replay_plan,
+    color_topology_replay_partitions,
     lc_line_pairing_representative_ids,
     lc_topology_replay_partitions,
     lc_topology_replay_safe_groups,
@@ -32,6 +33,7 @@ __all__ = [
     "LCOpenColorLine",
     "build_color_plan",
     "build_lc_topology_replay_plan",
+    "color_topology_replay_partitions",
     "lc_line_pairing_representative_ids",
     "lc_topology_replay_partitions",
     "lc_topology_replay_safe_groups",
