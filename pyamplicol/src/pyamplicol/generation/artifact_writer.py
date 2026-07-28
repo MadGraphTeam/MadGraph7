@@ -1841,6 +1841,7 @@ def _execution_manifest(
         "external_pdg_order": list(process.external_pdgs),
         "compiled": primary["compiled"],
         "dag_summary": primary["dag_summary"],
+        "materialization_census": primary["materialization_census"],
         "runtime_schema": primary["runtime_schema"],
         **({} if auxiliary is None else {"helicity_sum_execution": auxiliary}),
         **(
@@ -1958,6 +1959,7 @@ def _compiled_nested_execution_manifest(
         "external_pdg_order": list(process.external_pdgs),
         "compiled": lane["compiled"],
         "dag_summary": lane["dag_summary"],
+        "materialization_census": lane["materialization_census"],
         "runtime_schema": lane["runtime_schema"],
         "physics_reduction": _plain_mapping(
             _mapping(_mapping(runtime_schema["physics"])["reduction"])

@@ -715,15 +715,38 @@ def test_compiled_materialization_builds_primary_sum_and_selector_union_lanes(
             COMPILED_RUNTIME_SELECTORS_CAPABILITY
             not in (selector.stage_manifest["required_runtime_capabilities"])
         )
-    selector_records = artifact_writer._execution_manifest(
+    execution_manifest = artifact_writer._execution_manifest(
         artifact,
         primary_schema,
-    )["helicity_selector_executions"]
+    )
+    assert execution_manifest["materialization_census"]["final"] == {
+        name: value
+        for name, value in execution_manifest["dag_summary"].items()
+        if name.endswith("_count")
+    }
+    assert (
+        execution_manifest["helicity_sum_execution"]["materialization_census"][
+            "final"
+        ]
+        == {
+            name: value
+            for name, value in execution_manifest["helicity_sum_execution"][
+                "dag_summary"
+            ].items()
+            if name.endswith("_count")
+        }
+    )
+    selector_records = execution_manifest["helicity_selector_executions"]
     assert len(selector_records) == len(artifact.helicity_selector_executions)
     for selector_record in selector_records:
         assert selector_record["selector_domain_ids"]
         selector_manifest = selector_record["execution"]
         assert selector_manifest["kind"] == "pyamplicol-runtime-execution"
+        assert selector_manifest["materialization_census"]["final"] == {
+            name: value
+            for name, value in selector_manifest["dag_summary"].items()
+            if name.endswith("_count")
+        }
         assert (
             selector_manifest["physics_reduction"]
             == (primary_schema["physics"]["reduction"])
