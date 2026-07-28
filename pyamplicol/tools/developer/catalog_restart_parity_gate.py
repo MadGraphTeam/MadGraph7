@@ -24,6 +24,9 @@ from pyamplicol.generation.structural_source_proof import (
     SEMANTIC_MAP_DOMAINS,
     validate_generation_structural_proof,
 )
+from tools.developer.catalog_structural_scope_registry import (
+    validate_reviewed_matrix_scope,
+)
 from tools.developer.final_source_numerical_truth import (
     TruthProducerError,
     canonical_sha256,
@@ -534,6 +537,7 @@ def validate_manifest(
     *,
     expected_revision: str,
 ) -> dict[str, Any]:
+    reviewed_scope = validate_reviewed_matrix_scope()
     revision = _revision(expected_revision, "expected revision")
     if payload.get("schema") != SCHEMA:
         raise RestartParityError(f"manifest schema must be {SCHEMA!r}")
@@ -621,6 +625,7 @@ def validate_manifest(
     return {
         "schema": OUTPUT_SCHEMA,
         "source_revision": revision,
+        "reviewed_out_of_catalog_scope": reviewed_scope,
         "summary": {
             "expected_cell_count": len(_candidate_cells()),
             "reported_row_count": len(rows),

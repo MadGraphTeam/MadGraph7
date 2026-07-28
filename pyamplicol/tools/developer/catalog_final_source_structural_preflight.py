@@ -325,6 +325,21 @@ def _legacy_record(cell: Any, result: dict[str, Any] | None) -> dict[str, Any]:
         raise FinalSourceProducerError(
             f"{cell.cell_id}: legacy structural proof schema is unsupported"
         )
+    provenance = result.get("provenance")
+    result_revision = (
+        provenance.get("revision") if isinstance(provenance, dict) else None
+    )
+    if (
+        proof.get("cell_id") != cell.cell_id
+        or proof.get("accuracy") != cell.measurement.accuracy.value
+        or proof.get("workload") != cell.workload.value
+        or not isinstance(result_revision, str)
+        or _REVISION.fullmatch(result_revision) is None
+        or proof.get("source_revision") != result_revision
+    ):
+        raise FinalSourceProducerError(
+            f"{cell.cell_id}: legacy structural proof is stale or has wrong identity"
+        )
     _authenticate_evidence_files(
         artifact,
         proof.get("evidence_files"),
@@ -423,7 +438,7 @@ def produce(
                     "certified-parity" if comparable else "legacy-scope-unavailable"
                 ),
                 "candidate": _candidate_record(cell, result, source_revision),
-                "legacy": _legacy_record(cell, currents.get(reference.cell_id)),
+                "legacy": _legacy_record(reference, currents.get(reference.cell_id)),
             }
         )
     if len(rows) != 1136:
