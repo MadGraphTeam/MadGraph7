@@ -355,8 +355,7 @@ void EventGenerator::combine_to_lhe_npy(
     const std::string& file_name, LHECompleter& lhe_completer
 ) {
     reset_start_time();
-    std::random_device rand_device;
-    std::mt19937 rand_gen(rand_device());
+    std::mt19937 rand_gen = make_rng();
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout in_layout(
         EventRecord::layout(
@@ -419,10 +418,7 @@ void EventGenerator::combine_to_lhe(
 ) {
     reset_start_time();
     ThreadPool pool(_config.combine_thread_count);
-    ThreadResource<std::mt19937> rand_gens(pool, []() {
-        std::random_device rand_device;
-        return std::mt19937(rand_device());
-    });
+    ThreadResource<std::mt19937> rand_gens(pool, []() { return make_rng(); });
     auto [channel_data, particle_count, norm_factor] = init_combine();
     std::vector<std::pair<EventBuffer, std::string>> buffers;
     std::vector<std::size_t> idle_buffers;
@@ -506,8 +502,7 @@ void EventGenerator::add_timing_data(const std::string& key) {
 }
 
 void EventGenerator::unweight_all() {
-    std::random_device rand_device;
-    std::mt19937 rand_gen(rand_device());
+    std::mt19937 rand_gen = make_rng();
     bool done = true;
     double total_eff_count = 0.;
     for (auto [channel, integral_fraction] :
@@ -607,8 +602,7 @@ void EventGenerator::read_and_combine(
     bool has_partial =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
 
-    std::random_device rand_device;
-    std::mt19937 rand_gen(rand_device());
+    std::mt19937 rand_gen = make_rng();
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
         std::size_t random_index = std::uniform_int_distribution<
             std::size_t>(0, channel_data.back().cum_count - 1)(rand_gen);
