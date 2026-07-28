@@ -121,6 +121,7 @@ lr_scheduler = %(madnis.lr_scheduler)s # options: none, cosine
 adam_beta1 = %(madnis.adam_beta1)s
 adam_beta2 = %(madnis.adam_beta2)s
 adam_eps = %(madnis.adam_eps)s
+grad_clip_threshold = %(madnis.grad_clip_threshold)s
 train_mcw = %(madnis.train_mcw)s
 buffer_capacity = %(madnis.buffer_capacity)s
 minimum_buffer_size = %(madnis.minimum_buffer_size)s

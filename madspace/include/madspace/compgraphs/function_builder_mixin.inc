@@ -87,6 +87,10 @@ Value reduce_sum_vector(Value in1) {
     return instruction("reduce_sum_vector", {in1})[0];
 }
 
+Value batch_reduce_sum(Value in1) {
+    return instruction("batch_reduce_sum", {in1})[0];
+}
+
 Value batch_reduce_mean(Value in1) {
     return instruction("batch_reduce_mean", {in1})[0];
 }

@@ -408,11 +408,12 @@ void op_batch_scatter(
 }
 
 template <typename D>
-void batch_reduce_mean_impl(
+void batch_reduce_sum_mean_impl(
     const CpuRuntime::Instruction& instruction,
     TensorVec& locals,
     const D& device,
-    bool keepdim
+    bool keepdim,
+    bool is_mean
 ) {
     auto& input = locals[instruction.input_indices[0]];
     auto& output = locals[instruction.output_indices[0]];
@@ -422,30 +423,39 @@ void batch_reduce_mean_impl(
 
     auto input_view_flat = input.flat_view<double, 1>(0);
     auto output_view_flat = output.flat_view<double, 1>(0);
-    device.submit([keepdim, input_view_flat, output_view_flat, batch_size]() mutable {
-        TensorView<double, 1> input_view(input_view_flat);
-        TensorView<double, 1> output_view(output_view_flat);
-        double sum = 0.;
-        for (std::size_t i = 0; i < batch_size; ++i) {
-            sum += input_view[i];
-        }
-        if (keepdim) {
+    device.submit(
+        [keepdim, is_mean, input_view_flat, output_view_flat, batch_size]() mutable {
+            TensorView<double, 1> input_view(input_view_flat);
+            TensorView<double, 1> output_view(output_view_flat);
+            double sum = 0.;
             for (std::size_t i = 0; i < batch_size; ++i) {
-                output_view[i] = sum / batch_size;
+                sum += input_view[i];
             }
-        } else {
-            output_view[0] = sum / batch_size;
+            if (keepdim) {
+                if (is_mean) {
+                    for (std::size_t i = 0; i < batch_size; ++i) {
+                        output_view[i] = sum / batch_size;
+                    }
+                } else {
+                    for (std::size_t i = 0; i < batch_size; ++i) {
+                        output_view[i] = sum;
+                    }
+                }
+            } else {
+                output_view[0] = is_mean ? sum / batch_size : sum;
+            }
         }
-    });
+    );
 }
 
 template <typename D>
-void batch_reduce_mean_backward_impl(
+void batch_reduce_sum_mean_backward_impl(
     const CpuRuntime::Instruction& instruction,
     TensorVec& locals,
     TensorVec& local_grads,
     const D& device,
-    bool keepdim
+    bool keepdim,
+    bool is_mean
 ) {
     auto& input = locals[instruction.input_indices[0]];
     auto& input_grad = local_grads[instruction.input_indices[0]];
@@ -461,7 +471,11 @@ void batch_reduce_mean_backward_impl(
     auto output_grad_view_flat = output_grad.flat_view<double, 1>(0);
     std::size_t batch_size = input.size(0);
     device.submit(
-        [keepdim, input_grad_view_flat, output_grad_view_flat, batch_size]() mutable {
+        [keepdim,
+         is_mean,
+         input_grad_view_flat,
+         output_grad_view_flat,
+         batch_size]() mutable {
             TensorView<double, 1> input_grad_view(input_grad_view_flat);
             TensorView<double, 1> output_grad_view(output_grad_view_flat);
             double grad = 0.0;
@@ -469,9 +483,11 @@ void batch_reduce_mean_backward_impl(
                 for (std::size_t i = 0; i < batch_size; ++i) {
                     grad += output_grad_view[i];
                 }
-                grad /= batch_size;
             } else {
                 grad = output_grad_view[0] / batch_size;
+            }
+            if (is_mean) {
+                grad /= batch_size;
             }
             for (std::size_t i = 0; i < batch_size; ++i) {
                 input_grad_view[i] += grad;
@@ -481,10 +497,29 @@ void batch_reduce_mean_backward_impl(
 }
 
 template <typename D>
+void op_batch_reduce_sum(
+    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+) {
+    batch_reduce_sum_mean_impl(instruction, locals, device, false, false);
+}
+
+template <typename D>
+void backward_op_batch_reduce_sum(
+    const CpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    TensorVec& local_grads,
+    const D& device
+) {
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, false, false
+    );
+}
+
+template <typename D>
 void op_batch_reduce_mean(
     const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
 ) {
-    batch_reduce_mean_impl(instruction, locals, device, false);
+    batch_reduce_sum_mean_impl(instruction, locals, device, false, true);
 }
 
 template <typename D>
@@ -494,14 +529,16 @@ void backward_op_batch_reduce_mean(
     TensorVec& local_grads,
     const D& device
 ) {
-    batch_reduce_mean_backward_impl(instruction, locals, local_grads, device, false);
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, false, true
+    );
 }
 
 template <typename D>
 void op_batch_reduce_mean_keepdim(
     const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
 ) {
-    batch_reduce_mean_impl(instruction, locals, device, true);
+    batch_reduce_sum_mean_impl(instruction, locals, device, true, true);
 }
 
 template <typename D>
@@ -511,7 +548,9 @@ void backward_op_batch_reduce_mean_keepdim(
     TensorVec& local_grads,
     const D& device
 ) {
-    batch_reduce_mean_backward_impl(instruction, locals, local_grads, device, true);
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, true, true
+    );
 }
 
 template <typename D>

@@ -6572,6 +6572,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'adam_beta1', 0.9)
         self.add_toml_param('madnis', 'adam_beta2', 0.999)
         self.add_toml_param('madnis', 'adam_eps', 1e-8)
+        self.add_toml_param('madnis', 'grad_clip_threshold', 0.0)
         self.add_toml_param('madnis', 'train_mcw', True)
         self.add_toml_param('madnis', 'buffer_capacity', 0)
         self.add_toml_param('madnis', 'minimum_buffer_size', 50000)

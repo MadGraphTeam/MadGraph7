@@ -34,6 +34,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("div", &FunctionBuilder::div, py::arg("in1"), py::arg("in2"));
     fb.def("reduce_sum", &FunctionBuilder::reduce_sum, py::arg("in1"));
     fb.def("reduce_sum_vector", &FunctionBuilder::reduce_sum_vector, py::arg("in1"));
+    fb.def("batch_reduce_sum", &FunctionBuilder::batch_reduce_sum, py::arg("in1"));
     fb.def("batch_reduce_mean", &FunctionBuilder::batch_reduce_mean, py::arg("in1"));
     fb.def("batch_reduce_mean_keepdim", &FunctionBuilder::batch_reduce_mean_keepdim, py::arg("in1"));
     fb.def("reduce_product", &FunctionBuilder::reduce_product, py::arg("in1"));

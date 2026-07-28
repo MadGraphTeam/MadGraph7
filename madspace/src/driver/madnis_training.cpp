@@ -174,7 +174,8 @@ void MadnisTraining::build_runtimes_and_optimizer() {
             _config.batches,
             _config.adam_beta1,
             _config.adam_beta2,
-            _config.adam_eps
+            _config.adam_eps,
+            _config.grad_clip_threshold
         );
     }
     _generator_params =

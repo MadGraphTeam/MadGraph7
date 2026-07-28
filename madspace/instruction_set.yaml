@@ -253,6 +253,18 @@ reduce_sum_vector:
       desc:
   dims: 0
 
+batch_reduce_sum:
+  inputs:
+    - name: in1
+      type: [float]
+      desc:
+  outputs:
+    - name: out
+      type: [float, single]
+      desc:
+  differentiable: True
+  custom_op: True
+
 batch_reduce_mean:
   inputs:
     - name: in1
