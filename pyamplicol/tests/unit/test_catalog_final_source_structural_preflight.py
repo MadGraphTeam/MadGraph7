@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,10 @@ from tools.developer.catalog_final_source_structural_preflight import (
     FinalSourceProducerError,
     _authenticate_inventory,
     _counts,
+)
+from tools.developer.emit_candidate_structural_preflight import (
+    _canonical_digest,
+    _numerical_proof,
 )
 
 
@@ -83,3 +88,20 @@ def test_structural_counts_do_not_accept_summary_placeholders() -> None:
             },
             "candidate.active",
         )
+
+
+def test_precision50_reference_is_source_bound(tmp_path: Path) -> None:
+    revision = "a" * 40
+    path = tmp_path / "precision50.json"
+    path.write_text(
+        json.dumps(
+            {
+                "status": "ok",
+                "source_revision": revision,
+                "precision_decimal_digits": 50,
+                "comparison_sha256": "b" * 64,
+            }
+        )
+    )
+    assert _numerical_proof(path, revision)["precision_decimal_digits"] == 50
+    assert len(_canonical_digest("current-members-v1", {"rows": [1]})) == 64
