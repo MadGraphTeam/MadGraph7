@@ -229,6 +229,12 @@ _RECURRENCE_SUMMARY_CAP_ANCESTOR_NATIVE_INPUTS_SHA256 = (
 _RECURRENCE_SUMMARY_CAP_DESCENDANT_NATIVE_INPUTS_SHA256 = (
     "96e1ff79a007aaf67a0900dd6d67327ee00f6bd2cca002589b879aa3a734de08"
 )
+_PRE_ARBITRARY_QUARK_LINES_AGREEMENT_GRAPH_SHA256 = (
+    "7b7e641dd22964ca9feb486519859e0f9dc956b44c7fc9da35bd765531ab7154"
+)
+_ARBITRARY_QUARK_LINES_AGREEMENT_GRAPH_SHA256 = (
+    "49ed0246dedc3efa42dbbf6a7197d82306251118e19e6fea7d0dce1b02c8388c"
+)
 _RECURRENCE_SUMMARY_CAP_PROFILE = "x86_EPYC"
 _RECURRENCE_SUMMARY_CAP_FAILURE_BYTES = {
     "matrix-recurrence-builtin-sm-lc-n7-gg-gluons-selected-flow": 4_270_140,
@@ -1802,6 +1808,49 @@ def _agreement_digest(catalog: ReportCatalog) -> str:
     if catalog is REPORT_CATALOG:
         _CANONICAL_AGREEMENT_SHA256 = result
     return result
+
+
+def _agreement_graph_digest_matches(
+    payload: Mapping[str, object],
+    active_digest: str,
+) -> bool:
+    """Authenticate the one controller-era agreement-graph transition.
+
+    Arbitrary-quark-line report support removed obsolete original-AmpliCol
+    dependency edges for process #14 without changing either frozen bridge's
+    measurement cells or physics closure.  Pending/finalized certificates from
+    before that controller-only correction retain their original graph digest.
+    Both digests and both exact EPYC lineages are pinned; every other graph
+    change remains fatal.
+    """
+
+    stored_digest = payload.get("agreement_graph_sha256")
+    if stored_digest == active_digest:
+        return True
+    if (
+        payload.get("profile") != _RECURRENCE_SUMMARY_CAP_PROFILE
+        or stored_digest
+        != _PRE_ARBITRARY_QUARK_LINES_AGREEMENT_GRAPH_SHA256
+        or active_digest != _ARBITRARY_QUARK_LINES_AGREEMENT_GRAPH_SHA256
+    ):
+        return False
+    identity = (
+        payload.get("impact"),
+        payload.get("ancestor_revision"),
+        payload.get("descendant_revision"),
+    )
+    return identity in {
+        (
+            CLASS_C_HZZ_IMPACT,
+            _RECURRENCE_SUMMARY_CAP_PREDECESSOR_REVISION,
+            _RECURRENCE_SUMMARY_CAP_ANCESTOR_REVISION,
+        ),
+        (
+            CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+            _RECURRENCE_SUMMARY_CAP_ANCESTOR_REVISION,
+            _RECURRENCE_SUMMARY_CAP_DESCENDANT_REVISION,
+        ),
+    }
 
 
 def _environment(path: Path, *, expected_profile: str) -> dict[str, str]:
@@ -3740,11 +3789,15 @@ def _finalize_class_c_bridge_locked(
         inspector=reachability_inspector,
         predecessor_lineage=predecessor_lineage,
     )
+    active_agreement_graph = _agreement_digest(catalog)
     if (
         payload.get("git_diff") != list(expected_diff)
         or payload.get("git_diff_sha256") != _digest(expected_diff)
         or payload.get("catalog_sha256") != _catalog_digest(catalog)
-        or payload.get("agreement_graph_sha256") != _agreement_digest(catalog)
+        or not _agreement_graph_digest_matches(
+            payload,
+            active_agreement_graph,
+        )
         or payload.get("workspace_manifest") != workspace_manifest
         or payload.get("workspace_manifest_sha256")
         != _digest(workspace_manifest)
@@ -4409,11 +4462,15 @@ def audit_measurement_lineage(
         ancestor_revision=lineage.ancestor_revision,
         descendant_revision=lineage.descendant_revision,
     )
+    active_agreement_graph = _agreement_digest(catalog)
     if (
         payload.get("git_diff") != list(expected_diff)
         or payload.get("git_diff_sha256") != _digest(expected_diff)
         or payload.get("catalog_sha256") != _catalog_digest(catalog)
-        or payload.get("agreement_graph_sha256") != _agreement_digest(catalog)
+        or not _agreement_graph_digest_matches(
+            payload,
+            active_agreement_graph,
+        )
         or payload.get("workspace_manifest") != workspace_manifest
         or payload.get("workspace_manifest_sha256")
         != _digest(workspace_manifest)

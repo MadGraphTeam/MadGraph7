@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import tools.performance_report.measurement_lineage as measurement_lineage
 from tools.performance_report.artifacts import (
     ArtifactPolicy,
     ArtifactStore,
@@ -22,6 +23,7 @@ from tools.performance_report.measurement_lineage import (
     CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
     MEASUREMENT_LINEAGE_FILENAME,
     MeasurementLineageError,
+    _agreement_graph_digest_matches,
     _is_authorized_native_inputs_transition,
     _require_environment_transition,
     _resolve_recurrence_artifact_owner,
@@ -598,6 +600,46 @@ def test_recurrence_summary_cap_native_transition_is_exactly_pinned() -> None:
         )
 
 
+def test_controller_agreement_transition_is_exactly_lineage_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    old_digest = "7" * 64
+    new_digest = "4" * 64
+    monkeypatch.setattr(
+        measurement_lineage,
+        "_PRE_ARBITRARY_QUARK_LINES_AGREEMENT_GRAPH_SHA256",
+        old_digest,
+    )
+    monkeypatch.setattr(
+        measurement_lineage,
+        "_ARBITRARY_QUARK_LINES_AGREEMENT_GRAPH_SHA256",
+        new_digest,
+    )
+    exact = {
+        "profile": "x86_EPYC",
+        "impact": CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+        "ancestor_revision": (
+            measurement_lineage._RECURRENCE_SUMMARY_CAP_ANCESTOR_REVISION
+        ),
+        "descendant_revision": (
+            measurement_lineage._RECURRENCE_SUMMARY_CAP_DESCENDANT_REVISION
+        ),
+        "agreement_graph_sha256": old_digest,
+    }
+
+    assert _agreement_graph_digest_matches(exact, old_digest)
+    assert _agreement_graph_digest_matches(exact, new_digest)
+    for changed in (
+        {**exact, "profile": "macbook_M3"},
+        {**exact, "impact": CLASS_C_HZZ_IMPACT},
+        {**exact, "ancestor_revision": "0" * 40},
+        {**exact, "descendant_revision": "1" * 40},
+        {**exact, "agreement_graph_sha256": "2" * 64},
+    ):
+        assert not _agreement_graph_digest_matches(changed, new_digest)
+    assert not _agreement_graph_digest_matches(exact, "3" * 64)
+
+
 def test_recurrence_summary_cap_bridge_has_exact_failure_and_closure_census(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -664,6 +706,23 @@ def test_recurrence_summary_cap_bridge_has_exact_failure_and_closure_census(
         store,
         ancestor_revision=ancestor,
         descendant_revision=descendant,
+    )
+    historical_graph = measurement_lineage._agreement_digest(REPORT_CATALOG)
+    current_graph = "4" * 64
+    monkeypatch.setattr(
+        measurement_lineage,
+        "_PRE_ARBITRARY_QUARK_LINES_AGREEMENT_GRAPH_SHA256",
+        historical_graph,
+    )
+    monkeypatch.setattr(
+        measurement_lineage,
+        "_ARBITRARY_QUARK_LINES_AGREEMENT_GRAPH_SHA256",
+        current_graph,
+    )
+    monkeypatch.setattr(
+        measurement_lineage,
+        "_agreement_digest",
+        lambda _catalog: current_graph,
     )
     _finalize(
         monkeypatch,
