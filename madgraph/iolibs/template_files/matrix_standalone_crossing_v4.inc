@@ -167,12 +167,13 @@ C     flavor-dependent half is GET_IDENT_CROSS.
       INTEGER CROSS, XI, XJ, XK, XT, FACTOR, I
       INTEGER PERM(NEXTERNAL)
 C     The DATA tables are emitted together (SPINCOL_PART here, plus the
-C     IDS_BASE/ANTIPID_BASE tables GET_IDENT_CROSS reads); each routine keeps
-C     its own copy rather than sharing a COMMON, which would need a BLOCK DATA
-C     unit to be DATA-initialised.
+C     IDS_BASE/ANTIPID_BASE/COUNTABLE tables GET_IDENT_CROSS reads); each routine
+C     keeps its own copy rather than sharing a COMMON, which would need a BLOCK
+C     DATA unit to be DATA-initialised.
       INTEGER SPINCOL_PART(0:NEXTERNAL-1)
       INTEGER IDS_BASE(0:NEXTERNAL-1)
       INTEGER ANTIPID_BASE(0:NEXTERNAL-1)
+      INTEGER COUNTABLE(0:NEXTERNAL-1)
 %(iden_cross_lines)s
 
 C     CROSS = XI*(NEXTERNAL+1) + XJ, with XI, XJ the crossing partners of
@@ -237,6 +238,16 @@ C     declared because the shared DATA block below initialises it.
       INTEGER SPINCOL_PART(0:NEXTERNAL-1)
       INTEGER IDS_BASE(0:NEXTERNAL-1)
       INTEGER ANTIPID_BASE(0:NEXTERNAL-1)
+C     COUNTABLE(leg)=1 for a single external leg, 0 for a leaf locked inside a
+C     decay block. A crossing never moves a block leaf (GET_SPINCOL_CROSS
+C     rejects any that would), so decay products keep their base slots and must
+C     be skipped here: their contribution to the identical-final factor is
+C     resonance-level, carried whole by IDENT_RESONANCE. For a non-decay process
+C     every leg is countable and IDENT_RESONANCE is 1, so this is the plain leaf
+C     count it always was.
+      INTEGER COUNTABLE(0:NEXTERNAL-1)
+      INTEGER IDENT_RESONANCE
+      PARAMETER (IDENT_RESONANCE=%(ident_resonance)d)
 %(iden_cross_lines)s
       INTEGER K, L, N, FACT, XI, XJ, XT, I
       INTEGER PERM(NEXTERNAL), ICS(NEXTERNAL), BPID(NEXTERNAL)
@@ -275,16 +286,22 @@ C     IDS_BASE (ANTIPID_BASE where the leg changed side).
       ENDDO
 
 C     FLAVOR is not permuted by the crossing, so slot K reads FLAVOR(PERM(K)),
-C     the actual flavor of the original leg that moved into it.
+C     the actual flavor of the original leg that moved into it. Start from
+C     IDENT_RESONANCE (the resonance-level part of the identical factor, which a
+C     crossing never changes) and multiply in the n! of the countable final legs
+C     only -- a decay-block leaf is skipped, its symmetry already inside
+C     IDENT_RESONANCE.
       DO K = 1, NEXTERNAL
         USED(K) = .FALSE.
       ENDDO
-      FACT = 1
+      FACT = IDENT_RESONANCE
       DO K = NINCOMING+1, NEXTERNAL
         IF (USED(K)) CYCLE
+        IF (COUNTABLE(PERM(K)-1).EQ.0) CYCLE
         N = 1
         DO L = K+1, NEXTERNAL
           IF (USED(L)) CYCLE
+          IF (COUNTABLE(PERM(L)-1).EQ.0) CYCLE
           IF (BPID(K).EQ.BPID(L) .AND.
      $        FLAVOR(PERM(K)).EQ.FLAVOR(PERM(L))) THEN
             USED(L) = .TRUE.

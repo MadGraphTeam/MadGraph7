@@ -1296,6 +1296,123 @@ print("F2PY_PDG_OK")
             reference_dir=qq_gg, label='%s crossed (I=0,J=3) vs %s'
             % (PROC_QG_QG, PROC_QQ_GG))
 
+    # ------------------------------------------------------------------
+    # decay chains: the crossing acts at the production level, the whole
+    # decay block riding along on its production leg
+    # ------------------------------------------------------------------
+    def _read_masses(self, pdir):
+        """Signed-PDG -> mass, read from the process' generated param_card."""
+        card = pjoin(pdir, os.pardir, os.pardir, 'Cards', 'param_card.dat')
+        masses = {}
+        in_mass = False
+        with open(card) as fsock:
+            for line in fsock:
+                low = line.lower().strip()
+                if low.startswith('block mass'):
+                    in_mass = True
+                    continue
+                if in_mass and low.startswith('block'):
+                    in_mass = False
+                if in_mass:
+                    fields = line.split('#')[0].split()
+                    if len(fields) == 2:
+                        try:
+                            masses[int(fields[0])] = float(fields[1])
+                        except ValueError:
+                            pass
+        return masses
+
+    def _massive_2ton(self, pdir, pdgs, seed=7):
+        """A phase-space point for a 2->(len(pdgs)-2) process with the leaf
+        masses of `pdgs` (signed PDGs, initial two first).
+
+        A decay chain's matrix element is not on any resonance pole at a rambo
+        point, so the propagators are finite and the crossed / reference values
+        can be compared directly; only the external masses have to be right.
+        """
+        import madgraph.various.rambo as rambo
+        import random
+        random.seed(seed)
+        masses = self._read_masses(pdir)
+        finals = pdgs[2:]
+        fmass = rambo.FortranList(len(finals))
+        for i, pdg in enumerate(finals):
+            fmass[i + 1] = abs(masses.get(abs(pdg), 0.0))
+        p_rambo, _ = rambo.RAMBO(len(finals), self.energy, fmass)
+        momenta = [(0.5 * self.energy, 0.0, 0.0, 0.5 * self.energy),
+                   (0.5 * self.energy, 0.0, 0.0, -0.5 * self.energy)]
+        for i in range(1, len(finals) + 1):
+            momenta.append((p_rambo[(4, i)], p_rambo[(1, i)],
+                            p_rambo[(2, i)], p_rambo[(3, i)]))
+        return momenta
+
+    def _assert_decay_crossing(self, base_dir, base_line, ref_line, cross, pdgs):
+        """The base decay-chain SMATRIX at a crossing must reproduce a
+        fully-generated (--use_crossing=False) build of the crossed decay chain.
+
+        `pdgs` is the crossed leaf signature (from compute_crossing_pdg_entries,
+        the order the momenta must be supplied in); it is both the reference
+        process order and the momentum order fed to both builds. The base carries
+        the crossing through the extended IFLAV, the reference evaluates it as its
+        own identity -- the two must agree to machine precision.
+        """
+        ref_dir = self._generate(ref_line, 'Proc_dc_ref_%d' % cross,
+                                 options='--use_crossing=False')
+        nflav = self._read_nflav(base_dir)
+        momenta = self._massive_2ton(ref_dir, pdgs)
+        crossed = self._run(base_dir, momenta, _iflav(cross, 1, nflav=nflav))
+        reference = self._run(ref_dir, momenta, IFLAV_IDENTITY)
+        self.assertNotEqual(reference, 0.0,
+                            'Sanity check failed: %s gives a null matrix element'
+                            % ref_line)
+        scale = max(abs(crossed), abs(reference), 1e-99)
+        self.assertLessEqual(
+            abs(crossed - reference) / scale, self.tolerance,
+            '%s crossed (cross=%d) disagrees with %s: crossed=%r reference=%r'
+            % (base_line, cross, ref_line, crossed, reference))
+
+    def test_decay_chain_crossing_ttbar_jet(self):
+        """g u > t t~ u, t > b w+ must reproduce its production crossings.
+
+        The crossing permutes the light partons (a jet moving between the initial
+        and the final state); the t decay block (b w+) rides along on the top and
+        is never split, and the t~/jet legs move as whole single legs. The base's
+        crossing-aware SMATRIX at the crossed flavor index must equal a fully
+        generated build of each crossed decay chain.
+        """
+        base_line = 'g u > t t~ u, t > b w+'
+        base = self._generate(base_line, 'Proc_dc_base')
+        # (cross code, reference line, crossed leaf signature); the base leaves
+        # are [g,u,b,w+,t~,u], NEXTERNAL=6 so CROSS = I*7 + J.
+        cases = [
+            (6 * 7 + 0, 'u~ u > t t~ g, t > b w+', (-2, 2, 5, 24, -6, 21)),
+            (0 * 7 + 6, 'g u~ > t t~ u~, t > b w+', (21, -2, 5, 24, -6, -2)),
+        ]
+        for cross, ref_line, pdgs in cases:
+            with self.subTest(cross=cross):
+                self._assert_decay_crossing(base, base_line, ref_line, cross,
+                                            pdgs)
+
+    def test_decay_chain_crossing_identical_resonances(self):
+        """u u~ > z z g, z > e+ e- exercises the resonance-level denominator.
+
+        Both z decay the same way, so the crossed identical-particle factor is
+        NOT a plain count over the crossed leaves (that would double-count the
+        two e+/two e-): it is resonance level (the two identical z count once).
+        The crossing must rebuild that factor -- IDENT_RESONANCE times the
+        countable single legs -- so the crossed value matches a full build.
+        """
+        base_line = 'u u~ > z z g, z > e+ e-'
+        base = self._generate(base_line, 'Proc_dc_zz_base')
+        # base leaves [u,u~,e+,e-,e+,e-,g], NEXTERNAL=7 so CROSS = I*8 + J.
+        cases = [
+            (0 * 8 + 7, 'u g > z z u, z > e+ e-', (2, 21, -11, 11, -11, 11, 2)),
+        ]
+        for cross, ref_line, pdgs in cases:
+            with self.subTest(cross=cross):
+                self._assert_decay_crossing(base, base_line, ref_line, cross,
+                                            pdgs)
+
 
 class TestCheckCrossingCommand(unittest.TestCase):
     """The `check crossing` MG5 subcommand end-to-end.

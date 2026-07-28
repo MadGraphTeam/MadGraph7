@@ -2520,6 +2520,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         replace_dict['iden_cross_lines'] = \
             self.get_iden_cross_lines(matrix_element)
+        replace_dict['ident_resonance'] = \
+            self.compute_crossing_tables(matrix_element)['ident_resonance']
         replace_dict.update(dict(
             (key, value % {'proc_prefix': prefix,
                            'den_factor_line': replace_dict['den_factor_line']})
@@ -2622,6 +2624,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'proc_prefix': cp,
             'nflav': nflav,
             'iden_cross_lines': self.get_iden_cross_lines(matrix_element),
+            'ident_resonance':
+                self.compute_crossing_tables(matrix_element)['ident_resonance'],
             'maxhel': hel_data['maxhel'],
             'nhstate_data': hel_data['nhstate_data'],
             'states_data': hel_data['states_data'],
@@ -2960,7 +2964,37 @@ C     crossing carried by FLAV_IDX moves across.
         return '\n'.join([
             self.format_integer_data_lines('SPINCOL_PART', tables['spincol_part']),
             self.format_integer_data_lines('IDS_BASE', tables['ids_base']),
-            self.format_integer_data_lines('ANTIPID_BASE', tables['antipid_base'])])
+            self.format_integer_data_lines('ANTIPID_BASE', tables['antipid_base']),
+            self.format_integer_data_lines('COUNTABLE', tables['countable'])])
+
+    @staticmethod
+    def _leaf_block_sizes(process):
+        """Per core leg, the number of decay leaves it expands to.
+
+        A decay chain's matrix element runs over the decay *leaves*, but a
+        crossing acts at the *production* level: it may only permute whole
+        production legs, and a decaying production leg carries its whole decay
+        block (all its leaves) as one unit. This returns a list parallel to
+        ``process.get('legs')`` giving each core leg's leaf count -- 1 for a
+        non-decaying leg (a single leaf that a crossing may move), >1 for a
+        decaying resonance (a block a crossing must never split or pull into the
+        initial state). Non-decay processes get all 1s, so every downstream use
+        is a no-op for them. Mirrors base_objects.get_legs_with_decays exactly:
+        decays are matched to final legs in leg order, first id-match wins.
+        """
+        decays = list(process.get('decay_chains'))
+        sizes = []
+        for leg in process.get('legs'):
+            if not leg.get('state') or not decays:
+                sizes.append(1)
+                continue
+            ids = [d.get('legs')[0].get('id') for d in decays]
+            if leg.get('id') in ids:
+                decay = decays.pop(ids.index(leg.get('id')))
+                sizes.append(len(decay.get_legs_with_decays()) - 1)
+            else:
+                sizes.append(1)
+        return sizes
 
     def compute_crossing_tables(self, matrix_element):
         """Build the crossing tables as plain python int lists (model-agnostic).
@@ -3001,6 +3035,29 @@ C     crossing carried by FLAV_IDX moves across.
         # attached to the leg, and a crossing moves legs around, so carry it.
         polarizations = [leg.get('polarization') for leg in legs]
 
+        # Per LEAF: the size of the production block it belongs to, and whether
+        # it is 'countable' for the identical-final factor. A crossing permutes
+        # production legs, so a decaying leg's whole block (its >1 leaves) moves
+        # as a unit; the CROSS codes can only transpose single leaves, so any
+        # crossing that would carry a block leaf into the initial state (splitting
+        # the block, or making a decaying resonance an initial particle) is
+        # rejected below. block_size is 1 for every leaf of a non-decay process,
+        # so decay chains are the only ones this constrains.
+        block_size = []
+        # Referenced through the class, not self: the C++/mg7 exporters call
+        # compute_crossing_tables unbound with a non-Fortran self (see the
+        # get_iden_cross_lines docstring), which has no _leaf_block_sizes.
+        for size in ProcessExporterFortran._leaf_block_sizes(process):
+            block_size.extend([size] * size)
+        assert len(block_size) == nexternal, \
+            'leaf block sizes %s do not span NEXTERNAL %d' % (block_size,
+                                                              nexternal)
+        # A block leaf (size > 1) is a decay product locked inside a resonance:
+        # it never counts toward the identical-final factor at the leaf level
+        # (that factor is resonance-level, see ident_resonance below). A single
+        # leaf (size 1) is a genuine external and does count.
+        countable = [1 if size == 1 else 0 for size in block_size]
+
         def particle(pdg):
             return model.get('particle_dict')[pdg]
 
@@ -3032,16 +3089,30 @@ C     crossing carried by FLAV_IDX moves across.
                                 else particle(leg_ids[perm[slot]]).get_anti_pdg_code()
                                 for slot in range(nexternal)]
 
-                    # The crossing always keeps slots 1..ninitial initial.
-                    factor = 1
-                    for slot in range(ninitial):
-                        pol = polarizations[perm[slot]]
-                        factor *= len(pol) if pol else \
-                            len(particle(slot_ids[slot]).get_helicity_states())
-                        # get('color') is signed for antiparticles; only the
-                        # size of the representation matters for the average.
-                        factor *= abs(particle(slot_ids[slot]).get('color'))
-                    spincol.append(factor)
+                    # A crossing that carries a decay-block leaf across the
+                    # initial/final line would split the block (pull one decay
+                    # product into the initial state) or make a decaying
+                    # resonance an initial particle -- neither is a physical
+                    # process. Reject it exactly like an impossible crossing: a 0
+                    # spin*color makes SMATRIX and GET_PDG_FOR_FLAVOR both return
+                    # a null result. slot_ids is still the permuted signature so
+                    # the IDS_BASE/BASEPID rebuild sanity below stays consistent.
+                    # For a non-decay process every block_size is 1, so this
+                    # never fires.
+                    if any(ic[slot] == -1 and block_size[perm[slot]] > 1
+                           for slot in range(nexternal)):
+                        spincol.append(0)
+                    else:
+                        # The crossing always keeps slots 1..ninitial initial.
+                        factor = 1
+                        for slot in range(ninitial):
+                            pol = polarizations[perm[slot]]
+                            factor *= len(pol) if pol else \
+                                len(particle(slot_ids[slot]).get_helicity_states())
+                            # get('color') is signed for antiparticles; only the
+                            # size of the representation matters for the average.
+                            factor *= abs(particle(slot_ids[slot]).get('color'))
+                        spincol.append(factor)
                 except (KeyError, IndexError):
                     spincol.append(0)
                     slot_ids = list(leg_ids)
@@ -3071,29 +3142,52 @@ C     crossing carried by FLAV_IDX moves across.
         ids_base = list(leg_ids)
         antipid_base = [particle(pid).get_anti_pdg_code() for pid in leg_ids]
 
+        # ident_resonance: the part of the identical-final factor a crossing
+        # leaves untouched. A crossing only ever permutes the single-leaf
+        # (countable) legs -- decay blocks stay put -- so the crossed identical
+        # factor is (n! over the crossed countable final legs) times this
+        # constant. It collects everything a leaf-level count over the crossed
+        # legs cannot see: identical resonances decaying identically, and the
+        # identical particles locked inside each decay block. base_non_chain is
+        # the identical factor of the base's own countable final legs, so
+        # dividing it out of the resonance-level identical_particle_factor leaves
+        # exactly that constant. For a non-decay process every final leg is
+        # countable and there are no resonances, so base_non_chain equals the
+        # whole identical factor and ident_resonance is 1 -- GET_IDENT_CROSS then
+        # reduces to the historical plain leaf count.
+        final_countable = collections.defaultdict(int)
+        for slot in range(ninitial, nexternal):
+            if countable[slot]:
+                final_countable[(leg_ids[slot],
+                                 tuple(polarizations[slot] or []))] += 1
+        base_non_chain = 1
+        for count in final_countable.values():
+            base_non_chain *= math.factorial(count)
+        identical = matrix_element.get('identical_particle_factor')
+        assert identical % base_non_chain == 0, \
+            'Countable identical factor %d does not divide the identical-' \
+            'particle factor %d' % (base_non_chain, identical)
+        ident_resonance = identical // base_non_chain
+
         # Sanity: for the identity crossing, spin*color times the identical
-        # factor of the representative flavor must rebuild the static IDEN,
-        # else this and get_denominator_factor have drifted apart. A decay
-        # chain is exempt: its identical-particle factor lives at the resonance
-        # level (two z decaying the same way count once, differently not at
-        # all), which no count over the decay leaves nor the core legs
-        # reproduces -- and it never reaches GET_IDENT_CROSS anyway, since a
-        # decay chain records no crossing (only cross=0, normalised by the
-        # static IDEN). Just check the initial spin*color still divides IDEN.
+        # factor must rebuild the static IDEN, else this and
+        # get_denominator_factor have drifted apart. A decay chain's identical
+        # factor is resonance-level (two z decaying the same way count once,
+        # differently not at all), so it is checked through
+        # identical_particle_factor rather than a leaf count; the initial
+        # spin*color (which may carry a sign from an antiparticle beam in
+        # get_denominator_factor but not in the abs-based spincol) is only
+        # required to divide IDEN.
         if process.get('decay_chains'):
             assert matrix_element.get_denominator_factor() % spincol[0] == 0, \
                 'Crossing initial spin*color does not divide IDEN: ' \
                 '%s vs %s' % (spincol[0],
                               matrix_element.get_denominator_factor())
         else:
-            rep_final = [leg_ids[slot] for slot in range(ninitial, nexternal)]
-            rep_identical = 1
-            for pdg in set(rep_final):
-                rep_identical *= math.factorial(rep_final.count(pdg))
-            assert spincol[0] * rep_identical == \
+            assert spincol[0] * identical == \
                 matrix_element.get_denominator_factor(), \
                 'Crossing denominator disagrees with get_denominator_factor: ' \
-                '%s*%s vs %s' % (spincol[0], rep_identical,
+                '%s*%s vs %s' % (spincol[0], identical,
                                  matrix_element.get_denominator_factor())
         # Sanity: the small per-particle tables reproduce the per-crossing
         # tables the runtime routines used to read. SPINCOL_PART -> the
@@ -3124,6 +3218,7 @@ C     crossing carried by FLAV_IDX moves across.
                 'ids_base': ids_base, 'antipid_base': antipid_base,
                 'basepid': basepid, 'source': source,
                 'perm': perm_flat, 'ic': ic_flat,
+                'countable': countable, 'ident_resonance': ident_resonance,
                 'nexternal': nexternal, 'ninitial': ninitial}
 
     def compute_crossing_pdg_entries(self, matrix_element, zero_based=True):
@@ -5851,9 +5946,24 @@ C       so this also stays correct for split-order processes.
         # signatures the runtime can actually reach (physical crossings)
         reachable = [tuple(pdg) for (_i, _c, _f, pdg) in
                      self.compute_crossing_pdg_entries(matrix_element)]
+        # A decay-chain base records its crossings at the PRODUCTION level, but
+        # the reachable signatures span the decay leaves (the ME's NEXTERNAL), so
+        # the recorded process must be expanded before it can match. The decays
+        # never cross (they ride along on their production leg), so re-attaching
+        # the base's decay chains and expanding gives the crossed leaf signature.
+        base_decays = matrix_element.get('processes')[0].get('decay_chains')
+
+        def crossed_leg_ids(proc):
+            if not base_decays:
+                return [l.get('id') for l in proc.get('legs')]
+            expanded = copy.copy(proc)
+            expanded.set('decay_chains', base_decays)
+            expanded.set('legs_with_decays', base_objects.LegList())
+            return [l.get('id') for l in expanded.get_legs_with_decays()]
+
         sigs, seen, complete = [], set(), True
         for (proc, _bp, _xp) in crossed:
-            legs = [l.get('id') for l in proc.get('legs')]
+            legs = crossed_leg_ids(proc)
             orients = [legs]
             if ninitial == 2:                 # try the beam-swapped orientation
                 orients.append([legs[1], legs[0]] + legs[2:])

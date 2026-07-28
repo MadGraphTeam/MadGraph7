@@ -10082,9 +10082,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     # reconstructing is also the safe default for any format that
                     # does not implement folding (it just reproduces the complete
                     # unmerged output).
-                    if self._export_format not in ('standalone', 'standalone_mg7') and \
-                            any(amp.get('crossed_processes')
-                                for amp in non_dc_amps):
+                    if self._export_format not in ('standalone', 'standalone_mg7'):
                         if self.options['group_subprocesses'] == 'Auto':
                             collect_mirror = True
                         else:
@@ -10094,36 +10092,71 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                             return tuple(l.get('id') for l in
                                          amp.get('process').get('legs'))
 
-                        # Read the recorded crossings before clearing them.
-                        originals = [(amp, amp.get('crossed_processes'))
-                                     for amp in non_dc_amps]
-                        expanded = diagram_generation.AmplitudeList()
-                        seen = {}   # fast_proc -> amplitude, for mirror folding
-                        for amp, _crossed in originals:
-                            amp.set('crossed_processes', [])
-                            expanded.append(amp)
-                            seen[_fastproc(amp)] = amp
-                        # Record mode stores a crossing and its beam-swap as two
-                        # separate entries (neither is in the amplitude list when
-                        # the other is met, so the generator's mirror check never
-                        # fires); fold the beam-swap back into has_mirror_process
-                        # here, exactly as generate_matrix_elements would.
-                        for amp, crossed in originals:
-                            for (proc, base_perm, cross_perm) in crossed:
-                                xamp = diagram_generation.MultiProcess.\
-                                    cross_amplitude(amp, proc, base_perm,
-                                                    cross_perm)
-                                xamp.set('crossed_processes', [])
-                                fp = _fastproc(xamp)
-                                mirror = (fp[1], fp[0]) + fp[2:]
-                                if collect_mirror and mirror in seen and \
-                                        proc.get_ninitial() == 2:
-                                    seen[mirror].set('has_mirror_process', True)
+                        def _reconstruct_crossings(amps):
+                            """Expand each amplitude's recorded crossings back into
+                            separate (mirror-folded) amplitudes, reproducing a
+                            merge_crossing=False generation. The crossed diagrams
+                            are reused (cross_amplitude), not regenerated. Record
+                            mode stores a crossing and its beam-swap as two
+                            separate entries (neither is in the amplitude list
+                            when the other is met, so the generator's mirror check
+                            never fires); the beam-swap is folded back into
+                            has_mirror_process here, exactly as
+                            generate_matrix_elements would."""
+                            originals = [(amp, amp.get('crossed_processes'))
+                                         for amp in amps]
+                            expanded = diagram_generation.AmplitudeList()
+                            seen = {}   # fast_proc -> amplitude, for mirror fold
+                            for amp, _crossed in originals:
+                                amp.set('crossed_processes', [])
+                                expanded.append(amp)
+                                seen[_fastproc(amp)] = amp
+                            for amp, crossed in originals:
+                                for (proc, base_perm, cross_perm) in crossed:
+                                    xamp = diagram_generation.MultiProcess.\
+                                        cross_amplitude(amp, proc, base_perm,
+                                                        cross_perm)
+                                    xamp.set('crossed_processes', [])
+                                    fp = _fastproc(xamp)
+                                    mirror = (fp[1], fp[0]) + fp[2:]
+                                    if collect_mirror and mirror in seen and \
+                                            proc.get_ninitial() == 2:
+                                        seen[mirror].set('has_mirror_process',
+                                                         True)
+                                        continue
+                                    xamp.set('has_mirror_process', False)
+                                    expanded.append(xamp)
+                                    seen[fp] = xamp
+                            return expanded
+
+                        if any(amp.get('crossed_processes')
+                               for amp in non_dc_amps):
+                            non_dc_amps = _reconstruct_crossings(non_dc_amps)
+
+                        # Decay chains: the crossing dedup (folding the crossed
+                        # decay-chain subprocesses into the base's crossing-aware
+                        # SMATRIX) is implemented for the standalone backends only.
+                        # For the summation backends each crossed decay-chain
+                        # subprocess must stay its own integration unit; rather
+                        # than reconstruct-and-route them (whose grouping does not
+                        # reproduce the historical layout), regenerate the affected
+                        # decay chains fully (merge_crossing=False), giving exactly
+                        # the pre-dedup output. cross_amplitude reuse still avoids
+                        # regenerating the diagrams of the base subprocess.
+                        if any(a.get('crossed_processes')
+                               for dc in dc_amps for a in dc.get('amplitudes')):
+                            ign6 = self.options.get(
+                                'ignore_six_quark_processes', []) or []
+                            regenerated = \
+                                diagram_generation.DecayChainAmplitudeList()
+                            for procdef in self._curr_proc_defs:
+                                if not procdef.get('decay_chains'):
                                     continue
-                                xamp.set('has_mirror_process', False)
-                                expanded.append(xamp)
-                                seen[fp] = xamp
-                        non_dc_amps = expanded
+                                regenerated.append(
+                                    diagram_generation.DecayChainAmplitude(
+                                        procdef, collect_mirror, ign6,
+                                        merge_crossing=False))
+                            dc_amps = regenerated
 
                     if non_dc_amps:
                         subproc_groups.extend(\
