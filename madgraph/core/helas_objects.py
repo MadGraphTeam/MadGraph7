@@ -5371,11 +5371,21 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # resonance decaying to e+ e-, so expand the decays (a no-op without
         # them). Using the core legs would wrongly flag the resonance's field.
         external_pdgs = set()
+        offshell_pdgs = set()
         for proc in self.get('processes'):
             legs = proc.get_legs_with_decays() \
                 if hasattr(proc, 'get_legs_with_decays') else proc.get('legs')
             for leg in legs:
                 external_pdgs.add(abs(leg.get('id')))
+            # A leg tagged off-shell (the "particle*" syntax -> leg['offshell'])
+            # is deliberately NOT treated as an asymptotic on-shell state: it
+            # stands for an off-shell resonance whose Breit-Wigner width must be
+            # kept (e.g. p p > t* t~*). Exclude its field so no propagator of it
+            # has the width dropped.
+            for leg in proc.get('legs'):
+                if leg.get('offshell'):
+                    offshell_pdgs.add(abs(leg.get('id')))
+        external_pdgs -= offshell_pdgs
         dropped = False
         for wf in self.get_all_wavefunctions():
             # a wavefunction with no mothers is an external leg (no propagator,
