@@ -104,9 +104,31 @@ class AdjacentMultiplicityCensus:
     status: str
 
 
+@dataclass(frozen=True)
+class StaticTemplateMaterializationCensus:
+    schema: str
+    mode: str
+    legacy_generated_module_count: int
+    legacy_static_current_count: int
+    legacy_static_interaction_count: int
+    legacy_replay_multiplicity_per_module: int
+    candidate_final_current_count: int
+    candidate_final_interaction_count: int
+    candidate_final_current_ratio: float
+    candidate_final_interaction_ratio: float
+    candidate_peak_current_count: int | None
+    candidate_peak_interaction_count: int | None
+    candidate_peak_current_ratio: float | None
+    candidate_peak_interaction_ratio: float | None
+    limits: dict[str, float]
+    violations: tuple[str, ...]
+    status: str
+
+
 MAX_UNPROVEN_FINAL_TO_LEGACY = 1.05
 MAX_ADJACENT_FINAL_GROWTH = 1.05
 MAX_ADJACENT_PEAK_GROWTH = 1.25
+MAX_STATIC_TEMPLATE_MATERIALIZATION = 1.05
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -225,9 +247,7 @@ def candidate_final_work(
             )
         mode = "compiled"
         currents = _positive_integer(summary, "current_count", "compiled DAG")
-        interactions = _positive_integer(
-            summary, "interaction_count", "compiled DAG"
-        )
+        interactions = _positive_integer(summary, "interaction_count", "compiled DAG")
     elif kind == "pyamplicol-runtime-eager-execution":
         try:
             summary = execution["plan"]["inspection_summary"]
@@ -238,9 +258,7 @@ def candidate_final_work(
         mode = "eager"
         currents = _positive_integer(summary, "current_count", "eager plan")
         # Attachments are the eager representation of DAG interaction fan-in.
-        interactions = _positive_integer(
-            summary, "attachment_count", "eager plan"
-        )
+        interactions = _positive_integer(summary, "attachment_count", "eager plan")
     else:
         raise StructuralWorkError(f"unsupported candidate execution kind: {kind!r}")
 
@@ -263,9 +281,7 @@ def _final_work_comparison(
     candidate: CandidateFinalWork,
 ) -> FinalWorkComparison:
     current_delta = candidate.current_count - legacy.replay_current_count
-    interaction_delta = (
-        candidate.interaction_count - legacy.replay_interaction_count
-    )
+    interaction_delta = candidate.interaction_count - legacy.replay_interaction_count
     classification = (
         "proven-recycling"
         if current_delta <= 0 and interaction_delta <= 0
@@ -388,15 +404,12 @@ def adjacent_multiplicity_census(
         higher.candidate.current_count / lower.candidate.current_count
     )
     legacy_interaction_growth = (
-        higher.legacy.replay_interaction_count
-        / lower.legacy.replay_interaction_count
+        higher.legacy.replay_interaction_count / lower.legacy.replay_interaction_count
     )
     candidate_interaction_growth = (
         higher.candidate.interaction_count / lower.candidate.interaction_count
     )
-    normalized_current_growth = (
-        candidate_current_growth / legacy_current_growth
-    )
+    normalized_current_growth = candidate_current_growth / legacy_current_growth
     normalized_interaction_growth = (
         candidate_interaction_growth / legacy_interaction_growth
     )
@@ -450,6 +463,99 @@ def adjacent_multiplicity_census(
     )
 
 
+def static_template_materialization_census(
+    certificate: StructuralWorkCertificate,
+    *,
+    max_materialization_to_legacy_static: float = (MAX_STATIC_TEMPLATE_MATERIALIZATION),
+) -> StaticTemplateMaterializationCensus:
+    """Compare artifact materialization with generated legacy templates.
+
+    Legacy dynamic replay is the correct runtime-work comparator, but it can
+    hide a severe cold-generation expansion.  This independent census treats
+    the generated module inventory as the static baseline and reports both the
+    final artifact and recurrence-construction peak.
+    """
+
+    limit = float(max_materialization_to_legacy_static)
+    if not math.isfinite(limit) or limit <= 0.0:
+        raise StructuralWorkError(
+            "static-template materialization limit must be positive and finite"
+        )
+    legacy = certificate.legacy
+    if (
+        legacy.generated_module_count <= 0
+        or legacy.retained_color_ordering_count % legacy.generated_module_count
+    ):
+        raise StructuralWorkError(
+            "legacy color replay count is not an integer multiple of its "
+            "generated module inventory"
+        )
+    static_currents = legacy.module_current_count * legacy.generated_module_count
+    static_interactions = (
+        legacy.module_interaction_count * legacy.generated_module_count
+    )
+    candidate = certificate.candidate
+    final_current_ratio = candidate.current_count / static_currents
+    final_interaction_ratio = candidate.interaction_count / static_interactions
+    construction = certificate.recurrence_construction
+    peak_currents = None if construction is None else construction.peak_current_count
+    peak_interactions = (
+        None if construction is None else construction.peak_contribution_attempt_count
+    )
+    peak_current_ratio = (
+        None if peak_currents is None else peak_currents / static_currents
+    )
+    peak_interaction_ratio = (
+        None if peak_interactions is None else peak_interactions / static_interactions
+    )
+    violations = []
+    if final_current_ratio > limit:
+        violations.append("final currents exceed legacy static-template budget")
+    if final_interaction_ratio > limit:
+        violations.append("final interactions exceed legacy static-template budget")
+    if peak_current_ratio is not None and peak_current_ratio > limit:
+        violations.append("peak currents exceed legacy static-template budget")
+    if peak_interaction_ratio is not None and peak_interaction_ratio > limit:
+        violations.append("peak interactions exceed legacy static-template budget")
+    return StaticTemplateMaterializationCensus(
+        schema="pyamplicol-static-template-materialization-census-v1",
+        mode=candidate.mode,
+        legacy_generated_module_count=legacy.generated_module_count,
+        legacy_static_current_count=static_currents,
+        legacy_static_interaction_count=static_interactions,
+        legacy_replay_multiplicity_per_module=(
+            legacy.retained_color_ordering_count // legacy.generated_module_count
+        ),
+        candidate_final_current_count=candidate.current_count,
+        candidate_final_interaction_count=candidate.interaction_count,
+        candidate_final_current_ratio=final_current_ratio,
+        candidate_final_interaction_ratio=final_interaction_ratio,
+        candidate_peak_current_count=peak_currents,
+        candidate_peak_interaction_count=peak_interactions,
+        candidate_peak_current_ratio=peak_current_ratio,
+        candidate_peak_interaction_ratio=peak_interaction_ratio,
+        limits={"max_materialization_to_legacy_static": limit},
+        violations=tuple(violations),
+        status="ok" if not violations else "exceeds-budget",
+    )
+
+
+def require_static_template_materialization_parity(
+    certificate: StructuralWorkCertificate,
+    *,
+    max_materialization_to_legacy_static: float = (MAX_STATIC_TEMPLATE_MATERIALIZATION),
+) -> StaticTemplateMaterializationCensus:
+    """Fail closed unless final and peak materialization have static parity."""
+
+    census = static_template_materialization_census(
+        certificate,
+        max_materialization_to_legacy_static=(max_materialization_to_legacy_static),
+    )
+    if census.violations:
+        raise StructuralWorkError("; ".join(census.violations))
+    return census
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("legacy_artifact", type=Path)
@@ -462,6 +568,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-peak-current-to-legacy", type=float, default=1.5)
     parser.add_argument("--max-peak-to-final-current", type=float, default=4.0)
     parser.add_argument("--max-peak-to-final-contribution", type=float, default=6.0)
+    parser.add_argument(
+        "--require-static-template-parity",
+        action="store_true",
+        help=(
+            "also reject final/peak materialization above 1.05x the generated "
+            "legacy template inventory"
+        ),
+    )
     return parser
 
 
@@ -473,10 +587,10 @@ def main() -> int:
         max_final_to_legacy=arguments.max_final_to_legacy,
         max_peak_current_to_legacy=arguments.max_peak_current_to_legacy,
         max_peak_to_final_current=arguments.max_peak_to_final_current,
-        max_peak_to_final_contribution=(
-            arguments.max_peak_to_final_contribution
-        ),
+        max_peak_to_final_contribution=(arguments.max_peak_to_final_contribution),
     )
+    if arguments.require_static_template_parity:
+        require_static_template_materialization_parity(certificate)
     print(json.dumps(asdict(certificate), indent=2, sort_keys=True))
     return 0
 

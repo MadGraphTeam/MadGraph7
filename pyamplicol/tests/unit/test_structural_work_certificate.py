@@ -9,6 +9,8 @@ from tools.developer.structural_work_certificate import (
     StructuralWorkError,
     adjacent_multiplicity_census,
     certify,
+    require_static_template_materialization_parity,
+    static_template_materialization_census,
 )
 
 
@@ -18,19 +20,18 @@ def _legacy(
     module_currents: int = 406,
     module_interactions: int = 2440,
     retained_colors: int = 720,
+    generated_modules: int = 6,
 ) -> Path:
     library = root / "contracted-generated-library" / "Library"
     library.mkdir(parents=True)
     probe = (
-        root
-        / "contracted-generated-library"
-        / "amplicol_color_library_probe.output"
+        root / "contracted-generated-library" / "amplicol_color_library_probe.output"
     )
     probe.write_text(
         "Total number of currents, vertices and amplitudes after filter"
         f" 1597 4260 {retained_colors}\n"
     )
-    for index in range(2):
+    for index in range(generated_modules):
         (library / f"amp{index + 1}_1_lib.f03").write_text(
             f"complex(kind=8),dimension(1:6,{module_currents}) :: val_c\n"
             f"complex(kind=8),dimension(1:6,{module_interactions}) :: int_c\n"
@@ -115,10 +116,7 @@ def test_certifies_all_generation_modes(
     assert certificate.candidate.mode == mode
     assert certificate.legacy.replay_current_count == 406 * 720
     assert certificate.legacy.replay_interaction_count == 2440 * 720
-    assert (
-        certificate.final_work_comparison.classification
-        == "proven-recycling"
-    )
+    assert certificate.final_work_comparison.classification == "proven-recycling"
     assert certificate.final_work_comparison.current_savings_fraction > 0.0
 
 
@@ -225,6 +223,7 @@ def test_adjacent_multiplicity_census_normalizes_candidate_growth(
             module_currents=188,
             module_interactions=816,
             retained_colors=120,
+            generated_modules=5,
         ),
         _candidate(
             tmp_path / "candidate-n4",
@@ -275,6 +274,151 @@ def test_adjacent_multiplicity_census_normalizes_candidate_growth(
     assert census.normalized_interaction_growth < 1.0
     assert census.normalized_peak_current_growth is not None
     assert census.normalized_peak_current_growth < 1.25
+
+
+def test_n5_static_template_census_exposes_cold_generation_excess(
+    tmp_path: Path,
+) -> None:
+    certificate = certify(
+        _legacy(tmp_path / "legacy"),
+        _candidate(
+            tmp_path / "candidate",
+            {
+                "kind": "pyamplicol-runtime-recurrence-execution",
+                "plan": {
+                    "inspection_summary": {
+                        "schedule": {
+                            "current_count": 101_942,
+                            "contribution_count": 955_368,
+                        },
+                        "construction": {
+                            "peak_current_count": 372_422,
+                            "peak_contribution_count": 4_868_016,
+                        },
+                    }
+                },
+            },
+        ),
+    )
+    census = static_template_materialization_census(certificate)
+    assert census.status == "exceeds-budget"
+    assert census.legacy_generated_module_count == 6
+    assert census.legacy_static_current_count == 2_436
+    assert census.legacy_static_interaction_count == 14_640
+    assert census.legacy_replay_multiplicity_per_module == 120
+    assert census.candidate_final_current_ratio == pytest.approx(101_942 / 2_436)
+    assert census.candidate_final_interaction_ratio == pytest.approx(955_368 / 14_640)
+    assert census.candidate_peak_current_ratio == pytest.approx(372_422 / 2_436)
+    assert census.candidate_peak_interaction_ratio == pytest.approx(4_868_016 / 14_640)
+    assert census.violations == (
+        "final currents exceed legacy static-template budget",
+        "final interactions exceed legacy static-template budget",
+        "peak currents exceed legacy static-template budget",
+        "peak interactions exceed legacy static-template budget",
+    )
+    with pytest.raises(
+        StructuralWorkError,
+        match="final currents exceed legacy static-template budget",
+    ):
+        require_static_template_materialization_parity(certificate)
+
+
+@pytest.mark.parametrize(
+    "payload,mode",
+    [
+        (
+            {
+                "kind": "pyamplicol-runtime-recurrence-execution",
+                "plan": {
+                    "inspection_summary": {
+                        "schedule": {
+                            "current_count": 2_436,
+                            "contribution_count": 14_640,
+                        },
+                        "construction": {
+                            "peak_current_count": 2_436,
+                            "peak_contribution_count": 14_640,
+                        },
+                    }
+                },
+            },
+            "recurrence",
+        ),
+        (
+            {
+                "kind": "pyamplicol-runtime-execution",
+                "helicity_sum_execution": {
+                    "dag_summary": {
+                        "current_count": 2_436,
+                        "interaction_count": 14_640,
+                    }
+                },
+            },
+            "compiled",
+        ),
+        (
+            {
+                "kind": "pyamplicol-runtime-eager-execution",
+                "plan": {
+                    "inspection_summary": {
+                        "current_count": 2_436,
+                        "attachment_count": 14_640,
+                    }
+                },
+            },
+            "eager",
+        ),
+    ],
+)
+def test_static_template_parity_gate_covers_all_generation_modes(
+    tmp_path: Path,
+    payload: dict[str, object],
+    mode: str,
+) -> None:
+    certificate = certify(
+        _legacy(tmp_path / "legacy"),
+        _candidate(tmp_path / "candidate", payload),
+    )
+    census = require_static_template_materialization_parity(certificate)
+    assert census.status == "ok"
+    assert census.mode == mode
+    assert census.candidate_final_current_ratio == 1.0
+    assert census.candidate_final_interaction_ratio == 1.0
+    if mode == "recurrence":
+        assert census.candidate_peak_current_ratio == 1.0
+        assert census.candidate_peak_interaction_ratio == 1.0
+    else:
+        assert census.candidate_peak_current_ratio is None
+        assert census.candidate_peak_interaction_ratio is None
+
+
+def test_static_template_census_requires_integral_color_replay(
+    tmp_path: Path,
+) -> None:
+    certificate = certify(
+        _legacy(
+            tmp_path / "legacy",
+            retained_colors=720,
+            generated_modules=7,
+        ),
+        _candidate(
+            tmp_path / "candidate",
+            {
+                "kind": "pyamplicol-runtime-execution",
+                "helicity_sum_execution": {
+                    "dag_summary": {
+                        "current_count": 1,
+                        "interaction_count": 1,
+                    }
+                },
+            },
+        ),
+    )
+    with pytest.raises(
+        StructuralWorkError,
+        match="not an integer multiple",
+    ):
+        static_template_materialization_census(certificate)
 
 
 def test_rejects_recurrence_construction_inflation(tmp_path: Path) -> None:
