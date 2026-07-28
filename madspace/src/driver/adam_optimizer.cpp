@@ -17,7 +17,7 @@ NamedVector<Value> GradientClipper::build_function_impl(
 ) const {
     Value grads_in = args.at(0);
     Value grad_norm = fb.sqrt(fb.batch_reduce_sum(fb.square(grads_in)));
-    Value factor = fb.max(fb.div(_threshold, grad_norm), 1.0);
+    Value factor = fb.min(fb.div(_threshold, grad_norm), 1.0);
     Value grads_out = fb.mul(grads_in, factor);
     return {
         {"gradients_out", grads_out},
@@ -92,7 +92,7 @@ TensorVec AdamOptimizer::step(const TensorVec& inputs) {
         _runtime->run_backward(output_grads, stored_locals, eval_grad, true);
 
     if (_grad_clipper) {
-        global_grads = _grad_clipper->run(global_grads);
+        global_grads = {_grad_clipper->run(global_grads).at(0)};
     }
 
     device->adam_step(
