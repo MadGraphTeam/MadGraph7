@@ -1274,13 +1274,6 @@ class CampaignScheduler:
                         ),
                         record.attempt_id,
                     )
-                if decision.current is None:
-                    record = attempt.publish(result, artifact_paths=paths)
-                    return CellOutcome(
-                        cell.cell_id,
-                        str(result["status"]),
-                        record.attempt_id,
-                    )
                 attempt.mark_failed(
                     str(result.get("failure")),
                     artifact_paths=paths,
@@ -1288,7 +1281,11 @@ class CampaignScheduler:
                 return CellOutcome(
                     cell.cell_id,
                     str(result["status"]),
-                    "previous valid current preserved",
+                    (
+                        attempt.attempt_id
+                        if decision.current is None
+                        else "previous valid current preserved"
+                    ),
                 )
 
     def _publish_dependency_censor(
@@ -1382,14 +1379,19 @@ class CampaignScheduler:
             based_on=current,
         ) as attempt:
             result = failure_measurement(ResultStatus.SKIP, message)
-            if current is None:
-                record = attempt.publish(result)
-                return CellOutcome(cell.cell_id, "skip", record.attempt_id)
-            attempt.mark_failed(message)
+            attempt.write_json("worker-result.json", result)
+            attempt.mark_failed(
+                message,
+                artifact_paths=("worker-result.json",),
+            )
             return CellOutcome(
                 cell.cell_id,
                 "skip",
-                "previous valid current preserved",
+                (
+                    attempt.attempt_id
+                    if current is None
+                    else "previous valid current preserved"
+                ),
             )
 
 

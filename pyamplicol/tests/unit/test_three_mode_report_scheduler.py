@@ -16,6 +16,7 @@ from tools.performance_report.agreements import (
 from tools.performance_report.artifacts import ArtifactStore, CurrentRecord
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
+from tools.performance_report.measurement import failure_measurement
 from tools.performance_report.models import (
     Accuracy,
     ArtifactPolicy,
@@ -596,6 +597,100 @@ def test_explicit_regenerate_or_rerun_forces_generation(
 
     assert outcome.status == "ok"
     assert "--reused-measurement-json" not in command
+
+
+def test_scheduler_never_publishes_first_failed_worker_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    target = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    baseline = REPORT_CATALOG.baseline_cell(target)
+    assert baseline is not None
+    revision = "current-revision"
+    _publish_current(service.store, baseline, revision=revision)
+
+    def fake_supervise(
+        command: Sequence[str],
+        **_arguments: object,
+    ) -> SupervisedResult:
+        result_path = Path(command[command.index("--result-json") + 1])
+        result_path.write_text(
+            json.dumps(
+                failure_measurement(
+                    ResultStatus.ERROR,
+                    "deterministic worker failure",
+                )
+            )
+            + "\n",
+            encoding="ascii",
+        )
+        return SupervisedResult(
+            0,
+            "completed",
+            ResourceUsage(True, 1, 1, 0, 0.1, 0.1),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(artifact_policy=ArtifactPolicy.REGENERATE),
+    )
+    scheduler.source_revision = revision
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            target,
+            dependency=False,
+            baseline_cell_id=baseline.cell_id,
+            rank=1,
+        )
+    )
+
+    assert outcome.status == ResultStatus.ERROR.value
+    assert service.store.load_current(target.cell_id, missing_ok=True) is None
+    attempt_roots = tuple(
+        (service.paths.artifact_root / "cells").glob(f"*/attempts/{outcome.detail}")
+    )
+    assert len(attempt_roots) == 1
+    manifest = json.loads(
+        (attempt_roots[0] / "manifest.json").read_text(encoding="ascii")
+    )
+    assert manifest["status"] == "failed"
+    assert manifest["result_path"] is None
+    assert not (attempt_roots[0] / "result.json").exists()
+    worker_result = json.loads(
+        (attempt_roots[0] / "worker-result.json").read_text(encoding="ascii")
+    )
+    assert worker_result["status"] == ResultStatus.ERROR.value
+
+
+def test_scheduler_never_publishes_first_skip(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+
+    outcome = scheduler._publish_skip(
+        cell,
+        "required dependency is unavailable",
+        current=None,
+    )
+
+    assert outcome.status == ResultStatus.SKIP.value
+    assert service.store.load_current(cell.cell_id, missing_ok=True) is None
+    attempt_roots = tuple(
+        (service.paths.artifact_root / "cells").glob(f"*/attempts/{outcome.detail}")
+    )
+    assert len(attempt_roots) == 1
+    manifest = json.loads(
+        (attempt_roots[0] / "manifest.json").read_text(encoding="ascii")
+    )
+    assert manifest["status"] == "failed"
+    assert manifest["result_path"] is None
 
 
 def test_scheduler_plumbs_authenticated_generation_only_limit(
