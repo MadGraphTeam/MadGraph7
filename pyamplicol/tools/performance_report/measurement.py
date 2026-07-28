@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -14,7 +15,14 @@ from .agreements import (
     evaluate_lc_common_component,
 )
 from .cache import empty_measurement
-from .models import Accuracy, CellSpec, ExecutionMode, ModelKey, ResultStatus
+from .models import (
+    Accuracy,
+    CellSpec,
+    ExecutionMode,
+    ModelKey,
+    ResultStatus,
+    Workload,
+)
 from .phase_state import WorkerPhaseReporter
 from .runner import (
     INDEPENDENT_RELATIVE_TOLERANCE,
@@ -100,6 +108,38 @@ def _baseline_matrix_element(
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise RunnerError("candidate baseline has no matrix element")
     return float(value)
+
+
+def _require_nonzero_lc_all_flow_baseline(
+    cell: CellSpec,
+    baseline: Mapping[str, object] | None,
+) -> None:
+    """Reject inherited selector contracts that authenticate only a zero lane."""
+
+    if (
+        baseline is None
+        or cell.measurement.accuracy is not Accuracy.LC
+        or cell.workload is not Workload.ALL_FLOW
+    ):
+        return
+    validation = baseline.get("validation")
+    common = (
+        validation.get(LC_COMMON_COMPONENT_FIELD)
+        if isinstance(validation, Mapping)
+        else None
+    )
+    value = common.get("value") if isinstance(common, Mapping) else None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) <= 0.0
+    ):
+        raise RunnerError(
+            "LC all-flow baseline selector is structural zero; remeasure the "
+            "baseline with a nonzero fixed-helicity selector before generating "
+            "a dependent candidate"
+        )
 
 
 def generated_artifact_from_measurement(
@@ -278,6 +318,7 @@ def measure_pyamplicol_cell(
 ) -> dict[str, object]:
     """Generate or retime one complete-coverage pyAmpliCol artifact."""
 
+    _require_nonzero_lc_all_flow_baseline(cell, baseline)
     generated = (
         generate_artifact(
             cell,

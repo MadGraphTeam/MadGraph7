@@ -497,6 +497,29 @@ def test_arena_profile_evidence_rejects_warmed_boundary_traffic(
         )
 
 
+@pytest.mark.parametrize(
+    "field",
+    (
+        "compiled_direct_arena_engine_count",
+        "compiled_direct_arena_call_count",
+        "evaluator_backend_call_count",
+    ),
+)
+def test_arena_profile_evidence_keeps_compiled_activity_fail_closed(
+    field: str,
+) -> None:
+    profile = _raw_arena_profile()
+    profile[field] = 0
+
+    with pytest.raises(ArenaProfileEvidenceError, match="activity counters"):
+        build_arena_profile_evidence(
+            (profile,),
+            execution_mode="compiled",
+            repetitions_per_profile=1,
+            batch_size=128,
+        )
+
+
 def test_arena_profile_evidence_recomputes_all_native_counters() -> None:
     evidence = build_arena_profile_evidence(
         (_raw_arena_profile(),) * 5,

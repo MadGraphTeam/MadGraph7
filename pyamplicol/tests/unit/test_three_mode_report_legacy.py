@@ -569,6 +569,62 @@ def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(
     assert any(command.endswith("amplicol_color_probe") for command in flattened)
 
 
+@pytest.mark.parametrize(
+    ("pdgs", "expected", "expected_id"),
+    (
+        (
+            (2, -1, -11, 12),
+            (-1, 1, 1, -1),
+            "h:-1,+1,+1,-1",
+        ),
+        (
+            (2, -1, -11, 12, 21),
+            (-1, 1, 1, -1, -1),
+            "h:-1,+1,+1,-1,-1",
+        ),
+    ),
+)
+def test_fixed_helicity_uses_nonzero_chiral_charged_current(
+    pdgs: tuple[int, ...],
+    expected: tuple[int, ...],
+    expected_id: str,
+) -> None:
+    helicities = _fixed_helicity(pdgs)
+
+    assert helicities == expected
+    assert _helicity_id(helicities) == expected_id
+
+
+def test_all_flow_rejects_structural_zero_selector(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = FakeApi()
+    api.lc_probe_result = SimpleNamespace(
+        value=0.0,
+        lc_row_partitions=(
+            SimpleNamespace(row=1, value=0.0, permutation=(2, 4, 1)),
+        ),
+        lc_partition_sum=0.0,
+    )
+    adapter, _api, _executor = _adapter(api)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+
+    with pytest.raises(LegacyAdapterError, match="structural-zero helicity"):
+        adapter.measure(
+            _cell(Accuracy.LC, Workload.ALL_FLOW),
+            artifact_path=tmp_path / "all",
+            settings=_settings(tmp_path / "repository"),
+        )
+
+
 def _measure_with_lc_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

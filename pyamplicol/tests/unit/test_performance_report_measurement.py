@@ -12,6 +12,7 @@ from tools.performance_report.measurement import (
     _baseline_matrix_element,
     _baseline_selector_contract,
     _reuse_artifact_for_measurement,
+    _require_nonzero_lc_all_flow_baseline,
     _stable_runtime_identity,
     _validate_runtime_identity_postflight,
     failure_measurement,
@@ -55,6 +56,26 @@ def test_baseline_contract_and_matrix_element_are_strict() -> None:
         _baseline_matrix_element({"status": "error"})
     with pytest.raises(RunnerError, match="no matrix element"):
         _baseline_matrix_element({"status": "ok", "matrix_element": None})
+
+
+def test_lc_all_flow_baseline_must_authenticate_nonzero_common_component() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-lc-n2-ud-epve-jets-all-flow"
+    )
+    baseline = {
+        "validation": {
+            "lc_common_component": {
+                "value": 1.0,
+            }
+        }
+    }
+
+    _require_nonzero_lc_all_flow_baseline(cell, baseline)
+
+    for value in (0.0, float("nan"), None):
+        baseline["validation"]["lc_common_component"]["value"] = value
+        with pytest.raises(RunnerError, match="baseline selector is structural zero"):
+            _require_nonzero_lc_all_flow_baseline(cell, baseline)
 
 
 def test_failure_measurement_preserves_compact_cache_shape() -> None:

@@ -672,10 +672,24 @@ def _preferred_helicities(pdg: int) -> tuple[int, ...]:
 
 def _fixed_helicity(pdgs: Sequence[int]) -> tuple[int, ...]:
     result: list[int] = []
+    charged_current_fermions = any(
+        abs(int(pdg)) in {12, 14, 16} for pdg in pdgs
+    )
     for index, pdg in enumerate(pdgs, start=1):
         domain = _preferred_helicities(pdg)
         if -1 in domain and 1 in domain:
-            result.append(-1 if index % 2 else 1)
+            # Prefer the left-chiral particle/right-chiral antiparticle state
+            # for charged-current fermion chains.  The former position-parity
+            # heuristic chose the structural-zero e+ nu_e state in families
+            # such as u d~ > e+ ve, then propagated that zero selector through
+            # every pyAmpliCol baseline.  Preserve the established neutral-
+            # current/vector policy outside this focused correction.
+            if charged_current_fermions and (
+                1 <= abs(int(pdg)) <= 6 or 11 <= abs(int(pdg)) <= 16
+            ):
+                result.append(-1 if int(pdg) > 0 else 1)
+            else:
+                result.append(-1 if index % 2 else 1)
         elif 0 in domain:
             result.append(0)
         else:
@@ -838,15 +852,23 @@ class LegacyMeasurementAdapter:
             DIRECT_AGREEMENT_FIELD: [],
         }
         if cell.measurement.accuracy is Accuracy.LC:
-            result["validation"][LC_COMMON_COMPONENT_FIELD] = (
-                self._measure_lc_common_component(
-                    cell,
-                    context=context,
-                    repository=repository,
-                    commands=commands,
-                    log_path=log_path,
-                )
+            common_component = self._measure_lc_common_component(
+                cell,
+                context=context,
+                repository=repository,
+                commands=commands,
+                log_path=log_path,
             )
+            result["validation"][LC_COMMON_COMPONENT_FIELD] = common_component
+            if cell.workload is Workload.ALL_FLOW and (
+                float(result["matrix_element"]) <= 0.0
+                or float(common_component["value"]) <= 0.0
+            ):
+                raise LegacyAdapterError(
+                    "LC all-flow selector resolved to a structural-zero "
+                    "helicity; choose and remeasure a nonzero fixed-helicity "
+                    "selector before publishing dependent cells"
+                )
         result["resources"] = {
             "monitor": "external-cell-supervisor",
             "peak_rss_gib": None,
