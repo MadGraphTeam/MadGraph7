@@ -2177,6 +2177,62 @@ class TestMadeventCrossingHelicity(unittest.TestCase):
                         % (f0, counts))
 
 
+class TestMadeventDecayChainCrossing(unittest.TestCase):
+    """End-to-end: a decay-chain crossing routed through the base's SMATRIX in
+    madevent gives the same cross section as an independent build.
+
+    ``p p > w+ j, w+ > j j`` crosses the light partons of the production while
+    the ``w+ > j j`` decay block rides along on the top-level W+; the crossed
+    subprocesses (``g q~ > w+ q~``, ...) reuse the base matrix element through
+    the crossing-aware SMATRIX (matrix2_router dispatches to SMATRIX1 with a
+    crossed FLAV_IDX and rebuilds the crossed, resonance-level denominator). A
+    ``--use_crossing=False`` build computes every subprocess independently
+    instead. With the same seed the routed and the independent integration must
+    agree -- a wrong crossed denominator, a split decay block, or a mis-routed
+    flavor would move the cross section.
+
+    Runs two full (small) madevent generations, so it is slow.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_mev_dc_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _xsec(self, options, name):
+        from madgraph import MG5DIR
+        outdir = pjoin(self.tmpdir, name)
+        card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
+        with open(card, 'w') as fsock:
+            fsock.write('generate p p > w+ j, w+ > j j %s\n'
+                        'output madevent %s -f\n'
+                        'launch\n'
+                        'set nevents 1000\n'
+                        'set iseed 424242\n' % (options, outdir))
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        results = pjoin(outdir, 'SubProcesses', 'results.dat')
+        self.assertTrue(os.path.isfile(results),
+                        'madevent produced no results (%s)' % results)
+        with open(results) as fsock:
+            # results.dat: cross-section, abs error, ... (in pb).
+            fields = fsock.readline().split()
+        return float(fields[0]), float(fields[1])
+
+    def test_decay_chain_crossing_xsec_matches(self):
+        crossed, err_c = self._xsec('', 'on')
+        independent, err_i = self._xsec('--use_crossing=False', 'off')
+        self.assertGreater(independent, 0.0,
+                           'independent build gives a null cross section')
+        scale = max(abs(crossed), abs(independent), 1e-99)
+        self.assertLessEqual(
+            abs(crossed - independent) / scale, 1e-2,
+            'p p > w+ j, w+ > j j crossing-routed xsec %r +- %r disagrees with '
+            'the independent build %r +- %r'
+            % (crossed, err_c, independent, err_i))
+
+
 class TestColorFlowCode(unittest.TestCase):
     """The canonical COLOUR-FLOW code, the colour analogue of the canonical
     helicity code.
