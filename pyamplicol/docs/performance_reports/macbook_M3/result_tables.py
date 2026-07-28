@@ -33,6 +33,7 @@ _GLOBAL_OPTIONS_WITH_VALUE = {
     "--docs-dir",
     "--artifact-root",
     "--coordination-root",
+    "--class-c-ancestor-runtime-root",
 }
 
 
@@ -84,6 +85,39 @@ def _subcommand(arguments: list[str]) -> str | None:
     return None
 
 
+def _option_path(arguments: list[str], option: str) -> Path | None:
+    """Read one early bootstrap path option without importing the CLI."""
+
+    values: list[str] = []
+    offset = 0
+    while offset < len(arguments):
+        argument = arguments[offset]
+        if argument == option:
+            if offset + 1 >= len(arguments):
+                raise RuntimeError(f"{option} requires one absolute path")
+            values.append(arguments[offset + 1])
+            offset += 2
+            continue
+        prefix = f"{option}="
+        if argument.startswith(prefix):
+            values.append(argument[len(prefix) :])
+        offset += 1
+    if not values:
+        return None
+    if len(values) != 1:
+        raise RuntimeError(f"{option} must be specified exactly once")
+    path = Path(values[0])
+    if not path.is_absolute():
+        raise RuntimeError(f"{option} must be an absolute path")
+    try:
+        root = path.resolve(strict=True)
+    except OSError as error:
+        raise RuntimeError(f"{option} is unavailable") from error
+    if not (root / "src/pyamplicol").is_dir():
+        raise RuntimeError(f"{option} has no pyamplicol source package")
+    return root
+
+
 ENTRYPOINT = Path(__file__).resolve()
 REPOSITORY_ROOT = _repository_root(ENTRYPOINT)
 EMBEDDED_PROFILE = _embedded_profile(ENTRYPOINT, REPOSITORY_ROOT)
@@ -95,6 +129,18 @@ if (
 ):
     ARGUMENTS[:0] = ("--report-profile", EMBEDDED_PROFILE)
 COMMAND = _subcommand(ARGUMENTS)
+CLASS_C_ANCESTOR_RUNTIME_ROOT = _option_path(
+    ARGUMENTS,
+    "--class-c-ancestor-runtime-root",
+)
+if (
+    CLASS_C_ANCESTOR_RUNTIME_ROOT is not None
+    and COMMAND != "prepare-class-c-bridge"
+):
+    raise RuntimeError(
+        "--class-c-ancestor-runtime-root is restricted to "
+        "prepare-class-c-bridge"
+    )
 RUNTIME_REQUIRED = COMMAND not in _PUBLICATION_ONLY_COMMANDS
 
 
@@ -195,7 +241,17 @@ def _bootstrap_exact_python(arguments: list[str]) -> None:
 if __name__ == "__main__":
     _bootstrap_exact_python(ARGUMENTS)
 
-for source_root in (REPOSITORY_ROOT / "src", REPOSITORY_ROOT):
+_PACKAGE_SOURCE_ROOT = (
+    REPOSITORY_ROOT
+    if CLASS_C_ANCESTOR_RUNTIME_ROOT is None
+    else CLASS_C_ANCESTOR_RUNTIME_ROOT
+)
+_IMPORT_ROOTS = (
+    REPOSITORY_ROOT,
+    _PACKAGE_SOURCE_ROOT / "src",
+    REPOSITORY_ROOT / "src",
+)
+for source_root in reversed(_IMPORT_ROOTS):
     if str(source_root) not in sys.path:
         sys.path.insert(0, str(source_root))
 NATIVE_PACKAGE_DIR = _native_package_dir()
@@ -220,7 +276,7 @@ if __name__ == "__main__" and RUNTIME_REQUIRED:
     )
 
     if NATIVE_PACKAGE_DIR is not None:
-        _EXACT_SOURCE_PACKAGE = REPOSITORY_ROOT / "src" / "pyamplicol"
+        _EXACT_SOURCE_PACKAGE = _PACKAGE_SOURCE_ROOT / "src" / "pyamplicol"
         _EXACT_PACKAGE_ROOTS = (
             (_EXACT_SOURCE_PACKAGE,)
             if NATIVE_PACKAGE_DIR == _EXACT_SOURCE_PACKAGE

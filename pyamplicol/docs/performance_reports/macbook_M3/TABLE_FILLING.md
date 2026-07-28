@@ -300,18 +300,26 @@ set -euo pipefail
 A='full-ancestor-measurement-SHA'
 D="$(git rev-parse HEAD)"
 test "$D" != "$A"
-.venv/bin/python docs/performance_reports/macbook_M3/result_tables.py \
-  prepare-class-c-bridge \
+.venv/bin/python tools/developer/prepare_class_c_bridge.py \
+  --report-profile macbook_M3 \
   --ancestor-revision "$A" --descendant-revision "$D" \
   --impact hzz-orientation-v1
 ```
 
-The command authenticates the exact `A..D` path/status/mode/blob diff, frozen
+The helper materializes a disposable tracked `A` worktree, binds only the
+retained regular native extension, staged runtime metadata, and authenticated
+ignored dependency inputs, and runs the `D` controller with `pyamplicol` from
+that ancestor runtime. It prints both runtime identities and deletes the
+temporary worktree after PREPARE. This avoids importing the descendant Python
+package against the intentionally retained ancestor native extension. The
+controller authenticates the exact `A..D` path/status/mode/blob diff, frozen
 workspace policy, complete attempt history, current pins, and active
 recurrence-schedule reachability. It fails if a worker is in flight or any
-unreviewed executable/dependency/runtime path changed. Now perform the exact
-candidate build/install sequence from this section for `D`, without deleting
-the profile artifact or coordination roots, and finalize:
+unreviewed executable/dependency/runtime path changed. This bootstrap is
+restricted to PREPARE; normal runtime commands retain their strict
+source/native checks. Now perform the exact candidate build/install sequence
+from this section for `D`, without deleting the profile artifact or
+coordination roots, and finalize:
 
 ```bash
 set -euo pipefail

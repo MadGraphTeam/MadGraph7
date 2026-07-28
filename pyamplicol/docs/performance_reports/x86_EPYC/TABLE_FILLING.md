@@ -258,18 +258,26 @@ set -euo pipefail
 A='full-ancestor-measurement-SHA'
 D="$(git rev-parse HEAD)"
 test "$D" != "$A"
-.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
-  prepare-class-c-bridge \
+.venv/bin/python tools/developer/prepare_class_c_bridge.py \
+  --report-profile x86_EPYC \
   --ancestor-revision "$A" --descendant-revision "$D" \
   --impact hzz-orientation-v1
 ```
 
-The command authenticates the exact `A..D` path/status/mode/blob diff, frozen
+The helper materializes a disposable tracked `A` worktree, binds only the
+retained regular native extension, staged runtime metadata, and authenticated
+ignored dependency inputs, and runs the `D` controller with `pyamplicol` from
+that ancestor runtime. It prints both runtime identities and deletes the
+temporary worktree after PREPARE. This avoids importing the descendant Python
+package against the intentionally retained ancestor native extension. The
+controller authenticates the exact `A..D` path/status/mode/blob diff, frozen
 workspace policy, complete attempt history, current pins, and active
 recurrence-schedule reachability. It fails if a worker is in flight or any
-unreviewed executable/dependency/runtime path changed. Perform the exact
-candidate build/install sequence from this section for `D`, without deleting
-the profile artifact or coordination roots, then finalize:
+unreviewed executable/dependency/runtime path changed. This bootstrap is
+restricted to PREPARE; normal runtime commands retain their strict
+source/native checks. Perform the exact candidate build/install sequence from
+this section for `D`, without deleting the profile artifact or coordination
+roots, then finalize:
 
 ```bash
 set -euo pipefail
@@ -338,11 +346,18 @@ test "$(git rev-parse HEAD)" = "$D"
 test "$D" != "$A"
 git merge-base --is-ancestor "$A" "$FIX"
 git merge-base --is-ancestor "$FIX" "$D"
-.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
-  prepare-class-c-bridge \
+.venv/bin/python tools/developer/prepare_class_c_bridge.py \
+  --report-profile x86_EPYC \
   --ancestor-revision "$A" --descendant-revision "$D" \
   --impact recurrence-summary-cap-v1
 ```
+
+The helper recreates the exact retained `A` package/runtime namespace
+automatically. Do not symlink the descendant package over `src/pyamplicol`,
+rerun `just dev-install` before PREPARE, or hand-build a mixed controller
+worktree. The JSON preflight must name `A` as the package revision, `D` as the
+tools revision, and must reproduce the native-extension and native-input
+digests recorded by the retained source runtime.
 
 Build, install, prepare, and authenticate the exact candidate for `D` using
 the commands in Section 3 without deleting either profile artifact root. Then

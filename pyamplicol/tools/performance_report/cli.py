@@ -137,6 +137,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--docs-dir", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--artifact-root", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--coordination-root", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--class-c-ancestor-runtime-root",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command, help_text in (
         ("validate", "validate canonical caches and rendered tables"),
@@ -421,6 +426,116 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _git_commit(root: Path, revision: str) -> str:
+    completed = subprocess.run(
+        ("git", "-C", str(root), "rev-parse", "--verify", f"{revision}^{{commit}}"),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    value = completed.stdout.strip()
+    if (
+        completed.returncode != 0
+        or len(value) != 40
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise MeasurementLineageError(
+            f"cannot resolve Class-C runtime revision {revision!r}"
+        )
+    return value
+
+
+def _class_c_ancestor_runtime_identity(
+    repo_root: Path,
+    runtime_root: Path,
+    *,
+    ancestor_revision: str,
+    descendant_revision: str,
+) -> dict[str, object]:
+    """Authenticate the ancestor package selected by the direct bootstrap."""
+
+    try:
+        root = runtime_root.expanduser().resolve(strict=True)
+        source_package = (root / "src/pyamplicol").resolve(strict=True)
+    except OSError as error:
+        raise MeasurementLineageError(
+            "Class-C ancestor runtime root is unavailable"
+        ) from error
+    if root == repo_root.resolve(strict=False) or not source_package.is_dir():
+        raise MeasurementLineageError(
+            "Class-C ancestor runtime must be a separate source checkout"
+        )
+    ancestor = _git_commit(root, ancestor_revision)
+    descendant = _git_commit(repo_root, descendant_revision)
+    if _git_commit(root, "HEAD") != ancestor:
+        raise MeasurementLineageError(
+            "Class-C ancestor runtime checkout is not at the requested ancestor"
+        )
+    if _git_commit(repo_root, "HEAD") != descendant:
+        raise MeasurementLineageError(
+            "Class-C controller checkout is not at the requested descendant"
+        )
+    tracked = subprocess.run(
+        (
+            "git",
+            "-C",
+            str(root),
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=no",
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if tracked.returncode != 0 or tracked.stdout:
+        raise MeasurementLineageError(
+            "Class-C ancestor runtime has tracked source modifications"
+        )
+
+    import pyamplicol
+
+    try:
+        package_origin = Path(str(pyamplicol.__file__)).resolve(strict=True)
+    except OSError as error:
+        raise MeasurementLineageError(
+            "loaded Class-C ancestor package origin is unavailable"
+        ) from error
+    if package_origin.parent != source_package:
+        raise MeasurementLineageError(
+            "loaded pyamplicol package does not originate in the Class-C "
+            "ancestor runtime checkout"
+        )
+    from .runtime_evidence import established_preimport_runtime_identity
+
+    preimport = established_preimport_runtime_identity()
+    tree = preimport.get("python_package_tree")
+    native = preimport.get("native_extension")
+    if (
+        not isinstance(tree, Mapping)
+        or tree.get("roots") != [str(source_package)]
+        or not isinstance(native, Mapping)
+    ):
+        raise MeasurementLineageError(
+            "Class-C ancestor package was not exclusively preauthenticated"
+        )
+    native_path = native.get("path")
+    if (
+        not isinstance(native_path, str)
+        or Path(native_path).resolve(strict=False).parent != source_package
+    ):
+        raise MeasurementLineageError(
+            "Class-C ancestor native extension was not preauthenticated"
+        )
+    return {
+        "revision": ancestor,
+        "root": str(root),
+        "package_root": str(source_package),
+        "python_package_tree_sha256": tree.get("sha256"),
+        "native_extension_sha256": native.get("sha256"),
+    }
+
+
 def _multiplicities(values: Sequence[str]) -> frozenset[int]:
     selected: set[int] = set()
     for value in values:
@@ -595,6 +710,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     repo_root = args.repo_root.expanduser().resolve(strict=False)
+    if (
+        args.class_c_ancestor_runtime_root is not None
+        and args.command != "prepare-class-c-bridge"
+    ):
+        parser.error(
+            "--class-c-ancestor-runtime-root is restricted to "
+            "prepare-class-c-bridge"
+        )
     if args.command == "init-profile":
         output = initialize_profile(
             repo_root,
@@ -662,6 +785,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "prepare-class-c-bridge":
         if args.report_profile is None:
             parser.error("prepare-class-c-bridge requires --report-profile")
+        ancestor_runtime = (
+            None
+            if args.class_c_ancestor_runtime_root is None
+            else _class_c_ancestor_runtime_identity(
+                repo_root,
+                args.class_c_ancestor_runtime_root,
+                ancestor_revision=args.ancestor_revision,
+                descendant_revision=args.descendant_revision,
+            )
+        )
         prepared = prepare_class_c_bridge(
             repo_root,
             service.paths.docs_dir,
@@ -684,6 +817,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "current_snapshot_sha256": prepared[
                         "current_snapshot_sha256"
                     ],
+                    **(
+                        {}
+                        if ancestor_runtime is None
+                        else {"ancestor_runtime": ancestor_runtime}
+                    ),
                 },
                 sort_keys=True,
             )
