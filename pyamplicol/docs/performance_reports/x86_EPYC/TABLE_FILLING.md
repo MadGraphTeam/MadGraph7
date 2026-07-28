@@ -98,6 +98,12 @@ authenticated finalized measurement lineage.
   closure reaches an excluded ID, so a batch cannot silently reselect the held
   closure. Never reset, relabel, or restart the whole campaign for a scoped
   defect.
+- A completed `worker-result.json` is not current evidence if its controller
+  disappeared before attempt sealing. The publisher intentionally ignores such
+  an orphan. Recovery must validate the original result and attempt files,
+  seal that same immutable attempt, and atomically publish its authenticated
+  `current.json`; do not hand-edit a pointer or rerun a valid worker result
+  merely to recreate controller ceremony.
 - Controller-only descendants do not require PREPARE, a native rebuild,
   runtime restaging, or a source bridge. Executable-source descendants use the
   authenticated scoped bridge and rerun only its certified closure.
