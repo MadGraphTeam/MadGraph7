@@ -12,7 +12,7 @@ use rusticol_core::eager_layout::{
     EAGER_RUNTIME_LAYOUT_ABI,
 };
 use rusticol_core::{
-    EAGER_LOWERING_V1_TABLE_NAMES, EagerBitsetColumns, EagerCoherentGroupColumns,
+    lower_eager_plan_v3, write_eager_plan_v3_pacbin, EagerBitsetColumns, EagerCoherentGroupColumns,
     EagerColorContractionEntryColumns, EagerColorContractionMetadata, EagerColorSelectorColumns,
     EagerContractionCoefficientColumns, EagerCouplingColumns, EagerCurrentColumns,
     EagerExactFactorColumns, EagerHelicitySelectorColumns, EagerI32SequenceColumns,
@@ -20,7 +20,7 @@ use rusticol_core::{
     EagerLoweringInputV1View, EagerModelParameterColumns, EagerMomentumMaskColumns,
     EagerPrimitiveColumnView, EagerReductionMemberColumns, EagerRetainedColumnView,
     EagerRetainedTableView, EagerRootColumns, EagerSourceColumns, EagerU32SequenceColumns,
-    RusticolError, RusticolResult, lower_eager_plan_v3, write_eager_plan_v3_pacbin,
+    RusticolError, RusticolResult, EAGER_LOWERING_V1_TABLE_NAMES,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -33,6 +33,7 @@ const INPUT_SCHEMA_SHA256: &str =
 const RESULT_KIND: &str = "pyamplicol-eager-runtime-lowering-result";
 const RESULT_SCHEMA_VERSION: u32 = 1;
 const STORAGE_ABI: &str = "pacbin-v1";
+const SELECTOR_WORK_ABI: &str = "pyamplicol-eager-selector-work-v1";
 
 struct NativeLoweringResult {
     process_key: String,
@@ -58,6 +59,17 @@ struct NativeLoweringResult {
     current_component_count: u64,
     value_component_count: u64,
     momentum_component_count: u64,
+    selected_flow_selector_count: u64,
+    selected_flow_current_count: u64,
+    selected_flow_evaluation_count: u64,
+    selected_flow_attachment_count: u64,
+    all_flow_selector_count: u64,
+    all_flow_current_count: u64,
+    all_flow_evaluation_count: u64,
+    all_flow_attachment_count: u64,
+    contracted_current_count: u64,
+    contracted_evaluation_count: u64,
+    contracted_attachment_count: u64,
 }
 
 enum BorrowedValues<'py> {
@@ -472,6 +484,7 @@ pub(crate) fn _lower_eager_runtime_v1(
     let native = py
         .detach(move || {
             let plan = lower_eager_plan_v3(owned)?;
+            let selector_work = plan.selector_work_summary()?;
             let result = NativeLoweringResult {
                 process_key: plan.process_key().to_owned(),
                 model_name: plan.model_name().to_owned(),
@@ -493,6 +506,17 @@ pub(crate) fn _lower_eager_runtime_v1(
                 current_component_count: plan.current_component_count(),
                 value_component_count: plan.value_component_count(),
                 momentum_component_count: plan.momentum_component_count(),
+                selected_flow_selector_count: selector_work.selected_flow_selector_count,
+                selected_flow_current_count: selector_work.selected_flow_worst.current_count,
+                selected_flow_evaluation_count: selector_work.selected_flow_worst.evaluation_count,
+                selected_flow_attachment_count: selector_work.selected_flow_worst.attachment_count,
+                all_flow_selector_count: selector_work.all_flow_selector_count,
+                all_flow_current_count: selector_work.all_flow_worst.current_count,
+                all_flow_evaluation_count: selector_work.all_flow_worst.evaluation_count,
+                all_flow_attachment_count: selector_work.all_flow_worst.attachment_count,
+                contracted_current_count: selector_work.contracted.current_count,
+                contracted_evaluation_count: selector_work.contracted.evaluation_count,
+                contracted_attachment_count: selector_work.contracted.attachment_count,
                 member_count: 0,
                 unpacked_size_bytes: 0,
                 index_sha256: String::new(),
@@ -564,6 +588,44 @@ fn result_mapping(
     inspection.set_item("current_component_count", native.current_component_count)?;
     inspection.set_item("value_component_count", native.value_component_count)?;
     inspection.set_item("momentum_component_count", native.momentum_component_count)?;
+    let selector_work = PyDict::new(py);
+    selector_work.set_item("abi", SELECTOR_WORK_ABI)?;
+    selector_work.set_item(
+        "selected_flow_selector_count",
+        native.selected_flow_selector_count,
+    )?;
+    selector_work.set_item(
+        "selected_flow_current_count",
+        native.selected_flow_current_count,
+    )?;
+    selector_work.set_item(
+        "selected_flow_evaluation_count",
+        native.selected_flow_evaluation_count,
+    )?;
+    selector_work.set_item(
+        "selected_flow_attachment_count",
+        native.selected_flow_attachment_count,
+    )?;
+    selector_work.set_item("all_flow_selector_count", native.all_flow_selector_count)?;
+    selector_work.set_item("all_flow_current_count", native.all_flow_current_count)?;
+    selector_work.set_item(
+        "all_flow_evaluation_count",
+        native.all_flow_evaluation_count,
+    )?;
+    selector_work.set_item(
+        "all_flow_attachment_count",
+        native.all_flow_attachment_count,
+    )?;
+    selector_work.set_item("contracted_current_count", native.contracted_current_count)?;
+    selector_work.set_item(
+        "contracted_evaluation_count",
+        native.contracted_evaluation_count,
+    )?;
+    selector_work.set_item(
+        "contracted_attachment_count",
+        native.contracted_attachment_count,
+    )?;
+    inspection.set_item("selector_work", selector_work)?;
     result.set_item("inspection_summary", inspection)?;
     Ok(result.into_any().unbind())
 }
@@ -999,11 +1061,9 @@ mod tests {
     #[test]
     fn every_v1_table_is_classified_for_retention() {
         assert_eq!(EAGER_LOWERING_V1_TABLE_NAMES.len(), 56);
-        assert!(
-            EAGER_LOWERING_V1_TABLE_NAMES
-                .windows(2)
-                .all(|pair| pair[0] < pair[1])
-        );
+        assert!(EAGER_LOWERING_V1_TABLE_NAMES
+            .windows(2)
+            .all(|pair| pair[0] < pair[1]));
     }
 
     #[test]

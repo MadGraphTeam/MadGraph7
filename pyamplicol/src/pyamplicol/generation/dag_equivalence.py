@@ -9,6 +9,8 @@ recursive computation instead of guessing them from particle names or PDGs.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -18,7 +20,7 @@ from typing import TypeAlias
 
 from ..models.base import Model, VertexEvaluationEquivalence
 from .contracts import runtime_coupling_parameter_names
-from .dag_types import CurrentNode, GenericDAG, InteractionNode
+from .dag_types import AmplitudeRoot, CurrentNode, GenericDAG, InteractionNode
 
 _ComplexWeight: TypeAlias = tuple[float, float]
 _CurrentContract: TypeAlias = tuple[object, ...]
@@ -49,6 +51,89 @@ class _ProjectiveExpressionRepresentative:
     representative_id: int
     term_vector: _CurrentTermVector
     normalization_factor: _ComplexWeight
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicColorProjectionCertificate:
+    """Fail-closed proof summary for one multilinear color projection.
+
+    The projection removes only ``CurrentIndex.color_state.sector_id``.
+    Accuracy, line groups, basis keys, every non-colour current field, and the
+    complete downstream physical-selector domain remain part of the class
+    key.  A projected kernel or closure row is emitted only when the old
+    ordered parent tuples are exactly the full Cartesian product of the
+    corresponding member classes, with no duplicate tuple.
+    """
+
+    abi: str
+    source_revision: str | None
+    source_semantics_sha256: str
+    selector_domains_sha256: str
+    current_class_members_sha256: str
+    old_to_new_current_ids: tuple[int, ...]
+    current_remap_sha256: str
+    interaction_groups_sha256: str
+    closure_groups_sha256: str
+    rectangle_cardinalities_sha256: str
+    row_identity_sha256: str
+    equality_check_status: str
+    retained_color_metadata: str
+    root_sector_policy: str
+    before_current_count: int
+    after_current_count: int
+    before_interaction_count: int
+    after_interaction_count: int
+    before_evaluation_count: int
+    after_evaluation_count: int
+    before_amplitude_root_count: int
+    after_amplitude_root_count: int
+    projected_current_class_count: int
+    rectangular_interaction_group_count: int
+    rectangular_closure_group_count: int
+    split_current_class_count: int
+
+    @property
+    def applied(self) -> bool:
+        return (
+            self.after_current_count < self.before_current_count
+            or self.after_interaction_count < self.before_interaction_count
+            or self.after_amplitude_root_count < self.before_amplitude_root_count
+        )
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "abi": self.abi,
+            "source_revision": self.source_revision,
+            "source_semantics_sha256": self.source_semantics_sha256,
+            "selector_domains_sha256": self.selector_domains_sha256,
+            "current_class_members_sha256": self.current_class_members_sha256,
+            "old_to_new_current_ids": list(self.old_to_new_current_ids),
+            "current_remap_sha256": self.current_remap_sha256,
+            "interaction_groups_sha256": self.interaction_groups_sha256,
+            "closure_groups_sha256": self.closure_groups_sha256,
+            "rectangle_cardinalities_sha256": (
+                self.rectangle_cardinalities_sha256
+            ),
+            "row_identity_sha256": self.row_identity_sha256,
+            "equality_check_status": self.equality_check_status,
+            "retained_color_metadata": self.retained_color_metadata,
+            "root_sector_policy": self.root_sector_policy,
+            "applied": self.applied,
+            "before_current_count": self.before_current_count,
+            "after_current_count": self.after_current_count,
+            "before_interaction_count": self.before_interaction_count,
+            "after_interaction_count": self.after_interaction_count,
+            "before_evaluation_count": self.before_evaluation_count,
+            "after_evaluation_count": self.after_evaluation_count,
+            "before_amplitude_root_count": self.before_amplitude_root_count,
+            "after_amplitude_root_count": self.after_amplitude_root_count,
+            "projected_current_class_count": self.projected_current_class_count,
+            "rectangular_interaction_group_count": (
+                self.rectangular_interaction_group_count
+            ),
+            "rectangular_closure_group_count": self.rectangular_closure_group_count,
+            "split_current_class_count": self.split_current_class_count,
+        }
 
 
 class RecursiveEvaluationReuseTracker:
@@ -356,6 +441,658 @@ def assign_recursive_current_evaluation_reuse(
     if rewritten == dag.interactions:
         return dag
     return replace(dag, interactions=rewritten)
+
+
+def _canonical_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _resolved_root_color_sector_id(dag: GenericDAG, root: AmplitudeRoot) -> int:
+    """Resolve the physical sector before any representative is selected."""
+
+    if root.color_sector_id is not None:
+        return int(root.color_sector_id)
+    return int(dag.currents[root.left_id].index.color_state.sector_id)
+
+
+def _downstream_color_selector_domains(
+    dag: GenericDAG,
+) -> tuple[tuple[int, ...], ...]:
+    """Return the complete physical LC selector domain of every current."""
+
+    domains: list[set[int]] = [set() for _current in dag.currents]
+    for root in dag.amplitude_roots:
+        sector_id = _resolved_root_color_sector_id(dag, root)
+        domains[root.left_id].add(sector_id)
+        domains[root.right_id].add(sector_id)
+    for interaction in reversed(dag.interactions):
+        result_domains = domains[interaction.result_id]
+        if not result_domains:
+            continue
+        domains[interaction.left_id].update(result_domains)
+        domains[interaction.right_id].update(result_domains)
+    return tuple(tuple(sorted(values)) for values in domains)
+
+
+def _dynamic_color_projection_key(
+    current: CurrentNode,
+    selector_domains: tuple[int, ...],
+) -> tuple[object, ...]:
+    """Return exact current identity with only dynamic LC sector omitted.
+
+    ``basis_key`` participates in coherent amplitude grouping and eager
+    metadata, while ``line_groups`` is the exact open-colour identity.  Both
+    therefore remain invariant within a projected class.  The lowerings use
+    particle/chirality/momentum plus the explicit row identity for numerical
+    kernels; the retained representative sector is metadata only after every
+    amplitude root has received its pre-projection resolved sector.
+    """
+
+    index = current.index
+    return (
+        int(index.particle_id),
+        int(index.external_mask),
+        index.external_labels,
+        index.ordered_external_labels,
+        int(index.helicity_ancestry),
+        int(index.chirality),
+        index.spin_state,
+        index.flavour_flow,
+        index.quantum_number_flow,
+        index.color_state.accuracy,
+        index.color_state.line_groups,
+        index.color_state.basis_key,
+        int(index.momentum_mask),
+        index.coupling_orders,
+        index.auxiliary_kind,
+        int(current.dimension),
+        selector_domains,
+    )
+
+
+def _projection_partition(
+    dag: GenericDAG,
+    selector_domains: tuple[tuple[int, ...], ...],
+    split_current_ids: set[int],
+) -> tuple[tuple[tuple[int, ...], ...], tuple[int, ...]]:
+    grouped: dict[tuple[object, ...], list[int]] = defaultdict(list)
+    for current in dag.currents:
+        # External source rows remain singleton.  Their physical source route
+        # is an initialization contract, not a multilinear recurrence row.
+        if current.is_source or current.id in split_current_ids:
+            key = ("singleton", current.id)
+        else:
+            key = (
+                "dynamic-color",
+                _dynamic_color_projection_key(
+                    current,
+                    selector_domains[current.id],
+                ),
+            )
+        grouped[key].append(current.id)
+    classes = tuple(
+        sorted(
+            (tuple(sorted(members)) for members in grouped.values()),
+            key=lambda members: (
+                len(dag.currents[members[0]].index.external_labels),
+                members[0],
+            ),
+        )
+    )
+    class_by_current = [-1] * len(dag.currents)
+    for class_id, members in enumerate(classes):
+        for current_id in members:
+            class_by_current[current_id] = class_id
+    if any(class_id < 0 for class_id in class_by_current):
+        raise ValueError("dynamic-color projection left a current unpartitioned")
+    return classes, tuple(class_by_current)
+
+
+def _interaction_projection_key(
+    interaction: InteractionNode,
+    class_by_current: tuple[int, ...],
+    *,
+    keep_row_distinct: bool,
+) -> tuple[object, ...]:
+    return (
+        class_by_current[interaction.result_id],
+        class_by_current[interaction.left_id],
+        class_by_current[interaction.right_id],
+        int(interaction.vertex_kind),
+        interaction.vertex_particles,
+        interaction.coupling,
+        interaction.color_weight,
+        interaction.lowering_backend,
+        bool(interaction.full_tensor_network_ready),
+        interaction.id if keep_row_distinct else None,
+    )
+
+
+def _root_projection_key(
+    dag: GenericDAG,
+    root: AmplitudeRoot,
+    class_by_current: tuple[int, ...],
+    *,
+    keep_row_distinct: bool,
+) -> tuple[object, ...]:
+    return (
+        class_by_current[root.left_id],
+        class_by_current[root.right_id],
+        root.kind,
+        root.color_weight,
+        root.contraction_ir,
+        _resolved_root_color_sector_id(dag, root),
+        root.vertex_kind,
+        root.vertex_particles,
+        root.coupling,
+        float(root.helicity_weight),
+        root.id if keep_row_distinct else None,
+    )
+
+
+def _projection_groups(
+    dag: GenericDAG,
+    classes: tuple[tuple[int, ...], ...],
+    class_by_current: tuple[int, ...],
+) -> tuple[
+    dict[tuple[object, ...], list[InteractionNode]],
+    dict[tuple[object, ...], list[AmplitudeRoot]],
+]:
+    interaction_groups: dict[tuple[object, ...], list[InteractionNode]] = defaultdict(
+        list
+    )
+    for interaction in dag.interactions:
+        involved = (
+            class_by_current[interaction.result_id],
+            class_by_current[interaction.left_id],
+            class_by_current[interaction.right_id],
+        )
+        keep_distinct = all(len(classes[class_id]) == 1 for class_id in involved)
+        interaction_groups[
+            _interaction_projection_key(
+                interaction,
+                class_by_current,
+                keep_row_distinct=keep_distinct,
+            )
+        ].append(interaction)
+
+    root_groups: dict[tuple[object, ...], list[AmplitudeRoot]] = defaultdict(list)
+    for root in dag.amplitude_roots:
+        involved = (
+            class_by_current[root.left_id],
+            class_by_current[root.right_id],
+        )
+        keep_distinct = all(len(classes[class_id]) == 1 for class_id in involved)
+        root_groups[
+            _root_projection_key(
+                dag,
+                root,
+                class_by_current,
+                keep_row_distinct=keep_distinct,
+            )
+        ].append(root)
+    return interaction_groups, root_groups
+
+
+def _invalid_projection_classes(
+    dag: GenericDAG,
+    classes: tuple[tuple[int, ...], ...],
+    class_by_current: tuple[int, ...],
+    interaction_groups: dict[tuple[object, ...], list[InteractionNode]],
+    root_groups: dict[tuple[object, ...], list[AmplitudeRoot]],
+) -> set[int]:
+    """Return every non-singleton class implicated in a non-rectangle."""
+
+    invalid: set[int] = set()
+    produced_by_class: dict[int, set[int]] = defaultdict(set)
+    for rows in interaction_groups.values():
+        first = rows[0]
+        result_class = class_by_current[first.result_id]
+        left_class = class_by_current[first.left_id]
+        right_class = class_by_current[first.right_id]
+        produced_by_class[result_class].update(row.result_id for row in rows)
+        if all(
+            len(classes[class_id]) == 1
+            for class_id in (result_class, left_class, right_class)
+        ):
+            continue
+        actual = [(row.left_id, row.right_id) for row in rows]
+        expected = {
+            (left_id, right_id)
+            for left_id in classes[left_class]
+            for right_id in classes[right_class]
+        }
+        if len(actual) != len(set(actual)) or set(actual) != expected:
+            invalid.update(
+                class_id
+                for class_id in (result_class, left_class, right_class)
+                if len(classes[class_id]) > 1
+            )
+
+    for class_id, members in enumerate(classes):
+        if len(members) == 1 or dag.currents[members[0]].is_source:
+            continue
+        if produced_by_class.get(class_id, set()) != set(members):
+            invalid.add(class_id)
+
+    for roots in root_groups.values():
+        first = roots[0]
+        left_class = class_by_current[first.left_id]
+        right_class = class_by_current[first.right_id]
+        if len(classes[left_class]) == len(classes[right_class]) == 1:
+            continue
+        actual = [(root.left_id, root.right_id) for root in roots]
+        expected = {
+            (left_id, right_id)
+            for left_id in classes[left_class]
+            for right_id in classes[right_class]
+        }
+        if len(actual) != len(set(actual)) or set(actual) != expected:
+            invalid.update(
+                class_id
+                for class_id in (left_class, right_class)
+                if len(classes[class_id]) > 1
+            )
+    return invalid
+
+
+_DYNAMIC_COLOR_PROJECTION_ABI = (
+    "pyamplicol-generic-dag-dynamic-color-projection-v2"
+)
+_RETAINED_COLOR_METADATA_POLICY = (
+    "accuracy-line-groups-basis-key-identical; representative-sector-metadata-only"
+)
+_ROOT_SECTOR_POLICY = (
+    "pre-projection-resolved-sector-is-explicit-and-never-cross-projected"
+)
+
+
+def _initial_dynamic_color_projection_certificate(
+    dag: GenericDAG,
+    *,
+    source_revision: str | None,
+    equality_check_status: str,
+) -> DynamicColorProjectionCertificate:
+    identity = tuple(range(len(dag.currents)))
+    return DynamicColorProjectionCertificate(
+        abi=_DYNAMIC_COLOR_PROJECTION_ABI,
+        source_revision=source_revision,
+        source_semantics_sha256=_canonical_sha256(dag.to_json_dict()),
+        selector_domains_sha256=_canonical_sha256([]),
+        current_class_members_sha256=_canonical_sha256(
+            [[current.id] for current in dag.currents]
+        ),
+        old_to_new_current_ids=identity,
+        current_remap_sha256=_canonical_sha256(list(identity)),
+        interaction_groups_sha256=_canonical_sha256(
+            [[interaction.id] for interaction in dag.interactions]
+        ),
+        closure_groups_sha256=_canonical_sha256(
+            [[root.id] for root in dag.amplitude_roots]
+        ),
+        rectangle_cardinalities_sha256=_canonical_sha256([]),
+        row_identity_sha256=_canonical_sha256(
+            {
+                "interactions": [
+                    interaction.to_json_dict() for interaction in dag.interactions
+                ],
+                "roots": [root.to_json_dict() for root in dag.amplitude_roots],
+            }
+        ),
+        equality_check_status=equality_check_status,
+        retained_color_metadata=_RETAINED_COLOR_METADATA_POLICY,
+        root_sector_policy=_ROOT_SECTOR_POLICY,
+        before_current_count=len(dag.currents),
+        after_current_count=len(dag.currents),
+        before_interaction_count=len(dag.interactions),
+        after_interaction_count=len(dag.interactions),
+        before_evaluation_count=dag.interaction_evaluation_count,
+        after_evaluation_count=dag.interaction_evaluation_count,
+        before_amplitude_root_count=len(dag.amplitude_roots),
+        after_amplitude_root_count=len(dag.amplitude_roots),
+        projected_current_class_count=0,
+        rectangular_interaction_group_count=0,
+        rectangular_closure_group_count=0,
+        split_current_class_count=0,
+    )
+
+
+def _projection_proof_payloads(
+    dag: GenericDAG,
+    selector_domains: tuple[tuple[int, ...], ...],
+    classes: tuple[tuple[int, ...], ...],
+    class_by_current: tuple[int, ...],
+    interaction_groups: dict[tuple[object, ...], list[InteractionNode]],
+    root_groups: dict[tuple[object, ...], list[AmplitudeRoot]],
+) -> dict[str, object]:
+    """Return the complete deterministic witness committed by the certificate."""
+
+    ordered_interaction_groups = sorted(
+        interaction_groups.values(),
+        key=lambda rows: min(row.id for row in rows),
+    )
+    ordered_root_groups = sorted(
+        root_groups.values(),
+        key=lambda rows: min(row.id for row in rows),
+    )
+    rectangle_cardinalities: list[dict[str, object]] = []
+    row_identities: list[dict[str, object]] = []
+    for rows in ordered_interaction_groups:
+        first = rows[0]
+        result_class = class_by_current[first.result_id]
+        left_class = class_by_current[first.left_id]
+        right_class = class_by_current[first.right_id]
+        actual_pairs = sorted((row.left_id, row.right_id) for row in rows)
+        rectangle_cardinalities.append(
+            {
+                "kind": "interaction",
+                "row_ids": sorted(row.id for row in rows),
+                "result_class_size": len(classes[result_class]),
+                "left_class_size": len(classes[left_class]),
+                "right_class_size": len(classes[right_class]),
+                "row_count": len(rows),
+                "unique_parent_pair_count": len(set(actual_pairs)),
+                "expected_parent_pair_count": (
+                    len(classes[left_class]) * len(classes[right_class])
+                ),
+            }
+        )
+        row_identities.append(
+            {
+                "kind": "interaction",
+                "result_class_id": result_class,
+                "left_class_id": left_class,
+                "right_class_id": right_class,
+                "vertex_kind": int(first.vertex_kind),
+                "vertex_particles": list(first.vertex_particles),
+                "coupling": list(first.coupling),
+                "color_weight": list(first.color_weight),
+                "lowering_backend": first.lowering_backend,
+                "full_tensor_network_ready": bool(
+                    first.full_tensor_network_ready
+                ),
+                "row_ids": sorted(row.id for row in rows),
+            }
+        )
+    for roots in ordered_root_groups:
+        first = roots[0]
+        left_class = class_by_current[first.left_id]
+        right_class = class_by_current[first.right_id]
+        actual_pairs = sorted((root.left_id, root.right_id) for root in roots)
+        resolved_sector = _resolved_root_color_sector_id(dag, first)
+        rectangle_cardinalities.append(
+            {
+                "kind": "closure",
+                "row_ids": sorted(root.id for root in roots),
+                "left_class_size": len(classes[left_class]),
+                "right_class_size": len(classes[right_class]),
+                "row_count": len(roots),
+                "unique_parent_pair_count": len(set(actual_pairs)),
+                "expected_parent_pair_count": (
+                    len(classes[left_class]) * len(classes[right_class])
+                ),
+                "resolved_color_sector_id": resolved_sector,
+            }
+        )
+        row_identities.append(
+            {
+                "kind": "closure",
+                "left_class_id": left_class,
+                "right_class_id": right_class,
+                "root_kind": first.kind,
+                "color_weight": list(first.color_weight),
+                "contraction_ir": first.contraction_ir.to_json_dict(),
+                "resolved_color_sector_id": resolved_sector,
+                "vertex_kind": first.vertex_kind,
+                "vertex_particles": (
+                    None
+                    if first.vertex_particles is None
+                    else list(first.vertex_particles)
+                ),
+                "coupling": list(first.coupling),
+                "helicity_weight": float(first.helicity_weight),
+                "row_ids": sorted(root.id for root in roots),
+            }
+        )
+    return {
+        "selector_domains_sha256": _canonical_sha256(
+            [list(domain) for domain in selector_domains]
+        ),
+        "current_class_members_sha256": _canonical_sha256(
+            [list(members) for members in classes]
+        ),
+        "current_remap_sha256": _canonical_sha256(list(class_by_current)),
+        "interaction_groups_sha256": _canonical_sha256(
+            [sorted(row.id for row in rows) for rows in ordered_interaction_groups]
+        ),
+        "closure_groups_sha256": _canonical_sha256(
+            [sorted(root.id for root in roots) for roots in ordered_root_groups]
+        ),
+        "rectangle_cardinalities_sha256": _canonical_sha256(
+            rectangle_cardinalities
+        ),
+        "row_identity_sha256": _canonical_sha256(row_identities),
+    }
+
+
+def project_rectangular_dynamic_color_classes(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    source_revision: str | None = None,
+) -> tuple[GenericDAG, DynamicColorProjectionCertificate]:
+    """Project exact dynamic-color rectangles into shared sum currents.
+
+    This is the GenericDAG counterpart of topology-replay value projection.
+    It is intentionally conservative:
+
+    * source currents remain singleton;
+    * every current field except dynamic LC sector remains in the class key;
+    * the downstream physical-selector domain is part of that key;
+    * concrete kernel identity, coupling, coefficient, and parent order remain
+      exact;
+    * both transition and amplitude-closure rows must form complete Cartesian
+      products without duplicates.
+
+    A failed rectangle splits every implicated class and retries to a fixed
+    point.  Therefore a malformed or incomplete color orbit can only reduce
+    optimization, never alter the generated amplitude.
+    """
+
+    before = _initial_dynamic_color_projection_certificate(
+        dag,
+        source_revision=source_revision,
+        equality_check_status="not-applicable",
+    )
+    if (
+        dag.process.color_accuracy != "lc"
+        or not dag.currents
+        or not dag.interactions
+        or not dag.amplitude_roots
+    ):
+        return dag, before
+    if dag.helicity_recurrence is not None or dag.helicity_materialization is not None:
+        raise ValueError(
+            "dynamic-color projection must precede helicity recurrence materialization"
+        )
+
+    selector_domains = _downstream_color_selector_domains(dag)
+    split_current_ids: set[int] = set()
+    split_class_count = 0
+    while True:
+        classes, class_by_current = _projection_partition(
+            dag,
+            selector_domains,
+            split_current_ids,
+        )
+        interaction_groups, root_groups = _projection_groups(
+            dag,
+            classes,
+            class_by_current,
+        )
+        invalid_classes = _invalid_projection_classes(
+            dag,
+            classes,
+            class_by_current,
+            interaction_groups,
+            root_groups,
+        )
+        newly_split = {
+            current_id
+            for class_id in invalid_classes
+            for current_id in classes[class_id]
+            if current_id not in split_current_ids
+        }
+        if not newly_split:
+            break
+        split_class_count += len(invalid_classes)
+        split_current_ids.update(newly_split)
+
+    proof_payloads = _projection_proof_payloads(
+        dag,
+        selector_domains,
+        classes,
+        class_by_current,
+        interaction_groups,
+        root_groups,
+    )
+    projected_class_count = sum(len(members) > 1 for members in classes)
+    if projected_class_count == 0:
+        return dag, replace(
+            before,
+            selector_domains_sha256=str(
+                proof_payloads["selector_domains_sha256"]
+            ),
+            current_class_members_sha256=str(
+                proof_payloads["current_class_members_sha256"]
+            ),
+            old_to_new_current_ids=class_by_current,
+            current_remap_sha256=str(proof_payloads["current_remap_sha256"]),
+            interaction_groups_sha256=str(
+                proof_payloads["interaction_groups_sha256"]
+            ),
+            closure_groups_sha256=str(
+                proof_payloads["closure_groups_sha256"]
+            ),
+            rectangle_cardinalities_sha256=str(
+                proof_payloads["rectangle_cardinalities_sha256"]
+            ),
+            row_identity_sha256=str(proof_payloads["row_identity_sha256"]),
+            equality_check_status="passed-no-projectable-classes",
+            split_current_class_count=split_class_count,
+        )
+
+    old_to_new = class_by_current
+    currents = tuple(
+        replace(dag.currents[members[0]], id=class_id)
+        for class_id, members in enumerate(classes)
+    )
+    sources = tuple(
+        old_to_new[source_id]
+        for source_id in dag.sources
+    )
+    if len(sources) != len(set(sources)):
+        raise ValueError("dynamic-color projection unexpectedly merged source currents")
+
+    interactions: list[InteractionNode] = []
+    rectangular_interaction_count = 0
+    for rows in sorted(
+        interaction_groups.values(),
+        key=lambda rows: min(row.id for row in rows),
+    ):
+        first = rows[0]
+        involved = (
+            old_to_new[first.result_id],
+            old_to_new[first.left_id],
+            old_to_new[first.right_id],
+        )
+        if any(len(classes[class_id]) > 1 for class_id in involved):
+            rectangular_interaction_count += 1
+        interactions.append(
+            replace(
+                first,
+                id=len(interactions),
+                left_id=old_to_new[first.left_id],
+                right_id=old_to_new[first.right_id],
+                result_id=old_to_new[first.result_id],
+                evaluation_group_id=None,
+                evaluation_factor=(1.0, 0.0),
+            )
+        )
+
+    roots: list[AmplitudeRoot] = []
+    rectangular_closure_count = 0
+    for grouped_roots in sorted(
+        root_groups.values(),
+        key=lambda rows: min(row.id for row in rows),
+    ):
+        first = grouped_roots[0]
+        if (
+            len(classes[old_to_new[first.left_id]]) > 1
+            or len(classes[old_to_new[first.right_id]]) > 1
+        ):
+            rectangular_closure_count += 1
+        roots.append(
+            replace(
+                first,
+                id=len(roots),
+                left_id=old_to_new[first.left_id],
+                right_id=old_to_new[first.right_id],
+                color_sector_id=_resolved_root_color_sector_id(dag, first),
+            )
+        )
+
+    projected = replace(
+        dag,
+        currents=currents,
+        sources=sources,
+        interactions=tuple(interactions),
+        amplitude_roots=tuple(roots),
+    )
+    projected = assign_recursive_current_evaluation_reuse(projected, model)
+    certificate = DynamicColorProjectionCertificate(
+        abi=_DYNAMIC_COLOR_PROJECTION_ABI,
+        source_revision=source_revision,
+        source_semantics_sha256=before.source_semantics_sha256,
+        selector_domains_sha256=str(
+            proof_payloads["selector_domains_sha256"]
+        ),
+        current_class_members_sha256=str(
+            proof_payloads["current_class_members_sha256"]
+        ),
+        old_to_new_current_ids=old_to_new,
+        current_remap_sha256=str(proof_payloads["current_remap_sha256"]),
+        interaction_groups_sha256=str(
+            proof_payloads["interaction_groups_sha256"]
+        ),
+        closure_groups_sha256=str(proof_payloads["closure_groups_sha256"]),
+        rectangle_cardinalities_sha256=str(
+            proof_payloads["rectangle_cardinalities_sha256"]
+        ),
+        row_identity_sha256=str(proof_payloads["row_identity_sha256"]),
+        equality_check_status="passed-exact-cartesian-products-no-duplicates",
+        retained_color_metadata=_RETAINED_COLOR_METADATA_POLICY,
+        root_sector_policy=_ROOT_SECTOR_POLICY,
+        before_current_count=len(dag.currents),
+        after_current_count=len(projected.currents),
+        before_interaction_count=len(dag.interactions),
+        after_interaction_count=len(projected.interactions),
+        before_evaluation_count=dag.interaction_evaluation_count,
+        after_evaluation_count=projected.interaction_evaluation_count,
+        before_amplitude_root_count=len(dag.amplitude_roots),
+        after_amplitude_root_count=len(projected.amplitude_roots),
+        projected_current_class_count=projected_class_count,
+        rectangular_interaction_group_count=rectangular_interaction_count,
+        rectangular_closure_group_count=rectangular_closure_count,
+        split_current_class_count=split_class_count,
+    )
+    return projected, certificate
 
 
 def _derive_current_value_equivalences(
@@ -881,6 +1618,8 @@ def _canonical_zero(value: float) -> float:
 
 
 __all__ = [
+    "DynamicColorProjectionCertificate",
     "RecursiveEvaluationReuseTracker",
     "assign_recursive_current_evaluation_reuse",
+    "project_rectangular_dynamic_color_classes",
 ]

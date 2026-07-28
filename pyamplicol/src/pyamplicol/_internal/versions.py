@@ -296,6 +296,22 @@ def active_native_source_identity() -> tuple[str, str]:
     return source_revision, native_digest
 
 
+def active_source_revision() -> str | None:
+    """Return the revision bound to the active wheel/source runtime, if any."""
+
+    build_info = _active_build_info()
+    if build_info is None:
+        return None
+    revision = build_info.get("source_revision")
+    if (
+        not isinstance(revision, str)
+        or len(revision) != 40
+        or any(character not in "0123456789abcdef" for character in revision)
+    ):
+        return None
+    return revision
+
+
 def verify_native_module(module: Any, *, expected_version: str | None = None) -> None:
     """Reject a stale native extension in contributor builds.
 
@@ -420,6 +436,7 @@ __all__ = [
     "SYMJIT_F64_RUNTIME_CAPABILITY",
     "TOML_SCHEMA_VERSION",
     "active_native_source_identity",
+    "active_source_revision",
     "package_version",
     "verify_native_module",
 ]

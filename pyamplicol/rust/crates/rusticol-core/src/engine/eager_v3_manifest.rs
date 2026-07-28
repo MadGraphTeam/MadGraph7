@@ -7,12 +7,12 @@
 //! then returns the mapped reader to the compact runtime loader.
 
 use crate::eager_layout::{
-    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
-    EAGER_RUNTIME_CAPABILITY, EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA,
-    EAGER_RUNTIME_LAYOUT_ABI, EagerSectionHeader, EagerSectionKind,
+    EagerSectionHeader, EagerSectionKind, EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY,
+    EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA, EAGER_RUNTIME_LAYOUT_ABI,
 };
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
-use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
+use crate::{ArtifactProcess, RusticolError, RusticolResult, PROCESS_ARTIFACT_SCHEMA_VERSION};
 use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -126,6 +126,25 @@ pub(super) struct EagerV3InspectionSummary {
     pub(super) current_component_count: u64,
     pub(super) value_component_count: u64,
     pub(super) momentum_component_count: u64,
+    #[serde(default)]
+    pub(super) selector_work: Option<EagerV3SelectorWork>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct EagerV3SelectorWork {
+    pub(super) abi: String,
+    pub(super) selected_flow_selector_count: u64,
+    pub(super) selected_flow_current_count: u64,
+    pub(super) selected_flow_evaluation_count: u64,
+    pub(super) selected_flow_attachment_count: u64,
+    pub(super) all_flow_selector_count: u64,
+    pub(super) all_flow_current_count: u64,
+    pub(super) all_flow_evaluation_count: u64,
+    pub(super) all_flow_attachment_count: u64,
+    pub(super) contracted_current_count: u64,
+    pub(super) contracted_evaluation_count: u64,
+    pub(super) contracted_attachment_count: u64,
 }
 
 impl EagerV3ExecutionManifest {
@@ -333,7 +352,52 @@ impl EagerV3InspectionSummary {
                 self.value_component_count,
                 self.momentum_component_count,
             ],
-        )
+        )?;
+        if let Some(selector_work) = &self.selector_work {
+            selector_work.validate(self)?;
+        }
+        Ok(())
+    }
+}
+
+impl EagerV3SelectorWork {
+    fn validate(&self, summary: &EagerV3InspectionSummary) -> RusticolResult<()> {
+        if self.abi != "pyamplicol-eager-selector-work-v1" {
+            return Err(RusticolError::compatibility(
+                "eager selector-work summary ABI is unsupported",
+            ));
+        }
+        validate_counts(
+            "eager selector-work summary",
+            &[
+                self.selected_flow_selector_count,
+                self.selected_flow_current_count,
+                self.selected_flow_evaluation_count,
+                self.selected_flow_attachment_count,
+                self.all_flow_selector_count,
+                self.all_flow_current_count,
+                self.all_flow_evaluation_count,
+                self.all_flow_attachment_count,
+                self.contracted_current_count,
+                self.contracted_evaluation_count,
+                self.contracted_attachment_count,
+            ],
+        )?;
+        if self.selected_flow_current_count > summary.current_count
+            || self.all_flow_current_count > summary.current_count
+            || self.contracted_current_count != summary.current_count
+            || self.selected_flow_evaluation_count > summary.invocation_count
+            || self.all_flow_evaluation_count > summary.invocation_count
+            || self.contracted_evaluation_count != summary.invocation_count
+            || self.selected_flow_attachment_count > summary.attachment_count
+            || self.all_flow_attachment_count > summary.attachment_count
+            || self.contracted_attachment_count != summary.attachment_count
+        {
+            return Err(RusticolError::integrity(
+                "eager selector-work counts exceed or disagree with the persisted plan",
+            ));
+        }
+        Ok(())
     }
 }
 

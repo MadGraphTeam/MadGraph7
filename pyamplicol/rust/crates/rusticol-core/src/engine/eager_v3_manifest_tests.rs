@@ -2,13 +2,14 @@
 
 use super::eager_v3_manifest::*;
 use crate::eager_layout::{
-    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
-    EAGER_RUNTIME_CAPABILITY, EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA,
-    EAGER_RUNTIME_LAYOUT_ABI, EAGER_SECTION_HEADER_SIZE, EagerSectionHeader, EagerSectionKind,
+    EagerSectionHeader, EagerSectionKind, EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY,
+    EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA, EAGER_RUNTIME_LAYOUT_ABI,
+    EAGER_SECTION_HEADER_SIZE,
 };
-use crate::pacbin::{PacbinReader, PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
-use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolErrorKind};
-use serde_json::{Value, json};
+use crate::pacbin::{write_pacbin_atomic, PacbinReader, PacbinWriteMember, PacbinWriteOptions};
+use crate::{ArtifactProcess, RusticolErrorKind, PROCESS_ARTIFACT_SCHEMA_VERSION};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -231,6 +232,24 @@ fn runtime_options_and_summaries_are_bounded() {
         (
             &["plan", "inspection_summary", "invocation_count"],
             json!(1_u64 << 49),
+        ),
+        (
+            &[
+                "plan",
+                "inspection_summary",
+                "selector_work",
+                "selected_flow_current_count",
+            ],
+            json!(12),
+        ),
+        (
+            &[
+                "plan",
+                "inspection_summary",
+                "selector_work",
+                "contracted_attachment_count",
+            ],
+            json!(18),
         ),
     ];
     for (path, replacement) in mutations {
@@ -463,6 +482,20 @@ fn inspection_summary(outer: &ArtifactProcess) -> Value {
         "current_component_count": 31,
         "value_component_count": 37,
         "momentum_component_count": 41,
+        "selector_work": {
+            "abi": "pyamplicol-eager-selector-work-v1",
+            "selected_flow_selector_count": 3,
+            "selected_flow_current_count": 7,
+            "selected_flow_evaluation_count": 9,
+            "selected_flow_attachment_count": 9,
+            "all_flow_selector_count": 5,
+            "all_flow_current_count": 8,
+            "all_flow_evaluation_count": 10,
+            "all_flow_attachment_count": 10,
+            "contracted_current_count": 11,
+            "contracted_evaluation_count": 17,
+            "contracted_attachment_count": 19,
+        },
     })
 }
 
@@ -480,11 +513,9 @@ fn write_container(
                 .to_vec(),
         );
     }
-    assert!(
-        payloads
-            .iter()
-            .all(|payload| payload.len() == EAGER_SECTION_HEADER_SIZE)
-    );
+    assert!(payloads
+        .iter()
+        .all(|payload| payload.len() == EAGER_SECTION_HEADER_SIZE));
     let mut members = Vec::with_capacity(EXPECTED_EAGER_MEMBERS.len());
     for (expected, payload) in EXPECTED_EAGER_MEMBERS.iter().zip(&payloads) {
         let path = path_override

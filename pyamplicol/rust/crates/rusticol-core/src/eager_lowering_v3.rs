@@ -8,9 +8,9 @@
 //! validated owned input, release the GIL, and call [`lower_eager_plan_v3`].
 
 use crate::eager_layout::{
-    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EagerSectionHeader, EagerSectionKind,
+    EagerSectionHeader, EagerSectionKind, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
 };
-use crate::{MISSING_U32, RusticolError, RusticolResult};
+use crate::{RusticolError, RusticolResult, MISSING_U32};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -2125,6 +2125,24 @@ impl EagerPlanSelectorDomainRow {
     pub const ENCODED_LEN: u32 = 16;
 }
 
+/// Logical currents, kernel evaluations, and routes executed for one selector.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EagerPlanActiveWorkCounts {
+    pub current_count: u64,
+    pub evaluation_count: u64,
+    pub attachment_count: u64,
+}
+
+/// Worst exact runtime work for each report selector axis.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EagerPlanSelectorWorkSummary {
+    pub selected_flow_selector_count: u64,
+    pub selected_flow_worst: EagerPlanActiveWorkCounts,
+    pub all_flow_selector_count: u64,
+    pub all_flow_worst: EagerPlanActiveWorkCounts,
+    pub contracted: EagerPlanActiveWorkCounts,
+}
+
 /// Public helicity selector, including aliases and structural zeros.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EagerPlanHelicitySelectorRow {
@@ -2277,6 +2295,94 @@ macro_rules! plan_slice_getter {
     };
 }
 
+fn selector_domain_active(
+    plan: &EagerPlanV3,
+    domain_id: u32,
+    active_groups: &BTreeSet<u32>,
+) -> RusticolResult<bool> {
+    if domain_id == MISSING_U32 {
+        return Ok(true);
+    }
+    let domain = plan
+        .selector_domains
+        .get(domain_id as usize)
+        .ok_or_else(|| invalid("eager selector-work census references an unknown domain"))?;
+    let members = checked_usize_range(
+        domain.member_start,
+        domain.member_count,
+        plan.selector_memberships.len(),
+        "selector-work domain memberships",
+    )?;
+    Ok(plan.selector_memberships[members]
+        .iter()
+        .any(|member| active_groups.contains(member)))
+}
+
+fn active_selector_work(
+    plan: &EagerPlanV3,
+    active_groups: &BTreeSet<u32>,
+) -> RusticolResult<EagerPlanActiveWorkCounts> {
+    let mut currents = plan
+        .sources
+        .iter()
+        .map(|source| source.current_id)
+        .collect::<BTreeSet<_>>();
+    let mut evaluations = 0_u64;
+    let mut attachments_count = 0_u64;
+    for invocation in &plan.invocations {
+        if !selector_domain_active(plan, invocation.selector_domain_id, active_groups)? {
+            continue;
+        }
+        let attachments = checked_usize_range(
+            invocation.attachment_start,
+            invocation.attachment_count,
+            plan.attachments.len(),
+            "selector-work invocation attachments",
+        )?;
+        let mut invocation_active = false;
+        for attachment in &plan.attachments[attachments] {
+            if !selector_domain_active(plan, attachment.selector_domain_id, active_groups)? {
+                continue;
+            }
+            invocation_active = true;
+            currents.insert(attachment.result_current_id);
+            attachments_count = attachments_count
+                .checked_add(1)
+                .ok_or_else(|| invalid("selector-work attachment count exceeds u64"))?;
+        }
+        if invocation_active {
+            evaluations = evaluations
+                .checked_add(1)
+                .ok_or_else(|| invalid("selector-work evaluation count exceeds u64"))?;
+        }
+    }
+    Ok(EagerPlanActiveWorkCounts {
+        current_count: usize_u64(currents.len(), "selector-work current count")?,
+        evaluation_count: evaluations,
+        attachment_count: attachments_count,
+    })
+}
+
+fn worst_selector_work<'a>(
+    plan: &EagerPlanV3,
+    selectors: impl Iterator<Item = &'a BTreeSet<u32>>,
+    context: &str,
+) -> RusticolResult<EagerPlanActiveWorkCounts> {
+    let mut worst = None::<EagerPlanActiveWorkCounts>;
+    for groups in selectors {
+        let counts = active_selector_work(plan, groups)?;
+        worst = Some(match worst {
+            None => counts,
+            Some(previous) => EagerPlanActiveWorkCounts {
+                current_count: previous.current_count.max(counts.current_count),
+                evaluation_count: previous.evaluation_count.max(counts.evaluation_count),
+                attachment_count: previous.attachment_count.max(counts.attachment_count),
+            },
+        });
+    }
+    worst.ok_or_else(|| invalid(format!("eager selector-work census has no {context}")))
+}
+
 impl EagerPlanV3 {
     pub fn abi(&self) -> &'static str {
         EAGER_PLAN_ABI
@@ -2347,6 +2453,51 @@ impl EagerPlanV3 {
 
     pub fn selector_memberships(&self) -> &[u32] {
         &self.selector_memberships
+    }
+
+    /// Count the exact rows admitted by the same selector domains as runtime.
+    pub fn selector_work_summary(&self) -> RusticolResult<EagerPlanSelectorWorkSummary> {
+        let mut groups_by_helicity = BTreeMap::<u32, BTreeSet<u32>>::new();
+        let mut groups_by_color = BTreeMap::<u32, BTreeSet<u32>>::new();
+        for entry in &self.reduction_entries {
+            if entry.kind != EagerPlanReductionEntryKind::SelectorMember {
+                continue;
+            }
+            groups_by_helicity
+                .entry(entry.left_id)
+                .or_default()
+                .insert(entry.owner_id);
+            groups_by_color
+                .entry(entry.right_id)
+                .or_default()
+                .insert(entry.owner_id);
+        }
+        if groups_by_helicity.is_empty() || groups_by_color.is_empty() {
+            return Err(invalid(
+                "eager selector-work census has no physical selector memberships",
+            ));
+        }
+        let selected_flow_worst =
+            worst_selector_work(self, groups_by_color.values(), "color selector")?;
+        let all_flow_worst =
+            worst_selector_work(self, groups_by_helicity.values(), "helicity selector")?;
+        Ok(EagerPlanSelectorWorkSummary {
+            selected_flow_selector_count: usize_u64(
+                groups_by_color.len(),
+                "selected-flow selector count",
+            )?,
+            selected_flow_worst,
+            all_flow_selector_count: usize_u64(
+                groups_by_helicity.len(),
+                "all-flow selector count",
+            )?,
+            all_flow_worst,
+            contracted: EagerPlanActiveWorkCounts {
+                current_count: usize_u64(self.currents.len(), "contracted current count")?,
+                evaluation_count: usize_u64(self.invocations.len(), "contracted evaluation count")?,
+                attachment_count: usize_u64(self.attachments.len(), "contracted attachment count")?,
+            },
+        })
     }
 
     pub fn bitset_ranges(&self) -> &[EagerPlanCatalogRangeRow] {

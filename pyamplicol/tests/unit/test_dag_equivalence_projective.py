@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import replace
 from math import inf
 
+import pytest
+
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_equivalence import (
     _canonicalize_projective_term_vector,
@@ -15,7 +17,9 @@ from pyamplicol.generation.dag_equivalence import (
     _exact_representable_complex_ratio,
     _term_vector_scaled_exactly,
     assign_recursive_current_evaluation_reuse,
+    project_rectangular_dynamic_color_classes,
 )
+from pyamplicol.generation.dag_types import ColorState, GenericDAG
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
@@ -245,3 +249,219 @@ def test_projective_factor_propagates_to_a_child_evaluation_group() -> None:
     # Roots consume separately materialized currents. Rewriting a shared child
     # kernel must therefore leave the physical amplitude contraction untouched.
     assert rewritten.amplitude_roots == dag.amplitude_roots
+
+
+def _dynamic_color_projection_fixture() -> tuple[
+    GenericDAG,
+    BuiltinSMModel,
+    dict[int, complex],
+    int,
+]:
+    model = BuiltinSMModel()
+    seed = compile_generic_dag(
+        build_process_ir("d d~ > z g", color_accuracy="lc"),
+        model=model,
+    )
+    source0 = replace(seed.currents[seed.sources[0]], id=0)
+    source1 = replace(seed.currents[seed.sources[1]], id=1)
+    generated_template = seed.currents[seed.interactions[0].result_id]
+
+    def projected_current(
+        current_id: int,
+        *,
+        family: str,
+        color_id: int,
+    ):
+        index = replace(
+            generated_template.index,
+            color_state=ColorState("lc", sector_id=color_id),
+            auxiliary_kind=family,
+        )
+        return replace(generated_template, id=current_id, index=index)
+
+    currents = (
+        source0,
+        source1,
+        projected_current(2, family="a", color_id=11),
+        projected_current(3, family="a", color_id=12),
+        projected_current(4, family="b", color_id=21),
+        projected_current(5, family="b", color_id=22),
+        projected_current(6, family="c", color_id=132),
+        projected_current(7, family="c", color_id=32),
+    )
+    template = seed.interactions[0]
+
+    def interaction(
+        interaction_id: int,
+        left_id: int,
+        right_id: int,
+        result_id: int,
+        weight: tuple[float, float],
+    ):
+        return replace(
+            template,
+            id=interaction_id,
+            left_id=left_id,
+            right_id=right_id,
+            result_id=result_id,
+            color_weight=weight,
+            evaluation_group_id=None,
+            evaluation_factor=(1.0, 0.0),
+        )
+
+    interactions = (
+        interaction(0, 0, 1, 2, (1.0, 2.0)),
+        interaction(1, 0, 1, 3, (2.0, -1.0)),
+        interaction(2, 0, 1, 4, (-3.0, 1.0)),
+        interaction(3, 0, 1, 5, (4.0, 0.5)),
+        interaction(4, 2, 4, 6, (1.0, -0.5)),
+        interaction(5, 2, 5, 6, (1.0, -0.5)),
+        interaction(6, 3, 4, 6, (1.0, -0.5)),
+        interaction(7, 3, 5, 6, (1.0, -0.5)),
+        interaction(8, 2, 4, 7, (-0.25, 2.0)),
+        interaction(9, 2, 5, 7, (-0.25, 2.0)),
+        interaction(10, 3, 4, 7, (-0.25, 2.0)),
+        interaction(11, 3, 5, 7, (-0.25, 2.0)),
+    )
+    selected_sector_id = int(seed.color_plan.sectors[0].id)
+    currents = (
+        *currents[:6],
+        replace(
+            currents[6],
+            index=replace(
+                currents[6].index,
+                color_state=ColorState("lc", sector_id=selected_sector_id + 100),
+            ),
+        ),
+        replace(
+            currents[7],
+            index=replace(
+                currents[7].index,
+                color_state=ColorState("lc", sector_id=selected_sector_id),
+            ),
+        ),
+    )
+    roots = (
+        replace(
+            seed.amplitude_roots[0],
+            id=0,
+            left_id=6,
+            right_id=0,
+            color_weight=(0.75, -0.25),
+            color_sector_id=selected_sector_id,
+        ),
+        replace(
+            seed.amplitude_roots[0],
+            id=1,
+            left_id=7,
+            right_id=0,
+            color_weight=(0.75, -0.25),
+            color_sector_id=None,
+        ),
+    )
+    dag = GenericDAG(
+        process=seed.process,
+        color_plan=seed.color_plan,
+        currents=currents,
+        sources=(0, 1),
+        interactions=interactions,
+        amplitude_roots=roots,
+        truncated=False,
+        helicity_coverage="selected",
+        color_coverage="selected",
+        selected_source_helicities=(),
+        selected_color_sector_ids=(selected_sector_id,),
+    )
+    return dag, model, {0: 0.75 - 0.2j, 1: -1.25 + 0.5j}, selected_sector_id
+
+
+def _evaluate_scalar_bilinear_dag(
+    dag: GenericDAG,
+    source_values: dict[int, complex],
+) -> complex:
+    """Numerically exercise the exact multilinear algebra of the projection."""
+
+    values = [0j] * len(dag.currents)
+    for current_id, value in source_values.items():
+        values[current_id] = value
+    for row in dag.interactions:
+        values[row.result_id] += (
+            complex(*row.color_weight) * values[row.left_id] * values[row.right_id]
+        )
+    return sum(
+        complex(*root.color_weight) * values[root.left_id] * values[root.right_id]
+        for root in dag.amplitude_roots
+    )
+
+
+def test_dynamic_color_projection_preserves_complex_cartesian_sums() -> None:
+    dag, model, source_values, selected_sector_id = (
+        _dynamic_color_projection_fixture()
+    )
+
+    projected, certificate = project_rectangular_dynamic_color_classes(
+        dag,
+        model,
+        source_revision="a" * 40,
+    )
+    projected_source_values = {
+        certificate.old_to_new_current_ids[current_id]: value
+        for current_id, value in source_values.items()
+    }
+
+    assert certificate.applied is True
+    assert certificate.before_current_count == 8
+    assert certificate.after_current_count == 5
+    assert certificate.before_interaction_count == 12
+    assert certificate.after_interaction_count == 6
+    assert certificate.projected_current_class_count == 3
+    assert certificate.rectangular_interaction_group_count == 6
+    assert certificate.rectangular_closure_group_count == 1
+    assert certificate.source_revision == "a" * 40
+    assert certificate.equality_check_status == (
+        "passed-exact-cartesian-products-no-duplicates"
+    )
+    assert len(certificate.old_to_new_current_ids) == len(dag.currents)
+    assert all(
+        len(value) == 64
+        for key, value in certificate.to_json_dict().items()
+        if key.endswith("_sha256")
+    )
+    assert len(projected.amplitude_roots) == 1
+    # Root 1 originally resolved sector ``selected_sector_id`` implicitly,
+    # while the class representative (old current 6) carried another sector.
+    # The emitted closure must retain the pre-projection physical sector.
+    assert projected.amplitude_roots[0].color_sector_id == selected_sector_id
+    assert _evaluate_scalar_bilinear_dag(
+        projected,
+        projected_source_values,
+    ) == pytest.approx(_evaluate_scalar_bilinear_dag(dag, source_values))
+
+
+def test_dynamic_color_projection_retains_basis_and_line_group_metadata() -> None:
+    dag, model, _source_values, _selected_sector_id = (
+        _dynamic_color_projection_fixture()
+    )
+    currents = list(dag.currents)
+    current = currents[3]
+    currents[3] = replace(
+        current,
+        index=replace(
+            current.index,
+            color_state=replace(
+                current.index.color_state,
+                line_groups=(7, 8),
+                basis_key=("distinct-coherent-basis",),
+            ),
+        ),
+    )
+    separated = replace(dag, currents=tuple(currents))
+
+    _projected, certificate = project_rectangular_dynamic_color_classes(
+        separated,
+        model,
+    )
+
+    assert certificate.old_to_new_current_ids[2] != (
+        certificate.old_to_new_current_ids[3]
+    )

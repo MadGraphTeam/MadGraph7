@@ -448,6 +448,28 @@ fn owned_input_and_lowering_preserve_semantics_and_exact_factor_ids() {
     assert_eq!(plan.attachments().len(), 2);
     assert_eq!(plan.finalizations().len(), 2);
     assert_eq!(plan.closures().len(), 1);
+    assert_eq!(
+        plan.selector_work_summary().unwrap(),
+        EagerPlanSelectorWorkSummary {
+            selected_flow_selector_count: 1,
+            selected_flow_worst: EagerPlanActiveWorkCounts {
+                current_count: 4,
+                evaluation_count: 2,
+                attachment_count: 2,
+            },
+            all_flow_selector_count: 1,
+            all_flow_worst: EagerPlanActiveWorkCounts {
+                current_count: 4,
+                evaluation_count: 2,
+                attachment_count: 2,
+            },
+            contracted: EagerPlanActiveWorkCounts {
+                current_count: 4,
+                evaluation_count: 2,
+                attachment_count: 2,
+            },
+        }
+    );
 
     assert_eq!(
         plan.values()
@@ -636,11 +658,9 @@ fn structural_zero_requires_an_exact_zero_factor() {
 #[test]
 fn checked_u32_and_u64_overflow_are_rejected() {
     let error = count_u32(u64::from(u32::MAX) + 1, "string catalog").unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("string catalog count exceeds u32")
-    );
+    assert!(error
+        .to_string()
+        .contains("string catalog count exceeds u32"));
 
     let mut ranges = Fixture::valid();
     ranges.bitset_start = vec![0, u64::MAX, 0];
