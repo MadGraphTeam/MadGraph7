@@ -29,6 +29,7 @@ from .campaign_policy import (
     PolicyMeasurementState,
     validate_policy_measurement,
 )
+from .campaign_reset import load_seed_if_present
 from .catalog import REPORT_CATALOG
 from .measurement_lineage import (
     CLASS_C_HZZ_IMPACT,
@@ -1092,9 +1093,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     expected_active_revision=expected_revision,
                     expected_active_tree=source_identity.tree,
                 )
-                if measurement_lineage is None:
+                seed = load_seed_if_present(
+                    profile=args.report_profile,
+                    store=service.store,
+                )
+                if measurement_lineage is None and seed is None:
                     raise MeasurementLineageError(
-                        "--fast-lineage requires a finalized measurement lineage"
+                        "--fast-lineage requires a finalized measurement lineage "
+                        "or authenticated original-AmpliCol campaign seed"
                     )
             else:
                 measurement_lineage = load_and_audit_measurement_lineage(

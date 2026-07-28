@@ -20,6 +20,7 @@ from .cache import (
     validate_cache,
     validate_measurement,
 )
+from .campaign_reset import OriginalAmplicolSeed, load_seed_if_present
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement_lineage import (
     MeasurementLineage,
@@ -129,6 +130,8 @@ class ReportService:
         )
         self._authenticated_measurement_lineage: MeasurementLineage | None = None
         self._measurement_lineage_bound = False
+        self._authenticated_original_amplicol_seed: OriginalAmplicolSeed | None = None
+        self._original_amplicol_seed_bound = False
 
     def bind_measurement_lineage(
         self,
@@ -139,9 +142,7 @@ class ReportService:
         self._authenticated_measurement_lineage = lineage
         self._measurement_lineage_bound = True
 
-    def _measurement_lineage(self) -> MeasurementLineage | None:
-        if self._measurement_lineage_bound:
-            return self._authenticated_measurement_lineage
+    def _profile_name(self) -> str | None:
         try:
             relative = self.paths.docs_dir.relative_to(
                 self.paths.repo_root / PROFILE_REPORT_ROOT
@@ -154,9 +155,44 @@ class ReportService:
             or ".." in relative.parts[0]
         ):
             return None
+        return relative.parts[0]
+
+    def bind_original_amplicol_seed(
+        self,
+        seed: OriginalAmplicolSeed | None,
+    ) -> None:
+        """Reuse one already authenticated campaign-seed manifest."""
+
+        self._authenticated_original_amplicol_seed = seed
+        self._original_amplicol_seed_bound = True
+
+    def _original_amplicol_seed(self) -> OriginalAmplicolSeed | None:
+        if self._original_amplicol_seed_bound:
+            return self._authenticated_original_amplicol_seed
+        profile = self._profile_name()
+        seed = (
+            None
+            if profile is None
+            else load_seed_if_present(
+                profile=profile,
+                store=self.store,
+                catalog=self.catalog,
+            )
+        )
+        self.bind_original_amplicol_seed(seed)
+        return seed
+
+    def _measurement_lineage(self) -> MeasurementLineage | None:
+        if self._measurement_lineage_bound:
+            return self._authenticated_measurement_lineage
+        if self._profile_name() is None:
+            return None
         if not (
             self.paths.docs_dir / "measurement_lineage.json"
-        ).exists() and not self.store.recover_current_records():
+        ).exists() and (
+            not self.store.recover_current_records()
+            or self._original_amplicol_seed() is not None
+        ):
             self.bind_measurement_lineage(None)
             return None
         source = require_eligible_report_source(self.paths.repo_root)
@@ -240,21 +276,37 @@ class ReportService:
         source = require_eligible_report_source(self.paths.repo_root)
         expected_revision = source.revision
         lineage = self._measurement_lineage()
+        seed = self._original_amplicol_seed()
         by_cell = {
             record.cell_id: record
             for record in records
             if (
-                lineage.source_for_current(
-                    record,
-                    active_revision=source.revision,
-                    active_tree=source.tree,
+                (
+                    lineage.source_for_current(
+                        record,
+                        active_revision=source.revision,
+                        active_tree=source.tree,
+                    )
+                    is not None
+                    if lineage is not None
+                    else (
+                        isinstance(record.result.get("provenance"), Mapping)
+                        and record.result["provenance"].get(
+                            "report_source_revision"
+                        )
+                        == expected_revision
+                        and record.result["provenance"].get("report_source_tree")
+                        == source.tree
+                    )
                 )
-                is not None
-                if lineage is not None
-                else (
-                    isinstance(record.result.get("provenance"), Mapping)
-                    and record.result["provenance"].get("report_source_revision")
-                    == expected_revision
+                or (
+                    seed is not None
+                    and seed.source_for_current(
+                        record,
+                        active_revision=source.revision,
+                        active_tree=source.tree,
+                    )
+                    is not None
                 )
             )
         }

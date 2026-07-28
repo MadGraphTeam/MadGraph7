@@ -33,6 +33,7 @@ from .campaign_policy import (
     validate_policy_measurement,
     validate_policy_profile,
 )
+from .campaign_reset import load_seed_if_present
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import failure_measurement
 from .measurement_lineage import MeasurementLineage
@@ -256,6 +257,7 @@ def _policy_current(
     current = store.load_current(cell.cell_id, missing_ok=True)
     if current is None or expected_revision is None:
         return None
+    provenance = current.result.get("provenance")
     expected_source = (
         measurement_lineage.source_for_current(
             current,
@@ -263,8 +265,28 @@ def _policy_current(
             active_tree=expected_tree or "",
         )
         if measurement_lineage is not None and expected_tree is not None
-        else (expected_revision, expected_tree)
+        else (
+            (expected_revision, expected_tree)
+            if isinstance(provenance, Mapping)
+            and provenance.get("report_source_revision") == expected_revision
+            and (
+                expected_tree is None
+                or provenance.get("report_source_tree") == expected_tree
+            )
+            else None
+        )
     )
+    if expected_source is None and settings.report_profile is not None:
+        seed = load_seed_if_present(
+            profile=settings.report_profile,
+            store=store,
+        )
+        if seed is not None:
+            expected_source = seed.source_for_current(
+                current,
+                active_revision=expected_revision,
+                active_tree=expected_tree or "",
+            )
     if expected_source is None:
         return None
     try:
@@ -722,7 +744,7 @@ class CampaignScheduler:
             )
         )
         self.measurement_source_tree = (
-            self.source_tree if self.measurement_lineage is not None else None
+            self.source_tree if settings.report_profile is not None else None
         )
         self.service.bind_measurement_lineage(self.measurement_lineage)
         self._prepared_model_paths: dict[ModelKey, Path] = {}

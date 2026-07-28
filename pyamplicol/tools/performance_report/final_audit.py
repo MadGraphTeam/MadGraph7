@@ -4142,9 +4142,16 @@ def _audit_final_report_locked(
             )
             report.bind_measurement_lineage(measurement_lineage)
         except MeasurementLineageError as error:
-            raise FinalAuditError(
-                f"cannot authenticate measurement source bridge: {error}"
-            ) from error
+            seed = report._original_amplicol_seed()
+            if (
+                seed is None
+                or (report.paths.docs_dir / "measurement_lineage.json").exists()
+            ):
+                raise FinalAuditError(
+                    f"cannot authenticate measurement source bridge: {error}"
+                ) from error
+            measurement_lineage = None
+            report.bind_measurement_lineage(None)
     else:
         report_profile = None
         active_policy = campaign_policy or STRICT_POLICY
@@ -4225,7 +4232,21 @@ def _audit_final_report_locked(
             f"{cell.cell_id}.current.result",
         )
         if measurement_lineage is None:
-            cell_source = (expected_source_revision, expected_source_tree)
+            seed = report._original_amplicol_seed()
+            authorized_seed = (
+                None
+                if seed is None
+                else seed.source_for_current(
+                    current,
+                    active_revision=expected_source_revision,
+                    active_tree=expected_source_tree or "",
+                )
+            )
+            cell_source = (
+                authorized_seed
+                if authorized_seed is not None
+                else (expected_source_revision, expected_source_tree)
+            )
         else:
             authorized = measurement_lineage.source_for_current(
                 current,
