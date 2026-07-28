@@ -17,3 +17,15 @@ historical release evidence only and are not inputs to the new campaign.
 - Pages: 59.
 - File: [`macbook_M3/pyAmpliCol.pdf`](macbook_M3/pyAmpliCol.pdf).
 
+## x86_EPYC
+
+- Final census: 781 current pointers, all `ok`.
+- Latest successful publication log: `2026-07-28T21:04:55Z`.
+- Stable report timestamp at campaign stop:
+  `2026-07-28T21:06:18.725193406Z`.
+- Preserved cache-file timestamp: `2026-07-29T00:48:01+0200`.
+- SHA-256:
+  `694e90f370282c15984295cffdfc6d110c9f84360b907f90a54847d09ce5720a`.
+- Size: 1,005,789 bytes.
+- Pages: 59.
+- File: [`x86_EPYC/pyAmpliCol.pdf`](x86_EPYC/pyAmpliCol.pdf).
