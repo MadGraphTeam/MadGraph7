@@ -2855,9 +2855,7 @@ set boost_choice [6, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.4526973360805629+0j), (-2.1317321205040213e-05+0.0024340905341333923j), (2.13173212052136e-05-0.002434090538628891j),
-                          (0.28550869973262555+0j), (0.04730266391943712+0j), (0.04700262219476668+0j), (2.1317321205213577e-05+0.0024340905386288922j),
-                          (0.04730266391943711+0j), (-2.1317321205040145e-05-0.0024340905341333906j), (0.45269733608056295+0j)]
+        density_ref = [complex(0.45270438876343766, 0.0), complex(0.0, 0.0024345422714880808), complex(0.0, -0.002434542275983678), complex(0.28551318353826904, 0.0), complex(0.047295611236562354, 0.0), complex(0.047011148655689436, 0.0), complex(0.0, 0.0024345422759837264), complex(0.047295611236562354, 0.0), complex(0.0, -0.0024345422714880972), complex(0.45270438876343766, 0.0)]
 
         #1) here we check that the density matrix is computed properly
         for i in range(len(density_ref)):
@@ -2867,17 +2865,17 @@ set boost_choice [6, -6]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the concurrence is computed properly
-        concurrence_ref = 0.47641209333195317
+        concurrence_ref = 0.47643514460330366
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
 
         #3) here we check that purity is computed properly
-        purity_ref = 0.5818411704583635
+        purity_ref = 0.5818593450086657
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.4706552252614239
+        magic_ref = 0.4706253424888031
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3034,10 +3032,7 @@ set boost_choice [5, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.00023359526522495882+0j), (2.9956750131603144e-05+1.3622977588717694e-05j), (-0.00037002831548626185-0.0001606402006384915j),
-                            (0.0013988914248279838+0.0007925330810912253j), (0.0001701973522356173+0j), (-0.0003301297581403585+4.196117432997617e-05j), 
-                            (0.0003588942963018077+0.00015927990509450137j), (0.5380495499305434+0j), (0.03639176740610352+0.01649755017431808j), 
-                            (0.4615466574519961+0j)]
+        density_ref = [complex(0.00023372225290581268, 0.0), complex(2.992104346897159e-05, 1.3619536899390321e-05), complex(-0.0003642188579323614, -0.00015844039142370002), complex(0.00139802591124443, 0.0007920419915143803), complex(0.00017033924905323185, 0.0), complex(-0.00032992574370686504, 4.193590849513727e-05), complex(0.0003643209305432805, 0.0001612632121261497), complex(0.5380535522498318, 0.0), complex(0.036326666049751606, 0.016499687600510533), complex(0.46154238624820915, 0.0)]
 
 
         event_of_reference = """<event>
@@ -3065,12 +3060,12 @@ set boost_choice [5, -6]
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.5057218059862959
+        purity_ref = 0.5057128357315946
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.018653388493735004
+        magic_ref = 0.018629615817657534
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3128,12 +3123,7 @@ set boost_choice [24, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.00021651020376335244+0j), (1.859345759680708e-05+3.319131194668537e-05j), (-8.654700949220674e-06+4.660850889005045e-06j), 
-                            (-5.964620125575636e-06-5.140944580422725e-06j), 0j, 0j, (0.00014764522936272262+0j), (1.2627222190362744e-05-3.412335641445621e-05j), 
-                            (8.443512531745642e-06-4.6314605809771255e-06j), 0j, 0j, (0.4140153688283749+0j), (0.0355514105428883+0.06346306191601571j), 
-                            (-0.033098118766739994+0.01782446293447554j), (-0.022810459480124095-0.019660482239005784j), (0.28234295658745207+0j), 
-                            (0.04829020692948074-0.13049773873783233j), (0.03229047222126599-0.017712065763110893j), (0.12282862506005009+0j), 
-                            (-0.015383774120452564-0.027546742046050884j), (0.18044889409099676+0j)]
+        density_ref = [complex(0.00021667298775917345, 0.0), complex(1.85743468695675e-05, 3.31618796958022e-05), complex(-8.543458188937342e-06, 4.609484294547139e-06), complex(-5.960810964036419e-06, -5.137669654422628e-06), complex(0.0, 0.0), complex(0.0, 0.0), complex(0.00014784864285082047, 0.0), complex(1.2619209329155549e-05, -3.410166864571879e-05), complex(8.5453056621656e-06, -4.676631517642126e-06), complex(0.0, 0.0), complex(0.0, 0.0), complex(0.41432659216924983, 0.0), complex(0.03551486851231066, 0.06340678451506068), complex(-0.03267269377361773, 0.01762802198822147), complex(-0.022795892127448817, -0.01964795795996489), complex(0.2827318650363218, 0.0), complex(0.048259563394429404, -0.130414798339352), complex(0.03267975905394175, -0.0178848126939771), complex(0.12249538940094126, 0.0), complex(-0.0153800506412504, -0.02753614388390608), complex(0.1800816317628771, 0.0)]
 
         
         #1) here we check that the density matrix is computed properly
@@ -3144,14 +3134,14 @@ set boost_choice [24, -6]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the smaller eigenvalue of the partialy transposed density matrix is computed properly
-        flag_ref, eigval_ref = False, [1.30764975e-04, 2.33384118e-04, 1.00757194e-01, 1.28026668e-01, 2.55472741e-01, 5.15379248e-01]
+        flag_ref, eigval_ref = False, [0.0001309876717898993, 0.00023352764119576687, 0.10041292697359551, 0.12793991437047847, 0.2557969764840398, 0.5154856668589005]
         flag_check, eigval_check = rho_instance.PeresHorodecki_criterion(['boson', 'fermion'])
         self.assertEqual(flag_ref, flag_check)
         for i in range(len(eigval_ref)):
             self.assertAlmostEqual(eigval_ref[i], eigval_check[i], places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.3574250017186387
+        purity_ref = 0.357609015200801
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
@@ -3224,10 +3214,7 @@ set boost_choice [6, -6] pt [0, 0]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.41585128247332614+0j), (-0.03826754879773473-0.08665010160467382j), (0.01819843853040962+0.0694772074195328j), 
-                            (-0.006036323974019095+0.028318452797874368j), (0.08409384779983874+0j), (-0.051323966834621225-0.010218484907272918j), 
-                            (-0.018157600093053276-0.06950829298296718j), (0.0841062677380868+0j), (0.0382601151338116+0.08669345314193963j), 
-                            (0.41594860198874833+0j)]
+        density_ref = [complex(0.41589996421540293, 0.0), complex(-0.03826383986149076, -0.08667179401359812), complex(0.018178019897460727, 0.06949276501681549), complex(-0.006036326766945857, 0.028318434038759072), complex(0.0841000357845971, 0.0), complex(-0.05132402629630901, -0.010218495717875446), complex(-0.018178019897460686, -0.06949276501681546), complex(0.08410003578459711, 0.0), complex(0.03826383986149076, 0.0866717940135981), complex(0.41589996421540276, 0.0)]
 
         lhe_path = pjoin(self.out_dir + '_density5/Events/run_01/unweighted_events.lhe.gz')
         for event in lhe_parser.EventFile(lhe_path):
@@ -3241,17 +3228,17 @@ set boost_choice [6, -6] pt [0, 0]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the bounds of concurrence is computed properly
-        concurrence_ref = 0.028913810451469873
+        concurrence_ref = 0.02891388250882494
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         # #3) here we check that purity is computed properly
-        purity_ref = 0.42378825285881117
+        purity_ref = 0.4237883055234033
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         # #4) here we check that magic is computed properly
-        magic_ref = 0.480231580151087
+        magic_ref = 0.48023161639925205
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
