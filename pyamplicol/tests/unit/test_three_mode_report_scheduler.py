@@ -632,6 +632,44 @@ def test_campaign_run_never_publishes_or_renders(
     assert result.outcomes[0].cell_id == target.cell_id
 
 
+def test_successful_current_resume_never_duplicates_post_populate_cell(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    target = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    baseline = REPORT_CATALOG.baseline_cell(target)
+    assert baseline is not None
+    revision = "measured-revision"
+    _publish_current(service.store, baseline, revision=revision)
+    published = _publish_current(service.store, target, revision=revision)
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        lambda *_args, **_kwargs: pytest.fail(
+            "authenticated post-populate current must not be rerun"
+        ),
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(missing_only=True),
+    )
+    scheduler.source_revision = revision
+
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            target,
+            dependency=False,
+            baseline_cell_id=baseline.cell_id,
+            rank=1,
+        )
+    )
+
+    current = service.store.load_current(target.cell_id)
+    assert outcome.status == "skipped-current"
+    assert outcome.detail == "already complete"
+    assert current.attempt_id == published.attempt_id
+
+
 @pytest.mark.parametrize("limit", (0.0, float("inf"), float("nan")))
 def test_campaign_rejects_invalid_generation_only_limit(limit: float) -> None:
     with pytest.raises(ValueError, match="generation_time_limit_seconds"):

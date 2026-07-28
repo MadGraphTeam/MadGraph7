@@ -84,6 +84,20 @@ authenticated finalized measurement lineage.
   cell. The measurement scheduler never renders, audits, compiles, or waits on
   this publisher. `--refresh-pdf end` requests the same publication in a
   detached one-shot process and never waits for it.
+- The publisher daemon uses the private `publication/daemon.guard` plus
+  `publication/daemon.json` PID state, outside the named-lock namespace; it
+  does not hold a long-lived named lock. Controller lock census must ignore
+  that private guard, PID state, and all publisher staging/snapshot work. The
+  publisher probes
+  `named/report-writer.lock` without waiting and backs off when a controller
+  writer is active; populate and its boundary bookkeeping never wait for the
+  publisher. The publisher holds `report-writer` only for the short atomic
+  cache/table/PDF install.
+- If interruption occurs after `populate` has published `current.json` but
+  before the controller records its fast boundary, authenticate the current
+  pointer, immutable manifest, and result hashes, then write only the missing
+  boundary record. Resume with `--missing-only`; never rerun or duplicate the
+  already successful cell.
 - Periodic publisher validation is deliberately limited to cache schema,
   snapshot/file consistency, reproducible table rendering, successful TeX
   compilation, exactly 59 pages, and no overfull boxes. Run

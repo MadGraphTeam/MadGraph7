@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import hashlib
 import json
 import math
@@ -13,12 +15,13 @@ import subprocess
 import tempfile
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .artifacts import CurrentRecord
+from .artifacts import CurrentRecord, LockTimeoutError
 from .measurement_lineage import load_measurement_lineage
 from .service import ReportPaths, ReportService
 from .source_identity import require_eligible_report_source
@@ -28,6 +31,8 @@ PUBLICATION_SNAPSHOT_SCHEMA = "pyamplicol-report-publication-snapshot-v1"
 DEFAULT_PUBLICATION_INTERVAL_SECONDS = 600.0
 DEFAULT_PDF_TIMEOUT_SECONDS = 900.0
 DEFAULT_EXPECTED_PAGE_COUNT = 59
+_INSTALL_LOCK_INITIAL_BACKOFF_SECONDS = 0.05
+_INSTALL_LOCK_MAXIMUM_BACKOFF_SECONDS = 1.0
 
 _PAGE_COUNT_RE = re.compile(
     r"Output written on .+? \((?P<pages>[1-9][0-9]*) pages?,"
@@ -112,6 +117,84 @@ def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
 
 def _snapshot_manifest_path(service: ReportService) -> Path:
     return service.paths.coordination_root / "publication" / "current.json"
+
+
+def _publisher_state_path(service: ReportService) -> Path:
+    return service.paths.coordination_root / "publication" / "daemon.json"
+
+
+@contextmanager
+def _publisher_state_lease(
+    service: ReportService,
+    *,
+    interval_seconds: float,
+) -> Iterator[None]:
+    """Claim the publisher state without a long-lived campaign named lock."""
+
+    state_path = _publisher_state_path(service)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    guard_path = state_path.parent / "daemon.guard"
+    guard = guard_path.open("a+b")
+    lease_id = uuid.uuid4().hex
+    payload = {
+        "schema": PUBLICATION_SNAPSHOT_SCHEMA,
+        "pid": os.getpid(),
+        "lease_id": lease_id,
+        "started_at_utc": _utc_now(),
+        "interval_seconds": interval_seconds,
+    }
+    try:
+        try:
+            fcntl.flock(guard.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            if error.errno not in (errno.EACCES, errno.EAGAIN):
+                raise
+            raise ReportPublisherError(
+                "another report publisher is already active"
+            ) from None
+        _atomic_json(state_path, payload)
+        try:
+            yield
+        finally:
+            try:
+                current = json.loads(state_path.read_text(encoding="ascii"))
+            except (json.JSONDecodeError, OSError):
+                current = None
+            if (
+                isinstance(current, Mapping)
+                and current.get("lease_id") == lease_id
+            ):
+                state_path.unlink(missing_ok=True)
+                _fsync_directory(state_path.parent)
+    finally:
+        try:
+            fcntl.flock(guard.fileno(), fcntl.LOCK_UN)
+        finally:
+            guard.close()
+
+
+@contextmanager
+def _publisher_writer_lock(service: ReportService) -> Iterator[None]:
+    """Yield only after the publisher can take the install lock without waiting."""
+
+    backoff = _INSTALL_LOCK_INITIAL_BACKOFF_SECONDS
+    while True:
+        stack = ExitStack()
+        try:
+            stack.enter_context(
+                service.store.named_lock("report-writer", timeout=0.0)
+            )
+        except LockTimeoutError:
+            stack.close()
+            time.sleep(backoff)
+            backoff = min(
+                _INSTALL_LOCK_MAXIMUM_BACKOFF_SECONDS,
+                backoff * 2.0,
+            )
+            continue
+        with stack:
+            yield
+        return
 
 
 def _current_snapshot(
@@ -268,7 +351,7 @@ def _install_snapshot(
     backup_root = staging_root / "previous"
     backup_root.mkdir()
     replaced: list[tuple[Path, Path | None]] = []
-    with service.store.named_lock("report-writer"):
+    with _publisher_writer_lock(service):
         try:
             for source, destination, relative in publications:
                 if not source.is_file():
@@ -486,62 +569,52 @@ def run_publisher(
         raise ReportPublisherError(
             "publication interval must be finite and positive"
         )
-    state_path = service.paths.coordination_root / "publication" / "daemon.json"
-    with service.store.named_lock("report-publisher-daemon", timeout=0.0):
-        _atomic_json(
-            state_path,
-            {
-                "schema": PUBLICATION_SNAPSHOT_SCHEMA,
-                "pid": os.getpid(),
-                "started_at_utc": _utc_now(),
-                "interval_seconds": interval_seconds,
-            },
-        )
+    with _publisher_state_lease(
+        service,
+        interval_seconds=interval_seconds,
+    ):
         latest: PublicationResult | None = None
-        try:
-            while True:
-                cycle_started = time.monotonic()
-                try:
-                    latest = publish_once(
-                        service,
-                        expected_page_count=expected_page_count,
-                        pdf_timeout_seconds=pdf_timeout_seconds,
-                    )
-                    print(
-                        json.dumps(
-                            latest.as_dict(),
-                            allow_nan=False,
-                            sort_keys=True,
-                        ),
-                        flush=True,
-                    )
-                except Exception as error:
-                    print(
-                        json.dumps(
-                            {
-                                "schema": PUBLICATION_SNAPSHOT_SCHEMA,
-                                "status": "error",
-                                "kind": type(error).__name__,
-                                "message": str(error),
-                                "recorded_at_utc": _utc_now(),
-                            },
-                            allow_nan=False,
-                            sort_keys=True,
-                        ),
-                        flush=True,
-                    )
-                    if not watch:
-                        raise
-                if not watch:
-                    assert latest is not None
-                    return latest
-                remaining = interval_seconds - (
-                    time.monotonic() - cycle_started
+        while True:
+            cycle_started = time.monotonic()
+            try:
+                latest = publish_once(
+                    service,
+                    expected_page_count=expected_page_count,
+                    pdf_timeout_seconds=pdf_timeout_seconds,
                 )
-                if remaining > 0.0:
-                    time.sleep(remaining)
-        finally:
-            state_path.unlink(missing_ok=True)
+                print(
+                    json.dumps(
+                        latest.as_dict(),
+                        allow_nan=False,
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+            except Exception as error:
+                print(
+                    json.dumps(
+                        {
+                            "schema": PUBLICATION_SNAPSHOT_SCHEMA,
+                            "status": "error",
+                            "kind": type(error).__name__,
+                            "message": str(error),
+                            "recorded_at_utc": _utc_now(),
+                        },
+                        allow_nan=False,
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+                if not watch:
+                    raise
+            if not watch:
+                assert latest is not None
+                return latest
+            remaining = interval_seconds - (
+                time.monotonic() - cycle_started
+            )
+            if remaining > 0.0:
+                time.sleep(remaining)
 
 
 __all__ = [
