@@ -79,6 +79,8 @@ pub struct Producer {
     pub target: Target,
     #[serde(default)]
     pub git_revision: Option<String>,
+    #[serde(default)]
+    pub native_build_inputs_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1344,6 +1346,14 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
         return Err(RusticolError::artifact(
             "producer.git_revision must be 40 lowercase hexadecimal characters",
         ));
+    }
+    if let Some(native_inputs) = &manifest.producer.native_build_inputs_sha256 {
+        if manifest.producer.git_revision.is_none() {
+            return Err(RusticolError::artifact(
+                "producer.native_build_inputs_sha256 requires producer.git_revision",
+            ));
+        }
+        validate_sha256(native_inputs, "producer.native_build_inputs_sha256")?;
     }
     validate_sha256(&manifest.model.content_sha256, "model content_sha256")?;
     if manifest.model.name.is_empty()

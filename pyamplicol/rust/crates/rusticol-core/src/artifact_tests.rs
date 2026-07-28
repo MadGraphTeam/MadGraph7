@@ -1921,8 +1921,22 @@ fn required_nullable_and_target_fields_remain_strict() {
 #[test]
 fn clean_source_structural_proof_payload_roundtrips_with_exact_declaration() {
     let mut valid = TestArtifact::new();
+    valid.manifest["producer"]["git_revision"] = json!("a".repeat(40));
+    valid.manifest["producer"]["native_build_inputs_sha256"] = json!("b".repeat(64));
     add_structural_source_proof(&mut valid);
     let verified = VerifiedArtifact::open(&valid.root).expect("valid structural proof artifact");
+    assert_eq!(
+        verified.manifest.producer.git_revision.as_deref(),
+        Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    );
+    assert_eq!(
+        verified
+            .manifest
+            .producer
+            .native_build_inputs_sha256
+            .as_deref(),
+        Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    );
     let payload = verified
         .payloads
         .get("processes/p0/structural-source-proof.json")
@@ -1975,6 +1989,25 @@ fn clean_source_structural_proof_payload_roundtrips_with_exact_declaration() {
     missing_process.write_manifest();
     let error = VerifiedArtifact::open(&missing_process.root).unwrap_err();
     assert!(error.to_string().contains("required process id"));
+
+    let mut malformed_native_identity = TestArtifact::new();
+    malformed_native_identity.manifest["producer"]["git_revision"] = json!("a".repeat(40));
+    malformed_native_identity.manifest["producer"]["native_build_inputs_sha256"] =
+        json!("not-a-sha256");
+    malformed_native_identity.write_manifest();
+    let error = VerifiedArtifact::open(&malformed_native_identity.root).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("producer.native_build_inputs_sha256")
+    );
+
+    let mut native_identity_without_revision = TestArtifact::new();
+    native_identity_without_revision.manifest["producer"]["native_build_inputs_sha256"] =
+        json!("b".repeat(64));
+    native_identity_without_revision.write_manifest();
+    let error = VerifiedArtifact::open(&native_identity_without_revision.root).unwrap_err();
+    assert!(error.to_string().contains("requires producer.git_revision"));
 }
 
 #[test]
