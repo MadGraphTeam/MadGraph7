@@ -6,6 +6,7 @@
 //! fill the persistent momentum and parameter arenas, then execute the
 //! authenticated direct plan without resizing any runtime storage.
 
+use std::collections::BTreeSet;
 use std::mem::size_of;
 use std::ops::Range;
 use std::time::{Duration, Instant};
@@ -13,10 +14,13 @@ use std::time::{Duration, Instant};
 use super::direct_backend::{
     DIRECT_STATUS_OK, DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog,
     DirectFactorView, DirectMomentumView, DirectParameterView, DirectUnionSourceDispatchHandle,
-    DirectWorkspace, execute_direct_plan_profiled_with_traffic, execute_direct_plan_unprofiled,
+    DirectWorkspace, execute_direct_plan_profiled_with_traffic,
+    execute_direct_plan_selected_profiled_with_traffic, execute_direct_plan_selected_unprofiled,
+    execute_direct_plan_unprofiled,
 };
 use super::direct_plan::{
-    DirectAmplitudeDestinationDescriptor, DirectRecurrencePlan, DirectResolvedHelicityDescriptor,
+    DirectAmplitudeDestinationDescriptor, DirectExecutorRole, DirectRecurrencePlan,
+    DirectResolvedHelicityDescriptor, DirectRowGroupDescriptor,
 };
 use super::{RecurrenceStrategy, SemanticDigest};
 use crate::direct_arena::{
@@ -119,6 +123,8 @@ pub struct DirectReplaySelectorPlan {
     phase_re: f64,
     phase_im: f64,
     multiplicity: u32,
+    row_groups: Box<[DirectRowGroupDescriptor]>,
+    amplitude_clear_ranges: Box<[Range<usize>]>,
 }
 
 /// Prepared, plan-authenticated all-flow-union helicity selection.
@@ -161,6 +167,17 @@ impl DirectReplaySelectorPlan {
 
     pub(crate) fn helicity_map(&self) -> &[u32] {
         &self.helicity_map
+    }
+
+    pub fn selected_row_group_count(&self) -> usize {
+        self.row_groups.len()
+    }
+
+    pub fn selected_row_count(&self) -> u64 {
+        self.row_groups
+            .iter()
+            .map(|group| u64::from(group.row_count))
+            .sum()
     }
 
     fn identity(&self) -> DirectReplaySelectorIdentity {
@@ -286,6 +303,8 @@ impl DirectRecurrenceExecutionRuntime {
                     .and_then(|amplitude| current.checked_add(amplitude))
             })
             .ok_or_else(|| invalid("split-complex per-point workspace size overflows usize"))?;
+        let cache_split_complex_scalar_count =
+            replay_cache_split_complex_scalar_count(&plan, split_complex_scalar_count)?;
         let momentum_scalar_count = usize::try_from(momentum_form_count)
             .ok()
             .and_then(|forms| forms.checked_mul(usize::from(lorentz_component_count)))
@@ -316,7 +335,7 @@ impl DirectRecurrenceExecutionRuntime {
                 "could not derive a hard-budget Direct-Arena tile: {error}"
             ))
         })?;
-        let split_complex_per_point_bytes = split_complex_scalar_count
+        let split_complex_per_point_bytes = cache_split_complex_scalar_count
             .checked_mul(size_of::<f64>())
             .filter(|bytes| *bytes != 0)
             .ok_or_else(|| invalid("split-complex per-point bytes overflow usize"))?;
@@ -569,6 +588,9 @@ impl DirectRecurrenceExecutionRuntime {
             .ok_or_else(|| {
                 RusticolError::integrity("direct recurrence replay phase factor is out of bounds")
             })?;
+        let row_groups = selected_replay_row_groups(&self.plan, target.representative_id)?;
+        let amplitude_clear_ranges =
+            selected_amplitude_clear_ranges(&self.plan, target.representative_id)?;
         Ok(DirectReplaySelectorPlan {
             runtime_layout_digest: self.plan.runtime_layout_digest(),
             public_flow_id,
@@ -579,6 +601,8 @@ impl DirectRecurrenceExecutionRuntime {
             phase_re: phase.real().numerator() as f64 / phase.real().denominator() as f64,
             phase_im: phase.imag().numerator() as f64 / phase.imag().denominator() as f64,
             multiplicity: target.multiplicity,
+            row_groups: row_groups.into_boxed_slice(),
+            amplitude_clear_ranges: amplitude_clear_ranges.into_boxed_slice(),
         })
     }
 
@@ -1037,7 +1061,7 @@ impl DirectRecurrenceExecutionRuntime {
             ));
         }
 
-        self.execute_direct_tile_impl::<PROFILE>(point_count)?;
+        self.execute_selected_direct_tile_impl::<PROFILE>(selector, point_count)?;
         let started = PROFILE.then(Instant::now);
         let scale_re = selector.phase_re * f64::from(selector.multiplicity);
         let scale_im = selector.phase_im * f64::from(selector.multiplicity);
@@ -1314,6 +1338,22 @@ impl DirectRecurrenceExecutionRuntime {
         &mut self,
         point_count: u32,
     ) -> RusticolResult<()> {
+        self.execute_direct_tile_rows_impl::<PROFILE>(point_count, None)
+    }
+
+    fn execute_selected_direct_tile_impl<const PROFILE: bool>(
+        &mut self,
+        selector: &DirectReplaySelectorPlan,
+        point_count: u32,
+    ) -> RusticolResult<()> {
+        self.execute_direct_tile_rows_impl::<PROFILE>(point_count, Some(selector))
+    }
+
+    fn execute_direct_tile_rows_impl<const PROFILE: bool>(
+        &mut self,
+        point_count: u32,
+        selector: Option<&DirectReplaySelectorPlan>,
+    ) -> RusticolResult<()> {
         self.validate_point_count(point_count)?;
         self.restore_physical_momenta();
         self.arena.begin_tile(point_count)?;
@@ -1323,8 +1363,11 @@ impl DirectRecurrenceExecutionRuntime {
         // `execute_direct_plan` initializes every current stage exactly once
         // before its first contribution group. Re-clearing all current planes
         // here only duplicates that work.
-        for range_index in 0..self.additive_amplitude_ranges.len() {
-            let range = &self.additive_amplitude_ranges[range_index];
+        let amplitude_ranges = selector
+            .map_or(self.additive_amplitude_ranges.as_slice(), |selector| {
+                selector.amplitude_clear_ranges.as_ref()
+            });
+        for range in amplitude_ranges {
             let component_base = u32::try_from(range.start).map_err(|_| {
                 RusticolError::integrity("direct recurrence amplitude clear base exceeds u32")
             })?;
@@ -1353,8 +1396,27 @@ impl DirectRecurrenceExecutionRuntime {
                 point_stride: self.point_stride,
             };
             let started = PROFILE.then(Instant::now);
-            let result = if PROFILE {
-                execute_direct_plan_profiled_with_traffic(
+            let result = match (PROFILE, selector) {
+                (true, Some(selector)) => execute_direct_plan_selected_profiled_with_traffic(
+                    &self.plan,
+                    &selector.row_groups,
+                    selector.representative_flow_id,
+                    &self.executors,
+                    &mut workspace,
+                    point_count,
+                    &mut self.counters,
+                    &mut self.role_timings,
+                    &mut self.traffic_counters,
+                ),
+                (false, Some(selector)) => execute_direct_plan_selected_unprofiled(
+                    &self.plan,
+                    &selector.row_groups,
+                    selector.representative_flow_id,
+                    &self.executors,
+                    &mut workspace,
+                    point_count,
+                ),
+                (true, None) => execute_direct_plan_profiled_with_traffic(
                     &self.plan,
                     &self.executors,
                     &mut workspace,
@@ -1362,14 +1424,13 @@ impl DirectRecurrenceExecutionRuntime {
                     &mut self.counters,
                     &mut self.role_timings,
                     &mut self.traffic_counters,
-                )
-            } else {
-                execute_direct_plan_unprofiled(
+                ),
+                (false, None) => execute_direct_plan_unprofiled(
                     &self.plan,
                     &self.executors,
                     &mut workspace,
                     point_count,
-                )
+                ),
             };
             if PROFILE {
                 self.timings.direct_execution += started
@@ -1607,11 +1668,150 @@ impl DirectRecurrenceExecutionRuntime {
     }
 }
 
+fn replay_cache_split_complex_scalar_count(
+    plan: &DirectRecurrencePlan,
+    persisted_split_complex_scalar_count: usize,
+) -> RusticolResult<usize> {
+    if plan.strategy() != RecurrenceStrategy::TopologyReplay {
+        return Ok(persisted_split_complex_scalar_count);
+    }
+    let representative_sectors = plan
+        .replay_targets()
+        .iter()
+        .map(|target| target.representative_id)
+        .collect::<BTreeSet<_>>();
+    if representative_sectors.is_empty() {
+        return Ok(persisted_split_complex_scalar_count);
+    }
+    let current_arena_components = u64::from(plan.current_arena_components());
+    let mut maximum = 0_u64;
+    for representative_sector_id in representative_sectors {
+        let summary = plan.selector_work_summary(representative_sector_id)?;
+        let active_current_components = summary
+            .semantic_component_count
+            .min(current_arena_components);
+        let active_complex_planes = active_current_components
+            .checked_add(summary.amplitude_destination_count)
+            .ok_or_else(|| invalid("selected replay cache plane count overflows u64"))?;
+        let active_split_scalars = active_complex_planes
+            .checked_mul(2)
+            .ok_or_else(|| invalid("selected replay cache scalar count overflows u64"))?;
+        maximum = maximum.max(active_split_scalars);
+    }
+    let maximum = usize::try_from(maximum)
+        .map_err(|_| invalid("selected replay cache scalar count exceeds usize"))?;
+    if maximum == 0 {
+        return Err(invalid(
+            "topology-replay selector domains expose no cache-resident work",
+        ));
+    }
+    Ok(maximum.min(persisted_split_complex_scalar_count))
+}
+
 fn greatest_power_of_two_not_exceeding(value: usize) -> usize {
     if value == 0 {
         return 1;
     }
     1_usize << (usize::BITS - 1 - value.leading_zeros())
+}
+
+fn selected_replay_row_groups(
+    plan: &DirectRecurrencePlan,
+    representative_sector_id: u32,
+) -> RusticolResult<Vec<DirectRowGroupDescriptor>> {
+    let mut selected = Vec::new();
+    for descriptor in plan.row_groups() {
+        let start = usize::try_from(descriptor.row_start).map_err(|_| {
+            RusticolError::integrity("direct recurrence row-group start exceeds usize")
+        })?;
+        let count = descriptor.row_count as usize;
+        let mut offset = 0usize;
+        while offset < count {
+            let run_start = offset;
+            let selector_domain_id =
+                row_selector_domain_id(plan, descriptor.role, start + run_start)?;
+            while offset < count
+                && row_selector_domain_id(plan, descriptor.role, start + offset)?
+                    == selector_domain_id
+            {
+                offset += 1;
+            }
+            // Preserve selector-domain boundaries even when adjacent domains
+            // are both active. Prepared SymJIT descriptor caches authenticate
+            // a row-table pointer together with its count; a shared-domain
+            // prefix must therefore have one stable count for every selector.
+            if !plan.selector_domain_contains(selector_domain_id, representative_sector_id)? {
+                continue;
+            }
+            let mut run = *descriptor;
+            run.row_start = descriptor
+                .row_start
+                .checked_add(run_start as u64)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "direct recurrence selected row-group start overflows u64",
+                    )
+                })?;
+            run.row_count = u32::try_from(offset - run_start).map_err(|_| {
+                RusticolError::integrity("direct recurrence selected row-group count exceeds u32")
+            })?;
+            selected.push(run);
+        }
+    }
+    if selected.is_empty() {
+        return Err(RusticolError::integrity(format!(
+            "direct recurrence representative sector {representative_sector_id} has no executable rows"
+        )));
+    }
+    Ok(selected)
+}
+
+fn row_selector_domain_id(
+    plan: &DirectRecurrencePlan,
+    role: DirectExecutorRole,
+    row_index: usize,
+) -> RusticolResult<u32> {
+    match role {
+        DirectExecutorRole::Source => plan
+            .sources()
+            .get(row_index)
+            .map(|row| row.selector_domain_id),
+        DirectExecutorRole::Contribution => plan
+            .contributions()
+            .get(row_index)
+            .map(|row| row.selector_domain_id),
+        DirectExecutorRole::Finalization => plan
+            .finalizations()
+            .get(row_index)
+            .map(|row| row.selector_domain_id),
+        DirectExecutorRole::Closure => plan
+            .closures()
+            .get(row_index)
+            .map(|row| row.selector_domain_id),
+    }
+    .ok_or_else(|| RusticolError::integrity("direct recurrence selected row is out of bounds"))
+}
+
+fn selected_amplitude_clear_ranges(
+    plan: &DirectRecurrencePlan,
+    representative_sector_id: u32,
+) -> RusticolResult<Vec<Range<usize>>> {
+    let destination_count = usize::try_from(plan.amplitude_destination_count())
+        .map_err(|_| invalid("amplitude destination count exceeds usize"))?;
+    let mut marked = zeroed_marks(destination_count, "selected amplitude clear map")?;
+    for destination in plan.amplitude_destinations() {
+        if plan
+            .selector_domain_contains(destination.selector_domain_id, representative_sector_id)?
+        {
+            mark_range(
+                &mut marked,
+                destination.id as usize,
+                1,
+                "selected amplitude",
+            )?;
+        }
+    }
+    compact_ranges(&marked, "selected amplitude")
 }
 
 fn amplitude_clear_ranges(plan: &DirectRecurrencePlan) -> RusticolResult<Vec<Range<usize>>> {

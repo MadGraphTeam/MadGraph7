@@ -317,6 +317,74 @@ fn direct_plan_validates_and_has_a_stable_nonzero_layout_digest() {
 }
 
 #[test]
+fn selector_work_summary_reports_active_rows_and_components() {
+    let plan = valid_plan();
+    let summary = plan.selector_work_summary(0).unwrap();
+    assert_eq!(summary.physical_sector_id, 0);
+    assert_eq!(summary.current_count, 2);
+    assert_eq!(summary.semantic_component_count, 3);
+    assert_eq!(summary.source_row_count, 1);
+    assert_eq!(summary.contribution_count, 1);
+    assert_eq!(summary.finalization_count, 1);
+    assert_eq!(summary.closure_count, 1);
+    assert_eq!(summary.amplitude_destination_count, 1);
+    assert_eq!(summary.row_count(), 4);
+}
+
+#[test]
+fn selector_domains_support_multiword_masks_and_legacy_universal_encoding() {
+    let mut parts = valid_parts();
+    parts.physical_sector_count = 71;
+    parts.selector_domains.extend([
+        DirectSelectorDomainDescriptor {
+            word_start: 1,
+            word_count: 2,
+        },
+        DirectSelectorDomainDescriptor {
+            word_start: 3,
+            word_count: 1,
+        },
+    ]);
+    parts.selector_words.extend([0, 1_u64 << 6, u64::MAX]);
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+
+    assert!(!plan.selector_domain_contains(1, 63).unwrap());
+    assert!(plan.selector_domain_contains(1, 70).unwrap());
+    assert!(plan.selector_domain_contains(2, 70).unwrap());
+    assert!(plan.selector_domain_contains(2, 0).unwrap());
+    assert!(
+        plan.selector_domain_contains(2, 71)
+            .unwrap_err()
+            .to_string()
+            .contains("out of bounds")
+    );
+}
+
+#[test]
+fn direct_plan_rejects_selector_domains_inconsistent_with_bound_rows() {
+    let mut parts = valid_parts();
+    parts.selector_domains.push(DirectSelectorDomainDescriptor {
+        word_start: 1,
+        word_count: 1,
+    });
+    parts.selector_words.push(0);
+    parts.sources[0].selector_domain_id = 1;
+    let error = DirectRecurrencePlan::new(parts).unwrap_err();
+    assert!(error.to_string().contains("does not match its current"));
+
+    let mut parts = valid_parts();
+    parts.selector_domains.push(DirectSelectorDomainDescriptor {
+        word_start: 1,
+        word_count: 1,
+    });
+    parts.selector_words.push(0);
+    parts.amplitude_destinations[0].selector_domain_id = 1;
+    parts.closures[0].selector_domain_id = 1;
+    let error = DirectRecurrencePlan::new(parts).unwrap_err();
+    assert!(error.to_string().contains("excludes its target sector"));
+}
+
+#[test]
 fn direct_plan_accepts_an_elided_identity_finalization() {
     let mut parts = valid_parts();
     parts.currents[1].finalization_row_or_sentinel = DIRECT_NONE_U32;

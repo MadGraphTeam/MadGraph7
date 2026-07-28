@@ -308,6 +308,157 @@ struct ClosureDraft {
     row: DirectClosureRow,
 }
 
+struct LoweredSelectorDomains {
+    descriptors: Vec<DirectSelectorDomainDescriptor>,
+    words: Vec<u64>,
+    current_domain_ids: Vec<u32>,
+    closure_domain_ids: Vec<u32>,
+    destination_domain_ids: Vec<u32>,
+    sector_domain_ids: Vec<u32>,
+}
+
+fn lower_selector_domains(program: &RecurrenceProgram) -> RusticolResult<LoweredSelectorDomains> {
+    // Keep the historical universal row first.  Besides making complete-color
+    // plans byte-for-byte stable, this is the backwards-compatible
+    // direct-plan-v2 encoding recognized by the runtime.
+    let mut descriptors = vec![DirectSelectorDomainDescriptor {
+        word_start: 0,
+        word_count: 1,
+    }];
+    let mut words = vec![u64::MAX];
+    if program.strategy() != RecurrenceStrategy::TopologyReplay {
+        return Ok(LoweredSelectorDomains {
+            descriptors,
+            words,
+            current_domain_ids: vec![UNIVERSAL_SELECTOR_DOMAIN_ID; program.currents().len()],
+            closure_domain_ids: vec![UNIVERSAL_SELECTOR_DOMAIN_ID; program.closure_terms().len()],
+            destination_domain_ids: vec![
+                UNIVERSAL_SELECTOR_DOMAIN_ID;
+                program.amplitude_destinations().len()
+            ],
+            sector_domain_ids: vec![
+                UNIVERSAL_SELECTOR_DOMAIN_ID;
+                program.physical_sector_count() as usize
+            ],
+        });
+    }
+
+    let sector_count = program.physical_sector_count() as usize;
+    let word_count = sector_count
+        .checked_add(u64::BITS as usize - 1)
+        .ok_or_else(|| invalid("selector-domain sector count overflows usize"))?
+        / u64::BITS as usize;
+    if word_count == 0 {
+        return Err(invalid(
+            "topology-replay selector domains require physical sectors",
+        ));
+    }
+    let mut current_words = vec![vec![0_u64; word_count]; program.currents().len()];
+    let mut closure_words = Vec::with_capacity(program.closure_terms().len());
+    for closure in program.closure_terms() {
+        let destination = program
+            .amplitude_destinations()
+            .get(closure.target_destination_id() as usize)
+            .ok_or_else(|| invalid("closure selector destination is absent"))?;
+        let sector_id = destination.target_sector_id() as usize;
+        if sector_id >= sector_count {
+            return Err(invalid("closure selector sector is out of bounds"));
+        }
+        let mut domain = vec![0_u64; word_count];
+        domain[sector_id / u64::BITS as usize] |= 1_u64 << (sector_id % u64::BITS as usize);
+        for parent_id in closure.parent_current_ids() {
+            let parent = current_words
+                .get_mut(*parent_id as usize)
+                .ok_or_else(|| invalid("closure selector parent current is absent"))?;
+            for (parent_word, sector_word) in parent.iter_mut().zip(&domain) {
+                *parent_word |= *sector_word;
+            }
+        }
+        closure_words.push(domain);
+    }
+
+    // Current IDs are topological.  Walking backwards propagates every
+    // selected closure sector through exactly the parent currents needed to
+    // construct it, retaining sharing as the union of dependent sectors.
+    for current in program.currents().iter().rev() {
+        let domain = current_words
+            .get(current.id() as usize)
+            .ok_or_else(|| invalid("selector current is absent"))?
+            .clone();
+        // Builder programs may retain structurally valid dead currents.  Keep
+        // their fixed-width all-zero domain: full execution remains
+        // byte-for-byte compatible, while selected replay can omit them.
+        let contributions = current.contribution_range().as_usize_range(
+            program.contributions().len(),
+            "selector current contribution",
+        )?;
+        for contribution in &program.contributions()[contributions] {
+            for parent_id in contribution.parent_current_ids() {
+                let parent = current_words
+                    .get_mut(*parent_id as usize)
+                    .ok_or_else(|| invalid("selector contribution parent current is absent"))?;
+                for (parent_word, current_word) in parent.iter_mut().zip(&domain) {
+                    *parent_word |= *current_word;
+                }
+            }
+        }
+    }
+
+    let mut interned = BTreeMap::<Vec<u64>, u32>::new();
+    interned.insert(vec![u64::MAX], UNIVERSAL_SELECTOR_DOMAIN_ID);
+    let mut intern = |domain: &[u64]| -> RusticolResult<u32> {
+        if let Some(id) = interned.get(domain) {
+            return Ok(*id);
+        }
+        let id = u32::try_from(descriptors.len())
+            .map_err(|_| invalid("selector-domain count exceeds u32"))?;
+        let word_start = u64::try_from(words.len())
+            .map_err(|_| invalid("selector-domain word table exceeds u64"))?;
+        let word_count = u32::try_from(domain.len())
+            .map_err(|_| invalid("selector-domain word count exceeds u32"))?;
+        words.extend_from_slice(domain);
+        descriptors.push(DirectSelectorDomainDescriptor {
+            word_start,
+            word_count,
+        });
+        interned.insert(domain.to_vec(), id);
+        Ok(id)
+    };
+
+    let mut sector_domain_ids = Vec::with_capacity(sector_count);
+    for sector_id in 0..sector_count {
+        let mut domain = vec![0_u64; word_count];
+        domain[sector_id / u64::BITS as usize] |= 1_u64 << (sector_id % u64::BITS as usize);
+        sector_domain_ids.push(intern(&domain)?);
+    }
+    let current_domain_ids = current_words
+        .iter()
+        .map(|domain| intern(domain))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let closure_domain_ids = closure_words
+        .iter()
+        .map(|domain| intern(domain))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let destination_domain_ids = program
+        .amplitude_destinations()
+        .iter()
+        .map(|destination| {
+            sector_domain_ids
+                .get(destination.target_sector_id() as usize)
+                .copied()
+                .ok_or_else(|| invalid("amplitude selector sector is out of bounds"))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    Ok(LoweredSelectorDomains {
+        descriptors,
+        words,
+        current_domain_ids,
+        closure_domain_ids,
+        destination_domain_ids,
+        sector_domain_ids,
+    })
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct DirectParents {
     pub(super) parent0_component_base: u32,
@@ -423,6 +574,7 @@ fn build_direct_parts(
     let component_counts = component_counts(program, templates)?;
     let arena = recurrence_direct_arena_layout(program, &component_counts)?;
     arena.validate()?;
+    let selector_domains = lower_selector_domains(program)?;
 
     let (momentum_ids, momentum_forms, momentum_terms) =
         intern_momentum_forms(program, external_source_count)?;
@@ -490,7 +642,8 @@ fn build_direct_parts(
                         source_template_or_dispatch_domain: *source_template_id,
                         spin_state_class: current.key().spin_state_class(),
                         exact_factor_id: exact_factor_id(&exact_factor_ids, source_factor)?,
-                        selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
+                        selector_domain_id: selector_domains.current_domain_ids
+                            [current.id() as usize],
                     },
                 });
             }
@@ -646,7 +799,7 @@ fn build_direct_parts(
                 parent1_momentum_form_id_or_sentinel: parents.parent1_momentum_form_id_or_sentinel,
                 destination_component_base: arena_assignment(&arena, result.id())?.component_base,
                 exact_factor_id: exact_factor_id(&exact_factor_ids, contribution.exact_factor())?,
-                selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
+                selector_domain_id: selector_domains.current_domain_ids[result.id() as usize],
                 flags: DIRECT_ROW_FLAGS_NONE,
             },
         });
@@ -710,7 +863,7 @@ fn build_direct_parts(
                 })?,
                 momentum_form_id: momentum_id(&momentum_ids, current.key().momentum())?,
                 exact_factor_id: exact_factor_id(&exact_factor_ids, finalization.exact_factor())?,
-                selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
+                selector_domain_id: selector_domains.current_domain_ids[current.id() as usize],
                 flags: DIRECT_ROW_FLAGS_NONE,
             },
         });
@@ -835,17 +988,25 @@ fn build_direct_parts(
                 exact_factor_id: exact_factor_id(&exact_factor_ids, closure.exact_factor())?,
                 component_factor_start,
                 component_count,
-                selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
+                selector_domain_id: selector_domains.closure_domain_ids[closure.id() as usize],
                 flags: DIRECT_ROW_FLAGS_NONE,
             },
         });
     }
 
-    source_drafts.sort_by_key(|draft| (draft.stage, draft.executor_id, draft.semantic_current_id));
+    source_drafts.sort_by_key(|draft| {
+        (
+            draft.stage,
+            draft.executor_id,
+            draft.row.selector_domain_id,
+            draft.semantic_current_id,
+        )
+    });
     contribution_drafts.sort_by_key(|draft| {
         (
             draft.stage,
             draft.executor_id,
+            draft.row.selector_domain_id,
             draft.semantic_contribution_id,
         )
     });
@@ -855,8 +1016,14 @@ fn build_direct_parts(
             draft.row.flags |= DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
         }
     }
-    finalization_drafts
-        .sort_by_key(|draft| (draft.stage, draft.executor_id, draft.semantic_current_id));
+    finalization_drafts.sort_by_key(|draft| {
+        (
+            draft.stage,
+            draft.executor_id,
+            draft.row.selector_domain_id,
+            draft.semantic_current_id,
+        )
+    });
     // Destination ownership is primary. Each destination retains exactly one
     // contiguous closure range; executor changes create additional row groups.
     closure_drafts.sort_by_key(|draft| {
@@ -868,8 +1035,6 @@ fn build_direct_parts(
         )
     });
     let mut closure_row_by_term = vec![DIRECT_NONE_U32; program.closure_terms().len()];
-    let universal_selector_digest =
-        closure_selector_domain_digest_v2(&[u64::MAX]).map_err(|error| invalid(error.message()))?;
     let mut lowered_proof_groups = program.closure_proofs().groups().to_vec();
     for (row_index, draft) in closure_drafts.iter_mut().enumerate() {
         let row_id = u32_len("closure row", row_index)?;
@@ -903,11 +1068,23 @@ fn build_direct_parts(
                 .ok_or_else(|| invalid("closure component-factor range is out of bounds"))?,
         )
         .map_err(|error| invalid(error.message()))?;
-        lowered_proof_groups[group.id() as usize] = group.with_direct_closure_binding(
-            Some(row_id),
-            component_digest,
-            universal_selector_digest,
-        )?;
+        let selector = selector_domains
+            .descriptors
+            .get(draft.row.selector_domain_id as usize)
+            .ok_or_else(|| invalid("lowered closure selector domain is absent"))?;
+        let selector_start = selector.word_start as usize;
+        let selector_end = selector_start
+            .checked_add(selector.word_count as usize)
+            .ok_or_else(|| invalid("lowered closure selector range overflows usize"))?;
+        let selector_digest = closure_selector_domain_digest_v2(
+            selector_domains
+                .words
+                .get(selector_start..selector_end)
+                .ok_or_else(|| invalid("lowered closure selector range is out of bounds"))?,
+        )
+        .map_err(|error| invalid(error.message()))?;
+        lowered_proof_groups[group.id() as usize] =
+            group.with_direct_closure_binding(Some(row_id), component_digest, selector_digest)?;
     }
     if closure_row_by_term.contains(&DIRECT_NONE_U32) {
         return Err(invalid(
@@ -959,7 +1136,7 @@ fn build_direct_parts(
                 })?,
                 momentum_form_id: momentum_id(&momentum_ids, current.key().momentum())?,
                 stage: current_stage(current)?,
-                selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
+                selector_domain_id: selector_domains.current_domain_ids[current.id() as usize],
                 first_use: direct_event(assignment.first_use, "arena first use")?,
                 last_use: direct_event(assignment.last_use, "arena last use")?,
                 source_row_or_sentinel: source_row_by_current[current.id() as usize],
@@ -1003,7 +1180,11 @@ fn build_direct_parts(
     )?;
     row_groups.sort_by_key(|row_group| (row_group.stage, row_group.role, row_group.row_start));
 
-    let amplitude_destinations = lower_amplitude_destinations(program, &closure_drafts)?;
+    let amplitude_destinations = lower_amplitude_destinations(
+        program,
+        &closure_drafts,
+        &selector_domains.destination_domain_ids,
+    )?;
     let (
         resolved_helicities,
         source_state_assignments,
@@ -1021,7 +1202,11 @@ fn build_direct_parts(
         )?,
     };
     let (replay_targets, source_permutations, replay_momentum_signs, replay_helicity_map) =
-        lower_replay_targets(program, &exact_factor_ids)?;
+        lower_replay_targets(
+            program,
+            &exact_factor_ids,
+            &selector_domains.sector_domain_ids,
+        )?;
 
     let state_template_count = u32_len("state template", input.current_states.len())?;
     let source_template_count = u32_len("source template", input.sources.len())?;
@@ -1076,14 +1261,10 @@ fn build_direct_parts(
         row_groups,
         momentum_forms,
         momentum_terms,
-        // The compact topology-replay program is already liveness-pruned.
-        // Until process selector-domain rows are added to RecurrenceProgram,
-        // every retained direct row belongs to one universal domain.
-        selector_domains: vec![DirectSelectorDomainDescriptor {
-            word_start: 0,
-            word_count: 1,
-        }],
-        selector_words: vec![u64::MAX],
+        // Topology replay persists one dependency-closed domain per physical
+        // sector. Other strategies retain the historical universal domain.
+        selector_domains: selector_domains.descriptors,
+        selector_words: selector_domains.words,
         replay_targets,
         source_permutations,
         replay_momentum_signs,
@@ -2045,6 +2226,7 @@ fn intern_closure_factor_block(
 fn lower_amplitude_destinations(
     program: &RecurrenceProgram,
     closures: &[ClosureDraft],
+    destination_domain_ids: &[u32],
 ) -> RusticolResult<Vec<DirectAmplitudeDestinationDescriptor>> {
     let mut next_closure = 0usize;
     let mut result = Vec::with_capacity(program.amplitude_destinations().len());
@@ -2072,7 +2254,9 @@ fn lower_amplitude_destinations(
                 .target_helicity_id()
                 .unwrap_or(DIRECT_NONE_U32),
             closure_row_count: u32_len("amplitude-destination closure row", count)?,
-            selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
+            selector_domain_id: *destination_domain_ids
+                .get(destination.id() as usize)
+                .ok_or_else(|| invalid("amplitude destination selector domain is absent"))?,
         });
     }
     if next_closure != closures.len() {
@@ -2093,6 +2277,7 @@ type DirectReplayTables = (
 fn lower_replay_targets(
     program: &RecurrenceProgram,
     exact_factor_ids: &BTreeMap<ExactComplexRational, u32>,
+    sector_domain_ids: &[u32],
 ) -> RusticolResult<DirectReplayTables> {
     if !program.strategy().uses_topology_replay_targets() {
         if !program.replay_targets().is_empty() {
@@ -2246,7 +2431,9 @@ fn lower_replay_targets(
             // RecurrenceProgram stores one exact row per public target and has
             // no separate orbit-multiplicity field.
             multiplicity: 1,
-            selector_domain_id: UNIVERSAL_SELECTOR_DOMAIN_ID,
+            selector_domain_id: *sector_domain_ids
+                .get(target.materialized_sector_id() as usize)
+                .ok_or_else(|| invalid("replay representative selector domain is absent"))?,
         });
     }
     Ok((

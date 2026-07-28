@@ -10,7 +10,8 @@ use super::RecurrenceStrategy;
 use super::SemanticDigest;
 use super::direct_plan::{
     DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectExecutorRole,
-    DirectFinalizationRow, DirectNodeKind, DirectRecurrencePlan, DirectSourceRow,
+    DirectFinalizationRow, DirectNodeKind, DirectRecurrencePlan, DirectRowGroupDescriptor,
+    DirectSourceRow,
 };
 pub use super::direct_plan::{
     DirectResolvedSourceSelection, DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow,
@@ -333,6 +334,7 @@ impl DirectWorkspace<'_> {
         plan: &DirectRecurrencePlan,
         stage: u16,
         point_count: u32,
+        selected_sector_id: Option<u32>,
     ) -> RusticolResult<()> {
         let current_plane_count = u32::try_from(self.current_re.len() / self.point_stride as usize)
             .map_err(|_| {
@@ -343,6 +345,11 @@ impl DirectWorkspace<'_> {
         for current in plan.currents().iter().filter(|current| {
             current.node_kind == DirectNodeKind::Current && current.stage == stage
         }) {
+            if let Some(sector_id) = selected_sector_id
+                && !plan.selector_domain_contains(current.selector_domain_id, sector_id)?
+            {
+                continue;
+            }
             clear_split_active_range(
                 self.current_re,
                 self.current_im,
@@ -391,6 +398,8 @@ pub fn execute_direct_plan(
     let mut unused_timings = DirectExecutionRoleTimings::default();
     execute_direct_plan_impl::<true>(
         plan,
+        plan.row_groups(),
+        None,
         executors,
         workspace,
         point_count,
@@ -410,6 +419,8 @@ pub fn execute_direct_plan_profiled(
 ) -> RusticolResult<()> {
     execute_direct_plan_impl::<true>(
         plan,
+        plan.row_groups(),
+        None,
         executors,
         workspace,
         point_count,
@@ -430,6 +441,8 @@ pub(crate) fn execute_direct_plan_profiled_with_traffic(
 ) -> RusticolResult<()> {
     execute_direct_plan_impl::<true>(
         plan,
+        plan.row_groups(),
+        None,
         executors,
         workspace,
         point_count,
@@ -453,6 +466,55 @@ pub fn execute_direct_plan_unprofiled(
     let mut unused_timings = DirectExecutionRoleTimings::default();
     execute_direct_plan_impl::<false>(
         plan,
+        plan.row_groups(),
+        None,
+        executors,
+        workspace,
+        point_count,
+        &mut unused,
+        &mut unused_timings,
+        None,
+    )
+}
+
+pub(crate) fn execute_direct_plan_selected_profiled_with_traffic(
+    plan: &DirectRecurrencePlan,
+    row_groups: &[DirectRowGroupDescriptor],
+    selected_sector_id: u32,
+    executors: &DirectExecutorCatalog,
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+    counters: &mut DirectExecutionCounters,
+    timings: &mut DirectExecutionRoleTimings,
+    traffic: &mut DirectArenaTrafficCounters,
+) -> RusticolResult<()> {
+    execute_direct_plan_impl::<true>(
+        plan,
+        row_groups,
+        Some(selected_sector_id),
+        executors,
+        workspace,
+        point_count,
+        counters,
+        timings,
+        Some(traffic),
+    )
+}
+
+pub(crate) fn execute_direct_plan_selected_unprofiled(
+    plan: &DirectRecurrencePlan,
+    row_groups: &[DirectRowGroupDescriptor],
+    selected_sector_id: u32,
+    executors: &DirectExecutorCatalog,
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+) -> RusticolResult<()> {
+    let mut unused = DirectExecutionCounters::default();
+    let mut unused_timings = DirectExecutionRoleTimings::default();
+    execute_direct_plan_impl::<false>(
+        plan,
+        row_groups,
+        Some(selected_sector_id),
         executors,
         workspace,
         point_count,
@@ -464,6 +526,8 @@ pub fn execute_direct_plan_unprofiled(
 
 fn execute_direct_plan_impl<const PROFILE: bool>(
     plan: &DirectRecurrencePlan,
+    row_groups: &[DirectRowGroupDescriptor],
+    selected_sector_id: Option<u32>,
     executors: &DirectExecutorCatalog,
     workspace: &mut DirectWorkspace<'_>,
     point_count: u32,
@@ -478,7 +542,7 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
         ));
     }
     let mut initialized_contribution_stage = None;
-    for descriptor in plan.row_groups() {
+    for descriptor in row_groups {
         if descriptor.role == DirectExecutorRole::Source
             && descriptor.direct_executor_id == DIRECT_NONE_U32
             && plan.strategy() == RecurrenceStrategy::AllFlowUnion
@@ -491,7 +555,12 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
         if descriptor.role == DirectExecutorRole::Contribution
             && initialized_contribution_stage != Some(descriptor.stage)
         {
-            workspace.clear_current_stage(plan, descriptor.stage, point_count)?;
+            workspace.clear_current_stage(
+                plan,
+                descriptor.stage,
+                point_count,
+                selected_sector_id,
+            )?;
             initialized_contribution_stage = Some(descriptor.stage);
         }
         let (arena, momenta, parameters, factors) = workspace.raw_views()?;

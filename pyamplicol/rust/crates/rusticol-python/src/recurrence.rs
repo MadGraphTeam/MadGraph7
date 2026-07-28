@@ -15,8 +15,8 @@ use rusticol_core::recurrence::process;
 use rusticol_core::recurrence::template;
 use rusticol_core::recurrence::{
     AuthenticatedRecurrenceBuilderInput, CheckedTableRange, DIRECT_NONE_U32, DirectExecutorRole,
-    DirectRecurrencePlan, DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding,
-    PreparedDirectExecutorCatalog, RECURRENCE_BUILDER_INPUT_ABI,
+    DirectRecurrencePlan, DirectRecurrenceRuntimeOptions, DirectSelectorWorkSummary,
+    PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog, RECURRENCE_BUILDER_INPUT_ABI,
     RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_PLAN_ABI,
     RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
     RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
@@ -798,6 +798,7 @@ struct NativeDirectLoweringResult {
     prepared_kernel_count: usize,
     resolved_helicities: Vec<Vec<i32>>,
     amplitude_destinations: Vec<(u32, Option<u32>)>,
+    selector_work: Vec<(DirectSelectorWorkSummary, u64)>,
     construction: RecurrenceConstructionMetrics,
     timings: DirectLoweringTimings,
 }
@@ -996,6 +997,28 @@ fn lower_recurrence_direct(
             .checked_add(u64::from(current.component_count))
             .ok_or_else(|| invalid("recurrence semantic component count exceeds u64"))
     })?;
+    let selector_work = if strategy == RecurrenceStrategy::TopologyReplay {
+        let mut public_flow_counts = BTreeMap::<u32, u64>::new();
+        for target in plan.replay_targets() {
+            let count = public_flow_counts
+                .entry(target.representative_id)
+                .or_default();
+            *count = count
+                .checked_add(1)
+                .ok_or_else(|| invalid("recurrence public-flow count exceeds u64"))?;
+        }
+        public_flow_counts
+            .into_iter()
+            .map(|(representative_sector_id, public_flow_count)| {
+                Ok((
+                    plan.selector_work_summary(representative_sector_id)?,
+                    public_flow_count,
+                ))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?
+    } else {
+        vec![]
+    };
 
     let serialization_started = Instant::now();
     let metadata = write_recurrence_direct_plan_pacbin(destination, &plan)?;
@@ -1038,6 +1061,7 @@ fn lower_recurrence_direct(
         prepared_kernel_count: direct_catalog.prepared_kernel_count,
         resolved_helicities,
         amplitude_destinations,
+        selector_work,
         construction,
         timings: DirectLoweringTimings {
             python_extraction_seconds,
@@ -1932,6 +1956,45 @@ fn direct_lowering_mapping(
     schedule.set_item("exact_factor_count", native.exact_factor_count)?;
     inspection.set_item("schedule", schedule)?;
 
+    let selector_work = PyDict::new(py);
+    selector_work.set_item("schema_version", 1)?;
+    selector_work.set_item("binding", "runtime_layout_digest")?;
+    let persisted = PyDict::new(py);
+    persisted.set_item("current_count", native.current_count)?;
+    persisted.set_item("semantic_component_count", native.semantic_component_count)?;
+    persisted.set_item("source_row_count", native.source_row_count)?;
+    persisted.set_item("contribution_count", native.contribution_count)?;
+    persisted.set_item("finalization_count", native.finalization_count)?;
+    persisted.set_item("closure_count", native.closure_count)?;
+    persisted.set_item(
+        "row_count",
+        native.source_row_count
+            + native.contribution_count
+            + native.finalization_count
+            + native.closure_count,
+    )?;
+    selector_work.set_item("persisted_union", persisted)?;
+    let representatives = PyList::empty(py);
+    for (summary, public_flow_count) in native.selector_work {
+        let entry = PyDict::new(py);
+        entry.set_item("representative_sector_id", summary.physical_sector_id)?;
+        entry.set_item("public_flow_count", public_flow_count)?;
+        entry.set_item("current_count", summary.current_count)?;
+        entry.set_item("semantic_component_count", summary.semantic_component_count)?;
+        entry.set_item("source_row_count", summary.source_row_count)?;
+        entry.set_item("contribution_count", summary.contribution_count)?;
+        entry.set_item("finalization_count", summary.finalization_count)?;
+        entry.set_item("closure_count", summary.closure_count)?;
+        entry.set_item(
+            "amplitude_destination_count",
+            summary.amplitude_destination_count,
+        )?;
+        entry.set_item("row_count", summary.row_count())?;
+        representatives.append(entry)?;
+    }
+    selector_work.set_item("representatives", representatives)?;
+    inspection.set_item("selector_work_certificate", selector_work)?;
+
     let construction = PyDict::new(py);
     construction.set_item("peak_current_count", native.construction.peak_current_count)?;
     construction.set_item(
@@ -1972,6 +2035,14 @@ fn direct_lowering_mapping(
     )?;
     direct_arena.set_item("momentum_form_count", native.momentum_form_count)?;
     direct_arena.set_item("selector_domain_count", native.selector_domain_count)?;
+    direct_arena.set_item(
+        "cache_footprint_policy",
+        if native.strategy == RecurrenceStrategy::TopologyReplay {
+            "selector-active-max-v1"
+        } else {
+            "persisted-arena-v1"
+        },
+    )?;
     direct_arena.set_item("row_group_count", native.row_group_count)?;
     direct_arena.set_item("packed_input_bytes", 0)?;
     direct_arena.set_item("packed_output_bytes", 0)?;

@@ -1160,6 +1160,27 @@ fn zg_and_zgg_gate_counts_are_preserved_exactly() {
 }
 
 #[test]
+fn topology_replay_persists_dependency_closed_selector_work() {
+    let templates = validated_template();
+    let program = count_fixture_program(&templates, 5, 69, 126, 24, 2);
+    let parts = lower(&program, &templates, digest(47)).unwrap();
+    assert!(parts.selector_domains.len() > 1);
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let selected = plan.selector_work_summary(0).unwrap();
+
+    assert!(selected.current_count < plan.currents().len() as u64);
+    assert!(selected.contribution_count < plan.contributions().len() as u64);
+    assert_eq!(selected.closure_count, plan.closures().len() as u64);
+    assert!(
+        selected.row_count()
+            < (plan.sources().len()
+                + plan.contributions().len()
+                + plan.finalizations().len()
+                + plan.closures().len()) as u64
+    );
+}
+
+#[test]
 fn zgg_all_flow_union_lowers_runtime_sources_without_replay_expansion() {
     let templates = validated_union_template();
     let program = zgg_union_program(&templates, 0);
@@ -1188,6 +1209,14 @@ fn zgg_all_flow_union_lowers_runtime_sources_without_replay_expansion() {
     assert_eq!(first.resolved_source_selections.len(), 5);
     assert_eq!(first.source_state_assignments.len(), 5);
     assert_eq!(first.public_helicities, [0; 5]);
+    assert_eq!(first.selector_domains.len(), 1);
+    assert_eq!(first.selector_words, [u64::MAX]);
+    assert!(
+        first
+            .currents
+            .iter()
+            .all(|current| current.selector_domain_id == 0)
+    );
     assert!(first.row_groups.iter().any(|group| {
         group.role == DirectExecutorRole::Source
             && group.direct_executor_id == DIRECT_NONE_U32

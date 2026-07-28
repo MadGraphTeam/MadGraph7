@@ -11,7 +11,8 @@ use crate::recurrence::direct_plan::{
     DirectSourceRow, DirectSourceStateAssignment,
 };
 use crate::recurrence::direct_runtime::{
-    DIRECT_RUNTIME_ARENA_ALIGNMENT, DirectRecurrenceExecutionRuntime, DirectRuntimeActivityCounters,
+    DIRECT_RUNTIME_ARENA_ALIGNMENT, DirectRecurrenceExecutionRuntime,
+    DirectRuntimeActivityCounters, replay_cache_split_complex_scalar_count,
 };
 use crate::recurrence::exact::{ExactComplexRational, ExactRational};
 #[allow(unused_imports)]
@@ -582,6 +583,21 @@ fn low_footprint_runtime_retains_the_requested_point_tile() {
 }
 
 #[test]
+fn replay_cache_footprint_uses_authenticated_active_selector_work() {
+    let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.current_arena_components = 128;
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let persisted_split_scalars =
+        2 * (plan.current_arena_components() + plan.amplitude_destination_count()) as usize;
+
+    assert_eq!(persisted_split_scalars, 258);
+    assert_eq!(
+        replay_cache_split_complex_scalar_count(&plan, persisted_split_scalars).unwrap(),
+        8
+    );
+}
+
+#[test]
 fn legacy_flat_momentum_access_round_trips_every_padded_plane_in_place() {
     let (plan, executors) = synthetic_plan_and_executors();
     let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
@@ -1075,6 +1091,55 @@ fn prepared_replay_selectors_cover_both_physical_flows_without_regeneration() {
     assert_eq!(activity.schedule_executions, 2);
     assert_eq!(activity.replay_schedule_executions, 2);
     assert_eq!(activity.replay_output_values_scaled, 4);
+}
+
+#[test]
+fn replay_selector_executes_only_its_dependency_closed_rows() {
+    let (base_plan, _) = synthetic_plan_and_executors();
+    let mut parts = base_plan.into_parts();
+    parts.current_arena_components = 3;
+    parts.selector_domains.push(DirectSelectorDomainDescriptor {
+        word_start: 1,
+        word_count: 1,
+    });
+    parts.selector_words.push(2);
+
+    let mut inactive_current = parts.currents[0];
+    inactive_current.semantic_current_id = 2;
+    inactive_current.component_base = 2;
+    inactive_current.selector_domain_id = 1;
+    inactive_current.source_row_or_sentinel = 1;
+    parts.currents.push(inactive_current);
+
+    let mut inactive_source = parts.sources[0];
+    inactive_source.destination_component_base = 2;
+    inactive_source.selector_domain_id = 1;
+    parts.sources.push(inactive_source);
+    parts
+        .row_groups
+        .iter_mut()
+        .find(|group| group.role == DirectExecutorRole::Source)
+        .unwrap()
+        .row_count = 2;
+
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 1).unwrap();
+    runtime.set_parameters(&[3.0], &[1.0]).unwrap();
+    let selector = runtime.prepare_replay_selector(0).unwrap();
+
+    assert_eq!(selector.selected_row_group_count(), 4);
+    assert_eq!(selector.selected_row_count(), 4);
+    let output = runtime
+        .execute_replay_tile_from_external(&selector, 2, &external_two_point_momenta())
+        .unwrap();
+    assert_eq!(output.destination_re(0).unwrap(), &[-27.0, -36.0]);
+    assert_eq!(runtime.counters().source_rows, 1);
 }
 
 #[test]

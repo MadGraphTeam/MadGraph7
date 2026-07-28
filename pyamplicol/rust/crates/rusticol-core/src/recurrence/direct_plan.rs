@@ -207,6 +207,32 @@ pub struct DirectSelectorDomainDescriptor {
     pub word_count: u32,
 }
 
+/// Auditable amount of persisted direct work active for one physical sector.
+///
+/// Topology-replay artifacts retain one union plan so public flows can share
+/// currents.  These counters make the distinction between that persisted
+/// union and the rows actually executed by a selected-flow call explicit.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DirectSelectorWorkSummary {
+    pub physical_sector_id: u32,
+    pub current_count: u64,
+    pub semantic_component_count: u64,
+    pub source_row_count: u64,
+    pub contribution_count: u64,
+    pub finalization_count: u64,
+    pub closure_count: u64,
+    pub amplitude_destination_count: u64,
+}
+
+impl DirectSelectorWorkSummary {
+    pub const fn row_count(&self) -> u64 {
+        self.source_row_count
+            + self.contribution_count
+            + self.finalization_count
+            + self.closure_count
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub struct DirectReplayTargetDescriptor {
@@ -346,6 +372,37 @@ pub struct DirectRecurrencePlan {
     runtime_layout_digest: SemanticDigest,
 }
 
+fn selector_domain_contains_parts(
+    parts: &DirectRecurrencePlanParts,
+    selector_domain_id: u32,
+    physical_sector_id: u32,
+) -> RusticolResult<bool> {
+    if physical_sector_id >= parts.physical_sector_count {
+        return Err(invalid("physical selector sector is out of bounds"));
+    }
+    let descriptor = parts
+        .selector_domains
+        .get(selector_domain_id as usize)
+        .ok_or_else(|| invalid("selector domain is absent"))?;
+    let start = usize::try_from(descriptor.word_start)
+        .map_err(|_| invalid("selector-domain word start exceeds usize"))?;
+    let end = start
+        .checked_add(descriptor.word_count as usize)
+        .ok_or_else(|| invalid("selector-domain word range overflows usize"))?;
+    let words = parts
+        .selector_words
+        .get(start..end)
+        .ok_or_else(|| invalid("selector-domain word range is out of bounds"))?;
+    if words == [u64::MAX] {
+        return Ok(true);
+    }
+    let word = physical_sector_id as usize / u64::BITS as usize;
+    let bit = physical_sector_id % u64::BITS;
+    Ok(words
+        .get(word)
+        .is_some_and(|value| value & (1_u64 << bit) != 0))
+}
+
 impl DirectRecurrencePlan {
     pub fn new(mut parts: DirectRecurrencePlanParts) -> RusticolResult<Self> {
         canonicalize_contribution_initialization(&mut parts)?;
@@ -471,6 +528,76 @@ impl DirectRecurrencePlan {
 
     pub fn selector_words(&self) -> &[u64] {
         &self.parts.selector_words
+    }
+
+    /// Return whether one physical selector bit belongs to a persisted domain.
+    ///
+    /// Direct-plan-v2 artifacts produced before selector-aware lowering used
+    /// one literal `[u64::MAX]` domain for every row, even when a process had
+    /// more than 64 physical sectors.  Preserve that encoding as the
+    /// backwards-compatible universal domain while allowing newer plans to
+    /// persist ordinary multiword sector masks.
+    pub fn selector_domain_contains(
+        &self,
+        selector_domain_id: u32,
+        physical_sector_id: u32,
+    ) -> RusticolResult<bool> {
+        selector_domain_contains_parts(&self.parts, selector_domain_id, physical_sector_id)
+    }
+
+    /// Count the persisted currents and executor rows active for one sector.
+    ///
+    /// This is derived only from authenticated plan tables and therefore forms
+    /// a compact structural certificate for selected-flow pruning.
+    pub fn selector_work_summary(
+        &self,
+        physical_sector_id: u32,
+    ) -> RusticolResult<DirectSelectorWorkSummary> {
+        if physical_sector_id >= self.parts.physical_sector_count {
+            return Err(invalid("physical selector sector is out of bounds"));
+        }
+        let mut summary = DirectSelectorWorkSummary {
+            physical_sector_id,
+            ..DirectSelectorWorkSummary::default()
+        };
+        for current in &self.parts.currents {
+            if self.selector_domain_contains(current.selector_domain_id, physical_sector_id)? {
+                summary.current_count = summary
+                    .current_count
+                    .checked_add(1)
+                    .ok_or_else(|| invalid("selector current count overflows u64"))?;
+                summary.semantic_component_count = summary
+                    .semantic_component_count
+                    .checked_add(u64::from(current.component_count))
+                    .ok_or_else(|| invalid("selector semantic component count overflows u64"))?;
+            }
+        }
+        for row in &self.parts.sources {
+            if self.selector_domain_contains(row.selector_domain_id, physical_sector_id)? {
+                summary.source_row_count += 1;
+            }
+        }
+        for row in &self.parts.contributions {
+            if self.selector_domain_contains(row.selector_domain_id, physical_sector_id)? {
+                summary.contribution_count += 1;
+            }
+        }
+        for row in &self.parts.finalizations {
+            if self.selector_domain_contains(row.selector_domain_id, physical_sector_id)? {
+                summary.finalization_count += 1;
+            }
+        }
+        for row in &self.parts.closures {
+            if self.selector_domain_contains(row.selector_domain_id, physical_sector_id)? {
+                summary.closure_count += 1;
+            }
+        }
+        for destination in &self.parts.amplitude_destinations {
+            if self.selector_domain_contains(destination.selector_domain_id, physical_sector_id)? {
+                summary.amplitude_destination_count += 1;
+            }
+        }
+        Ok(summary)
     }
 
     pub fn replay_targets(&self) -> &[DirectReplayTargetDescriptor] {
@@ -897,6 +1024,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             .expect("source references were validated");
         if source.destination_component_base != current.component_base
             || source.momentum_form_id != current.momentum_form_id
+            || source.selector_domain_id != current.selector_domain_id
         {
             return Err(invalid(format!(
                 "source row {index} does not match its current descriptor"
@@ -1156,6 +1284,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
         if row.component_base != current.component_base
             || row.component_count != current.component_count
             || row.momentum_form_id != current.momentum_form_id
+            || row.selector_domain_id != current.selector_domain_id
         {
             return Err(invalid(format!(
                 "finalization {index} does not match its current descriptor"
@@ -1250,6 +1379,15 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             target.selector_domain_id,
             selector_count,
         )?;
+        if !selector_domain_contains_parts(
+            parts,
+            target.selector_domain_id,
+            target.representative_id,
+        )? {
+            return Err(invalid(format!(
+                "replay target {index} selector domain excludes its representative sector"
+            )));
+        }
         if target.multiplicity == 0 {
             return Err(invalid(format!(
                 "replay target {index} has zero multiplicity"
@@ -1340,6 +1478,15 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             destination.selector_domain_id,
             selector_count,
         )?;
+        if !selector_domain_contains_parts(
+            parts,
+            destination.selector_domain_id,
+            destination.target_sector_id,
+        )? {
+            return Err(invalid(format!(
+                "amplitude destination {index} selector domain excludes its target sector"
+            )));
+        }
         let start = usize::try_from(destination.closure_row_start)
             .map_err(|_| invalid("amplitude destination closure start exceeds usize"))?;
         let count = usize::try_from(destination.closure_row_count)
@@ -1353,6 +1500,14 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
         {
             return Err(invalid(format!(
                 "amplitude destination {index} does not own every closure in its range"
+            )));
+        }
+        if parts.closures[start..end]
+            .iter()
+            .any(|row| row.selector_domain_id != destination.selector_domain_id)
+        {
+            return Err(invalid(format!(
+                "amplitude destination {index} disagrees with a closure selector domain"
             )));
         }
     }
