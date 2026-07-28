@@ -1401,6 +1401,15 @@ class LegacyMeasurementAdapter:
         commands: list[dict[str, object]],
         log_path: Path,
     ) -> dict[str, object]:
+        if _quark_line_count(context.source_pdgs) == MAX_OPEN_QUARK_LINES:
+            return self._measure_direct_contracted(
+                cell,
+                context=context,
+                repository=repository,
+                settings=settings,
+                commands=commands,
+                log_path=log_path,
+            )
         generation_seconds = self._generate_library(
             context=context,
             repository=repository,
@@ -1486,6 +1495,76 @@ class LegacyMeasurementAdapter:
             profile=profile,
             matrix_element=float(probe.value),
             generation_source="generated-library-create-raw",
+        )
+
+    def _measure_direct_contracted(
+        self,
+        cell: CellSpec,
+        *,
+        context: _ProcessContext,
+        repository: Path,
+        settings: LegacySettings,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> dict[str, object]:
+        """Measure the exact direct path for three independent quark lines."""
+
+        self._run(
+            ("make", f"-j{settings.jobs}", "amplicol_color_probe"),
+            cwd=repository,
+            commands=commands,
+            log_path=log_path,
+        )
+        with tempfile.TemporaryDirectory(prefix="pac-", dir="/tmp") as raw:
+            work = Path(raw)
+            process_copy = work / "processes.txt"
+            momenta_path = work / "momenta.dat"
+            shutil.copy2(context.process_file, process_copy)
+            ordered = self.api.ordered_momenta(
+                context.source_pdgs,
+                context.entry.process_pdgs,
+                context.momenta,
+            )
+            momenta_path.write_text(
+                "\n".join(
+                    " ".join(format(component, ".17g") for component in vector)
+                    for vector in ordered
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            profile = self._profile(
+                lambda count: self._invoke_probe_command(
+                    (
+                        repository / "amplicol_color_probe",
+                        str(count),
+                        str(context.entry.group),
+                        str(context.entry.integral),
+                        cell.measurement.accuracy.value,
+                        process_copy,
+                        momenta_path,
+                    ),
+                    cwd=work,
+                    commands=commands,
+                    log_path=log_path,
+                ),
+                settings=settings,
+                timing_labels=("total",),
+            )
+        generation_seconds = _timing_seconds(profile.rows, "generation setup")
+        if generation_seconds is None:
+            raise LegacyAdapterError(
+                "direct three-quark-line probe did not report generation setup"
+            )
+        if profile.probe is None:
+            raise LegacyAdapterError(
+                "direct three-quark-line probe emitted no value"
+            )
+        return self._success_measurement(
+            generation_seconds=generation_seconds,
+            profile=profile,
+            matrix_element=float(profile.probe.value),
+            generation_source="direct-imode2-three-quark-line-setup",
         )
 
     def _profile(

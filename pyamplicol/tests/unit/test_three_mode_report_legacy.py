@@ -42,7 +42,14 @@ class FakeApi:
 
     def __init__(self, pdgs: tuple[int, ...] = (1, -1, 23, 21)) -> None:
         self.pdgs = pdgs
-        self.entry = FakeEntry(process_pdgs=pdgs)
+        self.entry = FakeEntry(
+            process_pdgs=pdgs,
+            color_order=(
+                (2, 1, 3, 4, 5, 6)
+                if len(pdgs) == 6
+                else (2, 4, 1, 3)
+            ),
+        )
         self.selected_calls: list[int] = []
         self.color_calls: list[tuple[str, tuple[int, ...] | None]] = []
         self.lc_probe_result: object | None = None
@@ -772,6 +779,47 @@ def test_contracted_uses_raw_library_and_direct_oracle_value(
         for index, command in enumerate(executor.commands)
         if command[0] == "./amplicol_color_library_probe"
     )
+
+
+@pytest.mark.parametrize("accuracy", (Accuracy.NLC, Accuracy.FULL))
+def test_three_quark_line_contracted_uses_exact_direct_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    accuracy: Accuracy,
+) -> None:
+    api = FakeApi((1, -1, 2, -2, 3, -3))
+    adapter, _api, executor = _adapter(api)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+
+    measurement = adapter.measure(
+        _cell(
+            accuracy,
+            Workload.CONTRACTED,
+            process_key="dd_3q_lines",
+        ),
+        artifact_path=tmp_path / accuracy.value,
+        settings=_settings(tmp_path / "repository"),
+    )
+
+    validate_measurement(measurement)
+    assert measurement["matrix_element"] == 12.5
+    assert measurement["generation_seconds"] == 2.5
+    assert api.color_calls == []
+    assert (
+        measurement["provenance"]["generation_source"]
+        == "direct-imode2-three-quark-line-setup"
+    )
+    flattened = [" ".join(command) for command in executor.commands]
+    assert any("amplicol_color_probe" in command for command in flattened)
+    assert not any("amplicol_generate" in command for command in flattened)
+    assert not any("amplicol_color_library_probe" in command for command in flattened)
 
 
 def test_more_than_three_open_quark_lines_is_preserved_as_unsupported(
