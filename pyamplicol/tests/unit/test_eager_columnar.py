@@ -26,6 +26,7 @@ from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_types import GenericDAG
 from pyamplicol.generation.eager_columnar import (
     EAGER_LOWERING_INPUT_ABI,
+    EAGER_LOWERING_INPUT_SCHEMA_SHA256,
     FACTOR_EXACT_SOURCE_BINARY64,
     FACTOR_EXACT_SOURCE_CANONICAL_IR,
     EagerColumn,
@@ -194,6 +195,8 @@ def test_contract_is_flat_immutable_little_endian_and_complete(
             assert values.flags.c_contiguous
             assert not values.flags.writeable
             assert values.dtype.byteorder in {"<", "|", "="}
+
+    assert lowering_input.schema_sha256 == EAGER_LOWERING_INPUT_SCHEMA_SHA256
 
 
 def test_contract_bytes_and_digest_ignore_resolver_mapping_order(

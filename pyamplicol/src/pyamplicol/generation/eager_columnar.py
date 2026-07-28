@@ -38,6 +38,9 @@ from .runtime_amplitudes import (
 )
 
 EAGER_LOWERING_INPUT_ABI = "pyamplicol-eager-lowering-input-v1"
+EAGER_LOWERING_INPUT_SCHEMA_SHA256 = (
+    "59d5a3193ca25af6224c296297425782c394a34e352be622f47045e90d2bce29"
+)
 MISSING_U32 = (1 << 32) - 1
 MISSING_I32 = -(1 << 31)
 
@@ -199,6 +202,23 @@ class EagerLoweringInputV1:
                 digest.update(column.values.tobytes(order="C"))
         for limitation in self.semantic_limitations:
             _hash_text(digest, limitation)
+        return digest.hexdigest()
+
+    @property
+    def schema_sha256(self) -> str:
+        """Digest the fixed table/column ABI independently of row counts."""
+
+        digest = hashlib.sha256()
+        digest.update(len(self.tables).to_bytes(8, "little"))
+        for table in self.tables:
+            _hash_text(digest, table.name)
+            digest.update(len(table.columns).to_bytes(4, "little"))
+            for column in table.columns:
+                _hash_text(digest, column.name)
+                _hash_text(digest, column.values.dtype.str)
+                digest.update(len(column.values.shape).to_bytes(1, "little"))
+                for size in column.values.shape[1:]:
+                    digest.update(int(size).to_bytes(8, "little"))
         return digest.hexdigest()
 
     def _validate_references(self) -> None:
@@ -2684,6 +2704,7 @@ def _hash_text(digest: Any, value: str) -> None:
 
 __all__ = [
     "EAGER_LOWERING_INPUT_ABI",
+    "EAGER_LOWERING_INPUT_SCHEMA_SHA256",
     "FACTOR_EXACT_SOURCE_BINARY64",
     "FACTOR_EXACT_SOURCE_CANONICAL_IR",
     "EagerColumn",

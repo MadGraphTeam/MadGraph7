@@ -29,7 +29,7 @@ use std::path::PathBuf;
 use crate::python_error;
 
 const INPUT_SCHEMA_SHA256: &str =
-    "25d94dc1a61e81910f88f6463b23b6a8cb16da7b346c49f094239a4c4e88842a";
+    "59d5a3193ca25af6224c296297425782c394a34e352be622f47045e90d2bce29";
 const RESULT_KIND: &str = "pyamplicol-eager-runtime-lowering-result";
 const RESULT_SCHEMA_VERSION: u32 = 1;
 const STORAGE_ABI: &str = "pacbin-v1";
@@ -1060,10 +1060,22 @@ mod tests {
 
     #[test]
     fn every_v1_table_is_classified_for_retention() {
-        assert_eq!(EAGER_LOWERING_V1_TABLE_NAMES.len(), 56);
+        assert_eq!(EAGER_LOWERING_V1_TABLE_NAMES.len(), 64);
         assert!(EAGER_LOWERING_V1_TABLE_NAMES
             .windows(2)
             .all(|pair| pair[0] < pair[1]));
+        for table in [
+            "color_replay_contraction_component_groups",
+            "color_replay_contraction_entries",
+            "color_replay_contraction_metadata",
+            "color_replay_mappings",
+            "color_replay_metadata",
+            "color_replay_permutations",
+            "color_replay_physical_groups",
+            "color_replay_routes",
+        ] {
+            assert!(EAGER_LOWERING_V1_TABLE_NAMES.contains(&table));
+        }
     }
 
     #[test]
@@ -1083,6 +1095,14 @@ mod tests {
         assert!(!is_consumed_column(
             "lc_replay_partitions",
             "proof_digest_string_id"
+        ));
+        assert!(!is_consumed_column(
+            "color_replay_metadata",
+            "physical_group_count"
+        ));
+        assert!(!is_consumed_column(
+            "color_replay_routes",
+            "source_group_id"
         ));
     }
 }
