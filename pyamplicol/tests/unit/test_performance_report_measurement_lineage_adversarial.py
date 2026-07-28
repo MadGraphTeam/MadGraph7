@@ -22,6 +22,8 @@ from tools.performance_report.measurement_lineage import (
     CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
     MEASUREMENT_LINEAGE_FILENAME,
     MeasurementLineageError,
+    _is_authorized_native_inputs_transition,
+    _require_environment_transition,
     _resolve_recurrence_artifact_owner,
     class_c_pending_path,
     finalize_class_c_bridge,
@@ -75,10 +77,15 @@ def _lineage_digest(value: object) -> str:
     return hashlib.sha256(f"{encoded}\n".encode("ascii")).hexdigest()
 
 
-def _runtime(package_tree: str, *, fingerprint: str = "candidate-fixture") -> dict:
+def _runtime(
+    package_tree: str,
+    *,
+    fingerprint: str = "candidate-fixture",
+    native_build_inputs: str = "a" * 64,
+) -> dict:
     return {
         "package_version": "0.1.0",
-        "native_build_inputs_sha256": "a" * 64,
+        "native_build_inputs_sha256": native_build_inputs,
         "native_extension": {"sha256": "b" * 64},
         "python_package_tree": {"sha256": package_tree},
         "candidate_build_identity": {
@@ -296,7 +303,23 @@ def _summary_cap_repository(
         _write(repo, path, "DESCENDANT = 2\n")
     _git(repo, "add", *_SUMMARY_CAP_DIFF_PATHS)
     _git(repo, "commit", "-q", "-m", "descendant")
-    return repo, profile, store, ancestor, _git(repo, "rev-parse", "HEAD")
+    descendant = _git(repo, "rev-parse", "HEAD")
+    monkeypatch.setattr(
+        "tools.performance_report.measurement_lineage."
+        "_RECURRENCE_SUMMARY_CAP_DESCENDANT_REVISION",
+        descendant,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.measurement_lineage."
+        "_RECURRENCE_SUMMARY_CAP_ANCESTOR_NATIVE_INPUTS_SHA256",
+        "a" * 64,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.measurement_lineage."
+        "_RECURRENCE_SUMMARY_CAP_DESCENDANT_NATIVE_INPUTS_SHA256",
+        "d" * 64,
+    )
+    return repo, profile, store, ancestor, descendant
 
 
 def _repository(tmp_path: Path) -> tuple[Path, Path, ArtifactStore, str, str]:
@@ -412,11 +435,15 @@ def _finalize(
     pending: Path,
     *,
     package_tree: str = "d" * 64,
+    native_build_inputs: str = "a" * 64,
 ) -> None:
     environment = _authenticated_environment_payload(
         profile.name,
         expected_source_revision=descendant,
-        active_runtime=_runtime(package_tree),
+        active_runtime=_runtime(
+            package_tree,
+            native_build_inputs=native_build_inputs,
+        ),
     )
 
     def fake_refresh(*_args: object, **_kwargs: object) -> dict[str, str]:
@@ -440,8 +467,135 @@ def _finalize(
         store,
         pending_path=pending,
         expected_active_source_revision=descendant,
-        runtime_auditor=lambda _revision, _root: _runtime(package_tree),
+        runtime_auditor=lambda _revision, _root: _runtime(
+            package_tree,
+            native_build_inputs=native_build_inputs,
+        ),
     )
+
+
+def test_recurrence_summary_cap_native_transition_is_exactly_pinned() -> None:
+    ancestor_revision = "be11d8304fdc04893dc0e23e9619be848126e3bc"
+    descendant_revision = "2594d8b520b802f71d60bd646f73ebaa5547927a"
+    ancestor_digest = (
+        "23b9637d5d3fba0947d78cf688df18799b0c9ee5b3bcbfa6a2963a1f1a21f870"
+    )
+    descendant_digest = (
+        "96e1ff79a007aaf67a0900dd6d67327ee00f6bd2cca002589b879aa3a734de08"
+    )
+    ancestor_environment = _authenticated_environment_payload(
+        "x86_EPYC",
+        expected_source_revision=ancestor_revision,
+        active_runtime=_runtime(
+            "c" * 64,
+            native_build_inputs=ancestor_digest,
+        ),
+    )
+    descendant_environment = _authenticated_environment_payload(
+        "x86_EPYC",
+        expected_source_revision=descendant_revision,
+        active_runtime=_runtime(
+            "d" * 64,
+            native_build_inputs=descendant_digest,
+        ),
+    )
+
+    _require_environment_transition(
+        impact=CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+        ancestor_revision=ancestor_revision,
+        descendant_revision=descendant_revision,
+        ancestor_environment=ancestor_environment,
+        descendant_environment=descendant_environment,
+    )
+    assert _is_authorized_native_inputs_transition(
+        impact=CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+        ancestor_revision=ancestor_revision,
+        descendant_revision=descendant_revision,
+        ancestor_digest=ancestor_digest,
+        descendant_digest=descendant_digest,
+    )
+
+    for (
+        changed_ancestor,
+        changed_descendant,
+        changed_ancestor_environment,
+        changed_descendant_environment,
+    ) in (
+        (
+            "0" * 40,
+            descendant_revision,
+            ancestor_environment,
+            descendant_environment,
+        ),
+        (
+            ancestor_revision,
+            "1" * 40,
+            ancestor_environment,
+            descendant_environment,
+        ),
+        (
+            ancestor_revision,
+            descendant_revision,
+            {
+                **ancestor_environment,
+                "native_build_inputs_sha256": "2" * 64,
+            },
+            descendant_environment,
+        ),
+        (
+            ancestor_revision,
+            descendant_revision,
+            ancestor_environment,
+            {
+                **descendant_environment,
+                "native_build_inputs_sha256": ancestor_digest,
+            },
+        ),
+        (
+            ancestor_revision,
+            descendant_revision,
+            {
+                **ancestor_environment,
+                "native_build_inputs_sha256": descendant_digest,
+            },
+            {
+                **descendant_environment,
+                "native_build_inputs_sha256": ancestor_digest,
+            },
+        ),
+        (
+            ancestor_revision,
+            descendant_revision,
+            ancestor_environment,
+            {
+                **descendant_environment,
+                "candidate_fingerprint": "unreviewed-native-drift",
+            },
+        ),
+    ):
+        with pytest.raises(
+            MeasurementLineageError,
+            match="exact recurrence-summary-cap transition",
+        ):
+            _require_environment_transition(
+                impact=CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+                ancestor_revision=changed_ancestor,
+                descendant_revision=changed_descendant,
+                ancestor_environment=changed_ancestor_environment,
+                descendant_environment=changed_descendant_environment,
+            )
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="dependency/native/host runtime identity",
+    ):
+        _require_environment_transition(
+            impact=CLASS_C_HZZ_IMPACT,
+            ancestor_revision=ancestor_revision,
+            descendant_revision=descendant_revision,
+            ancestor_environment=ancestor_environment,
+            descendant_environment=descendant_environment,
+        )
 
 
 def test_recurrence_summary_cap_bridge_has_exact_failure_and_closure_census(
@@ -519,6 +673,7 @@ def test_recurrence_summary_cap_bridge_has_exact_failure_and_closure_census(
         descendant,
         pending,
         package_tree="e" * 64,
+        native_build_inputs="d" * 64,
     )
     lineage = load_measurement_lineage(
         repo,

@@ -61,6 +61,7 @@ from .measurement import shared_validation_points
 from .measurement_lineage import (
     MeasurementLineage,
     MeasurementLineageError,
+    _is_authorized_native_inputs_transition,
     load_and_audit_measurement_lineage,
 )
 from .models import (
@@ -2152,11 +2153,18 @@ def _runtime_for_measurement_source(
             "retained ancestor runtime identity differs from its authenticated "
             "Class-C environment"
         )
-    if (
-        identity.get("native_build_inputs_sha256")
-        != active_runtime.get("native_build_inputs_sha256")
-        or native_target != active_runtime.get("native_target")
-    ):
+    ancestor_native_inputs = identity.get("native_build_inputs_sha256")
+    descendant_native_inputs = active_runtime.get("native_build_inputs_sha256")
+    native_inputs_match = ancestor_native_inputs == descendant_native_inputs
+    if not native_inputs_match:
+        native_inputs_match = _is_authorized_native_inputs_transition(
+            impact=measurement_lineage.impact,
+            ancestor_revision=measurement_lineage.ancestor_revision,
+            descendant_revision=measurement_lineage.descendant_revision,
+            ancestor_digest=ancestor_native_inputs,
+            descendant_digest=descendant_native_inputs,
+        )
+    if not native_inputs_match or native_target != active_runtime.get("native_target"):
         raise FinalAuditError(
             "retained ancestor runtime changes a Class-C invariant native identity"
         )
@@ -2165,6 +2173,7 @@ def _runtime_for_measurement_source(
     projected["python_package_tree"] = package_tree
     projected["candidate_build_identity"] = candidate
     projected["candidate_build_identity_sha256"] = candidate_digest
+    projected["native_build_inputs_sha256"] = ancestor_native_inputs
     # The ancestor and descendant extensions are independently authenticated by
     # their endpoint environments.  A fresh relink need not be byte-identical,
     # so retained ancestor measurements must be checked against their own

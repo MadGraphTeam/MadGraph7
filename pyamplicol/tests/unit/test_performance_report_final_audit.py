@@ -59,6 +59,9 @@ from tools.performance_report.final_audit import (
     _shared_artifact_contract,
     audit_final_report,
 )
+from tools.performance_report.measurement_lineage import (
+    CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+)
 from tools.performance_report.models import (
     Accuracy,
     ArtifactPolicy,
@@ -1657,6 +1660,87 @@ def test_class_c_runtime_projection_authenticates_relinked_endpoint(
             retained_provenance,
             source_revision=ancestor_revision,
             measurement_lineage=tampered_lineage,
+        )
+
+
+def test_class_c_runtime_projection_allows_only_pinned_summary_native_transition(
+    tmp_path: Path,
+) -> None:
+    ancestor_revision = "be11d8304fdc04893dc0e23e9619be848126e3bc"
+    descendant_revision = "2594d8b520b802f71d60bd646f73ebaa5547927a"
+    ancestor_digest = (
+        "23b9637d5d3fba0947d78cf688df18799b0c9ee5b3bcbfa6a2963a1f1a21f870"
+    )
+    descendant_digest = (
+        "96e1ff79a007aaf67a0900dd6d67327ee00f6bd2cca002589b879aa3a734de08"
+    )
+    active = _active_runtime()
+    active["native_build_inputs_sha256"] = descendant_digest
+    measurement = _candidate_measurement(tmp_path)
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    identity = deepcopy(provenance["runtime_identity"])
+    assert isinstance(identity, dict)
+    candidate = identity["candidate_build_identity"]
+    package_tree = identity["python_package_tree"]
+    native_extension = identity["native_extension"]
+    assert isinstance(candidate, dict)
+    assert isinstance(package_tree, dict)
+    assert isinstance(native_extension, dict)
+    candidate["source_revision"] = ancestor_revision
+    candidate["source_checkout"] = "/ancestor/repo"
+    candidate["native_build_inputs_sha256"] = ancestor_digest
+    identity["source_revision"] = ancestor_revision
+    identity["native_build_inputs_sha256"] = ancestor_digest
+    identity["candidate_build_identity_sha256"] = digest_json(candidate)
+    package_tree["sha256"] = "8" * 64
+    native_extension["sha256"] = "7" * 64
+    ancestor_environment = {
+        "python_package_tree_sha256": package_tree["sha256"],
+        "pyamplicol": identity["package_version"],
+        "candidate_fingerprint": candidate["candidate_fingerprint"],
+        "native_build_inputs_sha256": ancestor_digest,
+        "native_extension_sha256": native_extension["sha256"],
+        "native_target": identity["native_target"]["triple"],
+        "native_cpu_features": "baseline",
+    }
+    lineage = SimpleNamespace(
+        impact=CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+        ancestor_revision=ancestor_revision,
+        descendant_revision=descendant_revision,
+        environment_for_source=lambda revision: (
+            ancestor_environment if revision == ancestor_revision else None
+        ),
+    )
+    retained_provenance = _runtime_identity_provenance(identity)
+
+    projected = _runtime_for_measurement_source(
+        active,
+        retained_provenance,
+        source_revision=ancestor_revision,
+        measurement_lineage=lineage,
+    )
+    assert projected["native_build_inputs_sha256"] == ancestor_digest
+    assert projected["candidate_build_identity"] == candidate
+    _audit_runtime_identity(
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        retained_provenance,
+        expected_source_revision=ancestor_revision,
+        active_runtime=projected,
+        artifact=None,
+    )
+
+    changed_active = dict(active)
+    changed_active["native_build_inputs_sha256"] = "0" * 64
+    with pytest.raises(
+        FinalAuditError,
+        match="Class-C invariant native identity",
+    ):
+        _runtime_for_measurement_source(
+            changed_active,
+            retained_provenance,
+            source_revision=ancestor_revision,
+            measurement_lineage=lineage,
         )
 
 

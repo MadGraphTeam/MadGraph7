@@ -220,6 +220,15 @@ _RECURRENCE_SUMMARY_CAP_PREDECESSOR_REVISION = (
 _RECURRENCE_SUMMARY_CAP_ANCESTOR_REVISION = (
     "be11d8304fdc04893dc0e23e9619be848126e3bc"
 )
+_RECURRENCE_SUMMARY_CAP_DESCENDANT_REVISION = (
+    "2594d8b520b802f71d60bd646f73ebaa5547927a"
+)
+_RECURRENCE_SUMMARY_CAP_ANCESTOR_NATIVE_INPUTS_SHA256 = (
+    "23b9637d5d3fba0947d78cf688df18799b0c9ee5b3bcbfa6a2963a1f1a21f870"
+)
+_RECURRENCE_SUMMARY_CAP_DESCENDANT_NATIVE_INPUTS_SHA256 = (
+    "96e1ff79a007aaf67a0900dd6d67327ee00f6bd2cca002589b879aa3a734de08"
+)
 _RECURRENCE_SUMMARY_CAP_PROFILE = "x86_EPYC"
 _RECURRENCE_SUMMARY_CAP_FAILURE_BYTES = {
     "matrix-recurrence-builtin-sm-lc-n7-gg-gluons-selected-flow": 4_270_140,
@@ -958,6 +967,8 @@ def _validate_payload_shape(payload: Mapping[str, object]) -> None:
                 payload.get("profile") != _RECURRENCE_SUMMARY_CAP_PROFILE
                 or payload.get("ancestor_revision")
                 != _RECURRENCE_SUMMARY_CAP_ANCESTOR_REVISION
+                or payload.get("descendant_revision")
+                != _RECURRENCE_SUMMARY_CAP_DESCENDANT_REVISION
             )
         )
         or payload.get("runtime_invariant_fields")
@@ -3582,6 +3593,70 @@ def _environment_invariants(environment: Mapping[str, object]) -> dict[str, obje
         ) from error
 
 
+def _is_authorized_native_inputs_transition(
+    *,
+    impact: str,
+    ancestor_revision: str,
+    descendant_revision: str,
+    ancestor_digest: object,
+    descendant_digest: object,
+) -> bool:
+    """Recognize the one reviewed Class-C native-input transition.
+
+    Ordinary Class-C bridges remain native-input invariant.  The recurrence
+    summary-cap bridge is different: its reviewed source closure intentionally
+    changes the native recurrence executor, so both endpoint revisions and
+    both independently computed input digests are pinned here.
+    """
+
+    return (
+        impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT
+        and ancestor_revision == _RECURRENCE_SUMMARY_CAP_ANCESTOR_REVISION
+        and descendant_revision == _RECURRENCE_SUMMARY_CAP_DESCENDANT_REVISION
+        and ancestor_digest
+        == _RECURRENCE_SUMMARY_CAP_ANCESTOR_NATIVE_INPUTS_SHA256
+        and descendant_digest
+        == _RECURRENCE_SUMMARY_CAP_DESCENDANT_NATIVE_INPUTS_SHA256
+    )
+
+
+def _require_environment_transition(
+    *,
+    impact: str,
+    ancestor_revision: str,
+    descendant_revision: str,
+    ancestor_environment: Mapping[str, object],
+    descendant_environment: Mapping[str, object],
+) -> None:
+    """Require exact invariants, with one digest-pinned native exception."""
+
+    ancestor = _environment_invariants(ancestor_environment)
+    descendant = _environment_invariants(descendant_environment)
+    if impact != CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT:
+        if ancestor != descendant:
+            raise MeasurementLineageError(
+                "Class-C descendant changes dependency/native/host runtime identity"
+            )
+        return
+
+    ancestor_native = ancestor.pop("native_build_inputs_sha256")
+    descendant_native = descendant.pop("native_build_inputs_sha256")
+    if (
+        ancestor != descendant
+        or not _is_authorized_native_inputs_transition(
+            impact=impact,
+            ancestor_revision=ancestor_revision,
+            descendant_revision=descendant_revision,
+            ancestor_digest=ancestor_native,
+            descendant_digest=descendant_native,
+        )
+    ):
+        raise MeasurementLineageError(
+            "Class-C descendant changes dependency/native/host runtime identity "
+            "outside the exact recurrence-summary-cap transition"
+        )
+
+
 def _finalize_class_c_bridge_locked(
     repo_root: Path,
     docs_dir: Path,
@@ -3743,12 +3818,13 @@ def _finalize_class_c_bridge_locked(
     ancestor_environment = payload.get("ancestor_environment")
     if not isinstance(ancestor_environment, Mapping):
         raise MeasurementLineageError("pending ancestor environment is malformed")
-    if _environment_invariants(ancestor_environment) != _environment_invariants(
-        descendant_environment
-    ):
-        raise MeasurementLineageError(
-            "Class-C descendant changes dependency/native/host runtime identity"
-        )
+    _require_environment_transition(
+        impact=impact,
+        ancestor_revision=str(payload["ancestor_revision"]),
+        descendant_revision=active,
+        ancestor_environment=ancestor_environment,
+        descendant_environment=descendant_environment,
+    )
     if (
         ancestor_environment.get("python_package_tree_sha256")
         == descendant_environment.get("python_package_tree_sha256")
@@ -3898,6 +3974,10 @@ class MeasurementLineage:
     @property
     def descendant_tree(self) -> str:
         return str(self.payload["descendant_tree"])
+
+    @property
+    def impact(self) -> str:
+        return str(self.payload["impact"])
 
     def source_for_current(
         self,
@@ -4361,13 +4441,22 @@ def audit_measurement_lineage(
             "active profile environment differs from the finalized lineage"
         )
     ancestor_environment = payload.get("ancestor_environment")
-    if not isinstance(ancestor_environment, Mapping) or (
-        _environment_invariants(ancestor_environment)
-        != _environment_invariants(descendant_environment)
-    ):
+    if not isinstance(ancestor_environment, Mapping):
         raise MeasurementLineageError(
             "Class-C runtime invariant proof no longer holds"
         )
+    try:
+        _require_environment_transition(
+            impact=impact,
+            ancestor_revision=lineage.ancestor_revision,
+            descendant_revision=lineage.descendant_revision,
+            ancestor_environment=ancestor_environment,
+            descendant_environment=descendant_environment,
+        )
+    except MeasurementLineageError as error:
+        raise MeasurementLineageError(
+            "Class-C runtime invariant proof no longer holds"
+        ) from error
     missing_retained: list[str] = []
     for cell_id, pin in lineage.retained_by_cell.items():
         current = store.load_current(cell_id, missing_ok=True)

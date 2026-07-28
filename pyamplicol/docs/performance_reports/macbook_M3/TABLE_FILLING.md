@@ -85,6 +85,25 @@ authenticated finalized measurement lineage.
   writer is active; populate and its boundary bookkeeping never wait for the
   publisher. The publisher holds `report-writer` only for the short atomic
   cache/table/PDF install.
+- Fast-controller wrappers must use the tracked classifier rather than a raw
+  `lsof +D` assertion. In the disposable wrapper, replace its local
+  `require_idle` body with:
+
+  ```python
+  from tools.performance_report.campaign_activity import require_campaign_idle
+
+  def require_idle() -> None:
+      require_campaign_idle(
+          coordination_root=COORDINATION_ROOT,
+          entrypoints=(ENTRYPOINT, base.ENTRYPOINT),
+      )
+  ```
+
+  This ignores only regular publisher-private files below
+  `publication/` and the `publish-snapshot`/`pyAmpliCol.tex` render process.
+  Measurement workers, native installs, `report-writer`, per-cell/named locks,
+  and atomic-install owners remain blocking activity. Never copy the former
+  blanket `lsof +D` implementation into a new controller.
 - If interruption occurs after `populate` has published `current.json` but
   before the controller records its fast boundary, authenticate the current
   pointer, immutable manifest, and result hashes, then write only the missing
