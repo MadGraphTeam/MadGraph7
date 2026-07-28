@@ -12,9 +12,11 @@ use super::recurrence_manifest::*;
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::recurrence::{
-    DirectRecurrencePlan, FactorizedColorContractionKind, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
+    DirectRecurrencePlan, FactorizedColorContractionKind,
+    RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
     RecurrenceColorContraction, SemanticDigest, decode_recurrence_color_contraction_v3,
     decode_recurrence_direct_plan_v2, recurrence_color_contraction_digest,
+    validate_recurrence_color_projection_certificate,
 };
 
 pub(super) struct LoadedRecurrenceRuntime {
@@ -464,6 +466,25 @@ fn load_plan(
         return Err(RusticolError::compatibility(
             "recurrence runtime PACBIN contains an incompatible plan member",
         ));
+    }
+    match index.members().len() {
+        1 => {}
+        2 => {
+            let certificate = reader.member(RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER)?;
+            if certificate.kind() != PacbinMemberKind::RecurrenceColorProjectionCertificate {
+                return Err(RusticolError::compatibility(
+                    "recurrence runtime PACBIN contains an incompatible projection certificate",
+                ));
+            }
+            validate_recurrence_color_projection_certificate(
+                reader.member_bytes(RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER)?,
+            )?;
+        }
+        count => {
+            return Err(RusticolError::compatibility(format!(
+                "recurrence runtime PACBIN contains {count} members; expected one plan and at most one projection certificate"
+            )));
+        }
     }
     let bytes = reader.member_bytes(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
     let plan = decode_recurrence_direct_plan_v2(bytes)?;

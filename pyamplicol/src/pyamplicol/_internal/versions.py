@@ -272,6 +272,30 @@ def _active_build_info() -> dict[str, Any] | None:
     return None
 
 
+def active_native_source_identity() -> tuple[str, str]:
+    """Return the authenticated source revision and native-input digest."""
+
+    build_info = _active_build_info()
+    if build_info is None:
+        raise RuntimeError(
+            "active native build provenance is unavailable; reinstall pyAmpliCol"
+        )
+    source_revision = build_info.get("source_revision")
+    native_digest = build_info.get("native_build_inputs_sha256")
+    if (
+        not isinstance(source_revision, str)
+        or len(source_revision) != 40
+        or any(character not in "0123456789abcdef" for character in source_revision)
+        or not isinstance(native_digest, str)
+        or len(native_digest) != 64
+        or any(character not in "0123456789abcdef" for character in native_digest)
+    ):
+        raise RuntimeError(
+            "active native source identity is incomplete; reinstall pyAmpliCol"
+        )
+    return source_revision, native_digest
+
+
 def verify_native_module(module: Any, *, expected_version: str | None = None) -> None:
     """Reject a stale native extension in contributor builds.
 
@@ -395,6 +419,7 @@ __all__ = [
     "SYMJIT_APPLICATION_ABI",
     "SYMJIT_F64_RUNTIME_CAPABILITY",
     "TOML_SCHEMA_VERSION",
+    "active_native_source_identity",
     "package_version",
     "verify_native_module",
 ]

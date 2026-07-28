@@ -66,6 +66,7 @@ class PacbinMemberKind(IntEnum):
     EAGER_RUNTIME_METADATA = 4
     EAGER_RUNTIME_TABLE = 5
     RECURRENCE_DIRECT_PLAN = 7
+    RECURRENCE_COLOR_PROJECTION_CERTIFICATE = 8
 
 
 @dataclass(frozen=True, slots=True)

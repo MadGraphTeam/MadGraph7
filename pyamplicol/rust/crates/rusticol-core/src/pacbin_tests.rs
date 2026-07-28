@@ -745,6 +745,10 @@ fn deleted_recurrence_v1_member_kind_is_not_a_compatibility_alias() {
         PacbinMemberKind::parse(7).unwrap(),
         PacbinMemberKind::RecurrenceDirectPlan
     );
+    assert_eq!(
+        PacbinMemberKind::parse(8).unwrap(),
+        PacbinMemberKind::RecurrenceColorProjectionCertificate
+    );
 }
 
 struct TrackingReader {

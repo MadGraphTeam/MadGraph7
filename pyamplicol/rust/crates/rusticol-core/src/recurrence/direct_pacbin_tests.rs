@@ -3,6 +3,8 @@
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use sha2::{Digest, Sha256};
+
 use super::*;
 use crate::pacbin::{
     PacbinMemberKind, PacbinReader, PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic,
@@ -19,6 +21,15 @@ fn temporary_directory(label: &str) -> std::path::PathBuf {
     ));
     fs::create_dir(&path).unwrap();
     path
+}
+
+fn projection_certificate() -> Vec<u8> {
+    let mut body = COLOR_PROJECTION_CERTIFICATE_BODY_MAGIC.to_vec();
+    body.extend_from_slice(&1_u32.to_le_bytes());
+    body.extend_from_slice(b"deterministic-structural-proof");
+    let digest: [u8; 32] = Sha256::digest(&body).into();
+    body.extend_from_slice(&digest);
+    bind_recurrence_color_projection_certificate(&body, &"a".repeat(40), &"b".repeat(64)).unwrap()
 }
 
 #[test]
@@ -52,6 +63,71 @@ fn direct_pacbin_is_deterministic() {
     write_recurrence_direct_plan_pacbin(&first, &valid_plan()).unwrap();
     write_recurrence_direct_plan_pacbin(&second, &valid_plan()).unwrap();
     assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn direct_pacbin_round_trips_with_a_bound_projection_certificate() {
+    let directory = temporary_directory("projection-certificate");
+    let path = directory.join("recurrence-runtime.pacbin");
+    let plan = valid_plan();
+    let certificate = projection_certificate();
+    let metadata = write_recurrence_direct_plan_pacbin_with_projection_certificate(
+        &path,
+        &plan,
+        Some(&certificate),
+    )
+    .unwrap();
+    assert_eq!(metadata.member_count, 2);
+    assert_eq!(
+        metadata.projection_certificate_payload_size,
+        Some(certificate.len() as u64)
+    );
+    assert_eq!(load_recurrence_direct_plan_pacbin(&path).unwrap(), plan);
+    let reader = PacbinReader::open(&path).unwrap();
+    let member = reader
+        .member(RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER)
+        .unwrap();
+    assert_eq!(
+        member.kind(),
+        PacbinMemberKind::RecurrenceColorProjectionCertificate
+    );
+    assert_eq!(
+        reader
+            .member_bytes(RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER)
+            .unwrap(),
+        certificate
+    );
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn direct_pacbin_rejects_a_corrupt_projection_certificate() {
+    let directory = temporary_directory("projection-certificate-corrupt");
+    let path = directory.join("recurrence-runtime.pacbin");
+    let payload = encode_recurrence_direct_plan_v2(&valid_plan()).unwrap();
+    let mut certificate = projection_certificate();
+    certificate[COLOR_PROJECTION_CERTIFICATE_MAGIC.len() + 12] ^= 1;
+    write_pacbin_atomic(
+        &path,
+        [
+            PacbinWriteMember::from_bytes(
+                RECURRENCE_DIRECT_SCHEDULE_MEMBER,
+                PacbinMemberKind::RecurrenceDirectPlan,
+                &payload,
+            )
+            .unwrap(),
+            PacbinWriteMember::from_bytes(
+                RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER,
+                PacbinMemberKind::RecurrenceColorProjectionCertificate,
+                &certificate,
+            )
+            .unwrap(),
+        ],
+        PacbinWriteOptions::default(),
+    )
+    .unwrap();
+    assert!(load_recurrence_direct_plan_pacbin(&path).is_err());
     fs::remove_dir_all(directory).unwrap();
 }
 
@@ -149,7 +225,7 @@ fn direct_pacbin_rejects_wrong_member_kind_and_extra_members() {
         load_recurrence_direct_plan_pacbin(&path)
             .unwrap_err()
             .to_string()
-            .contains("exactly one member")
+            .contains("unsupported second member")
     );
     fs::remove_dir_all(directory).unwrap();
 }

@@ -21,7 +21,8 @@ use rusticol_core::recurrence::{
     RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
     RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
     RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceStrategy, SemanticDigest,
-    checked_usize, lower_recurrence_direct_plan_v2, write_recurrence_direct_plan_pacbin,
+    bind_recurrence_color_projection_certificate, checked_usize, lower_recurrence_direct_plan_v2,
+    write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
 use rusticol_core::{RusticolError, RusticolResult};
 use serde_json::{Map as JsonMap, Value as JsonValue};
@@ -777,6 +778,8 @@ struct NativeDirectLoweringResult {
     container_size: u64,
     plan_payload_size: u64,
     plan_sha256: String,
+    projection_certificate_payload_size: Option<u64>,
+    projection_certificate_sha256: Option<String>,
     current_count: usize,
     source_row_count: usize,
     contribution_count: usize,
@@ -857,6 +860,8 @@ struct AuthenticatedDirectTemplateCatalog {
     schedule_semantic_digest,
     destination,
     *,
+    source_revision,
+    native_build_inputs_sha256,
     point_tile_size,
     workspace_mib,
     progress_callback=None
@@ -870,6 +875,8 @@ pub(crate) fn _lower_recurrence_direct_v2(
     prepared_kernel_pack_digest: String,
     schedule_semantic_digest: String,
     destination: PathBuf,
+    source_revision: String,
+    native_build_inputs_sha256: String,
     point_tile_size: u32,
     workspace_mib: u32,
     progress_callback: Option<Py<PyAny>>,
@@ -893,6 +900,8 @@ pub(crate) fn _lower_recurrence_direct_v2(
                 &prepared_kernel_pack_digest,
                 &schedule_semantic_digest,
                 &destination,
+                &source_revision,
+                &native_build_inputs_sha256,
                 point_tile_size,
                 workspace_mib,
                 python_extraction_seconds,
@@ -911,6 +920,8 @@ fn lower_recurrence_direct(
     prepared_kernel_pack_digest: &str,
     schedule_semantic_digest: &str,
     destination: &std::path::Path,
+    source_revision: &str,
+    native_build_inputs_sha256: &str,
     point_tile_size: u32,
     workspace_mib: u32,
     python_extraction_seconds: f64,
@@ -965,6 +976,16 @@ fn lower_recurrence_direct(
         progress(snapshot)
     };
     let program = authenticated.build_with_progress(&mut tracked_progress)?;
+    let projection_certificate = program
+        .color_projection_certificate_body()
+        .map(|body| {
+            bind_recurrence_color_projection_certificate(
+                body,
+                source_revision,
+                native_build_inputs_sha256,
+            )
+        })
+        .transpose()?;
     let semantic_construction_seconds = semantic_started.elapsed().as_secs_f64();
 
     let direct_lowering_started = Instant::now();
@@ -1021,7 +1042,11 @@ fn lower_recurrence_direct(
     };
 
     let serialization_started = Instant::now();
-    let metadata = write_recurrence_direct_plan_pacbin(destination, &plan)?;
+    let metadata = write_recurrence_direct_plan_pacbin_with_projection_certificate(
+        destination,
+        &plan,
+        projection_certificate.as_deref(),
+    )?;
     let serialization_seconds = serialization_started.elapsed().as_secs_f64();
     let native_total_seconds = native_started.elapsed().as_secs_f64();
 
@@ -1040,6 +1065,8 @@ fn lower_recurrence_direct(
         container_size: metadata.container_size,
         plan_payload_size: metadata.plan_payload_size,
         plan_sha256: hex_digest(metadata.plan_sha256),
+        projection_certificate_payload_size: metadata.projection_certificate_payload_size,
+        projection_certificate_sha256: metadata.projection_certificate_sha256.map(hex_digest),
         current_count: plan.currents().len(),
         source_row_count: plan.sources().len(),
         contribution_count: plan.contributions().len(),
@@ -2055,6 +2082,22 @@ fn direct_lowering_mapping(
     member.set_item("sha256", native.plan_sha256)?;
     member.set_item("container_size_bytes", native.container_size)?;
     inspection.set_item("runtime_container_member", member)?;
+    if let (Some(size_bytes), Some(sha256)) = (
+        native.projection_certificate_payload_size,
+        native.projection_certificate_sha256,
+    ) {
+        let certificate = PyDict::new(py);
+        certificate.set_item(
+            "path",
+            rusticol_core::recurrence::RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER,
+        )?;
+        certificate.set_item("schema_version", 1)?;
+        certificate.set_item("proof_kind", "exact-rectangular-sum-projection")?;
+        certificate.set_item("publishable", true)?;
+        certificate.set_item("size_bytes", size_bytes)?;
+        certificate.set_item("sha256", sha256)?;
+        inspection.set_item("color_projection_certificate", certificate)?;
+    }
 
     let timings = PyDict::new(py);
     timings.set_item(

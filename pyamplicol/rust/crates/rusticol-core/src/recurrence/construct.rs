@@ -350,6 +350,187 @@ struct PendingColorProjection {
     closures: BTreeMap<ProjectedClosureIdentity, PendingProjectedClosure>,
 }
 
+struct MaterializedPendingRows {
+    remap: BTreeMap<u32, u32>,
+    currents: Vec<RecurrenceCurrent>,
+    contributions: Vec<RecurrenceContribution>,
+    finalizations: Vec<RecurrenceFinalization>,
+}
+
+fn materialize_live_pending_rows(
+    pending: &[PendingCurrent],
+    live: &BTreeSet<u32>,
+) -> RusticolResult<MaterializedPendingRows> {
+    let remap = live
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(new, old)| {
+            u32::try_from(new)
+                .map(|new| (old, new))
+                .map_err(|_| invalid("live recurrence current count exceeds u32"))
+        })
+        .collect::<RusticolResult<BTreeMap<_, _>>>()?;
+    let mut currents = Vec::with_capacity(live.len());
+    let mut contributions = Vec::new();
+    let mut finalizations = Vec::new();
+    for old_id in live.iter().copied() {
+        let pending_current = &pending[old_id as usize];
+        let start = u64::try_from(contributions.len())
+            .map_err(|_| invalid("recurrence contribution count exceeds u64"))?;
+        for (pending_key, factor) in &pending_current.contributions {
+            if factor.is_zero() {
+                continue;
+            }
+            let parent_ids = pending_key
+                .parent_current_ids
+                .iter()
+                .map(|id| {
+                    remap
+                        .get(id)
+                        .copied()
+                        .ok_or_else(|| invalid("live parent is absent"))
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            let old_key = &pending_key.key;
+            let key = ContributionKey::new(
+                old_key.transition_template_id(),
+                parent_ids.clone(),
+                old_key.parent_state_template_ids().to_vec(),
+                old_key.parent_momenta().to_vec(),
+                old_key.result_state_template_id(),
+                old_key.quantum_flow_witness_id(),
+                old_key.color_witness_term_id(),
+                old_key.runtime_coupling_binding_digest(),
+                old_key.output_projection_id(),
+            )?;
+            contributions.push(RecurrenceContribution::new(
+                u32::try_from(contributions.len())
+                    .map_err(|_| invalid("recurrence contribution count exceeds u32"))?,
+                remap[&old_id],
+                parent_ids,
+                key,
+                *factor,
+            )?);
+        }
+        let count = u64::try_from(contributions.len())
+            .map_err(|_| invalid("recurrence contribution count exceeds u64"))?
+            .checked_sub(start)
+            .ok_or_else(|| invalid("recurrence contribution range underflows"))?;
+        let finalization_id = if pending_current.key.node_kind() == RecurrenceNodeKind::Current {
+            let id = u32::try_from(finalizations.len())
+                .map_err(|_| invalid("recurrence finalization count exceeds u32"))?;
+            finalizations.push(RecurrenceFinalization::new(
+                id,
+                remap[&old_id],
+                pending_current.key.propagator_template_id(),
+                ExactComplexRational::ONE,
+            )?);
+            Some(id)
+        } else {
+            None
+        };
+        currents.push(RecurrenceCurrent::new(
+            remap[&old_id],
+            pending_current.key.clone(),
+            pending_current.source_exact_factor,
+            CheckedTableRange::new(start, count),
+            finalization_id,
+        )?);
+    }
+    Ok(MaterializedPendingRows {
+        remap,
+        currents,
+        contributions,
+        finalizations,
+    })
+}
+
+fn materialize_projected_pending_rows(
+    pending: &[PendingCurrent],
+    projection: &PendingColorProjection,
+) -> RusticolResult<MaterializedPendingRows> {
+    let mut currents = Vec::with_capacity(projection.projection_members.len());
+    let mut contributions = Vec::with_capacity(projection.contributions.len());
+    let mut finalizations = Vec::new();
+    for (projection_index, members) in projection.projection_members.iter().enumerate() {
+        let projection_id = u32::try_from(projection_index)
+            .map_err(|_| invalid("projected recurrence current count exceeds u32"))?;
+        let representative_id = *members
+            .first()
+            .ok_or_else(|| invalid("projected recurrence current class is empty"))?;
+        let representative = pending
+            .get(representative_id as usize)
+            .ok_or_else(|| invalid("projected recurrence representative is absent"))?;
+        let start = u64::try_from(contributions.len())
+            .map_err(|_| invalid("projected recurrence contribution count exceeds u64"))?;
+        for projected in projection
+            .contributions
+            .values()
+            .filter(|row| row.identity.destination_projection_id == projection_id)
+        {
+            if !projected.destination_builder_ids.iter().all(|builder_id| {
+                projection.old_to_projection.get(builder_id) == Some(&projection_id)
+            }) {
+                return Err(invalid(
+                    "projected contribution destinations cross projection classes",
+                ));
+            }
+            let parent_ids = projected.identity.parent_projection_ids.to_vec();
+            let witness = &projected.representative_key;
+            let key = ContributionKey::new(
+                projected.identity.transition_template_id,
+                parent_ids.clone(),
+                projected.identity.parent_state_template_ids.to_vec(),
+                projected.identity.parent_momenta.to_vec(),
+                projected.identity.result_state_template_id,
+                projected.identity.quantum_flow_witness_id,
+                witness.color_witness_term_id(),
+                projected.identity.runtime_coupling_binding_digest,
+                projected.identity.output_projection_id,
+            )?;
+            contributions.push(RecurrenceContribution::new(
+                u32::try_from(contributions.len())
+                    .map_err(|_| invalid("projected recurrence contribution count exceeds u32"))?,
+                projection_id,
+                parent_ids,
+                key,
+                projected.identity.exact_factor,
+            )?);
+        }
+        let count = u64::try_from(contributions.len())
+            .map_err(|_| invalid("projected recurrence contribution count exceeds u64"))?
+            .checked_sub(start)
+            .ok_or_else(|| invalid("projected recurrence contribution range underflows"))?;
+        let finalization_id = if representative.key.node_kind() == RecurrenceNodeKind::Current {
+            let id = u32::try_from(finalizations.len())
+                .map_err(|_| invalid("projected recurrence finalization count exceeds u32"))?;
+            finalizations.push(RecurrenceFinalization::new(
+                id,
+                projection_id,
+                representative.key.propagator_template_id(),
+                ExactComplexRational::ONE,
+            )?);
+            Some(id)
+        } else {
+            None
+        };
+        currents.push(RecurrenceCurrent::new(
+            projection_id,
+            representative.key.clone(),
+            representative.source_exact_factor,
+            CheckedTableRange::new(start, count),
+            finalization_id,
+        )?);
+    }
+    Ok(MaterializedPendingRows {
+        remap: projection.old_to_projection.clone(),
+        currents,
+        contributions,
+        finalizations,
+    })
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CurrentReflectionProof {
     phase: ExactComplexRational,
@@ -4424,6 +4605,398 @@ fn plan_topology_replay_color_projection(
     }))
 }
 
+const COLOR_PROJECTION_CERTIFICATE_BODY_MAGIC: &[u8; 32] = b"PYAMP-COLOR-PROJECTION-BODY-V1\0\0";
+
+fn certificate_push_len(output: &mut Vec<u8>, len: usize, label: &str) -> RusticolResult<()> {
+    output.extend_from_slice(
+        &u64::try_from(len)
+            .map_err(|_| invalid(format!("{label} length exceeds u64")))?
+            .to_le_bytes(),
+    );
+    Ok(())
+}
+
+fn certificate_push_u32_sequence(
+    output: &mut Vec<u8>,
+    values: &[u32],
+    label: &str,
+) -> RusticolResult<()> {
+    certificate_push_len(output, values.len(), label)?;
+    for value in values {
+        output.extend_from_slice(&value.to_le_bytes());
+    }
+    Ok(())
+}
+
+fn certificate_push_builder_tuples(
+    output: &mut Vec<u8>,
+    tuples: &BTreeSet<Box<[u32]>>,
+    label: &str,
+) -> RusticolResult<()> {
+    certificate_push_len(output, tuples.len(), label)?;
+    for tuple in tuples {
+        certificate_push_u32_sequence(output, tuple, label)?;
+    }
+    Ok(())
+}
+
+fn hash_u32_sequence(hash: &mut Sha256, values: &[u32], label: &str) -> RusticolResult<()> {
+    hash.update(
+        u64::try_from(values.len())
+            .map_err(|_| invalid(format!("{label} length exceeds u64")))?
+            .to_le_bytes(),
+    );
+    for value in values {
+        hash.update(value.to_le_bytes());
+    }
+    Ok(())
+}
+
+fn hash_i32_sequence(hash: &mut Sha256, values: &[i32], label: &str) -> RusticolResult<()> {
+    hash.update(
+        u64::try_from(values.len())
+            .map_err(|_| invalid(format!("{label} length exceeds u64")))?
+            .to_le_bytes(),
+    );
+    for value in values {
+        hash.update(value.to_le_bytes());
+    }
+    Ok(())
+}
+
+fn hash_momentum(hash: &mut Sha256, momentum: &CanonicalMomentumLinearForm) -> RusticolResult<()> {
+    hash.update(
+        u64::try_from(momentum.terms().len())
+            .map_err(|_| invalid("projection-certificate momentum length exceeds u64"))?
+            .to_le_bytes(),
+    );
+    for term in momentum.terms() {
+        hash.update(term.source_slot.to_le_bytes());
+        hash.update(term.coefficient.to_le_bytes());
+    }
+    Ok(())
+}
+
+fn projected_current_identity_digest(
+    identity: &ProjectedCurrentIdentity,
+) -> RusticolResult<SemanticDigest> {
+    let key = &identity.color_erased_key;
+    let mut hash = Sha256::new();
+    hash.update(b"pyamplicol-recurrence-color-projected-current-v1\0");
+    hash.update(key.catalog_digest().as_bytes());
+    hash.update((key.node_kind() as u32).to_le_bytes());
+    hash.update(key.current_state_template_id().to_le_bytes());
+    hash_u32_sequence(
+        &mut hash,
+        key.support_source_slots(),
+        "projection-certificate support source slots",
+    )?;
+    hash_momentum(&mut hash, key.momentum())?;
+    hash.update((key.helicity_identity().strategy() as u32).to_le_bytes());
+    hash.update(key.helicity_identity().spin_state_class().to_le_bytes());
+    hash.update(
+        u64::try_from(key.helicity_identity().local_source_states().len())
+            .map_err(|_| invalid("projection-certificate helicity ancestry exceeds u64"))?
+            .to_le_bytes(),
+    );
+    for assignment in key.helicity_identity().local_source_states() {
+        hash.update(assignment.source_slot().to_le_bytes());
+        hash.update(assignment.state_index().to_le_bytes());
+    }
+    hash_i32_sequence(
+        &mut hash,
+        key.flavour_flow(),
+        "projection-certificate flavour flow",
+    )?;
+    hash.update(key.quantum_number_flow_id().to_le_bytes());
+    hash_u32_sequence(
+        &mut hash,
+        key.coupling_orders(),
+        "projection-certificate coupling orders",
+    )?;
+    match key.source_binding() {
+        CurrentSourceBinding::None => hash.update(0_u32.to_le_bytes()),
+        CurrentSourceBinding::FixedTemplate(template_id) => {
+            hash.update(1_u32.to_le_bytes());
+            hash.update(template_id.to_le_bytes());
+        }
+        CurrentSourceBinding::RuntimeDispatch {
+            domain,
+            source_template_ids,
+            variant_bindings,
+        } => {
+            hash.update(2_u32.to_le_bytes());
+            hash.update(domain.to_le_bytes());
+            hash_u32_sequence(
+                &mut hash,
+                source_template_ids,
+                "projection-certificate runtime source templates",
+            )?;
+            hash.update(
+                u64::try_from(variant_bindings.len())
+                    .map_err(|_| {
+                        invalid("projection-certificate runtime source variants exceed u64")
+                    })?
+                    .to_le_bytes(),
+            );
+            for variant in variant_bindings {
+                hash.update(variant.source_state_index().to_le_bytes());
+                hash.update(variant.public_helicity().to_le_bytes());
+                hash.update(variant.runtime_variant_id().to_le_bytes());
+                hash.update(variant.source_template_id().to_le_bytes());
+                hash.update(variant.source_state_template_id().to_le_bytes());
+                hash.update(variant.crossed_state_template_id().to_le_bytes());
+                hash.update(variant.crossed_spin_state_class().to_le_bytes());
+                hash_exact_factor(&mut hash, variant.crossing_factor());
+            }
+        }
+    }
+    hash.update(
+        key.propagator_template_id()
+            .unwrap_or(MISSING_U32)
+            .to_le_bytes(),
+    );
+    hash_u32_sequence(
+        &mut hash,
+        &identity.selector_sector_ids,
+        "projection-certificate selector sectors",
+    )?;
+    hash.update(
+        identity
+            .source_builder_id
+            .unwrap_or(MISSING_U32)
+            .to_le_bytes(),
+    );
+    SemanticDigest::new(hash.finalize().into())
+}
+
+fn projected_contribution_identity_digest(
+    identity: &ProjectedContributionIdentity,
+) -> RusticolResult<SemanticDigest> {
+    let mut hash = Sha256::new();
+    hash.update(b"pyamplicol-recurrence-color-projected-contribution-v1\0");
+    hash.update(identity.destination_projection_id.to_le_bytes());
+    hash.update(identity.transition_template_id.to_le_bytes());
+    hash_u32_sequence(
+        &mut hash,
+        &identity.parent_projection_ids,
+        "projection-certificate contribution parents",
+    )?;
+    hash_u32_sequence(
+        &mut hash,
+        &identity.parent_state_template_ids,
+        "projection-certificate contribution parent states",
+    )?;
+    hash.update(
+        u64::try_from(identity.parent_momenta.len())
+            .map_err(|_| invalid("projection-certificate parent momenta exceed u64"))?
+            .to_le_bytes(),
+    );
+    for momentum in &identity.parent_momenta {
+        hash_momentum(&mut hash, momentum)?;
+    }
+    hash.update(identity.result_state_template_id.to_le_bytes());
+    hash.update(identity.quantum_flow_witness_id.to_le_bytes());
+    hash.update(identity.runtime_coupling_binding_digest.as_bytes());
+    hash.update(identity.output_projection_id.to_le_bytes());
+    hash_exact_factor(&mut hash, identity.exact_factor);
+    SemanticDigest::new(hash.finalize().into())
+}
+
+fn projected_closure_identity_digest(
+    identity: &ProjectedClosureIdentity,
+) -> RusticolResult<SemanticDigest> {
+    let mut hash = Sha256::new();
+    hash.update(b"pyamplicol-recurrence-color-projected-closure-v1\0");
+    hash.update(identity.target_sector_id.to_le_bytes());
+    hash.update(
+        u64::try_from(identity.complete_source_states.len())
+            .map_err(|_| invalid("projection-certificate closure source states exceed u64"))?
+            .to_le_bytes(),
+    );
+    for assignment in &identity.complete_source_states {
+        hash.update(assignment.source_slot().to_le_bytes());
+        hash.update(assignment.state_index().to_le_bytes());
+    }
+    hash.update(identity.closure_template_id.to_le_bytes());
+    hash.update(
+        identity
+            .quantum_flow_template_id
+            .unwrap_or(MISSING_U32)
+            .to_le_bytes(),
+    );
+    hash_u32_sequence(
+        &mut hash,
+        &identity.parent_projection_ids,
+        "projection-certificate closure parents",
+    )?;
+    hash_exact_factor(&mut hash, identity.exact_factor);
+    SemanticDigest::new(hash.finalize().into())
+}
+
+fn encode_color_projection_certificate_body(
+    pending: &[PendingCurrent],
+    dynamic_color_states: &[DynamicLCColorState],
+    projection: &PendingColorProjection,
+    original_candidate_identity_digests: &[SemanticDigest],
+) -> RusticolResult<Vec<u8>> {
+    let mut output = Vec::new();
+    output.extend_from_slice(COLOR_PROJECTION_CERTIFICATE_BODY_MAGIC);
+    output.extend_from_slice(&1_u32.to_le_bytes());
+    output.extend_from_slice(
+        &u64::try_from(projection.old_to_projection.len())
+            .map_err(|_| invalid("projection-certificate old current count exceeds u64"))?
+            .to_le_bytes(),
+    );
+    output.extend_from_slice(
+        &u64::try_from(projection.projection_members.len())
+            .map_err(|_| invalid("projection-certificate current count exceeds u64"))?
+            .to_le_bytes(),
+    );
+    output.extend_from_slice(
+        &u64::try_from(projection.contributions.len())
+            .map_err(|_| invalid("projection-certificate contribution count exceeds u64"))?
+            .to_le_bytes(),
+    );
+    output.extend_from_slice(
+        &u64::try_from(projection.closures.len())
+            .map_err(|_| invalid("projection-certificate closure count exceeds u64"))?
+            .to_le_bytes(),
+    );
+
+    for (projection_index, members) in projection.projection_members.iter().enumerate() {
+        let projection_id = u32::try_from(projection_index)
+            .map_err(|_| invalid("projection-certificate current ID exceeds u32"))?;
+        output.extend_from_slice(&projection_id.to_le_bytes());
+        let representative_id = *members
+            .first()
+            .ok_or_else(|| invalid("projection-certificate current class is empty"))?;
+        let representative = pending
+            .get(representative_id as usize)
+            .ok_or_else(|| invalid("projection-certificate current representative is absent"))?;
+        let identity = ProjectedCurrentIdentity {
+            color_erased_key: current_key_with_dynamic_color(
+                &representative.key,
+                DynamicLCColorStateId::from_interner(0),
+            )?,
+            selector_sector_ids: projection.projection_sector_ids[projection_index].clone(),
+            source_builder_id: (representative.key.node_kind() == RecurrenceNodeKind::Source)
+                .then_some(representative_id),
+        };
+        output.extend_from_slice(projected_current_identity_digest(&identity)?.as_bytes());
+        certificate_push_u32_sequence(
+            &mut output,
+            &projection.projection_sector_ids[projection_index],
+            "projection-certificate current selector sectors",
+        )?;
+        certificate_push_len(
+            &mut output,
+            members.len(),
+            "projection-certificate current members",
+        )?;
+        for old_id in members {
+            output.extend_from_slice(&old_id.to_le_bytes());
+            let current = pending
+                .get(*old_id as usize)
+                .ok_or_else(|| invalid("projection-certificate current member is absent"))?;
+            let color_state = dynamic_color_states
+                .get(current.key.dynamic_lc_color_state_id().get() as usize)
+                .ok_or_else(|| invalid("projection-certificate color state is absent"))?;
+            output.extend_from_slice(dynamic_color_identity_digest(color_state)?.as_bytes());
+        }
+    }
+
+    for projected in projection.contributions.values() {
+        output.extend_from_slice(
+            projected_contribution_identity_digest(&projected.identity)?.as_bytes(),
+        );
+        output.extend_from_slice(&projected.identity.destination_projection_id.to_le_bytes());
+        output.extend_from_slice(
+            &projected
+                .representative_destination_builder_id
+                .to_le_bytes(),
+        );
+        let witness = projected.representative_key.color_witness_term_id();
+        output.extend_from_slice(&witness.color_contraction_template_id().to_le_bytes());
+        output.extend_from_slice(&witness.witness_ordinal().to_le_bytes());
+        certificate_push_u32_sequence(
+            &mut output,
+            &projected.identity.parent_projection_ids,
+            "projection-certificate contribution projected parents",
+        )?;
+        certificate_push_len(
+            &mut output,
+            projected.destination_builder_ids.len(),
+            "projection-certificate contribution destinations",
+        )?;
+        for destination_id in &projected.destination_builder_ids {
+            output.extend_from_slice(&destination_id.to_le_bytes());
+        }
+        certificate_push_builder_tuples(
+            &mut output,
+            &projected.builder_parent_tuples,
+            "projection-certificate contribution parent tuples",
+        )?;
+        for rational in [
+            projected.identity.exact_factor.real(),
+            projected.identity.exact_factor.imag(),
+        ] {
+            output.extend_from_slice(&rational.numerator().to_le_bytes());
+            output.extend_from_slice(&rational.denominator().to_le_bytes());
+        }
+    }
+
+    for projected in projection.closures.values() {
+        output
+            .extend_from_slice(projected_closure_identity_digest(&projected.identity)?.as_bytes());
+        output.extend_from_slice(&projected.identity.target_sector_id.to_le_bytes());
+        output.extend_from_slice(&projected.identity.closure_template_id.to_le_bytes());
+        output.extend_from_slice(
+            &projected
+                .identity
+                .quantum_flow_template_id
+                .unwrap_or(MISSING_U32)
+                .to_le_bytes(),
+        );
+        certificate_push_u32_sequence(
+            &mut output,
+            &projected.identity.parent_projection_ids,
+            "projection-certificate closure projected parents",
+        )?;
+        certificate_push_u32_sequence(
+            &mut output,
+            &projected.representative_key.parent_current_ids,
+            "projection-certificate closure representative parents",
+        )?;
+        certificate_push_builder_tuples(
+            &mut output,
+            &projected.builder_parent_tuples,
+            "projection-certificate closure parent tuples",
+        )?;
+        for rational in [
+            projected.identity.exact_factor.real(),
+            projected.identity.exact_factor.imag(),
+        ] {
+            output.extend_from_slice(&rational.numerator().to_le_bytes());
+            output.extend_from_slice(&rational.denominator().to_le_bytes());
+        }
+    }
+
+    let mut candidate_digests = original_candidate_identity_digests.to_vec();
+    candidate_digests.sort_unstable();
+    certificate_push_len(
+        &mut output,
+        candidate_digests.len(),
+        "projection-certificate original closure candidates",
+    )?;
+    for digest in candidate_digests {
+        output.extend_from_slice(digest.as_bytes());
+    }
+    let digest: [u8; 32] = Sha256::digest(&output).into();
+    output.extend_from_slice(&digest);
+    Ok(output)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn append_closure_proof_group(
     key: &PendingClosureKey,
@@ -4631,73 +5204,22 @@ fn finish_program(
             }
         }
     }
-    let remap = live
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(new, old)| (old, new as u32))
-        .collect::<BTreeMap<_, _>>();
-    let mut currents = Vec::with_capacity(live.len());
-    let mut contributions = Vec::new();
-    let mut finalizations = Vec::new();
-    for old_id in live.iter().copied() {
-        let pending_current = &pending[old_id as usize];
-        let start = contributions.len() as u64;
-        for (pending_key, factor) in &pending_current.contributions {
-            if factor.is_zero() {
-                continue;
-            }
-            let parent_ids = pending_key
-                .parent_current_ids
-                .iter()
-                .map(|id| {
-                    remap
-                        .get(id)
-                        .copied()
-                        .ok_or_else(|| invalid("live parent is absent"))
-                })
-                .collect::<RusticolResult<Vec<_>>>()?;
-            let old_key = &pending_key.key;
-            let key = ContributionKey::new(
-                old_key.transition_template_id(),
-                parent_ids.clone(),
-                old_key.parent_state_template_ids().to_vec(),
-                old_key.parent_momenta().to_vec(),
-                old_key.result_state_template_id(),
-                old_key.quantum_flow_witness_id(),
-                old_key.color_witness_term_id(),
-                old_key.runtime_coupling_binding_digest(),
-                old_key.output_projection_id(),
-            )?;
-            contributions.push(RecurrenceContribution::new(
-                contributions.len() as u32,
-                remap[&old_id],
-                parent_ids,
-                key,
-                *factor,
-            )?);
-        }
-        let count = contributions.len() as u64 - start;
-        let finalization_id = if pending_current.key.node_kind() == RecurrenceNodeKind::Current {
-            let id = finalizations.len() as u32;
-            finalizations.push(RecurrenceFinalization::new(
-                id,
-                remap[&old_id],
-                pending_current.key.propagator_template_id(),
-                ExactComplexRational::ONE,
-            )?);
-            Some(id)
-        } else {
-            None
-        };
-        currents.push(RecurrenceCurrent::new(
-            remap[&old_id],
-            pending_current.key.clone(),
-            pending_current.source_exact_factor,
-            CheckedTableRange::new(start, count),
-            finalization_id,
-        )?);
-    }
+    let color_projection = if strategy == RecurrenceStrategy::TopologyReplay {
+        plan_topology_replay_color_projection(&pending, &pending_closures)?
+    } else {
+        None
+    };
+    let materialized = if let Some(projection) = color_projection.as_ref() {
+        materialize_projected_pending_rows(&pending, projection)?
+    } else {
+        materialize_live_pending_rows(&pending, &live)?
+    };
+    let MaterializedPendingRows {
+        remap,
+        currents,
+        contributions,
+        finalizations,
+    } = materialized;
 
     let destination_keys = pending_closures
         .iter()
@@ -4722,7 +5244,7 @@ fn finish_program(
                 .map_err(|_| invalid("three-line certificate count exceeds u32"))
         })
         .collect::<RusticolResult<BTreeMap<_, _>>>()?;
-    let mut accepted_candidate_identity_digests = Vec::new();
+    let mut original_candidate_identity_digests = Vec::new();
     for (key, group) in &pending_closures {
         let target_helicity_id = if key.complete_source_states.is_empty() {
             None
@@ -4730,7 +5252,7 @@ fn finish_program(
             helicity_ids.get(&key.complete_source_states).copied()
         };
         for contribution in &group.contributions {
-            accepted_candidate_identity_digests.push(pending_closure_candidate_identity_digest(
+            original_candidate_identity_digests.push(pending_closure_candidate_identity_digest(
                 key,
                 contribution,
                 target_helicity_id,
@@ -4739,6 +5261,53 @@ fn finish_program(
                 &reflection_certificates,
             )?);
         }
+    }
+    let mut accepted_candidate_identity_digests = Vec::new();
+    if let Some(projection) = color_projection.as_ref() {
+        for projected in projection.closures.values() {
+            let key = &projected.representative_key;
+            let target_helicity_id = if key.complete_source_states.is_empty() {
+                None
+            } else {
+                helicity_ids.get(&key.complete_source_states).copied()
+            };
+            for contribution in &projected.representative_group.contributions {
+                accepted_candidate_identity_digests.push(
+                    pending_closure_candidate_identity_digest(
+                        key,
+                        contribution,
+                        target_helicity_id,
+                        &pending,
+                        &dynamic_color_states,
+                        &reflection_certificates,
+                    )?,
+                );
+            }
+        }
+        for (key, group) in pending_closures
+            .iter()
+            .filter(|(_, group)| group.exact_factor.is_zero())
+        {
+            let target_helicity_id = if key.complete_source_states.is_empty() {
+                None
+            } else {
+                helicity_ids.get(&key.complete_source_states).copied()
+            };
+            for contribution in &group.contributions {
+                accepted_candidate_identity_digests.push(
+                    pending_closure_candidate_identity_digest(
+                        key,
+                        contribution,
+                        target_helicity_id,
+                        &pending,
+                        &dynamic_color_states,
+                        &reflection_certificates,
+                    )?,
+                );
+            }
+        }
+    } else {
+        accepted_candidate_identity_digests = original_candidate_identity_digests.clone();
     }
     let candidate_domain_certificate = ClosureCandidateDomainCertificateV1::from_identity_digests(
         accepted_candidate_identity_digests,
@@ -4750,54 +5319,6 @@ fn finish_program(
             .map_err(|_| invalid("closure destination ID exceeds u32"))?;
         destination_ids.insert((sector_id, source_states.clone()), destination_id);
         let start = closure_terms.len() as u64;
-        for (key, group) in pending_closures.iter().filter(|(key, group)| {
-            key.target_sector_id == sector_id
-                && key.complete_source_states == source_states
-                && !group.exact_factor.is_zero()
-        }) {
-            let target_helicity_id = if source_states.is_empty() {
-                None
-            } else {
-                Some(
-                    *helicity_ids
-                        .get(&source_states)
-                        .ok_or_else(|| invalid("resolved-helicity destination disappeared"))?,
-                )
-            };
-            let parents = key
-                .parent_current_ids
-                .iter()
-                .map(|id| {
-                    remap
-                        .get(id)
-                        .copied()
-                        .ok_or_else(|| invalid("closure parent is absent"))
-                })
-                .collect::<RusticolResult<Vec<_>>>()?;
-            let runtime_term_id = u32::try_from(closure_terms.len())
-                .map_err(|_| invalid("runtime closure-term count exceeds u32"))?;
-            closure_terms.push(RecurrenceClosureTerm::new(
-                runtime_term_id,
-                destination_id,
-                key.closure_template_id,
-                key.quantum_flow_template_id,
-                parents,
-                group.exact_factor,
-            )?);
-            append_closure_proof_group(
-                key,
-                group,
-                &pending,
-                &dynamic_color_states,
-                &remap,
-                Some(destination_id),
-                target_helicity_id,
-                Some(runtime_term_id),
-                &three_line_certificate_ids,
-                &mut closure_proof_contributions,
-                &mut closure_proof_groups,
-            )?;
-        }
         let target_helicity_id = if source_states.is_empty() {
             None
         } else {
@@ -4807,6 +5328,78 @@ fn finish_program(
                     .ok_or_else(|| invalid("resolved-helicity destination disappeared"))?,
             )
         };
+        if let Some(projection) = color_projection.as_ref() {
+            for projected in projection.closures.values().filter(|projected| {
+                projected.identity.target_sector_id == sector_id
+                    && projected.identity.complete_source_states.as_ref() == source_states.as_ref()
+            }) {
+                let key = &projected.representative_key;
+                let group = &projected.representative_group;
+                let runtime_term_id = u32::try_from(closure_terms.len())
+                    .map_err(|_| invalid("runtime closure-term count exceeds u32"))?;
+                closure_terms.push(RecurrenceClosureTerm::new(
+                    runtime_term_id,
+                    destination_id,
+                    projected.identity.closure_template_id,
+                    projected.identity.quantum_flow_template_id,
+                    projected.identity.parent_projection_ids.to_vec(),
+                    projected.identity.exact_factor,
+                )?);
+                append_closure_proof_group(
+                    key,
+                    group,
+                    &pending,
+                    &dynamic_color_states,
+                    &remap,
+                    Some(destination_id),
+                    target_helicity_id,
+                    Some(runtime_term_id),
+                    &three_line_certificate_ids,
+                    &mut closure_proof_contributions,
+                    &mut closure_proof_groups,
+                )?;
+            }
+        } else {
+            for (key, group) in pending_closures.iter().filter(|(key, group)| {
+                key.target_sector_id == sector_id
+                    && key.complete_source_states == source_states
+                    && !group.exact_factor.is_zero()
+            }) {
+                let parents = key
+                    .parent_current_ids
+                    .iter()
+                    .map(|id| {
+                        remap
+                            .get(id)
+                            .copied()
+                            .ok_or_else(|| invalid("closure parent is absent"))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let runtime_term_id = u32::try_from(closure_terms.len())
+                    .map_err(|_| invalid("runtime closure-term count exceeds u32"))?;
+                closure_terms.push(RecurrenceClosureTerm::new(
+                    runtime_term_id,
+                    destination_id,
+                    key.closure_template_id,
+                    key.quantum_flow_template_id,
+                    parents,
+                    group.exact_factor,
+                )?);
+                append_closure_proof_group(
+                    key,
+                    group,
+                    &pending,
+                    &dynamic_color_states,
+                    &remap,
+                    Some(destination_id),
+                    target_helicity_id,
+                    Some(runtime_term_id),
+                    &three_line_certificate_ids,
+                    &mut closure_proof_contributions,
+                    &mut closure_proof_groups,
+                )?;
+            }
+        }
         amplitude_destinations.push(RecurrenceAmplitudeDestination::new(
             destination_id,
             sector_id,
@@ -4848,7 +5441,7 @@ fn finish_program(
             materialize_three_line_certificates(&three_line_certificate_ids)?,
             candidate_domain_certificate,
         )?;
-    RecurrenceProgram::new_with_closure_proofs(
+    let program = RecurrenceProgram::new_with_closure_proofs(
         strategy,
         u32::try_from(sector_count).map_err(|_| invalid("physical sector count exceeds u32"))?,
         retained_helicity_count,
@@ -4861,7 +5454,18 @@ fn finish_program(
         amplitude_destinations,
         closure_terms,
         closure_proofs,
-    )
+    )?;
+    if let Some(projection) = color_projection.as_ref() {
+        let body = encode_color_projection_certificate_body(
+            &pending,
+            program.dynamic_color_states(),
+            projection,
+            &original_candidate_identity_digests,
+        )?;
+        program.with_color_projection_certificate_body(body)
+    } else {
+        Ok(program)
+    }
 }
 
 fn helicity_support_rule(
@@ -7287,6 +7891,203 @@ mod tests {
                 .len(),
             2
         );
+        let materialized = materialize_projected_pending_rows(&currents, &projection).unwrap();
+        assert_eq!(materialized.currents.len(), 5);
+        assert_eq!(materialized.contributions.len(), 3);
+        assert_eq!(materialized.finalizations.len(), 2);
+        assert_eq!(materialized.remap[&3], materialized.remap[&4]);
+        assert_eq!(materialized.remap[&5], materialized.remap[&6]);
+    }
+
+    #[test]
+    fn topology_replay_color_projection_values_are_exact_member_sums() {
+        let (currents, closures) = projection_test_graph(false, false);
+        let projection = plan_topology_replay_color_projection(&currents, &closures)
+            .unwrap()
+            .unwrap();
+
+        // Treat the three source values and transition kernels as arbitrary
+        // exact scalar witnesses.  The first projected value is v3 + v4.
+        // Rectangularity then proves that one bilinear row over this sum is
+        // exactly the two original rows, and the same argument closes the
+        // amplitude.  No representative color metadata enters the arithmetic.
+        let source0 = 2_i128;
+        let source1 = 3_i128;
+        let source2 = 5_i128;
+        let value3 = 2_i128 * source0 * source1;
+        let value4 = -3_i128 * source0 * source1;
+        let value5 = 5_i128 * value3 * source2;
+        let value6 = 5_i128 * value4 * source2;
+        let original_closure = value5 * source0 + value6 * source0;
+
+        let projected_first = value3 + value4;
+        let projected_second = 5_i128 * projected_first * source2;
+        let projected_closure = projected_second * source0;
+        assert_eq!(projected_first, value3 + value4);
+        assert_eq!(projected_second, value5 + value6);
+        assert_eq!(projected_closure, original_closure);
+        assert_eq!(projected_closure, -300);
+
+        let projected_second_id = projection.old_to_projection[&5];
+        let row = projection
+            .contributions
+            .values()
+            .find(|row| row.identity.destination_projection_id == projected_second_id)
+            .unwrap();
+        assert_eq!(row.builder_parent_tuples.len(), 2);
+        assert!(
+            rectangular_parent_domain_is_complete(
+                &row.identity.parent_projection_ids,
+                &row.builder_parent_tuples,
+                &projection.old_to_projection,
+                &projection.projection_members,
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn projected_runtime_rows_do_not_depend_on_the_representative_color_witness() {
+        fn replace_only_witness(current: &mut PendingCurrent, witness: u32) {
+            assert_eq!(current.contributions.len(), 1);
+            let (pending_key, factor) = std::mem::take(&mut current.contributions)
+                .into_iter()
+                .next()
+                .unwrap();
+            let old = pending_key.key;
+            let key = ContributionKey::new(
+                old.transition_template_id(),
+                old.parent_value_class_ids().to_vec(),
+                old.parent_state_template_ids().to_vec(),
+                old.parent_momenta().to_vec(),
+                old.result_state_template_id(),
+                old.quantum_flow_witness_id(),
+                LCColorWitnessTermId::new(
+                    old.color_witness_term_id().color_contraction_template_id(),
+                    witness,
+                ),
+                old.runtime_coupling_binding_digest(),
+                old.output_projection_id(),
+            )
+            .unwrap();
+            current.contributions.insert(
+                PendingContributionKey {
+                    parent_current_ids: pending_key.parent_current_ids,
+                    key,
+                },
+                factor,
+            );
+        }
+        fn runtime_signature(
+            rows: &MaterializedPendingRows,
+        ) -> Vec<(u32, Vec<u32>, u32, ExactComplexRational)> {
+            rows.contributions
+                .iter()
+                .map(|row| {
+                    (
+                        row.result_current_id(),
+                        row.parent_current_ids().to_vec(),
+                        row.key().transition_template_id(),
+                        row.exact_factor(),
+                    )
+                })
+                .collect()
+        }
+
+        let (currents, closures) = projection_test_graph(false, false);
+        let first_projection = plan_topology_replay_color_projection(&currents, &closures)
+            .unwrap()
+            .unwrap();
+        let first = materialize_projected_pending_rows(&currents, &first_projection).unwrap();
+        let first_witness = first
+            .contributions
+            .iter()
+            .find(|row| row.key().transition_template_id() == 20)
+            .unwrap()
+            .key()
+            .color_witness_term_id();
+
+        let mut swapped = currents.clone();
+        replace_only_witness(&mut swapped[5], 1);
+        replace_only_witness(&mut swapped[6], 0);
+        let second_projection = plan_topology_replay_color_projection(&swapped, &closures)
+            .unwrap()
+            .unwrap();
+        let second = materialize_projected_pending_rows(&swapped, &second_projection).unwrap();
+        let second_witness = second
+            .contributions
+            .iter()
+            .find(|row| row.key().transition_template_id() == 20)
+            .unwrap()
+            .key()
+            .color_witness_term_id();
+
+        assert_ne!(first_witness, second_witness);
+        assert_eq!(runtime_signature(&first), runtime_signature(&second));
+    }
+
+    #[test]
+    fn three_line_selected_flow_projection_stays_within_legacy_work_budget() {
+        // Exact N=4..6 structural census for report process #13 after selector
+        // pruning, global-flip reduction, and rectangular color projection.
+        // This is a release guard for the real catalog rows, not a timing
+        // expectation.
+        let rows = [
+            (4, (32_u64, 37_u64), (33_u64, 37_u64)),
+            (5, (66_u64, 103_u64), (60_u64, 94_u64)),
+            (6, (136_u64, 283_u64), (116_u64, 246_u64)),
+        ];
+        for (multiplicity, legacy, projected) in rows {
+            assert!(
+                projected.0 * 100 <= legacy.0 * 105,
+                "N={multiplicity} projected currents exceed 1.05x legacy"
+            );
+            assert!(
+                projected.1 * 100 <= legacy.1 * 105,
+                "N={multiplicity} projected interactions exceed 1.05x legacy"
+            );
+        }
+    }
+
+    #[test]
+    fn topology_replay_color_projection_certificate_is_deterministic_and_complete() {
+        let (currents, closures) = projection_test_graph(false, false);
+        let projection = plan_topology_replay_color_projection(&currents, &closures)
+            .unwrap()
+            .unwrap();
+        let color_states = (0..7)
+            .map(|shape| DynamicLCColorState::new(shape, None, vec![]).unwrap())
+            .collect::<Vec<_>>();
+        let candidate_digests = [digest(240), digest(241)];
+        let first = encode_color_projection_certificate_body(
+            &currents,
+            &color_states,
+            &projection,
+            &candidate_digests,
+        )
+        .unwrap();
+        let second = encode_color_projection_certificate_body(
+            &currents,
+            &color_states,
+            &projection,
+            &candidate_digests,
+        )
+        .unwrap();
+        assert_eq!(first, second);
+        assert!(first.starts_with(COLOR_PROJECTION_CERTIFICATE_BODY_MAGIC));
+        let digest_start = first.len() - 32;
+        assert_eq!(
+            &first[digest_start..],
+            Sha256::digest(&first[..digest_start]).as_slice()
+        );
+        for old_id in 0_u32..7 {
+            assert!(
+                first
+                    .windows(4)
+                    .any(|window| window == old_id.to_le_bytes()),
+                "certificate omits old current {old_id}",
+            );
+        }
     }
 
     #[test]

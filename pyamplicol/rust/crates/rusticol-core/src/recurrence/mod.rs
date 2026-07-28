@@ -45,9 +45,12 @@ pub use direct_lowering::{
     DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog,
     PreparedDirectExecutorKey, lower_recurrence_direct_plan_v2, lower_recurrence_direct_v2,
 };
+pub(crate) use direct_pacbin::validate_recurrence_color_projection_certificate;
 pub use direct_pacbin::{
-    RECURRENCE_DIRECT_SCHEDULE_MEMBER, RecurrenceDirectPacbinMetadata,
+    RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
+    RecurrenceDirectPacbinMetadata, bind_recurrence_color_projection_certificate,
     load_recurrence_direct_plan_pacbin, write_recurrence_direct_plan_pacbin,
+    write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
 pub use direct_plan::{
     DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,

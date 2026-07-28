@@ -190,6 +190,10 @@ def test_runtime_plan_member_kinds_round_trip() -> None:
             ("eager/metadata.bin", PacbinMemberKind.EAGER_RUNTIME_METADATA),
             ("eager/table.bin", PacbinMemberKind.EAGER_RUNTIME_TABLE),
             ("recurrence/plan.bin", PacbinMemberKind.RECURRENCE_DIRECT_PLAN),
+            (
+                "recurrence/projection.bin",
+                PacbinMemberKind.RECURRENCE_COLOR_PROJECTION_CERTIFICATE,
+            ),
         )
     )
     write_pacbin(destination, sources)
@@ -199,6 +203,7 @@ def test_runtime_plan_member_kinds_round_trip() -> None:
             PacbinMemberKind.EAGER_RUNTIME_METADATA,
             PacbinMemberKind.EAGER_RUNTIME_TABLE,
             PacbinMemberKind.RECURRENCE_DIRECT_PLAN,
+            PacbinMemberKind.RECURRENCE_COLOR_PROJECTION_CERTIFICATE,
         }
 
 

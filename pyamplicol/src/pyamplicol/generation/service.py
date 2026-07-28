@@ -17,7 +17,10 @@ from threading import Lock
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
-from pyamplicol._internal.versions import verify_native_module
+from pyamplicol._internal.versions import (
+    active_native_source_identity,
+    verify_native_module,
+)
 from pyamplicol.api.errors import GenerationError, ModelError, PyAmpliColError
 from pyamplicol.api.models import CompiledModel, _compiled_model_payload
 from pyamplicol.api.requests import (
@@ -315,6 +318,8 @@ class _RustRecurrenceLoweringBinding(Protocol):
         destination: str,
         /,
         *,
+        source_revision: str,
+        native_build_inputs_sha256: str,
         point_tile_size: int,
         workspace_mib: int,
         progress_callback: Callable[[Mapping[str, object]], None] | None,
@@ -425,6 +430,14 @@ def _invoke_rust_recurrence_lowering_v2(
             "_lower_recurrence_direct_v2 binding"
         )
     binding = cast(_RustRecurrenceLoweringBinding, candidate)
+    try:
+        source_revision, native_build_inputs_sha256 = (
+            active_native_source_identity()
+        )
+    except RuntimeError as exc:
+        raise GenerationError(
+            "recurrence generation requires authenticated native source identity"
+        ) from exc
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() or destination.is_symlink():
         raise GenerationError(
@@ -444,6 +457,8 @@ def _invoke_rust_recurrence_lowering_v2(
             prepared_kernel_pack_digest,
             schedule_semantic_digest,
             os.fspath(destination),
+            source_revision=source_revision,
+            native_build_inputs_sha256=native_build_inputs_sha256,
             point_tile_size=point_tile_size,
             workspace_mib=workspace_mib,
             progress_callback=progress_callback,

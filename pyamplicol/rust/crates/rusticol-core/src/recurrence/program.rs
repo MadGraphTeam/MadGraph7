@@ -2046,6 +2046,7 @@ pub struct RecurrenceProgram {
     amplitude_destinations: Box<[RecurrenceAmplitudeDestination]>,
     closure_terms: Box<[RecurrenceClosureTerm]>,
     closure_proofs: ClosureProofMetadataV2,
+    color_projection_certificate_body: Option<Box<[u8]>>,
 }
 
 impl RecurrenceProgram {
@@ -2112,6 +2113,7 @@ impl RecurrenceProgram {
             amplitude_destinations: amplitude_destinations.into_boxed_slice(),
             closure_terms: closure_terms.into_boxed_slice(),
             closure_proofs,
+            color_projection_certificate_body: None,
         };
         program.validate()?;
         Ok(program)
@@ -2163,6 +2165,26 @@ impl RecurrenceProgram {
 
     pub const fn closure_proofs(&self) -> &ClosureProofMetadataV2 {
         &self.closure_proofs
+    }
+
+    pub(crate) fn with_color_projection_certificate_body(
+        mut self,
+        body: Vec<u8>,
+    ) -> RusticolResult<Self> {
+        if body.is_empty() {
+            return Err(invalid("recurrence color-projection certificate is empty"));
+        }
+        if self.strategy != RecurrenceStrategy::TopologyReplay {
+            return Err(invalid(
+                "recurrence color projection is restricted to topology replay",
+            ));
+        }
+        self.color_projection_certificate_body = Some(body.into_boxed_slice());
+        Ok(self)
+    }
+
+    pub fn color_projection_certificate_body(&self) -> Option<&[u8]> {
+        self.color_projection_certificate_body.as_deref()
     }
 
     pub fn current_range(&self) -> CheckedTableRange {
