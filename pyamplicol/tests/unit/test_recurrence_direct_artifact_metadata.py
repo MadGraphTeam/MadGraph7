@@ -13,6 +13,7 @@ from pyamplicol._internal import versions
 from pyamplicol.api.errors import ArtifactError
 from pyamplicol.artifacts import inspection
 from pyamplicol.generation import artifact_writer, recurrence_physics
+from pyamplicol.generation.recurrence_columnar import RecurrenceSemanticDigestV1
 
 
 def _digest(character: str) -> str:
@@ -275,6 +276,89 @@ def test_recurrence_physics_identifies_direct_plan_and_runtime_layout() -> None:
     assert reduction["plan_member_path"] == (
         "schedule/recurrence-direct-schedule-v2.bin"
     )
+
+
+def test_recurrence_physics_expands_global_helicity_flip_aliases() -> None:
+    exact_one = SimpleNamespace(
+        real_numerator=1,
+        real_denominator=1,
+        imag_numerator=0,
+        imag_denominator=1,
+    )
+    external_leg = SimpleNamespace(
+        source_slot=0,
+        public_label=1,
+        source_states=(
+            SimpleNamespace(state_index=0, public_helicity=-1),
+            SimpleNamespace(state_index=1, public_helicity=1),
+        ),
+    )
+    proof_digest = _digest("7")
+    logical = SimpleNamespace(
+        process_id="d_dbar_to_z_g",
+        layout="topology-replay",
+        semantic_digests=(
+            RecurrenceSemanticDigestV1(
+                "helicity-equivalence:global-flip-v1",
+                proof_digest,
+            ),
+        ),
+        selected_source_coverage=None,
+        selected_public_flow_ids=None,
+        external_legs=(external_leg,),
+        public_flows=(
+            SimpleNamespace(
+                flow_id=0,
+                public_id="flow:1",
+                word_source_slots=(0,),
+                reduction_weight=exact_one,
+            ),
+        ),
+    )
+    process = SimpleNamespace(
+        key="d_dbar_to_z_g",
+        process="d d~ > z g",
+        color_accuracy="lc",
+        legs=(
+            SimpleNamespace(
+                label=1,
+                particle="d",
+                pdg=1,
+                is_initial=True,
+            ),
+        ),
+    )
+
+    physics = recurrence_physics.build_recurrence_physics(
+        process,
+        logical,
+        SimpleNamespace(parameters=()),
+        process_id="d_dbar_to_z_g",
+        resolved_helicities=((-1,),),
+        normalization={},
+    )
+
+    assert physics["coverage"]["structural_zero_helicity_count"] == 0
+    negative, positive = physics["helicities"]
+    assert negative["computed"] is True
+    assert negative["representative_id"] == "h:-1"
+    assert positive["computed"] is False
+    assert positive["structural_zero"] is False
+    assert positive["representative_id"] == "h:-1"
+    reduction = physics["extensions"]["global_helicity_flip_reduction"]
+    assert reduction == {
+        "kind": "pyamplicol-global-helicity-flip-reduction-v1",
+        "proof_role": "helicity-equivalence:global-flip-v1",
+        "proof_digest": proof_digest,
+        "physical_nonzero_helicity_count": 2,
+        "representative_helicity_count": 1,
+        "aliases": [
+            {
+                "physical_id": "h:+1",
+                "representative_id": "h:-1",
+            }
+        ],
+    }
 
 
 def test_inspection_rejects_retired_recurrence_before_strict_manifest_load(

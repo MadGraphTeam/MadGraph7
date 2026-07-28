@@ -48,6 +48,7 @@ _NORMALIZATION_EXTENSION_KEYS = (
     "couplings_in_stage_evaluators",
     "coupling_policy",
 )
+_GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE = "helicity-equivalence:global-flip-v1"
 
 
 def build_recurrence_normalization(
@@ -111,23 +112,64 @@ def build_recurrence_physics(
     computed_helicities = (
         set(possible_helicities) if logical.layout == "all-flow-union" else resolved
     )
+    parity_proof = next(
+        (
+            row
+            for row in getattr(logical, "semantic_digests", ())
+            if row.role == _GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE
+        ),
+        None,
+    )
+    parity_reduced = parity_proof is not None and logical.layout != "all-flow-union"
+    if parity_reduced:
+        for values in resolved:
+            flipped = tuple(-value for value in values)
+            if flipped != values and flipped in resolved:
+                raise ValueError(
+                    "recurrence parity proof retained both members of global "
+                    f"helicity-flip orbit {values!r} / {flipped!r}"
+                )
     helicities = []
     structural_zero_count = 0
+    parity_aliases: list[dict[str, str]] = []
     for index, values in enumerate(possible_helicities):
         identifier = _helicity_id(values)
-        structural_zero = values not in computed_helicities
+        representative = values
+        computed = values in computed_helicities
+        if parity_reduced and not computed:
+            flipped = tuple(-value for value in values)
+            if flipped in resolved:
+                representative = flipped
+        structural_zero = not computed and representative == values
         structural_zero_count += int(structural_zero)
+        representative_id = _helicity_id(representative)
+        if representative != values:
+            parity_aliases.append(
+                {
+                    "physical_id": identifier,
+                    "representative_id": representative_id,
+                }
+            )
         helicities.append(
             {
                 "id": identifier,
                 "index": index,
                 "values": list(values),
-                "computed": not structural_zero,
+                "computed": computed,
                 "structural_zero": structural_zero,
-                "representative_id": identifier,
+                "representative_id": representative_id,
                 "coefficient": 0.0 if structural_zero else 1.0,
             }
         )
+    if parity_reduced:
+        nonzero_physical = len(helicities) - structural_zero_count
+        if nonzero_physical != 2 * len(resolved) or len(parity_aliases) != len(
+            resolved
+        ):
+            raise ValueError(
+                "recurrence global-helicity-flip reduction does not form complete "
+                "two-member nonzero orbits"
+            )
 
     selected_flow_ids = (
         None
@@ -293,6 +335,22 @@ def build_recurrence_physics(
                 "direct_template_abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
                 "lc_flow_layout": logical.layout,
             },
+            **(
+                {}
+                if not parity_reduced
+                else {
+                    "global_helicity_flip_reduction": {
+                        "kind": "pyamplicol-global-helicity-flip-reduction-v1",
+                        "proof_role": parity_proof.role,
+                        "proof_digest": parity_proof.digest,
+                        "physical_nonzero_helicity_count": (
+                            len(helicities) - structural_zero_count
+                        ),
+                        "representative_helicity_count": len(resolved),
+                        "aliases": parity_aliases,
+                    }
+                }
+            ),
         },
     }
 

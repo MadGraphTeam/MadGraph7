@@ -14,6 +14,29 @@ impl PhysicsRuntime {
             .enumerate()
             .map(|(index, helicity)| (helicity.id.clone(), index))
             .collect::<BTreeMap<_, _>>();
+        let helicity_representative_index = manifest
+            .helicities
+            .iter()
+            .map(|helicity| {
+                helicity_index_by_id
+                    .get(&helicity.representative_id)
+                    .copied()
+                    .ok_or_else(|| {
+                        RusticolError::artifact(format!(
+                            "helicity {} references absent representative {}",
+                            helicity.id, helicity.representative_id
+                        ))
+                    })
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let mut helicity_members_by_representative = vec![Vec::new(); manifest.helicities.len()];
+        for (physical_index, representative_index) in
+            helicity_representative_index.iter().copied().enumerate()
+        {
+            if !manifest.helicities[physical_index].structural_zero {
+                helicity_members_by_representative[representative_index].push(physical_index);
+            }
+        }
         let color_index_by_id = manifest
             .color_components
             .iter()
@@ -69,6 +92,7 @@ impl PhysicsRuntime {
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             manifest,
             helicity_index_by_id,
+            helicity_members_by_representative,
             color_index_by_id,
             reduction_by_group_id,
             numeric_reduction_by_group_id,
@@ -174,6 +198,14 @@ impl PhysicsRuntime {
             PhysicsColorComponentV1::LcFlow(flow) => flow.computed,
             PhysicsColorComponentV1::ContractedColor(_) => true,
         }
+    }
+
+    #[inline(always)]
+    pub(super) fn helicity_orbit_members(&self, representative: usize) -> &[usize] {
+        self.helicity_members_by_representative
+            .get(representative)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
     }
 
     pub(super) fn normalized_helicity_weights(

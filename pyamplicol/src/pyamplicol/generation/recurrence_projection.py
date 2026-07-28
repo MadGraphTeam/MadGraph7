@@ -66,6 +66,7 @@ _CLOSURE_ANCHOR_PROOF_ALGORITHM: Final = "canonical-lc-closure-anchor-v2"
 _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: Final = (
     "helicity-support:pure-massless-adjoint-tree-v1"
 )
+_GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE: Final = "helicity-equivalence:global-flip-v1"
 
 
 class RecurrenceProjectionError(ValueError):
@@ -187,6 +188,14 @@ def project_recurrence_process_v1(
         model_catalog_digest=template_catalog.header.compiled_model_digest,
         coupling_order_limits=coupling_order_limits,
     )
+    global_helicity_flip = _project_global_helicity_flip_proof(
+        process,
+        external_legs,
+        model,
+        model_catalog_digest=template_catalog.header.compiled_model_digest,
+        coupling_order_limits=coupling_order_limits,
+        generation_selected=selection.selected_source_helicities is not None,
+    )
 
     return RecurrenceBuilderLogicalInputV1(
         process_id=process.key,
@@ -213,6 +222,7 @@ def project_recurrence_process_v1(
                 closure_reconstruction_digest,
             ),
             *(() if helicity_support is None else (helicity_support,)),
+            *(() if global_helicity_flip is None else (global_helicity_flip,)),
         ),
         external_legs=external_legs,
         physical_sectors=physical_sectors,
@@ -347,6 +357,89 @@ def _project_helicity_support_proof(
             {
                 "algorithm": _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE,
                 "coupling_order_limits": sorted(limits.items()),
+                "model_catalog_digest": model_catalog_digest,
+                "process": process.to_json_dict(),
+                "reachable_vertices": [
+                    {
+                        "kind": int(vertex.kind),
+                        "particles": [int(value) for value in vertex.particles],
+                    }
+                    for vertex in vertices
+                ],
+            }
+        ),
+    )
+
+
+def _project_global_helicity_flip_proof(
+    process: CanonicalProcessIR,
+    external_legs: Sequence[RecurrenceExternalLegV1],
+    model: Model | None,
+    *,
+    model_catalog_digest: str,
+    coupling_order_limits: Mapping[str, int] | None,
+    generation_selected: bool,
+) -> RecurrenceSemanticDigestV1 | None:
+    """Project the same fail-closed parity theorem used by DAG generation.
+
+    The recurrence builder operates before a :class:`GenericDAG` exists, so it
+    cannot consume the DAG post-pass directly.  Instead, bind the exact model
+    predicate, reachable vertex inventory, and complete two-state external
+    helicity axes into the process projection.  Generation-specialized
+    helicity slices remain untouched because they need not contain both orbit
+    members.
+    """
+
+    if model is None or generation_selected:
+        return None
+    if len(external_legs) != len(process.legs):
+        raise RecurrenceProjectionError(
+            "recurrence parity proof external-leg projection is incomplete"
+        )
+
+    external_axes: list[tuple[int, tuple[int, int]]] = []
+    for process_leg, projected_leg in zip(process.legs, external_legs, strict=True):
+        outgoing_pdg = process_leg.outgoing_pdg
+        if outgoing_pdg is None:
+            return None
+        particle_id = int(outgoing_pdg)
+        if model.mass(particle_id) != 0.0 or not (
+            model.is_fundamental_colored_fermion(particle_id)
+            or model.is_massless_adjoint_vector(particle_id)
+        ):
+            return None
+        helicities = tuple(
+            sorted(
+                {int(state.public_helicity) for state in projected_leg.source_states}
+            )
+        )
+        if (
+            len(helicities) != 2
+            or helicities[0] == 0
+            or helicities[0] != -helicities[1]
+        ):
+            return None
+        external_axes.append((int(projected_leg.source_slot), helicities))
+
+    limits = {
+        str(name).upper(): int(value)
+        for name, value in (coupling_order_limits or {}).items()
+        if int(value) >= 0
+    }
+    vertices = _reachable_vertex_inventory(
+        process,
+        model,
+        coupling_order_limits=limits,
+    )
+    if not vertices or not model.global_helicity_flip_equivalence_is_proven(vertices):
+        return None
+    return RecurrenceSemanticDigestV1(
+        _GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE,
+        _digest(
+            {
+                "algorithm": _GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE,
+                "coupling_order_limits": sorted(limits.items()),
+                "external_helicity_axes": external_axes,
                 "model_catalog_digest": model_catalog_digest,
                 "process": process.to_json_dict(),
                 "reachable_vertices": [

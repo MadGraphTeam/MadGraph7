@@ -263,12 +263,7 @@ def test_compact_color_rows_authenticate_sector_aliases_and_structural_zeros() -
     assert contraction.owner_by_sector == (0, 0, 2, 0xFFFF_FFFF)
 
     invalid = bytearray(valid)
-    owner_offset = (
-        _HEADER.size
-        + _ENTRY.size
-        + _EXACT_FACTOR_BYTES
-        + 4 * 2 * _U32.size
-    )
+    owner_offset = _HEADER.size + _ENTRY.size + _EXACT_FACTOR_BYTES + 4 * 2 * _U32.size
     _U32.pack_into(invalid, owner_offset + _U32.size, 2)
     with pytest.raises(ArtifactError, match="invalid owner"):
         _decode_recurrence_color_contraction(bytes(invalid))
@@ -637,6 +632,10 @@ def test_contracted_exact_resolved_output_and_selector_contract(
     }
     executor._permutation = None
     executor._native_runtime = object()
+    (
+        executor._helicity_representative,
+        executor._helicity_orbit_members,
+    ) = executor._helicity_reduction_indices()
     executor._replay_by_color = ()
     executor._destination_helicities = ()
     executor._union_destination_by_color = ()
@@ -695,3 +694,34 @@ def test_contracted_exact_resolved_output_and_selector_contract(
             color_flows=("color:contracted",),
             precision=70,
         )
+
+
+def test_exact_helicity_reduction_indexes_physical_alias_orbits() -> None:
+    executor = object.__new__(RecurrenceExactExecutor)
+    executor._physics = {
+        "helicities": [
+            {
+                "id": "h:-1,+1",
+                "computed": True,
+                "structural_zero": False,
+                "representative_id": "h:-1,+1",
+            },
+            {
+                "id": "h:+1,-1",
+                "computed": False,
+                "structural_zero": False,
+                "representative_id": "h:-1,+1",
+            },
+            {
+                "id": "h:+1,+1",
+                "computed": False,
+                "structural_zero": True,
+                "representative_id": "h:+1,+1",
+            },
+        ]
+    }
+
+    representatives, members = executor._helicity_reduction_indices()
+
+    assert representatives == (0, 0, 2)
+    assert members == ((0, 1), (), ())

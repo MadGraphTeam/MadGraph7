@@ -105,6 +105,10 @@ class RecurrenceExactExecutor:
             native_sections_loader=native_sections_loader,
         )
         self._physics = physics
+        (
+            self._helicity_representative,
+            self._helicity_orbit_members,
+        ) = self._helicity_reduction_indices()
         self._permutation = permutation
         self._replay_by_color: tuple[_ReplayTarget, ...] = ()
         self._destination_helicities: tuple[tuple[int, ...], ...] = ()
@@ -275,26 +279,25 @@ class RecurrenceExactExecutor:
                 if destination.target_sector_id != target.representative_id:
                     continue
                 physics_helicity = destination_helicities[destination.destination_id]
-                helicity_position = helicity_positions.get(physics_helicity)
-                if helicity_position is None:
-                    continue
                 helicity = helicity_records[physics_helicity]
                 if (
                     helicity.get("computed") is not True
                     or helicity.get("structural_zero") is True
                 ):
                     continue
-                helicity_weight = _decimal(
-                    helicity.get("coefficient", 1),
-                    "helicity coefficient",
-                )
                 amplitude = amplitudes[destination.destination_id]
-                point_values[helicity_position][color_position] += (
-                    normalization
-                    * color_weight
-                    * helicity_weight
-                    * (amplitude[0] * amplitude[0] + amplitude[1] * amplitude[1])
-                )
+                squared = amplitude[0] * amplitude[0] + amplitude[1] * amplitude[1]
+                for physical_helicity in self._helicity_orbit_members[physics_helicity]:
+                    helicity_position = helicity_positions.get(physical_helicity)
+                    if helicity_position is None:
+                        continue
+                    helicity_weight = _decimal(
+                        helicity_records[physical_helicity].get("coefficient", 1),
+                        "helicity coefficient",
+                    )
+                    point_values[helicity_position][color_position] += (
+                        normalization * color_weight * helicity_weight * squared
+                    )
 
     def _evaluate_union_resolved_point(
         self,
@@ -366,7 +369,9 @@ class RecurrenceExactExecutor:
             prepared_parameters,
             working_precision,
         )
-        selected = set(selected_helicities)
+        selected = {
+            self._helicity_representative[physical] for physical in selected_helicities
+        }
         contracted = _contract_color_amplitudes(
             contraction,
             amplitudes,
@@ -375,20 +380,58 @@ class RecurrenceExactExecutor:
         )
         for helicity_position, physics_helicity in enumerate(selected_helicities):
             helicity_record = helicity_records[physics_helicity]
-            if (
-                helicity_record.get("computed") is not True
-                or helicity_record.get("structural_zero") is True
-            ):
+            if helicity_record.get("structural_zero") is True:
                 continue
+            representative = self._helicity_representative[physics_helicity]
             helicity_weight = _decimal(
                 helicity_record.get("coefficient", 1),
                 "helicity coefficient",
             )
             point_values[helicity_position][0] = (
-                normalization
-                * helicity_weight
-                * contracted.get(physics_helicity, _ZERO)
+                normalization * helicity_weight * contracted.get(representative, _ZERO)
             )
+
+    def _helicity_reduction_indices(
+        self,
+    ) -> tuple[tuple[int, ...], tuple[tuple[int, ...], ...]]:
+        records = tuple(
+            _mapping(value, f"physics helicity {index}")
+            for index, value in enumerate(
+                _sequence(self._physics.get("helicities"), "physics helicities")
+            )
+        )
+        index_by_id = {str(record["id"]): index for index, record in enumerate(records)}
+        if len(index_by_id) != len(records):
+            raise ArtifactError("physics helicities repeat a public ID")
+        representatives = []
+        members: list[list[int]] = [[] for _ in records]
+        for index, record in enumerate(records):
+            representative_id = str(record.get("representative_id", record["id"]))
+            try:
+                representative = index_by_id[representative_id]
+            except KeyError as exc:
+                raise ArtifactError(
+                    f"physics helicity {index} references absent representative "
+                    f"{representative_id!r}"
+                ) from exc
+            representative_record = records[representative]
+            if record.get("structural_zero") is not True and (
+                representative_record.get("computed") is not True
+                or representative_record.get("structural_zero") is True
+                or str(
+                    representative_record.get(
+                        "representative_id", representative_record["id"]
+                    )
+                )
+                != str(representative_record["id"])
+            ):
+                raise ArtifactError(
+                    f"physics helicity {index} has an invalid computed representative"
+                )
+            representatives.append(representative)
+            if record.get("structural_zero") is not True:
+                members[representative].append(index)
+        return tuple(representatives), tuple(tuple(group) for group in members)
 
     def _replay_targets_by_color(self) -> tuple[_ReplayTarget, ...]:
         by_public_id = {

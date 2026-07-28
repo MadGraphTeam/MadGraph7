@@ -40,6 +40,7 @@ const PROGRESS_PAIR_INTERVAL: usize = 16_384;
 const PROGRESS_TIME_INTERVAL: Duration = Duration::from_millis(250);
 const PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: &str =
     "helicity-support:pure-massless-adjoint-tree-v1";
+const GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE: &str = "helicity-equivalence:global-flip-v1";
 const REFLECTION_PROOF_ALGORITHM_ID: u32 = 1;
 const THREE_LINE_DIRECT_CERTIFICATE_ID: u32 = 0;
 const THREE_LINE_PARTNER_CERTIFICATE_ID: u32 = 1;
@@ -636,6 +637,12 @@ fn validate_pending_reflection_certificates(
 enum HelicitySupportRule {
     None,
     PureMasslessAdjointTree,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum GlobalHelicityFlipRule {
+    None,
+    Proven,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1672,6 +1679,7 @@ pub(super) fn build_recurrence_program_with_progress(
     let template_input = authenticated.template().input();
     let process_catalog = ProcessCatalog::new(process_input)?;
     let helicity_support_rule = helicity_support_rule(authenticated)?;
+    let global_helicity_flip_rule = global_helicity_flip_rule(authenticated)?;
     let retained_helicity_count = retained_helicity_count(process_input)?;
     let template_catalog = TemplateCatalog::new(template_input)?;
     let coupling_limits = coupling_limits(&process_catalog, &template_catalog)?;
@@ -1808,6 +1816,7 @@ pub(super) fn build_recurrence_program_with_progress(
         replay_targets,
         retained_helicity_count,
         helicity_support_rule,
+        global_helicity_flip_rule,
         reflection_certificates,
     )
 }
@@ -4203,6 +4212,7 @@ fn finish_program(
     replay_targets: Vec<RecurrenceReplayTarget>,
     retained_helicity_count: u64,
     helicity_support_rule: HelicitySupportRule,
+    global_helicity_flip_rule: GlobalHelicityFlipRule,
     reflection_certificates: Vec<PendingReflectionCertificate>,
 ) -> RusticolResult<RecurrenceProgram> {
     validate_pending_reflection_certificates(&reflection_certificates)?;
@@ -4219,6 +4229,16 @@ fn finish_program(
             }
         }
         pending_closures = retained;
+    }
+    if global_helicity_flip_rule == GlobalHelicityFlipRule::Proven
+        && strategy != RecurrenceStrategy::AllFlowUnion
+    {
+        pending_closures = retain_global_helicity_flip_representatives(
+            strategy,
+            process_catalog,
+            &replay_targets,
+            pending_closures,
+        )?;
     }
     let sector_count = match strategy {
         RecurrenceStrategy::TopologyReplay => process_catalog
@@ -4539,6 +4559,137 @@ fn helicity_support_rule(
         rule = candidate;
     }
     Ok(rule)
+}
+
+fn global_helicity_flip_rule(
+    authenticated: &AuthenticatedRecurrenceBuilderInput,
+) -> RusticolResult<GlobalHelicityFlipRule> {
+    let extensions = authenticated
+        .process()
+        .semantic_identity()
+        .extension_digests();
+    let mut rule = GlobalHelicityFlipRule::None;
+    for role in extensions
+        .keys()
+        .filter(|role| role.starts_with("helicity-equivalence:"))
+    {
+        let candidate = match role.as_str() {
+            GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE => GlobalHelicityFlipRule::Proven,
+            _ => {
+                return Err(invalid(format!(
+                    "unsupported recurrence helicity-equivalence proof {role:?}"
+                )));
+            }
+        };
+        if rule != GlobalHelicityFlipRule::None {
+            return Err(invalid(
+                "recurrence process carries more than one helicity-equivalence proof",
+            ));
+        }
+        rule = candidate;
+    }
+    Ok(rule)
+}
+
+fn retain_global_helicity_flip_representatives(
+    strategy: RecurrenceStrategy,
+    process_catalog: &ProcessCatalog<'_>,
+    replay_targets: &[RecurrenceReplayTarget],
+    pending_closures: BTreeMap<PendingClosureKey, PendingClosureGroup>,
+) -> RusticolResult<BTreeMap<PendingClosureKey, PendingClosureGroup>> {
+    let source_count = process_catalog.input.external_legs.len();
+    let anchor_slot = if strategy == RecurrenceStrategy::TopologyReplay {
+        (0..source_count)
+            .find(|slot| {
+                replay_targets.iter().all(|target| {
+                    target.source_slot_permutation().get(*slot).copied()
+                        == u32::try_from(*slot).ok()
+                })
+            })
+            .ok_or_else(|| {
+                invalid(
+                    "global-helicity-flip topology replay has no permutation-fixed source anchor",
+                )
+            })?
+    } else {
+        0
+    };
+    let mut source_states_by_public =
+        BTreeMap::<(u32, Vec<i32>), Box<[SourceStateAssignment]>>::new();
+    for key in pending_closures.keys() {
+        if key.complete_source_states.is_empty() {
+            continue;
+        }
+        let public = process_catalog.public_helicities(&key.complete_source_states)?;
+        let map_key = (key.target_sector_id, public);
+        if source_states_by_public
+            .insert(map_key, key.complete_source_states.clone())
+            .is_some_and(|previous| previous != key.complete_source_states)
+        {
+            return Err(invalid(
+                "global-helicity-flip proof maps one public helicity to multiple source assignments",
+            ));
+        }
+    }
+
+    let mut retained_public = BTreeSet::new();
+    for (sector_and_public, source_states) in &source_states_by_public {
+        let (sector_id, public) = sector_and_public;
+        let flipped = public.iter().map(|value| -*value).collect::<Vec<_>>();
+        if flipped == *public {
+            return Err(invalid(
+                "global-helicity-flip proof encountered a fixed public-helicity assignment",
+            ));
+        }
+        let flipped_key = (*sector_id, flipped.clone());
+        if !source_states_by_public.contains_key(&flipped_key) {
+            return Err(invalid(format!(
+                "global-helicity-flip proof has no partner for sector {sector_id} helicity {public:?}",
+            )));
+        }
+        let anchor_helicity = *public
+            .get(anchor_slot)
+            .ok_or_else(|| invalid("global-helicity-flip anchor is outside the public axis"))?;
+        if anchor_helicity == 0 {
+            return Err(invalid(
+                "global-helicity-flip anchor has a self-conjugate public helicity",
+            ));
+        }
+        if anchor_helicity < 0 {
+            retained_public.insert((*sector_id, public.clone()));
+            let partner_states = &source_states_by_public[&flipped_key];
+            if partner_states == source_states {
+                return Err(invalid(
+                    "global-helicity-flip pair reuses one source-state assignment",
+                ));
+            }
+        }
+    }
+    if retained_public
+        .len()
+        .checked_mul(2)
+        .is_none_or(|count| count != source_states_by_public.len())
+    {
+        return Err(invalid(
+            "global-helicity-flip proof does not partition closure destinations into two-cycles",
+        ));
+    }
+
+    pending_closures
+        .into_iter()
+        .filter_map(|(key, group)| {
+            if key.complete_source_states.is_empty() {
+                return Some(Ok((key, group)));
+            }
+            let public = match process_catalog.public_helicities(&key.complete_source_states) {
+                Ok(public) => public,
+                Err(error) => return Some(Err(error)),
+            };
+            retained_public
+                .contains(&(key.target_sector_id, public))
+                .then_some(Ok((key, group)))
+        })
+        .collect()
 }
 
 fn closure_helicity_is_supported(
@@ -6428,6 +6579,7 @@ mod tests {
             vec![],
             1,
             HelicitySupportRule::None,
+            GlobalHelicityFlipRule::None,
             reflection_certificates,
         )
         .unwrap();

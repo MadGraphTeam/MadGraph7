@@ -403,16 +403,17 @@ impl RecurrenceNativeRuntime {
                                 "recurrence destination-helicity mapping is incomplete",
                             )
                         })?;
-                    if !recurrence_helicity_is_selected(
-                        physics,
-                        selected_helicities,
-                        helicity_index,
-                    ) {
-                        continue;
-                    }
                     let helicity = &physics.manifest.helicities[helicity_index];
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
+                        continue;
+                    }
+                    let helicity_weight = recurrence_helicity_orbit_weight(
+                        physics,
+                        selected_helicities,
+                        helicity_index,
+                    );
+                    if helicity_weight == 0.0 {
                         continue;
                     }
                     let values_re =
@@ -431,7 +432,7 @@ impl RecurrenceNativeRuntime {
                                     "recurrence selected amplitude destination is absent",
                                 )
                             })?;
-                    let weight = helicity.coefficient * color_weight * normalization_factor;
+                    let weight = helicity_weight * color_weight * normalization_factor;
                     for point in 0..point_count {
                         output[tile_start + point] += weight
                             * values_re[point]
@@ -681,12 +682,17 @@ impl RecurrenceNativeRuntime {
                                 "recurrence destination-helicity mapping is incomplete",
                             )
                         })?;
-                    if helicity_indices.binary_search(&helicity_index).is_err() {
-                        continue;
-                    }
                     let helicity = &physics.manifest.helicities[helicity_index];
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
+                        continue;
+                    }
+                    let helicity_weight = recurrence_helicity_orbit_weight(
+                        &physics,
+                        selected_helicities,
+                        helicity_index,
+                    );
+                    if helicity_weight == 0.0 {
                         continue;
                     }
                     let values_re = output.destination_re(destination_id).ok_or_else(|| {
@@ -699,7 +705,7 @@ impl RecurrenceNativeRuntime {
                             "recurrence selected amplitude destination is absent",
                         )
                     })?;
-                    let weight = helicity.coefficient * color_weight * common.normalization_factor;
+                    let weight = helicity_weight * color_weight * common.normalization_factor;
                     for point in 0..point_count {
                         values[tile_start + point] += weight
                             * values_re[point]
@@ -849,9 +855,6 @@ impl RecurrenceNativeRuntime {
                                 "recurrence destination-helicity mapping is incomplete",
                             )
                         })?;
-                    let Some(helicity_position) = helicity_position[helicity_index] else {
-                        continue;
-                    };
                     let helicity = &physics.manifest.helicities[helicity_index];
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
@@ -867,14 +870,21 @@ impl RecurrenceNativeRuntime {
                             "recurrence selected amplitude destination is absent",
                         )
                     })?;
-                    let weight = helicity.coefficient * color_weight * common.normalization_factor;
-                    for point in 0..point_count {
-                        let target = (tile_start + point) * component_count
-                            + helicity_position * color_indices.len()
-                            + color_position;
-                        values[target] += weight
-                            * values_re[point]
-                                .mul_add(values_re[point], values_im[point] * values_im[point]);
+                    for physical_helicity in physics.helicity_orbit_members(helicity_index) {
+                        let Some(helicity_position) = helicity_position[*physical_helicity] else {
+                            continue;
+                        };
+                        let weight = physics.manifest.helicities[*physical_helicity].coefficient
+                            * color_weight
+                            * common.normalization_factor;
+                        for point in 0..point_count {
+                            let target = (tile_start + point) * component_count
+                                + helicity_position * color_indices.len()
+                                + color_position;
+                            values[target] += weight
+                                * values_re[point]
+                                    .mul_add(values_re[point], values_im[point] * values_im[point]);
+                        }
                     }
                 }
                 reduction += reduction_started.elapsed();
@@ -1545,6 +1555,21 @@ fn recurrence_helicity_is_selected(
 }
 
 #[inline(always)]
+fn recurrence_helicity_orbit_weight(
+    physics: &PhysicsRuntime,
+    selected: Option<&BTreeSet<String>>,
+    representative_index: usize,
+) -> f64 {
+    physics
+        .helicity_orbit_members(representative_index)
+        .iter()
+        .copied()
+        .filter(|index| recurrence_helicity_is_selected(physics, selected, *index))
+        .map(|index| physics.manifest.helicities[index].coefficient)
+        .sum()
+}
+
+#[inline(always)]
 fn recurrence_color_is_selected(
     physics: &PhysicsRuntime,
     selected: Option<&BTreeSet<String>>,
@@ -1703,9 +1728,6 @@ fn contract_color_tile(
                 "contracted color entry mixes public helicities",
             ));
         }
-        if !recurrence_helicity_is_selected(physics, selected_helicities, left_helicity) {
-            continue;
-        }
         let helicity = physics
             .manifest
             .helicities
@@ -1716,6 +1738,9 @@ fn contract_color_tile(
                 )
             })?;
         if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0 {
+            continue;
+        }
+        if recurrence_helicity_orbit_weight(physics, selected_helicities, left_helicity) == 0.0 {
             continue;
         }
         let left_re = output
@@ -1738,7 +1763,6 @@ fn contract_color_tile(
             .ok_or_else(|| {
                 RusticolError::integrity("contracted right amplitude destination is absent")
             })?;
-        let scale = helicity.coefficient * normalization_factor;
         for point in 0..point_count {
             let product_re =
                 left_re[point].mul_add(right_re[point], left_im[point] * right_im[point]);
@@ -1747,7 +1771,18 @@ fn contract_color_tile(
             let contracted = entry
                 .coefficient_re
                 .mul_add(product_re, -entry.coefficient_im * product_im);
-            accumulate(point, left_helicity, scale * contracted);
+            for physical_helicity in physics.helicity_orbit_members(left_helicity) {
+                if !recurrence_helicity_is_selected(
+                    physics,
+                    selected_helicities,
+                    *physical_helicity,
+                ) {
+                    continue;
+                }
+                let scale = physics.manifest.helicities[*physical_helicity].coefficient
+                    * normalization_factor;
+                accumulate(point, *physical_helicity, scale * contracted);
+            }
         }
     }
     Ok(())
@@ -1795,9 +1830,6 @@ fn contract_factorized_color_tile(
                     "factorized recurrence destination has no public helicity mapping",
                 )
             })?;
-        if !recurrence_helicity_is_selected(physics, selected_helicities, helicity_index) {
-            continue;
-        }
         let helicity = physics
             .manifest
             .helicities
@@ -1808,6 +1840,9 @@ fn contract_factorized_color_tile(
                 )
             })?;
         if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0 {
+            continue;
+        }
+        if recurrence_helicity_orbit_weight(physics, selected_helicities, helicity_index) == 0.0 {
             continue;
         }
 
@@ -1915,12 +1950,9 @@ fn contract_factorized_color_tile(
             }
         }
 
-        let scale = helicity.coefficient * normalization_factor;
         for entry in factorization.entries() {
             let left_start = entry.left_group_index as usize * point_count;
             let right_start = entry.right_group_index as usize * point_count;
-            let coefficient_re = scale * entry.coefficient_re;
-            let coefficient_im = scale * entry.coefficient_im;
             for point in 0..point_count {
                 let product_re = transform_re[left_start + point].mul_add(
                     transform_re[right_start + point],
@@ -1930,11 +1962,21 @@ fn contract_factorized_color_tile(
                     transform_re[right_start + point],
                     -transform_re[left_start + point] * transform_im[right_start + point],
                 );
-                accumulate(
-                    point,
-                    helicity_index,
-                    coefficient_re.mul_add(product_re, -coefficient_im * product_im),
-                );
+                let contracted = entry
+                    .coefficient_re
+                    .mul_add(product_re, -entry.coefficient_im * product_im);
+                for physical_helicity in physics.helicity_orbit_members(helicity_index) {
+                    if !recurrence_helicity_is_selected(
+                        physics,
+                        selected_helicities,
+                        *physical_helicity,
+                    ) {
+                        continue;
+                    }
+                    let scale = physics.manifest.helicities[*physical_helicity].coefficient
+                        * normalization_factor;
+                    accumulate(point, *physical_helicity, scale * contracted);
+                }
             }
         }
     }

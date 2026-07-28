@@ -391,6 +391,10 @@ def test_union_exact_resolved_values_sum_incoherently_by_flow(
     }
     executor._permutation = None
     executor._native_runtime = object()
+    (
+        executor._helicity_representative,
+        executor._helicity_orbit_members,
+    ) = executor._helicity_reduction_indices()
     executor._replay_by_color = ()
     executor._destination_helicities = ()
     executor._union_destination_by_color = executor._union_destinations_by_color()

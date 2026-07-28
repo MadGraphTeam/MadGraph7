@@ -29,6 +29,7 @@ from pyamplicol.generation.recurrence_projection import (
     RecurrenceProjectionError,
     project_recurrence_process_v1,
 )
+from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.recurrence_template import (
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
@@ -475,6 +476,36 @@ def test_topology_replay_projects_exact_axes_and_generation_coverage() -> None:
 
     # The result is accepted unchanged by the existing deterministic encoder.
     assert len(build_recurrence_builder_input_v1(logical).canonical_digest) == 64
+
+
+def test_projection_binds_global_helicity_flip_proof_only_for_complete_axes() -> None:
+    process = _process()
+    common = {
+        "process": process,
+        "color_plan": _color_plan(process),
+        "template_catalog": _catalog(),
+        "layout": "topology-replay",
+        "topology_replay": _replay(),
+        "normalization": _normalization(),
+        "coupling_order_limits": {"qcd": 4},
+        "model": BuiltinSMModel(),
+    }
+
+    complete = project_recurrence_process_v1(**common)
+    specialized = project_recurrence_process_v1(
+        **common,
+        generation_slice=RecurrenceGenerationSliceV1(
+            selected_source_helicities=((1, 1),),
+        ),
+    )
+
+    role = "helicity-equivalence:global-flip-v1"
+    complete_proofs = tuple(
+        item for item in complete.semantic_digests if item.role == role
+    )
+    assert len(complete_proofs) == 1
+    assert len(complete_proofs[0].digest) == 64
+    assert all(item.role != role for item in specialized.semantic_digests)
 
 
 def test_projection_attaches_exact_fixed_width_fermion_pairing_tables() -> None:

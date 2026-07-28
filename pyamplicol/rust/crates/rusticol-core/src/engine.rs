@@ -2819,6 +2819,7 @@ struct PhysicsRuntime {
     binding_id: u64,
     manifest: ProcessPhysicsV1,
     helicity_index_by_id: BTreeMap<String, usize>,
+    helicity_members_by_representative: Vec<Vec<usize>>,
     color_index_by_id: BTreeMap<String, usize>,
     reduction_by_group_id: BTreeMap<i64, crate::ReductionGroup>,
     numeric_reduction_by_group_id: BTreeMap<i64, NumericReductionGroup>,
