@@ -301,6 +301,20 @@ class gensym(object):
 
             for matrix_file in misc.glob('matrix*orig.f', Pdir):
 
+                # Track B cross-group crossing: a dependent P directory reuses a
+                # base group's compiled matrix element, so its matrix<i>_orig.f is
+                # a SYMLINK and crossgroup.mk symlinks the base's already-recycled
+                # matrix<i>_optim.o over it. Running the (expensive) recycler here
+                # is redundant -- the resulting matrix<i>_optim.f is never compiled
+                # (its .o comes from the base). But the P makefile discovers its
+                # matrix objects by the presence of matrix<i>_optim.f, so a
+                # placeholder must still exist: copy the source (cheap) instead of
+                # recycling. The base directory, whose source is a real file, bakes
+                # the shared optim over the UNION good-hel of the whole class.
+                if os.path.islink(matrix_file):
+                    files.cp(matrix_file, matrix_file.replace('orig', 'optim'))
+                    continue
+
                 split_file = matrix_file.split('/')
                 me_index = split_file[-1][len('matrix'):-len('_orig.f')]
 
