@@ -24,6 +24,12 @@ from pyamplicol.generation.artifact_writer import (
     write_schema_v3_artifact,
 )
 from pyamplicol.generation.evaluator_container import PacbinReader
+from pyamplicol.generation.structural_source_proof import (
+    ROLE as STRUCTURAL_SOURCE_PROOF_ROLE,
+)
+from pyamplicol.generation.structural_source_proof import (
+    validate_generation_structural_proof,
+)
 from pyamplicol.generation.validation import ValidationPointRecord
 from pyamplicol.models.loading import compile_model_source
 from pyamplicol.models.prepared import (
@@ -279,6 +285,18 @@ def test_plan_v3_writer_filters_pack_and_appends_atomically(
         "_derive_eager_direct_descriptor",
         lambda source, **_widths: b"direct-table:" + source,
     )
+    source_revision = "a" * 40
+    native_inputs = "b" * 64
+    monkeypatch.setattr(
+        artifact_writer,
+        "active_source_revision",
+        lambda: source_revision,
+    )
+    monkeypatch.setattr(
+        artifact_writer,
+        "active_native_source_identity",
+        lambda: (source_revision, native_inputs),
+    )
     signatures = {
         10: "a" * 64,
         20: "b" * 64,
@@ -323,6 +341,22 @@ def test_plan_v3_writer_filters_pack_and_appends_atomically(
         "publishing artifact",
     ]
     manifest = load_manifest(output)
+    structural_records = [
+        record
+        for record in manifest.payloads
+        if record.role == STRUCTURAL_SOURCE_PROOF_ROLE
+    ]
+    assert len(structural_records) == 1
+    structural = json.loads(
+        (output / structural_records[0].path).read_text(encoding="utf-8")
+    )
+    validate_generation_structural_proof(
+        structural,
+        artifact_root=output,
+        expected_process_id="d_dbar_to_z",
+        expected_source_revision=source_revision,
+        expected_native_build_inputs_sha256=native_inputs,
+    )
     capabilities = {
         artifact_writer.EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         artifact_writer.EAGER_PLAN_V3_RUNTIME_CAPABILITY,
@@ -396,6 +430,24 @@ def test_plan_v3_writer_filters_pack_and_appends_atomically(
     )
 
     appended = load_manifest(output)
+    appended_structural_records = [
+        record
+        for record in appended.payloads
+        if record.role == STRUCTURAL_SOURCE_PROOF_ROLE
+    ]
+    assert {record.process_id for record in appended_structural_records} == {
+        "d_dbar_to_z",
+        "u_ubar_to_z",
+    }
+    for record in appended_structural_records:
+        structural = json.loads((output / record.path).read_text(encoding="utf-8"))
+        validate_generation_structural_proof(
+            structural,
+            artifact_root=output,
+            expected_process_id=str(record.process_id),
+            expected_source_revision=source_revision,
+            expected_native_build_inputs_sha256=native_inputs,
+        )
     assert {str(record["id"]) for record in appended.processes} == {
         "d_dbar_to_z",
         "u_ubar_to_z",

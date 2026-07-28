@@ -9,6 +9,7 @@ does not trust a producer's summary boolean or precomputed ratios.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -18,6 +19,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pyamplicol.artifacts import load_manifest
+from pyamplicol.generation.structural_source_proof import (
+    SEMANTIC_MAP_DOMAINS,
+    validate_generation_structural_proof,
+)
+from tools.developer.final_source_numerical_truth import (
+    TruthProducerError,
+    canonical_sha256,
+    validate_witness_payload,
+)
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.models import ExecutionMode, Workload
 
@@ -145,7 +156,12 @@ def _identity_reasons(cell: Any, record: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def _proof_reasons(candidate: Mapping[str, Any], revision: str) -> list[str]:
+def _proof_reasons(
+    candidate: Mapping[str, Any],
+    revision: str,
+    *,
+    cell: Any,
+) -> list[str]:
     reasons: list[str] = []
     try:
         proof = _mapping(candidate.get("semantic_proof"), "candidate.semantic_proof")
@@ -162,6 +178,30 @@ def _proof_reasons(candidate: Mapping[str, Any], revision: str) -> list[str]:
             "source_contract_sha256",
         ):
             _digest(proof.get(field), f"candidate.semantic_proof.{field}")
+        witnesses = _mapping(
+            proof.get("witnesses"),
+            "candidate.semantic_proof.witnesses",
+        )
+        semantic_fields = {
+            "current_member_map": "current_member_map_sha256",
+            "interaction_row_map": "interaction_row_map_sha256",
+            "closure_map": "closure_map_sha256",
+            "source_contract": "source_contract_sha256",
+        }
+        content_identities: set[str] = set()
+        for witness_name, digest_name in semantic_fields.items():
+            witness = witnesses.get(witness_name)
+            if not isinstance(witness, list) or not witness:
+                raise RestartParityError(
+                    f"candidate.semantic_proof.witnesses.{witness_name} "
+                    "must be a non-empty array"
+                )
+            recomputed = canonical_sha256(f"{witness_name}-v1", witness)
+            if recomputed != proof.get(digest_name):
+                reasons.append(f"semantic-{witness_name}-digest-mismatch")
+            if recomputed in content_identities:
+                reasons.append("semantic-witness-content-identity-duplicate")
+            content_identities.add(recomputed)
     except RestartParityError:
         reasons.append("semantic-proof-incomplete")
 
@@ -188,21 +228,37 @@ def _proof_reasons(candidate: Mapping[str, Any], revision: str) -> list[str]:
             candidate.get("numerical_validation"),
             "candidate.numerical_validation",
         )
-        if numerical.get("status") != "ok":
-            reasons.append("numerical-validation-not-ok")
-        precision = _count(
-            numerical.get("precision_decimal_digits"),
-            "candidate.numerical_validation.precision_decimal_digits",
+        validate_witness_payload(
+            numerical,
+            expected_source_revision=revision,
+            expected_cell_id=cell.cell_id,
+            expected_mode=cell.measurement.execution_mode.value,
+            expected_accuracy=cell.measurement.accuracy.value,
+            expected_workload=cell.workload.value,
         )
-        if precision < 50:
-            reasons.append("numerical-validation-below-precision-50")
-        _digest(
-            numerical.get("comparison_sha256"),
-            "candidate.numerical_validation.comparison_sha256",
-        )
-    except RestartParityError:
+    except (RestartParityError, TruthProducerError):
         reasons.append("numerical-validation-incomplete")
     return reasons
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _evidence_path(root: Path, relative: str) -> Path:
+    resolved_root = root.resolve()
+    path = (resolved_root / relative).resolve()
+    try:
+        path.relative_to(resolved_root)
+    except ValueError as error:
+        raise RestartParityError(
+            f"persisted object escapes evidence root: {relative}"
+        ) from error
+    return path
 
 
 def _candidate_counts_and_inventory(
@@ -217,53 +273,89 @@ def _candidate_counts_and_inventory(
         return {}, ["candidate-structural-counts-incomplete"]
 
     try:
-        inventory = _mapping(
+        evidence_root = Path(
+            _text(candidate.get("evidence_root"), "candidate.evidence_root")
+        )
+        if not evidence_root.is_dir():
+            raise RestartParityError("candidate evidence root is absent")
+        artifact_identity = _mapping(
+            candidate.get("artifact_identity"),
+            "candidate.artifact_identity",
+        )
+        artifact_id = _digest(
+            artifact_identity.get("artifact_id"),
+            "candidate.artifact_identity.artifact_id",
+        )
+        process_id = _text(
+            artifact_identity.get("process_id"),
+            "candidate.artifact_identity.process_id",
+        )
+        structural_path = _text(
+            artifact_identity.get("structural_proof_path"),
+            "candidate.artifact_identity.structural_proof_path",
+        )
+        structural_sha = _digest(
+            artifact_identity.get("structural_proof_sha256"),
+            "candidate.artifact_identity.structural_proof_sha256",
+        )
+        manifest = load_manifest(evidence_root)
+        if manifest.artifact_id != artifact_id:
+            reasons.append("candidate-artifact-identity-mismatch")
+        records = [
+            record
+            for record in manifest.payloads
+            if record.path == structural_path and record.process_id == process_id
+        ]
+        if len(records) != 1 or records[0].sha256 != structural_sha:
+            reasons.append("generation-structural-proof-manifest-mismatch")
+        structural_file = _evidence_path(evidence_root, structural_path)
+        if not structural_file.is_file() or _sha256(structural_file) != structural_sha:
+            reasons.append("generation-structural-proof-content-mismatch")
+        generation_proof = _mapping(
+            candidate.get("generation_structural_proof"),
+            "candidate.generation_structural_proof",
+        )
+        if _mapping(
             candidate.get("persisted_lane_inventory"),
             "candidate.persisted_lane_inventory",
+        ) != generation_proof.get("physical_lane_inventory"):
+            reasons.append("persisted-lane-inventory-not-generation-bound")
+        native_inputs = manifest.producer.get("native_build_inputs_sha256")
+        if not isinstance(native_inputs, str):
+            raise RestartParityError("candidate native-input identity is absent")
+        authenticated = validate_generation_structural_proof(
+            generation_proof,
+            artifact_root=evidence_root,
+            expected_process_id=process_id,
+            expected_source_revision=str(manifest.producer.get("git_revision")),
+            expected_native_build_inputs_sha256=native_inputs,
         )
-        if inventory.get("status") != "complete":
-            reasons.append("persisted-lane-inventory-incomplete")
-        _digest(
-            inventory.get("inventory_sha256"),
-            "candidate.persisted_lane_inventory.inventory_sha256",
+        generation_maps = _mapping(
+            authenticated.get("semantic_maps"),
+            "generation semantic maps",
         )
-        objects = _array(
-            inventory.get("objects"),
-            "candidate.persisted_lane_inventory.objects",
-        )
-        roles = _array(
-            inventory.get("roles"),
-            "candidate.persisted_lane_inventory.roles",
-        )
-        if not objects or not roles:
-            reasons.append("persisted-lane-inventory-empty")
-        totals = Counts(0, 0, 0, 0, 0)
-        object_ids: set[str] = set()
-        for index, raw in enumerate(objects):
-            item = _mapping(raw, f"persisted object {index}")
-            object_id = _text(item.get("object_id"), f"persisted object {index}.id")
-            if object_id in object_ids:
-                reasons.append("persisted-object-id-duplicate")
-            object_ids.add(object_id)
-            _digest(
-                item.get("content_sha256"),
-                f"persisted object {index}.content_sha256",
-            )
-            totals = totals.add(
-                _counts(item.get("counts"), f"persisted object {index}")
-            )
-        referenced: set[str] = set()
-        for index, raw in enumerate(roles):
-            role = _mapping(raw, f"persisted role {index}")
-            _text(role.get("role"), f"persisted role {index}.role")
-            referenced.add(
-                _text(role.get("object_id"), f"persisted role {index}.object")
-            )
-        if referenced != object_ids:
-            reasons.append("persisted-role-object-coverage-incomplete")
-        if totals != phases["final_materialized"]:
-            reasons.append("persisted-object-counts-do-not-reconcile")
-    except RestartParityError:
+        semantic = candidate.get("semantic_proof")
+        if isinstance(semantic, Mapping):
+            witnesses = semantic.get("witnesses")
+            if isinstance(witnesses, Mapping):
+                for name in SEMANTIC_MAP_DOMAINS:
+                    generation_map = _mapping(
+                        generation_maps.get(name),
+                        f"generation semantic map {name}",
+                    )
+                    if witnesses.get(name) != generation_map.get("rows") or (
+                        semantic.get(f"{name}_sha256") != generation_map.get("sha256")
+                    ):
+                        reasons.append(f"semantic-{name}-not-generation-bound")
+        numerical = candidate.get("numerical_validation")
+        if isinstance(numerical, Mapping):
+            numerical_candidate = numerical.get("candidate_artifact")
+            if isinstance(numerical_candidate, Mapping) and (
+                numerical_candidate.get("artifact_id") != artifact_id
+                or numerical_candidate.get("structural_proof_sha256") != structural_sha
+            ):
+                reasons.append("numerical-validation-not-structural-proof-bound")
+    except (RestartParityError, ValueError, OSError):
         reasons.append("persisted-lane-inventory-malformed")
     return phases, reasons
 
@@ -304,9 +396,11 @@ def _legacy_counts(
                 "legacy.row_multiplicity.call_count",
             )
     except RestartParityError:
-        return Counts(0, 0, 0, 0, 0), Counts(0, 0, 0, 0, 0), [
-            "legacy-structural-evidence-incomplete"
-        ]
+        return (
+            Counts(0, 0, 0, 0, 0),
+            Counts(0, 0, 0, 0, 0),
+            ["legacy-structural-evidence-incomplete"],
+        )
     return active, static, reasons
 
 
@@ -367,7 +461,7 @@ def _validate_row(
         }
     if candidate.get("source_revision") != revision:
         reasons.append("candidate-source-revision-mismatch")
-    reasons.extend(_proof_reasons(candidate, revision))
+    reasons.extend(_proof_reasons(candidate, revision, cell=cell))
     phases, inventory_reasons = _candidate_counts_and_inventory(candidate)
     reasons.extend(inventory_reasons)
 
@@ -474,9 +568,7 @@ def validate_manifest(
         row = _validate_row(cell, record, revision)
         if cell.cell_id in duplicate_ids:
             row["status"] = "failed"
-            row["reason_codes"] = sorted(
-                {*row["reason_codes"], "duplicate-record"}
-            )
+            row["reason_codes"] = sorted({*row["reason_codes"], "duplicate-record"})
         rows.append(row)
     for cell_id in sorted(set(by_id) - expected_ids):
         rows.append(
@@ -488,6 +580,36 @@ def validate_manifest(
                 "ratios": {},
             }
         )
+
+    rows_by_id = {str(row["cell_id"]): row for row in rows}
+    comparison_cells: dict[str, list[str]] = {}
+    for cell_id in expected_ids:
+        record = by_id.get(cell_id)
+        candidate = None if record is None else record.get("candidate")
+        numerical = (
+            candidate.get("numerical_validation")
+            if isinstance(candidate, Mapping)
+            else None
+        )
+        digest = (
+            numerical.get("comparison_sha256")
+            if isinstance(numerical, Mapping)
+            else None
+        )
+        if isinstance(digest, str) and _SHA256.fullmatch(digest) is not None:
+            comparison_cells.setdefault(digest, []).append(cell_id)
+    for duplicated in comparison_cells.values():
+        if len(duplicated) < 2:
+            continue
+        for cell_id in duplicated:
+            row = rows_by_id[cell_id]
+            row["status"] = "failed"
+            row["reason_codes"] = sorted(
+                {
+                    *row["reason_codes"],
+                    "numerical-comparison-content-identity-duplicate",
+                }
+            )
 
     failures = [row for row in rows if row["status"] != "ok"]
     classifications = Counter(

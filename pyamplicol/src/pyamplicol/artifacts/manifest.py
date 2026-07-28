@@ -49,6 +49,7 @@ _PAYLOAD_ROLES = {
     "evaluator-state",
     "model-parameters",
     "validation-momenta",
+    "structural-source-proof",
     "api-source",
     "api-build-file",
     "sdk-metadata",
@@ -169,7 +170,7 @@ def _producer(value: object) -> Mapping[str, object]:
         raw,
         "producer",
         required={"distribution", "version", "versions", "target"},
-        optional={"git_revision"},
+        optional={"git_revision", "native_build_inputs_sha256"},
     )
     if raw.get("distribution") != "pyamplicol":
         raise ArtifactError("producer.distribution must be 'pyamplicol'")
@@ -208,6 +209,19 @@ def _producer(value: object) -> Mapping[str, object]:
         if _GIT_REVISION.fullmatch(revision_value) is None:
             raise ArtifactError("producer.git_revision must be a Git SHA-1")
         result["git_revision"] = revision_value
+    native_inputs = raw.get("native_build_inputs_sha256")
+    if native_inputs is not None:
+        native_inputs_value = _string(
+            native_inputs,
+            "producer.native_build_inputs_sha256",
+        )
+        if _SHA256.fullmatch(native_inputs_value) is None:
+            raise ArtifactError("producer.native_build_inputs_sha256 must be a SHA-256")
+        if revision is None:
+            raise ArtifactError(
+                "producer.native_build_inputs_sha256 requires producer.git_revision"
+            )
+        result["native_build_inputs_sha256"] = native_inputs_value
     return MappingProxyType(result)
 
 

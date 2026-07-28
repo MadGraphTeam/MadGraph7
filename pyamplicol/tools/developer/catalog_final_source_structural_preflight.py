@@ -22,6 +22,13 @@ import re
 from pathlib import Path
 from typing import Any
 
+from pyamplicol.artifacts import load_manifest
+from pyamplicol.generation.structural_source_proof import (
+    ROLE as STRUCTURAL_SOURCE_PROOF_ROLE,
+)
+from pyamplicol.generation.structural_source_proof import (
+    validate_generation_structural_proof,
+)
 from tools.developer.catalog_restart_parity_gate import SCHEMA
 from tools.developer.catalog_structural_parity_audit import (
     CatalogParityError,
@@ -98,79 +105,6 @@ def _counts(value: object, label: str) -> dict[str, int]:
     return output
 
 
-def _authenticate_inventory(
-    artifact: Path,
-    value: object,
-    *,
-    label: str,
-) -> dict[str, Any]:
-    if not isinstance(value, dict) or value.get("status") != "complete":
-        raise FinalSourceProducerError(f"{label} inventory is not complete")
-    objects = value.get("objects")
-    roles = value.get("roles")
-    if not isinstance(objects, list) or not objects or not isinstance(roles, list):
-        raise FinalSourceProducerError(f"{label} inventory is malformed")
-    ids: set[str] = set()
-    authenticated: list[dict[str, Any]] = []
-    for index, raw in enumerate(objects):
-        if not isinstance(raw, dict):
-            raise FinalSourceProducerError(f"{label} object {index} is malformed")
-        object_id = raw.get("object_id")
-        relative = raw.get("path")
-        expected = raw.get("content_sha256")
-        if (
-            not isinstance(object_id, str)
-            or not object_id
-            or object_id in ids
-            or not isinstance(relative, str)
-            or not relative
-            or not isinstance(expected, str)
-            or _SHA256.fullmatch(expected) is None
-        ):
-            raise FinalSourceProducerError(f"{label} object {index} is invalid")
-        ids.add(object_id)
-        path = (artifact / relative).resolve()
-        try:
-            path.relative_to(artifact.resolve())
-        except ValueError as error:
-            raise FinalSourceProducerError(
-                f"{label} object escapes artifact: {relative}"
-            ) from error
-        if not path.is_file() or _sha256(path) != expected:
-            raise FinalSourceProducerError(
-                f"{label} object is absent or changed: {relative}"
-            )
-        authenticated.append(
-            {
-                "object_id": object_id,
-                "content_sha256": expected,
-                "counts": _counts(raw.get("counts"), f"{label} object {object_id}"),
-            }
-        )
-    valid_roles = [
-        role
-        for role in roles
-        if isinstance(role, dict)
-        and isinstance(role.get("role"), str)
-        and bool(role["role"])
-        and isinstance(role.get("object_id"), str)
-    ]
-    referenced = {role["object_id"] for role in valid_roles}
-    if referenced != ids or len(valid_roles) != len(roles):
-        raise FinalSourceProducerError(f"{label} role coverage is not exact")
-    canonical = json.dumps(
-        {"objects": authenticated, "roles": roles},
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return {
-        "status": "complete",
-        "inventory_sha256": hashlib.sha256(canonical).hexdigest(),
-        "objects": authenticated,
-        "roles": roles,
-    }
-
-
 def _proof_digest_fields(value: object, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise FinalSourceProducerError(f"{label} is absent")
@@ -209,9 +143,7 @@ def _authenticate_evidence_files(
             or not isinstance(expected, str)
             or _SHA256.fullmatch(expected) is None
         ):
-            raise FinalSourceProducerError(
-                f"{label} evidence file {index} is invalid"
-            )
+            raise FinalSourceProducerError(f"{label} evidence file {index} is invalid")
         path = (artifact / relative).resolve()
         try:
             path.relative_to(root)
@@ -248,6 +180,58 @@ def _candidate_record(
     ):
         raise FinalSourceProducerError(
             f"{cell.cell_id}: structural proof is stale or has wrong identity"
+        )
+    manifest = load_manifest(artifact)
+    artifact_identity = proof.get("artifact_identity")
+    if (
+        not isinstance(artifact_identity, dict)
+        or artifact_identity.get("artifact_id") != manifest.artifact_id
+    ):
+        raise FinalSourceProducerError(
+            f"{cell.cell_id}: cell proof artifact identity is stale"
+        )
+    structural_records = [
+        record
+        for record in manifest.payloads
+        if record.role == STRUCTURAL_SOURCE_PROOF_ROLE
+        and record.process_id == artifact_identity.get("process_id")
+    ]
+    if len(structural_records) != 1:
+        raise FinalSourceProducerError(
+            f"{cell.cell_id}: generation structural proof payload is ambiguous"
+        )
+    structural_record = structural_records[0]
+    if (
+        artifact_identity.get("structural_proof_path") != structural_record.path
+        or artifact_identity.get("structural_proof_sha256") != structural_record.sha256
+    ):
+        raise FinalSourceProducerError(
+            f"{cell.cell_id}: generation structural proof identity is stale"
+        )
+    generation_proof = _read(artifact / structural_record.path)
+    producer_native_inputs = manifest.producer.get("native_build_inputs_sha256")
+    if not isinstance(producer_native_inputs, str):
+        raise FinalSourceProducerError(
+            f"{cell.cell_id}: artifact native-input identity is absent"
+        )
+    try:
+        authenticated_generation_proof = validate_generation_structural_proof(
+            generation_proof,
+            artifact_root=artifact,
+            expected_process_id=str(artifact_identity["process_id"]),
+            expected_source_revision=revision,
+            expected_native_build_inputs_sha256=producer_native_inputs,
+        )
+    except ValueError as error:
+        raise FinalSourceProducerError(
+            f"{cell.cell_id}: generation structural proof does not recompute"
+        ) from error
+    if (
+        proof.get("persisted_lane_inventory")
+        != (authenticated_generation_proof["physical_lane_inventory"])
+    ):
+        raise FinalSourceProducerError(
+            f"{cell.cell_id}: cell proof changed the generation lane inventory"
         )
     candidate = _candidate_counts(result, workload=cell.workload)
     if candidate.source_revision != revision:
@@ -310,14 +294,13 @@ def _candidate_record(
         )
     return {
         "source_revision": revision,
+        "evidence_root": str(artifact.resolve()),
+        "artifact_identity": artifact_identity,
         **phases,
         "semantic_proof": semantic,
         "numerical_validation": numerical,
-        "persisted_lane_inventory": _authenticate_inventory(
-            artifact,
-            proof.get("persisted_lane_inventory"),
-            label=f"{cell.cell_id} candidate",
-        ),
+        "generation_structural_proof": authenticated_generation_proof,
+        "persisted_lane_inventory": proof["persisted_lane_inventory"],
     }
 
 
@@ -437,9 +420,7 @@ def produce(
                 "accuracy": cell.measurement.accuracy.value,
                 "workload": cell.workload.value,
                 "classification": (
-                    "certified-parity"
-                    if comparable
-                    else "legacy-scope-unavailable"
+                    "certified-parity" if comparable else "legacy-scope-unavailable"
                 ),
                 "candidate": _candidate_record(cell, result, source_revision),
                 "legacy": _legacy_record(cell, currents.get(reference.cell_id)),

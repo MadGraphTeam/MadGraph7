@@ -4,14 +4,21 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from pyamplicol.artifacts.manifest import load_manifest
-from pyamplicol.artifacts.writer import ArtifactBuilder
+from pyamplicol.generation.structural_source_proof import (
+    ROLE as STRUCTURAL_SOURCE_PROOF_ROLE,
+)
+from pyamplicol.generation.structural_source_proof import (
+    SEMANTIC_MAP_DOMAINS,
+    validate_generation_structural_proof,
+)
 from tools.developer.catalog_final_source_structural_preflight import (
     CELL_PROOF_SCHEMA,
     FinalSourceProducerError,
@@ -20,21 +27,14 @@ from tools.developer.catalog_structural_parity_audit import (
     _candidate_counts,
     _compiled_execution_lanes,
 )
+from tools.developer.final_source_numerical_truth import (
+    TruthProducerError,
+    validate_witness_payload,
+)
 from tools.performance_report.models import Workload
 
 PROOF_PATH = "structural-preflight-proof.json"
 _REVISION = re.compile(r"[0-9a-f]{40}")
-_SHA256 = re.compile(r"[0-9a-f]{64}")
-
-
-def _canonical_digest(domain: str, value: object) -> str:
-    encoded = json.dumps(
-        {"domain": domain, "value": value},
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode()
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -69,9 +69,7 @@ def _source_counts(
     if kind == "pyamplicol-runtime-eager-execution":
         count = execution["plan"]["inspection_summary"].get("source_count")
         if not isinstance(count, int) or count <= 0:
-            raise FinalSourceProducerError(
-                "eager inspection lacks exact source_count"
-            )
+            raise FinalSourceProducerError("eager inspection lacks exact source_count")
         return count, count, count
     if kind != "pyamplicol-runtime-execution":
         raise FinalSourceProducerError(f"unsupported execution kind {kind!r}")
@@ -110,25 +108,44 @@ def _phase(
     }
 
 
-def _numerical_proof(path: Path, revision: str) -> dict[str, Any]:
+def _execution_mode(execution: dict[str, Any]) -> str:
+    try:
+        return {
+            "pyamplicol-runtime-recurrence-execution": "recurrence",
+            "pyamplicol-runtime-execution": "compiled",
+            "pyamplicol-runtime-eager-execution": "eager",
+        }[str(execution.get("kind"))]
+    except KeyError as error:
+        raise FinalSourceProducerError("execution mode is unsupported") from error
+
+
+def _numerical_proof(
+    path: Path,
+    revision: str,
+    *,
+    cell_id: str | None = None,
+    mode: str | None = None,
+    accuracy: str | None = None,
+    workload: str | None = None,
+    candidate_artifact_id: str | None = None,
+    structural_proof_sha256: str | None = None,
+) -> dict[str, Any]:
     proof = _read(path)
-    digest = proof.get("comparison_sha256")
-    if (
-        proof.get("status") != "ok"
-        or proof.get("source_revision") != revision
-        or not isinstance(proof.get("precision_decimal_digits"), int)
-        or proof["precision_decimal_digits"] < 50
-        or not isinstance(digest, str)
-        or _SHA256.fullmatch(digest) is None
-    ):
-        raise FinalSourceProducerError(
-            "numerical proof must be source-bound, precision>=50, and authenticated"
+    try:
+        return validate_witness_payload(
+            proof,
+            expected_source_revision=revision,
+            expected_cell_id=cell_id,
+            expected_mode=mode,
+            expected_accuracy=accuracy,
+            expected_workload=workload,
+            expected_candidate_artifact_id=candidate_artifact_id,
+            expected_structural_proof_sha256=structural_proof_sha256,
         )
-    return {
-        "status": "ok",
-        "precision_decimal_digits": proof["precision_decimal_digits"],
-        "comparison_sha256": digest,
-    }
+    except TruthProducerError as error:
+        raise FinalSourceProducerError(
+            "numerical proof is not a recomputable independent precision>=50 witness"
+        ) from error
 
 
 def build_proof(
@@ -168,15 +185,60 @@ def build_proof(
     execution_record = next(
         record for record in manifest.payloads if record.path == relative_execution
     )
-    lane_roles = (
-        [path for path, _record in _compiled_execution_lanes(execution)]
-        if execution.get("kind") == "pyamplicol-runtime-execution"
-        else ["primary"]
-    )
-    return {
+    structural_records = [
+        record
+        for record in manifest.payloads
+        if record.role == STRUCTURAL_SOURCE_PROOF_ROLE
+        and record.process_id == str(execution.get("key"))
+    ]
+    if len(structural_records) != 1:
+        raise FinalSourceProducerError(
+            "artifact must contain exactly one generation structural proof"
+        )
+    structural_record = structural_records[0]
+    structural_path = artifact / structural_record.path
+    structural = _read(structural_path)
+    native_inputs = manifest.producer.get("native_build_inputs_sha256")
+    if not isinstance(native_inputs, str):
+        raise FinalSourceProducerError(
+            "artifact producer native-input identity is absent"
+        )
+    try:
+        generation_proof = validate_generation_structural_proof(
+            structural,
+            artifact_root=artifact,
+            expected_process_id=str(execution.get("key")),
+            expected_source_revision=source_revision,
+            expected_native_build_inputs_sha256=native_inputs,
+            expected_execution_path=relative_execution,
+            expected_execution_sha256=execution_record.sha256,
+            execution=execution,
+        )
+    except ValueError as error:
+        raise FinalSourceProducerError(
+            "generation structural proof does not recompute"
+        ) from error
+    maps = generation_proof["semantic_maps"]
+    assert isinstance(maps, dict)
+    semantic_witnesses = {name: maps[name]["rows"] for name in SEMANTIC_MAP_DOMAINS}
+    semantic_digests = {name: maps[name]["sha256"] for name in SEMANTIC_MAP_DOMAINS}
+    process_id = str(execution.get("key"))
+    if process_id != structural_record.process_id:
+        raise FinalSourceProducerError(
+            "generation structural proof process identity changed"
+        )
+    physical_inventory = generation_proof["physical_lane_inventory"]
+    assert isinstance(physical_inventory, dict)
+    proof = {
         "schema": CELL_PROOF_SCHEMA,
         "cell_id": cell_id,
         "source_revision": source_revision,
+        "artifact_identity": {
+            "artifact_id": manifest.artifact_id,
+            "process_id": process_id,
+            "structural_proof_path": structural_record.path,
+            "structural_proof_sha256": structural_record.sha256,
+        },
         "color_accuracy": execution.get("color_accuracy"),
         "workload": workload.value,
         "active": active,
@@ -186,40 +248,25 @@ def build_proof(
             "status": "proven",
             "strength": "exact-symbolic",
             "source_revision": source_revision,
-            "current_member_map_sha256": _canonical_digest(
-                "current-members-v1", execution
-            ),
-            "interaction_row_map_sha256": _canonical_digest(
-                "interaction-rows-v1", execution
-            ),
-            "closure_map_sha256": _canonical_digest("closure-rows-v1", execution),
-            "source_contract_sha256": _canonical_digest(
-                "source-contract-v1",
-                {
-                    "external_pdg_order": execution.get("external_pdg_order"),
-                    "runtime_metadata": execution.get("runtime_metadata"),
-                },
-            ),
+            "current_member_map_sha256": semantic_digests["current_member_map"],
+            "interaction_row_map_sha256": semantic_digests["interaction_row_map"],
+            "closure_map_sha256": semantic_digests["closure_map"],
+            "source_contract_sha256": semantic_digests["source_contract"],
+            "witnesses": semantic_witnesses,
         },
         "numerical_validation": _numerical_proof(
-            numerical_proof, source_revision
+            numerical_proof,
+            source_revision,
+            cell_id=cell_id,
+            mode=_execution_mode(execution),
+            accuracy=str(execution.get("color_accuracy")),
+            workload=workload.value,
+            candidate_artifact_id=manifest.artifact_id,
+            structural_proof_sha256=structural_record.sha256,
         ),
-        "persisted_lane_inventory": {
-            "status": "complete",
-            "objects": [
-                {
-                    "object_id": "execution-bundle",
-                    "path": relative_execution,
-                    "content_sha256": execution_record.sha256,
-                    "counts": final,
-                }
-            ],
-            "roles": [
-                {"role": role, "object_id": "execution-bundle"}
-                for role in lane_roles
-            ],
-        },
+        "persisted_lane_inventory": physical_inventory,
     }
+    return proof
 
 
 def emit(
@@ -229,7 +276,8 @@ def emit(
     source_revision: str,
     workload: Workload,
     numerical_proof: Path,
-) -> None:
+    output: Path | None = None,
+) -> Path:
     proof = build_proof(
         artifact,
         cell_id=cell_id,
@@ -237,24 +285,31 @@ def emit(
         workload=workload,
         numerical_proof=numerical_proof,
     )
-    manifest = load_manifest(artifact)
-    with ArtifactBuilder(
-        artifact,
-        mode="append",
-        expected_artifact_id=manifest.artifact_id,
-    ) as builder:
-        builder.add_json(PROOF_PATH, proof, role="sdk-metadata", compact=True)
-        builder.finalize(
-            kind=manifest.kind,
-            producer=manifest.producer,
-            model=manifest.model,
-            configuration=manifest.configuration,
-            processes=manifest.processes,
-            runtime=manifest.runtime,
-            dependencies=manifest.dependencies,
-            default_process_id=manifest.default_process_id,
-            extensions=manifest.extensions,
-        )
+    destination = artifact / PROOF_PATH if output is None else output
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+        dir=destination.parent,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="ascii") as stream:
+            json.dump(
+                proof,
+                stream,
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return destination
 
 
 def main() -> int:
@@ -268,13 +323,32 @@ def main() -> int:
         required=True,
     )
     parser.add_argument("--precision50-proof", type=Path, required=True)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help=(
+            "atomic per-cell sidecar destination; report workers should place "
+            "this beside the immutable attempt/result"
+        ),
+    )
     args = parser.parse_args()
-    emit(
+    output = emit(
         args.artifact,
         cell_id=args.cell_id,
         source_revision=args.source_revision,
         workload=Workload(args.workload),
         numerical_proof=args.precision50_proof,
+        output=args.output,
+    )
+    print(
+        json.dumps(
+            {
+                "cell_id": args.cell_id,
+                "output": str(output.resolve()),
+                "status": "ok",
+            },
+            sort_keys=True,
+        )
     )
     return 0
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -8,72 +7,9 @@ import pytest
 
 from tools.developer.catalog_final_source_structural_preflight import (
     FinalSourceProducerError,
-    _authenticate_inventory,
     _counts,
 )
-from tools.developer.emit_candidate_structural_preflight import (
-    _canonical_digest,
-    _numerical_proof,
-)
-
-
-def _work(value: int = 3) -> dict[str, int]:
-    return {
-        "source_current_count": 1,
-        "produced_current_count": value - 1,
-        "kernel_evaluation_count": value,
-        "attachment_count": value + 1,
-        "amplitude_destination_count": 1,
-    }
-
-
-def test_inventory_authenticates_real_payload_bytes(tmp_path: Path) -> None:
-    payload = tmp_path / "schedule.bin"
-    payload.write_bytes(b"exact structural payload")
-    digest = hashlib.sha256(payload.read_bytes()).hexdigest()
-
-    inventory = _authenticate_inventory(
-        tmp_path,
-        {
-            "status": "complete",
-            "objects": [
-                {
-                    "object_id": "schedule",
-                    "path": "schedule.bin",
-                    "content_sha256": digest,
-                    "counts": _work(),
-                }
-            ],
-            "roles": [{"role": "primary", "object_id": "schedule"}],
-        },
-        label="candidate",
-    )
-
-    assert inventory["status"] == "complete"
-    assert inventory["objects"][0]["content_sha256"] == digest
-    assert len(inventory["inventory_sha256"]) == 64
-
-
-def test_inventory_rejects_changed_payload(tmp_path: Path) -> None:
-    payload = tmp_path / "schedule.bin"
-    payload.write_bytes(b"changed")
-    with pytest.raises(FinalSourceProducerError, match="absent or changed"):
-        _authenticate_inventory(
-            tmp_path,
-            {
-                "status": "complete",
-                "objects": [
-                    {
-                        "object_id": "schedule",
-                        "path": "schedule.bin",
-                        "content_sha256": "0" * 64,
-                        "counts": _work(),
-                    }
-                ],
-                "roles": [{"role": "primary", "object_id": "schedule"}],
-            },
-            label="candidate",
-        )
+from tools.developer.emit_candidate_structural_preflight import _numerical_proof
 
 
 def test_structural_counts_do_not_accept_summary_placeholders() -> None:
@@ -90,7 +26,7 @@ def test_structural_counts_do_not_accept_summary_placeholders() -> None:
         )
 
 
-def test_precision50_reference_is_source_bound(tmp_path: Path) -> None:
+def test_opaque_precision50_digest_is_not_accepted_as_truth(tmp_path: Path) -> None:
     revision = "a" * 40
     path = tmp_path / "precision50.json"
     path.write_text(
@@ -103,5 +39,8 @@ def test_precision50_reference_is_source_bound(tmp_path: Path) -> None:
             }
         )
     )
-    assert _numerical_proof(path, revision)["precision_decimal_digits"] == 50
-    assert len(_canonical_digest("current-members-v1", {"rows": [1]})) == 64
+    with pytest.raises(
+        FinalSourceProducerError,
+        match="recomputable independent precision>=50 witness",
+    ):
+        _numerical_proof(path, revision)

@@ -25,6 +25,7 @@ from pyamplicol.artifacts import (
     PayloadRecord,
     load_manifest,
 )
+from pyamplicol.artifacts.security import sha256_file
 from pyamplicol.config import (
     ConfigClamp,
     ConfigResolution,
@@ -66,6 +67,8 @@ from .._internal.versions import (
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
     TOML_SCHEMA_VERSION,
+    active_native_source_identity,
+    active_source_revision,
     package_version,
     verify_native_module,
 )
@@ -90,6 +93,10 @@ from .recurrence_schedule_sharing import (
     RecurrenceScheduleSharingPlan,
     intern_recurrence_schedules,
 )
+from .structural_source_proof import (
+    ROLE as STRUCTURAL_SOURCE_PROOF_ROLE,
+)
+from .structural_source_proof import build_generation_structural_proof
 from .validation import ValidationPointRecord, validation_point_map
 
 if TYPE_CHECKING:
@@ -737,6 +744,53 @@ def write_schema_v3_artifact(
         if bundle_requested and hook is not None:
             api_bundle_path = _call_api_bundle_hook(builder, hook, bundle_points)
         evaluator_payload_container = evaluator_payloads.publish()
+        source_revision = producer.get("git_revision")
+        native_build_inputs_sha256 = producer.get("native_build_inputs_sha256")
+        evaluator_container_path = (
+            None
+            if evaluator_payload_container is None
+            else str(evaluator_payload_container["path"])
+        )
+        evaluator_container_index_sha256 = (
+            None
+            if evaluator_payload_container is None
+            else str(evaluator_payload_container["index_sha256"])
+        )
+        if isinstance(source_revision, str) and isinstance(
+            native_build_inputs_sha256, str
+        ):
+            staged_root = builder.root
+            if staged_root is None:  # pragma: no cover - builder invariant
+                raise RuntimeError("artifact builder is not active")
+            for process_record in process_records:
+                process_id = str(process_record["id"])
+                execution_path = f"processes/{process_id}/execution.json"
+                execution_file = builder.staged_path(execution_path)
+                execution_payload = json.loads(
+                    execution_file.read_text(encoding="utf-8")
+                )
+                if not isinstance(execution_payload, Mapping):
+                    raise ValueError(
+                        f"execution payload for {process_id!r} is not an object"
+                    )
+                proof = build_generation_structural_proof(
+                    artifact_root=staged_root,
+                    process_id=process_id,
+                    source_revision=source_revision,
+                    native_build_inputs_sha256=native_build_inputs_sha256,
+                    execution_path=execution_path,
+                    execution_sha256=sha256_file(execution_file),
+                    execution=execution_payload,
+                    evaluator_container_path=evaluator_container_path,
+                    evaluator_container_index_sha256=(evaluator_container_index_sha256),
+                )
+                builder.add_json(
+                    f"processes/{process_id}/structural-source-proof.json",
+                    proof,
+                    role=STRUCTURAL_SOURCE_PROOF_ROLE,
+                    process_id=process_id,
+                    compact=True,
+                )
         extensions = _extensions(
             existing,
             processes=processes,
@@ -1263,7 +1317,11 @@ def _write_process_payloads(
     *,
     evaluator_payloads: _EvaluatorPayloadCollector,
     recurrence_sharing: RecurrenceScheduleSharingPlan | None = None,
-) -> tuple[dict[str, object], dict[str, object], str]:
+) -> tuple[
+    dict[str, object],
+    dict[str, object],
+    str,
+]:
     prefix = f"processes/{process.process_id}"
     physics_path = f"{prefix}/physics.json"
     execution_path = f"{prefix}/execution.json"
@@ -1527,6 +1585,7 @@ def _eager_plan_v3_execution_manifest(
             "index_sha256": index_sha256,
         },
         "inspection_summary": _deep_plain(process.inspection_summary),
+        "materialization_census": _eager_materialization_census(process),
     }
     return {
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
@@ -1999,11 +2058,19 @@ def _compiled_execution_lane_manifest(
         compiled_manifest["helicity_recurrence"] = _plain_mapping(
             _mapping(helicity_recurrence)
         )
+    serialized_dag_summary = _dag_summary(
+        dag_summary,
+        require_interaction_evaluation_count=True,
+    )
     return {
         "kind": "pyamplicol-runtime-compiled-execution",
         "required_runtime_capabilities": sorted(required_runtime_capabilities),
         "compiled": compiled_manifest,
-        "dag_summary": _dag_summary(dag_summary),
+        "dag_summary": serialized_dag_summary,
+        "materialization_census": _fully_resident_materialization_census(
+            serialized_dag_summary,
+            basis="immutable-fully-resident-compiled-dag",
+        ),
         "runtime_schema": _execution_plan(runtime_schema),
     }
 
@@ -2831,14 +2898,78 @@ def _native_compiled_direct_application(
     return result
 
 
-def _dag_summary(record: Mapping[str, object]) -> dict[str, object]:
-    return _select(
+def _dag_summary(
+    record: Mapping[str, object],
+    *,
+    require_interaction_evaluation_count: bool = False,
+) -> dict[str, object]:
+    result = _select(
         record,
         "current_count",
         "source_count",
         "interaction_count",
         "amplitude_root_count",
         "truncated",
+    )
+    interaction_evaluation_count = record.get("interaction_evaluation_count")
+    if interaction_evaluation_count is None:
+        if require_interaction_evaluation_count:
+            raise ValueError(
+                "compiled DAG summary is missing interaction_evaluation_count"
+            )
+    else:
+        result["interaction_evaluation_count"] = interaction_evaluation_count
+    return result
+
+
+def _fully_resident_materialization_census(
+    counts: Mapping[str, object],
+    *,
+    basis: str,
+) -> dict[str, object]:
+    exact = {
+        str(name): value
+        for name, value in counts.items()
+        if str(name).endswith("_count")
+    }
+    if not exact:
+        raise ValueError("fully resident materialization has no exact counters")
+    for name, value in exact.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                f"fully resident materialization counter {name!r} is invalid"
+            )
+    return {
+        "abi": "pyamplicol-fully-resident-materialization-census-v1",
+        "basis": basis,
+        "final": exact,
+        "peak": dict(exact),
+        "final_equals_peak": True,
+    }
+
+
+def _eager_materialization_census(
+    process: EagerPlanV3ProcessArtifact,
+) -> dict[str, object]:
+    inspection = process.inspection_summary
+    counts: dict[str, object] = {
+        "source_count": process.dag_summary["source_count"],
+        "current_count": process.dag_summary["current_count"],
+        "interaction_count": process.dag_summary["interaction_count"],
+        "amplitude_root_count": process.dag_summary["amplitude_root_count"],
+    }
+    for name in (
+        "invocation_count",
+        "attachment_count",
+        "closure_count",
+        "finalization_count",
+    ):
+        value = inspection.get(name)
+        if value is not None:
+            counts[name] = value
+    return _fully_resident_materialization_census(
+        counts,
+        basis="immutable-fully-resident-eager-plan",
     )
 
 
@@ -3083,7 +3214,7 @@ def _validation_four_vector(
 def _producer_metadata(config: GenerationConfig | RunConfig) -> dict[str, object]:
     version = package_version()
     target, c_abi = _target_metadata(config)
-    return {
+    producer: dict[str, object] = {
         "distribution": "pyamplicol",
         "version": version,
         "versions": {
@@ -3097,6 +3228,16 @@ def _producer_metadata(config: GenerationConfig | RunConfig) -> dict[str, object
         },
         "target": target,
     }
+    source_revision = active_source_revision()
+    if source_revision is not None:
+        producer["git_revision"] = source_revision
+        native_revision, native_inputs = active_native_source_identity()
+        if native_revision != source_revision:
+            raise RuntimeError(
+                "active Python and native source revisions differ during generation"
+            )
+        producer["native_build_inputs_sha256"] = native_inputs
+    return producer
 
 
 def _target_metadata(
