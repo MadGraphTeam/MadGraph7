@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
@@ -32,6 +33,13 @@ from .measurement_lineage import (
 )
 from .models import Accuracy, ArtifactPolicy, ExecutionMode, ModelKey, Workload
 from .prepared import ensure_report_prepared_model
+from .publisher import (
+    DEFAULT_EXPECTED_PAGE_COUNT,
+    DEFAULT_PDF_TIMEOUT_SECONDS,
+    DEFAULT_PUBLICATION_INTERVAL_SECONDS,
+    run_publisher,
+    validate_published_snapshot,
+)
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .scheduler import (
     CampaignScheduler,
@@ -40,7 +48,12 @@ from .scheduler import (
     plan_campaign,
     select_cells,
 )
-from .service import ReportPaths, ReportService, validate_profile_name
+from .service import (
+    CANONICAL_REPORT_ENTRYPOINT,
+    ReportPaths,
+    ReportService,
+    validate_profile_name,
+)
 from .source_identity import require_eligible_report_source
 from .standalone_build import StandaloneBuildError, validate_latex_log
 from .worker import write_cell_result
@@ -94,6 +107,31 @@ def _parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="compile pyAmpliCol.pdf after publishing tables",
             )
+
+    publish_snapshot = subparsers.add_parser(
+        "publish-snapshot",
+        help="copy, validate, render, and compile one current-cache snapshot",
+    )
+    publish_snapshot.add_argument("--watch", action="store_true")
+    publish_snapshot.add_argument(
+        "--interval-seconds",
+        type=float,
+        default=DEFAULT_PUBLICATION_INTERVAL_SECONDS,
+    )
+    publish_snapshot.add_argument(
+        "--pdf-timeout-seconds",
+        type=float,
+        default=DEFAULT_PDF_TIMEOUT_SECONDS,
+    )
+    publish_snapshot.add_argument(
+        "--expected-page-count",
+        type=int,
+        default=DEFAULT_EXPECTED_PAGE_COUNT,
+    )
+    subparsers.add_parser(
+        "validate-snapshot",
+        help="validate the published cache/table/PDF snapshot identities",
+    )
 
     initialize = subparsers.add_parser(
         "init-profile",
@@ -262,6 +300,15 @@ def _parser() -> argparse.ArgumentParser:
         choices=("selected-flow", "all-flow", "both", "contracted"),
     )
     populate.add_argument("--cell-id", action="append", default=[])
+    populate.add_argument(
+        "--exclude-cell-id",
+        action="append",
+        default=[],
+        help=(
+            "omit a held cell and any selected cell whose unresolved "
+            "dependency closure reaches it"
+        ),
+    )
     populate.add_argument("--missing-only", action="store_true")
     populate.add_argument("--rerun", action="store_true")
     populate.add_argument(
@@ -441,6 +488,50 @@ def _compile_pdf(service: ReportService) -> Path:
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def _launch_async_publication(service: ReportService) -> Path:
+    """Request a one-shot report publication without waiting for it."""
+
+    log_root = service.paths.artifact_root / "publication-logs"
+    log_root.mkdir(parents=True, exist_ok=True)
+    log_path = log_root / "refresh-pdf-end.log"
+    command = (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        os.fspath(
+            service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
+        ),
+        "--repo-root",
+        os.fspath(service.paths.repo_root),
+        "--docs-dir",
+        os.fspath(service.paths.docs_dir),
+        "--artifact-root",
+        os.fspath(service.paths.artifact_root),
+        "--coordination-root",
+        os.fspath(service.paths.coordination_root),
+        "publish-snapshot",
+    )
+    environment = os.environ.copy()
+    for name in (
+        "PYAMPLICOL_EXACT_PYTHON_REEXEC",
+        "PYAMPLICOL_EXACT_IMPORT_PATHS",
+        "PYTHONPYCACHEPREFIX",
+    ):
+        environment.pop(name, None)
+    with log_path.open("ab") as stream:
+        subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            env=environment,
+            start_new_session=True,
+            close_fds=True,
+        )
+    return log_path
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
@@ -475,6 +566,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     )
 
+    if args.command == "publish-snapshot":
+        run_publisher(
+            service,
+            watch=args.watch,
+            interval_seconds=args.interval_seconds,
+            expected_page_count=args.expected_page_count,
+            pdf_timeout_seconds=args.pdf_timeout_seconds,
+        )
+        return 0
+    if args.command == "validate-snapshot":
+        print(
+            json.dumps(
+                validate_published_snapshot(service),
+                allow_nan=False,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.command == "validate":
         print(json.dumps(service.validate(), sort_keys=True))
         return 0
@@ -585,6 +694,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             requested = select_cells(_selection(args))
             if not requested:
                 parser.error("cell filters select no report cells")
+            catalog_ids = {
+                cell.cell_id for cell in REPORT_CATALOG.measurement_cells()
+            }
+            unknown_exclusions = sorted(
+                set(args.exclude_cell_id).difference(catalog_ids)
+            )
+            if unknown_exclusions:
+                parser.error(
+                    "unknown --exclude-cell-id values: "
+                    + ", ".join(unknown_exclusions)
+                )
             if args.max_ram_gib is not None and args.max_ram_gb is not None:
                 parser.error("--max-ram-gib and --max-ram-gb are mutually exclusive")
             if args.campaign_max_ram_gb is not None and (
@@ -665,6 +785,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_revision=expected_revision,
             expected_tree=source_identity.tree,
             measurement_lineage=measurement_lineage,
+            excluded_cell_ids=frozenset(args.exclude_cell_id),
         )
         if args.dry_run:
             print(
@@ -672,6 +793,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     {
                         "requested": len(requested),
                         "scheduled": len(planned),
+                        "excluded_cell_ids": sorted(
+                            set(args.exclude_cell_id)
+                        ),
                         "cells": [
                             {
                                 "cell_id": item.cell.cell_id,
@@ -698,7 +822,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         service.bind_measurement_lineage(measurement_lineage)
         result = CampaignScheduler(service, settings=settings).run(planned)
         if args.refresh_pdf == "end":
-            _compile_pdf(service)
+            _launch_async_publication(service)
         print(
             json.dumps(
                 {

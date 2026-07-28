@@ -400,6 +400,7 @@ def plan_campaign(
     expected_revision: str | None = None,
     expected_tree: str | None = None,
     measurement_lineage: MeasurementLineage | None = None,
+    excluded_cell_ids: frozenset[str] = frozenset(),
 ) -> tuple[PlannedCell, ...]:
     requested_ids = {cell.cell_id for cell in requested}
     needed: dict[str, CellSpec] = {}
@@ -429,7 +430,43 @@ def plan_campaign(
             }.values()
         )
 
+    exclusion_memo: dict[str, bool] = {}
+    exclusion_visiting: set[str] = set()
+
+    def blocked_by_exclusion(cell: CellSpec) -> bool:
+        cached = exclusion_memo.get(cell.cell_id)
+        if cached is not None:
+            return cached
+        if cell.cell_id in excluded_cell_ids:
+            exclusion_memo[cell.cell_id] = True
+            return True
+        if cell.cell_id in exclusion_visiting:
+            raise ValueError(
+                f"report comparison dependency cycle reaches {cell.cell_id!r}"
+            )
+        exclusion_visiting.add(cell.cell_id)
+        try:
+            blocked = any(
+                blocked_by_exclusion(dependency)
+                for dependency in dependencies(cell)
+                if _policy_current(
+                    store,
+                    dependency,
+                    settings=settings,
+                    expected_revision=expected_revision,
+                    expected_tree=expected_tree,
+                    measurement_lineage=measurement_lineage,
+                )
+                is None
+            )
+        finally:
+            exclusion_visiting.remove(cell.cell_id)
+        exclusion_memo[cell.cell_id] = blocked
+        return blocked
+
     def include(cell: CellSpec, *, explicitly_requested: bool) -> None:
+        if blocked_by_exclusion(cell):
+            return
         cell_dependencies = dependencies(cell)
         dependency_currents = {
             dependency.cell_id: _policy_current(
@@ -550,6 +587,8 @@ def plan_campaign(
         scheduled = tuple(needed.values())
         for cell in requested:
             if cell.cell_id in needed:
+                continue
+            if blocked_by_exclusion(cell):
                 continue
             if any(
                 predecessor.n_final < cell.n_final
@@ -856,7 +895,6 @@ class CampaignScheduler:
                 futures = {executor.submit(self._run_cell, item): item for item in wave}
                 for future in as_completed(futures):
                     outcomes.append(future.result())
-            self.service.publish(reset=False, merge_artifacts=True)
         return CampaignResult(
             planned=ordered,
             outcomes=tuple(sorted(outcomes, key=lambda item: item.cell_id)),

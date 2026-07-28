@@ -634,10 +634,11 @@ def _matrix_macros() -> list[str]:
         (
             r"\providecommand{\matrixcelllc}[6]{"
             r"\begingroup\matrixentryfontlc"
+            r"\scalebox{0.94}{"
             r"\begin{tabular}[t]{"
             r"@{}l@{\hspace{0.03in}}l@{\hspace{0.03in}}l@{}}"
             r"#1&#2&#3\\#4&#5&#6"
-            r"\end{tabular}\endgroup}"
+            r"\end{tabular}}\endgroup}"
         ),
         (
             r"\providecommand{\matrixcellcontracted}[4]{"
@@ -794,7 +795,10 @@ def _matrix_block(
     block_index: int,
     block_count: int,
 ) -> list[str]:
-    value_width = {2: "3.50in", 3: "2.49in"}.get(len(multiplicities))
+    # Three-column LC blocks have the widest nested entries.  Leave a little
+    # landscape-page breathing room so populated compiled rows cannot extend
+    # into the right crop boundary.
+    value_width = {2: "3.50in", 3: "2.42in"}.get(len(multiplicities))
     if value_width is None:
         raise ValueError(
             "matrix blocks must contain two or three multiplicities"
@@ -958,7 +962,8 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
                 "all-flow direct-setup baseline quantities. The selected-flow "
                 "entry carries a generation ratio; the all-flow entry carries "
                 "the absolute pyAmpliCol process-generation time marked n.c. "
-                "(not comparable). Runtime comparisons use native wall time; "
+                "(not comparable); no generation ratio is formed. Runtime "
+                "comparisons use native wall time; "
                 "a separate execution-attribution ratio appears only when both "
                 "measurements expose one."
             )
@@ -989,7 +994,9 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
             "Not applicable marks a process/multiplicity combination outside "
             "the process-family definition. Not exposed means that a successful "
             "wall-time measurement has no separately reported execution "
-            "attribution; neither label denotes an unfilled measurement."
+            "attribution; for compiled and eager rows, the wall value remains "
+            "the authenticated warmed total-evaluator boundary; neither label "
+            "denotes an unfilled measurement."
         )
         + "}"
     )
@@ -1340,7 +1347,7 @@ def _best_mode_block(
         Accuracy.NLC: "NLC",
         Accuracy.FULL: "full-colour",
     }[accuracy]
-    value_width = {2: "3.50in", 3: "2.49in"}.get(len(multiplicities))
+    value_width = {2: "3.50in", 3: "2.42in"}.get(len(multiplicities))
     if value_width is None:
         raise ValueError(
             "matrix blocks must contain two or three multiplicities"
@@ -1691,11 +1698,13 @@ def _z_block(
                 r"all-flow-union generation and runtime measurements. "
                 r"Parenthesized values are candidate/reference ratios. "
                 r"All-flow generation shows the absolute pyAmpliCol value "
-                r"marked n.c. because its setup boundary differs from the "
+                r"marked n.c.; n.c. means not comparable because its setup "
+                r"boundary differs from the "
                 r"reference. The wall time is the common runtime observable. "
                 r"Not exposed means that a successful wall measurement has no "
-                r"separately reported execution attribution; it is not a "
-                r"missing measurement.}"
+                r"separately reported execution attribution. For compiled and "
+                r"eager rows, wall time still exposes the authenticated warmed "
+                r"total-evaluator boundary; it is not a missing measurement.}"
             ),
             r"\end{minipage}",
         ]

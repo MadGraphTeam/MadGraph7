@@ -144,6 +144,52 @@ def test_dependency_plan_orders_amplicol_recurrence_then_candidate(
     assert [item.dependency for item in planned] == [True, True, False]
 
 
+def test_plan_excludes_held_cell_without_suppressing_independent_work(
+    tmp_path: Path,
+) -> None:
+    requested = select_cells(
+        CellSelection(
+            datasets=frozenset({"matrix_compiled_builtin_sm_lc"}),
+            process_keys=frozenset({"dd_z_jets", "ud_w_jets"}),
+            multiplicities=frozenset({1}),
+            workloads=frozenset({Workload.SELECTED_FLOW}),
+        )
+    )
+    held = next(cell for cell in requested if cell.process_key == "dd_z_jets")
+
+    planned = plan_campaign(
+        requested,
+        store=_store(tmp_path),
+        settings=CampaignSettings(),
+        excluded_cell_ids=frozenset({held.cell_id}),
+    )
+
+    planned_ids = {item.cell.cell_id for item in planned}
+    assert held.cell_id not in planned_ids
+    assert any(item.cell.process_key == "ud_w_jets" for item in planned)
+
+
+def test_plan_excludes_unresolved_descendants_of_held_dependency(
+    tmp_path: Path,
+) -> None:
+    candidate = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    initial = plan_campaign(
+        (candidate,),
+        store=_store(tmp_path / "initial"),
+        settings=CampaignSettings(),
+    )
+    held_baseline = initial[0].cell.cell_id
+
+    planned = plan_campaign(
+        (candidate,),
+        store=_store(tmp_path / "excluded"),
+        settings=CampaignSettings(),
+        excluded_cell_ids=frozenset({held_baseline}),
+    )
+
+    assert planned == ()
+
+
 def test_missing_only_rechecks_completed_candidate_with_missing_dependencies(
     tmp_path: Path,
 ) -> None:
@@ -551,6 +597,39 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
         command[command.index("--phase-state-authentication-key") + 1]
         == channel.authentication_key
     )
+
+
+def test_campaign_run_never_publishes_or_renders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    target = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+    planned = (
+        PlannedCell(
+            target,
+            dependency=False,
+            baseline_cell_id=None,
+            rank=0,
+        ),
+    )
+    monkeypatch.setattr(scheduler, "_ensure_prepared_model", lambda _items: None)
+    monkeypatch.setattr(
+        scheduler,
+        "_run_cell",
+        lambda item: CellOutcome(item.cell.cell_id, "ok", "complete"),
+    )
+    monkeypatch.setattr(
+        service,
+        "publish",
+        lambda **_kwargs: pytest.fail("measurement waited on report publication"),
+    )
+
+    result = scheduler.run(planned)
+
+    assert result.failed == ()
+    assert result.outcomes[0].cell_id == target.cell_id
 
 
 @pytest.mark.parametrize("limit", (0.0, float("inf"), float("nan")))

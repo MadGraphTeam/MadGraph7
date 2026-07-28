@@ -65,8 +65,8 @@ For the selected-flow workload, the reported generation quantity is creation
 of the process library. For the all-flow workload, it is preparation of direct
 all-flow evaluation. Runtime ratios compare the same physical observable. The
 all-flow setup quantities are not like-for-like, so the table shows the
-candidate process-generation time as an absolute value marked \texttt{n.c.}
-(not comparable) instead of forming a ratio.
+candidate process-generation time as an absolute value marked \texttt{n.c.};
+\texttt{n.c.} means ``not comparable'', so no ratio is formed.
 
 NLC and full colour use one helicity-summed, colour-contracted calculation per
 mode. Their cells report the absolute baseline generation and wall time,
@@ -74,10 +74,12 @@ followed by the candidate generation and runtime ratios. No per-flow scalar is
 defined for these contracted colour accuracies.
 
 The wall quantity is the repeated native evaluation time after caller-language
-input conversion and is the primary runtime observable. A separately measured
-execution attribution is supplementary. Its ratio is shown only when candidate
-and baseline expose compatible attribution boundaries; otherwise it is marked
-\textsc{not exposed}.
+input conversion and is the primary runtime observable. For compiled and eager
+rows it is the authenticated warmed total-evaluator boundary. A separately
+measured, narrower execution attribution is supplementary. Its ratio is shown
+only when candidate and baseline expose compatible attribution boundaries;
+otherwise it is marked \textsc{not exposed}; this label does not hide or
+invalidate the reported total-evaluator wall time.
 
 Preparation of reusable model-level kernels is excluded from
 process-generation time. Compiled generation still includes process-specific

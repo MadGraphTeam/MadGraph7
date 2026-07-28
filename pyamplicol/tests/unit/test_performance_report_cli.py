@@ -54,6 +54,13 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     assert populate.target_runtime == 5.0
     assert populate.generation_time_limit_seconds is None
     assert populate.fast_lineage is False
+    assert populate.exclude_cell_id == []
+
+    publisher = _parser().parse_args(("publish-snapshot",))
+    assert publisher.watch is False
+    assert publisher.interval_seconds == 600.0
+    assert publisher.pdf_timeout_seconds == 900.0
+    assert publisher.expected_page_count == 59
 
     worker = _parser().parse_args(
         (

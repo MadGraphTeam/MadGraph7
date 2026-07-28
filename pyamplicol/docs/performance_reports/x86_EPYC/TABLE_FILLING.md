@@ -64,14 +64,40 @@ authenticated finalized measurement lineage.
   evidence, numerical-agreement result, active source/runtime identity, and
   atomic `current.json` publication. Do not run `recover`, `audit`, `validate`,
   a post-plan, cache rendering, PDF compilation, or visual QA after each cell.
-- Run one lightweight audit and exact zero-plan at a batch, resource-lane,
-  multiplicity, or phase boundary. Compile and inspect the PDF every two hours,
-  at a frontier or phase boundary, at final completion, or immediately after a
-  real renderer warning. `recover` is for interruption recovery or an explicit
-  checkpoint.
+- Start one report-only publisher beside the campaign. It snapshots stable
+  `current.json` identities without a campaign writer lock, renders and
+  compiles in a disposable copy, then holds the report lock only while
+  atomically installing the validated cache/table/PDF set:
+
+  ```sh
+  python3 "$CONTROLLER/docs/performance_reports/x86_EPYC/result_tables.py" \
+    --repo-root "$MEASURED_ROOT" \
+    --report-profile x86_EPYC \
+    --artifact-root "$ARTIFACT_ROOT" \
+    --coordination-root "$COORDINATION_ROOT" \
+    publish-snapshot --watch --interval-seconds 600 \
+    --pdf-timeout-seconds 900 --expected-page-count 59
+  ```
+
+  The ten-minute start cadence plus the fifteen-minute compile ceiling keeps a
+  successful current-cache PDF at most thirty minutes behind a newly published
+  cell. The measurement scheduler never renders, audits, compiles, or waits on
+  this publisher. `--refresh-pdf end` requests the same publication in a
+  detached one-shot process and never waits for it.
+- Periodic publisher validation is deliberately limited to cache schema,
+  snapshot/file consistency, reproducible table rendering, successful TeX
+  compilation, exactly 59 pages, and no overfull boxes. Run
+  `validate-snapshot` to recheck the installed snapshot. Numerical replay,
+  campaign audit, dry-run planning, and full-page visual review remain final or
+  explicit checkpoint gates, not periodic measurement gates. `recover` is only
+  for interruption recovery.
 - A cell-local failure preserves its attempt and holds only that cell and its
-  dependency descendants; independent work continues. Never reset, relabel, or
-  restart the whole campaign for a scoped defect.
+  dependency descendants; independent work continues. Pass every held or
+  quarantined ID back to later batches as repeated `--exclude-cell-id ID`
+  options. The planner also omits selected cells whose unresolved dependency
+  closure reaches an excluded ID, so a batch cannot silently reselect the held
+  closure. Never reset, relabel, or restart the whole campaign for a scoped
+  defect.
 - Controller-only descendants do not require PREPARE, a native rebuild,
   runtime restaging, or a source bridge. Executable-source descendants use the
   authenticated scoped bridge and rerun only its certified closure.

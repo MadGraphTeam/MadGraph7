@@ -24,6 +24,8 @@ _PUBLICATION_ONLY_COMMANDS = {
     "reset",
     "render",
     "recover",
+    "publish-snapshot",
+    "validate-snapshot",
 }
 _GLOBAL_OPTIONS_WITH_VALUE = {
     "--repo-root",
