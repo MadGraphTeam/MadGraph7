@@ -48,6 +48,19 @@ recurrence construction reaches approximately 153 times the legacy static
 current inventory and 333 times its static interaction inventory before
 discarding most candidates.
 
+The excess is already present at N4 and then becomes much steeper at N5:
+
+| N | Final currents/static | Final interactions/static | Peak currents/static | Peak interactions/static |
+|---:|---:|---:|---:|---:|
+| 4 | 8.91x | 14.15x | 27.71x | 62.65x |
+| 5 | 41.85x | 65.26x | 152.88x | 332.51x |
+
+Thus N4 can remain faster at evaluation time because its final schedule still
+beats dynamic legacy replay, while N5 generation collapses under a roughly
+five-fold worsening of the already excessive static-materialization ratios.
+Linearizing constructor scans helps CPU complexity but cannot satisfy the
+static-work budget without constructing topology representatives directly.
+
 The same-host N5 runtime comparison must use like-for-like totals.  Legacy's
 Mac measurement separates approximately 11.49 ms of amplitude evaluation and
 36.33 ms of color contraction, for a 48.04 ms total.  Recurrence takes
