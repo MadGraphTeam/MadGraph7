@@ -14,7 +14,7 @@ from .agreements import (
     evaluate_lc_common_component,
 )
 from .cache import empty_measurement
-from .models import Accuracy, CellSpec, ModelKey, ResultStatus
+from .models import Accuracy, CellSpec, ExecutionMode, ModelKey, ResultStatus
 from .phase_state import WorkerPhaseReporter
 from .runner import (
     INDEPENDENT_RELATIVE_TOLERANCE,
@@ -24,6 +24,7 @@ from .runner import (
     RunnerSettings,
     SelectorContract,
     _real_nonnegative,
+    _selector_kwargs,
     generate_artifact,
     pointwise_validation,
     profile_runtime,
@@ -340,17 +341,35 @@ def measure_pyamplicol_cell(
             cell=cell,
             contract=contract,
         )
-    if cell.measurement.model in {
+    scalar = cell.measurement.model in {
         ModelKey.SCALAR_CONTACT,
         ModelKey.SCALAR_GRAVITY,
-    }:
-        high_precision = runtime.evaluate(points, precision=32)
+    }
+    requires_high_precision = scalar or (
+        baseline is None
+        and cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+    )
+    if requires_high_precision:
+        high_precision = runtime.evaluate(
+            points,
+            precision=32,
+            **_selector_kwargs(cell, contract),
+        )
         if not high_precision:
-            raise RunnerError("high-precision scalar evaluation returned no values")
+            raise RunnerError("high-precision evaluation returned no values")
         high_precision_value = _real_nonnegative(high_precision[0])
         validation["high_precision"] = pointwise_validation(
             float(profile["matrix_element"]),
             high_precision_value,
+        )
+    if (
+        baseline is None
+        and not scalar
+        and cell.measurement.execution_mode is not ExecutionMode.RECURRENCE
+    ):
+        raise RunnerError(
+            "non-scalar measurement without a canonical baseline must use "
+            "recurrence high-precision validation"
         )
     baseline_value = _baseline_matrix_element(baseline)
     if baseline_value is not None:

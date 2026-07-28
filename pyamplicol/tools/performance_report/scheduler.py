@@ -415,7 +415,7 @@ def plan_campaign(
             ).append(catalog_cell)
 
     def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
-        baseline = catalog.baseline_cell(cell)
+        baseline = catalog.validation_baseline_cell(cell)
         peers = tuple(
             edge.baseline
             for edge in incoming_agreement_edges(cell, catalog=catalog)
@@ -627,15 +627,15 @@ def plan_campaign(
         ranks[cell.cell_id] = rank
         return rank
 
+    def validation_baseline_id(cell: CellSpec) -> str | None:
+        baseline = catalog.validation_baseline_cell(cell)
+        return None if baseline is None else baseline.cell_id
+
     return tuple(
         PlannedCell(
             cell=cell,
             dependency=cell.cell_id not in requested_ids,
-            baseline_cell_id=(
-                None
-                if catalog.baseline_cell(cell) is None
-                else catalog.baseline_cell(cell).cell_id  # type: ignore[union-attr]
-            ),
+            baseline_cell_id=validation_baseline_id(cell),
             rank=planned_rank(cell),
             comparison_peer_ids=tuple(
                 edge.baseline.cell_id
@@ -981,7 +981,11 @@ class CampaignScheduler:
                 )
                 else None
             )
-            baseline = self.catalog.baseline_cell(cell)
+            baseline = (
+                None
+                if planned.baseline_cell_id is None
+                else self.catalog.cell(planned.baseline_cell_id)
+            )
             dependency_cells = {
                 dependency.cell_id: dependency
                 for dependency in (

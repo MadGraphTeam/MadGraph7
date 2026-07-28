@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .models import (
+    LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES,
     Accuracy,
     CellSpec,
     ExecutionMode,
@@ -17,6 +18,7 @@ from .models import (
     ScalarDataset,
     Workload,
     ZVariant,
+    open_quark_line_count,
 )
 
 BUILTIN_SM = ModelSpec(
@@ -469,6 +471,13 @@ class ReportCatalog:
         )
 
     def baseline_cell(self, cell: CellSpec) -> CellSpec | None:
+        """Return the display baseline for ``cell``.
+
+        This retains the original-AmpliCol row even when the historical
+        implementation cannot evaluate the process.  Use
+        :meth:`validation_baseline_cell` for measurement dependencies.
+        """
+
         if (
             cell.measurement.execution_mode is ExecutionMode.AMPLICOL
             or cell.dataset_id in {
@@ -499,6 +508,31 @@ class ReportCatalog:
             and candidate.workload is cell.workload
             and candidate.measurement.execution_mode is baseline_mode
         )
+
+    def legacy_reference_available(self, cell: CellSpec) -> bool:
+        """Whether original AmpliCol can evaluate ``cell``'s concrete process."""
+
+        return (
+            open_quark_line_count(cell.process)
+            <= LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES
+        )
+
+    def validation_baseline_cell(self, cell: CellSpec) -> CellSpec | None:
+        """Return the executable numerical baseline for ``cell``.
+
+        Original AmpliCol remains visible in the report for processes beyond
+        its three-open-line scope, but it must not censor pyAmpliCol's
+        otherwise model-generic recurrence measurements.
+        """
+
+        baseline = self.baseline_cell(cell)
+        if (
+            baseline is not None
+            and baseline.measurement.execution_mode is ExecutionMode.AMPLICOL
+            and not self.legacy_reference_available(cell)
+        ):
+            return None
+        return baseline
 
 
 REPORT_CATALOG = ReportCatalog(

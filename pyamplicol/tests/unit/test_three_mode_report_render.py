@@ -125,6 +125,29 @@ def _set_ok(
     }
 
 
+def _set_status(
+    cache: dict[str, object],
+    *,
+    process_key: str,
+    n_final: int,
+    workload: Workload,
+    status: ResultStatus,
+) -> None:
+    entries = cache["entries"]
+    assert isinstance(entries, list)
+    entry = next(
+        item
+        for item in entries
+        if item["process_key"] == process_key
+        and item["n_final"] == n_final
+        and item["workload"] == workload.value
+        and item["variant"] is None
+    )
+    measurement = empty_measurement()
+    measurement["status"] = status.value
+    entry["measurement"] = measurement
+
+
 def _mark_arena_unavailable(
     measurement: dict[str, object],
     *,
@@ -1148,6 +1171,48 @@ def test_amplicol_all_flow_setup_generation_ratio_is_not_comparable(
 
     assert tex.count(r"\matrixncabsolute{\texttt{10}}") >= 2
     assert r"\matrixratio{ReportRed}{1e+05}" not in tex
+    assert "n.c. (not comparable)" in tex
+
+
+def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_lc")
+    candidate = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_lc",
+    )
+    for workload, generation in (
+        (Workload.SELECTED_FLOW, 4.0),
+        (Workload.ALL_FLOW, 10.0),
+    ):
+        _set_status(
+            baseline,
+            process_key="dd_4q_lines",
+            n_final=6,
+            workload=workload,
+            status=ResultStatus.UNSUPPORTED,
+        )
+        _set_ok(
+            candidate,
+            process_key="dd_4q_lines",
+            n_final=6,
+            workload=workload,
+            generation=generation,
+            wall=2.0e-6,
+            execution=1.0e-6,
+        )
+
+    tex = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_lc"),
+        caches,
+    )
+
+    assert r"\matrixncabsolute{\texttt{4}}" in tex
+    assert r"\matrixncabsolute{\texttt{10}}" in tex
+    assert tex.count(r"\matrixncabsolute{\matrixpair{") >= 2
+    assert tex.count(r"\matrixstatus{ReportRed}{unsupported}") >= 2
     assert "n.c. (not comparable)" in tex
 
 

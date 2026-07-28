@@ -149,10 +149,16 @@ def _z_recurrence_peer(
 def _lc_layout_peer(
     cell: CellSpec,
     cells: Sequence[CellSpec],
+    *,
+    catalog: ReportCatalog,
 ) -> CellSpec | None:
     if (
         cell.measurement.accuracy is not Accuracy.LC
         or cell.workload is not Workload.ALL_FLOW
+        or (
+            cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            and not catalog.legacy_reference_available(cell)
+        )
     ):
         return None
     return _unique_cell(
@@ -174,11 +180,14 @@ def _lc_layout_peer(
 def _lc_legacy_peer(
     cell: CellSpec,
     cells: Sequence[CellSpec],
+    *,
+    catalog: ReportCatalog,
 ) -> CellSpec | None:
     if (
         cell.measurement.execution_mode is ExecutionMode.AMPLICOL
         or cell.measurement.accuracy is not Accuracy.LC
         or cell.workload is not Workload.ALL_FLOW
+        or not catalog.legacy_reference_available(cell)
     ):
         return None
     return _unique_cell(
@@ -222,10 +231,10 @@ def incoming_agreement_edges(
     recurrence = _z_recurrence_peer(cell, cells)
     if recurrence is not None:
         edges.append(AgreementEdge(Z_RECURRENCE_CROSS_MODE, recurrence, cell))
-    layout = _lc_layout_peer(cell, cells)
+    layout = _lc_layout_peer(cell, cells, catalog=catalog)
     if layout is not None:
         edges.append(AgreementEdge(LC_CROSS_LAYOUT_COMPONENT, layout, cell))
-    legacy = _lc_legacy_peer(cell, cells)
+    legacy = _lc_legacy_peer(cell, cells, catalog=catalog)
     if legacy is not None:
         edges.append(
             AgreementEdge(LC_LEGACY_PYAMPLICOL_COMPONENT, legacy, cell)

@@ -935,6 +935,9 @@ def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
         def baseline_cell(self, _cell):
             return None
 
+        def validation_baseline_cell(self, _cell):
+            return None
+
     catalog = OneCellCatalog()
     paths = ReportPaths.from_repo(
         tmp_path,
@@ -1008,6 +1011,9 @@ def test_final_audit_requires_exact_monotone_resource_frontier(
             return (source, target)
 
         def baseline_cell(self, _cell):
+            return None
+
+        def validation_baseline_cell(self, _cell):
             return None
 
     catalog = TwoCellCatalog()

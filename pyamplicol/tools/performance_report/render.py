@@ -16,6 +16,7 @@ from .campaign_policy import (
 from .catalog import REPORT_CATALOG, ReportCatalog, z_dataset_id
 from .display_contract import report_display_accounting
 from .models import (
+    LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES,
     Accuracy,
     CellSpec,
     ExecutionMode,
@@ -26,6 +27,7 @@ from .models import (
     ScalarDataset,
     Workload,
     ZVariant,
+    open_quark_line_count,
 )
 from .timing import (
     evaluator_total_timing_record,
@@ -563,6 +565,23 @@ def _ratio(candidate: Measurement, baseline: Measurement, field: str) -> str:
     return rf"\matrixratio{{{color}}}{{{_compact(value)}}}"
 
 
+def _ratio_or_absolute(
+    candidate: Measurement,
+    baseline: Measurement,
+    field: str,
+    *,
+    absolute: bool,
+    microseconds: bool = False,
+) -> str:
+    if absolute and _ok(candidate):
+        return (
+            r"\matrixncabsolute{"
+            + _metric(candidate, field, microseconds=microseconds)
+            + "}"
+        )
+    return _ratio(candidate, baseline, field)
+
+
 def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
     wall = _ratio_value(candidate, baseline, "wall_seconds_per_point")
     execution = _ratio_value(candidate, baseline, "execution_seconds_per_point")
@@ -613,6 +632,27 @@ def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
         rf"\matrixratiopair{{{wall_color}}}{{{wall_text}}}"
         rf"{{{execution_color}}}{{{execution_text}}}"
     )
+
+
+def _ratio_pair_or_absolute(
+    candidate: Measurement,
+    baseline: Measurement,
+    *,
+    absolute: bool,
+) -> str:
+    if absolute and _ok(candidate):
+        wall = _metric(candidate, "wall_seconds_per_point", microseconds=True)
+        execution = _metric(
+            candidate,
+            "execution_seconds_per_point",
+            microseconds=True,
+        )
+        return (
+            r"\matrixncabsolute{"
+            rf"\matrixpair{{{wall}}}{{{execution}}}"
+            "}"
+        )
+    return _ratio_pair(candidate, baseline)
 
 
 def _matrix_macros() -> list[str]:
@@ -690,16 +730,28 @@ def _not_exposed() -> str:
     return r"\matrixnotexposed{ReportMuted}"
 
 
+def _legacy_baseline_unavailable(view: JoinedMatrixCell) -> bool:
+    process = view.process_family.process(view.n_final)
+    return (
+        view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+        and process is not None
+        and open_quark_line_count(process)
+        > LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES
+    )
+
+
 def _lc_cell(view: JoinedMatrixCell) -> str:
     selected, all_flow = view.workloads
+    legacy_baseline_unavailable = _legacy_baseline_unavailable(view)
     baseline_generation = (
         rf"\matrixpair{{{_metric(selected.baseline, 'generation_seconds')}}}"
         rf"{{{_metric(all_flow.baseline, 'generation_seconds')}}}"
     )
-    selected_generation_ratio = _ratio(
+    selected_generation_ratio = _ratio_or_absolute(
         selected.candidate,
         selected.baseline,
         "generation_seconds",
+        absolute=legacy_baseline_unavailable,
     )
     all_flow_generation_ratio = (
         (
@@ -711,12 +763,16 @@ def _lc_cell(view: JoinedMatrixCell) -> str:
             view.dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
             and view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
             and _ok(all_flow.candidate)
-            and _ok(all_flow.baseline)
+            and (
+                _ok(all_flow.baseline)
+                or legacy_baseline_unavailable
+            )
         )
-        else _ratio(
+        else _ratio_or_absolute(
             all_flow.candidate,
             all_flow.baseline,
             "generation_seconds",
+            absolute=legacy_baseline_unavailable,
         )
     )
     selected_runtime = _metric(
@@ -733,8 +789,16 @@ def _lc_cell(view: JoinedMatrixCell) -> str:
         rf"\matrixpair{{{selected_runtime}}}"
         rf"{{{all_flow_runtime}}}"
     )
-    selected_ratio = _ratio_pair(selected.candidate, selected.baseline)
-    all_flow_ratio = _ratio_pair(all_flow.candidate, all_flow.baseline)
+    selected_ratio = _ratio_pair_or_absolute(
+        selected.candidate,
+        selected.baseline,
+        absolute=legacy_baseline_unavailable,
+    )
+    all_flow_ratio = _ratio_pair_or_absolute(
+        all_flow.candidate,
+        all_flow.baseline,
+        absolute=legacy_baseline_unavailable,
+    )
     return (
         r"\matrixcelllc"
         f"{{{baseline_generation}}}"
@@ -748,12 +812,24 @@ def _lc_cell(view: JoinedMatrixCell) -> str:
 
 def _contracted_cell(view: JoinedMatrixCell) -> str:
     joined = view.workloads[0]
+    legacy_baseline_unavailable = _legacy_baseline_unavailable(view)
+    candidate_generation = _ratio_or_absolute(
+        joined.candidate,
+        joined.baseline,
+        "generation_seconds",
+        absolute=legacy_baseline_unavailable,
+    )
+    candidate_runtime = _ratio_pair_or_absolute(
+        joined.candidate,
+        joined.baseline,
+        absolute=legacy_baseline_unavailable,
+    )
     return (
         r"\matrixcellcontracted"
         f"{{{_metric(joined.baseline, 'generation_seconds')}}}"
-        f"{{{_ratio(joined.candidate, joined.baseline, 'generation_seconds')}}}"
+        f"{{{candidate_generation}}}"
         f"{{{_metric(joined.baseline, 'wall_seconds_per_point', microseconds=True)}}}"
-        f"{{{_ratio_pair(joined.candidate, joined.baseline)}}}"
+        f"{{{candidate_runtime}}}"
     )
 
 
@@ -1014,6 +1090,14 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
             "execution-attribution ratio appears only when both measurements "
             "expose one."
         )
+    legacy_scope_detail = (
+        " Original AmpliCol supports at most three open quark lines; beyond "
+        "that scope its entry is unsupported and valid candidate generation "
+        "and runtime values are shown as absolute n.c. quantities. Here n.c. "
+        "means not comparable."
+        if dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+        else ""
+    )
     return (
         r"\ReportTableNote{Baseline: "
         + _tex_escape(baseline)
@@ -1021,6 +1105,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + _tex_escape(candidate)
         + ". "
         + _tex_escape(detail)
+        + _tex_escape(legacy_scope_detail)
         + " "
         + _tex_escape(
             "Not applicable marks a process/multiplicity combination outside "

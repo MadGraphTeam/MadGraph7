@@ -33,7 +33,14 @@ from .agreements import (
 )
 from .cache import empty_measurement
 from .catalog import REPORT_CATALOG
-from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus, Workload
+from .models import (
+    LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES,
+    Accuracy,
+    CellSpec,
+    ExecutionMode,
+    ResultStatus,
+    Workload,
+)
 from .runner import (
     DEFAULT_TARGET_RUNTIME_SECONDS,
     SelectorContract,
@@ -45,7 +52,7 @@ DEFAULT_MIN_POINTS = 100
 DEFAULT_MAX_POINTS = 10_000_000
 DEFAULT_MIN_PROFILE_CHUNKS = 5
 DEFAULT_MAX_PROFILE_CHUNKS = 512
-MAX_OPEN_QUARK_LINES = 3
+MAX_OPEN_QUARK_LINES = LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES
 
 
 class LegacyAdapterError(RuntimeError):

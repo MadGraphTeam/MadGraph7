@@ -244,6 +244,66 @@ def test_missing_only_skips_only_after_all_dependencies_are_fresh(
     assert planned == ()
 
 
+def test_four_line_candidates_never_plan_unsupported_legacy_dependencies(
+    tmp_path: Path,
+) -> None:
+    requested = tuple(
+        cell
+        for cell in REPORT_CATALOG.matrix_cells()
+        if cell.process_key == "dd_4q_lines"
+        and cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+    )
+
+    planned = plan_campaign(
+        requested,
+        store=_store(tmp_path),
+        settings=CampaignSettings(),
+    )
+
+    assert len(requested) == 24
+    assert len(planned) == len(requested)
+    assert all(
+        item.cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+        for item in planned
+    )
+    recurrence = tuple(
+        item
+        for item in planned
+        if item.cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+    )
+    cross_mode = tuple(
+        item
+        for item in planned
+        if item.cell.measurement.execution_mode
+        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+    )
+    assert recurrence
+    assert all(item.baseline_cell_id is None for item in recurrence)
+    assert cross_mode
+    assert all(item.baseline_cell_id is not None for item in cross_mode)
+    assert all(
+        REPORT_CATALOG.cell(item.baseline_cell_id).measurement.execution_mode
+        is ExecutionMode.RECURRENCE
+        for item in cross_mode
+        if item.baseline_cell_id is not None
+    )
+    legacy_all_flow = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == "reference_amplicol_lc"
+        and cell.process_key == "dd_4q_lines"
+        and cell.n_final == 6
+        and cell.workload is Workload.ALL_FLOW
+    )
+    legacy_plan = plan_campaign(
+        (legacy_all_flow,),
+        store=_store(tmp_path / "legacy"),
+        settings=CampaignSettings(),
+    )
+    assert len(legacy_plan) == 1
+    assert legacy_plan[0].comparison_peer_ids == ()
+
+
 def test_missing_only_schedules_stale_direct_peer_and_recomparison(
     tmp_path: Path,
 ) -> None:

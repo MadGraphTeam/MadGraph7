@@ -417,6 +417,8 @@ def test_sm_recurrence_closure_projections_match_without_forest_aliases() -> Non
         "d d~ > u u~",
         "d d~ > d d~",
         "d d~ > u u~ s s~",
+        "d d~ > u u~ s s~ c c~",
+        "d d~ > u u~ s s~ c c~ b b~",
     )
     summaries: dict[str, dict[str, tuple[int, ...]]] = {}
     compiled_ufo = compile_model_source(
@@ -501,6 +503,14 @@ def test_sm_recurrence_closure_projections_match_without_forest_aliases() -> Non
                 assert len(pairing.endpoints) == 6
                 assert len(pairing.pairing_classes) == 2
                 assert len(pairing.rules) == 2
+            elif expression == "d d~ > u u~ s s~ c c~":
+                assert len(pairing.endpoints) == 8
+                assert len(pairing.pairing_classes) == 2
+                assert len(pairing.rules) == 4
+            elif expression == "d d~ > u u~ s s~ c c~ b b~":
+                assert len(pairing.endpoints) == 10
+                assert len(pairing.pairing_classes) == 3
+                assert len(pairing.rules) == 4
             summaries[model_source][expression] = (
                 len(pairing.endpoints),
                 len(pairing.pairing_classes),
@@ -511,3 +521,79 @@ def test_sm_recurrence_closure_projections_match_without_forest_aliases() -> Non
 
     assert summaries["built-in"] == summaries["ufo-sm"]
     assert summaries["built-in"]["d d~ > u u~ s s~"][3] > 1
+    assert summaries["built-in"]["d d~ > u u~ s s~ c c~"][3] == 24
+    assert summaries["built-in"]["d d~ > u u~ s s~ c c~ b b~"][3] == 120
+
+
+def test_arbitrary_quark_lines_project_every_report_color_layout() -> None:
+    """Four-line contracted and five-line LC projections have no core ceiling."""
+
+    model = BuiltinSMModel()
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+    cases = (
+        ("d d~ > u u~ s s~ c c~", "lc", "topology-replay", 8),
+        ("d d~ > u u~ s s~ c c~", "lc", "all-flow-union", 8),
+        ("d d~ > u u~ s s~ c c~", "nlc", "contracted-color-union", 8),
+        ("d d~ > u u~ s s~ c c~", "full", "contracted-color-union", 8),
+        ("d d~ > u u~ s s~ c c~ b b~", "lc", "topology-replay", 10),
+        ("d d~ > u u~ s s~ c c~ b b~", "lc", "all-flow-union", 10),
+    )
+
+    for expression, accuracy, layout, expected_endpoints in cases:
+        process = build_process_ir(expression, color_accuracy=accuracy)
+        if layout == "topology-replay":
+            dag = compile_generic_dag(
+                process,
+                model=model,
+                max_coupling_orders=infer_minimal_coupling_order_limits(
+                    process,
+                    model=model,
+                ),
+            )
+            assert dag.currents
+            assert dag.interactions
+        color_plan = build_color_plan(
+            process,
+            color_accuracy=accuracy,
+            fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(
+                process
+            ),
+        )
+        replay = (
+            build_lc_topology_replay_plan(color_plan, model)
+            if layout == "topology-replay"
+            else None
+        )
+        logical = project_recurrence_process_v1(
+            process,
+            color_plan,
+            recurrence_catalog,
+            layout=layout,
+            normalization=RecurrenceNormalizationV1(
+                ExactComplexRationalV1(1),
+                "arbitrary-quark-line-canary-v1",
+                "9" * 64,
+            ),
+            topology_replay=replay,
+            coupling_order_limits=infer_minimal_coupling_order_limits(
+                process,
+                model=model,
+            ),
+            model=model,
+        )
+        columnar = build_recurrence_builder_input_v1(logical)
+        pairing = logical.fermion_pairing_catalog
+
+        assert pairing is not None
+        assert pairing.source_count == len(process.legs)
+        assert len(pairing.endpoints) == expected_endpoints
+        assert len(pairing.topology_digest) == 64
+        assert len(pairing.semantic_digest) == 64
+        assert columnar.table("physical_lc_sectors").row_count == (
+            color_plan.sector_count
+        )

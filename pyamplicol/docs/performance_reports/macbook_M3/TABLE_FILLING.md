@@ -116,6 +116,13 @@ authenticated finalized measurement lineage.
 - The HZZ orientation repair has 40 recurrence targets. Its scheduler closure
   also includes any missing original-AmpliCol baselines; those prerequisites
   are expected and are not bridge-scope expansion.
+- Original AmpliCol remains limited to three open quark lines. For a process
+  beyond that historical scope, preserve its report row as `unsupported`, but
+  do not make it a pyAmpliCol dependency. Recurrence validates against its
+  resolved sum, a precision-32 evaluation, and the applicable built-in/UFO and
+  LC-layout peers; compiled/eager modes continue to validate against
+  recurrence. Render valid candidate timing as an absolute compact `n.c.`
+  value rather than hiding it behind the unavailable legacy ratio.
 
 The default CLI remains strict. `--fast-lineage` is an explicit campaign
 operation after full startup/bridge authentication; standalone final audit and
@@ -516,7 +523,7 @@ one new exact-source final epoch instead of relabelling old evidence.
 
 ## 8. Final audit and lightweight publication
 
-The full declared catalog contains 1646 cells and 1571 direct-agreement catalog
+The full declared catalog contains 1646 cells and 1556 direct-agreement catalog
 edges. Successful endpoints must replay; resource/frontier endpoints remain
 honestly unavailable and must not be counted as numerical evidence.
 

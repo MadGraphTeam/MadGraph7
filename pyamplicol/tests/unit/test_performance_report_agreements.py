@@ -111,6 +111,55 @@ def test_canonical_n4_direct_agreement_graph_has_exact_locked_counts() -> None:
     }
 
 
+def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> None:
+    counts = Counter(edge.kind for edge in agreement_edges())
+    candidate = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == "matrix_recurrence_builtin_sm_lc"
+        and cell.process_key == "dd_4q_lines"
+        and cell.n_final == 6
+        and cell.workload is Workload.ALL_FLOW
+    )
+    legacy = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == "reference_amplicol_lc"
+        and cell.process_key == "dd_4q_lines"
+        and cell.n_final == 6
+        and cell.workload is Workload.ALL_FLOW
+    )
+
+    assert counts == {
+        BUILTIN_UFO_RECURRENCE: 302,
+        Z_RECURRENCE_CROSS_MODE: 180,
+        LC_CROSS_LAYOUT_COMPONENT: 590,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 484,
+    }
+    assert {
+        edge.kind for edge in incoming_agreement_edges(candidate)
+    } == {LC_CROSS_LAYOUT_COMPONENT}
+    assert incoming_agreement_edges(legacy) == ()
+
+
+def test_three_line_lc_still_requires_legacy_and_layout_agreements() -> None:
+    candidate = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == "matrix_recurrence_builtin_sm_lc"
+        and cell.process_key == "dd_3q_lines"
+        and cell.n_final == 4
+        and cell.workload is Workload.ALL_FLOW
+    )
+
+    assert {
+        edge.kind for edge in incoming_agreement_edges(candidate)
+    } == {
+        LC_CROSS_LAYOUT_COMPONENT,
+        LC_LEGACY_PYAMPLICOL_COMPONENT,
+    }
+
+
 def test_ufo_recurrence_can_pass_independent_oracle_and_fail_direct_edge() -> None:
     candidate = _cell(
         "matrix_recurrence_ufo_sm_lc",

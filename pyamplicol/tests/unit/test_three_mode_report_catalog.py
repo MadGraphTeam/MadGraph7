@@ -174,6 +174,51 @@ def test_baseline_dependencies_are_canonical_and_mode_ordered() -> None:
     assert REPORT_CATALOG.cell(compiled.cell_id) == compiled
 
 
+def test_four_line_report_keeps_legacy_display_without_legacy_dependency() -> None:
+    recurrence = next(
+        cell
+        for cell in REPORT_CATALOG.matrix_cells()
+        if cell.dataset_id == "matrix_recurrence_builtin_sm_lc"
+        and cell.process_key == "dd_4q_lines"
+        and cell.n_final == 6
+        and cell.workload is Workload.SELECTED_FLOW
+    )
+    compiled = next(
+        cell
+        for cell in REPORT_CATALOG.matrix_cells()
+        if cell.dataset_id == "matrix_compiled_builtin_sm_lc"
+        and cell.process_key == "dd_4q_lines"
+        and cell.n_final == 6
+        and cell.workload is Workload.SELECTED_FLOW
+    )
+
+    display_baseline = REPORT_CATALOG.baseline_cell(recurrence)
+    assert display_baseline is not None
+    assert display_baseline.measurement.execution_mode is ExecutionMode.AMPLICOL
+    assert REPORT_CATALOG.legacy_reference_available(recurrence) is False
+    assert REPORT_CATALOG.validation_baseline_cell(recurrence) is None
+
+    compiled_baseline = REPORT_CATALOG.validation_baseline_cell(compiled)
+    assert compiled_baseline is not None
+    assert compiled_baseline.measurement.execution_mode is ExecutionMode.RECURRENCE
+
+
+def test_three_line_report_retains_the_original_amplicol_oracle() -> None:
+    recurrence = next(
+        cell
+        for cell in REPORT_CATALOG.matrix_cells()
+        if cell.dataset_id == "matrix_recurrence_builtin_sm_lc"
+        and cell.process_key == "dd_3q_lines"
+        and cell.n_final == 4
+        and cell.workload is Workload.SELECTED_FLOW
+    )
+
+    baseline = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert REPORT_CATALOG.legacy_reference_available(recurrence) is True
+    assert baseline is not None
+    assert baseline.measurement.execution_mode is ExecutionMode.AMPLICOL
+
+
 def test_equivalent_cells_require_exact_generation_semantics() -> None:
     selected_recurrence = next(
         cell

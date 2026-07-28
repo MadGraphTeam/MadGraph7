@@ -111,7 +111,7 @@ _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FULL_CATALOG_MAX_N_FINAL = 9
 _EXPECTED_FULL_CATALOG_CELL_COUNT = 1646
-_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1571
+_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1556
 _EXPECTED_N4_CELL_COUNT = 742
 _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 136,
@@ -122,8 +122,8 @@ _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
 _EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 302,
     Z_RECURRENCE_CROSS_MODE: 180,
-    LC_CROSS_LAYOUT_COMPONENT: 593,
-    LC_LEGACY_PYAMPLICOL_COMPONENT: 496,
+    LC_CROSS_LAYOUT_COMPONENT: 590,
+    LC_LEGACY_PYAMPLICOL_COMPONENT: 484,
 }
 _FULLY_REPLAYED_PYAMPLICOL = "fully-replayed-pyamplicol"
 _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY = (
@@ -142,8 +142,8 @@ _EXPECTED_N4_DIRECT_REPLAY_COUNTS = {
 }
 _EXPECTED_FULL_DIRECT_REPLAY_COUNTS = {
     _FULLY_REPLAYED_PYAMPLICOL: 978,
-    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 496,
-    _AUTHENTICATED_STORED_LEGACY_LAYOUT: 97,
+    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 484,
+    _AUTHENTICATED_STORED_LEGACY_LAYOUT: 94,
 }
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
     {
@@ -2583,29 +2583,48 @@ def _audit_measurement(
             raise FinalAuditError(f"{context} scalar cell has a catalog baseline")
     else:
         if baseline is None:
-            raise FinalAuditError(f"{context} has no canonical baseline")
-        baseline_value = _finite_number(
-            baseline.get("matrix_element"),
-            f"{context}.canonical_baseline.matrix_element",
-            nonnegative=True,
-        )
-        _audit_pointwise(
-            validation.get("pointwise"),
-            context=f"{context}.measurement.validation.pointwise",
-            expected_candidate=matrix_element,
-            expected_baseline=baseline_value,
-            expected_relative_tolerance=_expected_pointwise_tolerance(cell),
-        )
-        baseline_selector = baseline.get("selector_contract")
-        if cell.measurement.accuracy is Accuracy.LC:
-            if raw_selector != baseline_selector:
+            if cell.measurement.execution_mode is not ExecutionMode.RECURRENCE:
                 raise FinalAuditError(
-                    f"{context} selector contract differs from canonical baseline"
+                    f"{context} has no canonical baseline outside recurrence mode"
                 )
-        elif baseline_selector is not None:
-            raise FinalAuditError(
-                f"{context} contracted canonical baseline has selectors"
+            high_precision = _mapping(
+                validation.get("high_precision"),
+                f"{context}.measurement.validation.high_precision",
             )
+            _audit_pointwise(
+                high_precision,
+                context=f"{context}.measurement.validation.high_precision",
+                expected_candidate=matrix_element,
+                expected_baseline=_finite_number(
+                    high_precision.get("baseline"),
+                    f"{context}.measurement.validation.high_precision.baseline",
+                    nonnegative=True,
+                ),
+                expected_relative_tolerance=RELATIVE_TOLERANCE,
+            )
+        else:
+            baseline_value = _finite_number(
+                baseline.get("matrix_element"),
+                f"{context}.canonical_baseline.matrix_element",
+                nonnegative=True,
+            )
+            _audit_pointwise(
+                validation.get("pointwise"),
+                context=f"{context}.measurement.validation.pointwise",
+                expected_candidate=matrix_element,
+                expected_baseline=baseline_value,
+                expected_relative_tolerance=_expected_pointwise_tolerance(cell),
+            )
+            baseline_selector = baseline.get("selector_contract")
+            if cell.measurement.accuracy is Accuracy.LC:
+                if raw_selector != baseline_selector:
+                    raise FinalAuditError(
+                        f"{context} selector contract differs from canonical baseline"
+                    )
+            elif baseline_selector is not None:
+                raise FinalAuditError(
+                    f"{context} contracted canonical baseline has selectors"
+                )
 
     return _artifact_reference(
         cell,
@@ -3782,10 +3801,12 @@ def _replay_cell(
     )
     if maximum_absolute > ABSOLUTE_TOLERANCE and maximum_relative > RELATIVE_TOLERANCE:
         raise FinalAuditError(f"{context} optimized/resolved values disagree")
+    validation = _mapping(
+        measurement.get("validation"),
+        f"{context}.validation",
+    )
     stored_resolved = _mapping(
-        _mapping(measurement.get("validation"), f"{context}.validation").get(
-            "resolved_sum"
-        ),
+        validation.get("resolved_sum"),
         f"{context}.validation.resolved_sum",
     )
     for field, observed in (
@@ -3802,10 +3823,7 @@ def _replay_cell(
             raise FinalAuditError(
                 f"{context} recomputed {field} differs from stored evidence"
             )
-    if cell.measurement.model in {
-        ModelKey.SCALAR_CONTACT,
-        ModelKey.SCALAR_GRAVITY,
-    }:
+    if validation.get("high_precision") is not None:
         high_precision = tuple(
             runtime.evaluate(  # type: ignore[attr-defined]
                 points,
@@ -3816,7 +3834,6 @@ def _replay_cell(
         if not high_precision:
             raise FinalAuditError(f"{context} precision-32 evaluation is empty")
         high_value = _real_nonnegative(high_precision[0], f"{context}.precision32")
-        validation = _mapping(measurement.get("validation"), f"{context}.validation")
         _audit_pointwise(
             validation.get("high_precision"),
             context=f"{context}.validation.high_precision",
@@ -4345,7 +4362,7 @@ def _audit_final_report_locked(
                 "resource censor in the same lane"
             )
             continue
-        baseline_cell = catalog.baseline_cell(cell)
+        baseline_cell = catalog.validation_baseline_cell(cell)
         dependency_cells = {
             dependency.cell_id: dependency
             for dependency in (
@@ -4451,7 +4468,7 @@ def _audit_final_report_locked(
     errors = []
     for cell in successful_cells:
         measurement = measurements[cell.cell_id]
-        baseline_cell = catalog.baseline_cell(cell)
+        baseline_cell = catalog.validation_baseline_cell(cell)
         try:
             if baseline_cell is None:
                 baseline = None
@@ -4534,7 +4551,7 @@ def _audit_final_report_locked(
     legacy_agreement_edges: list[tuple[str, str]] = []
     successful_ids = {cell.cell_id for cell in successful_cells}
     for candidate in successful_cells:
-        baseline = catalog.baseline_cell(candidate)
+        baseline = catalog.validation_baseline_cell(candidate)
         if (
             baseline is not None
             and baseline.cell_id in legacy_ids
@@ -4625,7 +4642,7 @@ def _audit_final_report_locked(
                 gc.collect()
         for cell in pyamplicol_cells:
             observation = replayed.get(cell.cell_id)
-            baseline_cell = catalog.baseline_cell(cell)
+            baseline_cell = catalog.validation_baseline_cell(cell)
             if observation is None or baseline_cell is None:
                 continue
             baseline_observation = replayed.get(baseline_cell.cell_id)

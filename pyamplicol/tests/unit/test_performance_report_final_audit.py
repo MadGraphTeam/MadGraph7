@@ -1258,6 +1258,9 @@ class _Catalog:
     def baseline_cell(self, cell: CellSpec) -> CellSpec | None:
         return self.baseline if cell == self.candidate else None
 
+    def validation_baseline_cell(self, cell: CellSpec) -> CellSpec | None:
+        return self.baseline_cell(cell)
+
 
 def _selector() -> dict[str, object]:
     return {
@@ -1749,6 +1752,54 @@ def test_candidate_measurement_requires_positive_finite_execution_time(
             _cell(ExecutionMode.RECURRENCE, optimization_level=2),
             measurement,
             baseline=_baseline_measurement(),
+            expected_source_revision=_REVISION,
+            expected_legacy_revision=_LEGACY_REVISION,
+            active_runtime=_active_runtime(),
+        )
+
+
+def test_recurrence_without_legacy_oracle_requires_high_precision_validation(
+    tmp_path: Path,
+) -> None:
+    cell = replace(
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        dataset_id="matrix_recurrence_builtin_sm_lc",
+        process="d d~ > u u~ s s~ c c~",
+        n_final=6,
+        process_key="dd_4q_lines",
+    )
+    measurement = _candidate_measurement(tmp_path)
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    validation.pop("pointwise")
+    validation["high_precision"] = {
+        "status": "ok",
+        "candidate": 1.0,
+        "baseline": 1.0,
+        "absolute_difference": 0.0,
+        "relative_difference": 0.0,
+        "relative_tolerance": 1.0e-12,
+        "absolute_tolerance": 1.0e-15,
+    }
+
+    reference = _audit_measurement(
+        cell,
+        measurement,
+        baseline=None,
+        expected_source_revision=_REVISION,
+        expected_legacy_revision=_LEGACY_REVISION,
+        active_runtime=_active_runtime(),
+    )
+
+    assert reference is not None
+    assert reference.cell == cell
+
+    validation.pop("high_precision")
+    with pytest.raises(FinalAuditError, match="high_precision"):
+        _audit_measurement(
+            cell,
+            measurement,
+            baseline=None,
             expected_source_revision=_REVISION,
             expected_legacy_revision=_LEGACY_REVISION,
             active_runtime=_active_runtime(),

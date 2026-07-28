@@ -7,6 +7,27 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
+LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES = 3
+_QUARK_TOKENS = frozenset({"d", "u", "s", "c", "b", "t"})
+_ANTIQUARK_TOKENS = frozenset(f"{token}~" for token in _QUARK_TOKENS)
+
+
+def open_quark_line_count(process: str) -> int:
+    """Return the number of open quark/antiquark lines in a concrete process."""
+
+    initial, separator, final = process.partition(">")
+    if not separator:
+        raise ValueError(f"process has no initial/final separator: {process!r}")
+    tokens = (*initial.split(), *final.split())
+    quarks = sum(token in _QUARK_TOKENS for token in tokens)
+    antiquarks = sum(token in _ANTIQUARK_TOKENS for token in tokens)
+    if quarks != antiquarks:
+        raise ValueError(
+            "concrete report process has unpaired quark content: "
+            f"{process!r} ({quarks} quarks, {antiquarks} antiquarks)"
+        )
+    return quarks
+
 
 class Accuracy(StrEnum):
     LC = "lc"
