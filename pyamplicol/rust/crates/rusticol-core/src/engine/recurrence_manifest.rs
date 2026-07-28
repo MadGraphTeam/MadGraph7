@@ -25,7 +25,8 @@ pub(super) const RECURRENCE_COLOR_CONTRACTION_PATH: &str = "recurrence-color.bin
 pub(super) const RECURRENCE_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const RECURRENCE_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 
-const MAX_EXECUTION_MANIFEST_BYTES: usize = 1 << 20;
+const MAX_EXECUTION_MANIFEST_BYTES: usize = 16 << 20;
+const MAX_PROCESS_BINDING_BYTES: u64 = 1 << 20;
 const MAX_RUNTIME_CONTAINER_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAX_POINT_TILE_SIZE: u64 = 1_048_576;
 const MAX_WORKSPACE_MIB: u64 = 4096;
@@ -743,7 +744,7 @@ impl RecurrenceProcessBinding {
                 .sum::<u32>()
                 != 1
             || self.size_bytes == 0
-            || self.size_bytes > MAX_EXECUTION_MANIFEST_BYTES as u64
+            || self.size_bytes > MAX_PROCESS_BINDING_BYTES
         {
             return Err(RusticolError::integrity(
                 "recurrence process binding has invalid support words or size metadata",
@@ -2164,6 +2165,13 @@ pub(super) mod tests {
         )
     }
 
+    fn manifest_bytes_with_size(size: usize) -> Vec<u8> {
+        let mut bytes = serde_json::to_vec(&manifest()).unwrap();
+        assert!(bytes.len() <= size);
+        bytes.resize(size, b' ');
+        bytes
+    }
+
     #[test]
     fn accepts_strict_typed_recurrence_manifest() {
         let parsed = parse(&manifest()).unwrap();
@@ -2173,6 +2181,36 @@ pub(super) mod tests {
         assert_eq!(
             parsed.plan.inspection_summary.direct_arena.row_group_count,
             4
+        );
+    }
+
+    #[test]
+    fn accepts_observed_large_recurrence_manifest() {
+        let bytes = manifest_bytes_with_size(4_449_912);
+        let parsed = parse_recurrence_execution_manifest(
+            &bytes,
+            "processes/x_to_x/execution.json",
+            &outer(),
+        )
+        .unwrap();
+
+        assert_eq!(parsed.key, "x_to_x");
+    }
+
+    #[test]
+    fn rejects_recurrence_manifest_above_16_mib() {
+        let bytes = manifest_bytes_with_size(MAX_EXECUTION_MANIFEST_BYTES + 1);
+        let error = parse_recurrence_execution_manifest(
+            &bytes,
+            "processes/x_to_x/execution.json",
+            &outer(),
+        )
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("must be smaller than 16777216 bytes")
         );
     }
 

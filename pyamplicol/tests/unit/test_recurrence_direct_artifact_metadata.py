@@ -82,6 +82,32 @@ def _execution_manifest(process: SimpleNamespace | None = None) -> dict[str, obj
     )
 
 
+def _recurrence_execution_summary_with_size(
+    monkeypatch: pytest.MonkeyPatch,
+    target_size: int,
+) -> bytes:
+    empty_summary_size = len(b'{"padding":""}\n')
+    assert target_size >= empty_summary_size
+
+    def padded_manifest(
+        *_args: object,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        return {"padding": "x" * (target_size - empty_summary_size)}
+
+    monkeypatch.setattr(
+        artifact_writer,
+        "_recurrence_execution_manifest",
+        padded_manifest,
+    )
+    return artifact_writer._bounded_recurrence_execution_summary(
+        _recurrence_process(),
+        schedule_path="recurrence-runtime.pacbin",
+        binding={},
+        color_contraction_record=None,
+    )
+
+
 def _write_prepared_pack(root: Path) -> None:
     pack_path = root / "model" / "eager-kernel-pack.json"
     pack_path.parent.mkdir(parents=True)
@@ -152,6 +178,31 @@ def test_recurrence_execution_manifest_publishes_only_direct_arena_contract() ->
     assert "pyamplicol-recurrence-plan-v1" not in encoded
     assert "pyamplicol-recurrence-runtime-layout-v1" not in encoded
     assert "rusticol.recurrence-runtime.complex-f64.v1" not in encoded
+
+
+def test_recurrence_execution_summary_accepts_observed_large_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_maximum_size = 4_449_912
+
+    content = _recurrence_execution_summary_with_size(
+        monkeypatch,
+        observed_maximum_size,
+    )
+
+    assert len(content) == observed_maximum_size
+
+
+def test_recurrence_execution_summary_rejects_manifest_above_16_mib(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oversized = artifact_writer._MAX_RECURRENCE_EXECUTION_SUMMARY_BYTES + 1
+
+    with pytest.raises(
+        ValueError,
+        match=rf"smaller than 16 MiB; received {oversized} bytes",
+    ):
+        _recurrence_execution_summary_with_size(monkeypatch, oversized)
 
 
 def test_recurrence_physics_identifies_direct_plan_and_runtime_layout() -> None:
