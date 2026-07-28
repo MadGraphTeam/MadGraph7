@@ -795,7 +795,11 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        self.do('generate p p  > w+ w- j j  QCD=0')
+        # --use_crossing=False: this test checks the standalone build of the
+        # q q~ > w+ w- q q~ subprocess; crossing would fold it into another
+        # subprocess directory (crossing correctness is covered by the crossing
+        # and consistency suites, and it reduces to the base flavor here anyway).
+        self.do('generate p p  > w+ w- j j  QCD=0 --use_crossing=False')
         self.do('output standalone %s ' % self.out_dir)
 
         sub_root = os.path.join(self.out_dir, 'SubProcesses')
@@ -835,10 +839,11 @@ class TestCmdShell2(unittest.TestCase,
         mixes a fixed u leg with a merged-quark leg, and asserts that the
         standalone matrix elements for the two surviving flavor
         assignments match the reference values obtained by running each
-        flavor as its own explicit process:
+        flavor as its own explicit process (see the note by ``references``
+        below: these were bumped ~0.1% by the ALOHA t-channel width drop):
 
-            u d > Z u d  ->  1.4704291881825141E-006
-            u u > Z u u  ->  3.5590322244693227E-008
+            u d > Z u d  ->  1.4718113670817815E-006
+            u u > Z u u  ->  3.5626573789048226E-008
 
         The same checks are repeated with ``--mask=False`` so the
         regression is guarded both with and without the per-flavor
@@ -852,9 +857,23 @@ class TestCmdShell2(unittest.TestCase,
         unaffected.
         """
 
+        # Reference matrix elements for u d > Z u d and u u > Z u u.
+        #
+        # Updated on the MG7 crossing branch (claude/fortran-cross-symmetry-3f13f3)
+        # after commit 4ec2ae7d5 "aloha: drop the T-channel (spacelike)
+        # propagator width at runtime". u q > Z u q proceeds through a spacelike
+        # (t-channel) electroweak propagator, and ALOHA now drops the width of a
+        # spacelike propagator: a spacelike momentum can never reach the pole, so
+        # the Breit-Wigner width term there is spurious. This shifts the matrix
+        # element by ~0.1%; it is independent of crossing and of the per-flavor
+        # mask (verified: identical for --use_crossing on/off and --mask on/off).
+        #
+        # Previous values (t-channel width kept), for reference:
+        #     (2, 1, 23, 2, 1): 1.4704291881825141e-06
+        #     (2, 2, 23, 2, 2): 3.5590322244693227e-08
         references = {
-            (2, 1, 23, 2, 1): 1.4704291881825141e-06,
-            (2, 2, 23, 2, 2): 3.5590322244693227e-08,
+            (2, 1, 23, 2, 1): 1.4718113670817815e-06,
+            (2, 2, 23, 2, 2): 3.5626573789048226e-08,
         }
 
         me_re = re.compile(
@@ -939,7 +958,11 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        self.do('generate p p > j j QCD=0')
+        # --use_crossing=False: this test inspects the q q~ > q q~ subprocess
+        # and its per-flavor mask, which crossing would fold into another
+        # directory. The mask is applied on the reduced base flavor, so it is
+        # unaffected by crossing (covered by the crossing/consistency suites).
+        self.do('generate p p > j j QCD=0 --use_crossing=False')
         devnull = open(os.devnull, 'w')
 
         def find_qqx(sub_root):
