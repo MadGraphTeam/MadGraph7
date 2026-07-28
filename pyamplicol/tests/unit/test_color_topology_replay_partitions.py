@@ -4,8 +4,10 @@ import pytest
 
 from pyamplicol.color.plan import (
     build_color_plan,
+    build_color_topology_replay_certificate,
     color_topology_replay_partitions,
 )
+from pyamplicol.models.builtin.model import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
@@ -59,3 +61,50 @@ def test_existing_lc_runtime_wrapper_remains_lc_only() -> None:
     from pyamplicol.color.plan import lc_topology_replay_partitions
 
     assert lc_topology_replay_partitions(color_plan) == ()
+
+
+def test_full_color_certificate_proves_six_n5_crossing_orbits() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("g g > g g g g g", color_accuracy="full")
+    color_plan = build_color_plan(process, color_accuracy="full")
+
+    certificate = build_color_topology_replay_certificate(color_plan, model)
+
+    assert certificate is not None
+    assert certificate.color_accuracy == "full"
+    assert certificate.physical_sector_ids == tuple(range(720))
+    assert certificate.materialized_sector_ids == (0, 120, 144, 150, 152, 153)
+    assert certificate.residual_sector_ids == ()
+    assert certificate.replayed_sector_count == 720
+    assert all(
+        partition.proof_algorithm
+        == "canonical-model-contract-color-label-equivariance-v2"
+        and partition.proof_digest is not None
+        and len(partition.proof_digest) == 64
+        and partition.signs == (1,) * 120
+        for partition in certificate.partitions
+    )
+
+
+def test_color_accuracy_is_bound_into_generic_replay_proof() -> None:
+    model = BuiltinSMModel()
+    certificates = []
+    for color_accuracy in ("nlc", "full"):
+        process = build_process_ir(
+            "g g > g g g",
+            color_accuracy=color_accuracy,
+        )
+        certificate = build_color_topology_replay_certificate(
+            build_color_plan(process, color_accuracy=color_accuracy),
+            model,
+        )
+        assert certificate is not None
+        certificates.append(certificate)
+
+    assert [
+        partition.proof_digest
+        for partition in certificates[0].partitions
+    ] != [
+        partition.proof_digest
+        for partition in certificates[1].partitions
+    ]

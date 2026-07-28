@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from ..processes.ir import CanonicalProcessIR
 from .plan_build import _ordered_open_line_blocks
 from .plan_types import (
+    ColorTopologyReplayCertificate,
     GenericColorPlan,
     LCColorSector,
     LCColorSectorReplayPartition,
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
     from ..models.base import Model
 
 _LC_REPLAY_PROOF_ALGORITHM = "canonical-model-contract-label-equivariance-v1"
+_COLOR_REPLAY_PROOF_ALGORITHM = (
+    "canonical-model-contract-color-label-equivariance-v2"
+)
 
 
 def _sector_topology_groups(
@@ -287,6 +291,79 @@ def lc_topology_replay_partitions(
     return color_topology_replay_partitions(color_plan)
 
 
+def build_color_topology_replay_certificate(
+    color_plan: GenericColorPlan,
+    model: Model,
+) -> ColorTopologyReplayCertificate | None:
+    """Prove replay orbits without selecting a runtime generation mode.
+
+    The proof binds the requested color accuracy in addition to the canonical
+    model, source, sector, and relabeling contracts.  A consumer may only use
+    these representatives after separately proving that its color reduction
+    accepts replayed physical-sector amplitudes.
+    """
+
+    if (
+        color_plan.color_accuracy not in {"lc", "nlc", "full"}
+        or color_plan.truncated
+        or len(color_plan.sectors) < 2
+    ):
+        return None
+    physical_sector_ids = tuple(sorted(int(sector.id) for sector in color_plan.sectors))
+    try:
+        model_contract_digest = _canonical_contract_digest(
+            _canonical_model_replay_contract(model)
+        )
+    except Exception:
+        return None
+    residual: set[int] = set(physical_sector_ids)
+    proven: list[LCColorSectorReplayPartition] = []
+    diagnostics: list[str] = []
+    for candidate in color_topology_replay_partitions(color_plan):
+        if len(candidate.active_sector_ids) < 2:
+            continue
+        try:
+            proof = _prove_topology_replay_partition(
+                color_plan,
+                candidate,
+                model,
+                model_contract_digest=model_contract_digest,
+                proof_algorithm=_COLOR_REPLAY_PROOF_ALGORITHM,
+                bind_color_accuracy=True,
+            )
+        except Exception as exc:
+            proof = None
+            diagnostics.append(
+                "color replay partition "
+                f"{candidate.representative_sector_id} proof failed closed: {exc}"
+            )
+        if proof is None:
+            diagnostics.append(
+                "color replay partition "
+                f"{candidate.representative_sector_id} remains materialized"
+            )
+            continue
+        proof_digest, replay_signs = proof
+        partition = replace(
+            candidate,
+            materialized_sector_id=candidate.representative_sector_id,
+            replay_signs=replay_signs,
+            proof_algorithm=_COLOR_REPLAY_PROOF_ALGORITHM,
+            proof_digest=proof_digest,
+        )
+        proven.append(partition)
+        residual.difference_update(partition.active_sector_ids)
+    if not proven:
+        return None
+    return ColorTopologyReplayCertificate(
+        color_accuracy=color_plan.color_accuracy,
+        physical_sector_ids=physical_sector_ids,
+        partitions=tuple(proven),
+        residual_sector_ids=tuple(sorted(residual)),
+        diagnostics=tuple(diagnostics),
+    )
+
+
 def build_lc_topology_replay_plan(
     color_plan: GenericColorPlan,
     model: Model,
@@ -364,6 +441,27 @@ def _prove_lc_topology_replay_partition(
     *,
     model_contract_digest: str,
 ) -> tuple[str, tuple[int, ...]] | None:
+    """Preserve the accepted LC proof and digest contract."""
+
+    return _prove_topology_replay_partition(
+        color_plan,
+        partition,
+        model,
+        model_contract_digest=model_contract_digest,
+        proof_algorithm=_LC_REPLAY_PROOF_ALGORITHM,
+        bind_color_accuracy=False,
+    )
+
+
+def _prove_topology_replay_partition(
+    color_plan: GenericColorPlan,
+    partition: LCColorSectorReplayPartition,
+    model: Model,
+    *,
+    model_contract_digest: str,
+    proof_algorithm: str,
+    bind_color_accuracy: bool,
+) -> tuple[str, tuple[int, ...]] | None:
     """Certify label equivariance for one local replay partition.
 
     External UFO tensors have already been canonized by the model compiler;
@@ -434,7 +532,7 @@ def _prove_lc_topology_replay_partition(
             }
         )
     proof_payload = {
-        "algorithm": _LC_REPLAY_PROOF_ALGORITHM,
+        "algorithm": proof_algorithm,
         "process": {
             "initial_labels": sorted(initial_labels),
             "external_source_contracts": [
@@ -446,6 +544,8 @@ def _prove_lc_topology_replay_partition(
         "mappings": mapping_contracts,
         "model_contract_digest": model_contract_digest,
     }
+    if bind_color_accuracy:
+        proof_payload["color_accuracy"] = color_plan.color_accuracy
     return _canonical_contract_digest(proof_payload), tuple(replay_signs)
 
 

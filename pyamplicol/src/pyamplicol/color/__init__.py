@@ -13,6 +13,7 @@ from .contraction import (
     exact_color_contraction_factors,
 )
 from .plan import (
+    ColorTopologyReplayCertificate,
     GenericColorPlan,
     LCColorSector,
     LCColorSectorReplayPartition,
@@ -20,6 +21,7 @@ from .plan import (
     LCColorTopologyReplayPlan,
     LCOpenColorLine,
     build_color_plan,
+    build_color_topology_replay_certificate,
     build_lc_topology_replay_plan,
     color_topology_replay_partitions,
 )
@@ -29,6 +31,7 @@ __all__ = [
     "ColorContractionPlan",
     "ColorContractionTemplateEntry",
     "ColorGroupDescriptor",
+    "ColorTopologyReplayCertificate",
     "FactorizedColorContractionBlock",
     "GenericColorPlan",
     "LCColorSector",
@@ -39,6 +42,7 @@ __all__ = [
     "RepeatedColorContractionBlock",
     "build_color_contraction_plan",
     "build_color_plan",
+    "build_color_topology_replay_certificate",
     "build_lc_topology_replay_plan",
     "color_contraction_factor",
     "color_contraction_factors",

@@ -292,6 +292,107 @@ class LCColorSectorReplayPartition:
 
 
 @dataclass(frozen=True)
+class ColorTopologyReplayCertificate:
+    """Color-accuracy-bound proof for external-label topology replay.
+
+    This record is deliberately runtime-neutral.  Recurrence, compiled, and
+    eager lowering may consume the same proven partitions, but each mode must
+    separately authenticate how representative amplitudes enter its color
+    reduction.
+    """
+
+    color_accuracy: ColorAccuracy
+    physical_sector_ids: tuple[int, ...]
+    partitions: tuple[LCColorSectorReplayPartition, ...]
+    residual_sector_ids: tuple[int, ...]
+    diagnostics: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.color_accuracy not in {"lc", "nlc", "full"}:
+            raise ValueError(
+                f"unsupported topology replay accuracy {self.color_accuracy!r}"
+            )
+        physical = tuple(sorted(int(value) for value in self.physical_sector_ids))
+        residual = tuple(sorted(int(value) for value in self.residual_sector_ids))
+        object.__setattr__(self, "physical_sector_ids", physical)
+        object.__setattr__(self, "residual_sector_ids", residual)
+        if len(set(physical)) != len(physical):
+            raise ValueError("topology replay physical sectors contain duplicates")
+        if len(set(residual)) != len(residual):
+            raise ValueError("topology replay residual sectors contain duplicates")
+        if any(
+            partition.proof_algorithm is None or partition.proof_digest is None
+            for partition in self.partitions
+        ):
+            raise ValueError(
+                "topology replay certificate contains an unproven partition"
+            )
+        replayed = tuple(
+            sector_id
+            for partition in self.partitions
+            for sector_id in partition.active_sector_ids
+        )
+        if len(set(replayed)) != len(replayed):
+            raise ValueError("topology replay certificate partitions overlap")
+        if set(replayed) & set(residual):
+            raise ValueError("topology replay sectors overlap residual coverage")
+        if set(replayed) | set(residual) != set(physical):
+            raise ValueError(
+                "topology replay certificate does not cover every physical sector"
+            )
+
+    @property
+    def replayed_sector_count(self) -> int:
+        return sum(len(partition.active_sector_ids) for partition in self.partitions)
+
+    @property
+    def materialized_sector_ids(self) -> tuple[int, ...]:
+        return tuple(
+            sorted(
+                {
+                    *(
+                        int(partition.materialized_sector_id)
+                        for partition in self.partitions
+                    ),
+                    *self.residual_sector_ids,
+                }
+            )
+        )
+
+    @property
+    def optimized(self) -> bool:
+        return any(
+            len(partition.active_sector_ids) > 1
+            for partition in self.partitions
+        )
+
+    def representative_for(self, sector_id: int) -> int:
+        sector_id = int(sector_id)
+        for partition in self.partitions:
+            if sector_id in partition.active_sector_ids:
+                return int(partition.materialized_sector_id)
+        if sector_id in self.residual_sector_ids:
+            return sector_id
+        raise KeyError(f"topology replay certificate has no sector {sector_id}")
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "kind": "pyamplicol-color-topology-replay-certificate",
+            "mode": "external-label-permutation",
+            "color_accuracy": self.color_accuracy,
+            "physical_sector_ids": list(self.physical_sector_ids),
+            "materialized_sector_ids": list(self.materialized_sector_ids),
+            "residual_sector_ids": list(self.residual_sector_ids),
+            "replayed_sector_count": self.replayed_sector_count,
+            "partitions": [
+                partition.to_json_dict() for partition in self.partitions
+            ],
+            "diagnostics": list(self.diagnostics),
+        }
+
+
+@dataclass(frozen=True)
 class LCColorTopologyReplayPlan:
     """Proof-gated replay classes plus independently materialized residuals."""
 

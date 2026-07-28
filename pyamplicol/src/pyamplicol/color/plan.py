@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from .plan_build import build_color_plan
 from .plan_replay import (
+    build_color_topology_replay_certificate,
     build_lc_topology_replay_plan,
     color_topology_replay_partitions,
     lc_line_pairing_representative_ids,
@@ -14,6 +15,7 @@ from .plan_replay import (
 from .plan_types import (
     ColorAccuracy,
     ColorSectorKind,
+    ColorTopologyReplayCertificate,
     GenericColorPlan,
     LCColorSector,
     LCColorSectorReplayPartition,
@@ -25,6 +27,7 @@ from .plan_types import (
 __all__ = [
     "ColorAccuracy",
     "ColorSectorKind",
+    "ColorTopologyReplayCertificate",
     "GenericColorPlan",
     "LCColorSector",
     "LCColorSectorReplayPartition",
@@ -32,6 +35,7 @@ __all__ = [
     "LCColorTopologyReplayPlan",
     "LCOpenColorLine",
     "build_color_plan",
+    "build_color_topology_replay_certificate",
     "build_lc_topology_replay_plan",
     "color_topology_replay_partitions",
     "lc_line_pairing_representative_ids",
