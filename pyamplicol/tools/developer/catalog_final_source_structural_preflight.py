@@ -243,6 +243,8 @@ def _candidate_record(
         proof.get("schema") != CELL_PROOF_SCHEMA
         or proof.get("cell_id") != cell.cell_id
         or proof.get("source_revision") != revision
+        or proof.get("color_accuracy") != cell.measurement.accuracy.value
+        or proof.get("workload") != cell.workload.value
     ):
         raise FinalSourceProducerError(
             f"{cell.cell_id}: structural proof is stale or has wrong identity"
