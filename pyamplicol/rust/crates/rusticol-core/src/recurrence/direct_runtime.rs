@@ -474,9 +474,9 @@ impl DirectRecurrenceExecutionRuntime {
         &self,
         public_flow_id: u32,
     ) -> RusticolResult<DirectReplaySelectorPlan> {
-        if self.plan.strategy() != RecurrenceStrategy::TopologyReplay {
+        if !self.plan.strategy().uses_topology_replay_targets() {
             return Err(invalid(
-                "replay selectors require a topology-replay recurrence plan",
+                "replay selectors require a replay-capable recurrence plan",
             ));
         }
         let mut matches = self

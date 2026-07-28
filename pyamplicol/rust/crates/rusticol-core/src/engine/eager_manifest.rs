@@ -459,6 +459,7 @@ impl EagerExecutionManifest {
                 runtime_available: true,
                 runtime_unavailable_message: None,
                 lc_topology_replay: self.lc_topology_replay.clone(),
+                color_topology_replay: None,
                 model_parameter_evaluator: None,
                 stage_evaluators: None,
             },

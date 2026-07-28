@@ -153,6 +153,17 @@ impl ExecutionRuntime {
                 output,
             );
         }
+        if self.color_topology_replay_enabled {
+            if selected_helicity_ids.is_some() || selected_color_ids.is_some() {
+                let resolved = self.run_resolved_f64_with_color_topology_replay_unprofiled(
+                    batch,
+                    selected_helicity_ids,
+                    selected_color_ids,
+                )?;
+                return write_resolved_f64_totals(&resolved, output);
+            }
+            return self.run_f64_with_color_topology_replay_into_unprofiled(batch, output);
+        }
         if self.lc_topology_replay_enabled {
             if selected_color_ids.is_some_and(|ids| ids.len() == 1)
                 && self.try_run_f64_with_single_lc_topology_replay_into_unprofiled(
@@ -219,6 +230,13 @@ impl ExecutionRuntime {
         {
             return sum_runtime.run_resolved_f64_unprofiled(batch, None, selected_color_ids);
         }
+        if self.color_topology_replay_enabled {
+            return self.run_resolved_f64_with_color_topology_replay_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            );
+        }
         if self.lc_topology_replay_enabled {
             return self.run_resolved_f64_with_lc_topology_replay_unprofiled(
                 batch,
@@ -279,6 +297,172 @@ impl ExecutionRuntime {
                 selected_helicity_ids,
                 selected_color_ids,
             )
+    }
+
+    fn run_f64_with_color_topology_replay_into_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        if output.len() != batch.point_count() {
+            return Err(RusticolError::invalid_argument(
+                "color topology replay output shape is inconsistent",
+            ));
+        }
+        let mappings = Arc::clone(&self.color_topology_replay_mappings);
+        self.amplitude_stage
+            .as_mut()
+            .ok_or_else(|| {
+                RusticolError::integrity("color topology replay has no executable amplitude stage")
+            })?
+            .begin_color_topology_replay(batch.point_count())?;
+        let mut flat_momenta = std::mem::take(&mut self.color_replay_flat_momenta_scratch);
+        let result = (|| {
+            for (mapping_index, mapping) in mappings.iter().enumerate() {
+                let evaluation_view = if mapping.is_empty() {
+                    batch
+                } else {
+                    apply_lc_topology_label_permutation_from_view_into_flat(
+                        batch,
+                        self.external_count,
+                        mapping,
+                        &mut flat_momenta,
+                    )?;
+                    F64MomentumBatchView::from_contiguous_prevalidated(
+                        &flat_momenta,
+                        batch.point_count(),
+                        self.external_count,
+                        None,
+                    )?
+                };
+                self.evaluate_color_topology_replay_mapping_unprofiled(
+                    evaluation_view,
+                    mapping_index,
+                )?;
+            }
+            self.amplitude_stage
+                .as_mut()
+                .expect("color topology replay amplitude stage preflighted")
+                .reduce_color_topology_replay_f64_into(batch.point_count(), output)?;
+            if self.normalization_factor != 1.0 {
+                for value in output {
+                    *value *= self.normalization_factor;
+                }
+            }
+            Ok(())
+        })();
+        self.color_replay_flat_momenta_scratch = flat_momenta;
+        result
+    }
+
+    fn run_resolved_f64_with_color_topology_replay_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("color topology replay requires resolved physics metadata")
+        })?;
+        let mappings = Arc::clone(&self.color_topology_replay_mappings);
+        self.amplitude_stage
+            .as_mut()
+            .ok_or_else(|| {
+                RusticolError::integrity("color topology replay has no executable amplitude stage")
+            })?
+            .begin_color_topology_replay(batch.point_count())?;
+        let mut flat_momenta = std::mem::take(&mut self.color_replay_flat_momenta_scratch);
+        let result = (|| {
+            for (mapping_index, mapping) in mappings.iter().enumerate() {
+                let evaluation_view = if mapping.is_empty() {
+                    batch
+                } else {
+                    apply_lc_topology_label_permutation_from_view_into_flat(
+                        batch,
+                        self.external_count,
+                        mapping,
+                        &mut flat_momenta,
+                    )?;
+                    F64MomentumBatchView::from_contiguous_prevalidated(
+                        &flat_momenta,
+                        batch.point_count(),
+                        self.external_count,
+                        None,
+                    )?
+                };
+                self.evaluate_color_topology_replay_mapping_unprofiled(
+                    evaluation_view,
+                    mapping_index,
+                )?;
+            }
+            self.amplitude_stage
+                .as_mut()
+                .expect("color topology replay amplitude stage preflighted")
+                .reduce_color_topology_replay_f64_resolved(
+                    batch.point_count(),
+                    &physics,
+                    self.normalization_factor,
+                    selected_helicity_ids,
+                    selected_color_ids,
+                )
+        })();
+        self.color_replay_flat_momenta_scratch = flat_momenta;
+        result
+    }
+
+    fn evaluate_color_topology_replay_mapping_unprofiled(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        mapping_index: usize,
+    ) -> RusticolResult<()> {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if self.compiled_direct_runtime.is_some() {
+            let Self {
+                compiled_direct_runtime: Some(direct),
+                sources,
+                external_count,
+                particle_masses,
+                momentum_slots,
+                external_is_initial,
+                model_parameter_values_f64,
+                amplitude_stage: Some(amplitude),
+                ..
+            } = self
+            else {
+                return Err(RusticolError::integrity(
+                    "compiled color replay selected an incomplete Direct-Arena runtime",
+                ));
+            };
+            let tile_capacity = direct.tile_capacity();
+            let mut point_start = 0usize;
+            while point_start < batch.point_count() {
+                let point_stop = (point_start + tile_capacity).min(batch.point_count());
+                let tile = batch.subview(point_start, point_stop)?;
+                direct.begin_tile_from_inputs(
+                    tile,
+                    sources,
+                    None,
+                    *external_count,
+                    particle_masses,
+                    momentum_slots,
+                    external_is_initial,
+                    model_parameter_values_f64,
+                )?;
+                direct.evaluate_all(point_stop - point_start)?;
+                amplitude.gather_color_topology_replay_planes(
+                    direct.amplitude_planes()?,
+                    point_start,
+                    mapping_index,
+                )?;
+                point_start = point_stop;
+            }
+            return Ok(());
+        }
+        self.run_f64_materialized_selected_for_resolved_unprofiled(batch, None)?;
+        self.amplitude_stage
+            .as_mut()
+            .expect("color topology replay amplitude stage checked")
+            .gather_color_topology_replay_mapping(batch.point_count(), mapping_index)
     }
 
     fn run_resolved_f64_with_lc_topology_replay_unprofiled(
@@ -1237,6 +1421,9 @@ impl ExecutionRuntime {
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
             return sum_runtime.run_f64(batch);
         }
+        if self.color_topology_replay_enabled {
+            return self.run_f64_with_color_topology_replay(batch);
+        }
         if self.lc_topology_replay_enabled {
             return self.run_f64_with_lc_topology_replay(batch);
         }
@@ -1262,6 +1449,18 @@ impl ExecutionRuntime {
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
             return sum_runtime.run_f64_selected_totals(batch, None, selected_color_ids);
+        }
+        if self.color_topology_replay_enabled {
+            let (resolved, mut profile) = self.run_resolved_f64_with_color_topology_replay(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            )?;
+            let materialization_start = Instant::now();
+            let values = resolved_f64_totals(&resolved)?;
+            profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+            profile.total_materialized_value_count += values.len() as u64;
+            return Ok((values, profile));
         }
         if self.lc_topology_replay_enabled
             && selected_color_ids.is_some_and(|ids| ids.len() == 1)
@@ -1395,6 +1594,13 @@ impl ExecutionRuntime {
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
             return sum_runtime.run_resolved_f64(batch, None, selected_color_ids);
+        }
+        if self.color_topology_replay_enabled {
+            return self.run_resolved_f64_with_color_topology_replay(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            );
         }
         if self.lc_topology_replay_enabled {
             // A target-flow helicity generally maps to a different source
@@ -1602,6 +1808,14 @@ impl ExecutionRuntime {
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
             return sum_runtime.run_f64_selected(batch, selected_color_sector_ids);
         }
+        if self.color_topology_replay_enabled {
+            if selected_color_sector_ids.is_some() {
+                return Err(RusticolError::selector(
+                    "contracted-color topology replay does not expose physical sector selection",
+                ));
+            }
+            return self.run_f64_with_color_topology_replay(batch);
+        }
         if self.lc_topology_replay_enabled {
             if selected_color_sector_ids.is_some() {
                 return Err(RusticolError::invalid_argument(
@@ -1671,6 +1885,11 @@ impl ExecutionRuntime {
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
             return sum_runtime.run_double(batch);
         }
+        if self.color_topology_replay_enabled {
+            return Err(RusticolError::invalid_argument(
+                "compiled/eager contracted-color topology replay currently exposes f64; use the exact recurrence lane for precision certification",
+            ));
+        }
         if self.lc_topology_replay_enabled {
             return self.run_generic_with_lc_topology_replay(batch, None);
         }
@@ -1688,6 +1907,11 @@ impl ExecutionRuntime {
     ) -> RusticolResult<(Vec<Float>, RuntimeProfile)> {
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
             return sum_runtime.run_float(batch, binary_precision);
+        }
+        if self.color_topology_replay_enabled {
+            return Err(RusticolError::invalid_argument(
+                "compiled/eager contracted-color topology replay currently exposes f64; use the exact recurrence lane for precision certification",
+            ));
         }
         if self.lc_topology_replay_enabled {
             return self.run_generic_with_lc_topology_replay(batch, Some(binary_precision));
@@ -1710,6 +1934,48 @@ impl ExecutionRuntime {
         profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
         profile.total_materialized_value_count += values.len() as u64;
         Ok((values, profile))
+    }
+
+    pub(super) fn run_f64_with_color_topology_replay(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+    ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        let total_start = Instant::now();
+        let view = F64MomentumBatchView::from_nested(batch, self.external_count)?;
+        let mut values = vec![0.0; batch.len()];
+        self.run_f64_with_color_topology_replay_into_unprofiled(view, &mut values)?;
+        let total_s = total_start.elapsed().as_secs_f64();
+        Ok((
+            values,
+            RuntimeProfile {
+                total_s,
+                total_materialized_value_count: batch.len() as u64,
+                ..RuntimeProfile::default()
+            },
+        ))
+    }
+
+    fn run_resolved_f64_with_color_topology_replay(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
+        let total_start = Instant::now();
+        let view = F64MomentumBatchView::from_nested(batch, self.external_count)?;
+        let resolved = self.run_resolved_f64_with_color_topology_replay_unprofiled(
+            view,
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        let total_s = total_start.elapsed().as_secs_f64();
+        Ok((
+            resolved,
+            RuntimeProfile {
+                total_s,
+                ..RuntimeProfile::default()
+            },
+        ))
     }
 
     pub(super) fn run_f64_materialized(

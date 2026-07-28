@@ -13,6 +13,8 @@ from pyamplicol.color.plan import (
     LCColorSectorReplayPartition,
     LCColorTopologyReplayPlan,
     LCOpenColorLine,
+    build_color_plan,
+    build_color_topology_replay_certificate,
 )
 from pyamplicol.generation.recurrence_columnar import (
     ExactComplexRationalV1 as BuilderExact,
@@ -22,6 +24,7 @@ from pyamplicol.generation.recurrence_columnar import (
     build_recurrence_builder_input_v1,
 )
 from pyamplicol.generation.recurrence_physics import (
+    recurrence_color_contraction_destinations,
     recurrence_color_sector_owner_map,
 )
 from pyamplicol.generation.recurrence_projection import (
@@ -30,6 +33,7 @@ from pyamplicol.generation.recurrence_projection import (
     project_recurrence_process_v1,
 )
 from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.recurrence_template import (
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
@@ -570,6 +574,56 @@ def test_all_flow_union_retains_all_sectors_without_replay_partitions() -> None:
     assert encoded.table("selected_public_flow_coverage").row_count == 0
     assert encoded.table("selected_source_coverage").row_count == 0
     assert len(encoded.canonical_digest) == 64
+
+
+def test_contracted_pure_gluon_replay_projects_six_n5_template_orbits() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("g g > g g g g g", color_accuracy="full")
+    color_plan = build_color_plan(process, color_accuracy="full")
+    replay = build_color_topology_replay_certificate(color_plan, model)
+
+    assert replay is not None
+    logical = project_recurrence_process_v1(
+        process,
+        color_plan,
+        _catalog(),
+        layout="contracted-color-union",
+        topology_replay=replay,
+        normalization=_normalization(),
+        model=model,
+    )
+
+    assert len(logical.physical_sectors) == 720
+    assert len(logical.replay_partitions) == 6
+    assert tuple(
+        partition.materialized_sector_id for partition in logical.replay_partitions
+    ) == (0, 120, 144, 150, 152, 153)
+    assert {len(partition.targets) for partition in logical.replay_partitions} == {120}
+    assert {
+        target.sector_id
+        for partition in logical.replay_partitions
+        for target in partition.targets
+    } == set(range(720))
+    assert all(
+        target.fermion_sign == 1
+        for partition in logical.replay_partitions
+        for target in partition.targets
+    )
+    encoded = build_recurrence_builder_input_v1(logical)
+    assert encoded.table("replay_partitions").row_count == 6
+    assert encoded.table("replay_targets").row_count == 720
+    contraction_destinations = recurrence_color_contraction_destinations(
+        logical,
+        ((-1, -1), (-1, 1), (1, -1), (1, 1)),
+        tuple(
+            (sector_id, helicity_id)
+            for sector_id in replay.materialized_sector_ids
+            for helicity_id in range(4)
+        ),
+    )
+    assert len(contraction_destinations) == 720 * 4
+    assert contraction_destinations[:4] == ((0, 0), (0, 1), (0, 2), (0, 3))
+    assert contraction_destinations[-1] == (719, 3)
 
 
 def test_contracted_color_owner_map_rejects_an_unproved_missing_sector() -> None:

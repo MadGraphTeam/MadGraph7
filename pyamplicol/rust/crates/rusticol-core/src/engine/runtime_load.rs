@@ -552,6 +552,47 @@ pub(super) fn build_lc_topology_replay_data(
     })
 }
 
+pub(super) fn build_color_topology_replay_data(
+    replay: Option<&ColorTopologyReplayManifest>,
+    color_accuracy: &str,
+) -> RusticolResult<LcTopologyReplayData> {
+    let Some(replay) = replay else {
+        return Ok(LcTopologyReplayData::default());
+    };
+    if !replay.enabled {
+        if !replay.groups.is_empty()
+            || replay.replayed_sector_count != 0
+            || !replay.materialized_sector_ids.is_empty()
+            || !replay.residual_sector_ids.is_empty()
+        {
+            return Err(RusticolError::artifact(
+                "disabled color topology replay contains active coverage",
+            ));
+        }
+        return Ok(LcTopologyReplayData::default());
+    }
+    if !matches!(color_accuracy, "nlc" | "full")
+        || replay.color_accuracy != color_accuracy
+        || replay.mode != "external-label-permutation"
+        || replay.contract_version != Some(3)
+    {
+        return Err(RusticolError::artifact(
+            "color topology replay is not bound to the NLC/full artifact accuracy",
+        ));
+    }
+    let compatibility = LcTopologyReplayManifest {
+        enabled: replay.enabled,
+        mode: replay.mode.clone(),
+        contract_version: Some(2),
+        physical_sector_count: replay.physical_sector_count,
+        replayed_sector_count: replay.replayed_sector_count,
+        materialized_sector_ids: replay.materialized_sector_ids.clone(),
+        residual_sector_ids: replay.residual_sector_ids.clone(),
+        groups: replay.groups.clone(),
+    };
+    build_lc_topology_replay_data(Some(&compatibility))
+}
+
 fn validate_lc_topology_replay_proof(
     proof: Option<&LcTopologyReplayProofManifest>,
 ) -> RusticolResult<()> {
@@ -3027,6 +3068,16 @@ impl ExecutionRuntime {
             .collect::<RusticolResult<BTreeMap<_, _>>>()?;
         let topology_replay = manifest.compiled.lc_topology_replay.as_ref();
         let topology_replay_data = build_lc_topology_replay_data(topology_replay)?;
+        let color_topology_replay = manifest.compiled.color_topology_replay.as_ref();
+        let color_topology_replay_data =
+            build_color_topology_replay_data(color_topology_replay, &manifest.color_accuracy)?;
+        if !topology_replay_data.mappings.is_empty()
+            && !color_topology_replay_data.mappings.is_empty()
+        {
+            return Err(RusticolError::artifact(
+                "an artifact cannot enable LC and contracted-color topology replay together",
+            ));
+        }
         let compiled_color_execution_plan = manifest
             .compiled
             .stage_evaluators
@@ -3165,6 +3216,9 @@ impl ExecutionRuntime {
             lc_resolved_replay_selection_cache: None,
             lc_replay_flat_momenta_scratch: Vec::new(),
             lc_replay_target_components_scratch: Vec::new(),
+            color_topology_replay_enabled: !color_topology_replay_data.mappings.is_empty(),
+            color_topology_replay_mappings: Arc::new(color_topology_replay_data.mappings),
+            color_replay_flat_momenta_scratch: Vec::new(),
             helicity_recurrence,
             compiled_helicity_execution_plan: None,
             compiled_color_execution_plan,
@@ -3360,7 +3414,36 @@ impl ExecutionRuntime {
                 )?);
             }
         }
+        runtime.validate_color_topology_replay_amplitude()?;
         Ok(runtime)
+    }
+
+    fn validate_color_topology_replay_amplitude(&self) -> RusticolResult<()> {
+        if !self.color_topology_replay_enabled {
+            if self
+                .amplitude_stage
+                .as_ref()
+                .and_then(|amplitude| amplitude.color_topology_replay.as_ref())
+                .is_some()
+            {
+                return Err(RusticolError::artifact(
+                    "amplitude color replay is present without its proof certificate",
+                ));
+            }
+            return Ok(());
+        }
+        let amplitude = self.amplitude_stage.as_ref().ok_or_else(|| {
+            RusticolError::artifact("color topology replay proof has no executable amplitude stage")
+        })?;
+        let amplitude_mappings = amplitude.color_topology_replay_mappings().ok_or_else(|| {
+            RusticolError::artifact("color topology replay proof has no amplitude-level gather")
+        })?;
+        if amplitude_mappings.as_slice() != self.color_topology_replay_mappings.as_slice() {
+            return Err(RusticolError::artifact(
+                "color topology replay proof and amplitude gather mappings disagree",
+            ));
+        }
+        Ok(())
     }
 
     pub(super) fn execution_unavailable_error(&self) -> RusticolError {

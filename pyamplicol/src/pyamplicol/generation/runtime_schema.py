@@ -219,6 +219,10 @@ def build_runtime_schema_layout(
         runtime_schema["lc_topology_replay"] = (
             dag.lc_topology_replay.to_runtime_manifest()
         )
+    if dag.color_topology_replay is not None:
+        runtime_schema["color_topology_replay"] = (
+            dag.color_topology_replay.to_runtime_manifest()
+        )
     if dag.helicity_recurrence is not None:
         runtime_schema["helicity_recurrence"] = {
             **dag.helicity_recurrence.to_runtime_manifest(),

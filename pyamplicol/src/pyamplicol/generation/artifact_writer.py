@@ -1989,6 +1989,11 @@ def _compiled_execution_lane_manifest(
         compiled_manifest["lc_topology_replay"] = _plain_mapping(
             _mapping(topology_replay)
         )
+    color_topology_replay = runtime_schema.get("color_topology_replay")
+    if color_topology_replay is not None:
+        compiled_manifest["color_topology_replay"] = _plain_mapping(
+            _mapping(color_topology_replay)
+        )
     helicity_recurrence = runtime_schema.get("helicity_recurrence")
     if helicity_recurrence is not None:
         compiled_manifest["helicity_recurrence"] = _plain_mapping(
@@ -2290,11 +2295,17 @@ def _runtime_stage(stage: Mapping[str, object]) -> dict[str, object]:
 
 def _amplitude_stage(stage: Mapping[str, object]) -> dict[str, object]:
     contraction = stage.get("color_contraction")
+    color_topology_replay = stage.get("color_topology_replay")
     return {
         "stage_kind": str(stage["stage_kind"]),
         "output_count": int(stage["output_count"]),
         "color_contraction": (
             None if contraction is None else _color_contraction(_mapping(contraction))
+        ),
+        "color_topology_replay": (
+            None
+            if color_topology_replay is None
+            else _plain_mapping(_mapping(color_topology_replay))
         ),
         "roots": [
             _select(

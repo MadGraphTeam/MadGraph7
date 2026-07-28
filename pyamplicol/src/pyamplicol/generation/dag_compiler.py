@@ -72,9 +72,9 @@ def _restrict_color_plan(
     color_plan: GenericColorPlan,
     selected_color_sector_ids: frozenset[int] | None,
 ) -> tuple[GenericColorPlan, tuple[int, ...]]:
-    """Apply an explicit LC-sector selection without hiding missing ids."""
+    """Apply an explicit sector selection without hiding missing ids."""
 
-    if selected_color_sector_ids is None or color_plan.color_accuracy != "lc":
+    if selected_color_sector_ids is None:
         return color_plan, ()
     selected_sectors = tuple(
         sector
@@ -87,7 +87,7 @@ def _restrict_color_plan(
     if missing_sector_ids:
         diagnostics = (
             *diagnostics,
-            "selected LC colour sector ids were not materialized: "
+            "selected colour sector ids were not materialized: "
             + ", ".join(str(sector_id) for sector_id in missing_sector_ids),
         )
     return (

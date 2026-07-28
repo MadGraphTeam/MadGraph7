@@ -2543,20 +2543,27 @@ impl RecurrenceProgram {
                     "all-flow-union recurrence must not carry topology-replay targets",
                 ));
             }
-            RecurrenceStrategy::ContractedColorUnion if !self.replay_targets.is_empty() => {
-                return Err(invalid(
-                    "contracted-color recurrence must not carry topology-replay targets",
-                ));
-            }
             _ => {}
         }
+        if self.strategy.uses_topology_replay_targets()
+            && !self.replay_targets.is_empty()
+            && replayed_sectors.len() != self.physical_sector_count as usize
+        {
+            return Err(invalid(format!(
+                "{} recurrence replay covers {} of {} physical sectors",
+                self.strategy,
+                replayed_sectors.len(),
+                self.physical_sector_count
+            )));
+        }
         for destination in &self.amplitude_destinations {
-            if self.strategy == RecurrenceStrategy::TopologyReplay
+            if self.strategy.uses_topology_replay_targets()
+                && !self.replay_targets.is_empty()
                 && !materialized_sectors.contains(&destination.target_sector_id)
             {
                 return Err(invalid(format!(
-                    "topology-replay amplitude destination {} targets non-materialized sector {}",
-                    destination.id, destination.target_sector_id
+                    "{} amplitude destination {} targets non-materialized sector {}",
+                    self.strategy, destination.id, destination.target_sector_id
                 )));
             }
         }

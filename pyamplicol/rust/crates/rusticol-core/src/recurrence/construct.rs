@@ -5978,14 +5978,23 @@ fn materialized_sector_ids(
     replay_targets: &[RecurrenceReplayTarget],
 ) -> BTreeSet<u32> {
     match strategy {
-        RecurrenceStrategy::AllFlowUnion | RecurrenceStrategy::ContractedColorUnion => process
+        RecurrenceStrategy::AllFlowUnion => process
             .physical_lc_sectors
             .iter()
             .map(|sector| sector.sector_id)
             .collect(),
-        RecurrenceStrategy::TopologyReplay => replay_targets
+        RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion
+            if !replay_targets.is_empty() =>
+        {
+            replay_targets
+                .iter()
+                .map(RecurrenceReplayTarget::materialized_sector_id)
+                .collect()
+        }
+        RecurrenceStrategy::TopologyReplay | RecurrenceStrategy::ContractedColorUnion => process
+            .physical_lc_sectors
             .iter()
-            .map(RecurrenceReplayTarget::materialized_sector_id)
+            .map(|sector| sector.sector_id)
             .collect(),
     }
 }

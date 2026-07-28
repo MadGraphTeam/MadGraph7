@@ -45,6 +45,8 @@ pub(super) struct EagerV3CommonParts {
     normalization_electroweak_coupling_power: usize,
     lc_topology_replay: Option<LcTopologyReplayManifest>,
     lc_topology_replay_data: LcTopologyReplayData,
+    color_topology_replay: Option<ColorTopologyReplayManifest>,
+    color_topology_replay_data: LcTopologyReplayData,
     model_parameters: Vec<GenericRuntimeModelParameterManifest>,
     model_parameter_name_to_index: BTreeMap<String, usize>,
     model_parameter_runtime_slots: BTreeMap<String, RuntimeParameterSlots>,
@@ -92,6 +94,12 @@ impl EagerV3CommonParts {
         let lc_topology_replay = build_lc_topology_replay_manifest(decoded, &retained)?;
         let lc_topology_replay_data =
             super::runtime_load::build_lc_topology_replay_data(lc_topology_replay.as_ref())?;
+        let color_topology_replay =
+            build_color_topology_replay_manifest(decoded, &retained, &manifest.color_accuracy)?;
+        let color_topology_replay_data = super::runtime_load::build_color_topology_replay_data(
+            color_topology_replay.as_ref(),
+            &manifest.color_accuracy,
+        )?;
 
         let model_parameters = build_model_parameters(decoded, &retained)?;
         validate_physics_parameters(&model_parameters, &physics)?;
@@ -176,6 +184,8 @@ impl EagerV3CommonParts {
             normalization_electroweak_coupling_power: normalization.electroweak_coupling_power,
             lc_topology_replay,
             lc_topology_replay_data,
+            color_topology_replay,
+            color_topology_replay_data,
             model_parameters,
             model_parameter_name_to_index,
             model_parameter_runtime_slots,
@@ -187,6 +197,7 @@ impl EagerV3CommonParts {
     fn into_runtime(self) -> ExecutionRuntime {
         let topology_replay_mappings = self.lc_topology_replay_data.mappings;
         let topology_replay_public_mappings = topology_replay_mappings.clone();
+        let color_topology_replay_mappings = self.color_topology_replay_data.mappings;
         ExecutionRuntime {
             process: self.process,
             key: self.key,
@@ -212,6 +223,9 @@ impl EagerV3CommonParts {
             lc_resolved_replay_selection_cache: None,
             lc_replay_flat_momenta_scratch: Vec::new(),
             lc_replay_target_components_scratch: Vec::new(),
+            color_topology_replay_enabled: !color_topology_replay_mappings.is_empty(),
+            color_topology_replay_mappings: Arc::new(color_topology_replay_mappings),
+            color_replay_flat_momenta_scratch: Vec::new(),
             helicity_recurrence: None,
             compiled_helicity_execution_plan: None,
             compiled_color_execution_plan: None,
@@ -368,6 +382,7 @@ impl EagerV3CommonParts {
                 "sources": self.sources,
             },
             "lc_topology_replay": self.lc_topology_replay,
+            "color_topology_replay": self.color_topology_replay,
             "amplitude_stage": amplitude_stage,
         }))
     }
@@ -377,8 +392,334 @@ fn build_lc_topology_replay_manifest(
     decoded: &DecodedEagerRuntimeV3,
     retained: &RetainedTables<'_>,
 ) -> RusticolResult<Option<LcTopologyReplayManifest>> {
+    build_topology_replay_manifest(decoded, retained, 1)
+}
+
+fn build_color_topology_replay_manifest(
+    decoded: &DecodedEagerRuntimeV3,
+    retained: &RetainedTables<'_>,
+    color_accuracy: &str,
+) -> RusticolResult<Option<ColorTopologyReplayManifest>> {
+    let Some(compatibility) = build_topology_replay_manifest(decoded, retained, 2)? else {
+        return Ok(None);
+    };
+    Ok(Some(ColorTopologyReplayManifest {
+        enabled: compatibility.enabled,
+        mode: compatibility.mode,
+        contract_version: Some(3),
+        color_accuracy: color_accuracy.to_string(),
+        physical_sector_count: compatibility.physical_sector_count,
+        replayed_sector_count: compatibility.replayed_sector_count,
+        materialized_sector_ids: compatibility.materialized_sector_ids,
+        residual_sector_ids: compatibility.residual_sector_ids,
+        groups: compatibility.groups,
+    }))
+}
+
+pub(super) fn build_eager_color_topology_replay_amplitude_runtime(
+    decoded: &DecodedEagerRuntimeV3,
+    materialized_groups: &[RawSumGroup],
+    output_count: usize,
+) -> RusticolResult<Option<AmplitudeRuntime>> {
+    let retained = RetainedTables::new(&decoded.retained_tables);
+    let metadata = retained.table("color_replay_metadata")?;
+    let present = retained.scalar_u8(metadata, "present")?;
+    let contract_version = retained.scalar_u32(metadata, "contract_version")?;
+    let physical_group_count = usize_count(
+        retained.scalar_u64(metadata, "physical_group_count")?,
+        "physical group count",
+    )?;
+    let mapping_count = usize_count(
+        retained.scalar_u64(metadata, "mapping_count")?,
+        "mapping count",
+    )?;
+    let groups = retained.table("color_replay_physical_groups")?;
+    let mappings = retained.table("color_replay_mappings")?;
+    let permutations = retained.table("color_replay_permutations")?;
+    let routes = retained.table("color_replay_routes")?;
+    let contraction_metadata = retained.table("color_replay_contraction_metadata")?;
+    let contraction_component_groups =
+        retained.table("color_replay_contraction_component_groups")?;
+    let contraction_entries = retained.table("color_replay_contraction_entries")?;
+    if present == 0 {
+        if contract_version != 0
+            || physical_group_count != 0
+            || mapping_count != 0
+            || groups.row_count != 0
+            || mappings.row_count != 0
+            || permutations.row_count != 0
+            || routes.row_count != 0
+            || retained.scalar_u8(contraction_metadata, "present")? != 0
+            || retained.scalar_u64(contraction_metadata, "group_count")? != 0
+            || retained.scalar_u8(contraction_metadata, "repeated")? != 0
+            || retained.scalar_u64(contraction_metadata, "component_count")? != 0
+            || contraction_component_groups.row_count != 0
+            || contraction_entries.row_count != 0
+        {
+            return Err(integrity(
+                "absent eager color replay contains retained payload rows",
+            ));
+        }
+        return Ok(None);
+    }
+    let contraction_repeated = retained.scalar_u8(contraction_metadata, "repeated")?;
+    let contraction_component_count = usize_count(
+        retained.scalar_u64(contraction_metadata, "component_count")?,
+        "color replay contraction component count",
+    )?;
+    if present != 1
+        || contract_version != 1
+        || physical_group_count == 0
+        || groups.row_count as usize != physical_group_count
+        || mappings.row_count as usize != mapping_count
+        || mapping_count == 0
+        || retained.scalar_u8(contraction_metadata, "present")? != 1
+        || retained.scalar_u64(contraction_metadata, "group_count")? != physical_group_count as u64
+        || retained.scalar_u8(contraction_metadata, "includes_color_factor")? != 1
+        || contraction_repeated > 1
+        || (contraction_repeated == 0
+            && (contraction_component_count != 0 || contraction_component_groups.row_count != 0))
+        || (contraction_repeated == 1
+            && (contraction_component_count < 2
+                || contraction_component_groups.row_count as usize != physical_group_count))
+    {
+        return Err(integrity(
+            "eager color replay amplitude metadata is inconsistent",
+        ));
+    }
+
+    let group_ids = retained.u32_column(groups, "group_id", 1)?;
+    let sector_ids = retained.u32_column(groups, "color_sector_id", 1)?;
+    let word_ids = retained.u32_column(groups, "color_word_sequence_id", 1)?;
+    let helicity_ids = retained.u32_column(groups, "helicity_values_sequence_id", 1)?;
+    let helicity_weight_ids = retained.u32_column(groups, "helicity_weight_factor_id", 1)?;
+    let physical_groups = (0..physical_group_count)
+        .map(|index| {
+            let helicity_weight =
+                eager_exact_real_factor(decoded, helicity_weight_ids[index], "helicity weight")?;
+            Ok(GenericColorTopologyReplayPhysicalGroupManifest {
+                group_id: i64::from(group_ids[index]),
+                helicities: i32_sequence(decoded, helicity_ids[index])?,
+                color_sector_id: i64::from(sector_ids[index]),
+                color_word: u32_sequence(decoded, word_ids[index], "color replay word")?
+                    .into_iter()
+                    .map(|value| value as usize)
+                    .collect(),
+                helicity_weight,
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+
+    let permutation_starts = retained.u64_column(mappings, "permutation_start", 1)?;
+    let permutation_counts = retained.u64_column(mappings, "permutation_count", 1)?;
+    let route_starts = retained.u64_column(mappings, "route_start", 1)?;
+    let route_counts = retained.u64_column(mappings, "route_count", 1)?;
+    let representative_labels = retained.u32_column(permutations, "representative_label", 1)?;
+    let sector_labels = retained.u32_column(permutations, "sector_label", 1)?;
+    let source_group_ids = retained.u32_column(routes, "source_group_id", 1)?;
+    let target_group_ids = retained.u32_column(routes, "target_group_id", 1)?;
+    let route_factor_ids = retained.u32_column(routes, "factor_id", 1)?;
+    let mut permutation_cursor = 0usize;
+    let mut route_cursor = 0usize;
+    let mut replay_mappings = Vec::with_capacity(mapping_count);
+    for index in 0..mapping_count {
+        let permutation_start =
+            usize_count(permutation_starts[index], "color replay permutation start")?;
+        let permutation_count =
+            usize_count(permutation_counts[index], "color replay permutation count")?;
+        let route_start = usize_count(route_starts[index], "color replay route start")?;
+        let route_count = usize_count(route_counts[index], "color replay route count")?;
+        if permutation_start != permutation_cursor || route_start != route_cursor {
+            return Err(integrity(
+                "eager color replay mappings are not canonical and contiguous",
+            ));
+        }
+        let permutation_stop = permutation_start
+            .checked_add(permutation_count)
+            .ok_or_else(|| RusticolError::artifact("color replay permutation range overflows"))?;
+        let route_stop = route_start
+            .checked_add(route_count)
+            .ok_or_else(|| RusticolError::artifact("color replay route range overflows"))?;
+        if permutation_stop > permutations.row_count as usize
+            || route_stop > routes.row_count as usize
+        {
+            return Err(integrity(
+                "eager color replay mapping range is out of bounds",
+            ));
+        }
+        replay_mappings.push(GenericColorTopologyReplayMappingManifest {
+            label_permutation: (permutation_start..permutation_stop)
+                .map(|row| LcTopologyReplayLabelPermutationManifest {
+                    representative_label: representative_labels[row] as usize,
+                    sector_label: sector_labels[row] as usize,
+                })
+                .collect(),
+            group_routes: (route_start..route_stop)
+                .map(|row| {
+                    Ok(GenericColorTopologyReplayGroupRouteManifest {
+                        source_group_id: i64::from(source_group_ids[row]),
+                        target_group_id: i64::from(target_group_ids[row]),
+                        factor: eager_exact_factor(decoded, route_factor_ids[row], "route factor")?,
+                    })
+                })
+                .collect::<RusticolResult<Vec<_>>>()?,
+        });
+        permutation_cursor = permutation_stop;
+        route_cursor = route_stop;
+    }
+    if permutation_cursor != permutations.row_count as usize
+        || route_cursor != routes.row_count as usize
+    {
+        return Err(integrity(
+            "eager color replay retained tables contain unreachable rows",
+        ));
+    }
+
+    let left_ids = retained.u32_column(contraction_entries, "left_group_id", 1)?;
+    let right_ids = retained.u32_column(contraction_entries, "right_group_id", 1)?;
+    let left_indices = retained.u32_column(contraction_entries, "left_group_index", 1)?;
+    let right_indices = retained.u32_column(contraction_entries, "right_group_index", 1)?;
+    let weight_ids = retained.u32_column(contraction_entries, "weight_factor_id", 1)?;
+    let symmetry_ids = retained.u32_column(contraction_entries, "symmetry_factor_id", 1)?;
+    if contraction_entries.row_count == 0 {
+        return Err(integrity(
+            "eager color replay physical contraction is empty",
+        ));
+    }
+    let (entries, repeated_block) = if contraction_repeated == 0 {
+        if left_indices
+            .iter()
+            .chain(&right_indices)
+            .any(|value| *value != u32::MAX)
+        {
+            return Err(integrity(
+                "expanded eager color replay contraction contains local indices",
+            ));
+        }
+        (
+            (0..contraction_entries.row_count as usize)
+                .map(|index| {
+                    Ok(GenericColorContractionEntryManifest {
+                        left_group_id: i64::from(left_ids[index]),
+                        right_group_id: i64::from(right_ids[index]),
+                        weight: eager_exact_factor(
+                            decoded,
+                            weight_ids[index],
+                            "contraction weight",
+                        )?,
+                        symmetry_factor: eager_exact_real_factor(
+                            decoded,
+                            symmetry_ids[index],
+                            "contraction symmetry",
+                        )?,
+                    })
+                })
+                .collect::<RusticolResult<Vec<_>>>()?,
+            None,
+        )
+    } else {
+        if left_ids
+            .iter()
+            .chain(&right_ids)
+            .any(|value| *value != u32::MAX)
+        {
+            return Err(integrity(
+                "repeated eager color replay contraction contains physical group IDs",
+            ));
+        }
+        let component_group_ids = retained
+            .u32_column(contraction_component_groups, "group_id", 1)?
+            .iter()
+            .map(|value| i64::from(*value))
+            .collect();
+        let repeated_entries = (0..contraction_entries.row_count as usize)
+            .map(|index| {
+                Ok(GenericRepeatedColorContractionEntryManifest {
+                    left_group_index: left_indices[index] as usize,
+                    right_group_index: right_indices[index] as usize,
+                    weight: eager_exact_factor(decoded, weight_ids[index], "contraction weight")?,
+                    symmetry_factor: eager_exact_real_factor(
+                        decoded,
+                        symmetry_ids[index],
+                        "contraction symmetry",
+                    )?,
+                })
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        (
+            Vec::new(),
+            Some(GenericRepeatedColorContractionBlockManifest {
+                component_count: contraction_component_count,
+                component_group_ids,
+                entries: repeated_entries,
+                factorized_block: None,
+            }),
+        )
+    };
+    let amplitude_manifest = GenericColorTopologyReplayAmplitudeManifest {
+        contract_version,
+        physical_group_count,
+        physical_groups,
+        mappings: replay_mappings,
+    };
+    let contraction_manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: physical_group_count,
+        includes_color_factor: true,
+        entries,
+        repeated_block,
+    };
+    AmplitudeRuntime::color_topology_replay_reducer(
+        output_count,
+        materialized_groups,
+        &amplitude_manifest,
+        &contraction_manifest,
+    )
+    .map(Some)
+}
+
+fn eager_exact_factor(
+    decoded: &DecodedEagerRuntimeV3,
+    factor_id: u32,
+    context: &str,
+) -> RusticolResult<Vec<f64>> {
+    let factor = decoded
+        .exact_factors
+        .get(factor_id as usize)
+        .ok_or_else(|| integrity(format!("eager color replay {context} is absent")))?;
+    let real = f64::from_bits(factor.real_bits);
+    let imaginary = f64::from_bits(factor.imaginary_bits);
+    if !real.is_finite() || !imaginary.is_finite() {
+        return Err(integrity(format!(
+            "eager color replay {context} is not finite"
+        )));
+    }
+    Ok(vec![real, imaginary])
+}
+
+fn eager_exact_real_factor(
+    decoded: &DecodedEagerRuntimeV3,
+    factor_id: u32,
+    context: &str,
+) -> RusticolResult<f64> {
+    let factor = eager_exact_factor(decoded, factor_id, context)?;
+    if factor[1] != 0.0 {
+        return Err(integrity(format!(
+            "eager color replay {context} is not real"
+        )));
+    }
+    Ok(factor[0])
+}
+
+fn build_topology_replay_manifest(
+    decoded: &DecodedEagerRuntimeV3,
+    retained: &RetainedTables<'_>,
+    expected_kind: u8,
+) -> RusticolResult<Option<LcTopologyReplayManifest>> {
     let metadata = retained.table("lc_replay_metadata")?;
     let present = retained.scalar_u8(metadata, "present")?;
+    let replay_kind = retained.scalar_u8(metadata, "replay_kind")?;
     let physical_sequence_id = retained.scalar_u32(metadata, "physical_sector_ids_sequence_id")?;
     let materialized_sequence_id =
         retained.scalar_u32(metadata, "materialized_sector_ids_sequence_id")?;
@@ -387,6 +728,11 @@ fn build_lc_topology_replay_manifest(
     let permutations = retained.table("lc_replay_permutations")?;
     let residuals = retained.table("lc_replay_residual_sectors")?;
     if present == 0 {
+        if replay_kind != 0 {
+            return Err(integrity(
+                "absent eager topology replay has a nonzero replay kind",
+            ));
+        }
         if physical_sequence_id != crate::MISSING_U32
             || materialized_sequence_id != crate::MISSING_U32
             || partitions.row_count != 0
@@ -399,6 +745,14 @@ fn build_lc_topology_replay_manifest(
             ));
         }
         return Ok(None);
+    }
+    if replay_kind != expected_kind {
+        if replay_kind == 1 || replay_kind == 2 {
+            return Ok(None);
+        }
+        return Err(integrity(
+            "eager topology replay has an unknown replay kind",
+        ));
     }
     if present != 1
         || physical_sequence_id == crate::MISSING_U32
@@ -1085,6 +1439,17 @@ impl<'a> RetainedTables<'a> {
 
     fn scalar_u8(&self, table: &DecodedEagerRetainedTable, name: &str) -> RusticolResult<u8> {
         let values = self.u8_column(table, name, 1)?;
+        if table.row_count != 1 || values.len() != 1 {
+            return Err(integrity(format!(
+                "retained eager scalar {}.{name} has the wrong shape",
+                table.name
+            )));
+        }
+        Ok(values[0])
+    }
+
+    fn scalar_u64(&self, table: &DecodedEagerRetainedTable, name: &str) -> RusticolResult<u64> {
+        let values = self.u64_column(table, name, 1)?;
         if table.row_count != 1 || values.len() != 1 {
             return Err(integrity(format!(
                 "retained eager scalar {}.{name} has the wrong shape",

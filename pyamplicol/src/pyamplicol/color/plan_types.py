@@ -126,9 +126,7 @@ class LCColorSector:
         return {
             "id": self.id,
             "kind": self.kind,
-            "open_color_lines": [
-                line.to_json_dict() for line in self.open_color_lines
-            ],
+            "open_color_lines": [line.to_json_dict() for line in self.open_color_lines],
             "trace_labels": list(self.trace_labels),
             "singlet_labels": list(self.singlet_labels),
             "word_labels": list(self.word_labels),
@@ -218,8 +216,7 @@ class LCColorSectorReplayPartition:
         if self.proof_digest is not None and (
             len(self.proof_digest) != 64
             or any(
-                character not in "0123456789abcdef"
-                for character in self.proof_digest
+                character not in "0123456789abcdef" for character in self.proof_digest
             )
         ):
             raise ValueError("LC replay proof digest must be a lowercase SHA-256")
@@ -362,8 +359,7 @@ class ColorTopologyReplayCertificate:
     @property
     def optimized(self) -> bool:
         return any(
-            len(partition.active_sector_ids) > 1
-            for partition in self.partitions
+            len(partition.active_sector_ids) > 1 for partition in self.partitions
         )
 
     def representative_for(self, sector_id: int) -> int:
@@ -385,10 +381,25 @@ class ColorTopologyReplayCertificate:
             "materialized_sector_ids": list(self.materialized_sector_ids),
             "residual_sector_ids": list(self.residual_sector_ids),
             "replayed_sector_count": self.replayed_sector_count,
-            "partitions": [
-                partition.to_json_dict() for partition in self.partitions
-            ],
+            "partitions": [partition.to_json_dict() for partition in self.partitions],
             "diagnostics": list(self.diagnostics),
+        }
+
+    def to_runtime_manifest(self) -> dict[str, object]:
+        """Return the color-generic representative-lane runtime contract."""
+
+        return {
+            "enabled": self.optimized,
+            "mode": "external-label-permutation",
+            "contract_version": 3,
+            "color_accuracy": self.color_accuracy,
+            "physical_sector_count": len(self.physical_sector_ids),
+            "replayed_sector_count": self.replayed_sector_count,
+            "materialized_sector_ids": list(self.materialized_sector_ids),
+            "residual_sector_ids": list(self.residual_sector_ids),
+            "groups": [
+                partition.to_runtime_manifest() for partition in self.partitions
+            ],
         }
 
 
@@ -448,8 +459,7 @@ class LCColorTopologyReplayPlan:
     @property
     def optimized(self) -> bool:
         return any(
-            len(partition.active_sector_ids) > 1
-            for partition in self.partitions
+            len(partition.active_sector_ids) > 1 for partition in self.partitions
         )
 
     def representative_for(self, sector_id: int) -> int:
@@ -470,9 +480,7 @@ class LCColorTopologyReplayPlan:
             "materialized_sector_ids": list(self.materialized_sector_ids),
             "residual_sector_ids": list(self.residual_sector_ids),
             "replayed_sector_count": self.replayed_sector_count,
-            "partitions": [
-                partition.to_json_dict() for partition in self.partitions
-            ],
+            "partitions": [partition.to_json_dict() for partition in self.partitions],
             "diagnostics": list(self.diagnostics),
         }
 

@@ -171,6 +171,13 @@ def build_resolved_physics_payload(
                 if dag.lc_topology_replay is None
                 else {"lc_topology_replay": dag.lc_topology_replay.to_json_dict()}
             ),
+            **(
+                {}
+                if dag.color_topology_replay is None
+                else {
+                    "color_topology_replay": (dag.color_topology_replay.to_json_dict())
+                }
+            ),
             **_runtime_selector_extension(dag),
             **native_reduction_extension,
         },

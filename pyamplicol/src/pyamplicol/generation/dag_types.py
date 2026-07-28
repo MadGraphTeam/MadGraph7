@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from ..color.plan import (
+    ColorTopologyReplayCertificate,
     GenericColorPlan,
     LCColorSector,
     LCColorTopologyReplayPlan,
@@ -399,6 +400,7 @@ class GenericDAG:
     selected_source_helicities: tuple[tuple[int, int], ...] = ()
     selected_color_sector_ids: tuple[int, ...] = ()
     lc_topology_replay: LCColorTopologyReplayPlan | None = None
+    color_topology_replay: ColorTopologyReplayCertificate | None = None
     helicity_recurrence: HelicityRecurrencePlan | None = None
     helicity_materialization: HelicityMaterialization | None = None
 
@@ -415,13 +417,16 @@ class GenericDAG:
             "selected_color_sector_ids",
             selected_color_sector_ids,
         )
-        if selected_color_sector_ids and self.process.color_accuracy != "lc":
-            raise ValueError("selected color-sector provenance requires LC accuracy")
         known_sector_ids = {int(sector.id) for sector in self.color_plan.sectors}
         if not set(selected_color_sector_ids) <= known_sector_ids:
             raise ValueError(
-                "selected color-sector provenance references an absent LC sector"
+                "selected color-sector provenance references an absent sector"
             )
+        if (
+            self.lc_topology_replay is not None
+            and self.color_topology_replay is not None
+        ):
+            raise ValueError("DAG cannot carry both LC and generic topology replay")
         if self.lc_topology_replay is not None:
             if self.process.color_accuracy != "lc":
                 raise ValueError("LC topology replay requires LC color accuracy")
@@ -437,6 +442,31 @@ class GenericDAG:
             }:
                 raise ValueError(
                     "LC topology replay physical sectors do not match the color plan"
+                )
+        if self.color_topology_replay is not None:
+            if self.process.color_accuracy not in {"nlc", "full"}:
+                raise ValueError(
+                    "generic topology replay requires NLC or full color accuracy"
+                )
+            if self.color_topology_replay.color_accuracy != self.process.color_accuracy:
+                raise ValueError(
+                    "generic topology replay color accuracy does not match the DAG"
+                )
+            if self.color_coverage != "complete":
+                raise ValueError(
+                    "generic topology replay requires complete color coverage"
+                )
+            if selected_color_sector_ids:
+                raise ValueError(
+                    "generic topology replay cannot carry generation-specialized "
+                    "color sectors"
+                )
+            if set(self.color_topology_replay.physical_sector_ids) != {
+                int(sector.id) for sector in self.color_plan.sectors
+            }:
+                raise ValueError(
+                    "generic topology replay physical sectors do not match the "
+                    "color plan"
                 )
         if self.helicity_recurrence is not None and (
             self.helicity_coverage != "complete"
@@ -539,6 +569,13 @@ class GenericDAG:
                 {}
                 if self.lc_topology_replay is None
                 else {"lc_topology_replay": self.lc_topology_replay.to_json_dict()}
+            ),
+            **(
+                {}
+                if self.color_topology_replay is None
+                else {
+                    "color_topology_replay": (self.color_topology_replay.to_json_dict())
+                }
             ),
             **(
                 {}

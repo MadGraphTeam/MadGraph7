@@ -318,6 +318,7 @@ def materialize_helicity_recurrence(
         selected_source_helicities=dag.selected_source_helicities,
         selected_color_sector_ids=dag.selected_color_sector_ids,
         lc_topology_replay=dag.lc_topology_replay,
+        color_topology_replay=dag.color_topology_replay,
     )
     routes_by_domain: dict[int, set[int]] = defaultdict(set)
     for route in amplitude_routes:

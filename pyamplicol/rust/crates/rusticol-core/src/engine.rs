@@ -433,6 +433,7 @@ struct EvaluatorSetManifest {
     runtime_available: bool,
     runtime_unavailable_message: Option<String>,
     lc_topology_replay: Option<LcTopologyReplayManifest>,
+    color_topology_replay: Option<ColorTopologyReplayManifest>,
     model_parameter_evaluator: Option<GenericModelParameterEvaluatorManifest>,
     stage_evaluators: Option<GenericStageEvaluatorArtifactsManifest>,
 }
@@ -445,6 +446,8 @@ struct EvaluatorSetManifestWire {
     runtime_unavailable_message: Option<String>,
     #[serde(default)]
     lc_topology_replay: Option<LcTopologyReplayManifest>,
+    #[serde(default)]
+    color_topology_replay: Option<ColorTopologyReplayManifest>,
     // Current Python artifacts mirror this additive contract under `compiled`.
     // Runtime loading uses the authoritative runtime_schema copy below.
     #[serde(default)]
@@ -466,10 +469,34 @@ impl<'de> Deserialize<'de> for EvaluatorSetManifest {
             runtime_available: wire.runtime_available,
             runtime_unavailable_message: wire.runtime_unavailable_message,
             lc_topology_replay: wire.lc_topology_replay,
+            color_topology_replay: wire.color_topology_replay,
             model_parameter_evaluator: wire.model_parameter_evaluator,
             stage_evaluators: wire.stage_evaluators,
         })
     }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ColorTopologyReplayManifest {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    mode: String,
+    #[serde(default)]
+    contract_version: Option<u32>,
+    #[serde(default)]
+    color_accuracy: String,
+    #[serde(default)]
+    physical_sector_count: Option<usize>,
+    #[serde(default)]
+    replayed_sector_count: usize,
+    #[serde(default)]
+    materialized_sector_ids: Vec<i64>,
+    #[serde(default)]
+    residual_sector_ids: Vec<i64>,
+    #[serde(default)]
+    groups: Vec<LcTopologyReplayGroupManifest>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1528,7 +1555,43 @@ struct GenericAmplitudeStageManifest {
     output_count: usize,
     #[serde(default)]
     color_contraction: Option<GenericColorContractionManifest>,
+    #[serde(default)]
+    color_topology_replay: Option<GenericColorTopologyReplayAmplitudeManifest>,
     roots: Vec<GenericAmplitudeRootManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericColorTopologyReplayAmplitudeManifest {
+    contract_version: u32,
+    physical_group_count: usize,
+    physical_groups: Vec<GenericColorTopologyReplayPhysicalGroupManifest>,
+    mappings: Vec<GenericColorTopologyReplayMappingManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericColorTopologyReplayPhysicalGroupManifest {
+    group_id: i64,
+    helicities: Vec<i32>,
+    color_sector_id: i64,
+    color_word: Vec<usize>,
+    helicity_weight: f64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericColorTopologyReplayMappingManifest {
+    label_permutation: Vec<LcTopologyReplayLabelPermutationManifest>,
+    group_routes: Vec<GenericColorTopologyReplayGroupRouteManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericColorTopologyReplayGroupRouteManifest {
+    source_group_id: i64,
+    target_group_id: i64,
+    factor: Vec<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2768,6 +2831,9 @@ struct ExecutionRuntime {
         Option<(LcResolvedReplaySelectionKey, Arc<LcResolvedReplaySelection>)>,
     lc_replay_flat_momenta_scratch: Vec<f64>,
     lc_replay_target_components_scratch: Vec<f64>,
+    color_topology_replay_enabled: bool,
+    color_topology_replay_mappings: Arc<LcTopologyReplayMappings>,
+    color_replay_flat_momenta_scratch: Vec<f64>,
     #[allow(dead_code)] // Loaded now and consumed by the subsequent selector-execution milestone.
     helicity_recurrence: Option<HelicityRecurrenceRuntime>,
     compiled_helicity_execution_plan: Option<CompiledHelicityExecutionPlan>,
@@ -3837,6 +3903,7 @@ struct AmplitudeRuntime {
     raw_sum_groups: Vec<RawSumGroup>,
     has_coherent_groups: bool,
     color_contraction: Option<ColorContractionRuntime>,
+    color_topology_replay: Option<ColorTopologyReplayAmplitudeRuntime>,
     input_components: Option<Vec<usize>>,
     input_spans: Vec<(usize, usize, usize)>,
     parameter_scratch_f64: Vec<Complex<f64>>,
@@ -3850,6 +3917,28 @@ struct AmplitudeRuntime {
     materialized_helicity_direct_total_next_replacement: usize,
     evaluator_output_order: Option<Vec<usize>>,
     evaluator: Option<EvaluatorGroup>,
+}
+
+struct ColorTopologyReplayAmplitudeRuntime {
+    mappings: Vec<ColorTopologyReplayAmplitudeMapping>,
+    physical_groups: Vec<RawSumGroup>,
+    physical_group_helicities: Vec<Vec<i32>>,
+    color_contraction: Option<ColorContractionRuntime>,
+    unit_weights: Vec<f64>,
+    no_sector_ids: Vec<Option<i64>>,
+    physical_group_scratch_f64: Vec<Complex<f64>>,
+    covered_groups: Vec<bool>,
+}
+
+struct ColorTopologyReplayAmplitudeMapping {
+    label_permutation: Vec<(usize, usize)>,
+    group_routes: Vec<ColorTopologyReplayAmplitudeGroupRoute>,
+}
+
+struct ColorTopologyReplayAmplitudeGroupRoute {
+    source_group_index: usize,
+    target_group_index: usize,
+    factor: Complex<f64>,
 }
 
 mod runtime_load;

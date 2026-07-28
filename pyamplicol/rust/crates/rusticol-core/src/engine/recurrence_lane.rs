@@ -37,8 +37,15 @@ pub(super) struct RecurrenceNativeRuntime {
     parameter_projection: Vec<RecurrenceParameterProjectionEntry>,
     external_source_count: usize,
     external_momenta: Vec<f64>,
+    contracted_replay_re: Vec<f64>,
+    contracted_replay_im: Vec<f64>,
     color_transform_re: Vec<f64>,
     color_transform_im: Vec<f64>,
+}
+
+struct ContractedReplayRoute {
+    selector: DirectReplaySelectorPlan,
+    destination_copies: Vec<(u32, u32)>,
 }
 
 // Boxing the contracted-color payload would add an indirection to every
@@ -56,6 +63,7 @@ enum RecurrenceNativeSelectors {
     ContractedColorUnion {
         contraction: RecurrenceColorContraction,
         destination_physics_helicity: Vec<usize>,
+        replay_routes: Vec<ContractedReplayRoute>,
     },
 }
 
@@ -201,14 +209,13 @@ impl RecurrenceNativeRuntime {
                         "contracted recurrence has no color-contraction payload",
                     )
                 })?;
-                let destination_physics_helicity = contracted_destination_helicity_map(
-                    scheduler.plan(),
-                    &contraction,
-                    &direct_helicity_to_physics,
-                )?;
+                let destination_physics_helicity =
+                    contracted_destination_helicity_map(&contraction, &direct_helicity_to_physics)?;
+                let replay_routes = contracted_replay_routes(&scheduler, &contraction)?;
                 RecurrenceNativeSelectors::ContractedColorUnion {
                     contraction,
                     destination_physics_helicity,
+                    replay_routes,
                 }
             }
         };
@@ -229,6 +236,23 @@ impl RecurrenceNativeRuntime {
                 RusticolError::artifact("recurrence external-momentum workspace overflows usize")
             })?;
         let external_momenta = vec![0.0; scratch_len];
+        let contracted_replay_len = match &selectors {
+            RecurrenceNativeSelectors::ContractedColorUnion {
+                contraction,
+                replay_routes,
+                ..
+            } if !replay_routes.is_empty() => usize::try_from(contraction.destination_count())
+                .ok()
+                .and_then(|destinations| {
+                    usize::try_from(scheduler.point_tile_size())
+                        .ok()
+                        .and_then(|points| destinations.checked_mul(points))
+                })
+                .ok_or_else(|| {
+                    RusticolError::artifact("contracted replay amplitude workspace overflows usize")
+                })?,
+            _ => 0,
+        };
 
         Ok(Self {
             scheduler,
@@ -239,6 +263,8 @@ impl RecurrenceNativeRuntime {
             parameter_projection,
             external_source_count,
             external_momenta,
+            contracted_replay_re: vec![0.0; contracted_replay_len],
+            contracted_replay_im: vec![0.0; contracted_replay_len],
             color_transform_re: vec![0.0; color_transform_scratch_len],
             color_transform_im: vec![0.0; color_transform_scratch_len],
         })
@@ -543,28 +569,13 @@ impl RecurrenceNativeRuntime {
             let point_count =
                 self.flatten_external_tile_view(batch.subview(tile_start, tile_stop)?)?;
             let input_len = self.external_tile_input_len(point_count)?;
-            let (contraction, destination_physics_helicity) = match &self.selectors {
-                RecurrenceNativeSelectors::ContractedColorUnion {
-                    contraction,
-                    destination_physics_helicity,
-                } => (contraction, destination_physics_helicity),
-                _ => unreachable!(),
-            };
-            let direct_output = self
-                .scheduler
-                .execute_contracted_tile_from_external_unprofiled(
-                    direct_point_count(point_count)?,
-                    &self.external_momenta[..input_len],
-                )?;
-            contract_color_tile(
-                &direct_output,
-                contraction,
-                destination_physics_helicity,
+            self.execute_and_contract_contracted_tile(
+                point_count,
+                input_len,
                 physics,
                 selected_helicities,
                 normalization_factor,
-                &mut self.color_transform_re,
-                &mut self.color_transform_im,
+                false,
                 |point, _helicity, value| output[tile_start + point] += value,
             )?;
             tile_start = tile_stop;
@@ -944,30 +955,15 @@ impl RecurrenceNativeRuntime {
             let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
             external_momentum_flatten += flatten_started.elapsed();
             let input_len = self.external_tile_input_len(point_count)?;
-            let (contraction, destination_physics_helicity) = match &self.selectors {
-                RecurrenceNativeSelectors::ContractedColorUnion {
-                    contraction,
-                    destination_physics_helicity,
-                } => (contraction, destination_physics_helicity),
-                _ => unreachable!(),
-            };
-            let direct_output = self.scheduler.execute_contracted_tile_from_external(
-                direct_point_count(point_count)?,
-                &self.external_momenta[..input_len],
-            )?;
-            let reduction_started = Instant::now();
-            contract_color_tile(
-                &direct_output,
-                contraction,
-                destination_physics_helicity,
+            reduction += self.execute_and_contract_contracted_tile(
+                point_count,
+                input_len,
                 &physics,
                 selected_helicities,
                 common.normalization_factor,
-                &mut self.color_transform_re,
-                &mut self.color_transform_im,
+                true,
                 |point, _helicity, value| values[tile_start + point] += value,
             )?;
-            reduction += reduction_started.elapsed();
             tile_start = tile_stop;
         }
 
@@ -1028,34 +1024,19 @@ impl RecurrenceNativeRuntime {
             let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
             external_momentum_flatten += flatten_started.elapsed();
             let input_len = self.external_tile_input_len(point_count)?;
-            let (contraction, destination_physics_helicity) = match &self.selectors {
-                RecurrenceNativeSelectors::ContractedColorUnion {
-                    contraction,
-                    destination_physics_helicity,
-                } => (contraction, destination_physics_helicity),
-                _ => unreachable!(),
-            };
-            let direct_output = self.scheduler.execute_contracted_tile_from_external(
-                direct_point_count(point_count)?,
-                &self.external_momenta[..input_len],
-            )?;
-            let reduction_started = Instant::now();
-            contract_color_tile(
-                &direct_output,
-                contraction,
-                destination_physics_helicity,
+            reduction += self.execute_and_contract_contracted_tile(
+                point_count,
+                input_len,
                 &physics,
                 selected_helicities,
                 common.normalization_factor,
-                &mut self.color_transform_re,
-                &mut self.color_transform_im,
+                true,
                 |point, helicity, value| {
                     let position = helicity_position[helicity]
                         .expect("selected contracted helicity has a result position");
                     values[(tile_start + point) * component_count + position] += value;
                 },
             )?;
-            reduction += reduction_started.elapsed();
             tile_start = tile_stop;
         }
 
@@ -1460,6 +1441,131 @@ impl RecurrenceNativeRuntime {
             })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn execute_and_contract_contracted_tile(
+        &mut self,
+        point_count: usize,
+        input_len: usize,
+        physics: &PhysicsRuntime,
+        selected_helicities: Option<&BTreeSet<String>>,
+        normalization_factor: f64,
+        profiled: bool,
+        accumulate: impl FnMut(usize, usize, f64),
+    ) -> RusticolResult<Duration> {
+        let Self {
+            scheduler,
+            selectors,
+            external_momenta,
+            contracted_replay_re,
+            contracted_replay_im,
+            color_transform_re,
+            color_transform_im,
+            ..
+        } = self;
+        let (
+            RecurrenceNativeSelectors::ContractedColorUnion {
+                contraction,
+                destination_physics_helicity,
+                replay_routes,
+            },
+            input,
+        ) = (selectors, &external_momenta[..input_len])
+        else {
+            return Err(RusticolError::integrity(
+                "contracted execution requested from a non-contracted recurrence",
+            ));
+        };
+        let point_count_u32 = direct_point_count(point_count)?;
+        if replay_routes.is_empty() {
+            let direct_output = if profiled {
+                scheduler.execute_contracted_tile_from_external(point_count_u32, input)?
+            } else {
+                scheduler
+                    .execute_contracted_tile_from_external_unprofiled(point_count_u32, input)?
+            };
+            let reduction_started = Instant::now();
+            contract_color_tile(
+                &direct_output,
+                contraction,
+                destination_physics_helicity,
+                physics,
+                selected_helicities,
+                normalization_factor,
+                color_transform_re,
+                color_transform_im,
+                accumulate,
+            )?;
+            return Ok(reduction_started.elapsed());
+        }
+
+        let point_stride = scheduler.point_tile_size() as usize;
+        let destination_count = contraction.destination_count() as usize;
+        let required = destination_count.checked_mul(point_stride).ok_or_else(|| {
+            RusticolError::integrity("contracted replay amplitude workspace overflows usize")
+        })?;
+        if contracted_replay_re.len() < required || contracted_replay_im.len() < required {
+            return Err(RusticolError::integrity(
+                "contracted replay amplitude workspace is too small",
+            ));
+        }
+        let replay_started = Instant::now();
+        for route in replay_routes {
+            let direct_output = if profiled {
+                scheduler.execute_replay_tile_from_external(
+                    &route.selector,
+                    point_count_u32,
+                    input,
+                )?
+            } else {
+                scheduler.execute_replay_tile_from_external_unprofiled(
+                    &route.selector,
+                    point_count_u32,
+                    input,
+                )?
+            };
+            for &(source_destination, physical_destination) in &route.destination_copies {
+                let source_re = direct_output
+                    .destination_re(source_destination)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "contracted replay source amplitude destination is absent",
+                        )
+                    })?;
+                let source_im = direct_output
+                    .destination_im(source_destination)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "contracted replay source amplitude destination is absent",
+                        )
+                    })?;
+                let start = physical_destination as usize * point_stride;
+                contracted_replay_re[start..start + point_count].copy_from_slice(source_re);
+                contracted_replay_im[start..start + point_count].copy_from_slice(source_im);
+            }
+        }
+        let replay_mapping = replay_started.elapsed();
+        let tile = ContractedReplayTile {
+            values_re: contracted_replay_re,
+            values_im: contracted_replay_im,
+            point_count,
+            point_stride,
+            destination_count,
+        };
+        let reduction_started = Instant::now();
+        contract_color_tile(
+            &tile,
+            contraction,
+            destination_physics_helicity,
+            physics,
+            selected_helicities,
+            normalization_factor,
+            color_transform_re,
+            color_transform_im,
+            accumulate,
+        )?;
+        Ok(replay_mapping + reduction_started.elapsed())
+    }
+
     fn validate_public_axis_lengths(&self, physics: &PhysicsRuntime) -> RusticolResult<()> {
         let (color_count, helicity_count) = match &self.selectors {
             RecurrenceNativeSelectors::TopologyReplay {
@@ -1596,53 +1702,28 @@ fn reject_contracted_color_selector(
 }
 
 fn contracted_destination_helicity_map(
-    plan: &DirectRecurrencePlan,
     contraction: &RecurrenceColorContraction,
     direct_helicity_to_physics: &[usize],
 ) -> RusticolResult<Vec<usize>> {
-    if plan.strategy() != RecurrenceStrategy::ContractedColorUnion {
-        return Err(RusticolError::integrity(
-            "contracted destination mapping requires a contracted-color plan",
-        ));
-    }
-    if contraction.sector_count() != plan.physical_sector_count()
-        || contraction.component_count() as usize != plan.resolved_helicities().len()
-        || contraction.destination_count() as usize != plan.amplitude_destinations().len()
-        || contraction.destination_by_group().len() != plan.amplitude_destinations().len()
-        || contraction.sector_by_group().len() != plan.amplitude_destinations().len()
-        || contraction.component_by_group().len() != plan.amplitude_destinations().len()
-        || direct_helicity_to_physics.len() != plan.resolved_helicities().len()
+    let destination_count = contraction.destination_count() as usize;
+    if contraction.component_count() as usize != direct_helicity_to_physics.len()
+        || contraction.destination_by_group().len() != destination_count
+        || contraction.sector_by_group().len() != destination_count
+        || contraction.component_by_group().len() != destination_count
     {
         return Err(RusticolError::integrity(
-            "contracted color dimensions disagree with the Direct-Arena plan",
+            "contracted color dimensions disagree with the public helicity map",
         ));
     }
 
-    let mut destination_physics_helicity = vec![usize::MAX; plan.amplitude_destinations().len()];
+    let mut destination_physics_helicity = vec![usize::MAX; destination_count];
     for (group_id, destination_id) in contraction
         .destination_by_group()
         .iter()
         .copied()
         .enumerate()
     {
-        let destination = plan
-            .amplitude_destinations()
-            .get(destination_id as usize)
-            .ok_or_else(|| {
-                RusticolError::integrity(
-                    "contracted color map references an absent amplitude destination",
-                )
-            })?;
-        let expected_sector = contraction.sector_by_group()[group_id] as usize;
         let expected_direct_helicity = contraction.component_by_group()[group_id] as usize;
-        if destination.id != destination_id
-            || destination.target_sector_id as usize != expected_sector
-            || destination.target_helicity_id_or_sentinel as usize != expected_direct_helicity
-        {
-            return Err(RusticolError::integrity(
-                "contracted color map disagrees with sector-major/helicity-minor destinations",
-            ));
-        }
         let physics_helicity = *direct_helicity_to_physics
             .get(expected_direct_helicity)
             .ok_or_else(|| {
@@ -1679,11 +1760,162 @@ fn contracted_destination_helicity_map(
     Ok(destination_physics_helicity)
 }
 
+fn contracted_replay_routes(
+    scheduler: &DirectRecurrenceExecutionRuntime,
+    contraction: &RecurrenceColorContraction,
+) -> RusticolResult<Vec<ContractedReplayRoute>> {
+    let plan = scheduler.plan();
+    if plan.strategy() != RecurrenceStrategy::ContractedColorUnion {
+        return Err(RusticolError::integrity(
+            "contracted replay routes require a contracted-color plan",
+        ));
+    }
+    if plan.replay_targets().is_empty() {
+        if contraction.destination_count() as usize != plan.amplitude_destinations().len() {
+            return Err(RusticolError::integrity(
+                "non-replayed contracted color destinations disagree with the Direct plan",
+            ));
+        }
+        return Ok(Vec::new());
+    }
+    if contraction.sector_count() != plan.physical_sector_count()
+        || contraction.component_count() as usize != plan.resolved_helicities().len()
+    {
+        return Err(RusticolError::integrity(
+            "contracted replay domain disagrees with the Direct plan",
+        ));
+    }
+
+    let destination_count = contraction.destination_count() as usize;
+    let component_count = contraction.component_count() as usize;
+    let mut covered = vec![false; destination_count];
+    let mut routes = Vec::with_capacity(plan.replay_targets().len());
+    for target in plan.replay_targets() {
+        let selector = scheduler.prepare_replay_selector(target.public_flow_id)?;
+        let target_sector = selector.public_flow_id() as usize;
+        let mut destination_copies = Vec::with_capacity(component_count);
+        for destination in plan
+            .amplitude_destinations()
+            .iter()
+            .filter(|destination| destination.target_sector_id == selector.representative_flow_id())
+        {
+            let direct_helicity = destination.target_helicity_id_or_sentinel;
+            if direct_helicity == DIRECT_NONE_U32 {
+                return Err(RusticolError::integrity(
+                    "contracted replay destination lacks a resolved helicity",
+                ));
+            }
+            let mapped_helicity = selector
+                .helicity_map()
+                .get(direct_helicity as usize)
+                .copied()
+                .ok_or_else(|| {
+                    RusticolError::integrity("contracted replay destination helicity is not mapped")
+                })? as usize;
+            let physical_destination = target_sector
+                .checked_mul(component_count)
+                .and_then(|offset| offset.checked_add(mapped_helicity))
+                .ok_or_else(|| {
+                    RusticolError::artifact(
+                        "contracted replay physical destination overflows usize",
+                    )
+                })?;
+            if physical_destination >= destination_count
+                || covered[physical_destination]
+                || contraction.sector_by_group()[physical_destination] as usize != target_sector
+                || contraction.component_by_group()[physical_destination] as usize
+                    != mapped_helicity
+                || contraction.destination_by_group()[physical_destination] as usize
+                    != physical_destination
+            {
+                return Err(RusticolError::integrity(
+                    "contracted replay route is not a dense physical color/helicity bijection",
+                ));
+            }
+            covered[physical_destination] = true;
+            destination_copies.push((
+                destination.id,
+                u32::try_from(physical_destination).map_err(|_| {
+                    RusticolError::artifact("contracted replay physical destination exceeds u32")
+                })?,
+            ));
+        }
+        if destination_copies.len() != component_count {
+            return Err(RusticolError::integrity(
+                "contracted replay representative lacks complete helicity coverage",
+            ));
+        }
+        routes.push(ContractedReplayRoute {
+            selector,
+            destination_copies,
+        });
+    }
+    if covered.contains(&false) {
+        return Err(RusticolError::integrity(
+            "contracted replay routes do not cover every physical color/helicity destination",
+        ));
+    }
+    Ok(routes)
+}
+
+trait ContractedAmplitudeTile {
+    fn point_count(&self) -> usize;
+    fn destination_re(&self, destination_id: u32) -> Option<&[f64]>;
+    fn destination_im(&self, destination_id: u32) -> Option<&[f64]>;
+}
+
+impl ContractedAmplitudeTile for DirectRecurrenceTileOutput<'_> {
+    fn point_count(&self) -> usize {
+        DirectRecurrenceTileOutput::point_count(self) as usize
+    }
+
+    fn destination_re(&self, destination_id: u32) -> Option<&[f64]> {
+        DirectRecurrenceTileOutput::destination_re(self, destination_id)
+    }
+
+    fn destination_im(&self, destination_id: u32) -> Option<&[f64]> {
+        DirectRecurrenceTileOutput::destination_im(self, destination_id)
+    }
+}
+
+struct ContractedReplayTile<'a> {
+    values_re: &'a [f64],
+    values_im: &'a [f64],
+    point_count: usize,
+    point_stride: usize,
+    destination_count: usize,
+}
+
+impl ContractedAmplitudeTile for ContractedReplayTile<'_> {
+    fn point_count(&self) -> usize {
+        self.point_count
+    }
+
+    fn destination_re(&self, destination_id: u32) -> Option<&[f64]> {
+        self.destination(self.values_re, destination_id)
+    }
+
+    fn destination_im(&self, destination_id: u32) -> Option<&[f64]> {
+        self.destination(self.values_im, destination_id)
+    }
+}
+
+impl ContractedReplayTile<'_> {
+    fn destination<'a>(&self, values: &'a [f64], destination_id: u32) -> Option<&'a [f64]> {
+        let destination = destination_id as usize;
+        if destination >= self.destination_count {
+            return None;
+        }
+        let start = destination.checked_mul(self.point_stride)?;
+        values.get(start..start + self.point_count)
+    }
+}
+
 // These arguments are the authenticated tile views and selector/reduction
 // contract; grouping them would obscure ownership without reducing call state.
 #[allow(clippy::too_many_arguments)]
-fn contract_color_tile(
-    output: &DirectRecurrenceTileOutput<'_>,
+fn contract_color_tile<T: ContractedAmplitudeTile>(
+    output: &T,
     contraction: &RecurrenceColorContraction,
     destination_physics_helicity: &[usize],
     physics: &PhysicsRuntime,
@@ -1693,7 +1925,7 @@ fn contract_color_tile(
     color_transform_im: &mut [f64],
     mut accumulate: impl FnMut(usize, usize, f64),
 ) -> RusticolResult<()> {
-    let point_count = output.point_count() as usize;
+    let point_count = output.point_count();
     if let Some(factorization) = contraction.runtime_factorization() {
         return contract_factorized_color_tile(
             output,
@@ -1789,8 +2021,8 @@ fn contract_color_tile(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn contract_factorized_color_tile(
-    output: &DirectRecurrenceTileOutput<'_>,
+fn contract_factorized_color_tile<T: ContractedAmplitudeTile>(
+    output: &T,
     contraction: &RecurrenceColorContraction,
     factorization: &crate::recurrence::RuntimeFactorizedColorContraction,
     destination_physics_helicity: &[usize],
@@ -1801,7 +2033,7 @@ fn contract_factorized_color_tile(
     color_transform_im: &mut [f64],
     accumulate: &mut impl FnMut(usize, usize, f64),
 ) -> RusticolResult<()> {
-    let point_count = output.point_count() as usize;
+    let point_count = output.point_count();
     let local_group_count = contraction.local_group_count() as usize;
     let scratch_len = local_group_count.checked_mul(point_count).ok_or_else(|| {
         RusticolError::integrity("factorized recurrence color scratch length overflows")

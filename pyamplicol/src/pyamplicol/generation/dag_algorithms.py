@@ -283,9 +283,8 @@ def build_backward_live_state_plan(
                 requested_helicity = (selected_source_helicities or {}).get(
                     int(leg.label)
                 )
-                if (
-                    requested_helicity is not None
-                    and source_helicity != int(requested_helicity)
+                if requested_helicity is not None and source_helicity != int(
+                    requested_helicity
                 ):
                     continue
                 helicity_ancestry = 1 << next_source_bit
@@ -505,8 +504,8 @@ def build_backward_live_state_plan(
                                         result_shape,
                                         set(),
                                     ).add((left_shape, right_shape))
-                                    vertex_color_weight = (
-                                        vertex_color_weight_cache.get(vertex)
+                                    vertex_color_weight = vertex_color_weight_cache.get(
+                                        vertex
                                     )
                                     if vertex_color_weight is None:
                                         vertex_color_weight = model.vertex_color_weight(
@@ -647,9 +646,7 @@ def build_backward_live_state_plan(
         return None
     return BackwardLiveStatePlan(
         shapes=frozenset(useful),
-        active_sector_ids=frozenset(
-            shape.color_state.sector_id for shape in useful
-        ),
+        active_sector_ids=frozenset(shape.color_state.sector_id for shape in useful),
         transitions=tuple(
             transition
             for transition in transitions
@@ -658,9 +655,7 @@ def build_backward_live_state_plan(
             and transition.right in useful
         ),
         closures=tuple(closures),
-        sources=tuple(
-            source for source in source_candidates if source.shape in useful
-        ),
+        sources=tuple(source for source in source_candidates if source.shape in useful),
     )
 
 
@@ -913,6 +908,7 @@ def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
         selected_source_helicities=dag.selected_source_helicities,
         selected_color_sector_ids=dag.selected_color_sector_ids,
         lc_topology_replay=dag.lc_topology_replay,
+        color_topology_replay=dag.color_topology_replay,
     )
 
 
@@ -975,6 +971,7 @@ def prune_global_helicity_flip_equivalent_roots(
             selected_source_helicities=dag.selected_source_helicities,
             selected_color_sector_ids=dag.selected_color_sector_ids,
             lc_topology_replay=dag.lc_topology_replay,
+            color_topology_replay=dag.color_topology_replay,
         )
     )
 
@@ -1441,6 +1438,7 @@ def filter_dag_to_color_sectors(
             selected_source_helicities=dag.selected_source_helicities,
             selected_color_sector_ids=tuple(sorted(selected)),
             lc_topology_replay=None,
+            color_topology_replay=None,
         )
 
     selected_roots = tuple(
@@ -1462,6 +1460,7 @@ def filter_dag_to_color_sectors(
             selected_source_helicities=dag.selected_source_helicities,
             selected_color_sector_ids=tuple(sorted(selected)),
             lc_topology_replay=None,
+            color_topology_replay=None,
         )
 
     interactions_by_result: dict[int, list[InteractionNode]] = {}
@@ -1572,6 +1571,7 @@ def filter_dag_to_color_sectors(
         selected_source_helicities=dag.selected_source_helicities,
         selected_color_sector_ids=tuple(sorted(selected)),
         lc_topology_replay=None,
+        color_topology_replay=None,
     )
 
 
@@ -1612,5 +1612,6 @@ def filter_dag_to_source_helicities(
             ),
             selected_color_sector_ids=dag.selected_color_sector_ids,
             lc_topology_replay=dag.lc_topology_replay,
+            color_topology_replay=dag.color_topology_replay,
         )
     )

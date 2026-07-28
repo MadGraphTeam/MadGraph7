@@ -45,9 +45,11 @@ from pyamplicol.reporting import (
 )
 
 from ..color.plan import (
+    ColorTopologyReplayCertificate,
     GenericColorPlan,
     LCColorTopologyReplayPlan,
     build_color_plan,
+    build_color_topology_replay_certificate,
     build_lc_topology_replay_plan,
 )
 from ..models.base import Model
@@ -128,6 +130,7 @@ from .recurrence_physics import (
     build_recurrence_normalization,
     build_recurrence_physics,
     build_recurrence_runtime_metadata,
+    recurrence_color_contraction_destinations,
     recurrence_color_sector_owner_map,
     recurrence_exact_color_coefficients,
     recurrence_referenced_kernel_ids,
@@ -1002,7 +1005,7 @@ class _PreparedProcessConstruction:
     restricted_color_plan: GenericColorPlan
     materialized_sector_ids: frozenset[int] | None
     coupling_order_limits: Mapping[str, int]
-    topology_replay: LCColorTopologyReplayPlan | None
+    topology_replay: LCColorTopologyReplayPlan | ColorTopologyReplayCertificate | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1111,7 +1114,11 @@ def _compiled_helicity_selector_closure_lanes(
         helicity_recurrence=None,
         helicity_materialization=None,
     )
-    compile_dag = replace(stripped_dag, lc_topology_replay=None)
+    compile_dag = replace(
+        stripped_dag,
+        lc_topology_replay=None,
+        color_topology_replay=None,
+    )
     lanes: list[_HelicitySelectorLane] = []
     for (active_current_ids, active_root_ids), domain_ids in sorted(
         grouped_domains.items(),
@@ -2595,16 +2602,25 @@ class GenerationBackend:
             sector_count = len(logical.physical_sectors)
             component_count = len(resolved_helicities)
             group_count = color_contraction.group_count
-            destination_count = int(
+            schedule_destination_count = int(
                 schedule_summary.get("amplitude_destination_count", 0)
                 if isinstance(schedule_summary, Mapping)
                 else 0
             )
-            if destination_count != group_count or destination_count != len(
-                amplitude_destinations
-            ):
+            if schedule_destination_count != len(amplitude_destinations):
                 raise GenerationError(
                     "contracted recurrence destination metadata does not match "
+                    "its Direct schedule"
+                )
+            contraction_destinations = recurrence_color_contraction_destinations(
+                logical,
+                resolved_helicities,
+                amplitude_destinations,
+            )
+            destination_count = len(contraction_destinations)
+            if destination_count != group_count:
+                raise GenerationError(
+                    "contracted recurrence physical replay domain does not match "
                     "its color-contraction groups"
                 )
             if any(helicity_id is None for _, helicity_id in amplitude_destinations):
@@ -2613,10 +2629,10 @@ class GenerationBackend:
                     "resolved helicity"
                 )
             group_sector_ids = tuple(
-                sector_id for sector_id, _ in amplitude_destinations
+                sector_id for sector_id, _ in contraction_destinations
             )
             group_component_ids = tuple(
-                cast(int, helicity_id) for _, helicity_id in amplitude_destinations
+                cast(int, helicity_id) for _, helicity_id in contraction_destinations
             )
             repeated = color_contraction.repeated_block
             ordered_group_ids = (
@@ -2660,6 +2676,7 @@ class GenerationBackend:
                 "active_sector_count": len(set(group_sector_ids)),
                 "component_count": component_count,
                 "destination_count": destination_count,
+                "materialized_destination_count": schedule_destination_count,
                 "entry_count": (
                     len(color_contraction.entries)
                     if repeated is None
@@ -4158,7 +4175,16 @@ class GenerationBackend:
                 color_plan=complete_color_plan,
                 color_coverage="complete",
                 selected_color_sector_ids=(),
-                lc_topology_replay=replay_plan,
+                lc_topology_replay=(
+                    replay_plan
+                    if isinstance(replay_plan, LCColorTopologyReplayPlan)
+                    else None
+                ),
+                color_topology_replay=(
+                    replay_plan
+                    if isinstance(replay_plan, ColorTopologyReplayCertificate)
+                    else None
+                ),
             )
         if dag.truncated:
             raise GenerationError(
@@ -4187,16 +4213,25 @@ class GenerationBackend:
                 ),
                 **(
                     {}
-                    if dag.lc_topology_replay is None
+                    if (
+                        dag.lc_topology_replay is None
+                        and dag.color_topology_replay is None
+                    )
                     else {
                         "materialized_color_sector_count": len(
-                            dag.lc_topology_replay.materialized_sector_ids
+                            (
+                                dag.lc_topology_replay or dag.color_topology_replay
+                            ).materialized_sector_ids
                         ),
                         "replayed_color_sector_count": (
-                            dag.lc_topology_replay.replayed_sector_count
+                            (
+                                dag.lc_topology_replay or dag.color_topology_replay
+                            ).replayed_sector_count
                         ),
                         "residual_color_sector_count": len(
-                            dag.lc_topology_replay.residual_sector_ids
+                            (
+                                dag.lc_topology_replay or dag.color_topology_replay
+                            ).residual_sector_ids
                         ),
                     }
                 ),
@@ -4269,6 +4304,22 @@ class GenerationBackend:
             and selection.selected_source_helicities is None
         ):
             replay_plan = build_lc_topology_replay_plan(
+                complete_color_plan,
+                model,
+            )
+            if replay_plan is not None and replay_plan.optimized:
+                materialized_sector_ids = frozenset(replay_plan.materialized_sector_ids)
+        elif (
+            self._color_accuracy in {"nlc", "full"}
+            and selection.selected_color_sector_ids is None
+            and selection.selected_source_helicities is None
+            and all(abs(int(leg.outgoing_pdg or 0)) == 21 for leg in process.legs)
+        ):
+            # The first contracted-color consumer is deliberately scoped to
+            # pure adjoint amplitudes.  Their relabeling phase is exactly +1,
+            # so recurrence, compiled, and eager modes can consume the same
+            # certificate without introducing a fermion-crossing convention.
+            replay_plan = build_color_topology_replay_certificate(
                 complete_color_plan,
                 model,
             )
@@ -4374,6 +4425,7 @@ class GenerationBackend:
         return replace(
             materialization.dag,
             lc_topology_replay=None,
+            color_topology_replay=None,
             helicity_recurrence=recurrence,
             helicity_materialization=materialization,
         )

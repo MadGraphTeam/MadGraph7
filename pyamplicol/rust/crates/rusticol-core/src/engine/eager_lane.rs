@@ -35,6 +35,7 @@ pub(super) struct EagerNativeRuntime {
     lc_replay_flat_momenta: Vec<f64>,
     lc_replay_materialized_values: Vec<f64>,
     lc_replay_target_components: Vec<f64>,
+    color_topology_replay: Option<AmplitudeRuntime>,
     color_contraction: Option<ColorContractionRuntime>,
     initial_values: Vec<crate::EagerComplex64>,
     momenta: Vec<f64>,
@@ -96,6 +97,7 @@ impl EagerNativeRuntime {
         parameter_projection: EagerParameterProjection,
         raw_sum_groups: Vec<RawSumGroup>,
         color_contraction: Option<ColorContractionRuntime>,
+        color_topology_replay: Option<AmplitudeRuntime>,
     ) -> Self {
         let amplitude_count = scheduler.plan().amplitude_count();
         let has_selector_domains = scheduler.plan().has_selector_domains();
@@ -117,6 +119,7 @@ impl EagerNativeRuntime {
             lc_replay_flat_momenta: Vec::new(),
             lc_replay_materialized_values: Vec::new(),
             lc_replay_target_components: Vec::new(),
+            color_topology_replay,
             color_contraction,
             initial_values: Vec::new(),
             momenta: Vec::new(),
@@ -347,6 +350,11 @@ impl EagerNativeRuntime {
                 output.len()
             )));
         }
+        if common.color_topology_replay_enabled {
+            return self.run_f64_view_with_color_topology_replay_into_unprofiled(
+                common, batch, None, None, output,
+            );
+        }
         if common.lc_topology_replay_enabled {
             return self.run_f64_view_with_lc_topology_replay_into_unprofiled(
                 common, batch, None, None, output,
@@ -395,6 +403,15 @@ impl EagerNativeRuntime {
         }
         if selected_helicity_ids.is_none() && selected_color_ids.is_none() {
             return self.run_f64_view_into_unprofiled(common, batch, output);
+        }
+        if common.color_topology_replay_enabled {
+            return self.run_f64_view_with_color_topology_replay_into_unprofiled(
+                common,
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                output,
+            );
         }
         if common.lc_topology_replay_enabled {
             return self.run_f64_view_with_lc_topology_replay_into_unprofiled(
@@ -561,6 +578,14 @@ impl EagerNativeRuntime {
     ) -> RusticolResult<ResolvedValues<f64>> {
         let point_count = batch.point_count();
         let mut values = Vec::new();
+        if common.color_topology_replay_enabled {
+            return self.run_resolved_f64_view_with_color_topology_replay_unprofiled(
+                common,
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            );
+        }
         if common.lc_topology_replay_enabled {
             let selection = self.run_resolved_f64_view_with_lc_topology_replay_into_unprofiled(
                 common,
@@ -589,6 +614,122 @@ impl EagerNativeRuntime {
             helicity_indices: self.selected_helicity_indices.clone(),
             color_indices: self.selected_color_indices.clone(),
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_f64_view_with_color_topology_replay_into_unprofiled(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let resolved = self.run_resolved_f64_view_with_color_topology_replay_unprofiled(
+            common,
+            batch,
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        if output.len() != resolved.point_count {
+            return Err(RusticolError::invalid_argument(
+                "eager color replay output has an invalid point count",
+            ));
+        }
+        let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
+        if component_count == 0 {
+            output.fill(0.0);
+        } else {
+            for (target, components) in output
+                .iter_mut()
+                .zip(resolved.values.chunks_exact(component_count))
+            {
+                *target = components.iter().sum();
+            }
+        }
+        Ok(())
+    }
+
+    fn run_resolved_f64_view_with_color_topology_replay_unprofiled(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        let point_count = batch.point_count();
+        let physics = common.physics.clone().ok_or_else(|| {
+            RusticolError::artifact(
+                "eager color topology replay requires resolved physics metadata",
+            )
+        })?;
+        let mappings = Arc::clone(&common.color_topology_replay_mappings);
+        let mut replay = self.color_topology_replay.take().ok_or_else(|| {
+            RusticolError::integrity("eager color topology replay has no amplitude gather runtime")
+        })?;
+        let mut flat_momenta = std::mem::take(&mut self.lc_replay_flat_momenta);
+        let result = (|| {
+            replay.begin_color_topology_replay(point_count)?;
+            for mapping_index in 0..mappings.len() {
+                let evaluation_view = if mappings[mapping_index].is_empty() {
+                    batch
+                } else {
+                    fill_lc_replay_expanded_flat_from_view(
+                        &mut flat_momenta,
+                        batch,
+                        common.external_count,
+                        &[mapping_index],
+                        &mappings,
+                    )?;
+                    F64MomentumBatchView::from_contiguous_prevalidated(
+                        &flat_momenta,
+                        point_count,
+                        common.external_count,
+                        None,
+                    )?
+                };
+                prepare_eager_inputs_view(
+                    common,
+                    evaluation_view,
+                    &mut self.initial_values,
+                    &mut self.momenta,
+                    &mut self.source_schedule,
+                    &mut self.source_wavefunction_scratch,
+                )?;
+                project_model_parameters(
+                    &self.parameter_projection,
+                    &common.model_parameter_values_f64,
+                    &mut self.model_parameters,
+                )?;
+                self.amplitudes.resize(
+                    point_count
+                        .checked_mul(self.amplitude_count)
+                        .ok_or_else(|| {
+                            RusticolError::invalid_argument(
+                                "eager color replay amplitudes overflow",
+                            )
+                        })?,
+                    crate::EagerComplex64::new(0.0, 0.0),
+                );
+                self.reduced.resize(point_count, 0.0);
+                self.execute_full_scheduler(point_count)?;
+                replay.gather_color_topology_replay_row_major(
+                    &self.amplitudes,
+                    point_count,
+                    mapping_index,
+                )?;
+            }
+            replay.reduce_color_topology_replay_f64_resolved(
+                point_count,
+                &physics,
+                common.normalization_factor,
+                selected_helicity_ids,
+                selected_color_ids,
+            )
+        })();
+        self.lc_replay_flat_momenta = flat_momenta;
+        self.color_topology_replay = Some(replay);
+        result
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -761,6 +902,11 @@ impl EagerNativeRuntime {
         common: &mut ExecutionRuntime,
         batch: &[Vec<[f64; 4]>],
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        if common.color_topology_replay_enabled {
+            let (resolved, profile) =
+                self.run_resolved_f64_with_color_topology_replay(common, batch, None, None, false)?;
+            return Ok((sum_eager_resolved(&resolved), profile));
+        }
         if common.lc_topology_replay_enabled {
             let (resolved, profile) =
                 self.run_resolved_f64_with_lc_topology_replay(common, batch, None, None, false)?;
@@ -825,7 +971,7 @@ impl EagerNativeRuntime {
         helicity_by_point: Option<&[u32]>,
         color_by_point: Option<&[u32]>,
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
-        if common.lc_topology_replay_enabled {
+        if common.lc_topology_replay_enabled || common.color_topology_replay_enabled {
             return Err(RusticolError::integrity(
                 "eager topology-replay per-point selectors must use the shared partition planner",
             ));
@@ -944,6 +1090,11 @@ impl EagerNativeRuntime {
         common: &mut ExecutionRuntime,
         batch: &[Vec<[f64; 4]>],
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        if common.color_topology_replay_enabled {
+            let (resolved, profile) =
+                self.run_resolved_f64_with_color_topology_replay(common, batch, None, None, true)?;
+            return Ok((sum_eager_resolved(&resolved), profile));
+        }
         if common.lc_topology_replay_enabled {
             let (resolved, profile) =
                 self.run_resolved_f64_with_lc_topology_replay(common, batch, None, None, true)?;
@@ -1016,6 +1167,15 @@ impl EagerNativeRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
+        if common.color_topology_replay_enabled {
+            return self.run_resolved_f64_with_color_topology_replay(
+                common,
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                false,
+            );
+        }
         if common.lc_topology_replay_enabled {
             return self.run_resolved_f64_with_lc_topology_replay(
                 common,
@@ -1124,6 +1284,15 @@ impl EagerNativeRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
+        if common.color_topology_replay_enabled {
+            return self.run_resolved_f64_with_color_topology_replay(
+                common,
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                true,
+            );
+        }
         if common.lc_topology_replay_enabled {
             return self.run_resolved_f64_with_lc_topology_replay(
                 common,
@@ -1240,6 +1409,122 @@ impl EagerNativeRuntime {
                 ..RuntimeProfile::default()
             },
         ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_resolved_f64_with_color_topology_replay(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: &[Vec<[f64; 4]>],
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+        _profiled: bool,
+    ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
+        if batch.is_empty() {
+            return Err(RusticolError::invalid_argument(
+                "eager color topology replay requires at least one point",
+            ));
+        }
+        let total_start = Instant::now();
+        let point_count = batch.len();
+        let physics = common.physics.clone().ok_or_else(|| {
+            RusticolError::artifact(
+                "eager color topology replay requires resolved physics metadata",
+            )
+        })?;
+        let mappings = Arc::clone(&common.color_topology_replay_mappings);
+        let mut replay = self.color_topology_replay.take().ok_or_else(|| {
+            RusticolError::integrity("eager color topology replay has no amplitude gather runtime")
+        })?;
+        let mut expanded_batch = std::mem::take(&mut self.lc_replay_expanded_batch);
+        let mut seen_labels = std::mem::take(&mut self.lc_replay_seen_labels);
+        let result = (|| {
+            replay.begin_color_topology_replay(point_count)?;
+            let mut source_fill_s = 0.0;
+            let mut momentum_setup_s = 0.0;
+            let mut evaluator_s = 0.0;
+            for mapping_index in 0..mappings.len() {
+                let evaluation_batch = if mappings[mapping_index].is_empty() {
+                    batch
+                } else {
+                    let expanded_len = fill_lc_replay_expanded_batch(
+                        &mut expanded_batch,
+                        &mut seen_labels,
+                        batch,
+                        common.external_count,
+                        &[mapping_index],
+                        &mappings,
+                    )?;
+                    &expanded_batch[..expanded_len]
+                };
+                let (source_fill, momentum_setup) = prepare_eager_inputs(
+                    common,
+                    evaluation_batch,
+                    &mut self.initial_values,
+                    &mut self.momenta,
+                    &mut self.source_schedule,
+                    &mut self.source_wavefunction_scratch,
+                )?;
+                source_fill_s += profile_duration_seconds(source_fill);
+                momentum_setup_s += profile_duration_seconds(momentum_setup);
+                project_model_parameters(
+                    &self.parameter_projection,
+                    &common.model_parameter_values_f64,
+                    &mut self.model_parameters,
+                )?;
+                self.amplitudes.resize(
+                    point_count
+                        .checked_mul(self.amplitude_count)
+                        .ok_or_else(|| {
+                            RusticolError::invalid_argument(
+                                "eager color replay amplitudes overflow",
+                            )
+                        })?,
+                    crate::EagerComplex64::new(0.0, 0.0),
+                );
+                self.reduced.resize(point_count, 0.0);
+                let evaluator_start = Instant::now();
+                self.execute_full_scheduler(point_count)?;
+                evaluator_s += evaluator_start.elapsed().as_secs_f64();
+                replay.gather_color_topology_replay_row_major(
+                    &self.amplitudes,
+                    point_count,
+                    mapping_index,
+                )?;
+            }
+            let reduction_start = Instant::now();
+            let resolved = replay.reduce_color_topology_replay_f64_resolved(
+                point_count,
+                &physics,
+                common.normalization_factor,
+                selected_helicity_ids,
+                selected_color_ids,
+            )?;
+            let reduction_s = reduction_start.elapsed().as_secs_f64();
+            Ok((
+                resolved,
+                RuntimeProfile {
+                    source_fill_s,
+                    momentum_input_setup_s: momentum_setup_s,
+                    momentum_setup_s,
+                    stage_evaluator_call_s: evaluator_s,
+                    stage_evaluator_s: evaluator_s,
+                    reduction_s,
+                    eager_reduction_s: reduction_s,
+                    total_s: total_start.elapsed().as_secs_f64(),
+                    evaluator_backend_call_count: u64::try_from(mappings.len()).map_err(|_| {
+                        RusticolError::invalid_argument(
+                            "eager color replay mapping count exceeds u64",
+                        )
+                    })?,
+                    ..RuntimeProfile::default()
+                },
+            ))
+        })();
+        self.lc_replay_expanded_batch = expanded_batch;
+        self.lc_replay_seen_labels = seen_labels;
+        self.color_topology_replay = Some(replay);
+        result
     }
 
     #[allow(clippy::too_many_arguments)]

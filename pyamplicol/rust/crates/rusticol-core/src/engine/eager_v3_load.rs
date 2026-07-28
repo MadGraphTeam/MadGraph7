@@ -165,6 +165,26 @@ pub(super) fn load_eager_v3_native_runtime(
             runtime_options,
         )?;
         let (raw_sum_groups, color_contraction) = reduction_runtime(&decoded, manifest)?;
+        let color_topology_replay =
+            super::eager_v3_common::build_eager_color_topology_replay_amplitude_runtime(
+                &decoded,
+                &raw_sum_groups,
+                usize::try_from(decoded.dimensions.amplitude_count)
+                    .map_err(|_| RusticolError::artifact("eager amplitude count exceeds usize"))?,
+            )?;
+        if common.color_topology_replay_enabled != color_topology_replay.is_some() {
+            return Err(RusticolError::integrity(
+                "eager color replay proof and amplitude gather disagree",
+            ));
+        }
+        if let Some(replay) = color_topology_replay.as_ref()
+            && replay.color_topology_replay_mappings().as_deref()
+                != Some(common.color_topology_replay_mappings.as_slice())
+        {
+            return Err(RusticolError::integrity(
+                "eager color replay proof mappings do not match amplitude gather mappings",
+            ));
+        }
         if let Some(selector_group_ids) = direct.plan().selector_group_ids() {
             let known_group_ids = raw_sum_groups
                 .iter()
@@ -192,6 +212,7 @@ pub(super) fn load_eager_v3_native_runtime(
             parameter_projection,
             raw_sum_groups,
             color_contraction,
+            color_topology_replay,
         );
         Ok(LoadedEagerV3Runtime { common, lane })
     }

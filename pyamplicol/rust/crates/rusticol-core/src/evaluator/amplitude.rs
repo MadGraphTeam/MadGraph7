@@ -128,6 +128,55 @@ fn remap_amplitude_outputs(
 }
 
 impl AmplitudeRuntime {
+    pub(in crate::engine) fn color_topology_replay_reducer(
+        output_length: usize,
+        materialized_groups: &[RawSumGroup],
+        replay_manifest: &GenericColorTopologyReplayAmplitudeManifest,
+        contraction_manifest: &GenericColorContractionManifest,
+    ) -> RusticolResult<Self> {
+        let raw_sum_groups = materialized_groups
+            .iter()
+            .map(|group| RawSumGroup {
+                id: group.id,
+                indices: group.indices.clone(),
+                weight: group.weight,
+                all_sector_weight: group.all_sector_weight,
+                sector_ids: group.sector_ids.clone(),
+            })
+            .collect::<Vec<_>>();
+        let color_topology_replay = build_color_topology_replay_amplitude_runtime(
+            Some(replay_manifest),
+            Some(contraction_manifest),
+            &raw_sum_groups,
+        )?
+        .ok_or_else(|| {
+            RusticolError::integrity("color topology replay reducer lost its amplitude manifest")
+        })?;
+        Ok(Self {
+            output_length,
+            raw_sum_weights: vec![1.0; output_length],
+            raw_sum_all_sector_weights: vec![1.0; output_length],
+            raw_sum_color_sector_ids: vec![None; output_length],
+            raw_sum_groups,
+            has_coherent_groups: true,
+            color_contraction: None,
+            color_topology_replay: Some(color_topology_replay),
+            input_components: None,
+            input_spans: Vec::new(),
+            parameter_scratch_f64: Vec::new(),
+            evaluator_output_scratch_f64: Vec::new(),
+            output_scratch_f64: Vec::new(),
+            resolved_source_row_scratch_f64: Vec::new(),
+            resolved_target_row_scratch_f64: Vec::new(),
+            routed_reduction_scratch: RoutedReductionScratch::default(),
+            materialized_helicity_direct_total_plans: Vec::new(),
+            materialized_helicity_direct_total_plan_capacity: 0,
+            materialized_helicity_direct_total_next_replacement: 0,
+            evaluator_output_order: None,
+            evaluator: None,
+        })
+    }
+
     pub(crate) fn load(
         amplitude_stage: &GenericAmplitudeStageManifest,
         stage: &GenericSerializedStageEvaluatorManifest,
@@ -190,10 +239,19 @@ impl AmplitudeRuntime {
         } else {
             Vec::new()
         };
-        let color_contraction = build_color_contraction_runtime(
+        let color_topology_replay = build_color_topology_replay_amplitude_runtime(
+            amplitude_stage.color_topology_replay.as_ref(),
             amplitude_stage.color_contraction.as_ref(),
             &raw_sum_groups,
         )?;
+        let color_contraction = if color_topology_replay.is_some() {
+            None
+        } else {
+            build_color_contraction_runtime(
+                amplitude_stage.color_contraction.as_ref(),
+                &raw_sum_groups,
+            )?
+        };
         let (input_components, input_spans) =
             if stage.parameter_layout == "stage-local-value-momentum" {
                 let mut map = vec![0usize; stage.parameter_count];
@@ -294,6 +352,7 @@ impl AmplitudeRuntime {
             raw_sum_groups,
             has_coherent_groups,
             color_contraction,
+            color_topology_replay,
             input_components,
             input_spans,
             parameter_scratch_f64: Vec::new(),
@@ -307,6 +366,308 @@ impl AmplitudeRuntime {
             materialized_helicity_direct_total_next_replacement: 0,
             evaluator_output_order,
             evaluator: None,
+        })
+    }
+
+    pub(crate) fn color_topology_replay_mappings(&self) -> Option<Vec<Vec<(usize, usize)>>> {
+        self.color_topology_replay.as_ref().map(|replay| {
+            replay
+                .mappings
+                .iter()
+                .map(|mapping| mapping.label_permutation.clone())
+                .collect()
+        })
+    }
+
+    pub(crate) fn begin_color_topology_replay(&mut self, batch_size: usize) -> RusticolResult<()> {
+        let replay = self.color_topology_replay.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        let scalar_count = batch_size
+            .checked_mul(replay.physical_groups.len())
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "color topology replay physical amplitude shape overflows usize",
+                )
+            })?;
+        replay
+            .physical_group_scratch_f64
+            .resize(scalar_count, c64(0.0, 0.0));
+        replay.physical_group_scratch_f64.fill(c64(0.0, 0.0));
+        replay.covered_groups.fill(false);
+        Ok(())
+    }
+
+    pub(crate) fn gather_color_topology_replay_mapping(
+        &mut self,
+        batch_size: usize,
+        mapping_index: usize,
+    ) -> RusticolResult<()> {
+        let output_scratch = std::mem::take(&mut self.output_scratch_f64);
+        let result = (|| {
+            let samples =
+                RowMajorAmplitudeSamples::new(&output_scratch, batch_size, self.output_length)?;
+            self.gather_color_topology_replay_samples(samples, batch_size, 0, mapping_index)
+        })();
+        self.output_scratch_f64 = output_scratch;
+        result
+    }
+
+    pub(in crate::engine) fn gather_color_topology_replay_row_major(
+        &mut self,
+        amplitudes: &[Complex<f64>],
+        batch_size: usize,
+        mapping_index: usize,
+    ) -> RusticolResult<()> {
+        let samples = RowMajorAmplitudeSamples::new(amplitudes, batch_size, self.output_length)?;
+        self.gather_color_topology_replay_samples(samples, batch_size, 0, mapping_index)
+    }
+
+    pub(crate) fn gather_color_topology_replay_planes(
+        &mut self,
+        amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
+        target_row_start: usize,
+        mapping_index: usize,
+    ) -> RusticolResult<()> {
+        let plane_count = usize::try_from(amplitudes.component_count()?)
+            .map_err(|_| RusticolError::invalid_argument("amplitude plane count exceeds usize"))?;
+        if plane_count != self.output_length {
+            return Err(RusticolError::integrity(
+                "color topology replay direct amplitude width is inconsistent",
+            ));
+        }
+        self.gather_color_topology_replay_samples(
+            amplitudes,
+            amplitudes.point_count() as usize,
+            target_row_start,
+            mapping_index,
+        )
+    }
+
+    fn gather_color_topology_replay_samples<S: AmplitudeSamples>(
+        &mut self,
+        amplitudes: S,
+        batch_size: usize,
+        target_row_start: usize,
+        mapping_index: usize,
+    ) -> RusticolResult<()> {
+        let replay = self.color_topology_replay.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        let mapping = replay.mappings.get(mapping_index).ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay requested an unknown external-label mapping",
+            )
+        })?;
+        let physical_group_count = replay.physical_groups.len();
+        let physical_row_count = replay
+            .physical_group_scratch_f64
+            .len()
+            .checked_div(physical_group_count)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "color topology replay physical amplitude scratch is invalid",
+                )
+            })?;
+        if target_row_start
+            .checked_add(batch_size)
+            .is_none_or(|stop| stop > physical_row_count)
+        {
+            return Err(RusticolError::integrity(
+                "color topology replay target row range exceeds its physical scratch",
+            ));
+        }
+        for route in &mapping.group_routes {
+            if target_row_start == 0 {
+                if std::mem::replace(&mut replay.covered_groups[route.target_group_index], true) {
+                    return Err(RusticolError::integrity(
+                        "color topology replay attempted to materialize a physical group twice",
+                    ));
+                }
+            } else if !replay.covered_groups[route.target_group_index] {
+                return Err(RusticolError::integrity(
+                    "color topology replay direct tiles arrived out of order",
+                ));
+            }
+            let source_group = &self.raw_sum_groups[route.source_group_index];
+            for row in 0..batch_size {
+                let mut value = c64(0.0, 0.0);
+                for output_index in &source_group.indices {
+                    value += amplitudes.value(row, *output_index, self.output_length);
+                }
+                replay.physical_group_scratch_f64
+                    [(target_row_start + row) * physical_group_count + route.target_group_index] =
+                    value * route.factor;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn reduce_color_topology_replay_f64_into(
+        &mut self,
+        batch_size: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let replay = self.color_topology_replay.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        if replay.covered_groups.iter().any(|covered| !covered) {
+            return Err(RusticolError::integrity(
+                "color topology replay did not materialize every physical amplitude group",
+            ));
+        }
+        let samples = RowMajorAmplitudeSamples::new(
+            &replay.physical_group_scratch_f64,
+            batch_size,
+            replay.physical_groups.len(),
+        )?;
+        Self::reduce_amplitude_samples_f64_into_selected_slice(
+            samples,
+            batch_size,
+            output,
+            None,
+            replay.physical_groups.len(),
+            &replay.unit_weights,
+            &replay.unit_weights,
+            &replay.no_sector_ids,
+            &replay.physical_groups,
+            true,
+            &mut replay.color_contraction,
+        )
+    }
+
+    pub(crate) fn reduce_color_topology_replay_f64_resolved(
+        &mut self,
+        batch_size: usize,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<ResolvedValues<f64>> {
+        let replay = self.color_topology_replay.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        if replay.covered_groups.iter().any(|covered| !covered) {
+            return Err(RusticolError::integrity(
+                "color topology replay did not materialize every physical amplitude group",
+            ));
+        }
+        if !physics.has_contracted_color_axis() {
+            return Err(RusticolError::artifact(
+                "color topology replay resolved reduction requires contracted color",
+            ));
+        }
+        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        if color_indices.iter().any(|index| *index != 0) {
+            return Err(RusticolError::selector(
+                "color topology replay exposes one contracted color component",
+            ));
+        }
+        let mut selected_positions = vec![None; physics.manifest.helicities.len()];
+        for (position, index) in helicity_indices.iter().copied().enumerate() {
+            selected_positions[index] = Some(position);
+        }
+        let index_by_values = physics
+            .manifest
+            .helicities
+            .iter()
+            .map(|helicity| (helicity.values.clone(), helicity.index))
+            .collect::<BTreeMap<_, _>>();
+        let mut members_by_group = Vec::with_capacity(replay.physical_groups.len());
+        for (group, representative) in replay
+            .physical_groups
+            .iter()
+            .zip(&replay.physical_group_helicities)
+        {
+            let mut members = vec![representative.clone()];
+            if group.weight > 1.0 {
+                if group.weight.to_bits() != 2.0f64.to_bits() {
+                    return Err(RusticolError::artifact(
+                        "color topology replay has an unsupported helicity reuse weight",
+                    ));
+                }
+                let flipped = representative
+                    .iter()
+                    .map(|value| -*value)
+                    .collect::<Vec<_>>();
+                if flipped != *representative {
+                    members.push(flipped);
+                }
+            }
+            let mut indexed = Vec::with_capacity(members.len());
+            let mut total_weight = 0.0;
+            for member in members {
+                let index = index_by_values.get(&member).copied().ok_or_else(|| {
+                    RusticolError::artifact(
+                        "color topology replay physical helicity is absent from public metadata",
+                    )
+                })?;
+                let weight = physics.manifest.helicities[index].coefficient;
+                total_weight += weight;
+                indexed.push((index, weight));
+            }
+            if !total_weight.is_finite() || total_weight <= 0.0 {
+                return Err(RusticolError::artifact(
+                    "color topology replay physical helicity has no positive weight",
+                ));
+            }
+            for (_, weight) in &mut indexed {
+                *weight /= total_weight;
+            }
+            members_by_group.push(indexed);
+        }
+        let contraction = replay.color_contraction.as_mut().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay lost its authenticated color contraction",
+            )
+        })?;
+        let entries = contraction.logical_entries().collect::<Vec<_>>();
+        for entry in &entries {
+            if members_by_group[entry.left_group_index] != members_by_group[entry.right_group_index]
+            {
+                return Err(RusticolError::artifact(
+                    "color contraction mixes distinct replayed physical helicities",
+                ));
+            }
+        }
+        let component_count = helicity_indices
+            .len()
+            .checked_mul(color_indices.len())
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        let mut values = vec![0.0; batch_size * component_count];
+        let group_count = replay.physical_groups.len();
+        for row in 0..batch_size {
+            let group_row = row * group_count;
+            for entry in &entries {
+                let left = replay.physical_group_scratch_f64[group_row + entry.left_group_index];
+                let right = replay.physical_group_scratch_f64[group_row + entry.right_group_index];
+                let product = left * right.conj();
+                let contribution = normalization_factor
+                    * entry.symmetry_factor
+                    * (entry.weight_re * product.re - entry.weight_im * product.im);
+                for (helicity_index, weight) in &members_by_group[entry.left_group_index] {
+                    let Some(position) = selected_positions[*helicity_index] else {
+                        continue;
+                    };
+                    values[row * component_count + position * color_indices.len()] +=
+                        contribution * weight;
+                }
+            }
+        }
+        Ok(ResolvedValues {
+            values,
+            point_count: batch_size,
+            helicity_indices,
+            color_indices,
         })
     }
 
@@ -3386,6 +3747,172 @@ pub(crate) fn build_raw_sum_groups(
         });
     }
     Ok(groups)
+}
+
+fn build_color_topology_replay_amplitude_runtime(
+    manifest: Option<&GenericColorTopologyReplayAmplitudeManifest>,
+    contraction_manifest: Option<&GenericColorContractionManifest>,
+    materialized_groups: &[RawSumGroup],
+) -> RusticolResult<Option<ColorTopologyReplayAmplitudeRuntime>> {
+    let Some(manifest) = manifest else {
+        return Ok(None);
+    };
+    if manifest.contract_version != 1
+        || manifest.physical_group_count == 0
+        || manifest.physical_groups.len() != manifest.physical_group_count
+        || manifest.mappings.is_empty()
+    {
+        return Err(RusticolError::artifact(
+            "color topology replay amplitude gather has an invalid header",
+        ));
+    }
+    let source_index_by_id = materialized_groups
+        .iter()
+        .enumerate()
+        .map(|(index, group)| (group.id, index))
+        .collect::<BTreeMap<_, _>>();
+    if source_index_by_id.len() != materialized_groups.len() {
+        return Err(RusticolError::artifact(
+            "color topology replay materialized coherent-group ids are not unique",
+        ));
+    }
+    let mut physical_groups = Vec::with_capacity(manifest.physical_group_count);
+    let mut physical_group_helicities = Vec::with_capacity(manifest.physical_group_count);
+    for (index, group) in manifest.physical_groups.iter().enumerate() {
+        if group.group_id != index as i64
+            || group.color_sector_id < 0
+            || group.color_word.is_empty()
+            || group.helicities.is_empty()
+            || !group.helicity_weight.is_finite()
+            || group.helicity_weight <= 0.0
+        {
+            return Err(RusticolError::artifact(
+                "color topology replay physical coherent-group metadata is invalid",
+            ));
+        }
+        physical_groups.push(RawSumGroup {
+            id: group.group_id,
+            indices: vec![index],
+            weight: group.helicity_weight,
+            all_sector_weight: group.helicity_weight,
+            sector_ids: vec![group.color_sector_id],
+        });
+        physical_group_helicities.push(group.helicities.clone());
+    }
+    let color_contraction =
+        build_color_contraction_runtime(contraction_manifest, &physical_groups)?.ok_or_else(
+            || {
+                RusticolError::artifact(
+                    "color topology replay requires a complete NLC/full color contraction",
+                )
+            },
+        )?;
+    let mut target_coverage = vec![false; manifest.physical_group_count];
+    let mut mappings = Vec::with_capacity(manifest.mappings.len());
+    for mapping in &manifest.mappings {
+        let label_permutation =
+            normalized_color_topology_label_permutation(&mapping.label_permutation)?;
+        if mapping.group_routes.is_empty() {
+            return Err(RusticolError::artifact(
+                "color topology replay mapping contains no amplitude routes",
+            ));
+        }
+        let mut group_routes = Vec::with_capacity(mapping.group_routes.len());
+        let mut mapping_sources = BTreeSet::new();
+        for route in &mapping.group_routes {
+            let source_group_index = source_index_by_id
+                .get(&route.source_group_id)
+                .copied()
+                .ok_or_else(|| {
+                    RusticolError::artifact(
+                        "color topology replay route names an unknown materialized group",
+                    )
+                })?;
+            let target_group_index = usize::try_from(route.target_group_id)
+                .ok()
+                .filter(|index| *index < manifest.physical_group_count)
+                .ok_or_else(|| {
+                    RusticolError::artifact(
+                        "color topology replay route names an unknown physical group",
+                    )
+                })?;
+            let factor = match route.factor.as_slice() {
+                [real, imaginary] if real.is_finite() && imaginary.is_finite() => {
+                    c64(*real, *imaginary)
+                }
+                _ => {
+                    return Err(RusticolError::artifact(
+                        "color topology replay amplitude factor must be finite complex data",
+                    ));
+                }
+            };
+            if factor == c64(0.0, 0.0)
+                || !mapping_sources.insert(source_group_index)
+                || std::mem::replace(&mut target_coverage[target_group_index], true)
+            {
+                return Err(RusticolError::artifact(
+                    "color topology replay amplitude routes are not a bijection",
+                ));
+            }
+            group_routes.push(ColorTopologyReplayAmplitudeGroupRoute {
+                source_group_index,
+                target_group_index,
+                factor,
+            });
+        }
+        group_routes.sort_by_key(|route| route.target_group_index);
+        mappings.push(ColorTopologyReplayAmplitudeMapping {
+            label_permutation,
+            group_routes,
+        });
+    }
+    if target_coverage.iter().any(|covered| !covered) {
+        return Err(RusticolError::artifact(
+            "color topology replay amplitude routes do not cover every physical group",
+        ));
+    }
+    Ok(Some(ColorTopologyReplayAmplitudeRuntime {
+        mappings,
+        physical_groups,
+        physical_group_helicities,
+        color_contraction: Some(color_contraction),
+        unit_weights: vec![1.0; manifest.physical_group_count],
+        no_sector_ids: vec![None; manifest.physical_group_count],
+        physical_group_scratch_f64: Vec::new(),
+        covered_groups: vec![false; manifest.physical_group_count],
+    }))
+}
+
+fn normalized_color_topology_label_permutation(
+    values: &[LcTopologyReplayLabelPermutationManifest],
+) -> RusticolResult<Vec<(usize, usize)>> {
+    let mut representatives = BTreeSet::new();
+    let mut sectors = BTreeSet::new();
+    let mut mapping = Vec::new();
+    for item in values {
+        if item.representative_label == 0 || item.sector_label == 0 {
+            return Err(RusticolError::artifact(
+                "color topology replay label permutations use one-based labels",
+            ));
+        }
+        let representative = item.representative_label - 1;
+        let sector = item.sector_label - 1;
+        if !representatives.insert(representative) || !sectors.insert(sector) {
+            return Err(RusticolError::artifact(
+                "color topology replay label permutation is not one-to-one",
+            ));
+        }
+        if representative != sector {
+            mapping.push((representative, sector));
+        }
+    }
+    if representatives != sectors {
+        return Err(RusticolError::artifact(
+            "color topology replay label permutation is not a permutation",
+        ));
+    }
+    mapping.sort_unstable();
+    Ok(mapping)
 }
 
 pub(crate) fn unique_color_sector_ids(

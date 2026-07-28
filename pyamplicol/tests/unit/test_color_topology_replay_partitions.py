@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
+from pyamplicol.color import ColorGroupDescriptor
 from pyamplicol.color.plan import (
     build_color_plan,
     build_color_topology_replay_certificate,
     color_topology_replay_partitions,
+)
+from pyamplicol.generation.runtime_amplitudes import (
+    _color_topology_replay_amplitudes,
 )
 from pyamplicol.models.builtin.model import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
@@ -35,12 +41,13 @@ def test_full_color_pure_gluon_partitions_match_crossing_templates(
 
     assert color_plan.sector_count == sector_count
     assert len(partitions) == partition_count
-    assert tuple(
-        partition.representative_sector_id for partition in partitions
-    ) == representatives
-    assert {
-        len(partition.active_sector_ids) for partition in partitions
-    } == {partition_size}
+    assert (
+        tuple(partition.representative_sector_id for partition in partitions)
+        == representatives
+    )
+    assert {len(partition.active_sector_ids) for partition in partitions} == {
+        partition_size
+    }
     assert {
         sector_id
         for partition in partitions
@@ -86,6 +93,44 @@ def test_full_color_certificate_proves_six_n5_crossing_orbits() -> None:
     )
 
 
+def test_n5_full_color_amplitude_gather_is_a_720_group_bijection() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("g g > g g g g g", color_accuracy="full")
+    color_plan = build_color_plan(process, color_accuracy="full")
+    certificate = build_color_topology_replay_certificate(color_plan, model)
+    assert certificate is not None
+    helicity_key = tuple((leg.label, 21, 0, 1, 1) for leg in process.legs)
+    descriptors = tuple(
+        ColorGroupDescriptor(
+            group_id=group_id,
+            helicity_key=helicity_key,
+            sector_id=sector_id,
+            word=tuple(
+                color_plan.sector(sector_id).word_labels  # type: ignore[union-attr]
+            ),
+            helicity_weight=1.0,
+        )
+        for group_id, sector_id in enumerate(certificate.materialized_sector_ids)
+    )
+    dag = SimpleNamespace(
+        color_topology_replay=certificate,
+        color_plan=color_plan,
+        process=process,
+    )
+
+    replay = _color_topology_replay_amplitudes(dag, descriptors)
+
+    assert replay is not None
+    assert len(replay.physical_descriptors) == 720
+    assert len(replay.mappings) == 120
+    assert {len(mapping.group_routes) for mapping in replay.mappings} == {6}
+    assert sorted(
+        route.target_group_id
+        for mapping in replay.mappings
+        for route in mapping.group_routes
+    ) == list(range(720))
+
+
 def test_color_accuracy_is_bound_into_generic_replay_proof() -> None:
     model = BuiltinSMModel()
     certificates = []
@@ -101,10 +146,6 @@ def test_color_accuracy_is_bound_into_generic_replay_proof() -> None:
         assert certificate is not None
         certificates.append(certificate)
 
-    assert [
-        partition.proof_digest
-        for partition in certificates[0].partitions
-    ] != [
-        partition.proof_digest
-        for partition in certificates[1].partitions
+    assert [partition.proof_digest for partition in certificates[0].partitions] != [
+        partition.proof_digest for partition in certificates[1].partitions
     ]

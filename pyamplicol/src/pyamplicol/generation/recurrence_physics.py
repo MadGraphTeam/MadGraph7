@@ -574,12 +574,17 @@ def build_recurrence_color_contraction(
         raise ValueError("NLC/full recurrence requires contracted-color-union")
     if not logical.physical_sectors or not resolved_helicities:
         raise ValueError("contracted recurrence has an empty color/helicity domain")
+    contraction_destinations = recurrence_color_contraction_destinations(
+        logical,
+        resolved_helicities,
+        amplitude_destinations,
+    )
     labels_by_slot = {
         leg.source_slot: leg.public_label for leg in logical.external_legs
     }
     sectors_by_id = {sector.sector_id: sector for sector in logical.physical_sectors}
     descriptors = []
-    for group_id, (sector_id, helicity_id) in enumerate(amplitude_destinations):
+    for group_id, (sector_id, helicity_id) in enumerate(contraction_destinations):
         try:
             sector = sectors_by_id[sector_id]
         except KeyError as exc:
@@ -616,6 +621,29 @@ def build_recurrence_color_contraction(
             f"could not build recurrence color contraction: {reason or 'unsupported'}"
         )
     return contraction
+
+
+def recurrence_color_contraction_destinations(
+    logical: RecurrenceBuilderLogicalInputV1,
+    resolved_helicities: Sequence[Sequence[int]],
+    amplitude_destinations: Sequence[tuple[int, int | None]],
+) -> tuple[tuple[int, int | None], ...]:
+    """Return the physical amplitude domain consumed by color contraction.
+
+    A contracted topology-replay schedule materializes only one representative
+    per certified partition.  Color contraction still acts on the complete
+    physical color basis, so its destination domain is the dense
+    sector-major/helicity-minor replay scratch rather than the smaller Direct
+    schedule destination table.
+    """
+
+    if logical.layout != "contracted-color-union" or not logical.replay_partitions:
+        return tuple(amplitude_destinations)
+    return tuple(
+        (sector.sector_id, helicity_id)
+        for sector in sorted(logical.physical_sectors, key=lambda item: item.sector_id)
+        for helicity_id in range(len(resolved_helicities))
+    )
 
 
 def recurrence_color_sector_owner_map(
@@ -866,6 +894,7 @@ __all__ = [
     "build_recurrence_normalization",
     "build_recurrence_physics",
     "build_recurrence_runtime_metadata",
+    "recurrence_color_contraction_destinations",
     "recurrence_color_sector_owner_map",
     "recurrence_exact_color_coefficients",
     "recurrence_referenced_kernel_ids",

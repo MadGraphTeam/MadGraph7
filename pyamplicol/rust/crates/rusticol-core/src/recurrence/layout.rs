@@ -70,7 +70,7 @@ impl RecurrenceStrategy {
     }
 
     pub const fn uses_topology_replay_targets(self) -> bool {
-        matches!(self, Self::TopologyReplay)
+        matches!(self, Self::TopologyReplay | Self::ContractedColorUnion)
     }
 }
 

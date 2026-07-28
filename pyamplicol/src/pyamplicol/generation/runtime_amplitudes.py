@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from ..color import (
     ColorGroupDescriptor,
     build_color_contraction_plan,
 )
+from ..color.plan_types import LCColorSectorReplayPartition
 from ..models.base import Model
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import AmplitudeRoot, CurrentNode, GenericDAG
@@ -66,7 +68,14 @@ def build_runtime_amplitude_metadata(
     """Build slot-free amplitude and coherent-group metadata for one DAG."""
 
     group_ids, descriptors = _amplitude_groups(dag, dag.amplitude_roots)
-    color_contraction = build_color_contraction_plan(dag.color_plan, descriptors)
+    replay = _color_topology_replay_amplitudes(dag, descriptors)
+    contraction_descriptors = (
+        descriptors if replay is None else replay.physical_descriptors
+    )
+    color_contraction = build_color_contraction_plan(
+        dag.color_plan,
+        contraction_descriptors,
+    )
     multiple_lc_sectors = _has_multiple_lc_root_sectors(dag)
     roots: list[dict[str, object]] = []
     group_weights: dict[int, tuple[float, float]] = {}
@@ -135,6 +144,9 @@ def build_runtime_amplitude_metadata(
         "output_count": len(roots),
         "selected_color_sector_ids": None,
         "coherent_groups": coherent_groups,
+        "color_topology_replay": (
+            None if replay is None else replay.to_runtime_manifest(dag)
+        ),
         "roots": roots,
         "final_reduction": {
             "status": (
@@ -151,6 +163,273 @@ def build_runtime_amplitude_metadata(
             None if color_contraction is None else color_contraction.to_json_dict()
         ),
     }
+
+
+@dataclass(frozen=True, slots=True)
+class _ColorReplayGroupRoute:
+    source_group_id: int
+    target_group_id: int
+    factor: tuple[float, float]
+
+
+@dataclass(frozen=True, slots=True)
+class _ColorReplayMapping:
+    label_permutation: tuple[tuple[int, int], ...]
+    group_routes: tuple[_ColorReplayGroupRoute, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ColorReplayAmplitudePlan:
+    physical_descriptors: tuple[ColorGroupDescriptor, ...]
+    mappings: tuple[_ColorReplayMapping, ...]
+
+    def to_runtime_manifest(self, dag: GenericDAG) -> dict[str, object]:
+        groups = []
+        for descriptor in self.physical_descriptors:
+            groups.append(
+                {
+                    "group_id": descriptor.group_id,
+                    "helicities": _helicity_vector(dag, descriptor.helicity_key),
+                    "color_sector_id": descriptor.sector_id,
+                    "color_word": list(descriptor.word),
+                    "helicity_weight": descriptor.helicity_weight,
+                }
+            )
+        return {
+            "contract_version": 1,
+            "physical_group_count": len(groups),
+            "physical_groups": groups,
+            "mappings": [
+                {
+                    "label_permutation": [
+                        {
+                            "representative_label": representative,
+                            "sector_label": sector,
+                        }
+                        for representative, sector in mapping.label_permutation
+                    ],
+                    "group_routes": [
+                        {
+                            "source_group_id": route.source_group_id,
+                            "target_group_id": route.target_group_id,
+                            "factor": list(route.factor),
+                        }
+                        for route in mapping.group_routes
+                    ],
+                }
+                for mapping in self.mappings
+            ],
+        }
+
+
+def _color_topology_replay_amplitudes(
+    dag: GenericDAG,
+    materialized_descriptors: Sequence[ColorGroupDescriptor],
+) -> _ColorReplayAmplitudePlan | None:
+    """Derive the amplitude-level gather authenticated by the color proof.
+
+    The generated DAG contains only representative sectors.  NLC/full color
+    contraction is nevertheless defined over every physical sector, so the
+    runtime must evaluate representatives at the proven external-label
+    permutations, gather coherent complex amplitudes into the complete
+    physical group domain, and only then apply the unchanged color metric.
+    """
+
+    certificate = dag.color_topology_replay
+    if certificate is None or not certificate.optimized:
+        return None
+    materialized_by_sector: dict[int, list[ColorGroupDescriptor]] = {}
+    for descriptor in materialized_descriptors:
+        materialized_by_sector.setdefault(descriptor.sector_id, []).append(descriptor)
+    expected_materialized = set(certificate.materialized_sector_ids)
+    if set(materialized_by_sector) != expected_materialized:
+        raise ValueError(
+            "color topology replay materialized amplitude sectors do not match "
+            "the proof certificate"
+        )
+
+    pending_routes: list[
+        tuple[
+            tuple[tuple[int, int], ...],
+            int,
+            tuple[object, ...],
+            int,
+            tuple[int, ...],
+            float,
+        ]
+    ] = []
+    for partition in certificate.partitions:
+        source_descriptors = materialized_by_sector.get(
+            int(partition.materialized_sector_id)
+        )
+        if not source_descriptors:
+            raise ValueError(
+                "color topology replay partition has no materialized amplitudes"
+            )
+        _append_color_replay_partition_routes(
+            dag,
+            partition,
+            source_descriptors,
+            pending_routes,
+        )
+    for sector_id in certificate.residual_sector_ids:
+        source_descriptors = materialized_by_sector.get(int(sector_id))
+        if not source_descriptors:
+            raise ValueError(
+                f"color topology replay residual sector {sector_id} is absent"
+            )
+        for source in source_descriptors:
+            pending_routes.append(
+                (
+                    (),
+                    source.group_id,
+                    source.helicity_key,
+                    int(sector_id),
+                    source.word,
+                    source.helicity_weight,
+                )
+            )
+
+    physical_keys = sorted(
+        {
+            (helicity_key, sector_id, word, helicity_weight)
+            for (
+                _permutation,
+                _source_group_id,
+                helicity_key,
+                sector_id,
+                word,
+                helicity_weight,
+            ) in pending_routes
+        },
+        key=repr,
+    )
+    physical_id_by_key = {key: group_id for group_id, key in enumerate(physical_keys)}
+    physical_descriptors = tuple(
+        ColorGroupDescriptor(
+            group_id=group_id,
+            helicity_key=helicity_key,
+            sector_id=sector_id,
+            word=word,
+            helicity_weight=helicity_weight,
+        )
+        for group_id, (helicity_key, sector_id, word, helicity_weight) in enumerate(
+            physical_keys
+        )
+    )
+    routes_by_mapping: dict[
+        tuple[tuple[int, int], ...],
+        list[_ColorReplayGroupRoute],
+    ] = {}
+    target_ids: list[int] = []
+    for (
+        permutation,
+        source_group_id,
+        helicity_key,
+        sector_id,
+        word,
+        helicity_weight,
+    ) in pending_routes:
+        target_group_id = physical_id_by_key[
+            (helicity_key, sector_id, word, helicity_weight)
+        ]
+        routes_by_mapping.setdefault(permutation, []).append(
+            _ColorReplayGroupRoute(
+                source_group_id=source_group_id,
+                target_group_id=target_group_id,
+                factor=(1.0, 0.0),
+            )
+        )
+        target_ids.append(target_group_id)
+    if sorted(target_ids) != list(range(len(physical_descriptors))):
+        raise ValueError(
+            "color topology replay amplitude gather is not a physical-group bijection"
+        )
+    mappings = tuple(
+        _ColorReplayMapping(
+            label_permutation=permutation,
+            group_routes=tuple(
+                sorted(
+                    routes,
+                    key=lambda route: (
+                        route.target_group_id,
+                        route.source_group_id,
+                    ),
+                )
+            ),
+        )
+        for permutation, routes in sorted(routes_by_mapping.items())
+    )
+    if not mappings or any(not mapping.group_routes for mapping in mappings):
+        raise ValueError("color topology replay amplitude gather is empty")
+    return _ColorReplayAmplitudePlan(
+        physical_descriptors=physical_descriptors,
+        mappings=mappings,
+    )
+
+
+def _append_color_replay_partition_routes(
+    dag: GenericDAG,
+    partition: LCColorSectorReplayPartition,
+    source_descriptors: Sequence[ColorGroupDescriptor],
+    pending_routes: list[
+        tuple[
+            tuple[tuple[int, int], ...],
+            int,
+            tuple[object, ...],
+            int,
+            tuple[int, ...],
+            float,
+        ]
+    ],
+) -> None:
+    for sector_id, permutation, weight, sign in zip(
+        partition.active_sector_ids,
+        partition.label_permutations,
+        partition.weights,
+        partition.signs,
+        strict=True,
+    ):
+        if weight != 1.0 or sign != 1:
+            raise ValueError(
+                "color topology replay amplitude gather currently requires "
+                "unit positive proof factors"
+            )
+        target_sector = dag.color_plan.sector(int(sector_id))
+        if target_sector is None:
+            raise ValueError(
+                f"color topology replay target sector {sector_id} is absent"
+            )
+        target_word = tuple(target_sector.word_labels or target_sector.color_words[0])
+        normalized_permutation = tuple(
+            sorted((int(left), int(right)) for left, right in permutation)
+        )
+        for source in source_descriptors:
+            pending_routes.append(
+                (
+                    normalized_permutation,
+                    source.group_id,
+                    _permute_helicity_key(source.helicity_key, normalized_permutation),
+                    int(sector_id),
+                    target_word,
+                    source.helicity_weight,
+                )
+            )
+
+
+def _permute_helicity_key(
+    helicity_key: tuple[object, ...],
+    permutation: Sequence[tuple[int, int]],
+) -> tuple[object, ...]:
+    by_label = dict(permutation)
+    result: list[object] = []
+    for item in helicity_key:
+        if not isinstance(item, tuple) or len(item) < 5:
+            raise ValueError(
+                "color topology replay requires explicit external-label helicity keys"
+            )
+        result.append((by_label.get(int(item[0]), int(item[0])), *item[1:]))
+    return tuple(sorted(result))
 
 
 def _mapping_sequence(value: object) -> tuple[Mapping[str, object], ...]:

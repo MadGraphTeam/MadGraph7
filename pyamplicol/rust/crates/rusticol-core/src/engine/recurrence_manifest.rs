@@ -1455,12 +1455,24 @@ impl RecurrenceColorContractionReference {
             &self.semantic_digest,
             "recurrence color-contraction semantic payload",
         )?;
+        let expected_destination_count = if inspection.schedule.replay_target_count != 0 {
+            inspection
+                .sector_count
+                .checked_mul(inspection.schedule.resolved_helicity_count)
+                .ok_or_else(|| {
+                    RusticolError::artifact(
+                        "recurrence replay color-contraction destination count overflows",
+                    )
+                })?
+        } else {
+            inspection.schedule.amplitude_destination_count
+        };
         if self.sha256 != self.semantic_digest
             || self.size_bytes == 0
             || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES
             || self.sector_count != inspection.sector_count
             || self.component_count != inspection.schedule.resolved_helicity_count
-            || self.destination_count != inspection.schedule.amplitude_destination_count
+            || self.destination_count != expected_destination_count
             || self.active_sector_count == 0
             || self.active_sector_count > self.sector_count
             || self.group_count < self.active_sector_count

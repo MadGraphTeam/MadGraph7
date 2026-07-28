@@ -959,7 +959,7 @@ fn decode_retained_tables(reader: &PacbinReader) -> RusticolResult<Vec<DecodedEa
 }
 
 fn retained_column_is_runtime_required(table: &str, column: &str) -> bool {
-    if table.starts_with("lc_replay_") {
+    if table.starts_with("lc_replay_") || table.starts_with("color_replay_") {
         return true;
     }
     matches!(

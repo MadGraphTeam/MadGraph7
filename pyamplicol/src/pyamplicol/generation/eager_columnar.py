@@ -32,6 +32,7 @@ from .helicity_replay import (
 )
 from .runtime_amplitudes import (
     _amplitude_groups,
+    _color_topology_replay_amplitudes,
     _has_multiple_lc_root_sectors,
     _root_all_sector_weight,
 )
@@ -530,6 +531,9 @@ class _Builder:
         self.group_ids, self.group_descriptors = _amplitude_groups(
             dag, dag.amplitude_roots
         )
+        self.color_topology_replay = _color_topology_replay_amplitudes(
+            dag, self.group_descriptors
+        )
 
     def build(self) -> EagerLoweringInputV1:
         self._metadata()
@@ -540,6 +544,7 @@ class _Builder:
         self._interaction_groups()
         self._color_plan()
         self._topology_replay()
+        self._color_topology_replay_amplitudes()
         self._helicity_proof()
         self._helicity_materialization()
         self._selectors_and_reductions()
@@ -1128,14 +1133,21 @@ class _Builder:
         self.tables.append(_freeze_table("color_open_lines", open_lines))
 
     def _topology_replay(self) -> None:
-        replay = self.dag.lc_topology_replay
+        replay = self.dag.lc_topology_replay or self.dag.color_topology_replay
+        replay_kind = (
+            0
+            if replay is None
+            else (1 if self.dag.lc_topology_replay is not None else 2)
+        )
         replay_metadata = _allocate(
             1,
             present=_U8,
+            replay_kind=_U8,
             physical_sector_ids_sequence_id=_U32,
             materialized_sector_ids_sequence_id=_U32,
         )
         replay_metadata["present"][0] = replay is not None
+        replay_metadata["replay_kind"][0] = replay_kind
         replay_metadata["physical_sector_ids_sequence_id"][0] = (
             MISSING_U32
             if replay is None
@@ -1227,6 +1239,200 @@ class _Builder:
         self.tables.append(_freeze_table("lc_replay_members", members))
         self.tables.append(_freeze_table("lc_replay_permutations", permutations))
         self.tables.append(_freeze_table("lc_replay_residual_sectors", residuals))
+
+    def _color_topology_replay_amplitudes(self) -> None:
+        replay = self.color_topology_replay
+        metadata = _allocate(
+            1,
+            present=_U8,
+            contract_version=_U32,
+            physical_group_count=_U64,
+            mapping_count=_U64,
+        )
+        metadata["present"][0] = replay is not None
+        metadata["contract_version"][0] = 0 if replay is None else 1
+        metadata["physical_group_count"][0] = (
+            0 if replay is None else len(replay.physical_descriptors)
+        )
+        metadata["mapping_count"][0] = (
+            0 if replay is None else len(replay.mappings)
+        )
+        self.tables.append(_freeze_table("color_replay_metadata", metadata))
+
+        physical_groups = () if replay is None else replay.physical_descriptors
+        group_columns = _allocate(
+            len(physical_groups),
+            group_id=_U32,
+            color_sector_id=_U32,
+            color_word_sequence_id=_U32,
+            helicity_values_sequence_id=_U32,
+            helicity_weight_factor_id=_U32,
+        )
+        for row, descriptor in enumerate(physical_groups):
+            group_columns["group_id"][row] = descriptor.group_id
+            group_columns["color_sector_id"][row] = descriptor.sector_id
+            group_columns["color_word_sequence_id"][row] = self.u32_sequences.add(
+                descriptor.word
+            )
+            group_columns["helicity_values_sequence_id"][row] = (
+                self.i32_sequences.add(
+                    _descriptor_helicity_vector(self.dag, descriptor.helicity_key)
+                )
+            )
+            group_columns["helicity_weight_factor_id"][row] = self.factors.add(
+                (descriptor.helicity_weight, 0.0),
+                "color replay physical-group helicity weight",
+            )
+        self.tables.append(
+            _freeze_table("color_replay_physical_groups", group_columns)
+        )
+
+        mappings = () if replay is None else replay.mappings
+        mapping_columns = _allocate(
+            len(mappings),
+            permutation_start=_U64,
+            permutation_count=_U64,
+            route_start=_U64,
+            route_count=_U64,
+        )
+        permutation_count = sum(len(mapping.label_permutation) for mapping in mappings)
+        route_count = sum(len(mapping.group_routes) for mapping in mappings)
+        permutations = _allocate(
+            permutation_count,
+            representative_label=_U32,
+            sector_label=_U32,
+        )
+        routes = _allocate(
+            route_count,
+            source_group_id=_U32,
+            target_group_id=_U32,
+            factor_id=_U32,
+        )
+        permutation_cursor = 0
+        route_cursor = 0
+        for mapping_id, mapping in enumerate(mappings):
+            mapping_columns["permutation_start"][mapping_id] = permutation_cursor
+            mapping_columns["permutation_count"][mapping_id] = len(
+                mapping.label_permutation
+            )
+            mapping_columns["route_start"][mapping_id] = route_cursor
+            mapping_columns["route_count"][mapping_id] = len(mapping.group_routes)
+            for representative_label, sector_label in mapping.label_permutation:
+                permutations["representative_label"][permutation_cursor] = (
+                    representative_label
+                )
+                permutations["sector_label"][permutation_cursor] = sector_label
+                permutation_cursor += 1
+            for route in mapping.group_routes:
+                routes["source_group_id"][route_cursor] = route.source_group_id
+                routes["target_group_id"][route_cursor] = route.target_group_id
+                routes["factor_id"][route_cursor] = self.factors.add(
+                    route.factor,
+                    "color replay amplitude route factor",
+                )
+                route_cursor += 1
+        self.tables.append(_freeze_table("color_replay_mappings", mapping_columns))
+        self.tables.append(
+            _freeze_table("color_replay_permutations", permutations)
+        )
+        self.tables.append(_freeze_table("color_replay_routes", routes))
+
+        contraction = (
+            None
+            if replay is None
+            else build_color_contraction_plan(
+                self.dag.color_plan, replay.physical_descriptors
+            )
+        )
+        if replay is not None and (
+            contraction is None
+            or not contraction.supported
+            or contraction.group_count != len(replay.physical_descriptors)
+        ):
+            raise EagerColumnarInputError(
+                "color replay requires a complete physical color contraction"
+            )
+        contraction_metadata = _allocate(
+            1,
+            present=_U8,
+            group_count=_U64,
+            includes_color_factor=_U8,
+            repeated=_U8,
+            component_count=_U64,
+        )
+        contraction_metadata["present"][0] = contraction is not None
+        contraction_metadata["group_count"][0] = (
+            0 if contraction is None else contraction.group_count
+        )
+        contraction_metadata["includes_color_factor"][0] = (
+            False if contraction is None else contraction.includes_color_factor
+        )
+        repeated = None if contraction is None else contraction.repeated_block
+        contraction_metadata["repeated"][0] = repeated is not None
+        contraction_metadata["component_count"][0] = (
+            0 if repeated is None else repeated.component_count
+        )
+        self.tables.append(
+            _freeze_table(
+                "color_replay_contraction_metadata", contraction_metadata
+            )
+        )
+        component_group_ids = () if repeated is None else repeated.component_group_ids
+        component_groups = _allocate(
+            len(component_group_ids),
+            group_id=_U32,
+        )
+        for row, group_id in enumerate(component_group_ids):
+            component_groups["group_id"][row] = group_id
+        self.tables.append(
+            _freeze_table(
+                "color_replay_contraction_component_groups",
+                component_groups,
+            )
+        )
+
+        entries = (
+            ()
+            if contraction is None
+            else (contraction.entries if repeated is None else repeated.entries)
+        )
+        contraction_entries = _allocate(
+            len(entries),
+            left_group_id=_U32,
+            right_group_id=_U32,
+            left_group_index=_U32,
+            right_group_index=_U32,
+            weight_factor_id=_U32,
+            symmetry_factor_id=_U32,
+        )
+        for row, entry in enumerate(entries):
+            if repeated is None:
+                contraction_entries["left_group_id"][row] = entry.left_group_id
+                contraction_entries["right_group_id"][row] = entry.right_group_id
+                contraction_entries["left_group_index"][row] = MISSING_U32
+                contraction_entries["right_group_index"][row] = MISSING_U32
+            else:
+                contraction_entries["left_group_id"][row] = MISSING_U32
+                contraction_entries["right_group_id"][row] = MISSING_U32
+                contraction_entries["left_group_index"][row] = (
+                    entry.left_group_index
+                )
+                contraction_entries["right_group_index"][row] = (
+                    entry.right_group_index
+                )
+            contraction_entries["weight_factor_id"][row] = self.factors.add(
+                (entry.weight_re, entry.weight_im),
+                "color replay contraction weight",
+            )
+            contraction_entries["symmetry_factor_id"][row] = self.factors.add(
+                (entry.symmetry_factor, 0.0),
+                "color replay contraction symmetry",
+            )
+        self.tables.append(
+            _freeze_table(
+                "color_replay_contraction_entries", contraction_entries
+            )
+        )
 
     def _helicity_proof(self) -> None:
         proof = self.dag.helicity_recurrence
@@ -1735,8 +1941,12 @@ class _Builder:
             ) = values
         self.tables.append(_freeze_table("reduction_members", reductions))
 
-        contraction = build_color_contraction_plan(
-            self.dag.color_plan, self.group_descriptors
+        contraction = (
+            None
+            if self.color_topology_replay is not None
+            else build_color_contraction_plan(
+                self.dag.color_plan, self.group_descriptors
+            )
         )
         contraction_metadata = _allocate(
             1,

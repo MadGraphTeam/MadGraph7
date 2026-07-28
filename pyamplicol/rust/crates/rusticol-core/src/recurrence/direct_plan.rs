@@ -1447,9 +1447,26 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                 }
             }
             RecurrenceStrategy::ContractedColorUnion => {
-                return Err(invalid(format!(
-                    "contracted-color recurrence unexpectedly carries replay target {index}"
-                )));
+                if target.helicity_map_count != resolved_helicity_count {
+                    return Err(invalid(format!(
+                        "contracted replay target {index} helicity map covers {} of {resolved_helicity_count} resolved helicities",
+                        target.helicity_map_count
+                    )));
+                }
+                let start = usize::try_from(target.helicity_map_start)
+                    .map_err(|_| invalid("replay helicity-map start exceeds usize"))?;
+                let count = usize::try_from(target.helicity_map_count)
+                    .map_err(|_| invalid("replay helicity-map count exceeds usize"))?;
+                let end = start
+                    .checked_add(count)
+                    .ok_or_else(|| invalid("replay helicity-map range overflows usize"))?;
+                let values = &parts.replay_helicity_map[start..end];
+                let unique = values.iter().copied().collect::<BTreeSet<_>>();
+                if unique.len() != count || unique.iter().copied().ne(0..resolved_helicity_count) {
+                    return Err(invalid(format!(
+                        "contracted replay target {index} helicity mapping is not a bijection"
+                    )));
+                }
             }
         }
     }

@@ -16,7 +16,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from ..color.plan import GenericColorPlan, LCColorTopologyReplayPlan
+from ..color.plan import (
+    ColorTopologyReplayCertificate,
+    GenericColorPlan,
+    LCColorTopologyReplayPlan,
+)
 from ..models.base import Model, Vertex
 from ..models.recurrence_template import (
     CurrentStateTemplateV1,
@@ -110,7 +114,9 @@ def project_recurrence_process_v1(
     *,
     layout: RecurrenceLCFlowLayout,
     normalization: RecurrenceNormalizationV1,
-    topology_replay: LCColorTopologyReplayPlan | None = None,
+    topology_replay: (
+        LCColorTopologyReplayPlan | ColorTopologyReplayCertificate | None
+    ) = None,
     generation_slice: RecurrenceGenerationSliceV1 | None = None,
     coupling_order_limits: Mapping[str, int] | None = None,
     process_support_mask: int = 1,
@@ -1045,13 +1051,31 @@ def _project_replay_partitions(
     process: CanonicalProcessIR,
     color_plan: GenericColorPlan,
     physical_sectors: tuple[RecurrencePhysicalLCSectorV1, ...],
-    replay: LCColorTopologyReplayPlan | None,
+    replay: LCColorTopologyReplayPlan | ColorTopologyReplayCertificate | None,
     layout: RecurrenceLCFlowLayout,
 ) -> tuple[RecurrenceReplayPartitionV1, ...]:
-    if layout != "topology-replay":
+    if layout not in {"topology-replay", "contracted-color-union"}:
         return ()
     if replay is None:
         return ()
+    if layout == "topology-replay" and not isinstance(
+        replay, LCColorTopologyReplayPlan
+    ):
+        raise RecurrenceProjectionError(
+            "LC topology-replay layout requires an LC replay plan"
+        )
+    if layout == "contracted-color-union" and not isinstance(
+        replay, ColorTopologyReplayCertificate
+    ):
+        raise RecurrenceProjectionError(
+            "contracted-color-union replay requires a color-generic certificate"
+        )
+    if isinstance(replay, ColorTopologyReplayCertificate) and (
+        replay.color_accuracy != color_plan.color_accuracy
+    ):
+        raise RecurrenceProjectionError(
+            "topology replay certificate color accuracy does not match the plan"
+        )
     physical_ids = tuple(sorted(int(sector.id) for sector in color_plan.sectors))
     if replay.physical_sector_ids != physical_ids:
         raise RecurrenceProjectionError(
@@ -1111,7 +1135,8 @@ def _project_replay_partitions(
                 )
             expected_weight = (
                 2.0
-                if color_plan.trace_reflections_folded
+                if isinstance(replay, LCColorTopologyReplayPlan)
+                and color_plan.trace_reflections_folded
                 and sector.kind == "single-trace"
                 and len(sector.trace_labels) > 2
                 else 1.0

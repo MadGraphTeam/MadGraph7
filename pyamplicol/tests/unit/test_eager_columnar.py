@@ -15,6 +15,10 @@ from pyamplicol.color import (
     build_color_contraction_plan,
     build_lc_topology_replay_plan,
 )
+from pyamplicol.color.plan import (
+    build_color_plan,
+    build_color_topology_replay_certificate,
+)
 from pyamplicol.generation.dag_algorithms import (
     prune_global_helicity_flip_equivalent_roots,
 )
@@ -508,6 +512,64 @@ def test_lc_replay_proof_ownership_is_retained() -> None:
         for partition in replay.partitions
         for permutation in partition.label_permutations
     )
+
+
+def test_generic_color_replay_retains_compact_physical_contraction() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("g g > g g g", color_accuracy="full")
+    color_plan = build_color_plan(process, color_accuracy="full")
+    replay = build_color_topology_replay_certificate(color_plan, model)
+    assert replay is not None
+    dag = compile_generic_dag(
+        process,
+        model=model,
+        color_plan=color_plan,
+        selected_color_sector_ids=replay.materialized_sector_ids,
+        online_evaluation_reuse=True,
+        backward_live_planning=True,
+    )
+    dag = replace(
+        dag,
+        color_plan=color_plan,
+        color_coverage="complete",
+        selected_color_sector_ids=(),
+        color_topology_replay=replay,
+    )
+    result = build_eager_lowering_input_v1(
+        dag=dag,
+        model=model,
+        resolver=_resolver_for(dag, model),
+    )
+
+    replay_metadata = result.table("lc_replay_metadata")
+    amplitude_metadata = result.table("color_replay_metadata")
+    contraction_metadata = result.table("color_replay_contraction_metadata")
+    component_groups = result.table("color_replay_contraction_component_groups")
+    entries = result.table("color_replay_contraction_entries")
+
+    assert bool(replay_metadata.column("present")[0])
+    assert int(replay_metadata.column("replay_kind")[0]) == 2
+    assert bool(amplitude_metadata.column("present")[0])
+    assert (
+        result.table("color_replay_physical_groups").row_count
+        == int(amplitude_metadata.column("physical_group_count")[0])
+    )
+    assert bool(contraction_metadata.column("present")[0])
+    assert bool(contraction_metadata.column("repeated")[0])
+    component_count = int(contraction_metadata.column("component_count")[0])
+    assert component_count > 1
+    assert component_groups.row_count == int(
+        contraction_metadata.column("group_count")[0]
+    )
+    assert entries.row_count > 0
+    assert entries.row_count * component_count > entries.row_count
+    assert set(int(value) for value in entries.column("left_group_id")) == {
+        (1 << 32) - 1
+    }
+    assert set(int(value) for value in entries.column("right_group_id")) == {
+        (1 << 32) - 1
+    }
+    assert not bool(result.table("color_contraction_metadata").column("present")[0])
 
 
 def test_exactness_audit_reports_the_remaining_resolver_blocker(
