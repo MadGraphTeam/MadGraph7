@@ -9,8 +9,20 @@ from types import SimpleNamespace
 import pytest
 
 from tools.performance_report import final_audit
-from tools.performance_report.campaign_policy import MACBOOK_M3_POLICY
-from tools.performance_report.cli import _compile_pdf, _parser, main
+from tools.performance_report.campaign_policy import (
+    MACBOOK_M3_POLICY,
+    X86_EPYC_POLICY,
+    CampaignPolicyError,
+    PolicyMeasurementState,
+    validate_policy_measurement,
+)
+from tools.performance_report.catalog import REPORT_CATALOG
+from tools.performance_report.cli import (
+    _compile_pdf,
+    _is_pinned_epyc_orphan_without_rss,
+    _parser,
+    main,
+)
 from tools.performance_report.service import ReportPaths, ReportService
 
 
@@ -91,6 +103,98 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     )
     assert decimal_limits.max_ram_gb == 30.0
     assert decimal_limits.campaign_max_ram_gb == 30.0
+
+
+def test_pinned_epyc_orphan_is_the_only_unavailable_rss_exception() -> None:
+    cell = REPORT_CATALOG.cell(
+        "reference-amplicol-lc-n8-gg-gluons-selected-flow"
+    )
+    measurement = {
+        "status": "ok",
+        "generation_seconds": 1.0,
+        "resources": {
+            "monitor": "external-cell-supervisor",
+            "peak_rss_gib": None,
+        },
+        "provenance": {
+            "report_source_identity_schema": "pyamplicol-report-source-v1",
+            "report_source_revision": "1" * 40,
+            "report_source_tree": "2" * 40,
+            "report_measured_source_revision": "1" * 40,
+            "report_measured_source_tree": "2" * 40,
+            "report_source_clean": True,
+        },
+    }
+    identity = {
+        "profile": "x86_EPYC",
+        "cell_id": cell.cell_id,
+        "attempt_id": "83e5c9c7-dbf6-4d61-b724-f4580df2cfa3",
+        "worker_result_sha256": (
+            "5f3a42f9e3d034efedd8b670e7acbf2b54a427449106dbabc29050f3d93afbe6"
+        ),
+        "result": measurement,
+    }
+
+    assert _is_pinned_epyc_orphan_without_rss(**identity)
+    with pytest.raises(CampaignPolicyError, match="resource monitoring"):
+        validate_policy_measurement(
+            X86_EPYC_POLICY,
+            "x86_EPYC",
+            cell,
+            measurement,
+            expected_source_revision="1" * 40,
+            expected_source_tree="2" * 40,
+        )
+    assert (
+        validate_policy_measurement(
+            X86_EPYC_POLICY,
+            "x86_EPYC",
+            cell,
+            measurement,
+            expected_source_revision="1" * 40,
+            expected_source_tree="2" * 40,
+            allow_pinned_orphan_unavailable_resources=True,
+        )
+        is PolicyMeasurementState.SUCCESS
+    )
+
+    for field, value in (
+        ("profile", "macbook_M3"),
+        ("cell_id", "reference-amplicol-lc-n7-gg-gluons-selected-flow"),
+        ("attempt_id", "00000000-0000-4000-8000-000000000000"),
+        ("worker_result_sha256", "0" * 64),
+    ):
+        changed = dict(identity)
+        changed[field] = value
+        assert not _is_pinned_epyc_orphan_without_rss(**changed)
+
+    resources = measurement["resources"]
+    assert isinstance(resources, dict)
+    for tampered in (
+        {"monitor": "external-cell-supervisor"},
+        {"monitor": "external-cell-supervisor", "peak_rss_gib": 0.0},
+        {"monitor": "other", "peak_rss_gib": None},
+        {
+            "monitor": "external-cell-supervisor",
+            "peak_rss_gib": None,
+            "peak_rss_bytes": 0,
+        },
+    ):
+        changed_measurement = dict(measurement)
+        changed_measurement["resources"] = tampered
+        changed = dict(identity)
+        changed["result"] = changed_measurement
+        assert not _is_pinned_epyc_orphan_without_rss(**changed)
+        with pytest.raises(CampaignPolicyError, match="resource monitoring"):
+            validate_policy_measurement(
+                X86_EPYC_POLICY,
+                "x86_EPYC",
+                cell,
+                changed_measurement,
+                expected_source_revision="1" * 40,
+                expected_source_tree="2" * 40,
+                allow_pinned_orphan_unavailable_resources=True,
+            )
 
 
 def test_report_profile_is_a_global_architecture_scope() -> None:

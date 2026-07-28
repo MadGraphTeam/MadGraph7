@@ -78,6 +78,39 @@ from .workspace import (
     require_active_profile_environment,
 )
 
+_PINNED_EPYC_ORPHAN_CELL_ID = (
+    "reference-amplicol-lc-n8-gg-gluons-selected-flow"
+)
+_PINNED_EPYC_ORPHAN_ATTEMPT_ID = "83e5c9c7-dbf6-4d61-b724-f4580df2cfa3"
+_PINNED_EPYC_ORPHAN_WORKER_SHA256 = (
+    "5f3a42f9e3d034efedd8b670e7acbf2b54a427449106dbabc29050f3d93afbe6"
+)
+_PINNED_EPYC_ORPHAN_RESOURCES = {
+    "monitor": "external-cell-supervisor",
+    "peak_rss_gib": None,
+}
+
+
+def _is_pinned_epyc_orphan_without_rss(
+    *,
+    profile: str,
+    cell_id: str,
+    attempt_id: str,
+    worker_result_sha256: str,
+    result: Mapping[str, object],
+) -> bool:
+    """Match the sole authenticated legacy worker result lacking RSS."""
+
+    resources = result.get("resources")
+    return (
+        profile == "x86_EPYC"
+        and cell_id == _PINNED_EPYC_ORPHAN_CELL_ID
+        and attempt_id == _PINNED_EPYC_ORPHAN_ATTEMPT_ID
+        and worker_result_sha256 == _PINNED_EPYC_ORPHAN_WORKER_SHA256
+        and isinstance(resources, Mapping)
+        and dict(resources) == _PINNED_EPYC_ORPHAN_RESOURCES
+    )
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -747,6 +780,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ValueError(
                     "orphan worker result lacks exact source/artifact/log evidence"
                 )
+            allow_unavailable_resources = _is_pinned_epyc_orphan_without_rss(
+                profile=args.report_profile,
+                cell_id=args.cell_id,
+                attempt_id=args.attempt_id,
+                worker_result_sha256=args.worker_result_sha256,
+                result=result,
+            )
             state = validate_policy_measurement(
                 policy,
                 args.report_profile,
@@ -754,6 +794,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result,
                 expected_source_revision=source.revision,
                 expected_source_tree=source.tree,
+                allow_pinned_orphan_unavailable_resources=(
+                    allow_unavailable_resources
+                ),
             )
             if state is not PolicyMeasurementState.SUCCESS:
                 raise ValueError(
@@ -779,6 +822,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "result_sha256": hashlib.sha256(
                         record.result_path.read_bytes()
                     ).hexdigest(),
+                    "resource_monitoring": (
+                        "unavailable-pinned-worker-result"
+                        if _is_pinned_epyc_orphan_without_rss(
+                            profile=args.report_profile,
+                            cell_id=args.cell_id,
+                            attempt_id=args.attempt_id,
+                            worker_result_sha256=args.worker_result_sha256,
+                            result=record.result,
+                        )
+                        else "available"
+                    ),
                 },
                 sort_keys=True,
             )

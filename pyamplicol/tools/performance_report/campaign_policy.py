@@ -578,12 +578,21 @@ def _policy_record(
 def _validate_resources(
     measurement: Mapping[str, object],
     policy: CampaignPolicy,
+    *,
+    allow_pinned_orphan_unavailable_resources: bool = False,
 ) -> Mapping[str, object]:
     resources = measurement.get("resources")
     if not isinstance(resources, Mapping):
         raise CampaignPolicyError(
             "architecture-policy measurement has no resource evidence"
         )
+    if allow_pinned_orphan_unavailable_resources and dict(resources) == {
+        "monitor": "external-cell-supervisor",
+        "peak_rss_gib": None,
+    }:
+        if policy.memory_limit_bytes is None:
+            raise CampaignPolicyError("architecture policy has no memory ceiling")
+        return resources
     peak = resources.get("peak_rss_bytes")
     if (
         resources.get("available") is not True
@@ -685,6 +694,7 @@ def validate_policy_measurement(
     *,
     expected_source_revision: str,
     expected_source_tree: str | None = None,
+    allow_pinned_orphan_unavailable_resources: bool = False,
 ) -> PolicyMeasurementState:
     """Validate one successful or policy-terminal current measurement."""
 
@@ -715,13 +725,22 @@ def validate_policy_measurement(
                 "successful measurement source tree does not match"
             )
         if policy.allow_terminal_censors:
-            resources = _validate_resources(measurement, policy)
-            peak = int(resources["peak_rss_bytes"])
-            assert policy.memory_limit_bytes is not None
-            if peak > policy.memory_limit_bytes:
-                raise CampaignPolicyError(
-                    "successful architecture measurement exceeded its RSS ceiling"
-                )
+            resources = _validate_resources(
+                measurement,
+                policy,
+                allow_pinned_orphan_unavailable_resources=(
+                    allow_pinned_orphan_unavailable_resources
+                ),
+            )
+            peak = resources.get("peak_rss_bytes")
+            if peak is not None:
+                assert isinstance(peak, int) and not isinstance(peak, bool)
+                assert policy.memory_limit_bytes is not None
+                if peak > policy.memory_limit_bytes:
+                    raise CampaignPolicyError(
+                        "successful architecture measurement exceeded its "
+                        "RSS ceiling"
+                    )
             generation = _finite_number(
                 measurement.get("generation_seconds"),
                 "generation_seconds",

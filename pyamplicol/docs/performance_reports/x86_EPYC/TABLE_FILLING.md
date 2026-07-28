@@ -321,6 +321,9 @@ git worktree add --detach "$CONTROLLER" "$D"
   --worker-result-sha256 \
   5f3a42f9e3d034efedd8b670e7acbf2b54a427449106dbabc29050f3d93afbe6 \
   --artifact-policy regenerate --expected-source-revision "$A"
+# The JSON output must report
+# "resource_monitoring":"unavailable-pinned-worker-result". The sealed result
+# preserves the worker's exact external-supervisor/null-RSS resource record.
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
   audit-source-bridge --expected-active-source-revision "$A"
 git merge --ff-only "$D"

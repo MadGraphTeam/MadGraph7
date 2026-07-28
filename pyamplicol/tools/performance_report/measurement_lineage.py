@@ -192,6 +192,7 @@ _RECURRENCE_SUMMARY_CAP_ALLOWED_PATHS = (
             "tests/unit/test_three_mode_report_render.py",
             "tests/unit/test_three_mode_report_scheduler.py",
             "tools/performance_report/artifacts.py",
+            "tools/performance_report/campaign_policy.py",
             "tools/performance_report/cli.py",
             "tools/performance_report/legacy.py",
             "tools/performance_report/measurement_lineage.py",
