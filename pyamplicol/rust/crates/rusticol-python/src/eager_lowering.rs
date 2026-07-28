@@ -12,7 +12,7 @@ use rusticol_core::eager_layout::{
     EAGER_RUNTIME_LAYOUT_ABI,
 };
 use rusticol_core::{
-    lower_eager_plan_v3, write_eager_plan_v3_pacbin, EagerBitsetColumns, EagerCoherentGroupColumns,
+    EAGER_LOWERING_V1_TABLE_NAMES, EagerBitsetColumns, EagerCoherentGroupColumns,
     EagerColorContractionEntryColumns, EagerColorContractionMetadata, EagerColorSelectorColumns,
     EagerContractionCoefficientColumns, EagerCouplingColumns, EagerCurrentColumns,
     EagerExactFactorColumns, EagerHelicitySelectorColumns, EagerI32SequenceColumns,
@@ -20,7 +20,7 @@ use rusticol_core::{
     EagerLoweringInputV1View, EagerModelParameterColumns, EagerMomentumMaskColumns,
     EagerPrimitiveColumnView, EagerReductionMemberColumns, EagerRetainedColumnView,
     EagerRetainedTableView, EagerRootColumns, EagerSourceColumns, EagerU32SequenceColumns,
-    RusticolError, RusticolResult, EAGER_LOWERING_V1_TABLE_NAMES,
+    RusticolError, RusticolResult, lower_eager_plan_v3, write_eager_plan_v3_pacbin,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1061,9 +1061,11 @@ mod tests {
     #[test]
     fn every_v1_table_is_classified_for_retention() {
         assert_eq!(EAGER_LOWERING_V1_TABLE_NAMES.len(), 64);
-        assert!(EAGER_LOWERING_V1_TABLE_NAMES
-            .windows(2)
-            .all(|pair| pair[0] < pair[1]));
+        assert!(
+            EAGER_LOWERING_V1_TABLE_NAMES
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
         for table in [
             "color_replay_contraction_component_groups",
             "color_replay_contraction_entries",

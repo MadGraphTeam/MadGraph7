@@ -2,14 +2,13 @@
 
 use super::eager_v3_manifest::*;
 use crate::eager_layout::{
-    EagerSectionHeader, EagerSectionKind, EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
-    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY,
-    EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA, EAGER_RUNTIME_LAYOUT_ABI,
-    EAGER_SECTION_HEADER_SIZE,
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
+    EAGER_RUNTIME_CAPABILITY, EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA,
+    EAGER_RUNTIME_LAYOUT_ABI, EAGER_SECTION_HEADER_SIZE, EagerSectionHeader, EagerSectionKind,
 };
-use crate::pacbin::{write_pacbin_atomic, PacbinReader, PacbinWriteMember, PacbinWriteOptions};
-use crate::{ArtifactProcess, RusticolErrorKind, PROCESS_ARTIFACT_SCHEMA_VERSION};
-use serde_json::{json, Value};
+use crate::pacbin::{PacbinReader, PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
+use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolErrorKind};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -230,6 +229,10 @@ fn runtime_options_and_summaries_are_bounded() {
         (&["runtime_options", "workspace_mib"], json!(4097)),
         (&["dag_summary", "interaction_count"], json!(1_u64 << 49)),
         (
+            &["dag_summary", "interaction_evaluation_count"],
+            json!(1_u64 << 49),
+        ),
+        (
             &["plan", "inspection_summary", "invocation_count"],
             json!(1_u64 << 49),
         ),
@@ -260,6 +263,21 @@ fn runtime_options_and_summaries_are_bounded() {
             "mutation unexpectedly passed: {path:?}"
         );
     }
+}
+
+#[test]
+fn interaction_evaluation_count_matches_the_persisted_plan() {
+    let mut fixture = Fixture::new();
+    fixture.manifest["dag_summary"]["interaction_evaluation_count"] = json!(24);
+    let error = fixture.parse().unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("exceeds"));
+
+    let mut fixture = Fixture::new();
+    fixture.manifest["dag_summary"]["interaction_evaluation_count"] = json!(16);
+    let error = fixture.parse().unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("disagree"));
 }
 
 #[test]
@@ -444,6 +462,7 @@ fn manifest_value(outer: &ArtifactProcess, metadata: &ContainerMetadata) -> Valu
             "current_count": 11,
             "source_count": 4,
             "interaction_count": 23,
+            "interaction_evaluation_count": 17,
             "amplitude_root_count": 5,
             "truncated": false,
         },
@@ -513,9 +532,11 @@ fn write_container(
                 .to_vec(),
         );
     }
-    assert!(payloads
-        .iter()
-        .all(|payload| payload.len() == EAGER_SECTION_HEADER_SIZE));
+    assert!(
+        payloads
+            .iter()
+            .all(|payload| payload.len() == EAGER_SECTION_HEADER_SIZE)
+    );
     let mut members = Vec::with_capacity(EXPECTED_EAGER_MEMBERS.len());
     for (expected, payload) in EXPECTED_EAGER_MEMBERS.iter().zip(&payloads) {
         let path = path_override

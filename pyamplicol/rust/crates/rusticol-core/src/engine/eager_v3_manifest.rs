@@ -7,12 +7,12 @@
 //! then returns the mapped reader to the compact runtime loader.
 
 use crate::eager_layout::{
-    EagerSectionHeader, EagerSectionKind, EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
-    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EAGER_RUNTIME_CAPABILITY,
-    EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA, EAGER_RUNTIME_LAYOUT_ABI,
+    EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
+    EAGER_RUNTIME_CAPABILITY, EAGER_RUNTIME_CONTAINER_KIND, EAGER_RUNTIME_CONTAINER_SCHEMA,
+    EAGER_RUNTIME_LAYOUT_ABI, EagerSectionHeader, EagerSectionKind,
 };
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
-use crate::{ArtifactProcess, RusticolError, RusticolResult, PROCESS_ARTIFACT_SCHEMA_VERSION};
+use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -96,6 +96,7 @@ pub(super) struct EagerV3DagSummary {
     pub(super) current_count: u64,
     pub(super) source_count: u64,
     pub(super) interaction_count: u64,
+    pub(super) interaction_evaluation_count: u64,
     pub(super) amplitude_root_count: u64,
     pub(super) truncated: bool,
 }
@@ -187,6 +188,8 @@ impl EagerV3ExecutionManifest {
         self.dag_summary.validate()?;
         if self.plan.inspection_summary.current_count != self.dag_summary.current_count
             || self.plan.inspection_summary.source_count != self.dag_summary.source_count
+            || self.plan.inspection_summary.invocation_count
+                != self.dag_summary.interaction_evaluation_count
         {
             return Err(RusticolError::integrity(
                 "eager plan-v3 inspection counts disagree with the DAG summary",
@@ -298,9 +301,15 @@ impl EagerV3DagSummary {
                 self.current_count,
                 self.source_count,
                 self.interaction_count,
+                self.interaction_evaluation_count,
                 self.amplitude_root_count,
             ],
         )?;
+        if self.interaction_evaluation_count > self.interaction_count {
+            return Err(RusticolError::integrity(
+                "eager DAG interaction-evaluation count exceeds its interaction count",
+            ));
+        }
         if self.truncated {
             return Err(RusticolError::compatibility(
                 "truncated DAGs cannot be loaded as eager plan-v3 artifacts",

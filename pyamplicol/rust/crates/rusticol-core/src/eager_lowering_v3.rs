@@ -8,9 +8,9 @@
 //! validated owned input, release the GIL, and call [`lower_eager_plan_v3`].
 
 use crate::eager_layout::{
-    EagerSectionHeader, EagerSectionKind, EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI,
+    EAGER_LOWERING_INPUT_ABI, EAGER_PLAN_ABI, EagerSectionHeader, EagerSectionKind,
 };
-use crate::{RusticolError, RusticolResult, MISSING_U32};
+use crate::{MISSING_U32, RusticolError, RusticolResult};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 

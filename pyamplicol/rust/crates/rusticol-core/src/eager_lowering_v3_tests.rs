@@ -658,9 +658,11 @@ fn structural_zero_requires_an_exact_zero_factor() {
 #[test]
 fn checked_u32_and_u64_overflow_are_rejected() {
     let error = count_u32(u64::from(u32::MAX) + 1, "string catalog").unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("string catalog count exceeds u32"));
+    assert!(
+        error
+            .to_string()
+            .contains("string catalog count exceeds u32")
+    );
 
     let mut ranges = Fixture::valid();
     ranges.bitset_start = vec![0, u64::MAX, 0];
