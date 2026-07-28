@@ -2856,16 +2856,16 @@ class TestMEfromfile(unittest.TestCase):
         import model loop_sm
         set automatic_html_opening False --no_save
         set notification_center False --no_save
-        generate    t{L} > w+{0} b{R}, w+ > ta+ vt
-        add process t{L} > w+{T} b{L}, w+ > ta+ vt
-        add process t{L} > w+{A} b{R}, w+ > ta+ vt
-        add process t{R} > w+{S} b{L}, w+ > ta+ vt
-        add process t{R} > w+{0S} b{R}, w+ > ta+ vt
-        add process t{L} > w+{S0} b{L}, w+ > ta+ vt
-        add process t{L} > w+{G} b{R}, w+ > ta+ vt
-        add process t{L} > w+{H} b{L}, w+ > ta+ vt
-        add process t{R} > w+{Q} b{R}, w+ > ta+ vt
-        add process t{R} > w+{W} b{L}, w+ > ta+ vt
+        generate    t{L} > w+{0} b{R}, w+ > ta+ vt --use_crossing=False
+        add process t{L} > w+{T} b{L}, w+ > ta+ vt --use_crossing=False
+        add process t{L} > w+{A} b{R}, w+ > ta+ vt --use_crossing=False
+        add process t{R} > w+{S} b{L}, w+ > ta+ vt --use_crossing=False
+        add process t{R} > w+{0S} b{R}, w+ > ta+ vt --use_crossing=False
+        add process t{L} > w+{S0} b{L}, w+ > ta+ vt --use_crossing=False
+        add process t{L} > w+{G} b{R}, w+ > ta+ vt --use_crossing=False
+        add process t{L} > w+{H} b{L}, w+ > ta+ vt --use_crossing=False
+        add process t{R} > w+{Q} b{R}, w+ > ta+ vt --use_crossing=False
+        add process t{R} > w+{W} b{L}, w+ > ta+ vt --use_crossing=False
         output madevent %(path)s
         launch
         analysis=off
@@ -2894,8 +2894,8 @@ class TestMEfromfile(unittest.TestCase):
         import model loop_sm
         set automatic_html_opening False --no_save
         set notification_center False --no_save
-        generate    t > w+{A} b, w+ > ta+ vt
-        add process t > w+{S} b, w+ > ta+ vt
+        generate    t > w+{A} b, w+ > ta+ vt --use_crossing=False
+        add process t > w+{S} b, w+ > ta+ vt --use_crossing=False
         output madevent %(path)s
         launch
         analysis=off
@@ -2923,8 +2923,8 @@ class TestMEfromfile(unittest.TestCase):
         import model loop_sm
         set automatic_html_opening False --no_save
         set notification_center False --no_save
-        generate    t > w+{A} b, w+ > ta+ vt
-        add process t > w+{S} b, w+ > ta+ vt
+        generate    t > w+{A} b, w+ > ta+ vt --use_crossing=False
+        add process t > w+{S} b, w+ > ta+ vt --use_crossing=False
         output madevent %(path)s
         launch
         analysis=off

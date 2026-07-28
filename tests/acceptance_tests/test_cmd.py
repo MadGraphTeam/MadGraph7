@@ -233,6 +233,7 @@ class TestCmdShell1(unittest.TestCase):
                     'samurai': None,
                     'max_t_for_channel': 99,
                     'zerowidth_tchannel': True,
+                    'zerowidth_external': True,
                     'auto_convert_model': True,
                     'nlo_mixed_expansion': True,
                     'acknowledged_v3.1_syntax': True,
