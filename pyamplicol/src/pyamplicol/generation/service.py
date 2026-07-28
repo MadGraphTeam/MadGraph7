@@ -97,7 +97,11 @@ from .dag_algorithms import (
     prune_global_helicity_flip_equivalent_roots,
 )
 from .dag_compiler import _restrict_color_plan, compile_generic_dag
-from .dag_equivalence import project_rectangular_dynamic_color_classes
+from .dag_equivalence import (
+    discover_recursive_evaluation_relations,
+    project_rectangular_dynamic_color_classes,
+    recurrence_relation_discovery_diagnostic,
+)
 from .dag_types import GenericDAG
 from .eager_columnar import (
     EAGER_LOWERING_INPUT_ABI,
@@ -2175,6 +2179,7 @@ class GenerationBackend:
             else len(process.dag.amplitude_roots)
         )
         validation = self._generation_config.validation
+        relation_discovery = process.coverage.get("relation_discovery")
         filters: dict[str, object] = {
             **(
                 {}
@@ -2192,6 +2197,11 @@ class GenerationBackend:
                 "mode": "proven global-helicity-flip equivalence",
             },
             "dynamic_color_projection": dynamic_color_projection.to_json_dict(),
+            **(
+                {}
+                if not isinstance(relation_discovery, Mapping)
+                else {"relation_discovery": dict(relation_discovery)}
+            ),
             **(
                 {}
                 if reduced.helicity_recurrence is None
@@ -2709,6 +2719,23 @@ class GenerationBackend:
                     }
                 ),
             }
+        relation_discovery_payload: dict[str, object] | None = None
+        relation_discovery = self._generation_config.relation_discovery
+        relation_discovery_mode = str(relation_discovery.mode)
+        if relation_discovery_mode != "off":
+            relation_discovery_payload = recurrence_relation_discovery_diagnostic(
+                requested_mode=cast(
+                    Literal["diagnostic", "certified-reuse"],
+                    relation_discovery_mode,
+                ),
+                color_accuracy=cast(
+                    Literal["lc", "nlc", "full"],
+                    expanded.process_ir.color_accuracy,
+                ),
+                precision_digits=relation_discovery.precision_digits,
+                probe_count=relation_discovery.probe_count,
+                seed=relation_discovery.seed,
+            ).to_json_dict()
         artifact = RecurrenceProcessArtifact(
             process_id=process_name,
             expression=expanded.process_ir.process,
@@ -2748,6 +2775,11 @@ class GenerationBackend:
             generation_filters={
                 "lc_flow_layout": layout,
                 "recurrence": recurrence_summary,
+                **(
+                    {}
+                    if relation_discovery_payload is None
+                    else {"relation_discovery": relation_discovery_payload}
+                ),
             },
             process_support_mask=1 << index,
             recurrence_process_remap=process_remap,
@@ -4205,6 +4237,26 @@ class GenerationBackend:
                     else None
                 ),
             )
+        relation_discovery_payload: dict[str, object] | None = None
+        relation_discovery = self._generation_config.relation_discovery
+        relation_discovery_mode = str(relation_discovery.mode)
+        if relation_discovery_mode != "off":
+            discovery_result = discover_recursive_evaluation_relations(
+                dag,
+                model,
+                mode=cast(
+                    Literal["diagnostic", "certified-reuse"],
+                    relation_discovery_mode,
+                ),
+                execution_mode=(
+                    "eager" if self._eager_execution_enabled else "compiled"
+                ),
+                precision_digits=relation_discovery.precision_digits,
+                probe_count=relation_discovery.probe_count,
+                seed=relation_discovery.seed,
+            )
+            dag = discovery_result.dag
+            relation_discovery_payload = discovery_result.report.to_json_dict()
         if dag.truncated:
             raise GenerationError(
                 f"process {process.process!r} DAG was unexpectedly truncated"
@@ -4262,6 +4314,11 @@ class GenerationBackend:
                 "interaction_evaluation_count": dag.interaction_evaluation_count,
                 "amplitude_root_count": len(dag.amplitude_roots),
                 "coupling_order_limits": limits,
+                **(
+                    {}
+                    if relation_discovery_payload is None
+                    else {"relation_discovery": relation_discovery_payload}
+                ),
             },
         )
 

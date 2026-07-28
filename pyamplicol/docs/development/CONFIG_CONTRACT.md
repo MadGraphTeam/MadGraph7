@@ -53,9 +53,21 @@ topology, replay, and reference-order IDs are not configurable.
 - `absolute_tolerance: float = 1e-300`
 - `post_build_validation: bool = true`
 
-Generation applies only proven structural helicity reduction. Schema-v3 does
-not expose numerical current pruning or merging because model parameters remain
-runtime-mutable.
+### Relation Discovery
+
+- `mode: off | diagnostic | certified-reuse = off`
+- `precision_digits: int >= 80 = 96`
+- `probe_count: int >= 2 = 4`
+- `seed: int >= 0 = 1348026701`
+
+Numerical probes only nominate possible relations. Compiled and eager
+generation can promote a nomination only after exact binary64 term-vector
+replay emits a certificate. Recurrence uses the same manifest diagnostic shape
+but remains diagnostic-only until the lowered Rust schedule has an exact
+schedule-level replay certificate. The feature is off by default and is valid
+for LC, NLC, and full colour. Direct vertex-kernel equivalence remains
+model-certificate-owned; this pass audits exact current proportionality and the
+interaction fan-out it induces.
 
 ## Evaluator
 

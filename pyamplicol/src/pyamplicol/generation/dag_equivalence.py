@@ -12,11 +12,12 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from math import fsum, isfinite
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 
 from ..models.base import Model, VertexEvaluationEquivalence
 from .contracts import runtime_coupling_parameter_names
@@ -26,6 +27,11 @@ _ComplexWeight: TypeAlias = tuple[float, float]
 _CurrentContract: TypeAlias = tuple[object, ...]
 _EvaluationKey: TypeAlias = tuple[object, ...]
 _CurrentTermVector: TypeAlias = tuple[tuple[_EvaluationKey, _ComplexWeight], ...]
+_DiscoveryMode: TypeAlias = Literal["diagnostic", "certified-reuse"]
+
+RELATION_DISCOVERY_SCHEMA_VERSION = 1
+RELATION_DISCOVERY_CERTIFICATE_ALGORITHM = "exact-binary64-term-vector-replay-v1"
+_MAX_REJECTED_DIAGNOSTICS = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +140,291 @@ class DynamicColorProjectionCertificate:
             "rectangular_closure_group_count": self.rectangular_closure_group_count,
             "split_current_class_count": self.split_current_class_count,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class ExactCurrentRelationCertificate:
+    """Replayable proof that one concrete current is an exact multiple."""
+
+    current_id: int
+    representative_id: int
+    factor: _ComplexWeight
+    current_term_vector_sha256: str
+    representative_term_vector_sha256: str
+    proof_sha256: str
+    algorithm: str = RELATION_DISCOVERY_CERTIFICATE_ALGORITHM
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "algorithm": self.algorithm,
+            "current_id": self.current_id,
+            "representative_id": self.representative_id,
+            "factor_binary64": [self.factor[0].hex(), self.factor[1].hex()],
+            "current_term_vector_sha256": self.current_term_vector_sha256,
+            "representative_term_vector_sha256": (
+                self.representative_term_vector_sha256
+            ),
+            "proof_sha256": self.proof_sha256,
+        }
+
+    @classmethod
+    def from_json_dict(
+        cls,
+        payload: Mapping[str, object],
+    ) -> ExactCurrentRelationCertificate:
+        """Decode the exact representation emitted into generation metadata."""
+
+        expected_fields = {
+            "algorithm",
+            "current_id",
+            "representative_id",
+            "factor_binary64",
+            "current_term_vector_sha256",
+            "representative_term_vector_sha256",
+            "proof_sha256",
+        }
+        if set(payload) != expected_fields:
+            raise ValueError("relation certificate fields are not canonical")
+        try:
+            algorithm = payload["algorithm"]
+            current_id = payload["current_id"]
+            representative_id = payload["representative_id"]
+            raw_factor = payload["factor_binary64"]
+            current_digest = payload["current_term_vector_sha256"]
+            representative_digest = payload["representative_term_vector_sha256"]
+            proof_digest = payload["proof_sha256"]
+        except KeyError as error:
+            raise ValueError(
+                f"relation certificate is missing {error.args[0]!r}"
+            ) from error
+        if algorithm != RELATION_DISCOVERY_CERTIFICATE_ALGORITHM:
+            raise ValueError("relation certificate uses an unsupported algorithm")
+        if (
+            type(current_id) is not int
+            or type(representative_id) is not int
+            or current_id < 0
+            or representative_id < 0
+        ):
+            raise ValueError("relation certificate current IDs must be nonnegative")
+        if (
+            not isinstance(raw_factor, list)
+            or len(raw_factor) != 2
+            or any(not isinstance(component, str) for component in raw_factor)
+        ):
+            raise ValueError(
+                "relation certificate factor must contain two binary64 hex strings"
+            )
+        try:
+            factor = (float.fromhex(raw_factor[0]), float.fromhex(raw_factor[1]))
+        except ValueError as error:
+            raise ValueError(
+                "relation certificate factor has invalid binary64 encoding"
+            ) from error
+        if not _complex_weight_is_finite(factor) or factor == (0.0, 0.0):
+            raise ValueError("relation certificate factor must be finite and nonzero")
+        digests = (current_digest, representative_digest, proof_digest)
+        if any(
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            for digest in digests
+        ):
+            raise ValueError("relation certificate digests must be lowercase SHA-256")
+        assert isinstance(current_digest, str)
+        assert isinstance(representative_digest, str)
+        assert isinstance(proof_digest, str)
+        certificate = cls(
+            current_id=current_id,
+            representative_id=representative_id,
+            factor=factor,
+            current_term_vector_sha256=current_digest,
+            representative_term_vector_sha256=representative_digest,
+            proof_sha256=proof_digest,
+        )
+        if (
+            _certificate_proof_sha256(
+                current_id=certificate.current_id,
+                representative_id=certificate.representative_id,
+                factor=certificate.factor,
+                current_term_vector_sha256=(certificate.current_term_vector_sha256),
+                representative_term_vector_sha256=(
+                    certificate.representative_term_vector_sha256
+                ),
+            )
+            != certificate.proof_sha256
+        ):
+            raise ValueError("relation certificate proof digest does not replay")
+        return certificate
+
+
+@dataclass(frozen=True, slots=True)
+class RelationDiscoveryReport:
+    """Mode- and colour-scoped outcome of one opt-in discovery pass."""
+
+    requested_mode: str
+    state: str
+    execution_mode: str
+    color_accuracy: str
+    representation: str
+    precision_digits: int
+    probe_count: int
+    seed: int
+    probe_status: str
+    certificate_replay_status: str
+    numerical_candidate_count: int
+    uncertified_candidate_count: int
+    exact_certified_relation_count: int
+    applied_relation_count: int
+    interaction_evaluation_count_before: int | None
+    interaction_evaluation_count_after: int | None
+    certificates: tuple[ExactCurrentRelationCertificate, ...] = ()
+    rejected_candidates: tuple[dict[str, object], ...] = ()
+    follow_up_boundary: str | None = None
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": RELATION_DISCOVERY_SCHEMA_VERSION,
+            "requested_mode": self.requested_mode,
+            "state": self.state,
+            "scope": {
+                "execution_mode": self.execution_mode,
+                "color_accuracy": self.color_accuracy,
+                "representation": self.representation,
+            },
+            "probe": {
+                "status": self.probe_status,
+                "precision_digits": self.precision_digits,
+                "probe_count": self.probe_count,
+                "seed": self.seed,
+                "deterministic": True,
+                "candidate_only": True,
+            },
+            "certificate_replay": {
+                "algorithm": RELATION_DISCOVERY_CERTIFICATE_ALGORITHM,
+                "status": self.certificate_replay_status,
+            },
+            "numerical_candidate_count": self.numerical_candidate_count,
+            "uncertified_candidate_count": self.uncertified_candidate_count,
+            "exact_certified_relation_count": (self.exact_certified_relation_count),
+            "applied_relation_count": self.applied_relation_count,
+            "interaction_evaluation_count_before": (
+                self.interaction_evaluation_count_before
+            ),
+            "interaction_evaluation_count_after": (
+                self.interaction_evaluation_count_after
+            ),
+            "interaction_evaluation_savings": (
+                None
+                if self.interaction_evaluation_count_before is None
+                or self.interaction_evaluation_count_after is None
+                else max(
+                    0,
+                    self.interaction_evaluation_count_before
+                    - self.interaction_evaluation_count_after,
+                )
+            ),
+            "certificates": [
+                certificate.to_json_dict() for certificate in self.certificates
+            ],
+            "rejected_candidates": list(self.rejected_candidates),
+            "follow_up_boundary": self.follow_up_boundary,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RelationDiscoveryResult:
+    dag: GenericDAG
+    report: RelationDiscoveryReport
+
+
+class _NumericalRelationDiscovery:
+    """Nominate projective pairs numerically, then require an exact replay."""
+
+    def __init__(
+        self,
+        *,
+        precision_digits: int,
+        probe_count: int,
+        seed: int,
+    ) -> None:
+        if precision_digits < 80:
+            raise ValueError("relation discovery precision must be at least 80 digits")
+        if probe_count < 2:
+            raise ValueError("relation discovery requires at least two probe points")
+        if seed < 0:
+            raise ValueError("relation discovery seed must be nonnegative")
+        self.precision_digits = int(precision_digits)
+        self.probe_count = int(probe_count)
+        self.seed = int(seed)
+        self.numerical_candidate_count = 0
+        self.uncertified_candidate_count = 0
+        self.certificates: list[ExactCurrentRelationCertificate] = []
+        self.rejected_candidates: list[dict[str, object]] = []
+        self._representatives_by_fingerprint: dict[
+            tuple[_CurrentContract, tuple[object, ...]],
+            list[tuple[int, _CurrentTermVector]],
+        ] = {}
+
+    def consider(
+        self,
+        *,
+        current_id: int,
+        contract: _CurrentContract,
+        term_vector: _CurrentTermVector,
+        baseline: _CurrentValueEquivalence,
+    ) -> _CurrentValueEquivalence:
+        fingerprint = _numerical_projective_fingerprint(
+            term_vector,
+            precision_digits=self.precision_digits,
+            probe_count=self.probe_count,
+            seed=self.seed,
+        )
+        if fingerprint is None:
+            return baseline
+        key = (contract, fingerprint)
+        representatives = self._representatives_by_fingerprint.setdefault(key, [])
+
+        promoted = baseline
+        if baseline.representative_id == current_id and baseline.factor == (1.0, 0.0):
+            exact_matches: list[tuple[int, _ComplexWeight, _CurrentTermVector]] = []
+            for representative_id, representative_vector in representatives:
+                self.numerical_candidate_count += 1
+                factor = _certify_exact_term_vector_relation(
+                    representative_vector,
+                    term_vector,
+                )
+                if factor is None:
+                    self.uncertified_candidate_count += 1
+                    if len(self.rejected_candidates) < _MAX_REJECTED_DIAGNOSTICS:
+                        self.rejected_candidates.append(
+                            {
+                                "current_id": current_id,
+                                "representative_id": representative_id,
+                                "reason": "numerical-candidate-lacks-exact-certificate",
+                            }
+                        )
+                    continue
+                exact_matches.append((representative_id, factor, representative_vector))
+            if exact_matches:
+                representative_id, factor, representative_vector = min(
+                    exact_matches,
+                    key=lambda item: item[0],
+                )
+                certificate = _build_exact_current_relation_certificate(
+                    current_id=current_id,
+                    representative_id=representative_id,
+                    factor=factor,
+                    current_term_vector=term_vector,
+                    representative_term_vector=representative_vector,
+                )
+                self.certificates.append(certificate)
+                promoted = _CurrentValueEquivalence(
+                    representative_id=representative_id,
+                    factor=factor,
+                )
+
+        representatives.append((current_id, term_vector))
+        return promoted
 
 
 class RecursiveEvaluationReuseTracker:
@@ -394,6 +685,157 @@ def assign_recursive_current_evaluation_reuse(
         model,
         equivalence_by_kind=equivalence_by_kind,
     )
+    return _rewrite_interaction_evaluation_reuse(
+        dag,
+        model,
+        current_equivalences=current_equivalences,
+        equivalence_by_kind=equivalence_by_kind,
+    )
+
+
+def discover_recursive_evaluation_relations(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    mode: _DiscoveryMode,
+    execution_mode: Literal["compiled", "eager"],
+    precision_digits: int = 96,
+    probe_count: int = 4,
+    seed: int = 0x5059414D,
+) -> RelationDiscoveryResult:
+    """Discover candidates numerically and promote only exact DAG relations.
+
+    Probe values are deterministic high-precision synthetic evaluations of the
+    full current term vectors. They are candidate indexes only. Every promoted
+    relation is independently replayed over the complete binary64 coefficient
+    vectors, and unsafe recursive factor composition continues to fail closed.
+    """
+
+    if mode not in {"diagnostic", "certified-reuse"}:
+        raise ValueError(f"unsupported relation discovery mode {mode!r}")
+    if execution_mode not in {"compiled", "eager"}:
+        raise ValueError(
+            "GenericDAG relation discovery supports compiled and eager execution"
+        )
+
+    baseline = assign_recursive_current_evaluation_reuse(dag, model)
+    discovery = _NumericalRelationDiscovery(
+        precision_digits=precision_digits,
+        probe_count=probe_count,
+        seed=seed,
+    )
+    equivalence_by_kind: dict[int, VertexEvaluationEquivalence] = {}
+    current_equivalences = _derive_current_value_equivalences(
+        dag,
+        model,
+        equivalence_by_kind=equivalence_by_kind,
+        discovery=discovery,
+    )
+    promoted = _rewrite_interaction_evaluation_reuse(
+        dag,
+        model,
+        current_equivalences=current_equivalences,
+        equivalence_by_kind=equivalence_by_kind,
+    )
+    if discovery.certificates and not verify_dag_relation_certificates(
+        dag,
+        model,
+        discovery.certificates,
+    ):
+        discovery.uncertified_candidate_count += len(discovery.certificates)
+        if len(discovery.rejected_candidates) < _MAX_REJECTED_DIAGNOSTICS:
+            discovery.rejected_candidates.append(
+                {
+                    "reason": "exact-certificate-chain-replay-failed",
+                    "relation_count": len(discovery.certificates),
+                }
+            )
+        discovery.certificates.clear()
+        promoted = baseline
+    interaction_changed = _interaction_reuse_signature(
+        promoted
+    ) != _interaction_reuse_signature(baseline)
+    apply_promotions = (
+        mode == "certified-reuse"
+        and bool(discovery.certificates)
+        and interaction_changed
+    )
+    result_dag = promoted if apply_promotions else dag
+    report = RelationDiscoveryReport(
+        requested_mode=mode,
+        state=("exact-certified-applied" if apply_promotions else "diagnostic-only"),
+        execution_mode=execution_mode,
+        color_accuracy=str(dag.process.color_accuracy),
+        representation="generic-dag",
+        precision_digits=precision_digits,
+        probe_count=probe_count,
+        seed=seed,
+        probe_status="completed",
+        certificate_replay_status=(
+            "verified" if discovery.certificates else "no-certified-relations"
+        ),
+        numerical_candidate_count=discovery.numerical_candidate_count,
+        uncertified_candidate_count=discovery.uncertified_candidate_count,
+        exact_certified_relation_count=len(discovery.certificates),
+        applied_relation_count=(len(discovery.certificates) if apply_promotions else 0),
+        interaction_evaluation_count_before=baseline.interaction_evaluation_count,
+        interaction_evaluation_count_after=(
+            promoted.interaction_evaluation_count
+            if apply_promotions or mode == "diagnostic"
+            else baseline.interaction_evaluation_count
+        ),
+        certificates=tuple(discovery.certificates),
+        rejected_candidates=tuple(discovery.rejected_candidates),
+        follow_up_boundary=(
+            "direct vertex-kernel equivalence remains model-certificate-owned; "
+            "this pass promotes exact current proportionality and its induced "
+            "interaction fan-out only"
+        ),
+    )
+    return RelationDiscoveryResult(dag=result_dag, report=report)
+
+
+def recurrence_relation_discovery_diagnostic(
+    *,
+    requested_mode: _DiscoveryMode,
+    color_accuracy: Literal["lc", "nlc", "full"],
+    precision_digits: int,
+    probe_count: int,
+    seed: int,
+) -> RelationDiscoveryReport:
+    """Return the shared manifest shape without mutating a recurrence schedule."""
+
+    return RelationDiscoveryReport(
+        requested_mode=requested_mode,
+        state="diagnostic-only",
+        execution_mode="recurrence",
+        color_accuracy=color_accuracy,
+        representation="recurrence-schedule",
+        precision_digits=precision_digits,
+        probe_count=probe_count,
+        seed=seed,
+        probe_status="not-run",
+        certificate_replay_status="unavailable",
+        numerical_candidate_count=0,
+        uncertified_candidate_count=0,
+        exact_certified_relation_count=0,
+        applied_relation_count=0,
+        interaction_evaluation_count_before=None,
+        interaction_evaluation_count_after=None,
+        follow_up_boundary=(
+            "recurrence promotion requires an exact schedule-level replay "
+            "certificate over the lowered Rust current/contribution tables"
+        ),
+    )
+
+
+def _rewrite_interaction_evaluation_reuse(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    current_equivalences: tuple[_CurrentValueEquivalence, ...],
+    equivalence_by_kind: dict[int, VertexEvaluationEquivalence],
+) -> GenericDAG:
     evaluation_group_by_key: dict[_EvaluationKey, int] = {}
     interactions: list[InteractionNode] = []
 
@@ -1100,6 +1542,7 @@ def _derive_current_value_equivalences(
     model: Model,
     *,
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence] | None = None,
+    discovery: _NumericalRelationDiscovery | None = None,
 ) -> tuple[_CurrentValueEquivalence, ...]:
     """Derive current classes in increasing external-subset order."""
 
@@ -1154,7 +1597,7 @@ def _derive_current_value_equivalences(
             current_equivalences=current_equivalences,
             equivalence_by_kind=kernel_equivalences,
         )
-        current_equivalences[current.id] = _classify_current_term_vector(
+        equivalence = _classify_current_term_vector(
             current_id=current.id,
             contract=contract,
             term_vector=term_vector,
@@ -1163,12 +1606,405 @@ def _derive_current_value_equivalences(
                 projective_representatives_by_expression
             ),
         )
+        if discovery is not None:
+            equivalence = discovery.consider(
+                current_id=current.id,
+                contract=contract,
+                term_vector=term_vector,
+                baseline=equivalence,
+            )
+        current_equivalences[current.id] = equivalence
 
     if any(item is None for item in current_equivalences):
         raise ValueError(
             "current-value equivalence derivation left an unclassified current"
         )
     return tuple(item for item in current_equivalences if item is not None)
+
+
+def verify_dag_relation_certificates(
+    dag: GenericDAG,
+    model: Model,
+    certificates: Iterable[ExactCurrentRelationCertificate],
+) -> bool:
+    """Replay a certificate chain without consulting numerical probe results."""
+
+    ordered_certificates = tuple(certificates)
+    if (
+        tuple(sorted(ordered_certificates, key=lambda item: item.current_id))
+        != ordered_certificates
+    ):
+        return False
+    certificate_by_current = {
+        certificate.current_id: certificate for certificate in ordered_certificates
+    }
+    if len(certificate_by_current) != len(ordered_certificates):
+        return False
+
+    try:
+        interactions_by_result: dict[int, list[InteractionNode]] = defaultdict(list)
+        for interaction in dag.interactions:
+            interactions_by_result[interaction.result_id].append(interaction)
+        current_equivalences: list[_CurrentValueEquivalence | None] = [None] * len(
+            dag.currents
+        )
+        source_representative_by_key: dict[tuple[object, ...], int] = {}
+        equivalence_by_expression: dict[
+            tuple[_CurrentContract, _CurrentTermVector], _CurrentValueEquivalence
+        ] = {}
+        projective_representatives_by_expression: dict[
+            tuple[_CurrentContract, _CurrentTermVector],
+            list[_ProjectiveExpressionRepresentative],
+        ] = {}
+        kernel_equivalences: dict[int, VertexEvaluationEquivalence] = {}
+        term_vector_by_current: dict[int, _CurrentTermVector] = {}
+        contract_by_current: dict[int, _CurrentContract] = {}
+        consumed: set[int] = set()
+
+        ordered_currents = sorted(
+            dag.currents,
+            key=lambda current: (len(current.index.external_labels), current.id),
+        )
+        for current in ordered_currents:
+            contract = _current_evaluation_contract(current)
+            contract_by_current[current.id] = contract
+            if current.is_source:
+                if current.id in certificate_by_current:
+                    return False
+                if current.source_leg_label is None or current.source_helicity is None:
+                    return False
+                source_key = (
+                    contract,
+                    int(current.source_leg_label),
+                    int(current.source_helicity),
+                )
+                representative_id = source_representative_by_key.setdefault(
+                    source_key,
+                    current.id,
+                )
+                current_equivalences[current.id] = _CurrentValueEquivalence(
+                    representative_id,
+                    (1.0, 0.0),
+                )
+                continue
+
+            term_vector = _current_term_vector(
+                dag,
+                current,
+                interactions_by_result[current.id],
+                model,
+                current_equivalences=current_equivalences,
+                equivalence_by_kind=kernel_equivalences,
+            )
+            term_vector_by_current[current.id] = term_vector
+            equivalence = _classify_current_term_vector(
+                current_id=current.id,
+                contract=contract,
+                term_vector=term_vector,
+                equivalence_by_expression=equivalence_by_expression,
+                projective_representatives_by_expression=(
+                    projective_representatives_by_expression
+                ),
+            )
+            certificate = certificate_by_current.get(current.id)
+            if certificate is not None:
+                if (
+                    certificate.algorithm != RELATION_DISCOVERY_CERTIFICATE_ALGORITHM
+                    or certificate.representative_id >= current.id
+                    or certificate.representative_id not in term_vector_by_current
+                    or contract_by_current[certificate.representative_id] != contract
+                ):
+                    return False
+                representative_vector = term_vector_by_current[
+                    certificate.representative_id
+                ]
+                factor = _certify_exact_term_vector_relation(
+                    representative_vector,
+                    term_vector,
+                )
+                if factor is None or not _complex_weight_bits_equal(
+                    factor,
+                    certificate.factor,
+                ):
+                    return False
+                if (
+                    _term_vector_sha256(term_vector)
+                    != certificate.current_term_vector_sha256
+                    or _term_vector_sha256(representative_vector)
+                    != certificate.representative_term_vector_sha256
+                    or _certificate_proof_sha256(
+                        current_id=certificate.current_id,
+                        representative_id=certificate.representative_id,
+                        factor=certificate.factor,
+                        current_term_vector_sha256=(
+                            certificate.current_term_vector_sha256
+                        ),
+                        representative_term_vector_sha256=(
+                            certificate.representative_term_vector_sha256
+                        ),
+                    )
+                    != certificate.proof_sha256
+                ):
+                    return False
+                equivalence = _CurrentValueEquivalence(
+                    certificate.representative_id,
+                    certificate.factor,
+                )
+                consumed.add(current.id)
+            current_equivalences[current.id] = equivalence
+        return consumed == set(certificate_by_current)
+    except (IndexError, KeyError, OverflowError, TypeError, ValueError):
+        return False
+
+
+def _numerical_projective_fingerprint(
+    term_vector: _CurrentTermVector,
+    *,
+    precision_digits: int,
+    probe_count: int,
+    seed: int,
+) -> tuple[object, ...] | None:
+    """Return a scale-free high-precision candidate key.
+
+    This fingerprint is deliberately insufficient as a proof. Its only use is
+    to reduce the number of pairs sent to exact coefficient-vector replay.
+    """
+
+    if not _term_vector_is_finite_nonzero(term_vector):
+        return None
+    with localcontext() as context:
+        context.prec = precision_digits
+        values: list[tuple[Decimal, Decimal]] = []
+        for probe_index in range(probe_count):
+            total_real = Decimal(0)
+            total_imaginary = Decimal(0)
+            for evaluation_key, coefficient in term_vector:
+                probe_real, probe_imaginary = _deterministic_decimal_probe_value(
+                    evaluation_key,
+                    seed=seed,
+                    probe_index=probe_index,
+                )
+                coefficient_real = Decimal.from_float(coefficient[0])
+                coefficient_imaginary = Decimal.from_float(coefficient[1])
+                total_real += (
+                    coefficient_real * probe_real
+                    - coefficient_imaginary * probe_imaginary
+                )
+                total_imaginary += (
+                    coefficient_real * probe_imaginary
+                    + coefficient_imaginary * probe_real
+                )
+            values.append((total_real, total_imaginary))
+
+        pivot_index = next(
+            (
+                index
+                for index, value in enumerate(values)
+                if value != (Decimal(0), Decimal(0))
+            ),
+            None,
+        )
+        if pivot_index is None:
+            return None
+        pivot = values[pivot_index]
+        normalized = tuple(_decimal_complex_ratio(value, pivot) for value in values)
+        if any(value is None for value in normalized):
+            return None
+        fingerprint_digits = max(24, precision_digits // 2)
+        return (
+            "deterministic-projective-probe-v1",
+            pivot_index,
+            tuple(
+                (
+                    _decimal_fingerprint_component(value[0], fingerprint_digits),
+                    _decimal_fingerprint_component(value[1], fingerprint_digits),
+                )
+                for value in normalized
+                if value is not None
+            ),
+        )
+
+
+def _deterministic_decimal_probe_value(
+    evaluation_key: _EvaluationKey,
+    *,
+    seed: int,
+    probe_index: int,
+) -> tuple[Decimal, Decimal]:
+    payload = json.dumps(
+        _canonical_proof_value(evaluation_key),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    digest = hashlib.sha256(f"{seed}:{probe_index}:".encode("ascii") + payload).digest()
+
+    def component(chunk: bytes) -> Decimal:
+        raw = int.from_bytes(chunk, "big", signed=False)
+        value = raw % 2_000_003 - 1_000_001
+        return Decimal(1 if value == 0 else value)
+
+    return component(digest[:8]), component(digest[8:16])
+
+
+def _decimal_complex_ratio(
+    numerator: tuple[Decimal, Decimal],
+    denominator: tuple[Decimal, Decimal],
+) -> tuple[Decimal, Decimal] | None:
+    denominator_norm = denominator[0] * denominator[0] + denominator[1] * denominator[1]
+    if denominator_norm == 0:
+        return None
+    return (
+        (numerator[0] * denominator[0] + numerator[1] * denominator[1])
+        / denominator_norm,
+        (numerator[1] * denominator[0] - numerator[0] * denominator[1])
+        / denominator_norm,
+    )
+
+
+def _decimal_fingerprint_component(value: Decimal, digits: int) -> str:
+    if value == 0:
+        return "0"
+    return format(value, f".{digits}E")
+
+
+def _certify_exact_term_vector_relation(
+    representative: _CurrentTermVector,
+    candidate: _CurrentTermVector,
+) -> _ComplexWeight | None:
+    if (
+        not _term_vector_is_finite_nonzero(representative)
+        or not _term_vector_is_finite_nonzero(candidate)
+        or len(representative) != len(candidate)
+    ):
+        return None
+    if any(
+        representative_key != candidate_key
+        for (representative_key, _), (candidate_key, _) in zip(
+            representative,
+            candidate,
+            strict=True,
+        )
+    ):
+        return None
+    factor = _exact_representable_complex_ratio(
+        candidate[0][1],
+        representative[0][1],
+    )
+    if factor is None or not _term_vector_scaled_exactly(
+        representative,
+        factor,
+        candidate,
+    ):
+        return None
+    return factor
+
+
+def _build_exact_current_relation_certificate(
+    *,
+    current_id: int,
+    representative_id: int,
+    factor: _ComplexWeight,
+    current_term_vector: _CurrentTermVector,
+    representative_term_vector: _CurrentTermVector,
+) -> ExactCurrentRelationCertificate:
+    current_digest = _term_vector_sha256(current_term_vector)
+    representative_digest = _term_vector_sha256(representative_term_vector)
+    return ExactCurrentRelationCertificate(
+        current_id=current_id,
+        representative_id=representative_id,
+        factor=factor,
+        current_term_vector_sha256=current_digest,
+        representative_term_vector_sha256=representative_digest,
+        proof_sha256=_certificate_proof_sha256(
+            current_id=current_id,
+            representative_id=representative_id,
+            factor=factor,
+            current_term_vector_sha256=current_digest,
+            representative_term_vector_sha256=representative_digest,
+        ),
+    )
+
+
+def _certificate_proof_sha256(
+    *,
+    current_id: int,
+    representative_id: int,
+    factor: _ComplexWeight,
+    current_term_vector_sha256: str,
+    representative_term_vector_sha256: str,
+) -> str:
+    return _canonical_payload_sha256(
+        {
+            "algorithm": RELATION_DISCOVERY_CERTIFICATE_ALGORITHM,
+            "current_id": current_id,
+            "representative_id": representative_id,
+            "factor_binary64": [factor[0].hex(), factor[1].hex()],
+            "current_term_vector_sha256": current_term_vector_sha256,
+            "representative_term_vector_sha256": (representative_term_vector_sha256),
+        }
+    )
+
+
+def _term_vector_sha256(term_vector: _CurrentTermVector) -> str:
+    return _canonical_payload_sha256(
+        [
+            {
+                "evaluation_key": _canonical_proof_value(evaluation_key),
+                "coefficient_binary64": [
+                    coefficient[0].hex(),
+                    coefficient[1].hex(),
+                ],
+            }
+            for evaluation_key, coefficient in term_vector
+        ]
+    )
+
+
+def _canonical_payload_sha256(payload: object) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_proof_value(value: object) -> object:
+    if isinstance(value, tuple):
+        return [_canonical_proof_value(item) for item in value]
+    if isinstance(value, float):
+        return {"binary64": value.hex()}
+    if value is None or isinstance(value, bool | int | str):
+        return value
+    raise TypeError(
+        "relation certificate contains a noncanonical evaluation-key value "
+        f"{type(value).__name__}"
+    )
+
+
+def _interaction_reuse_signature(dag: GenericDAG) -> tuple[tuple[object, ...], ...]:
+    canonical_group_by_key: dict[tuple[str, int], int] = {}
+    signature: list[tuple[object, ...]] = []
+    for interaction in dag.interactions:
+        raw_group = (
+            ("group", interaction.evaluation_group_id)
+            if interaction.evaluation_group_id is not None
+            else ("interaction", interaction.id)
+        )
+        canonical_group = canonical_group_by_key.setdefault(
+            raw_group,
+            len(canonical_group_by_key),
+        )
+        signature.append(
+            (
+                canonical_group,
+                interaction.evaluation_factor[0].hex(),
+                interaction.evaluation_factor[1].hex(),
+            )
+        )
+    return tuple(signature)
 
 
 def _classify_current_term_vector(
@@ -1618,8 +2454,16 @@ def _canonical_zero(value: float) -> float:
 
 
 __all__ = [
+    "RELATION_DISCOVERY_CERTIFICATE_ALGORITHM",
+    "RELATION_DISCOVERY_SCHEMA_VERSION",
     "DynamicColorProjectionCertificate",
+    "ExactCurrentRelationCertificate",
     "RecursiveEvaluationReuseTracker",
+    "RelationDiscoveryReport",
+    "RelationDiscoveryResult",
     "assign_recursive_current_evaluation_reuse",
+    "discover_recursive_evaluation_relations",
     "project_rectangular_dynamic_color_classes",
+    "recurrence_relation_discovery_diagnostic",
+    "verify_dag_relation_certificates",
 ]

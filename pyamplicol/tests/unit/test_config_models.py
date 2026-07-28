@@ -21,6 +21,7 @@ from pyamplicol.config import (
     EvaluatorExecutionMode,
     EvaluatorOptimizationConfig,
     GenerationConfig,
+    GenerationRelationDiscoveryConfig,
     GenerationValidationConfig,
     JITConfig,
     LCFlowLayout,
@@ -29,13 +30,14 @@ from pyamplicol.config import (
     ProcessConfig,
     ProcessEntry,
     RecurrenceEvaluatorConfig,
+    RelationDiscoveryMode,
     RunConfig,
     SymbolicaConfig,
 )
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 70
+    assert len(FIELD_REGISTRY) == 74
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
@@ -69,6 +71,13 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["evaluator.recurrence.point_tile_size"].default == 1024
     assert FIELD_REGISTRY["evaluator.recurrence.workspace_mib"].default == 256
     assert "evaluator.recurrence" in CONFIG_SECTIONS
+    assert FIELD_REGISTRY["generation.relation_discovery.mode"].default is (
+        RelationDiscoveryMode.OFF
+    )
+    assert (
+        FIELD_REGISTRY["generation.relation_discovery.precision_digits"].default == 96
+    )
+    assert "generation.relation_discovery" in CONFIG_SECTIONS
     assert FIELD_REGISTRY["process.multiparticles"].dynamic_kind == "list_str"
     assert FIELD_REGISTRY["process.entries"].kind == "process_entries"
     assert FIELD_REGISTRY["process.reference_color_order"].kind == "list_int"
@@ -95,6 +104,7 @@ def test_all_public_configuration_dataclasses_are_frozen() -> None:
         EvaluatorConfig,
         EvaluatorOptimizationConfig,
         GenerationConfig,
+        GenerationRelationDiscoveryConfig,
         GenerationValidationConfig,
         JITConfig,
         ModelConfig,
@@ -159,12 +169,29 @@ def test_contract_defaults_are_typed() -> None:
     assert config.evaluator.recurrence == RecurrenceEvaluatorConfig()
     assert config.schema_version == 1
     assert config.generation.validation.samples == 10
+    assert config.generation.relation_discovery.mode is RelationDiscoveryMode.OFF
+    assert config.generation.relation_discovery.precision_digits == 96
     assert config.evaluator.output_chunk_size == 512
     assert not config.evaluator.cpp.native_arch
     assert config.evaluator.optimization.max_common_pair_cache_entries == 5_000_000
     assert config.benchmark.target_runtime == 10.0
     assert config.benchmark.precision == 16
     assert config.output == OutputConfig()
+
+
+def test_relation_discovery_is_opt_in_and_requires_high_precision() -> None:
+    assert (
+        GenerationRelationDiscoveryConfig(mode="diagnostic").mode
+        is RelationDiscoveryMode.DIAGNOSTIC
+    )
+    assert (
+        GenerationRelationDiscoveryConfig(mode="certified-reuse").mode
+        is RelationDiscoveryMode.CERTIFIED_REUSE
+    )
+    with pytest.raises(ConfigurationError, match="precision_digits"):
+        GenerationRelationDiscoveryConfig(precision_digits=79)
+    with pytest.raises(ConfigurationError, match="probe_count"):
+        GenerationRelationDiscoveryConfig(probe_count=1)
 
 
 def test_all_flow_union_layout_requires_lc_accuracy() -> None:

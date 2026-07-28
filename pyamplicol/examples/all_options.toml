@@ -88,6 +88,20 @@ absolute_tolerance = 1e-300
 # generation.validation.post_build_validation: Validate the built evaluator.
 post_build_validation = true
 
+[generation.relation_discovery]
+# generation.relation_discovery.mode: "off", "diagnostic", or
+# "certified-reuse". Default off.
+mode = "off"
+# generation.relation_discovery.precision_digits: Decimal probe precision,
+# at least 80. Default 96.
+precision_digits = 96
+# generation.relation_discovery.probe_count: Deterministic probe points,
+# at least 2. Default 4.
+probe_count = 4
+# generation.relation_discovery.seed: Non-negative deterministic probe seed.
+# Default 1348026701.
+seed = 1348026701
+
 [evaluator]
 # evaluator.backend: "jit", "asm", or "cpp". Default jit.
 backend = "jit"

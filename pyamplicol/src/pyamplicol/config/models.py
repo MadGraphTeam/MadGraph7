@@ -46,6 +46,12 @@ class GenerationMode(StrEnum):
     REPLACE = "replace"
 
 
+class RelationDiscoveryMode(StrEnum):
+    OFF = "off"
+    DIAGNOSTIC = "diagnostic"
+    CERTIFIED_REUSE = "certified-reuse"
+
+
 class EvaluatorBackend(StrEnum):
     JIT = "jit"
     ASM = "asm"
@@ -478,6 +484,57 @@ class GenerationValidationConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class GenerationRelationDiscoveryConfig:
+    """Opt-in numerical nomination with exact-certificate promotion."""
+
+    mode: RelationDiscoveryMode = field(
+        default=RelationDiscoveryMode.OFF,
+        metadata=_setting("str", choices=tuple(RelationDiscoveryMode)),
+    )
+    precision_digits: int = field(default=96, metadata=_setting("int"))
+    probe_count: int = field(default=4, metadata=_setting("int"))
+    seed: int = field(default=0x5059414D, metadata=_setting("int"))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "mode",
+            _enum(
+                self.mode,
+                RelationDiscoveryMode,
+                "generation.relation_discovery.mode",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "precision_digits",
+            _integer(
+                self.precision_digits,
+                "generation.relation_discovery.precision_digits",
+                minimum=80,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "probe_count",
+            _integer(
+                self.probe_count,
+                "generation.relation_discovery.probe_count",
+                minimum=2,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "seed",
+            _integer(
+                self.seed,
+                "generation.relation_discovery.seed",
+                minimum=0,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class GenerationConfig:
     output: Path | None = field(default=None, metadata=_setting("path", nullable=True))
     mode: GenerationMode = field(
@@ -488,6 +545,10 @@ class GenerationConfig:
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
+    )
+    relation_discovery: GenerationRelationDiscoveryConfig = field(
+        default_factory=GenerationRelationDiscoveryConfig,
+        metadata=_section(),
     )
 
     def __post_init__(self) -> None:
@@ -503,6 +564,14 @@ class GenerationConfig:
         if not isinstance(self.validation, GenerationValidationConfig):
             raise ConfigurationError(
                 "generation.validation must be a GenerationValidationConfig"
+            )
+        if not isinstance(
+            self.relation_discovery,
+            GenerationRelationDiscoveryConfig,
+        ):
+            raise ConfigurationError(
+                "generation.relation_discovery must be a "
+                "GenerationRelationDiscoveryConfig"
             )
 
 
@@ -938,6 +1007,7 @@ __all__ = [
     "EvaluatorOptimizationConfig",
     "GenerationConfig",
     "GenerationMode",
+    "GenerationRelationDiscoveryConfig",
     "GenerationValidationConfig",
     "JITConfig",
     "LCFlowLayout",
@@ -949,6 +1019,7 @@ __all__ = [
     "ProcessEntry",
     "ProgressMode",
     "RecurrenceEvaluatorConfig",
+    "RelationDiscoveryMode",
     "RunConfig",
     "SymbolicaConfig",
 ]
