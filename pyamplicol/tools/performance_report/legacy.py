@@ -21,7 +21,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -761,11 +761,20 @@ class LegacyMeasurementAdapter:
         api: LegacyApi | None = None,
         executor: CommandExecutor | None = None,
         snapshotter: ArtifactSnapshotter | None = None,
+        structural_proof: bool | None = None,
     ) -> None:
+        use_default_api = api is None
         self.api = MaintainedLegacyApi() if api is None else api
         self.executor = SubprocessExecutor() if executor is None else executor
         self.snapshotter = (
             GeneratedLibrarySnapshotter() if snapshotter is None else snapshotter
+        )
+        # Injected APIs are unit-test/developer seams and preserve the historical
+        # adapter surface unless the caller explicitly supplies real probe
+        # sources.  The production worker constructs the default maintained API,
+        # for which structural evidence is mandatory and fail-closed.
+        self.structural_proof = (
+            use_default_api if structural_proof is None else structural_proof
         )
 
     def measure(
@@ -779,14 +788,63 @@ class LegacyMeasurementAdapter:
             raise LegacyAdapterError("legacy adapter requires an AmpliCol cell")
         source_pdgs = self.api.process_pdgs(cell.process)
         if _quark_line_count(source_pdgs) > MAX_OPEN_QUARK_LINES:
-            return self._unsupported_measurement(
+            result = self._unsupported_measurement(
                 f"original AmpliCol supports at most {MAX_OPEN_QUARK_LINES} "
                 "open quark lines in this report"
             )
+            if self.structural_proof:
+                from .legacy_structure import (
+                    emit_legacy_scope_unavailable_proof,
+                )
+
+                artifact_path.mkdir(parents=True, exist_ok=True)
+                revision = self.api.expected_revision()
+                proof = emit_legacy_scope_unavailable_proof(
+                    cell,
+                    artifact_path=artifact_path,
+                    source_revision=revision,
+                    maximum_open_quark_lines=MAX_OPEN_QUARK_LINES,
+                    observed_open_quark_lines=_quark_line_count(source_pdgs),
+                )
+                result["artifact"] = {
+                    "path": os.fspath(artifact_path),
+                    "legacy_structural_proof": os.fspath(proof),
+                }
+                result["provenance"] = {
+                    "method": "original-amplicol-scope-boundary",
+                    "revision": revision,
+                }
+            return result
 
         repository = settings.repository or self.api.default_repository
         self.api.validate_checkout(repository)
         artifact_path.mkdir(parents=True, exist_ok=True)
+        instrumentation_context: Any = nullcontext(None)
+        if self.structural_proof:
+            from .legacy_structure import instrument_legacy_structural_probes
+
+            instrumentation_context = instrument_legacy_structural_probes(
+                repository,
+                artifact_path,
+            )
+        with instrumentation_context as instrumentation:
+            return self._measure_supported(
+                cell,
+                repository=repository,
+                artifact_path=artifact_path,
+                settings=settings,
+                instrumentation=instrumentation,
+            )
+
+    def _measure_supported(
+        self,
+        cell: CellSpec,
+        *,
+        repository: Path,
+        artifact_path: Path,
+        settings: LegacySettings,
+        instrumentation: object | None,
+    ) -> dict[str, object]:
         log_path = artifact_path / "legacy.log"
         commands: list[dict[str, object]] = []
         context = self._prepare_process(
@@ -832,12 +890,13 @@ class LegacyMeasurementAdapter:
         else:
             raise LegacyAdapterError("NLC/full AmpliCol cells must be contracted")
 
+        process_row = (
+            f"group:{int(context.entry.group)}:"
+            f"integral:{int(context.entry.integral)}"
+        )
         result["artifact"] = {
             "path": os.fspath(artifact_path),
-            "process_row": (
-                f"group:{int(context.entry.group)}:"
-                f"integral:{int(context.entry.integral)}"
-            ),
+            "process_row": process_row,
             "log_path": os.fspath(log_path),
         }
         result["selector_contract"] = (
@@ -882,10 +941,11 @@ class LegacyMeasurementAdapter:
                 "status": "unavailable",
                 "error": str(error),
             }
+        revision = self.api.expected_revision()
         result["provenance"] = {
             **dict(result.get("provenance") or {}),
             "method": "original-amplicol-generated-library",
-            "revision": self.api.expected_revision(),
+            "revision": revision,
             "compiler": compiler,
             "platform": platform.platform(),
             "python": platform.python_version(),
@@ -907,6 +967,18 @@ class LegacyMeasurementAdapter:
             "maximum_profile_chunks": settings.maximum_profile_chunks,
             "generation_timing_is_workload_specific": True,
         }
+        if instrumentation is not None:
+            from .legacy_structure import emit_legacy_structural_proof
+
+            proof = emit_legacy_structural_proof(
+                cell,
+                artifact_path=artifact_path,
+                process_row=process_row,
+                source_revision=revision,
+                repository=repository,
+                instrumentation=instrumentation,
+            )
+            result["artifact"]["legacy_structural_proof"] = os.fspath(proof)
         result["failure"] = None
         return result
 
@@ -1357,6 +1429,16 @@ class LegacyMeasurementAdapter:
                 context.entry.process_pdgs,
             )
             ordered_helicities = tuple(helicities[index] for index in permutation)
+            probe_args = (
+                repository / "amplicol_color_probe",
+                str(1),
+                str(context.entry.group),
+                str(context.entry.integral),
+                "lc",
+                process_copy,
+                momenta_path,
+                *(str(value) for value in ordered_helicities),
+            )
             profile = self._profile(
                 lambda count: self._invoke_probe_command(
                     (
@@ -1376,6 +1458,26 @@ class LegacyMeasurementAdapter:
                 settings=settings,
                 timing_labels=("amplitude evaluation", "total"),
             )
+            if self.structural_proof:
+                from .legacy_structure import (
+                    STRUCTURAL_PROBE_ENVIRONMENT,
+                    write_legacy_structural_probe_output,
+                )
+
+                structural, _rows, _probe = self._invoke_probe_command(
+                    probe_args,
+                    cwd=work,
+                    commands=commands,
+                    log_path=log_path,
+                    environment={STRUCTURAL_PROBE_ENVIRONMENT: "1"},
+                )
+                write_legacy_structural_probe_output(
+                    artifact_path
+                    / "legacy-structural-evidence"
+                    / "direct-structural-probe.stdout",
+                    stdout=structural.stdout,
+                    stderr=structural.stderr,
+                )
         generation_seconds = _timing_seconds(profile.rows, "generation setup")
         if generation_seconds is None:
             raise LegacyAdapterError(
@@ -1406,6 +1508,7 @@ class LegacyMeasurementAdapter:
                 cell,
                 context=context,
                 repository=repository,
+                artifact_path=artifact_path,
                 settings=settings,
                 commands=commands,
                 log_path=log_path,
@@ -1468,6 +1571,36 @@ class LegacyMeasurementAdapter:
             settings=settings,
             timing_labels=("total",),
         )
+        if self.structural_proof:
+            from .legacy_structure import (
+                STRUCTURAL_PROBE_ENVIRONMENT,
+                write_legacy_structural_probe_output,
+            )
+
+            structural, _rows, _probe = self._invoke_command(
+                (
+                    "./amplicol_color_library_probe",
+                    "1",
+                    str(context.entry.group),
+                    str(context.entry.integral),
+                    cell.measurement.accuracy.value,
+                    momenta_path.name,
+                ),
+                cwd=generated,
+                environment={
+                    **environment,
+                    STRUCTURAL_PROBE_ENVIRONMENT: "1",
+                },
+                commands=commands,
+                log_path=log_path,
+            )
+            write_legacy_structural_probe_output(
+                artifact_path
+                / "legacy-structural-evidence"
+                / "contracted-structural-probe.stdout",
+                stdout=structural.stdout,
+                stderr=structural.stderr,
+            )
         probe_started = time.perf_counter()
         probe = self.api.run_color_probe(
             repository,
@@ -1503,6 +1636,7 @@ class LegacyMeasurementAdapter:
         *,
         context: _ProcessContext,
         repository: Path,
+        artifact_path: Path,
         settings: LegacySettings,
         commands: list[dict[str, object]],
         log_path: Path,
@@ -1551,6 +1685,34 @@ class LegacyMeasurementAdapter:
                 settings=settings,
                 timing_labels=("total",),
             )
+            if self.structural_proof:
+                from .legacy_structure import (
+                    STRUCTURAL_PROBE_ENVIRONMENT,
+                    write_legacy_structural_probe_output,
+                )
+
+                structural, _rows, _probe = self._invoke_probe_command(
+                    (
+                        repository / "amplicol_color_probe",
+                        "1",
+                        str(context.entry.group),
+                        str(context.entry.integral),
+                        cell.measurement.accuracy.value,
+                        process_copy,
+                        momenta_path,
+                    ),
+                    cwd=work,
+                    commands=commands,
+                    log_path=log_path,
+                    environment={STRUCTURAL_PROBE_ENVIRONMENT: "1"},
+                )
+                write_legacy_structural_probe_output(
+                    artifact_path
+                    / "legacy-structural-evidence"
+                    / "direct-structural-probe.stdout",
+                    stdout=structural.stdout,
+                    stderr=structural.stderr,
+                )
         generation_seconds = _timing_seconds(profile.rows, "generation setup")
         if generation_seconds is None:
             raise LegacyAdapterError(
@@ -1715,10 +1877,12 @@ class LegacyMeasurementAdapter:
         cwd: Path,
         commands: list[dict[str, object]],
         log_path: Path,
+        environment: Mapping[str, str] | None = None,
     ) -> tuple[CommandResult, tuple[TimingRow, ...], object]:
         result = self._run(
             args,
             cwd=cwd,
+            environment=environment,
             commands=commands,
             log_path=log_path,
         )
