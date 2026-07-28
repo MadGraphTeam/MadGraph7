@@ -28,11 +28,13 @@ from .artifacts import ATTEMPT_SCHEMA, ArtifactStore, CurrentRecord
 from .cache import _validate_runtime_identity_postflight, validate_measurement
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .models import (
+    Accuracy,
     ArtifactPolicy,
     CellSpec,
     ExecutionMode,
     ModelKey,
     ResultStatus,
+    Workload,
 )
 from .source_identity import require_eligible_report_source
 
@@ -42,6 +44,13 @@ MEASUREMENT_LINEAGE_WRAPPER_SCHEMA = (
 )
 MEASUREMENT_LINEAGE_FILENAME = "measurement_lineage.json"
 CLASS_C_HZZ_IMPACT = "hzz-orientation-v1"
+CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT = "recurrence-summary-cap-v1"
+_CLASS_C_IMPACTS = frozenset(
+    {
+        CLASS_C_HZZ_IMPACT,
+        CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+    }
+)
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA_RE = re.compile(r"[0-9a-f]{40,64}")
@@ -142,6 +151,50 @@ _HZZ_REQUIRED_FEATURE_PATHS = frozenset(
     }
 )
 
+_RECURRENCE_SUMMARY_CAP_ALLOWED_PATHS = frozenset(
+    {
+        "docs/performance_reports/macbook_M3/TABLE_FILLING.md",
+        "docs/performance_reports/x86_EPYC/TABLE_FILLING.md",
+        "rust/crates/rusticol-core/src/engine/recurrence_manifest.rs",
+        "src/pyamplicol/generation/artifact_writer.py",
+        "tests/unit/test_performance_report_artifacts.py",
+        "tests/unit/test_performance_report_cli.py",
+        "tests/unit/test_performance_report_measurement_lineage.py",
+        "tests/unit/test_performance_report_measurement_lineage_adversarial.py",
+        "tests/unit/test_recurrence_direct_artifact_metadata.py",
+        "tests/unit/test_three_mode_report_render.py",
+        "tools/performance_report/artifacts.py",
+        "tools/performance_report/cli.py",
+        "tools/performance_report/measurement_lineage.py",
+        "tools/performance_report/render.py",
+        "tools/performance_report/workspace.py",
+    }
+)
+_RECURRENCE_SUMMARY_CAP_REQUIRED_PATHS = _RECURRENCE_SUMMARY_CAP_ALLOWED_PATHS
+
+_RECURRENCE_SUMMARY_CAP_FAILURE_BYTES = {
+    "matrix-recurrence-builtin-sm-lc-n7-gg-gluons-selected-flow": 4_270_140,
+    "matrix-recurrence-builtin-sm-lc-n8-dd-tt-jets-selected-flow": 1_083_926,
+    "matrix-recurrence-builtin-sm-lc-n9-dd-z-jets-selected-flow": 4_449_888,
+    "matrix-recurrence-builtin-sm-lc-n9-ud-w-jets-selected-flow": 4_449_912,
+}
+_RECURRENCE_SUMMARY_CAP_AGREEMENT_IDS = frozenset(
+    {
+        "matrix-recurrence-builtin-sm-lc-n7-gg-gluons-all-flow",
+        "matrix-recurrence-builtin-sm-lc-n8-dd-tt-jets-all-flow",
+        "matrix-recurrence-builtin-sm-lc-n9-dd-z-jets-all-flow",
+        "matrix-recurrence-builtin-sm-lc-n9-ud-w-jets-all-flow",
+        "matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow",
+        "matrix-recurrence-ufo-sm-lc-n7-gg-gluons-selected-flow",
+        "matrix-recurrence-ufo-sm-lc-n8-dd-tt-jets-all-flow",
+        "matrix-recurrence-ufo-sm-lc-n8-dd-tt-jets-selected-flow",
+        "matrix-recurrence-ufo-sm-lc-n9-dd-z-jets-all-flow",
+        "matrix-recurrence-ufo-sm-lc-n9-dd-z-jets-selected-flow",
+        "matrix-recurrence-ufo-sm-lc-n9-ud-w-jets-all-flow",
+        "matrix-recurrence-ufo-sm-lc-n9-ud-w-jets-selected-flow",
+    }
+)
+
 _ENVIRONMENT_KEYS = {
     "schema",
     "profile",
@@ -217,6 +270,17 @@ _REACHABILITY_RECORD_KEYS = {
     "active_executor_ids",
     "matched_template_ids",
     "matched_contract_ids",
+}
+
+_SUMMARY_CAP_FAILURE_RECORD_KEYS = {
+    "cell_id",
+    "attempt_id",
+    "manifest_sha256",
+    "result_locator",
+    "result_sha256",
+    "summary_bytes",
+    "failure_kind",
+    "failure_message",
 }
 
 _ARTIFACT_OWNER_KEYS = {
@@ -548,6 +612,102 @@ def _validate_artifact_owner(
         )
 
 
+def _summary_cap_failure_message(summary_bytes: int) -> str:
+    return (
+        "Rust recurrence execution summary must be smaller than 1 MiB; "
+        f"received {summary_bytes} bytes"
+    )
+
+
+def _validate_summary_cap_certificate(
+    certificate: Mapping[str, object],
+) -> None:
+    expected_ids = sorted(_RECURRENCE_SUMMARY_CAP_FAILURE_BYTES)
+    records = certificate.get("records")
+    invalidated = certificate.get("invalidated_generation_error_current_ids")
+    inspected = certificate.get("inspected_current_count")
+    successful = certificate.get("successful_current_count")
+    if (
+        set(certificate)
+        != {
+            "algorithm",
+            "target_summary_bytes",
+            "inspected_current_count",
+            "successful_current_count",
+            "records",
+            "invalidated_generation_error_current_ids",
+            "sha256",
+        }
+        or certificate.get("algorithm")
+        != "authenticated-recurrence-summary-cap-failure-census-v1"
+        or certificate.get("target_summary_bytes")
+        != _RECURRENCE_SUMMARY_CAP_FAILURE_BYTES
+        or not isinstance(inspected, int)
+        or isinstance(inspected, bool)
+        or not isinstance(successful, int)
+        or isinstance(successful, bool)
+        or inspected != successful + len(expected_ids)
+        or successful < 0
+        or not isinstance(records, list)
+        or not isinstance(invalidated, list)
+        or invalidated != expected_ids
+        or len(records) != len(expected_ids)
+    ):
+        raise MeasurementLineageError(
+            "measurement-lineage recurrence summary-cap census is malformed"
+        )
+    record_ids: list[str] = []
+    for record in records:
+        if (
+            not isinstance(record, dict)
+            or set(record) != _SUMMARY_CAP_FAILURE_RECORD_KEYS
+        ):
+            raise MeasurementLineageError(
+                "measurement-lineage recurrence summary-cap record is malformed"
+            )
+        cell_id = record.get("cell_id")
+        attempt_id = record.get("attempt_id")
+        try:
+            canonical_attempt = (
+                str(uuid.UUID(attempt_id))
+                if isinstance(attempt_id, str)
+                else None
+            )
+        except ValueError:
+            canonical_attempt = None
+        result_locator = record.get("result_locator")
+        summary_bytes = (
+            _RECURRENCE_SUMMARY_CAP_FAILURE_BYTES.get(cell_id)
+            if isinstance(cell_id, str)
+            else None
+        )
+        if (
+            summary_bytes is None
+            or canonical_attempt != attempt_id
+            or not _safe_locator(result_locator)
+            or not str(result_locator).endswith(
+                f"/attempts/{attempt_id}/result.json"
+            )
+            or not isinstance(record.get("manifest_sha256"), str)
+            or _SHA256_RE.fullmatch(str(record["manifest_sha256"])) is None
+            or not isinstance(record.get("result_sha256"), str)
+            or _SHA256_RE.fullmatch(str(record["result_sha256"])) is None
+            or record.get("summary_bytes") != summary_bytes
+            or record.get("failure_kind") != "GenerationError"
+            or record.get("failure_message")
+            != _summary_cap_failure_message(summary_bytes)
+        ):
+            raise MeasurementLineageError(
+                "measurement-lineage recurrence summary-cap record is invalid"
+            )
+        record_ids.append(cell_id)
+    if record_ids != expected_ids:
+        raise MeasurementLineageError(
+            "measurement-lineage recurrence summary-cap records do not match "
+            "the exact failure census"
+        )
+
+
 def _validate_payload_shape(payload: Mapping[str, object]) -> None:
     if set(payload) != _PAYLOAD_KEYS:
         raise MeasurementLineageError(
@@ -557,7 +717,7 @@ def _validate_payload_shape(payload: Mapping[str, object]) -> None:
         payload.get("schema") != MEASUREMENT_LINEAGE_SCHEMA
         or payload.get("state") not in {"pending", "finalized"}
         or payload.get("class") != "C"
-        or payload.get("impact") != CLASS_C_HZZ_IMPACT
+        or payload.get("impact") not in _CLASS_C_IMPACTS
         or not isinstance(payload.get("profile"), str)
         or not payload["profile"]
         or payload.get("runtime_invariant_fields")
@@ -733,9 +893,6 @@ def _validate_payload_shape(payload: Mapping[str, object]) -> None:
     reachability = payload.get("reachability_certificate")
     if (
         not isinstance(reachability, Mapping)
-        or reachability.get("algorithm")
-        != "authenticated-recurrence-active-executor-reachability-v1"
-        or reachability.get("target_contract_ids") != sorted(_HZZ_CONTRACT_IDS)
         or not isinstance(reachability.get("sha256"), str)
         or reachability.get("sha256")
         != _digest(
@@ -752,6 +909,17 @@ def _validate_payload_shape(payload: Mapping[str, object]) -> None:
             "measurement-lineage recurrence reachability certificate is invalid"
         )
     assert isinstance(reachability, Mapping)
+    if payload.get("impact") == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT:
+        _validate_summary_cap_certificate(reachability)
+        return
+    if (
+        reachability.get("algorithm")
+        != "authenticated-recurrence-active-executor-reachability-v1"
+        or reachability.get("target_contract_ids") != sorted(_HZZ_CONTRACT_IDS)
+    ):
+        raise MeasurementLineageError(
+            "measurement-lineage recurrence reachability certificate is invalid"
+        )
     records = reachability.get("records")
     reached_ids = reachability.get("reached_cell_ids")
     existing_target_ids = reachability.get("existing_catalog_target_ids")
@@ -977,7 +1145,15 @@ def _diff_records(
     descendant: str,
     impact: str,
 ) -> tuple[dict[str, object], ...]:
-    if impact != CLASS_C_HZZ_IMPACT:
+    if impact == CLASS_C_HZZ_IMPACT:
+        allowed_paths = _HZZ_ALLOWED_PATHS
+        required_paths = _HZZ_REQUIRED_FEATURE_PATHS
+        impact_label = "HZZ"
+    elif impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT:
+        allowed_paths = _RECURRENCE_SUMMARY_CAP_ALLOWED_PATHS
+        required_paths = _RECURRENCE_SUMMARY_CAP_REQUIRED_PATHS
+        impact_label = "recurrence-summary-cap"
+    else:
         raise MeasurementLineageError(f"unsupported Class-C impact {impact!r}")
     ancestry = _git(
         repo_root,
@@ -1013,9 +1189,9 @@ def _diff_records(
             raise MeasurementLineageError(
                 f"Class-C diff contains unsupported status {status!r} for {path!r}"
             )
-        if path not in _HZZ_ALLOWED_PATHS:
+        if path not in allowed_paths:
             raise MeasurementLineageError(
-                f"Class-C HZZ descendant changes disallowed path {path!r}"
+                f"Class-C {impact_label} descendant changes disallowed path {path!r}"
             )
         old = _tree_member(repo_root, ancestor, path)
         new = _tree_member(repo_root, descendant, path)
@@ -1041,10 +1217,10 @@ def _diff_records(
     if not records:
         raise MeasurementLineageError("Class-C descendant has an empty Git diff")
     changed = {str(record["path"]) for record in records}
-    if not _HZZ_REQUIRED_FEATURE_PATHS.issubset(changed):
-        missing = sorted(_HZZ_REQUIRED_FEATURE_PATHS - changed)
+    if not required_paths.issubset(changed):
+        missing = sorted(required_paths - changed)
         raise MeasurementLineageError(
-            "HZZ Class-C descendant lacks reviewed semantic feature members: "
+            f"{impact_label} Class-C descendant lacks reviewed members: "
             + ", ".join(missing)
         )
     return tuple(records)
@@ -1159,6 +1335,59 @@ def hzz_agreement_closure(
     return peers
 
 
+def recurrence_summary_cap_impacted_cells(
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> tuple[CellSpec, ...]:
+    """Return the four currents blocked by the old recurrence summary cap."""
+
+    by_id = {cell.cell_id: cell for cell in catalog.measurement_cells()}
+    missing = sorted(set(_RECURRENCE_SUMMARY_CAP_FAILURE_BYTES) - set(by_id))
+    if missing:
+        raise MeasurementLineageError(
+            "recurrence summary-cap targets are absent from the catalog: "
+            + ", ".join(missing)
+        )
+    cells = tuple(
+        by_id[cell_id]
+        for cell_id in sorted(_RECURRENCE_SUMMARY_CAP_FAILURE_BYTES)
+    )
+    if any(
+        cell.measurement.execution_mode is not ExecutionMode.RECURRENCE
+        or cell.measurement.model is not ModelKey.BUILTIN_SM
+        or cell.measurement.accuracy is not Accuracy.LC
+        or cell.workload is not Workload.SELECTED_FLOW
+        for cell in cells
+    ):
+        raise MeasurementLineageError(
+            "recurrence summary-cap target semantics changed in the catalog"
+        )
+    return cells
+
+
+def recurrence_summary_cap_agreement_closure(
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> tuple[CellSpec, ...]:
+    """Return the exact-equivalent and dependent peers of the four targets."""
+
+    closure = _agreement_consumer_closure(
+        {
+            cell.cell_id
+            for cell in recurrence_summary_cap_impacted_cells(catalog=catalog)
+        },
+        catalog=catalog,
+    )
+    if catalog is REPORT_CATALOG and {
+        cell.cell_id for cell in closure
+    } != _RECURRENCE_SUMMARY_CAP_AGREEMENT_IDS:
+        raise MeasurementLineageError(
+            "canonical recurrence summary-cap agreement closure changed from "
+            "its reviewed 12-cell census"
+        )
+    return closure
+
+
 def _agreement_consumer_closure(
     affected_cell_ids: set[str],
     *,
@@ -1187,10 +1416,18 @@ def _agreement_consumer_closure(
 
 
 def _impact_and_agreement_cells(
+    impact: str,
     reachability: Mapping[str, object],
     *,
     catalog: ReportCatalog,
 ) -> tuple[tuple[CellSpec, ...], tuple[CellSpec, ...]]:
+    if impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT:
+        return (
+            recurrence_summary_cap_impacted_cells(catalog=catalog),
+            recurrence_summary_cap_agreement_closure(catalog=catalog),
+        )
+    if impact != CLASS_C_HZZ_IMPACT:
+        raise MeasurementLineageError(f"unsupported Class-C impact {impact!r}")
     by_id = {cell.cell_id: cell for cell in catalog.measurement_cells()}
     raw_reached = reachability.get("reached_cell_ids")
     if not isinstance(raw_reached, list) or any(
@@ -1330,22 +1567,34 @@ def _validated_pending_path(store: ArtifactStore, path: Path) -> Path:
     return candidate
 
 
-def _current_pin(record: CurrentRecord) -> dict[str, object]:
+def _current_pin(
+    record: CurrentRecord,
+    *,
+    source_epoch_fallback: tuple[str, str] | None = None,
+) -> dict[str, object]:
     provenance = record.result.get("provenance")
-    if not isinstance(provenance, Mapping):
+    if not isinstance(provenance, Mapping) and source_epoch_fallback is None:
         raise MeasurementLineageError(
             f"current {record.cell_id!r} has no source provenance"
         )
-    revision = provenance.get("report_source_revision")
-    tree = provenance.get("report_source_tree")
-    if (
-        not isinstance(revision, str)
-        or _GIT_SHA_RE.fullmatch(revision) is None
-        or not isinstance(tree, str)
-        or _GIT_SHA_RE.fullmatch(tree) is None
-        or provenance.get("report_measured_source_revision") != revision
-        or provenance.get("report_measured_source_tree") != tree
-    ):
+    if isinstance(provenance, Mapping):
+        revision = provenance.get("report_source_revision")
+        tree = provenance.get("report_source_tree")
+        valid = (
+            isinstance(revision, str)
+            and _GIT_SHA_RE.fullmatch(revision) is not None
+            and isinstance(tree, str)
+            and _GIT_SHA_RE.fullmatch(tree) is not None
+            and provenance.get("report_measured_source_revision") == revision
+            and provenance.get("report_measured_source_tree") == tree
+        )
+    else:
+        revision, tree = source_epoch_fallback  # type: ignore[misc]
+        valid = (
+            _GIT_SHA_RE.fullmatch(revision) is not None
+            and _GIT_SHA_RE.fullmatch(tree) is not None
+        )
+    if not valid:
         raise MeasurementLineageError(
             f"current {record.cell_id!r} has invalid source provenance"
         )
@@ -2433,6 +2682,147 @@ def _hzz_reachability_certificate(
     return certificate
 
 
+def _validate_recurrence_summary_cap_failure(
+    store: ArtifactStore,
+    record: CurrentRecord,
+    cell: CellSpec,
+    *,
+    expected_bytes: int,
+) -> dict[str, object]:
+    """Authenticate one exact source-less summary-cap failure attempt."""
+
+    try:
+        validate_measurement(record.result, expected_cell=cell)
+    except ValueError as error:
+        raise MeasurementLineageError(
+            f"{record.cell_id}: recurrence summary-cap failure schema is invalid"
+        ) from error
+    failure = record.result.get("failure")
+    expected_message = _summary_cap_failure_message(expected_bytes)
+    if (
+        _RECURRENCE_SUMMARY_CAP_FAILURE_BYTES.get(record.cell_id)
+        != expected_bytes
+        or cell.cell_id != record.cell_id
+        or record.result.get("status") != ResultStatus.ERROR.value
+        or not isinstance(failure, Mapping)
+        or set(failure) != {"kind", "message"}
+        or failure.get("kind") != "GenerationError"
+        or failure.get("message") != expected_message
+    ):
+        raise MeasurementLineageError(
+            f"{record.cell_id}: current is not the authenticated "
+            "recurrence summary-cap GenerationError"
+        )
+    inventory, result_locator = _attempt_owner_evidence(store, record)
+    return {
+        "cell_id": record.cell_id,
+        "attempt_id": record.attempt_id,
+        "manifest_sha256": record.manifest_sha256,
+        "result_locator": result_locator,
+        "result_sha256": inventory["result_sha256"],
+        "summary_bytes": expected_bytes,
+        "failure_kind": "GenerationError",
+        "failure_message": expected_message,
+    }
+
+
+def _recurrence_summary_cap_failure_certificate(
+    store: ArtifactStore,
+    *,
+    catalog: ReportCatalog,
+) -> dict[str, object]:
+    by_id = {cell.cell_id: cell for cell in catalog.measurement_cells()}
+    target_ids = set(_RECURRENCE_SUMMARY_CAP_FAILURE_BYTES)
+    records: list[dict[str, object]] = []
+    inspected_count = 0
+    successful_count = 0
+    for current in store.recover_current_records():
+        inspected_count += 1
+        cell = by_id.get(current.cell_id)
+        if cell is None:
+            raise MeasurementLineageError(
+                "artifact store current is absent from the report catalog: "
+                f"{current.cell_id}"
+            )
+        if current.cell_id in target_ids:
+            records.append(
+                _validate_recurrence_summary_cap_failure(
+                    store,
+                    current,
+                    cell,
+                    expected_bytes=_RECURRENCE_SUMMARY_CAP_FAILURE_BYTES[
+                        current.cell_id
+                    ],
+                )
+            )
+        elif current.result.get("status") != ResultStatus.OK.value:
+            raise MeasurementLineageError(
+                "current outside the exact recurrence summary-cap failure census "
+                f"is not successful: {current.cell_id}"
+            )
+        else:
+            successful_count += 1
+    observed_ids = {str(record["cell_id"]) for record in records}
+    if observed_ids != target_ids or len(records) != len(target_ids):
+        missing = sorted(target_ids - observed_ids)
+        raise MeasurementLineageError(
+            "artifact store does not contain the exact recurrence summary-cap "
+            "failure census"
+            + (": " + ", ".join(missing) if missing else "")
+        )
+    certificate = {
+        "algorithm": "authenticated-recurrence-summary-cap-failure-census-v1",
+        "target_summary_bytes": dict(_RECURRENCE_SUMMARY_CAP_FAILURE_BYTES),
+        "inspected_current_count": inspected_count,
+        "successful_current_count": successful_count,
+        "records": sorted(records, key=lambda item: str(item["cell_id"])),
+        "invalidated_generation_error_current_ids": sorted(target_ids),
+    }
+    certificate["sha256"] = _digest(certificate)
+    return certificate
+
+
+def _reachability_certificate(
+    impact: str,
+    store: ArtifactStore,
+    *,
+    catalog: ReportCatalog,
+    inspector: RecurrenceReachabilityInspector | None,
+) -> dict[str, object]:
+    if impact == CLASS_C_HZZ_IMPACT:
+        return _hzz_reachability_certificate(
+            store,
+            catalog=catalog,
+            inspector=inspector,
+        )
+    if impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT:
+        return _recurrence_summary_cap_failure_certificate(
+            store,
+            catalog=catalog,
+        )
+    raise MeasurementLineageError(f"unsupported Class-C impact {impact!r}")
+
+
+def _certificate_failure_ids(
+    impact: str,
+    certificate: Mapping[str, object],
+) -> frozenset[str]:
+    if impact == CLASS_C_HZZ_IMPACT:
+        field = "invalidated_validation_failed_current_ids"
+    elif impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT:
+        field = "invalidated_generation_error_current_ids"
+    else:
+        raise MeasurementLineageError(f"unsupported Class-C impact {impact!r}")
+    raw = certificate.get(field)
+    if not isinstance(raw, list) or any(
+        not isinstance(value, str) for value in raw
+    ):
+        raise MeasurementLineageError(
+            "measurement-lineage invalidated failure census is malformed"
+        )
+    return frozenset(raw)
+
+
 def _snapshot_currents(
     store: ArtifactStore,
     *,
@@ -2441,14 +2831,27 @@ def _snapshot_currents(
     catalog: ReportCatalog,
     invalidated_cell_ids: Sequence[str],
     recompare_cell_ids: Sequence[str],
+    source_less_failure_ids: Sequence[str] = (),
 ) -> dict[str, object]:
     impacted_ids = set(invalidated_cell_ids)
     recompare_ids = set(recompare_cell_ids) - impacted_ids
+    source_less_ids = set(source_less_failure_ids)
+    if not source_less_ids <= impacted_ids:
+        raise MeasurementLineageError(
+            "source-less failure pins escape the exact invalidated census"
+        )
     retained: list[dict[str, object]] = []
     invalidated: list[dict[str, object]] = []
     recompare: list[dict[str, object]] = []
     for record in store.recover_current_records():
-        pin = _current_pin(record)
+        pin = _current_pin(
+            record,
+            source_epoch_fallback=(
+                (ancestor_revision, ancestor_tree)
+                if record.cell_id in source_less_ids
+                else None
+            ),
+        )
         if (
             pin["source_revision"] != ancestor_revision
             or pin["source_tree"] != ancestor_tree
@@ -2570,12 +2973,14 @@ def _prepare_class_c_bridge_locked(
         ancestor_revision=ancestor,
         descendant_revision=descendant,
     )
-    reachability = _hzz_reachability_certificate(
+    reachability = _reachability_certificate(
+        impact,
         store,
         catalog=catalog,
         inspector=reachability_inspector,
     )
     impacted_cells, agreement_cells = _impact_and_agreement_cells(
+        impact,
         reachability,
         catalog=catalog,
     )
@@ -2588,6 +2993,11 @@ def _prepare_class_c_bridge_locked(
         catalog=catalog,
         invalidated_cell_ids=impacted_ids,
         recompare_cell_ids=agreement_ids,
+        source_less_failure_ids=(
+            _certificate_failure_ids(impact, reachability)
+            if impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT
+            else ()
+        ),
     )
     impacted = [_cell_record(cell) for cell in impacted_cells]
     closure = [_cell_record(cell) for cell in agreement_cells]
@@ -2741,7 +3151,9 @@ def _finalize_class_c_bridge_locked(
         ancestor_revision=str(payload["ancestor_revision"]),
         descendant_revision=active,
     )
-    reachability = _hzz_reachability_certificate(
+    impact = str(payload["impact"])
+    reachability = _reachability_certificate(
+        impact,
         store,
         catalog=catalog,
         inspector=reachability_inspector,
@@ -2771,6 +3183,7 @@ def _finalize_class_c_bridge_locked(
         invalidated_cell_ids=tuple(
             cell.cell_id
             for cell in _impact_and_agreement_cells(
+                impact,
                 reachability,
                 catalog=catalog,
             )[0]
@@ -2778,9 +3191,15 @@ def _finalize_class_c_bridge_locked(
         recompare_cell_ids=tuple(
             cell.cell_id
             for cell in _impact_and_agreement_cells(
+                impact,
                 reachability,
                 catalog=catalog,
             )[1]
+        ),
+        source_less_failure_ids=(
+            _certificate_failure_ids(impact, reachability)
+            if impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT
+            else ()
         ),
     )
     if payload.get("current_snapshot_sha256") != _digest(snapshot):
@@ -2866,6 +3285,7 @@ def _finalize_class_c_bridge_locked(
             invalidated_cell_ids=tuple(
                 cell.cell_id
                 for cell in _impact_and_agreement_cells(
+                    impact,
                     reachability,
                     catalog=catalog,
                 )[0]
@@ -2873,9 +3293,15 @@ def _finalize_class_c_bridge_locked(
             recompare_cell_ids=tuple(
                 cell.cell_id
                 for cell in _impact_and_agreement_cells(
+                    impact,
                     reachability,
                     catalog=catalog,
                 )[1]
+            ),
+            source_less_failure_ids=(
+                _certificate_failure_ids(impact, reachability)
+                if impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT
+                else ()
             ),
         )
         if payload.get("current_snapshot_sha256") != _digest(final_snapshot):
@@ -3080,7 +3506,7 @@ def load_measurement_lineage(
     if (
         payload.get("profile") != profile
         or payload.get("class") != "C"
-        or payload.get("impact") != CLASS_C_HZZ_IMPACT
+        or payload.get("impact") not in _CLASS_C_IMPACTS
         or payload.get("descendant_revision") != expected_active_revision
         or payload.get("descendant_tree") != expected_active_tree
     ):
@@ -3139,6 +3565,7 @@ def load_measurement_lineage(
             )
     reachability = payload["reachability_certificate"]
     assert isinstance(reachability, Mapping)
+    impact = str(payload["impact"])
     reachability_record_ids = {
         str(record["cell_id"])
         for record in reachability["records"]  # type: ignore[index]
@@ -3148,44 +3575,44 @@ def load_measurement_lineage(
         cell.cell_id: cell
         for cell in catalog.measurement_cells()
     }
-    for record in reachability["records"]:  # type: ignore[index]
-        if not isinstance(record, Mapping):
-            continue
-        owner = record.get("artifact_owner")
-        if not isinstance(owner, Mapping):
-            raise MeasurementLineageError(
-                "measurement-lineage artifact owner is absent"
-            )
-        consumer = catalog_by_id.get(
-            str(owner.get("consumer_cell_id"))
-        )
-        owner_cell = catalog_by_id.get(str(owner.get("owner_cell_id")))
-        if consumer is None or owner_cell is None:
-            raise MeasurementLineageError(
-                "measurement-lineage artifact owner is absent from the catalog"
-            )
-        relation = owner.get("relation")
-        if relation == "equivalent-matrix-peer" and (
-            not owner_cell.dataset_id.startswith("matrix_")
-            or owner_cell not in catalog.equivalent_cells(consumer)
+    if impact == CLASS_C_HZZ_IMPACT:
+        for record in reachability["records"]:  # type: ignore[index]
+            if not isinstance(record, Mapping):
+                continue
+            owner = record.get("artifact_owner")
+            if not isinstance(owner, Mapping):
+                raise MeasurementLineageError(
+                    "measurement-lineage artifact owner is absent"
+                )
+            consumer = catalog_by_id.get(str(owner.get("consumer_cell_id")))
+            owner_cell = catalog_by_id.get(str(owner.get("owner_cell_id")))
+            if consumer is None or owner_cell is None:
+                raise MeasurementLineageError(
+                    "measurement-lineage artifact owner is absent from the catalog"
+                )
+            relation = owner.get("relation")
+            if relation == "equivalent-matrix-peer" and (
+                not owner_cell.dataset_id.startswith("matrix_")
+                or owner_cell not in catalog.equivalent_cells(consumer)
+            ):
+                raise MeasurementLineageError(
+                    "measurement-lineage artifact owner is not the catalog matrix peer"
+                )
+            if relation == "consumer-attempt" and owner_cell != consumer:
+                raise MeasurementLineageError(
+                    "measurement-lineage direct artifact owner changed catalog cell"
+                )
+        static_target_ids = {
+            cell.cell_id for cell in hzz_impacted_cells(catalog=catalog)
+        }
+        if reachability.get("existing_catalog_target_ids") != sorted(
+            static_target_ids & reachability_record_ids
         ):
             raise MeasurementLineageError(
-                "measurement-lineage artifact owner is not the catalog matrix peer"
+                "measurement-lineage existing HZZ target census is inconsistent"
             )
-        if relation == "consumer-attempt" and owner_cell != consumer:
-            raise MeasurementLineageError(
-                "measurement-lineage direct artifact owner changed catalog cell"
-            )
-    static_target_ids = {
-        cell.cell_id for cell in hzz_impacted_cells(catalog=catalog)
-    }
-    if reachability.get("existing_catalog_target_ids") != sorted(
-        static_target_ids & reachability_record_ids
-    ):
-        raise MeasurementLineageError(
-            "measurement-lineage existing HZZ target census is inconsistent"
-        )
     impacted_cells, agreement_cells = _impact_and_agreement_cells(
+        impact,
         reachability,
         catalog=catalog,
     )
@@ -3202,16 +3629,34 @@ def load_measurement_lineage(
         )
     target_ids = {cell.cell_id for cell in impacted_cells}
     closure_ids = {cell.cell_id for cell in agreement_cells}
-    validation_failure_ids = set(
-        reachability["invalidated_validation_failed_current_ids"]  # type: ignore[arg-type]
-    )
+    failure_ids = set(_certificate_failure_ids(impact, reachability))
+    if impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT:
+        failure_record_by_cell = {
+            str(record["cell_id"]): record
+            for record in reachability["records"]  # type: ignore[index]
+            if isinstance(record, Mapping)
+        }
+        invalidated_pin_by_cell = {
+            str(pin["cell_id"]): pin for pin in invalidated
+        }
+        if any(
+            (record := failure_record_by_cell.get(cell_id)) is None
+            or (pin := invalidated_pin_by_cell.get(cell_id)) is None
+            or record.get("attempt_id") != pin.get("attempt_id")
+            or record.get("manifest_sha256") != pin.get("manifest_sha256")
+            or record.get("result_sha256") != pin.get("result_sha256")
+            for cell_id in failure_ids
+        ):
+            raise MeasurementLineageError(
+                "measurement-lineage summary-cap failure records do not match "
+                "their invalidated current pins"
+            )
     current_ids = set().union(*groups)
     expected_invalidated = current_ids & target_ids
     expected_recompare = (current_ids & closure_ids) - expected_invalidated
     if (
-        not validation_failure_ids
-        <= expected_invalidated | expected_recompare
-        or validation_failure_ids & groups[0]
+        not failure_ids <= expected_invalidated | expected_recompare
+        or failure_ids & groups[0]
         or groups[1] != expected_invalidated
         or groups[2] != expected_recompare
         or groups[0] != current_ids - expected_invalidated - expected_recompare
@@ -3290,7 +3735,9 @@ def audit_measurement_lineage(
     )
     reachability = payload["reachability_certificate"]
     assert isinstance(reachability, Mapping)
+    impact = str(payload["impact"])
     impacted_cells, agreement_cells = _impact_and_agreement_cells(
+        impact,
         reachability,
         catalog=catalog,
     )
@@ -3397,9 +3844,7 @@ def audit_measurement_lineage(
     certificate = payload["reachability_certificate"]
     assert isinstance(certificate, Mapping)
     by_cell = {cell.cell_id: cell for cell in catalog.measurement_cells()}
-    validation_failure_ids = set(
-        certificate["invalidated_validation_failed_current_ids"]  # type: ignore[arg-type]
-    )
+    failure_ids = set(_certificate_failure_ids(impact, certificate))
     historical_status_errors: list[str] = []
     for field in (
         "retained_currents",
@@ -3426,13 +3871,23 @@ def audit_measurement_lineage(
                     expected_attempt_id=key[1],
                     expected_digest=str(inventory["manifest_sha256"]),
                 )
-                if cell_id in validation_failure_ids:
+                if cell_id in failure_ids:
                     cell = by_cell.get(cell_id)
                     if cell is None:
                         raise MeasurementLineageError(
                             f"{cell_id}: historical failure is absent from the catalog"
                         )
-                    _validate_numerical_validation_failure(historical, cell)
+                    if impact == CLASS_C_HZZ_IMPACT:
+                        _validate_numerical_validation_failure(historical, cell)
+                    else:
+                        _validate_recurrence_summary_cap_failure(
+                            store,
+                            historical,
+                            cell,
+                            expected_bytes=(
+                                _RECURRENCE_SUMMARY_CAP_FAILURE_BYTES[cell_id]
+                            ),
+                        )
                 elif historical.result.get("status") != ResultStatus.OK.value:
                     raise MeasurementLineageError(
                         f"{cell_id}: non-successful current was selected for "
@@ -3442,7 +3897,7 @@ def audit_measurement_lineage(
                 historical_status_errors.append(cell_id)
     if historical_status_errors:
         raise MeasurementLineageError(
-            "historical current status or validation-failure evidence changed: "
+            "historical current status or failure evidence changed: "
             + ", ".join(historical_status_errors[:8])
         )
     inspect = (
@@ -3479,7 +3934,15 @@ def audit_measurement_lineage(
                 expected_attempt_id=key[1],
                 expected_digest=str(inventory["manifest_sha256"]),
             )
-            observed_record = dict(inspect(historical, cell))
+            if impact == CLASS_C_HZZ_IMPACT:
+                observed_record = dict(inspect(historical, cell))
+            else:
+                observed_record = _validate_recurrence_summary_cap_failure(
+                    store,
+                    historical,
+                    cell,
+                    expected_bytes=_RECURRENCE_SUMMARY_CAP_FAILURE_BYTES[key[0]],
+                )
         except Exception:
             changed_reachability.append(key[0])
             continue
@@ -3491,6 +3954,11 @@ def audit_measurement_lineage(
             + ", ".join(changed_reachability[:8])
         )
     stale_targets: list[str] = []
+    invalidated_pin_by_cell = {
+        str(pin["cell_id"]): pin
+        for pin in payload["invalidated_currents"]  # type: ignore[index]
+        if isinstance(pin, Mapping)
+    }
     for cell_id in sorted(
         lineage.required_descendant_cell_ids
     ):
@@ -3499,6 +3967,20 @@ def audit_measurement_lineage(
             continue
         provenance = current.result.get("provenance")
         if not isinstance(provenance, Mapping):
+            pin = invalidated_pin_by_cell.get(cell_id)
+            if (
+                impact == CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT
+                and cell_id in failure_ids
+                and pin is not None
+                and current.attempt_id == pin.get("attempt_id")
+                and current.manifest_sha256 == pin.get("manifest_sha256")
+                and _file_digest(current.result_path) == pin.get("result_sha256")
+                and _file_digest(
+                    current.manifest_path.parent.parent.parent / "current.json"
+                )
+                == pin.get("current_pointer_sha256")
+            ):
+                continue
             stale_targets.append(cell_id)
             continue
         if (
@@ -3607,6 +4089,7 @@ def load_and_audit_measurement_lineage(
 
 __all__ = [
     "CLASS_C_HZZ_IMPACT",
+    "CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT",
     "MEASUREMENT_LINEAGE_FILENAME",
     "MEASUREMENT_LINEAGE_SCHEMA",
     "MeasurementLineage",
@@ -3619,4 +4102,6 @@ __all__ = [
     "load_measurement_lineage",
     "measurement_lineage_path",
     "prepare_class_c_bridge",
+    "recurrence_summary_cap_agreement_closure",
+    "recurrence_summary_cap_impacted_cells",
 ]

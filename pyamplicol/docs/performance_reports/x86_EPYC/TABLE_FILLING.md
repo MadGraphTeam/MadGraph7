@@ -239,6 +239,86 @@ both groups close. Never rewrite provenance, copy caches, or remove an
 ancestor attempt. Final audit authorizes each retained `A` current by its
 immutable pin and requires all 40 targets from `D`.
 
+### EPYC continuity for the recurrence-summary cap
+
+Use this second Class-C impact only for the measured EPYC ancestor and the
+reviewed summary-cap descendant. Stop all workers and the publisher first. The
+four `GenerationError` currents, including their exact reported byte counts,
+must still be current; every other current must be successful. The prepare
+step fails closed on any fifth unsuccessful current, any changed failure
+message, or any path outside the reviewed `A..D` allowlist.
+
+```bash
+set -euo pipefail
+A='be11d8304fdc04893dc0e23e9619be848126e3bc'
+FIX='b61e68e92eff2f2a77bfc7830c12cd99ceeaa71a'
+D="$(git rev-parse HEAD)"
+test "$D" != "$A"
+git merge-base --is-ancestor "$A" "$FIX"
+git merge-base --is-ancestor "$FIX" "$D"
+test -z "$(git status --short)"
+.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
+  prepare-class-c-bridge \
+  --ancestor-revision "$A" --descendant-revision "$D" \
+  --impact recurrence-summary-cap-v1
+```
+
+Build, install, prepare, and authenticate the exact candidate for `D` using
+the commands in Section 3 without deleting either profile artifact root. Then
+finalize and audit the frozen bridge:
+
+```bash
+set -euo pipefail
+.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
+  finalize-class-c-bridge \
+  --ancestor-revision "$A" --descendant-revision "$D"
+.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
+  audit-source-bridge --expected-active-source-revision "$D"
+```
+
+Run the four failed selected-flow cells first, their four built-in all-flow
+dependents second, and the eight UFO-SM peers last. Keep the normal EPYC
+resource policy:
+
+```bash
+set -euo pipefail
+RUNNER=(taskset -c 0-9 .venv/bin/python \
+  docs/performance_reports/x86_EPYC/result_tables.py populate)
+COMMON=(--missing-only --artifact-policy regenerate --cell-cores 1 \
+  --target-runtime 5 --max-ram-gb 100 --allow-symbolica-parallel \
+  --refresh-pdf end)
+"${RUNNER[@]}" "${COMMON[@]}" --workers 4 \
+  --cell-id matrix-recurrence-builtin-sm-lc-n7-gg-gluons-selected-flow \
+  --cell-id matrix-recurrence-builtin-sm-lc-n8-dd-tt-jets-selected-flow \
+  --cell-id matrix-recurrence-builtin-sm-lc-n9-dd-z-jets-selected-flow \
+  --cell-id matrix-recurrence-builtin-sm-lc-n9-ud-w-jets-selected-flow
+"${RUNNER[@]}" "${COMMON[@]}" --workers 4 \
+  --cell-id matrix-recurrence-builtin-sm-lc-n7-gg-gluons-all-flow \
+  --cell-id matrix-recurrence-builtin-sm-lc-n8-dd-tt-jets-all-flow \
+  --cell-id matrix-recurrence-builtin-sm-lc-n9-dd-z-jets-all-flow \
+  --cell-id matrix-recurrence-builtin-sm-lc-n9-ud-w-jets-all-flow
+"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+  --cell-id matrix-recurrence-ufo-sm-lc-n7-gg-gluons-selected-flow \
+  --cell-id matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow \
+  --cell-id matrix-recurrence-ufo-sm-lc-n8-dd-tt-jets-selected-flow \
+  --cell-id matrix-recurrence-ufo-sm-lc-n8-dd-tt-jets-all-flow \
+  --cell-id matrix-recurrence-ufo-sm-lc-n9-dd-z-jets-selected-flow \
+  --cell-id matrix-recurrence-ufo-sm-lc-n9-dd-z-jets-all-flow \
+  --cell-id matrix-recurrence-ufo-sm-lc-n9-ud-w-jets-selected-flow \
+  --cell-id matrix-recurrence-ufo-sm-lc-n9-ud-w-jets-all-flow
+.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py audit
+.venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
+  audit-source-bridge --expected-active-source-revision "$D"
+```
+
+Repeat the same three `populate` invocations with `--dry-run`; each must
+report zero scheduled cells.
+
+Do not reset, relabel, copy, or rewrite any current or attempt. The bridge
+retains accepted ancestor currents by their byte digests, invalidates only the
+four exact failures, and requires only the reviewed 12-cell agreement closure
+from `D`.
+
 ## 4. Keep a live PDF beside the workers
 
 Pin all measurement commands in Sections 6--8 to logical CPUs 0--9. Reserve

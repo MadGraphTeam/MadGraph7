@@ -18,6 +18,7 @@ from tools.performance_report.campaign_policy import MACBOOK_M3_POLICY
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement_lineage import (
     CLASS_C_HZZ_IMPACT,
+    CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
     MEASUREMENT_LINEAGE_FILENAME,
     MeasurementLineageError,
     _resolve_recurrence_artifact_owner,
@@ -27,6 +28,8 @@ from tools.performance_report.measurement_lineage import (
     hzz_impacted_cells,
     load_measurement_lineage,
     prepare_class_c_bridge,
+    recurrence_summary_cap_agreement_closure,
+    recurrence_summary_cap_impacted_cells,
 )
 from tools.performance_report.models import ExecutionMode, ModelKey
 from tools.performance_report.scheduler import CampaignScheduler, CampaignSettings
@@ -174,6 +177,126 @@ def _validation_failed_result(
     return measurement
 
 
+_SUMMARY_CAP_FAILURE_BYTES = {
+    "matrix-recurrence-builtin-sm-lc-n7-gg-gluons-selected-flow": 4_270_140,
+    "matrix-recurrence-builtin-sm-lc-n8-dd-tt-jets-selected-flow": 1_083_926,
+    "matrix-recurrence-builtin-sm-lc-n9-dd-z-jets-selected-flow": 4_449_888,
+    "matrix-recurrence-builtin-sm-lc-n9-ud-w-jets-selected-flow": 4_449_912,
+}
+_SUMMARY_CAP_DIFF_PATHS = (
+    "docs/performance_reports/macbook_M3/TABLE_FILLING.md",
+    "docs/performance_reports/x86_EPYC/TABLE_FILLING.md",
+    "rust/crates/rusticol-core/src/engine/recurrence_manifest.rs",
+    "src/pyamplicol/generation/artifact_writer.py",
+    "tests/unit/test_performance_report_artifacts.py",
+    "tests/unit/test_performance_report_cli.py",
+    "tests/unit/test_performance_report_measurement_lineage.py",
+    "tests/unit/test_performance_report_measurement_lineage_adversarial.py",
+    "tests/unit/test_recurrence_direct_artifact_metadata.py",
+    "tests/unit/test_three_mode_report_render.py",
+    "tools/performance_report/artifacts.py",
+    "tools/performance_report/cli.py",
+    "tools/performance_report/measurement_lineage.py",
+    "tools/performance_report/render.py",
+    "tools/performance_report/workspace.py",
+)
+
+
+def _summary_cap_failure(summary_bytes: int) -> dict[str, object]:
+    measurement = empty_measurement()
+    measurement.update(
+        {
+            "status": "error",
+            "failure": {
+                "kind": "GenerationError",
+                "message": (
+                    "Rust recurrence execution summary must be smaller than "
+                    f"1 MiB; received {summary_bytes} bytes"
+                ),
+            },
+        }
+    )
+    return measurement
+
+
+def _summary_cap_repository(
+    tmp_path: Path,
+) -> tuple[Path, Path, ArtifactStore, str, str]:
+    repo = tmp_path / "summary-cap-repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "lineage@example.invalid")
+    _git(repo, "config", "user.name", "Lineage Test")
+    profile = repo / "docs/performance_reports/x86_EPYC"
+    _write(
+        repo,
+        "docs/performance_reports/x86_EPYC/report-workspace.json",
+        json.dumps({"campaign_policy": {"name": "fixture"}}) + "\n",
+    )
+    for path in _SUMMARY_CAP_DIFF_PATHS:
+        _write(repo, path, "ANCESTOR = 1\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "ancestor")
+    ancestor = _git(repo, "rev-parse", "HEAD")
+    ancestor_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    environment = _authenticated_environment_payload(
+        "x86_EPYC",
+        expected_source_revision=ancestor,
+        active_runtime=_runtime("c" * 64),
+    )
+    _write(
+        repo,
+        "docs/performance_reports/x86_EPYC/report_environment.json",
+        json.dumps(environment, sort_keys=True) + "\n",
+    )
+    store = ArtifactStore(
+        artifact_root=repo / ".artifacts/performance-report/x86_EPYC",
+        lock_root=repo / ".artifacts/performance-report-coordination/x86_EPYC",
+    )
+    retained = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+    )
+    store.new_attempt(retained.cell_id, ArtifactPolicy.REGENERATE).publish(
+        {
+            "status": "ok",
+            "provenance": {
+                "report_source_revision": ancestor,
+                "report_source_tree": ancestor_tree,
+                "report_measured_source_revision": ancestor,
+                "report_measured_source_tree": ancestor_tree,
+            },
+        }
+    )
+    closure_current_id = (
+        "matrix-recurrence-builtin-sm-lc-n7-gg-gluons-all-flow"
+    )
+    store.new_attempt(
+        closure_current_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(
+        {
+            "status": "ok",
+            "provenance": {
+                "report_source_revision": ancestor,
+                "report_source_tree": ancestor_tree,
+                "report_measured_source_revision": ancestor,
+                "report_measured_source_tree": ancestor_tree,
+            },
+        }
+    )
+    for cell_id, summary_bytes in sorted(_SUMMARY_CAP_FAILURE_BYTES.items()):
+        store.new_attempt(cell_id, ArtifactPolicy.REGENERATE).publish(
+            _summary_cap_failure(summary_bytes)
+        )
+    for path in _SUMMARY_CAP_DIFF_PATHS:
+        _write(repo, path, "DESCENDANT = 2\n")
+    _git(repo, "add", *_SUMMARY_CAP_DIFF_PATHS)
+    _git(repo, "commit", "-q", "-m", "descendant")
+    return repo, profile, store, ancestor, _git(repo, "rev-parse", "HEAD")
+
+
 def _repository(tmp_path: Path) -> tuple[Path, Path, ArtifactStore, str, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -287,7 +410,7 @@ def _finalize(
     pending: Path,
 ) -> None:
     environment = _authenticated_environment_payload(
-        "macbook_M3",
+        profile.name,
         expected_source_revision=descendant,
         active_runtime=_runtime("d" * 64),
     )
@@ -315,6 +438,112 @@ def _finalize(
         expected_active_source_revision=descendant,
         runtime_auditor=lambda _revision, _root: _runtime("d" * 64),
     )
+
+
+def test_recurrence_summary_cap_bridge_has_exact_failure_and_closure_census(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, profile, store, ancestor, descendant = _summary_cap_repository(tmp_path)
+    prepared = prepare_class_c_bridge(
+        repo,
+        profile,
+        store,
+        ancestor_revision=ancestor,
+        descendant_revision=descendant,
+        impact=CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+    )
+
+    impacted_ids = {
+        cell.cell_id for cell in recurrence_summary_cap_impacted_cells()
+    }
+    closure_ids = {
+        cell.cell_id for cell in recurrence_summary_cap_agreement_closure()
+    }
+    certificate = prepared["reachability_certificate"]
+    assert isinstance(certificate, dict)
+    assert impacted_ids == set(_SUMMARY_CAP_FAILURE_BYTES)
+    assert len(closure_ids) == 12
+    assert not impacted_ids & closure_ids
+    assert certificate["target_summary_bytes"] == _SUMMARY_CAP_FAILURE_BYTES
+    assert certificate["inspected_current_count"] == 6
+    assert certificate["successful_current_count"] == 2
+    assert {
+        str(record["cell_id"]) for record in certificate["records"]
+    } == impacted_ids
+    assert {
+        str(pin["cell_id"]) for pin in prepared["invalidated_currents"]
+    } == impacted_ids
+    assert len(prepared["retained_currents"]) == 1
+    assert [
+        pin["cell_id"] for pin in prepared["recompare_currents"]
+    ] == ["matrix-recurrence-builtin-sm-lc-n7-gg-gluons-all-flow"]
+
+    pending = class_c_pending_path(
+        store,
+        ancestor_revision=ancestor,
+        descendant_revision=descendant,
+    )
+    _finalize(monkeypatch, repo, profile, store, descendant, pending)
+    lineage = load_measurement_lineage(
+        repo,
+        profile,
+        expected_active_revision=descendant,
+        expected_active_tree=_git(repo, "rev-parse", "HEAD^{tree}"),
+    )
+    assert lineage is not None
+    assert lineage.required_descendant_cell_ids == impacted_ids | closure_ids
+
+
+def test_recurrence_summary_cap_bridge_rejects_wrong_failure_byte_count(
+    tmp_path: Path,
+) -> None:
+    repo, profile, store, ancestor, descendant = _summary_cap_repository(tmp_path)
+    cell_id, summary_bytes = next(iter(_SUMMARY_CAP_FAILURE_BYTES.items()))
+    store.new_attempt(cell_id, ArtifactPolicy.REGENERATE).publish(
+        _summary_cap_failure(summary_bytes + 1)
+    )
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="not the authenticated recurrence summary-cap GenerationError",
+    ):
+        prepare_class_c_bridge(
+            repo,
+            profile,
+            store,
+            ancestor_revision=ancestor,
+            descendant_revision=descendant,
+            impact=CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+        )
+
+
+def test_recurrence_summary_cap_bridge_rejects_fifth_unsuccessful_current(
+    tmp_path: Path,
+) -> None:
+    repo, profile, store, ancestor, descendant = _summary_cap_repository(tmp_path)
+    outside = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.cell_id not in _SUMMARY_CAP_FAILURE_BYTES
+    )
+    store.new_attempt(outside.cell_id, ArtifactPolicy.REGENERATE).publish(
+        _summary_cap_failure(99)
+    )
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="outside the exact recurrence summary-cap failure census",
+    ):
+        prepare_class_c_bridge(
+            repo,
+            profile,
+            store,
+            ancestor_revision=ancestor,
+            descendant_revision=descendant,
+            impact=CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+        )
 
 
 def test_required_descendant_closure_is_exact_even_without_currents(

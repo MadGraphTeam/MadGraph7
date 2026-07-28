@@ -21,6 +21,7 @@ from .campaign_policy import (
 from .catalog import REPORT_CATALOG
 from .measurement_lineage import (
     CLASS_C_HZZ_IMPACT,
+    CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
     MeasurementLineageError,
     audit_measurement_lineage,
     class_c_pending_path,
@@ -137,7 +138,10 @@ def _parser() -> argparse.ArgumentParser:
     prepare_bridge.add_argument("--descendant-revision", required=True)
     prepare_bridge.add_argument(
         "--impact",
-        choices=(CLASS_C_HZZ_IMPACT,),
+        choices=(
+            CLASS_C_HZZ_IMPACT,
+            CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
+        ),
         required=True,
     )
 
