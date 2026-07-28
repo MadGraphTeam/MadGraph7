@@ -589,7 +589,7 @@ pub(super) fn build_eager_color_topology_replay_amplitude_runtime(
     let (entries, repeated_block) = if contraction_repeated == 0 {
         if left_indices
             .iter()
-            .chain(&right_indices)
+            .chain(right_indices.iter())
             .any(|value| *value != u32::MAX)
         {
             return Err(integrity(
@@ -620,7 +620,7 @@ pub(super) fn build_eager_color_topology_replay_amplitude_runtime(
     } else {
         if left_ids
             .iter()
-            .chain(&right_ids)
+            .chain(right_ids.iter())
             .any(|value| *value != u32::MAX)
         {
             return Err(integrity(
