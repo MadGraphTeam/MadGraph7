@@ -79,7 +79,10 @@ rows it is the authenticated warmed total-evaluator boundary. A separately
 measured, narrower execution attribution is supplementary. Its ratio is shown
 only when candidate and baseline expose compatible attribution boundaries;
 otherwise it is marked \textsc{not exposed}; this label does not hide or
-invalidate the reported total-evaluator wall time.
+invalidate the reported total-evaluator wall time. Future compiled and eager
+entries also retain the accumulated repeated-boundary duration and point count;
+their absolute evaluator-total value is marked \(T\), not used as an
+attribution ratio. Older entries remain \textsc{not exposed}.
 
 Preparation of reusable model-level kernels is excluded from
 process-generation time. Compiled generation still includes process-specific
@@ -109,13 +112,15 @@ LC, upper
     candidate against original \AC{} \\
 LC, lower
   & selected-flow/all-flow wall times in microseconds per point
-  & wall ratio and, when exposed, a separate execution attribution \\
+  & wall ratio and either a compatible execution-attribution ratio or absolute
+    accumulated evaluator total marked \(T\) \\
 NLC/full, upper
   & contracted generation time in seconds
   & candidate generation ratio \\
 NLC/full, lower
   & contracted wall time in microseconds per point
-  & wall ratio and, when exposed, a separate execution attribution \\
+  & wall ratio and either a compatible execution-attribution ratio or absolute
+    accumulated evaluator total marked \(T\) \\
 \bottomrule
 \end{tabular}
 \end{center}

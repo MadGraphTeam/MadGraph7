@@ -27,7 +27,10 @@ from .models import (
     Workload,
     ZVariant,
 )
-from .timing import unavailable_execution_timing_record
+from .timing import (
+    evaluator_total_timing_record,
+    unavailable_execution_timing_record,
+)
 from .validation_summary import (
     SUMMARY_TABLE_NAME,
     render_validation_summary,
@@ -437,6 +440,16 @@ def _unavailable_time(
     record = unavailable_execution_timing_record(measurement, field)
     if record is None:
         return None
+    total_record = evaluator_total_timing_record(measurement)
+    if total_record is not None:
+        return (
+            r"\matrixtotalevaluator{"
+            + _time(
+                total_record["raw_seconds_per_point"],
+                microseconds=microseconds,
+            )
+            + "}"
+        )
     return _not_exposed()
 
 
@@ -578,6 +591,16 @@ def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
 
     wall_color, wall_text = field(wall, "wall_seconds_per_point")
     if execution_not_exposed:
+        total_record = evaluator_total_timing_record(candidate)
+        if total_record is not None:
+            total_time = _time(
+                total_record["raw_seconds_per_point"],
+                microseconds=True,
+            )
+            return (
+                rf"\matrixratiopairtotalevaluator{{{wall_color}}}"
+                f"{{{wall_text}}}{{{total_time}}}"
+            )
         return (
             rf"\matrixratiopairnotexposed{{{wall_color}}}"
             f"{{{wall_text}}}"
@@ -611,6 +634,11 @@ def _matrix_macros() -> list[str]:
             r"\textcolor{#1}{\texttt{#2}}\matrixpunct{|}"
             r"\matrixnotexposed{ReportMuted}\matrixpunct{)}}"
         ),
+        (
+            r"\providecommand{\matrixratiopairtotalevaluator}[3]{"
+            r"\matrixpunct{(}\textcolor{#1}{\texttt{#2}}"
+            r"\matrixpunct{|}\matrixtotalevaluator{#3}\matrixpunct{)}}"
+        ),
         r"\providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}",
         (
             r"\providecommand{\matrixnotapplicable}[1]{"
@@ -619,6 +647,10 @@ def _matrix_macros() -> list[str]:
         (
             r"\providecommand{\matrixnotexposed}[1]{"
             r"\textcolor{#1}{\textsc{not exposed}}}"
+        ),
+        (
+            r"\providecommand{\matrixtotalevaluator}[1]{"
+            r"\textcolor{ReportBlue}{\texttt{T }}#1}"
         ),
         r"\providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}",
         (
@@ -995,7 +1027,10 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
             "the process-family definition. Not exposed means that a successful "
             "wall-time measurement has no separately reported execution "
             "attribution; for compiled and eager rows, the wall value remains "
-            "the authenticated warmed total-evaluator boundary; neither label "
+            "the authenticated warmed total-evaluator boundary. Future compiled "
+            "and eager entries additionally show an accumulated absolute "
+            "evaluator-total value marked T; it is not an execution-attribution "
+            "ratio. Older entries remain marked not exposed; neither label "
             "denotes an unfilled measurement."
         )
         + "}"
@@ -1563,6 +1598,8 @@ def _z_value(
         unavailable_execution_timing_record(measurement, field) is not None
         or unavailable_execution_timing_record(joined.baseline, field) is not None
     ):
+        if evaluator_total_timing_record(measurement) is not None:
+            return absolute
         return _not_exposed()
     if not comparable:
         return rf"\matrixncabsolute{{{absolute}}}"
@@ -1704,7 +1741,10 @@ def _z_block(
                 r"Not exposed means that a successful wall measurement has no "
                 r"separately reported execution attribution. For compiled and "
                 r"eager rows, wall time still exposes the authenticated warmed "
-                r"total-evaluator boundary; it is not a missing measurement.}"
+                r"total-evaluator boundary. Future compiled and eager entries "
+                r"also show the accumulated absolute evaluator total marked T; "
+                r"T is not an attribution ratio. Older entries remain marked "
+                r"not exposed; it is not a missing measurement.}"
             ),
             r"\end{minipage}",
         ]
@@ -1882,8 +1922,12 @@ def render_scalar_ladder(
             (
                 r"\ReportTableNote{Wall time is the common runtime observable. "
                 r"Execution is a separately measured attribution when exposed; "
+                r"future compiled and eager entries show the accumulated "
+                r"absolute evaluator total marked T when narrower attribution "
+                r"is unavailable. "
                 r"\textsc{not exposed} denotes a successful wall measurement, "
-                r"not a missing result.}"
+                r"and older entries without T remain valid; neither denotes a "
+                r"missing result.}"
             ),
         ]
     )

@@ -21,7 +21,9 @@ from .catalog import REPORT_CATALOG, ReportCatalog
 from .models import Accuracy, CellSpec, ResultStatus
 from .timing import (
     ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI,
+    EVALUATOR_TOTAL_TIMING_KEY,
     MEASURED_EXECUTION_TIMING_ABI,
+    evaluator_total_timing_record,
     unavailable_execution_timing_record,
 )
 
@@ -452,6 +454,14 @@ def validate_measurement(
             raise ValueError(
                 "successful pyAmpliCol measurement with unavailable execution "
                 "timing requires authenticated Arena provenance"
+            )
+        if (
+            EVALUATOR_TOTAL_TIMING_KEY in provenance
+            and evaluator_total_timing_record(measurement) is None
+        ):
+            raise ValueError(
+                "measurement.provenance.evaluator_total_timing is not an "
+                "authenticated accumulated evaluator-total record"
             )
         _validate_runtime_identity_postflight(provenance, validation)
         if measurement["failure"] is not None:

@@ -443,6 +443,37 @@ def test_candidate_null_execution_requires_authenticated_arena_provenance() -> N
         validate_measurement(measurement)
 
 
+def test_future_evaluator_total_provenance_is_optional_and_fail_closed() -> None:
+    measurement = _arena_unavailable_candidate_measurement()
+    validate_measurement(measurement)
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    provenance["evaluator_total_timing"] = {
+        "abi": "pyamplicol-report-evaluator-total-timing-v1",
+        "status": "measured",
+        "ratio_eligible": False,
+        "raw_seconds_per_point": 1.0e-6,
+        "source": "runtime._benchmark_f64_wall_time.accumulated",
+        "execution_mode": "compiled",
+        "sample_contract": (
+            "accumulated-repeated-warmed-evaluator-total-v1"
+        ),
+        "sample_count": 5,
+        "repetitions_per_sample": 1,
+        "batch_size": 128,
+        "points_per_sample": 128,
+        "measured_point_count": 640,
+        "accumulated_seconds": 6.4e-4,
+    }
+    validate_measurement(measurement)
+
+    total = provenance["evaluator_total_timing"]
+    assert isinstance(total, dict)
+    total["accumulated_seconds"] = 1.0
+    with pytest.raises(ValueError, match="evaluator_total_timing"):
+        validate_measurement(measurement)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     (

@@ -92,10 +92,11 @@ def _raw_arena_profile(
 def _benchmark_fixture(
     *,
     arena_authenticated: bool = True,
+    execution_mode: str = "compiled",
 ) -> SimpleNamespace:
     evidence = build_arena_profile_evidence(
-        (_raw_arena_profile(),) * 5,
-        execution_mode="compiled",
+        (_raw_arena_profile(execution_mode=execution_mode),) * 5,
+        execution_mode=execution_mode,
         repetitions_per_profile=1,
         batch_size=128,
     )
@@ -136,7 +137,7 @@ def _benchmark_fixture(
             "profile_attribution_paired_with_headline": True,
             "profile_attribution_identical_batch": True,
             "profile_attribution_identical_repetitions": True,
-            "execution_mode": "compiled",
+            "execution_mode": execution_mode,
             "evaluator_sample_count": 5,
             "native_profile_points_per_sample": 128,
             "native_profile_repetitions_per_sample": 1,
@@ -161,6 +162,7 @@ def test_benchmark_measurement_records_authenticated_arena_unavailable_timing() 
     )
 
     assert measurement["execution_seconds_per_point"] is None
+    assert measurement["evaluator_total_timing"] is None
     assert measurement["execution_timing"] == {
         "abi": "pyamplicol-report-arena-execution-timing-v2",
         "status": "unavailable",
@@ -207,6 +209,73 @@ def test_benchmark_measurement_rejects_unauthenticated_unavailable_timing() -> N
             _benchmark_fixture(arena_authenticated=False),
             matrix_element=2.0,
         )
+
+
+@pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
+def test_benchmark_measurement_authenticates_accumulated_evaluator_total(
+    execution_mode: str,
+) -> None:
+    benchmark = _benchmark_fixture(execution_mode=execution_mode)
+    benchmark.wall_time_per_point = 1.0e-6
+    benchmark.evaluator_total_time_per_point = 1.0e-6
+    benchmark.environment.update(
+        {
+            "evaluator_total_time_raw_seconds_per_point": 1.0e-6,
+            "evaluator_total_time_status": "measured",
+            "evaluator_total_time_ratio_eligible": False,
+            "evaluator_total_time_source": (
+                "runtime._benchmark_f64_wall_time.accumulated"
+            ),
+            "evaluator_total_time_sample_contract": (
+                "accumulated-repeated-warmed-evaluator-total-v1"
+            ),
+            "evaluator_total_accumulated_seconds": 6.4e-4,
+        }
+    )
+
+    measurement = _benchmark_measurement(benchmark, matrix_element=2.0)
+
+    assert measurement["execution_seconds_per_point"] is None
+    assert measurement["evaluator_total_timing"] == {
+        "abi": "pyamplicol-report-evaluator-total-timing-v1",
+        "status": "measured",
+        "ratio_eligible": False,
+        "raw_seconds_per_point": 1.0e-6,
+        "source": "runtime._benchmark_f64_wall_time.accumulated",
+        "execution_mode": execution_mode,
+        "sample_contract": (
+            "accumulated-repeated-warmed-evaluator-total-v1"
+        ),
+        "sample_count": 5,
+        "repetitions_per_sample": 1,
+        "batch_size": 128,
+        "points_per_sample": 128,
+        "measured_point_count": 640,
+        "accumulated_seconds": 6.4e-4,
+    }
+
+
+def test_benchmark_measurement_rejects_inconsistent_accumulated_evaluator_total(
+) -> None:
+    benchmark = _benchmark_fixture()
+    benchmark.evaluator_total_time_per_point = 1.0e-6
+    benchmark.environment.update(
+        {
+            "evaluator_total_time_raw_seconds_per_point": 1.0e-6,
+            "evaluator_total_time_status": "measured",
+            "evaluator_total_time_ratio_eligible": False,
+            "evaluator_total_time_source": (
+                "runtime._benchmark_f64_wall_time.accumulated"
+            ),
+            "evaluator_total_time_sample_contract": (
+                "accumulated-repeated-warmed-evaluator-total-v1"
+            ),
+            "evaluator_total_accumulated_seconds": 1.0,
+        }
+    )
+
+    with pytest.raises(RunnerError, match="accumulated evaluator-total"):
+        _benchmark_measurement(benchmark, matrix_element=2.0)
 
 
 def test_benchmark_measurement_rejects_synthetic_zero_execution() -> None:
@@ -324,7 +393,19 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
 
     assert result.sample_count == 5
     assert result.evaluator_time_per_point is None
+    assert result.evaluator_total_time_per_point == pytest.approx(5.0e-4)
     assert result.environment["elapsed_seconds"] == pytest.approx(5.0e-3)
+    assert result.environment[
+        "evaluator_total_accumulated_seconds"
+    ] == pytest.approx(5.0e-3)
+    assert result.environment["measured_point_count"] == 10
+    measurement = _benchmark_measurement(result, matrix_element=2.0)
+    total_timing = measurement["evaluator_total_timing"]
+    assert isinstance(total_timing, dict)
+    assert total_timing["execution_mode"] == execution_mode.value
+    assert total_timing["raw_seconds_per_point"] == pytest.approx(5.0e-4)
+    assert total_timing["accumulated_seconds"] == pytest.approx(5.0e-3)
+    assert total_timing["measured_point_count"] == 10
     assert result.arena_profile_evidence["profile_count"] == 5
     assert backend.public_profile_calls == 0
     assert len(backend.arena_calls) == 6

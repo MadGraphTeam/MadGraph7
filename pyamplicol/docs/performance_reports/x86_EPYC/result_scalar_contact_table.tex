@@ -6,9 +6,11 @@
 \providecommand{\matrixratio}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}
 \providecommand{\matrixratiopair}[4]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}
 \providecommand{\matrixratiopairnotexposed}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\matrixnotexposed{ReportMuted}\matrixpunct{)}}
+\providecommand{\matrixratiopairtotalevaluator}[3]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\matrixtotalevaluator{#3}\matrixpunct{)}}
 \providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}
 \providecommand{\matrixnotapplicable}[1]{\textcolor{#1}{\textsc{not applicable}}}
 \providecommand{\matrixnotexposed}[1]{\textcolor{#1}{\textsc{not exposed}}}
+\providecommand{\matrixtotalevaluator}[1]{\textcolor{ReportBlue}{\texttt{T }}#1}
 \providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}
 \providecommand{\matrixnaratio}[1]{\matrixpunct{(}\matrixna{#1}\matrixpunct{)}}
 \providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}
@@ -38,4 +40,4 @@ relative diff. vs hp & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMut
 \end{tabular}
 \end{center}
 \endgroup
-\ReportTableNote{Wall time is the common runtime observable. Execution is a separately measured attribution when exposed; \textsc{not exposed} denotes a successful wall measurement, not a missing result.}
+\ReportTableNote{Wall time is the common runtime observable. Execution is a separately measured attribution when exposed; future compiled and eager entries show the accumulated absolute evaluator total marked T when narrower attribution is unavailable. \textsc{not exposed} denotes a successful wall measurement, and older entries without T remain valid; neither denotes a missing result.}

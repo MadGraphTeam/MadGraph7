@@ -101,6 +101,8 @@ from .source_identity import (
 from .standalone_build import StandaloneBuildError, validate_latex_log
 from .timing import (
     ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS,
+    EVALUATOR_TOTAL_TIMING_KEY,
+    evaluator_total_timing_record,
     unavailable_execution_timing_record,
 )
 from .workspace import load_profile_campaign_policy
@@ -2535,6 +2537,17 @@ def _audit_measurement(
         if execution_seconds <= 0.0:
             raise FinalAuditError(
                 f"{context}.measurement.execution_seconds_per_point must be positive"
+            )
+    if EVALUATOR_TOTAL_TIMING_KEY in provenance:
+        evaluator_total = evaluator_total_timing_record(measurement)
+        if (
+            evaluator_total is None
+            or evaluator_total.get("execution_mode")
+            != cell.measurement.execution_mode.value
+        ):
+            raise FinalAuditError(
+                f"{context}.measurement.provenance.evaluator_total_timing "
+                "is not an authenticated accumulated evaluator-total record"
             )
     if provenance.get("source_revision") != expected_source_revision:
         raise FinalAuditError(

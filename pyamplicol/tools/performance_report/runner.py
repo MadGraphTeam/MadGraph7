@@ -48,8 +48,13 @@ from .runtime_evidence import (
 )
 from .timing import (
     ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI,
+    EVALUATOR_TOTAL_SAMPLE_CONTRACT,
+    EVALUATOR_TOTAL_TIMING_ABI,
+    EVALUATOR_TOTAL_TIMING_KEY,
+    EVALUATOR_TOTAL_TIMING_SOURCE,
     MEASURED_EXECUTION_TIMING_ABI,
     UNAVAILABLE_STATUS,
+    evaluator_total_timing_record,
 )
 
 RELATIVE_TOLERANCE = 1.0e-12
@@ -1635,6 +1640,7 @@ class _ArenaBenchmarkResult:
     sample_count: int
     wall_time_per_point: float
     evaluator_time_per_point: None
+    evaluator_total_time_per_point: float
     uncertainty: _ArenaStatistics
     environment: Mapping[str, object]
     timing_breakdown: Mapping[str, object]
@@ -1844,11 +1850,13 @@ def _run_arena_benchmark(
     achieved_runtime = math.fsum(headline_durations)
     measured_evaluations = sample_count * repetitions
     measured_points = measured_evaluations * len(batch)
+    evaluator_total_time_per_point = achieved_runtime / measured_points
     return _ArenaBenchmarkResult(
         effective_config=benchmark_config,
         sample_count=sample_count,
         wall_time_per_point=mean_wall,
         evaluator_time_per_point=None,
+        evaluator_total_time_per_point=evaluator_total_time_per_point,
         uncertainty=uncertainty,
         environment={
             "wall_time_source": "runtime_core_repeated_wall_time",
@@ -1857,6 +1865,16 @@ def _run_arena_benchmark(
             "evaluator_time_status": UNAVAILABLE_STATUS,
             "evaluator_time_ratio_eligible": False,
             "evaluator_time_sample_pass": ARENA_PROFILE_SAMPLE_PASS,
+            "evaluator_total_time_raw_seconds_per_point": (
+                evaluator_total_time_per_point
+            ),
+            "evaluator_total_time_status": "measured",
+            "evaluator_total_time_ratio_eligible": False,
+            "evaluator_total_time_source": EVALUATOR_TOTAL_TIMING_SOURCE,
+            "evaluator_total_time_sample_contract": (
+                EVALUATOR_TOTAL_SAMPLE_CONTRACT
+            ),
+            "evaluator_total_accumulated_seconds": achieved_runtime,
             "timing_breakdown_sample_pass": ARENA_PROFILE_SAMPLE_PASS,
             "profile_protocol": ARENA_PROFILE_PROTOCOL,
             "profile_attribution_boundary": ARENA_PROFILE_BOUNDARY,
@@ -2111,6 +2129,73 @@ def _benchmark_measurement(
         }
     else:
         raise RunnerError("benchmark has unsupported evaluator timing status")
+    total_environment_fields = (
+        "evaluator_total_time_raw_seconds_per_point",
+        "evaluator_total_time_status",
+        "evaluator_total_time_ratio_eligible",
+        "evaluator_total_time_source",
+        "evaluator_total_time_sample_contract",
+        "evaluator_total_accumulated_seconds",
+    )
+    total_fields_present = tuple(
+        field in environment for field in total_environment_fields
+    )
+    evaluator_total_timing: Mapping[str, object] | None = None
+    if any(total_fields_present):
+        if not all(total_fields_present):
+            raise RunnerError(
+                "benchmark has incomplete accumulated evaluator-total timing"
+            )
+        repetitions = environment.get(
+            "native_profile_repetitions_per_sample"
+        )
+        batch_size = environment.get("native_profile_batch_size")
+        measured_point_count = environment.get("measured_point_count")
+        raw_total = environment["evaluator_total_time_raw_seconds_per_point"]
+        evaluator_total_timing = {
+            "abi": EVALUATOR_TOTAL_TIMING_ABI,
+            "status": environment["evaluator_total_time_status"],
+            "ratio_eligible": environment[
+                "evaluator_total_time_ratio_eligible"
+            ],
+            "raw_seconds_per_point": raw_total,
+            "source": environment["evaluator_total_time_source"],
+            "execution_mode": environment.get("execution_mode"),
+            "sample_contract": environment[
+                "evaluator_total_time_sample_contract"
+            ],
+            "sample_count": benchmark.sample_count,
+            "repetitions_per_sample": repetitions,
+            "batch_size": batch_size,
+            "points_per_sample": raw_points_per_sample,
+            "measured_point_count": measured_point_count,
+            "accumulated_seconds": environment[
+                "evaluator_total_accumulated_seconds"
+            ],
+        }
+        total_measurement = {
+            "status": ResultStatus.OK.value,
+            "wall_seconds_per_point": benchmark.wall_time_per_point,
+            "sample_count": benchmark.sample_count,
+            "provenance": {
+                EVALUATOR_TOTAL_TIMING_KEY: evaluator_total_timing,
+            },
+        }
+        result_total = getattr(
+            benchmark,
+            "evaluator_total_time_per_point",
+            None,
+        )
+        if (
+            evaluator_total_timing_record(total_measurement) is None
+            or isinstance(result_total, bool)
+            or not isinstance(result_total, (int, float))
+            or not math.isfinite(float(result_total))
+            or float(result_total) != float(raw_total)
+        ):
+            raise RunnerError(
+                "benchmark accumulated evaluator-total timing is inconsistent"
+            )
     target_runtime = float(benchmark.effective_config.target_runtime)
     if not math.isfinite(target_runtime) or target_runtime <= 0.0:
         raise RunnerError("benchmark has an invalid target timing duration")
@@ -2129,6 +2214,7 @@ def _benchmark_measurement(
             None if evaluator_time is None else float(evaluator_time)
         ),
         "execution_timing": execution_timing,
+        "evaluator_total_timing": evaluator_total_timing,
         "arena_profile_evidence": arena_profile_evidence,
         "matrix_element": matrix_element,
         "sample_count": int(benchmark.sample_count),

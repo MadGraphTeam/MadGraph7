@@ -80,4 +80,8 @@ Some backends additionally expose a narrower execution attribution. Because
 its precise boundary is mode-specific, it is reported only as a supplementary
 quantity and only when measured directly. The complete wall time remains the
 common observable used for comparisons; an unavailable attribution is marked
-explicitly rather than inferred.
+explicitly rather than inferred. For future compiled and eager entries, the
+same repeated warmed boundary also retains its accumulated duration and total
+point count as an authenticated evaluator-total measurement. Its absolute
+per-point value is marked \(T\), never substituted for the narrower attribution
+or ratioed against it. Older cache entries remain explicitly not exposed.

@@ -6,9 +6,11 @@
 \providecommand{\matrixratio}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}
 \providecommand{\matrixratiopair}[4]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}
 \providecommand{\matrixratiopairnotexposed}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\matrixnotexposed{ReportMuted}\matrixpunct{)}}
+\providecommand{\matrixratiopairtotalevaluator}[3]{\matrixpunct{(}\textcolor{#1}{\texttt{#2}}\matrixpunct{|}\matrixtotalevaluator{#3}\matrixpunct{)}}
 \providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}
 \providecommand{\matrixnotapplicable}[1]{\textcolor{#1}{\textsc{not applicable}}}
 \providecommand{\matrixnotexposed}[1]{\textcolor{#1}{\textsc{not exposed}}}
+\providecommand{\matrixtotalevaluator}[1]{\textcolor{ReportBlue}{\texttt{T }}#1}
 \providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}
 \providecommand{\matrixnaratio}[1]{\matrixpunct{(}\matrixna{#1}\matrixpunct{)}}
 \providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}
@@ -67,7 +69,7 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c.; n.c. means not comparable because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no separately reported execution attribution. For compiled and eager rows, wall time still exposes the authenticated warmed total-evaluator boundary; it is not a missing measurement.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c.; n.c. means not comparable because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no separately reported execution attribution. For compiled and eager rows, wall time still exposes the authenticated warmed total-evaluator boundary. Future compiled and eager entries also show the accumulated absolute evaluator total marked T; T is not an attribution ratio. Older entries remain marked not exposed; it is not a missing measurement.}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -120,7 +122,7 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c.; n.c. means not comparable because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no separately reported execution attribution. For compiled and eager rows, wall time still exposes the authenticated warmed total-evaluator boundary; it is not a missing measurement.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c.; n.c. means not comparable because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no separately reported execution attribution. For compiled and eager rows, wall time still exposes the authenticated warmed total-evaluator boundary. Future compiled and eager entries also show the accumulated absolute evaluator total marked T; T is not an attribution ratio. Older entries remain marked not exposed; it is not a missing measurement.}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -173,5 +175,5 @@
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c.; n.c. means not comparable because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no separately reported execution attribution. For compiled and eager rows, wall time still exposes the authenticated warmed total-evaluator boundary; it is not a missing measurement.}
+\ReportTableNote{Original AmpliCol is the denominator. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value marked n.c.; n.c. means not comparable because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no separately reported execution attribution. For compiled and eager rows, wall time still exposes the authenticated warmed total-evaluator boundary. Future compiled and eager entries also show the accumulated absolute evaluator total marked T; T is not an attribution ratio. Older entries remain marked not exposed; it is not a missing measurement.}
 \end{minipage}

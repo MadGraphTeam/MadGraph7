@@ -22,6 +22,14 @@ ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI = (
     "pyamplicol-report-arena-execution-timing-v2"
 )
 EXECUTION_TIMING_KEY = "execution_timing"
+EVALUATOR_TOTAL_TIMING_ABI = "pyamplicol-report-evaluator-total-timing-v1"
+EVALUATOR_TOTAL_TIMING_KEY = "evaluator_total_timing"
+EVALUATOR_TOTAL_TIMING_SOURCE = (
+    "runtime._benchmark_f64_wall_time.accumulated"
+)
+EVALUATOR_TOTAL_SAMPLE_CONTRACT = (
+    "accumulated-repeated-warmed-evaluator-total-v1"
+)
 UNAVAILABLE_STATUS = "unavailable"
 ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS = frozenset(
     {
@@ -49,6 +57,95 @@ ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS = frozenset(
         "arena_profile_evidence_sha256",
     }
 )
+EVALUATOR_TOTAL_TIMING_FIELDS = frozenset(
+    {
+        "abi",
+        "status",
+        "ratio_eligible",
+        "raw_seconds_per_point",
+        "source",
+        "execution_mode",
+        "sample_contract",
+        "sample_count",
+        "repetitions_per_sample",
+        "batch_size",
+        "points_per_sample",
+        "measured_point_count",
+        "accumulated_seconds",
+    }
+)
+
+
+def evaluator_total_timing_record(
+    measurement: Mapping[str, object],
+) -> Mapping[str, object] | None:
+    """Return an authenticated accumulated warmed evaluator-total record."""
+
+    provenance = measurement.get("provenance")
+    if not isinstance(provenance, Mapping):
+        return None
+    record = provenance.get(EVALUATOR_TOTAL_TIMING_KEY)
+    if not isinstance(record, Mapping):
+        return None
+    raw = record.get("raw_seconds_per_point")
+    accumulated = record.get("accumulated_seconds")
+    sample_count = record.get("sample_count")
+    repetitions = record.get("repetitions_per_sample")
+    batch_size = record.get("batch_size")
+    points_per_sample = record.get("points_per_sample")
+    measured_points = record.get("measured_point_count")
+    wall = measurement.get("wall_seconds_per_point")
+    if (
+        measurement.get("status") != "ok"
+        or set(record) != EVALUATOR_TOTAL_TIMING_FIELDS
+        or record.get("abi") != EVALUATOR_TOTAL_TIMING_ABI
+        or record.get("status") != "measured"
+        or record.get("ratio_eligible") is not False
+        or record.get("source") != EVALUATOR_TOTAL_TIMING_SOURCE
+        or record.get("execution_mode") not in {"compiled", "eager"}
+        or record.get("sample_contract") != EVALUATOR_TOTAL_SAMPLE_CONTRACT
+        or isinstance(sample_count, bool)
+        or not isinstance(sample_count, int)
+        or sample_count < 1
+        or measurement.get("sample_count") != sample_count
+        or isinstance(repetitions, bool)
+        or not isinstance(repetitions, int)
+        or repetitions < 1
+        or isinstance(batch_size, bool)
+        or not isinstance(batch_size, int)
+        or batch_size < 1
+        or isinstance(points_per_sample, bool)
+        or not isinstance(points_per_sample, int)
+        or points_per_sample != repetitions * batch_size
+        or isinstance(measured_points, bool)
+        or not isinstance(measured_points, int)
+        or measured_points != sample_count * points_per_sample
+        or isinstance(accumulated, bool)
+        or not isinstance(accumulated, (int, float))
+        or not math.isfinite(float(accumulated))
+        or float(accumulated) <= 0.0
+        or isinstance(raw, bool)
+        or not isinstance(raw, (int, float))
+        or not math.isfinite(float(raw))
+        or float(raw) <= 0.0
+        or not math.isclose(
+            float(raw),
+            float(accumulated) / measured_points,
+            rel_tol=1.0e-15,
+            abs_tol=0.0,
+        )
+        or isinstance(wall, bool)
+        or not isinstance(wall, (int, float))
+        or not math.isfinite(float(wall))
+        or not math.isclose(
+            float(raw),
+            float(wall),
+            rel_tol=1.0e-15,
+            abs_tol=0.0,
+        )
+    ):
+        return None
+    return record
 
 
 def unavailable_execution_timing_record(
@@ -150,9 +247,15 @@ __all__ = [
     "ARENA_PROFILE_SAMPLE_PASS",
     "ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI",
     "ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS",
+    "EVALUATOR_TOTAL_SAMPLE_CONTRACT",
+    "EVALUATOR_TOTAL_TIMING_ABI",
+    "EVALUATOR_TOTAL_TIMING_FIELDS",
+    "EVALUATOR_TOTAL_TIMING_KEY",
+    "EVALUATOR_TOTAL_TIMING_SOURCE",
     "EXECUTION_TIMING_KEY",
     "MEASURED_EXECUTION_TIMING_ABI",
     "PAIRED_TIMING_SAMPLE_CONTRACT",
     "UNAVAILABLE_STATUS",
+    "evaluator_total_timing_record",
     "unavailable_execution_timing_record",
 ]

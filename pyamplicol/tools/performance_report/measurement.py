@@ -325,6 +325,7 @@ def measure_pyamplicol_cell(
         selector_contract=contract,
     )
     execution_timing = profile.pop("execution_timing")
+    evaluator_total_timing = profile.pop("evaluator_total_timing", None)
     arena_profile_evidence = profile.pop("arena_profile_evidence")
     benchmark_evidence = profile.pop("benchmark_evidence")
     validation: dict[str, object] = {
@@ -420,6 +421,11 @@ def measure_pyamplicol_cell(
                 "generation_timer_excludes_model_preparation": True,
                 "runtime_profile": benchmark_evidence,
                 "execution_timing": execution_timing,
+                **(
+                    {"evaluator_total_timing": evaluator_total_timing}
+                    if evaluator_total_timing is not None
+                    else {}
+                ),
                 "arena_profile_evidence": arena_profile_evidence,
                 "runtime_identity": runtime_identity,
                 "runtime_identity_sha256": runtime_identity_sha256,

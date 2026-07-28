@@ -198,6 +198,34 @@ def _mark_arena_unavailable(
     }
 
 
+def _mark_evaluator_total(
+    measurement: dict[str, object],
+    *,
+    execution_mode: str = "compiled",
+) -> None:
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    wall = measurement["wall_seconds_per_point"]
+    assert isinstance(wall, float)
+    provenance["evaluator_total_timing"] = {
+        "abi": "pyamplicol-report-evaluator-total-timing-v1",
+        "status": "measured",
+        "ratio_eligible": False,
+        "raw_seconds_per_point": wall,
+        "source": "runtime._benchmark_f64_wall_time.accumulated",
+        "execution_mode": execution_mode,
+        "sample_contract": (
+            "accumulated-repeated-warmed-evaluator-total-v1"
+        ),
+        "sample_count": 5,
+        "repetitions_per_sample": 1,
+        "batch_size": 128,
+        "points_per_sample": 128,
+        "measured_point_count": 640,
+        "accumulated_seconds": wall * 640,
+    }
+
+
 def _fill_visible_n4_scope(caches: dict[str, dict[str, object]]) -> None:
     for payload in caches.values():
         entries = payload["entries"]
@@ -900,6 +928,62 @@ def test_unavailable_execution_is_not_exposed_and_has_no_zero_ratio(
     assert r"\matrixratiopairnotexposed{ReportGreen}{x0.5}" in tex
     assert "Not exposed means that a successful wall-time measurement" in tex
     assert r"{x0}" not in tex
+
+
+@pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
+def test_future_dag_evaluator_total_is_absolute_and_never_ratioed(
+    reset_caches,
+    execution_mode: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_nlc",
+    )
+    dataset_id = (
+        "matrix_compiled_builtin_sm_nlc"
+        if execution_mode == "compiled"
+        else "matrix_eager_builtin_sm_nlc"
+    )
+    candidate = _cache_by_dataset(caches, dataset_id)
+    _set_ok(
+        baseline,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=2.0,
+        wall=1.0e-6,
+        execution=None,
+    )
+    entries = candidate["entries"]
+    assert isinstance(entries, list)
+    measurement = next(
+        entry["measurement"]
+        for entry in entries
+        if entry["process_key"] == "dd_z_jets"
+        and entry["n_final"] == 1
+        and entry["workload"] == Workload.CONTRACTED.value
+    )
+    _mark_arena_unavailable(measurement, execution_mode=execution_mode)
+    _mark_evaluator_total(measurement, execution_mode=execution_mode)
+
+    tex = render_matrix_table(REPORT_CATALOG.dataset(dataset_id), caches)
+
+    assert (
+        r"\matrixratiopairtotalevaluator{ReportGreen}"
+        r"{x0.5}{\texttt{1}}"
+    ) in tex
+    assert "absolute evaluator-total value marked T" in tex
+    assert r"\matrixratiopair{ReportGreen}{x0.5}{Report" not in tex
 
 
 def test_z_ladder_prints_not_exposed_instead_of_zero(
