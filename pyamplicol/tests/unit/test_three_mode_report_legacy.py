@@ -16,10 +16,17 @@ from tools.performance_report.legacy import (
     LegacySettings,
     TimingRow,
     _canonical_mapped_color_word,
+    _fixed_helicity,
+    _helicity_id,
     adaptive_profile_points,
 )
 from tools.performance_report.models import Accuracy, ExecutionMode, Workload
-from tools.performance_report.runner import SelectorContract
+from tools.performance_report.runner import (
+    RunnerError,
+    SelectorContract,
+    point_digest,
+    validate_selector_contract,
+)
 
 
 @dataclass(frozen=True)
@@ -438,6 +445,88 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     )
     assert momenta_file.is_file()
     assert len(momenta_file.read_text(encoding="utf-8").splitlines()) == 4
+
+
+@pytest.mark.parametrize(
+    ("final_pdgs", "n_final", "expected_id"),
+    (
+        ((-11, 11, 23, 25), 4, "h:-1,+1,-1,+1,-1,+0"),
+        ((-11, 11, 23, 25), 5, "h:-1,+1,-1,+1,-1,+0,-1"),
+        ((-11, 11, 23, 25), 6, "h:-1,+1,-1,+1,-1,+0,-1,+1"),
+        ((-11, 11, 23, 25), 7, "h:-1,+1,-1,+1,-1,+0,-1,+1,-1"),
+        ((6, -6, 23, 25), 4, "h:-1,+1,-1,+1,-1,+0"),
+        ((6, -6, 23, 25), 5, "h:-1,+1,-1,+1,-1,+0,-1"),
+        ((6, -6, 23, 25), 6, "h:-1,+1,-1,+1,-1,+0,-1,+1"),
+        ((6, -6, 23, 25), 7, "h:-1,+1,-1,+1,-1,+0,-1,+1,-1"),
+    ),
+)
+def test_higgs_selector_ids_match_runtime_signed_zero_axis(
+    final_pdgs: tuple[int, ...],
+    n_final: int,
+    expected_id: str,
+) -> None:
+    pdgs = (1, -1, *final_pdgs, *(21 for _ in range(n_final - 4)))
+    helicities = _fixed_helicity(pdgs)
+    points = (((1.0, 0.0, 0.0, 1.0),),)
+    labels = tuple(range(1, len(pdgs) + 1))
+    flow_id = "flow:2,1"
+    runtime = SimpleNamespace(
+        physics=SimpleNamespace(
+            color_flows=(SimpleNamespace(id=flow_id, word=(2, 1)),),
+            helicities=(
+                SimpleNamespace(id=expected_id, values=helicities),
+            ),
+            external_particles=tuple(
+                SimpleNamespace(label=label) for label in labels
+            ),
+        )
+    )
+    contract = SelectorContract(
+        selected_color_flow_ids=(flow_id,),
+        selected_color_words=((2, 1),),
+        all_flow_helicity_ids=(_helicity_id(helicities),),
+        all_flow_source_helicities=tuple(
+            zip(labels, helicities, strict=True)
+        ),
+        point_digest=point_digest(points),
+    )
+
+    assert helicities[5] == 0
+    assert contract.all_flow_helicity_ids == (expected_id,)
+    validate_selector_contract(runtime, contract, points)
+
+
+def test_higgs_selector_keeps_nonzero_signs_fail_closed() -> None:
+    points = (((1.0, 0.0, 0.0, 1.0),),)
+    helicities = (-1, 1, -1, 1, -1, 0)
+    identifier = _helicity_id(helicities)
+    runtime = SimpleNamespace(
+        physics=SimpleNamespace(
+            color_flows=(SimpleNamespace(id="flow:2,1", word=(2, 1)),),
+            helicities=(
+                SimpleNamespace(
+                    id=identifier,
+                    values=(1, 1, -1, 1, -1, 0),
+                ),
+            ),
+            external_particles=tuple(
+                SimpleNamespace(label=label)
+                for label in range(1, len(helicities) + 1)
+            ),
+        )
+    )
+    contract = SelectorContract(
+        selected_color_flow_ids=("flow:2,1",),
+        selected_color_words=((2, 1),),
+        all_flow_helicity_ids=(identifier,),
+        all_flow_source_helicities=tuple(
+            enumerate(helicities, start=1)
+        ),
+        point_digest=point_digest(points),
+    )
+
+    with pytest.raises(RunnerError, match="selected physical helicity"):
+        validate_selector_contract(runtime, contract, points)
 
 
 def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(

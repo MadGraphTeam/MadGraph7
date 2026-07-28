@@ -677,9 +677,7 @@ def _fixed_helicity(pdgs: Sequence[int]) -> tuple[int, ...]:
 
 
 def _helicity_id(values: Sequence[int]) -> str:
-    return "h:" + ",".join(
-        "0" if int(value) == 0 else f"{int(value):+d}" for value in values
-    )
+    return "h:" + ",".join(f"{int(value):+d}" for value in values)
 
 
 def _compiler_payload(value: object) -> object:
