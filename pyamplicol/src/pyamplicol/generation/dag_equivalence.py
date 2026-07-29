@@ -795,40 +795,6 @@ def discover_recursive_evaluation_relations(
     return RelationDiscoveryResult(dag=result_dag, report=report)
 
 
-def recurrence_relation_discovery_diagnostic(
-    *,
-    requested_mode: _DiscoveryMode,
-    color_accuracy: Literal["lc", "nlc", "full"],
-    precision_digits: int,
-    probe_count: int,
-    seed: int,
-) -> RelationDiscoveryReport:
-    """Return the shared manifest shape without mutating a recurrence schedule."""
-
-    return RelationDiscoveryReport(
-        requested_mode=requested_mode,
-        state="diagnostic-only",
-        execution_mode="recurrence",
-        color_accuracy=color_accuracy,
-        representation="recurrence-schedule",
-        precision_digits=precision_digits,
-        probe_count=probe_count,
-        seed=seed,
-        probe_status="not-run",
-        certificate_replay_status="unavailable",
-        numerical_candidate_count=0,
-        uncertified_candidate_count=0,
-        exact_certified_relation_count=0,
-        applied_relation_count=0,
-        interaction_evaluation_count_before=None,
-        interaction_evaluation_count_after=None,
-        follow_up_boundary=(
-            "recurrence promotion requires an exact schedule-level replay "
-            "certificate over the lowered Rust current/contribution tables"
-        ),
-    )
-
-
 def _rewrite_interaction_evaluation_reuse(
     dag: GenericDAG,
     model: Model,
@@ -2464,6 +2430,5 @@ __all__ = [
     "assign_recursive_current_evaluation_reuse",
     "discover_recursive_evaluation_relations",
     "project_rectangular_dynamic_color_classes",
-    "recurrence_relation_discovery_diagnostic",
     "verify_dag_relation_certificates",
 ]

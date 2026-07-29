@@ -13,7 +13,6 @@ from pyamplicol.generation.dag_equivalence import (
     _current_evaluation_contract,
     assign_recursive_current_evaluation_reuse,
     discover_recursive_evaluation_relations,
-    recurrence_relation_discovery_diagnostic,
     verify_dag_relation_certificates,
 )
 from pyamplicol.models import BuiltinSMModel
@@ -181,25 +180,3 @@ def test_diagnostic_mode_reports_promotable_reuse_without_applying_it() -> None:
         "deterministic": True,
         "candidate_only": True,
     }
-
-
-@pytest.mark.parametrize("color_accuracy", ("lc", "nlc", "full"))
-def test_recurrence_uses_shared_diagnostics_but_never_promotes_without_schedule_proof(
-    color_accuracy,
-) -> None:
-    report = recurrence_relation_discovery_diagnostic(
-        requested_mode="certified-reuse",
-        color_accuracy=color_accuracy,
-        precision_digits=80,
-        probe_count=2,
-        seed=29,
-    )
-
-    assert report.state == "diagnostic-only"
-    assert report.execution_mode == "recurrence"
-    assert report.color_accuracy == color_accuracy
-    assert report.representation == "recurrence-schedule"
-    assert report.probe_status == "not-run"
-    assert report.certificate_replay_status == "unavailable"
-    assert report.applied_relation_count == 0
-    assert "schedule-level replay certificate" in (report.follow_up_boundary or "")

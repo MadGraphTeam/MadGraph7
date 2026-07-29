@@ -1,0 +1,778 @@
+// SPDX-License-Identifier: 0BSD
+
+//! Opt-in numerical nomination and exact replay for recurrence-current reuse.
+//!
+//! Numerical projections are deliberately only an index. A current is
+//! reusable only when the complete lowered contribution vector is
+//! proportional over [`ExactComplexRational`]. The resulting certificate is
+//! replayed once more before lowering may emit a scale-copy row.
+
+use std::collections::BTreeMap;
+
+use sha2::{Digest, Sha256};
+
+use super::{ExactComplexRational, RecurrenceStrategy};
+use crate::{RusticolError, RusticolResult};
+
+const PROJECTION_PRIME: u64 = (1_u64 << 61) - 1;
+const RELATION_CERTIFICATE_ALGORITHM: &str = "recurrence-exact-rational-row-vector-replay-v1";
+
+fn invalid(message: impl Into<String>) -> RusticolError {
+    RusticolError::invalid_argument(format!("recurrence relation discovery: {}", message.into()))
+}
+
+/// User-visible recurrence relation-discovery mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RecurrenceRelationDiscoveryMode {
+    Off,
+    Diagnostic,
+    CertifiedReuse,
+}
+
+impl RecurrenceRelationDiscoveryMode {
+    pub fn parse(value: &str) -> RusticolResult<Self> {
+        match value {
+            "off" => Ok(Self::Off),
+            "diagnostic" => Ok(Self::Diagnostic),
+            "certified-reuse" => Ok(Self::CertifiedReuse),
+            _ => Err(invalid(format!("unsupported mode {value:?}"))),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Diagnostic => "diagnostic",
+            Self::CertifiedReuse => "certified-reuse",
+        }
+    }
+
+    pub const fn applies_reuse(self) -> bool {
+        matches!(self, Self::CertifiedReuse)
+    }
+}
+
+/// Authenticated options passed through the recurrence lowering boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurrenceRelationDiscoveryOptions {
+    pub mode: RecurrenceRelationDiscoveryMode,
+    pub precision_digits: u32,
+    pub probe_count: u32,
+    pub seed: u64,
+    pub color_accuracy: String,
+}
+
+impl RecurrenceRelationDiscoveryOptions {
+    pub fn new(
+        mode: RecurrenceRelationDiscoveryMode,
+        precision_digits: u32,
+        probe_count: u32,
+        seed: u64,
+        color_accuracy: impl Into<String>,
+    ) -> RusticolResult<Self> {
+        if precision_digits < 80 {
+            return Err(invalid("precision must be at least 80 decimal digits"));
+        }
+        if probe_count < 2 {
+            return Err(invalid("at least two probes are required"));
+        }
+        let color_accuracy = color_accuracy.into();
+        if !matches!(color_accuracy.as_str(), "lc" | "nlc" | "full") {
+            return Err(invalid(format!(
+                "unsupported color accuracy {color_accuracy:?}"
+            )));
+        }
+        Ok(Self {
+            mode,
+            precision_digits,
+            probe_count,
+            seed,
+            color_accuracy,
+        })
+    }
+
+    pub fn off() -> Self {
+        Self {
+            mode: RecurrenceRelationDiscoveryMode::Off,
+            precision_digits: 96,
+            probe_count: 4,
+            seed: 0x5059_414d,
+            color_accuracy: "lc".to_owned(),
+        }
+    }
+}
+
+/// Runtime contract which must agree before two current values are comparable.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct RelationCurrentContract {
+    pub stage: u16,
+    pub state_template_id: u32,
+    pub component_count: u16,
+    pub momentum_form_id: u32,
+    pub selector_domain_id: u32,
+    pub finalization_executor_id: u32,
+    pub finalization_momentum_form_id: u32,
+    pub finalization_exact_factor: ExactComplexRational,
+}
+
+/// One exact lowered contribution before parent relation substitution.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RelationTermInput {
+    pub executor_id: u32,
+    pub parent_current_ids: Box<[u32]>,
+    pub parent_momentum_form_ids: Box<[u32]>,
+    pub exact_factor: ExactComplexRational,
+}
+
+/// Exact schedule input for one current in topological ID order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RelationCurrentInput {
+    pub current_id: u32,
+    pub is_source: bool,
+    pub contract: RelationCurrentContract,
+    pub terms: Box<[RelationTermInput]>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct RelationTermKey {
+    executor_id: u32,
+    parent_class_ids: Box<[u32]>,
+    parent_momentum_form_ids: Box<[u32]>,
+}
+
+type ExactTermVector = BTreeMap<RelationTermKey, ExactComplexRational>;
+
+/// Exact, independently replayable relation between two lowered currents.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurrenceCurrentRelationCertificate {
+    pub current_id: u32,
+    pub representative_id: u32,
+    pub factor: ExactComplexRational,
+    pub current_expression_sha256: String,
+    pub representative_expression_sha256: String,
+    pub proof_sha256: String,
+}
+
+/// Manifest-facing result of one recurrence relation-discovery pass.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurrenceRelationDiscoveryReport {
+    pub requested_mode: RecurrenceRelationDiscoveryMode,
+    pub state: &'static str,
+    pub strategy: RecurrenceStrategy,
+    pub color_accuracy: String,
+    pub precision_digits: u32,
+    pub probe_count: u32,
+    pub seed: u64,
+    pub effective_projection_count: u32,
+    pub numerical_candidate_count: usize,
+    pub uncertified_candidate_count: usize,
+    pub exact_certified_relation_count: usize,
+    pub applied_relation_count: usize,
+    pub current_count_before: usize,
+    pub current_count_after: usize,
+    pub contribution_count_before: usize,
+    pub contribution_count_after: usize,
+    pub interaction_evaluation_count_before: usize,
+    pub interaction_evaluation_count_after: usize,
+    pub scale_copy_row_count: usize,
+    pub certificates: Vec<RecurrenceCurrentRelationCertificate>,
+    pub rejected_candidates: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RecurrenceRelationDiscoveryOutcome {
+    pub relations: Vec<RecurrenceCurrentRelationCertificate>,
+    pub numerical_candidate_count: usize,
+    pub uncertified_candidate_count: usize,
+    pub rejected_candidates: Vec<String>,
+    pub effective_projection_count: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct Fp2 {
+    re: u64,
+    im: u64,
+}
+
+impl Fp2 {
+    const ZERO: Self = Self { re: 0, im: 0 };
+
+    fn add(self, right: Self) -> Self {
+        Self {
+            re: add_mod(self.re, right.re),
+            im: add_mod(self.im, right.im),
+        }
+    }
+
+    fn mul(self, right: Self) -> Self {
+        Self {
+            re: sub_mod(mul_mod(self.re, right.re), mul_mod(self.im, right.im)),
+            im: add_mod(mul_mod(self.re, right.im), mul_mod(self.im, right.re)),
+        }
+    }
+
+    fn inverse(self) -> Option<Self> {
+        let norm = add_mod(mul_mod(self.re, self.re), mul_mod(self.im, self.im));
+        if norm == 0 {
+            return None;
+        }
+        let inverse = pow_mod(norm, PROJECTION_PRIME - 2);
+        Some(Self {
+            re: mul_mod(self.re, inverse),
+            im: sub_mod(0, mul_mod(self.im, inverse)),
+        })
+    }
+}
+
+/// Discover recurrence-current relations in topological order.
+///
+/// The finite-field fingerprint nominates candidates with a collision bound
+/// controlled by `precision_digits` and `probe_count`. It is never accepted
+/// as proof: `exact_relation_factor` checks every exact coefficient, and
+/// `replay_certificate` repeats that check from the stored vectors.
+pub(crate) fn discover_recurrence_current_relations(
+    inputs: &[RelationCurrentInput],
+    options: &RecurrenceRelationDiscoveryOptions,
+) -> RusticolResult<RecurrenceRelationDiscoveryOutcome> {
+    if options.mode == RecurrenceRelationDiscoveryMode::Off {
+        return Ok(RecurrenceRelationDiscoveryOutcome {
+            relations: Vec::new(),
+            numerical_candidate_count: 0,
+            uncertified_candidate_count: 0,
+            rejected_candidates: Vec::new(),
+            effective_projection_count: 0,
+        });
+    }
+    for (index, input) in inputs.iter().enumerate() {
+        if input.current_id != index as u32 {
+            return Err(invalid(format!(
+                "current {index} has non-canonical ID {}",
+                input.current_id
+            )));
+        }
+    }
+
+    // Four bits per requested decimal digit is conservative relative to
+    // log2(10). Each independent projection lives in F_(2^61-1)^2.
+    let precision_projection_count = options.precision_digits.saturating_mul(4).div_ceil(61);
+    let effective_projection_count = options.probe_count.max(precision_projection_count).max(2);
+
+    let mut class_by_current = Vec::<u32>::with_capacity(inputs.len());
+    let mut factor_by_current = Vec::<ExactComplexRational>::with_capacity(inputs.len());
+    let mut vector_by_current = Vec::<ExactTermVector>::with_capacity(inputs.len());
+    let mut groups = BTreeMap::<(RelationCurrentContract, Vec<Fp2>), Vec<u32>>::new();
+    let mut relations = Vec::new();
+    let mut numerical_candidate_count = 0usize;
+    let mut uncertified_candidate_count = 0usize;
+    let mut rejected_candidates = Vec::new();
+
+    for input in inputs {
+        if input.is_source {
+            class_by_current.push(input.current_id);
+            factor_by_current.push(ExactComplexRational::ONE);
+            vector_by_current.push(BTreeMap::new());
+            continue;
+        }
+        let vector = exact_term_vector(input, &class_by_current, &factor_by_current)?;
+        let Some(fingerprint) =
+            numerical_fingerprint(&vector, options.seed, effective_projection_count)?
+        else {
+            class_by_current.push(input.current_id);
+            factor_by_current.push(ExactComplexRational::ONE);
+            vector_by_current.push(vector);
+            continue;
+        };
+
+        let key = (input.contract.clone(), fingerprint);
+        let mut relation = None;
+        if let Some(representatives) = groups.get(&key) {
+            for representative_id in representatives {
+                numerical_candidate_count = numerical_candidate_count
+                    .checked_add(1)
+                    .ok_or_else(|| invalid("candidate count overflows usize"))?;
+                let representative = vector_by_current
+                    .get(*representative_id as usize)
+                    .ok_or_else(|| invalid("candidate representative is absent"))?;
+                match exact_relation_factor(&vector, representative)? {
+                    Some(factor) => {
+                        let certificate = build_certificate(
+                            input.current_id,
+                            *representative_id,
+                            factor,
+                            &vector,
+                            representative,
+                        );
+                        if replay_certificate(&certificate, &vector, representative)? {
+                            relation = Some(certificate);
+                            break;
+                        }
+                        uncertified_candidate_count += 1;
+                        if rejected_candidates.len() < 16 {
+                            rejected_candidates.push(format!(
+                                "current {} and representative {} failed exact certificate replay",
+                                input.current_id, representative_id
+                            ));
+                        }
+                    }
+                    None => {
+                        uncertified_candidate_count += 1;
+                        if rejected_candidates.len() < 16 {
+                            rejected_candidates.push(format!(
+                                "current {} and representative {} collided numerically without an exact relation",
+                                input.current_id, representative_id
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(certificate) = relation {
+            let representative_id = certificate.representative_id;
+            class_by_current.push(class_by_current[representative_id as usize]);
+            factor_by_current.push(certificate.factor);
+            relations.push(certificate);
+        } else {
+            class_by_current.push(input.current_id);
+            factor_by_current.push(ExactComplexRational::ONE);
+            groups.entry(key).or_default().push(input.current_id);
+        }
+        vector_by_current.push(vector);
+    }
+
+    Ok(RecurrenceRelationDiscoveryOutcome {
+        relations,
+        numerical_candidate_count,
+        uncertified_candidate_count,
+        rejected_candidates,
+        effective_projection_count,
+    })
+}
+
+fn exact_term_vector(
+    input: &RelationCurrentInput,
+    class_by_current: &[u32],
+    factor_by_current: &[ExactComplexRational],
+) -> RusticolResult<ExactTermVector> {
+    let mut vector = BTreeMap::<RelationTermKey, ExactComplexRational>::new();
+    for term in input.terms.iter() {
+        if term.parent_current_ids.len() != term.parent_momentum_form_ids.len()
+            || term.parent_current_ids.is_empty()
+            || term.parent_current_ids.len() > 2
+        {
+            return Err(invalid(format!(
+                "current {} has an invalid relation term arity",
+                input.current_id
+            )));
+        }
+        let mut coefficient = term.exact_factor;
+        let mut parent_class_ids = Vec::with_capacity(term.parent_current_ids.len());
+        for parent_id in term.parent_current_ids.iter().copied() {
+            if parent_id >= input.current_id {
+                return Err(invalid(format!(
+                    "current {} relation term references non-topological parent {parent_id}",
+                    input.current_id
+                )));
+            }
+            parent_class_ids.push(
+                *class_by_current
+                    .get(parent_id as usize)
+                    .ok_or_else(|| invalid("relation parent class is absent"))?,
+            );
+            coefficient = coefficient.checked_mul(
+                *factor_by_current
+                    .get(parent_id as usize)
+                    .ok_or_else(|| invalid("relation parent factor is absent"))?,
+            )?;
+        }
+        let key = RelationTermKey {
+            executor_id: term.executor_id,
+            parent_class_ids: parent_class_ids.into_boxed_slice(),
+            parent_momentum_form_ids: term.parent_momentum_form_ids.clone(),
+        };
+        let combined = vector
+            .get(&key)
+            .copied()
+            .unwrap_or(ExactComplexRational::ZERO)
+            .checked_add(coefficient)?;
+        if combined.is_zero() {
+            vector.remove(&key);
+        } else {
+            vector.insert(key, combined);
+        }
+    }
+    Ok(vector)
+}
+
+fn numerical_fingerprint(
+    vector: &ExactTermVector,
+    seed: u64,
+    projection_count: u32,
+) -> RusticolResult<Option<Vec<Fp2>>> {
+    if vector.is_empty() {
+        return Ok(None);
+    }
+    let mut values = Vec::with_capacity(projection_count as usize);
+    for projection in 0..projection_count {
+        let mut value = Fp2::ZERO;
+        for (key, coefficient) in vector {
+            value =
+                value.add(exact_to_fp2(*coefficient)?.mul(term_projection(seed, projection, key)));
+        }
+        values.push(value);
+    }
+    let Some(pivot) = values.iter().copied().find(|value| *value != Fp2::ZERO) else {
+        return Ok(None);
+    };
+    let Some(inverse) = pivot.inverse() else {
+        return Ok(None);
+    };
+    Ok(Some(
+        values.into_iter().map(|value| value.mul(inverse)).collect(),
+    ))
+}
+
+fn term_projection(seed: u64, projection: u32, key: &RelationTermKey) -> Fp2 {
+    let mut hash = Sha256::new();
+    hash.update(b"pyamplicol-recurrence-relation-probe-v1");
+    hash.update(seed.to_le_bytes());
+    hash.update(projection.to_le_bytes());
+    hash.update(key.executor_id.to_le_bytes());
+    hash.update((key.parent_class_ids.len() as u64).to_le_bytes());
+    for value in key.parent_class_ids.iter() {
+        hash.update(value.to_le_bytes());
+    }
+    for value in key.parent_momentum_form_ids.iter() {
+        hash.update(value.to_le_bytes());
+    }
+    let digest = hash.finalize();
+    let re = u64::from_le_bytes(digest[0..8].try_into().expect("SHA slice"));
+    let im = u64::from_le_bytes(digest[8..16].try_into().expect("SHA slice"));
+    Fp2 {
+        re: re % PROJECTION_PRIME,
+        im: im % PROJECTION_PRIME,
+    }
+}
+
+fn exact_to_fp2(value: ExactComplexRational) -> RusticolResult<Fp2> {
+    Ok(Fp2 {
+        re: rational_to_field(value.real())?,
+        im: rational_to_field(value.imag())?,
+    })
+}
+
+fn rational_to_field(value: super::ExactRational) -> RusticolResult<u64> {
+    let numerator = field_residue(value.numerator());
+    let denominator = field_residue(value.denominator());
+    if denominator == 0 {
+        return Err(invalid(
+            "an exact denominator is zero in the numerical projection field",
+        ));
+    }
+    Ok(mul_mod(
+        numerator,
+        pow_mod(denominator, PROJECTION_PRIME - 2),
+    ))
+}
+
+fn field_residue(value: i128) -> u64 {
+    value.rem_euclid(i128::from(PROJECTION_PRIME)) as u64
+}
+
+fn exact_relation_factor(
+    current: &ExactTermVector,
+    representative: &ExactTermVector,
+) -> RusticolResult<Option<ExactComplexRational>> {
+    if current.len() != representative.len() || current.is_empty() {
+        return Ok(None);
+    }
+    let Some((
+        (current_key, current_coefficient),
+        (representative_key, representative_coefficient),
+    )) = current
+        .first_key_value()
+        .zip(representative.first_key_value())
+    else {
+        return Ok(None);
+    };
+    if current_key != representative_key {
+        return Ok(None);
+    }
+    let factor = current_coefficient.checked_div(*representative_coefficient)?;
+    if factor.is_zero() {
+        return Ok(None);
+    }
+    for ((current_key, current_coefficient), (representative_key, representative_coefficient)) in
+        current.iter().zip(representative)
+    {
+        if current_key != representative_key
+            || *current_coefficient != representative_coefficient.checked_mul(factor)?
+        {
+            return Ok(None);
+        }
+    }
+    Ok(Some(factor))
+}
+
+fn build_certificate(
+    current_id: u32,
+    representative_id: u32,
+    factor: ExactComplexRational,
+    current: &ExactTermVector,
+    representative: &ExactTermVector,
+) -> RecurrenceCurrentRelationCertificate {
+    let current_expression_sha256 = expression_digest(current);
+    let representative_expression_sha256 = expression_digest(representative);
+    let proof_sha256 = proof_digest(
+        current_id,
+        representative_id,
+        factor,
+        &current_expression_sha256,
+        &representative_expression_sha256,
+    );
+    RecurrenceCurrentRelationCertificate {
+        current_id,
+        representative_id,
+        factor,
+        current_expression_sha256,
+        representative_expression_sha256,
+        proof_sha256,
+    }
+}
+
+fn replay_certificate(
+    certificate: &RecurrenceCurrentRelationCertificate,
+    current: &ExactTermVector,
+    representative: &ExactTermVector,
+) -> RusticolResult<bool> {
+    Ok(
+        exact_relation_factor(current, representative)? == Some(certificate.factor)
+            && expression_digest(current) == certificate.current_expression_sha256
+            && expression_digest(representative) == certificate.representative_expression_sha256
+            && proof_digest(
+                certificate.current_id,
+                certificate.representative_id,
+                certificate.factor,
+                &certificate.current_expression_sha256,
+                &certificate.representative_expression_sha256,
+            ) == certificate.proof_sha256,
+    )
+}
+
+fn expression_digest(vector: &ExactTermVector) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"pyamplicol-recurrence-exact-row-vector-v1");
+    hash.update((vector.len() as u64).to_le_bytes());
+    for (key, coefficient) in vector {
+        hash.update(key.executor_id.to_le_bytes());
+        hash.update((key.parent_class_ids.len() as u64).to_le_bytes());
+        for value in key.parent_class_ids.iter() {
+            hash.update(value.to_le_bytes());
+        }
+        for value in key.parent_momentum_form_ids.iter() {
+            hash.update(value.to_le_bytes());
+        }
+        update_exact_hash(&mut hash, *coefficient);
+    }
+    format!("{:x}", hash.finalize())
+}
+
+fn proof_digest(
+    current_id: u32,
+    representative_id: u32,
+    factor: ExactComplexRational,
+    current_digest: &str,
+    representative_digest: &str,
+) -> String {
+    let mut hash = Sha256::new();
+    hash.update(RELATION_CERTIFICATE_ALGORITHM.as_bytes());
+    hash.update(current_id.to_le_bytes());
+    hash.update(representative_id.to_le_bytes());
+    update_exact_hash(&mut hash, factor);
+    hash.update(current_digest.as_bytes());
+    hash.update(representative_digest.as_bytes());
+    format!("{:x}", hash.finalize())
+}
+
+fn update_exact_hash(hash: &mut Sha256, value: ExactComplexRational) {
+    for part in [
+        value.real().numerator(),
+        value.real().denominator(),
+        value.imag().numerator(),
+        value.imag().denominator(),
+    ] {
+        let text = part.to_string();
+        hash.update((text.len() as u64).to_le_bytes());
+        hash.update(text.as_bytes());
+    }
+}
+
+fn add_mod(left: u64, right: u64) -> u64 {
+    ((u128::from(left) + u128::from(right)) % u128::from(PROJECTION_PRIME)) as u64
+}
+
+fn sub_mod(left: u64, right: u64) -> u64 {
+    ((u128::from(left) + u128::from(PROJECTION_PRIME) - u128::from(right))
+        % u128::from(PROJECTION_PRIME)) as u64
+}
+
+fn mul_mod(left: u64, right: u64) -> u64 {
+    ((u128::from(left) * u128::from(right)) % u128::from(PROJECTION_PRIME)) as u64
+}
+
+fn pow_mod(mut value: u64, mut exponent: u64) -> u64 {
+    let mut result = 1_u64;
+    while exponent != 0 {
+        if exponent & 1 != 0 {
+            result = mul_mod(result, value);
+        }
+        value = mul_mod(value, value);
+        exponent >>= 1;
+    }
+    result
+}
+
+pub fn relation_certificate_algorithm() -> &'static str {
+    RELATION_CERTIFICATE_ALGORITHM
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::recurrence::ExactRational;
+
+    fn factor(value: i128) -> ExactComplexRational {
+        ExactComplexRational::new(
+            ExactRational::new(value, 1).expect("integer factor"),
+            ExactRational::ZERO,
+        )
+    }
+
+    fn contract(stage: u16) -> RelationCurrentContract {
+        RelationCurrentContract {
+            stage,
+            state_template_id: 11,
+            component_count: 2,
+            momentum_form_id: 17,
+            selector_domain_id: 0,
+            finalization_executor_id: 9,
+            finalization_momentum_form_id: 17,
+            finalization_exact_factor: ExactComplexRational::ONE,
+        }
+    }
+
+    fn term(
+        executor_id: u32,
+        parent_current_id: u32,
+        exact_factor: ExactComplexRational,
+    ) -> RelationTermInput {
+        RelationTermInput {
+            executor_id,
+            parent_current_ids: vec![parent_current_id].into_boxed_slice(),
+            parent_momentum_form_ids: vec![3].into_boxed_slice(),
+            exact_factor,
+        }
+    }
+
+    #[test]
+    fn numerical_nomination_requires_exact_row_vector_replay() {
+        let inputs = vec![
+            RelationCurrentInput {
+                current_id: 0,
+                is_source: true,
+                contract: contract(0),
+                terms: Vec::new().into_boxed_slice(),
+            },
+            RelationCurrentInput {
+                current_id: 1,
+                is_source: false,
+                contract: contract(1),
+                terms: vec![term(7, 0, factor(1))].into_boxed_slice(),
+            },
+            RelationCurrentInput {
+                current_id: 2,
+                is_source: false,
+                contract: contract(1),
+                terms: vec![term(7, 0, factor(2))].into_boxed_slice(),
+            },
+            // The same projected algebra under an incompatible runtime
+            // contract must never be nominated for reuse.
+            RelationCurrentInput {
+                current_id: 3,
+                is_source: false,
+                contract: contract(2),
+                terms: vec![term(7, 0, factor(2))].into_boxed_slice(),
+            },
+        ];
+        let options = RecurrenceRelationDiscoveryOptions::new(
+            RecurrenceRelationDiscoveryMode::Diagnostic,
+            96,
+            4,
+            0x5059_414d,
+            "full",
+        )
+        .unwrap();
+        let outcome = discover_recurrence_current_relations(&inputs, &options).unwrap();
+        assert_eq!(outcome.numerical_candidate_count, 1);
+        assert_eq!(outcome.uncertified_candidate_count, 0);
+        assert_eq!(outcome.relations.len(), 1);
+        let certificate = &outcome.relations[0];
+        assert_eq!(certificate.current_id, 2);
+        assert_eq!(certificate.representative_id, 1);
+        assert_eq!(certificate.factor, factor(2));
+        assert_eq!(certificate.proof_sha256.len(), 64);
+    }
+
+    #[test]
+    fn exact_parent_relations_propagate_to_later_currents() {
+        let inputs = vec![
+            RelationCurrentInput {
+                current_id: 0,
+                is_source: true,
+                contract: contract(0),
+                terms: Vec::new().into_boxed_slice(),
+            },
+            RelationCurrentInput {
+                current_id: 1,
+                is_source: false,
+                contract: contract(1),
+                terms: vec![term(7, 0, factor(1))].into_boxed_slice(),
+            },
+            RelationCurrentInput {
+                current_id: 2,
+                is_source: false,
+                contract: contract(1),
+                terms: vec![term(7, 0, factor(2))].into_boxed_slice(),
+            },
+            RelationCurrentInput {
+                current_id: 3,
+                is_source: false,
+                contract: contract(2),
+                terms: vec![term(8, 2, factor(1))].into_boxed_slice(),
+            },
+            RelationCurrentInput {
+                current_id: 4,
+                is_source: false,
+                contract: contract(2),
+                terms: vec![term(8, 1, factor(2))].into_boxed_slice(),
+            },
+        ];
+        let options = RecurrenceRelationDiscoveryOptions::new(
+            RecurrenceRelationDiscoveryMode::CertifiedReuse,
+            96,
+            4,
+            7,
+            "nlc",
+        )
+        .unwrap();
+        let outcome = discover_recurrence_current_relations(&inputs, &options).unwrap();
+        assert_eq!(
+            outcome
+                .relations
+                .iter()
+                .map(|relation| (relation.current_id, relation.representative_id))
+                .collect::<Vec<_>>(),
+            vec![(2, 1), (4, 3)]
+        );
+        assert_eq!(outcome.relations[1].factor, ExactComplexRational::ONE);
+    }
+}

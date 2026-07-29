@@ -18,6 +18,7 @@ mod input;
 mod layout;
 pub mod process;
 mod program;
+mod relation;
 pub mod template;
 
 pub use arena::{
@@ -43,7 +44,8 @@ pub use construct::RecurrenceBuildProgress;
 pub use direct_codec::{decode_recurrence_direct_plan_v2, encode_recurrence_direct_plan_v2};
 pub use direct_lowering::{
     DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog,
-    PreparedDirectExecutorKey, lower_recurrence_direct_plan_v2, lower_recurrence_direct_v2,
+    PreparedDirectExecutorKey, lower_recurrence_direct_plan_v2,
+    lower_recurrence_direct_plan_v2_with_relation_discovery, lower_recurrence_direct_v2,
 };
 pub(crate) use direct_pacbin::validate_recurrence_color_projection_certificate;
 pub use direct_pacbin::{
@@ -53,7 +55,8 @@ pub use direct_pacbin::{
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
 pub use direct_plan::{
-    DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
+    DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_NONE_U32,
+    DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
     DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole, DirectFinalizationRow,
     DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
     DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
@@ -84,6 +87,11 @@ pub use program::{
     closure_proof_semantic_completeness_digest_v2,
     closure_proof_semantic_completeness_digest_with_three_line_v2,
     closure_selector_domain_digest_v2, three_line_traversal_proof_digest_v1,
+};
+pub use relation::{
+    RecurrenceCurrentRelationCertificate, RecurrenceRelationDiscoveryMode,
+    RecurrenceRelationDiscoveryOptions, RecurrenceRelationDiscoveryReport,
+    relation_certificate_algorithm,
 };
 /// Semantic prepared-model companion ABI.
 pub const RECURRENCE_TEMPLATE_ABI: &str = "pyamplicol-recurrence-template-v1";

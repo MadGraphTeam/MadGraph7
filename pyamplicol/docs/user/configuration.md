@@ -121,11 +121,15 @@ seed = 1348026701
 
 `diagnostic` records deterministic high-precision candidates and exact replay
 outcomes without changing the generated evaluator. `certified-reuse` may alter
-compiled or eager interaction reuse only when the complete coefficient vectors
-pass an independently replayable exact certificate. Recurrence artifacts report
-the same mode- and colour-scoped diagnostics, but do not apply discovered reuse
-until an exact certificate exists for the lowered Rust schedule. All modes are
-off by default, and probe agreement by itself is never a correctness claim.
+compiled, eager, or recurrence interaction reuse only when the complete
+coefficient vectors pass an independently replayable exact certificate.
+Recurrence certificates cover the authenticated lowered schedule and its
+selector/finalization runtime contract; certified redundant contributions are
+replaced by native exact scale-copy rows. Direct-plan-v2 keeps dense semantic
+current IDs for closure proof compatibility, so recurrence reports both
+interaction savings and the retained descriptor count. This applies to LC,
+NLC, and full colour and to built-in or prepared external/UFO models. All modes
+are off by default, and probe agreement by itself is never a correctness claim.
 
 The command families are:
 

@@ -90,7 +90,8 @@ post_build_validation = true
 
 [generation.relation_discovery]
 # generation.relation_discovery.mode: "off", "diagnostic", or
-# "certified-reuse". Default off.
+# "certified-reuse". Compiled/eager use exact DAG replay; recurrence uses exact
+# lowered-schedule replay and native scale-copy rows. Default off.
 mode = "off"
 # generation.relation_discovery.precision_digits: Decimal probe precision,
 # at least 80. Default 96.

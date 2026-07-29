@@ -11,8 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::arena::{DirectArenaLayout, recurrence_direct_arena_layout};
 use super::direct_plan::{
-    DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DIRECT_NONE_U32,
-    DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
+    DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+    DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
     DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole, DirectFinalizationRow,
     DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
     DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
@@ -21,6 +21,11 @@ use super::direct_plan::{
     DirectSourceRow, DirectSourceStateAssignment,
 };
 use super::layout::RuntimeSourceVariantBinding;
+use super::relation::{
+    RecurrenceRelationDiscoveryMode, RecurrenceRelationDiscoveryOptions,
+    RecurrenceRelationDiscoveryReport, RelationCurrentContract, RelationCurrentInput,
+    RelationTermInput, discover_recurrence_current_relations,
+};
 use super::template::{
     EvaluatorContractKind, MISSING_U32, OwnedRecurrenceTemplateInput, RuntimeHelicityVariantRow,
     ValidatedRecurrenceTemplateInput,
@@ -288,6 +293,8 @@ struct ContributionDraft {
     executor_id: u32,
     semantic_contribution_id: u32,
     semantic_result_current_id: u32,
+    semantic_parent_current_ids: [u32; 2],
+    semantic_parent_count: u8,
     row: DirectContributionRow,
 }
 
@@ -517,7 +524,7 @@ pub fn lower_recurrence_direct_v2(
     direct_template_catalog_digest: SemanticDigest,
     runtime_options: DirectRecurrenceRuntimeOptions,
 ) -> RusticolResult<DirectRecurrencePlanParts> {
-    DirectRecurrencePlan::new(build_direct_parts(
+    let (parts, _) = build_direct_parts(
         program,
         templates,
         direct_executors,
@@ -525,8 +532,9 @@ pub fn lower_recurrence_direct_v2(
         prepared_pack_digest,
         direct_template_catalog_digest,
         runtime_options,
-    )?)
-    .map(DirectRecurrencePlan::into_parts)
+        &RecurrenceRelationDiscoveryOptions::off(),
+    )?;
+    DirectRecurrencePlan::new(parts).map(DirectRecurrencePlan::into_parts)
 }
 
 /// Lower one validated recurrence program directly to an immutable plan.
@@ -539,7 +547,7 @@ pub fn lower_recurrence_direct_plan_v2(
     direct_template_catalog_digest: SemanticDigest,
     runtime_options: DirectRecurrenceRuntimeOptions,
 ) -> RusticolResult<DirectRecurrencePlan> {
-    DirectRecurrencePlan::new(build_direct_parts(
+    let (parts, _) = build_direct_parts(
         program,
         templates,
         direct_executors,
@@ -547,9 +555,41 @@ pub fn lower_recurrence_direct_plan_v2(
         prepared_pack_digest,
         direct_template_catalog_digest,
         runtime_options,
-    )?)
+        &RecurrenceRelationDiscoveryOptions::off(),
+    )?;
+    DirectRecurrencePlan::new(parts)
 }
 
+/// Lower recurrence with opt-in relation diagnostics or certified scale-copy
+/// reuse. The returned report is absent only when the mode is `off`.
+#[allow(clippy::too_many_arguments)]
+pub fn lower_recurrence_direct_plan_v2_with_relation_discovery(
+    program: &RecurrenceProgram,
+    templates: &ValidatedRecurrenceTemplateInput,
+    direct_executors: &PreparedDirectExecutorCatalog,
+    semantic_digest: SemanticDigest,
+    prepared_pack_digest: SemanticDigest,
+    direct_template_catalog_digest: SemanticDigest,
+    runtime_options: DirectRecurrenceRuntimeOptions,
+    relation_options: &RecurrenceRelationDiscoveryOptions,
+) -> RusticolResult<(
+    DirectRecurrencePlan,
+    Option<RecurrenceRelationDiscoveryReport>,
+)> {
+    let (parts, report) = build_direct_parts(
+        program,
+        templates,
+        direct_executors,
+        semantic_digest,
+        prepared_pack_digest,
+        direct_template_catalog_digest,
+        runtime_options,
+        relation_options,
+    )?;
+    Ok((DirectRecurrencePlan::new(parts)?, report))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn build_direct_parts(
     program: &RecurrenceProgram,
     templates: &ValidatedRecurrenceTemplateInput,
@@ -558,7 +598,11 @@ fn build_direct_parts(
     prepared_pack_digest: SemanticDigest,
     direct_template_catalog_digest: SemanticDigest,
     runtime_options: DirectRecurrenceRuntimeOptions,
-) -> RusticolResult<DirectRecurrencePlanParts> {
+    relation_options: &RecurrenceRelationDiscoveryOptions,
+) -> RusticolResult<(
+    DirectRecurrencePlanParts,
+    Option<RecurrenceRelationDiscoveryReport>,
+)> {
     program.validate()?;
     validate_lowering_boundary(
         program,
@@ -787,11 +831,26 @@ fn build_direct_parts(
         let (executor_id, parent_permutation) =
             direct_executors.resolve_contribution(evaluator_binding_id)?;
         let parents = parents.permuted(parent_permutation)?;
+        let mut semantic_parent_current_ids = [DIRECT_NONE_U32; 2];
+        for (slot, parent_id) in contribution
+            .parent_current_ids()
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            semantic_parent_current_ids[slot] = parent_id;
+        }
+        if contribution.parent_current_ids().len() == 2 && parent_permutation == [1, 0] {
+            semantic_parent_current_ids.swap(0, 1);
+        }
         contribution_drafts.push(ContributionDraft {
             stage: current_stage(result)?,
             executor_id,
             semantic_contribution_id: contribution.id(),
             semantic_result_current_id: result.id(),
+            semantic_parent_current_ids,
+            semantic_parent_count: u8::try_from(contribution.parent_current_ids().len())
+                .map_err(|_| invalid("contribution parent count exceeds u8"))?,
             row: DirectContributionRow {
                 parent0_component_base: parents.parent0_component_base,
                 parent1_component_base_or_sentinel: parents.parent1_component_base_or_sentinel,
@@ -993,6 +1052,18 @@ fn build_direct_parts(
             },
         });
     }
+
+    let relation_report = apply_recurrence_relation_discovery(
+        program,
+        &arena,
+        &momentum_ids,
+        &selector_domains.current_domain_ids,
+        &mut contribution_drafts,
+        &finalization_drafts,
+        &mut exact_factors,
+        &mut exact_factor_ids,
+        relation_options,
+    )?;
 
     source_drafts.sort_by_key(|draft| {
         (
@@ -1217,7 +1288,7 @@ fn build_direct_parts(
         ));
     }
 
-    Ok(DirectRecurrencePlanParts {
+    let parts = DirectRecurrencePlanParts {
         strategy: program.strategy(),
         semantic_digest,
         prepared_pack_digest,
@@ -1279,7 +1350,232 @@ fn build_direct_parts(
         public_helicities,
         exact_factors,
         closure_proofs,
-    })
+    };
+    Ok((parts, relation_report))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_recurrence_relation_discovery(
+    program: &RecurrenceProgram,
+    arena: &DirectArenaLayout,
+    momentum_ids: &BTreeMap<CanonicalMomentumLinearForm, u32>,
+    current_selector_domain_ids: &[u32],
+    contribution_drafts: &mut Vec<ContributionDraft>,
+    finalization_drafts: &[FinalizationDraft],
+    exact_factors: &mut Vec<ExactComplexRational>,
+    exact_factor_ids: &mut BTreeMap<ExactComplexRational, u32>,
+    options: &RecurrenceRelationDiscoveryOptions,
+) -> RusticolResult<Option<RecurrenceRelationDiscoveryReport>> {
+    if options.mode == RecurrenceRelationDiscoveryMode::Off {
+        return Ok(None);
+    }
+    let contribution_count_before = contribution_drafts.len();
+    let mut contribution_by_current =
+        vec![Vec::<RelationTermInput>::new(); program.currents().len()];
+    for draft in contribution_drafts.iter() {
+        let parent_count = usize::from(draft.semantic_parent_count);
+        let parent_current_ids = draft
+            .semantic_parent_current_ids
+            .get(..parent_count)
+            .ok_or_else(|| invalid("relation draft parent range is invalid"))?
+            .to_vec();
+        let parent_momentum_form_ids = match parent_count {
+            1 => vec![draft.row.parent0_momentum_form_id],
+            2 => vec![
+                draft.row.parent0_momentum_form_id,
+                draft.row.parent1_momentum_form_id_or_sentinel,
+            ],
+            _ => {
+                return Err(invalid(format!(
+                    "relation draft {} has unsupported arity {parent_count}",
+                    draft.semantic_contribution_id
+                )));
+            }
+        };
+        contribution_by_current
+            .get_mut(draft.semantic_result_current_id as usize)
+            .ok_or_else(|| invalid("relation result current is absent"))?
+            .push(RelationTermInput {
+                executor_id: draft.executor_id,
+                parent_current_ids: parent_current_ids.into_boxed_slice(),
+                parent_momentum_form_ids: parent_momentum_form_ids.into_boxed_slice(),
+                exact_factor: *exact_factors
+                    .get(draft.row.exact_factor_id as usize)
+                    .ok_or_else(|| invalid("relation contribution factor is absent"))?,
+            });
+    }
+    let finalization_by_current = finalization_drafts
+        .iter()
+        .map(|draft| (draft.semantic_current_id, draft))
+        .collect::<BTreeMap<_, _>>();
+    let inputs = program
+        .currents()
+        .iter()
+        .map(|current| {
+            let assignment = arena_assignment(arena, current.id())?;
+            let finalization = finalization_by_current.get(&current.id()).copied();
+            Ok(RelationCurrentInput {
+                current_id: current.id(),
+                is_source: current.is_source(),
+                contract: RelationCurrentContract {
+                    stage: current_stage(current)?,
+                    state_template_id: current.key().current_state_template_id(),
+                    component_count: u16::try_from(assignment.component_count).map_err(|_| {
+                        invalid(format!(
+                            "relation current {} component count exceeds u16",
+                            current.id()
+                        ))
+                    })?,
+                    momentum_form_id: momentum_id(momentum_ids, current.key().momentum())?,
+                    selector_domain_id: *current_selector_domain_ids
+                        .get(current.id() as usize)
+                        .ok_or_else(|| invalid("relation selector domain is absent"))?,
+                    finalization_executor_id: finalization
+                        .map(|draft| draft.executor_id)
+                        .unwrap_or(DIRECT_NONE_U32),
+                    finalization_momentum_form_id: finalization
+                        .map(|draft| draft.row.momentum_form_id)
+                        .unwrap_or(DIRECT_NONE_U32),
+                    finalization_exact_factor: finalization
+                        .map(|draft| {
+                            exact_factors
+                                .get(draft.row.exact_factor_id as usize)
+                                .copied()
+                                .ok_or_else(|| invalid("relation finalization factor is absent"))
+                        })
+                        .transpose()?
+                        .unwrap_or(ExactComplexRational::ONE),
+                },
+                terms: std::mem::take(
+                    contribution_by_current
+                        .get_mut(current.id() as usize)
+                        .ok_or_else(|| invalid("relation current term vector is absent"))?,
+                )
+                .into_boxed_slice(),
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let outcome = discover_recurrence_current_relations(&inputs, options)?;
+
+    let removed_contribution_count = if options.mode.applies_reuse()
+        && !outcome.relations.is_empty()
+    {
+        let relation_by_current = outcome
+            .relations
+            .iter()
+            .map(|certificate| (certificate.current_id, certificate))
+            .collect::<BTreeMap<_, _>>();
+        let original_len = contribution_drafts.len();
+        contribution_drafts
+            .retain(|draft| !relation_by_current.contains_key(&draft.semantic_result_current_id));
+        let removed_contribution_count = original_len - contribution_drafts.len();
+        for certificate in &outcome.relations {
+            let current = program
+                .currents()
+                .get(certificate.current_id as usize)
+                .ok_or_else(|| invalid("certified current is absent"))?;
+            let representative = program
+                .currents()
+                .get(certificate.representative_id as usize)
+                .ok_or_else(|| invalid("certified representative is absent"))?;
+            let current_assignment = arena_assignment(arena, current.id())?;
+            let representative_assignment = arena_assignment(arena, representative.id())?;
+            if current_stage(current)? != current_stage(representative)?
+                || current_assignment.component_count != representative_assignment.component_count
+            {
+                return Err(invalid(format!(
+                    "certificate {} -> {} violates scale-copy layout",
+                    current.id(),
+                    representative.id()
+                )));
+            }
+            let component_count = current_assignment.component_count;
+            contribution_drafts.push(ContributionDraft {
+                stage: current_stage(current)?,
+                executor_id: DIRECT_NONE_U32,
+                semantic_contribution_id: current.id(),
+                semantic_result_current_id: current.id(),
+                semantic_parent_current_ids: [representative.id(), DIRECT_NONE_U32],
+                semantic_parent_count: 1,
+                row: DirectContributionRow {
+                    parent0_component_base: representative_assignment.component_base,
+                    parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+                    // Certified-reuse rows interpret this field as the
+                    // component count; no momentum plane is read.
+                    parent0_momentum_form_id: component_count,
+                    parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+                    destination_component_base: current_assignment.component_base,
+                    exact_factor_id: intern_direct_factor(
+                        certificate.factor,
+                        exact_factors,
+                        exact_factor_ids,
+                    )?,
+                    selector_domain_id: *current_selector_domain_ids
+                        .get(current.id() as usize)
+                        .ok_or_else(|| invalid("certified selector domain is absent"))?,
+                    flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+                        | DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE,
+                },
+            });
+        }
+        removed_contribution_count
+    } else {
+        outcome
+            .relations
+            .iter()
+            .try_fold(0usize, |total, certificate| {
+                let count = usize::try_from(
+                    program
+                        .currents()
+                        .get(certificate.current_id as usize)
+                        .ok_or_else(|| invalid("diagnostic relation current is absent"))?
+                        .fan_in(),
+                )
+                .map_err(|_| invalid("diagnostic current fan-in exceeds usize"))?;
+                total
+                    .checked_add(count)
+                    .ok_or_else(|| invalid("diagnostic saved contribution count overflows"))
+            })?
+    };
+
+    let projected_contribution_count = contribution_count_before
+        .checked_sub(removed_contribution_count)
+        .and_then(|count| count.checked_add(outcome.relations.len()))
+        .ok_or_else(|| invalid("relation contribution count overflows usize"))?;
+    let projected_interaction_count = contribution_count_before
+        .checked_sub(removed_contribution_count)
+        .ok_or_else(|| invalid("relation interaction count underflows"))?;
+    let applied = options.mode.applies_reuse() && !outcome.relations.is_empty();
+    Ok(Some(RecurrenceRelationDiscoveryReport {
+        requested_mode: options.mode,
+        state: if applied {
+            "exact-certified-applied"
+        } else {
+            "diagnostic-only"
+        },
+        strategy: program.strategy(),
+        color_accuracy: options.color_accuracy.clone(),
+        precision_digits: options.precision_digits,
+        probe_count: options.probe_count,
+        seed: options.seed,
+        effective_projection_count: outcome.effective_projection_count,
+        numerical_candidate_count: outcome.numerical_candidate_count,
+        uncertified_candidate_count: outcome.uncertified_candidate_count,
+        exact_certified_relation_count: outcome.relations.len(),
+        applied_relation_count: if applied { outcome.relations.len() } else { 0 },
+        current_count_before: program.currents().len(),
+        // Direct-plan-v2 requires dense semantic current IDs and exact
+        // closure-proof bindings. Scale-copy reuse removes interaction work
+        // while retaining those descriptors.
+        current_count_after: program.currents().len(),
+        contribution_count_before,
+        contribution_count_after: projected_contribution_count,
+        interaction_evaluation_count_before: contribution_count_before,
+        interaction_evaluation_count_after: projected_interaction_count,
+        scale_copy_row_count: if applied { outcome.relations.len() } else { 0 },
+        certificates: outcome.relations,
+        rejected_candidates: outcome.rejected_candidates,
+    }))
 }
 
 fn validate_lowering_boundary(

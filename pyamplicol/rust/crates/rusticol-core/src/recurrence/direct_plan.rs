@@ -22,7 +22,11 @@ pub const RECURRENCE_DIRECT_RUNTIME_CAPABILITY: &str =
     "rusticol.recurrence-direct-arena.complex-f64.v1";
 pub const DIRECT_NONE_U32: u32 = u32::MAX;
 pub const DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION: u32 = 1 << 0;
-const DIRECT_CONTRIBUTION_FLAGS_KNOWN: u32 = DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
+/// The row scale-copies a certified representative current. For these rows
+/// `parent0_momentum_form_id` stores the component count; no momentum is read.
+pub const DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE: u32 = 1 << 1;
+const DIRECT_CONTRIBUTION_FLAGS_KNOWN: u32 =
+    DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION | DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("recurrence direct plan: {}", message.into()))
@@ -1203,6 +1207,59 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
         .map(|current| current.component_base)
         .collect::<BTreeSet<_>>();
     for (index, row) in parts.contributions.iter().enumerate() {
+        if row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0 {
+            require_arena_base(
+                &arena_bases,
+                row.parent0_component_base,
+                "certified-reuse source",
+                index,
+            )?;
+            if row.parent1_component_base_or_sentinel != DIRECT_NONE_U32
+                || row.parent1_momentum_form_id_or_sentinel != DIRECT_NONE_U32
+            {
+                return Err(invalid(format!(
+                    "certified-reuse contribution {index} must not carry a second parent"
+                )));
+            }
+            if row.parent0_momentum_form_id == 0 {
+                return Err(invalid(format!(
+                    "certified-reuse contribution {index} has zero components"
+                )));
+            }
+            require_arena_base(
+                &arena_bases,
+                row.destination_component_base,
+                "certified-reuse destination",
+                index,
+            )?;
+            require_ref(
+                "certified-reuse exact factor",
+                row.exact_factor_id,
+                exact_factor_count,
+            )?;
+            require_ref(
+                "certified-reuse selector domain",
+                row.selector_domain_id,
+                selector_count,
+            )?;
+            let component_count = u16::try_from(row.parent0_momentum_form_id).map_err(|_| {
+                invalid(format!(
+                    "certified-reuse contribution {index} component count exceeds u16"
+                ))
+            })?;
+            if !parts.currents.iter().any(|current| {
+                current.component_base == row.parent0_component_base
+                    && current.component_count == component_count
+            }) || !parts.currents.iter().any(|current| {
+                current.component_base == row.destination_component_base
+                    && current.component_count == component_count
+            }) {
+                return Err(invalid(format!(
+                    "certified-reuse contribution {index} component count disagrees with its source or destination current"
+                )));
+            }
+            continue;
+        }
         require_arena_base(
             &arena_bases,
             row.parent0_component_base,
@@ -1817,13 +1874,35 @@ fn validate_row_groups(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> 
         if row_group.row_count == 0 {
             return Err(invalid(format!("row group {index} has zero rows")));
         }
-        if row_group.role == DirectExecutorRole::Source
-            && parts.strategy == RecurrenceStrategy::AllFlowUnion
+        if (row_group.role == DirectExecutorRole::Source
+            && parts.strategy == RecurrenceStrategy::AllFlowUnion)
+            || (row_group.role == DirectExecutorRole::Contribution
+                && row_group.direct_executor_id == DIRECT_NONE_U32)
         {
             if row_group.direct_executor_id != DIRECT_NONE_U32 {
                 return Err(invalid(format!(
-                    "all-flow-union source row group {index} must dispatch through resolved source variants"
+                    "internal row group {index} must use the missing-executor sentinel"
                 )));
+            }
+            if row_group.role == DirectExecutorRole::Contribution {
+                let start = usize::try_from(row_group.row_start)
+                    .map_err(|_| invalid("certified-reuse row-group start exceeds usize"))?;
+                let end = start
+                    .checked_add(row_group.row_count as usize)
+                    .ok_or_else(|| invalid("certified-reuse row-group range overflows usize"))?;
+                let rows = parts.contributions.get(start..end).ok_or_else(|| {
+                    invalid(format!(
+                        "certified-reuse row-group {index} range is out of bounds"
+                    ))
+                })?;
+                if !rows
+                    .iter()
+                    .all(|row| row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
+                {
+                    return Err(invalid(format!(
+                        "internal contribution row group {index} contains an uncertified row"
+                    )));
+                }
             }
         } else {
             require_ref(

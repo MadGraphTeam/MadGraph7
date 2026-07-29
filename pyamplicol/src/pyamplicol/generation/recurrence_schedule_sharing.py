@@ -368,6 +368,7 @@ def recurrence_schedule_semantic_digest(
     direct_template_catalog_digest: str,
     point_tile_size: int,
     workspace_mib: int,
+    relation_discovery: Mapping[str, object] | None = None,
 ) -> str:
     """Return the exact pre-lowering identity of one executable schedule.
 
@@ -388,6 +389,11 @@ def recurrence_schedule_semantic_digest(
         "point_tile_size": _positive_integer(point_tile_size, "point tile size"),
         "workspace_mib": _positive_integer(workspace_mib, "workspace MiB"),
     }
+    # Preserve the historical/default schedule identity byte-for-byte when
+    # discovery is off. Opt-in diagnostics and certified reuse are lowering
+    # semantics and therefore receive distinct content-addressed schedules.
+    if relation_discovery is not None:
+        payload["relation_discovery"] = _schedule_plain(relation_discovery)
     return _canonical_digest(payload)
 
 

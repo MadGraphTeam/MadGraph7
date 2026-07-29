@@ -62,12 +62,16 @@ topology, replay, and reference-order IDs are not configurable.
 
 Numerical probes only nominate possible relations. Compiled and eager
 generation can promote a nomination only after exact binary64 term-vector
-replay emits a certificate. Recurrence uses the same manifest diagnostic shape
-but remains diagnostic-only until the lowered Rust schedule has an exact
-schedule-level replay certificate. The feature is off by default and is valid
-for LC, NLC, and full colour. Direct vertex-kernel equivalence remains
-model-certificate-owned; this pass audits exact current proportionality and the
-interaction fan-out it induces.
+replay emits a certificate. Recurrence performs its probe after authenticated
+Rust schedule lowering and promotes only after a second replay of the complete
+`ExactComplexRational` contribution vectors and runtime contracts. In
+`certified-reuse`, certified recurrence contribution groups become native
+scale-copy rows; Direct-plan-v2 deliberately retains dense semantic current
+descriptors and closure bindings while removing the redundant interaction
+evaluations. The feature is off by default and is valid for LC, NLC, and full
+colour, for built-in and prepared external/UFO models. Direct vertex-kernel
+equivalence remains model-certificate-owned; this pass audits exact current
+proportionality and the interaction fan-out it induces.
 
 ## Evaluator
 

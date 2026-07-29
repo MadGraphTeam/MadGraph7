@@ -20,8 +20,10 @@ use rusticol_core::recurrence::{
     RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_PLAN_ABI,
     RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
     RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
-    RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceStrategy, SemanticDigest,
-    bind_recurrence_color_projection_certificate, checked_usize, lower_recurrence_direct_plan_v2,
+    RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceRelationDiscoveryMode,
+    RecurrenceRelationDiscoveryOptions, RecurrenceRelationDiscoveryReport, RecurrenceStrategy,
+    SemanticDigest, bind_recurrence_color_projection_certificate, checked_usize,
+    lower_recurrence_direct_plan_v2_with_relation_discovery, relation_certificate_algorithm,
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
 use rusticol_core::{RusticolError, RusticolResult};
@@ -802,6 +804,7 @@ struct NativeDirectLoweringResult {
     resolved_helicities: Vec<Vec<i32>>,
     amplitude_destinations: Vec<(u32, Option<u32>)>,
     selector_work: Vec<(DirectSelectorWorkSummary, u64)>,
+    relation_discovery: Option<RecurrenceRelationDiscoveryReport>,
     construction: RecurrenceConstructionMetrics,
     timings: DirectLoweringTimings,
 }
@@ -864,6 +867,11 @@ struct AuthenticatedDirectTemplateCatalog {
     native_build_inputs_sha256,
     point_tile_size,
     workspace_mib,
+    relation_discovery_mode,
+    relation_discovery_precision_digits,
+    relation_discovery_probe_count,
+    relation_discovery_seed,
+    color_accuracy,
     progress_callback=None
 ))]
 #[allow(clippy::too_many_arguments)]
@@ -879,6 +887,11 @@ pub(crate) fn _lower_recurrence_direct_v2(
     native_build_inputs_sha256: String,
     point_tile_size: u32,
     workspace_mib: u32,
+    relation_discovery_mode: String,
+    relation_discovery_precision_digits: u32,
+    relation_discovery_probe_count: u32,
+    relation_discovery_seed: u64,
+    color_accuracy: String,
     progress_callback: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let extraction_started = Instant::now();
@@ -887,6 +900,14 @@ pub(crate) fn _lower_recurrence_direct_v2(
     let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
     validate_sha256_text(&prepared_kernel_pack_digest, "prepared kernel pack digest")?;
     validate_sha256_text(&schedule_semantic_digest, "recurrence schedule digest")?;
+    let relation_discovery = RecurrenceRelationDiscoveryOptions::new(
+        RecurrenceRelationDiscoveryMode::parse(&relation_discovery_mode).map_err(python_error)?,
+        relation_discovery_precision_digits,
+        relation_discovery_probe_count,
+        relation_discovery_seed,
+        color_accuracy,
+    )
+    .map_err(python_error)?;
     let python_extraction_seconds = extraction_started.elapsed().as_secs_f64();
 
     let native = py
@@ -904,6 +925,7 @@ pub(crate) fn _lower_recurrence_direct_v2(
                 &native_build_inputs_sha256,
                 point_tile_size,
                 workspace_mib,
+                &relation_discovery,
                 python_extraction_seconds,
                 &mut report,
             )
@@ -924,6 +946,7 @@ fn lower_recurrence_direct(
     native_build_inputs_sha256: &str,
     point_tile_size: u32,
     workspace_mib: u32,
+    relation_discovery: &RecurrenceRelationDiscoveryOptions,
     python_extraction_seconds: f64,
     progress: &mut dyn FnMut(RecurrenceBuildProgress) -> RusticolResult<()>,
 ) -> RusticolResult<NativeDirectLoweringResult> {
@@ -990,15 +1013,17 @@ fn lower_recurrence_direct(
 
     let direct_lowering_started = Instant::now();
     let runtime_options = DirectRecurrenceRuntimeOptions::new(point_tile_size, workspace_mib)?;
-    let plan = lower_recurrence_direct_plan_v2(
-        &program,
-        authenticated.template(),
-        &direct_catalog.catalog,
-        semantic_digest,
-        expected_pack_digest,
-        direct_catalog.catalog_digest,
-        runtime_options,
-    )?;
+    let (plan, relation_discovery_report) =
+        lower_recurrence_direct_plan_v2_with_relation_discovery(
+            &program,
+            authenticated.template(),
+            &direct_catalog.catalog,
+            semantic_digest,
+            expected_pack_digest,
+            direct_catalog.catalog_digest,
+            runtime_options,
+            relation_discovery,
+        )?;
     let direct_lowering_seconds = direct_lowering_started.elapsed().as_secs_f64();
 
     let resolved_helicities = resolved_helicities_from_direct_plan(&plan)?;
@@ -1089,6 +1114,7 @@ fn lower_recurrence_direct(
         resolved_helicities,
         amplitude_destinations,
         selector_work,
+        relation_discovery: relation_discovery_report,
         construction,
         timings: DirectLoweringTimings {
             python_extraction_seconds,
@@ -2075,6 +2101,12 @@ fn direct_lowering_mapping(
     direct_arena.set_item("packed_output_bytes", 0)?;
     direct_arena.set_item("scatter_bytes", 0)?;
     inspection.set_item("direct_arena", direct_arena)?;
+    if let Some(report) = native.relation_discovery.as_ref() {
+        inspection.set_item(
+            "relation_discovery",
+            relation_discovery_mapping(py, report)?,
+        )?;
+    }
 
     let member = PyDict::new(py);
     member.set_item("path", RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
@@ -2121,6 +2153,170 @@ fn direct_lowering_mapping(
     result.set_item("resolved_helicities", native.resolved_helicities)?;
     result.set_item("amplitude_destinations", native.amplitude_destinations)?;
     Ok(result.into_any().unbind())
+}
+
+fn relation_discovery_mapping<'py>(
+    py: Python<'py>,
+    report: &RecurrenceRelationDiscoveryReport,
+) -> PyResult<Bound<'py, PyDict>> {
+    let payload = PyDict::new(py);
+    payload.set_item("schema_version", 1)?;
+    payload.set_item("requested_mode", report.requested_mode.as_str())?;
+    payload.set_item("state", report.state)?;
+
+    let scope = PyDict::new(py);
+    scope.set_item("execution_mode", "recurrence")?;
+    scope.set_item("color_accuracy", &report.color_accuracy)?;
+    scope.set_item("representation", "recurrence-direct-plan-v2")?;
+    scope.set_item("lc_flow_layout", report.strategy.as_str())?;
+    payload.set_item("scope", scope)?;
+
+    let probe = PyDict::new(py);
+    probe.set_item("status", "completed")?;
+    probe.set_item("precision_digits", report.precision_digits)?;
+    probe.set_item("probe_count", report.probe_count)?;
+    probe.set_item(
+        "effective_projection_count",
+        report.effective_projection_count,
+    )?;
+    probe.set_item("seed", report.seed)?;
+    probe.set_item("deterministic", true)?;
+    probe.set_item("candidate_only", true)?;
+    payload.set_item("probe", probe)?;
+
+    let replay = PyDict::new(py);
+    replay.set_item("algorithm", relation_certificate_algorithm())?;
+    replay.set_item(
+        "status",
+        if report.certificates.is_empty() {
+            "no-certified-relations"
+        } else {
+            "verified"
+        },
+    )?;
+    replay.set_item(
+        "certificate_set_sha256",
+        relation_certificate_set_sha256(report),
+    )?;
+    payload.set_item("certificate_replay", replay)?;
+    payload.set_item(
+        "numerical_candidate_count",
+        report.numerical_candidate_count,
+    )?;
+    payload.set_item(
+        "uncertified_candidate_count",
+        report.uncertified_candidate_count,
+    )?;
+    payload.set_item(
+        "exact_certified_relation_count",
+        report.exact_certified_relation_count,
+    )?;
+    payload.set_item("applied_relation_count", report.applied_relation_count)?;
+    payload.set_item(
+        "interaction_evaluation_count_before",
+        report.interaction_evaluation_count_before,
+    )?;
+    payload.set_item(
+        "interaction_evaluation_count_after",
+        report.interaction_evaluation_count_after,
+    )?;
+    payload.set_item(
+        "interaction_evaluation_savings",
+        report
+            .interaction_evaluation_count_before
+            .saturating_sub(report.interaction_evaluation_count_after),
+    )?;
+    payload.set_item("current_count_before", report.current_count_before)?;
+    payload.set_item("current_count_after", report.current_count_after)?;
+    payload.set_item(
+        "contribution_count_before",
+        report.contribution_count_before,
+    )?;
+    payload.set_item("contribution_count_after", report.contribution_count_after)?;
+    payload.set_item("scale_copy_row_count", report.scale_copy_row_count)?;
+
+    let certificates = PyList::empty(py);
+    // Recurrence schedules can contain many exact aliases. Keep generation
+    // metadata bounded while the aggregate digest authenticates the complete
+    // replayed certificate set and the plan binds every applied scale row.
+    const CERTIFICATE_SAMPLE_LIMIT: usize = 16;
+    for certificate in report.certificates.iter().take(CERTIFICATE_SAMPLE_LIMIT) {
+        let entry = PyDict::new(py);
+        entry.set_item("algorithm", relation_certificate_algorithm())?;
+        entry.set_item("current_id", certificate.current_id)?;
+        entry.set_item("representative_id", certificate.representative_id)?;
+        let factor = PyDict::new(py);
+        factor.set_item(
+            "real_numerator",
+            certificate.factor.real().numerator().to_string(),
+        )?;
+        factor.set_item(
+            "real_denominator",
+            certificate.factor.real().denominator().to_string(),
+        )?;
+        factor.set_item(
+            "imag_numerator",
+            certificate.factor.imag().numerator().to_string(),
+        )?;
+        factor.set_item(
+            "imag_denominator",
+            certificate.factor.imag().denominator().to_string(),
+        )?;
+        entry.set_item("factor_exact_rational", factor)?;
+        entry.set_item(
+            "current_term_vector_sha256",
+            &certificate.current_expression_sha256,
+        )?;
+        entry.set_item(
+            "representative_term_vector_sha256",
+            &certificate.representative_expression_sha256,
+        )?;
+        entry.set_item("proof_sha256", &certificate.proof_sha256)?;
+        certificates.append(entry)?;
+    }
+    payload.set_item("certificates", certificates)?;
+    payload.set_item("certificate_count", report.certificates.len())?;
+    payload.set_item(
+        "certificates_truncated",
+        report.certificates.len() > CERTIFICATE_SAMPLE_LIMIT,
+    )?;
+
+    let rejected = PyList::empty(py);
+    for reason in &report.rejected_candidates {
+        let entry = PyDict::new(py);
+        entry.set_item("reason", reason)?;
+        rejected.append(entry)?;
+    }
+    payload.set_item("rejected_candidates", rejected)?;
+    payload.set_item(
+        "follow_up_boundary",
+        "Direct-plan-v2 retains dense semantic current descriptors and exact closure bindings; exact certified reuse removes interaction rows and emits one scale-copy row per relation. Direct-Arena lifetime allocation continues to own physical component recycling.",
+    )?;
+    Ok(payload)
+}
+
+fn relation_certificate_set_sha256(report: &RecurrenceRelationDiscoveryReport) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"pyamplicol-recurrence-relation-certificate-set-v1");
+    hash.update((report.certificates.len() as u64).to_le_bytes());
+    for certificate in &report.certificates {
+        hash.update(certificate.current_id.to_le_bytes());
+        hash.update(certificate.representative_id.to_le_bytes());
+        for value in [
+            certificate.factor.real().numerator(),
+            certificate.factor.real().denominator(),
+            certificate.factor.imag().numerator(),
+            certificate.factor.imag().denominator(),
+        ] {
+            let text = value.to_string();
+            hash.update((text.len() as u64).to_le_bytes());
+            hash.update(text.as_bytes());
+        }
+        hash.update(certificate.current_expression_sha256.as_bytes());
+        hash.update(certificate.representative_expression_sha256.as_bytes());
+        hash.update(certificate.proof_sha256.as_bytes());
+    }
+    format!("{:x}", hash.finalize())
 }
 
 fn parse_input(input: &Bound<'_, PyAny>) -> PyResult<OwnedInput> {

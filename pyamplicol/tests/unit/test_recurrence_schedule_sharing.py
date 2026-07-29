@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -111,6 +112,48 @@ def test_prelower_identity_normalizes_only_process_ownership() -> None:
         point_tile_size=1024,
         workspace_mib=256,
     ) != _schedule_key(first)
+
+
+def test_opt_in_relation_discovery_is_part_of_schedule_identity() -> None:
+    logical = cast(
+        RecurrenceBuilderLogicalInputV1,
+        _Logical("subprocess-a", 1, (_Leg(1, 1), _Leg(-1, 1)), _digest("p")),
+    )
+
+    def schedule_digest(
+        relation_discovery: Mapping[str, object] | None = None,
+    ) -> str:
+        return recurrence_schedule_semantic_digest(
+            logical,
+            prepared_kernel_pack_digest=_digest("pack"),
+            direct_template_catalog_digest=_digest("templates"),
+            point_tile_size=1024,
+            workspace_mib=256,
+            relation_discovery=relation_discovery,
+        )
+
+    baseline = schedule_digest()
+    assert schedule_digest(None) == baseline
+    diagnostic = schedule_digest(
+        {
+            "mode": "diagnostic",
+            "precision_digits": 96,
+            "probe_count": 4,
+            "seed": 7,
+            "color_accuracy": "lc",
+        },
+    )
+    certified = schedule_digest(
+        {
+            "mode": "certified-reuse",
+            "precision_digits": 96,
+            "probe_count": 4,
+            "seed": 7,
+            "color_accuracy": "lc",
+        },
+    )
+    assert diagnostic != baseline
+    assert certified != diagnostic
 
 
 def test_identical_process_schedules_are_lowered_once() -> None:

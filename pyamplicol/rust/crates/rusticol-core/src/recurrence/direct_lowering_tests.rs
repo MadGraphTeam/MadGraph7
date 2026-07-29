@@ -7,7 +7,9 @@ use crate::recurrence::direct_lowering::{
     DirectParents, RuntimeSourceChoice, effective_runtime_helicity_variant,
     lower_union_resolved_helicities,
 };
-use crate::recurrence::direct_plan::DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
+use crate::recurrence::direct_plan::{
+    DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+};
 use crate::recurrence::layout::RuntimeSourceVariantBinding;
 use crate::recurrence::template::{
     CatalogHeaderRow, ClosureRow, ColorContractionRow, CurrentOrientation, CurrentStateRow,
@@ -26,6 +28,7 @@ use crate::recurrence::{
     LCColorWitnessTermId, MomentumTerm, RECURRENCE_TEMPLATE_ABI, RecurrenceAmplitudeDestination,
     RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
     RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy, SourceStateAssignment,
+    load_recurrence_direct_plan_pacbin, write_recurrence_direct_plan_pacbin,
 };
 
 const CATALOG_DIGEST_SEED: u8 = 3;
@@ -1651,4 +1654,101 @@ fn certified_parent_permutation_fails_closed_for_nonbinary_rows() {
     };
     assert!(parents.permuted([1, 0]).is_err());
     assert!(parents.permuted([0, 0]).is_err());
+}
+
+#[test]
+fn certified_relation_lowering_produces_a_round_trippable_tiny_artifact() {
+    let templates = validated_template();
+    let program = count_fixture_program(&templates, 4, 31, 34, 12, 1);
+    let catalog_digest = digest(40);
+    let catalog = direct_catalog(catalog_digest);
+    let baseline = lower_recurrence_direct_plan_v2(
+        &program,
+        &templates,
+        &catalog,
+        digest(51),
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+    )
+    .unwrap();
+    let diagnostic_options = RecurrenceRelationDiscoveryOptions::new(
+        RecurrenceRelationDiscoveryMode::Diagnostic,
+        96,
+        4,
+        0x5059_414d,
+        "lc",
+    )
+    .unwrap();
+    let (diagnostic_plan, diagnostic_report) =
+        lower_recurrence_direct_plan_v2_with_relation_discovery(
+            &program,
+            &templates,
+            &catalog,
+            digest(51),
+            digest(2),
+            catalog_digest,
+            runtime_options(),
+            &diagnostic_options,
+        )
+        .unwrap();
+    assert_eq!(diagnostic_plan, baseline);
+    assert_eq!(
+        diagnostic_report.unwrap().state,
+        "diagnostic-only",
+        "diagnostic mode must report without mutating the plan"
+    );
+
+    let options = RecurrenceRelationDiscoveryOptions::new(
+        RecurrenceRelationDiscoveryMode::CertifiedReuse,
+        96,
+        4,
+        0x5059_414d,
+        "lc",
+    )
+    .unwrap();
+    let (plan, report) = lower_recurrence_direct_plan_v2_with_relation_discovery(
+        &program,
+        &templates,
+        &catalog,
+        digest(51),
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+        &options,
+    )
+    .unwrap();
+    let report = report.expect("certified lowering report");
+    assert_eq!(
+        report.requested_mode,
+        RecurrenceRelationDiscoveryMode::CertifiedReuse
+    );
+    assert_eq!(report.state, "exact-certified-applied");
+    assert_eq!(report.current_count_before, plan.currents().len());
+    assert!(report.exact_certified_relation_count > 0);
+    assert_eq!(
+        report.applied_relation_count,
+        report.exact_certified_relation_count
+    );
+    assert_eq!(report.contribution_count_after, plan.contributions().len());
+    assert!(report.interaction_evaluation_count_after < report.interaction_evaluation_count_before);
+    assert_eq!(
+        plan.contributions()
+            .iter()
+            .filter(|row| row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
+            .count(),
+        report.scale_copy_row_count
+    );
+    assert_eq!(report.effective_projection_count, 7);
+
+    let directory = std::env::temp_dir().join(format!(
+        "rusticol-recurrence-relation-producer-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("recurrence-runtime.pacbin");
+    write_recurrence_direct_plan_pacbin(&path, &plan).unwrap();
+    assert_eq!(load_recurrence_direct_plan_pacbin(&path).unwrap(), plan);
+    std::fs::remove_dir_all(directory).unwrap();
 }

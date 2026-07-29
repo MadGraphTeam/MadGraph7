@@ -9,9 +9,9 @@
 use super::RecurrenceStrategy;
 use super::SemanticDigest;
 use super::direct_plan::{
-    DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectExecutorRole,
-    DirectFinalizationRow, DirectNodeKind, DirectRecurrencePlan, DirectRowGroupDescriptor,
-    DirectSourceRow,
+    DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_NONE_U32, DirectClosureRow,
+    DirectContributionRow, DirectExecutorRole, DirectFinalizationRow, DirectNodeKind,
+    DirectRecurrencePlan, DirectRowGroupDescriptor, DirectSourceRow,
 };
 pub use super::direct_plan::{
     DirectResolvedSourceSelection, DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow,
@@ -205,6 +205,11 @@ impl DirectExecutorCatalog {
             if descriptor.role == DirectExecutorRole::Source
                 && descriptor.direct_executor_id == DIRECT_NONE_U32
                 && plan.strategy() == RecurrenceStrategy::AllFlowUnion
+            {
+                continue;
+            }
+            if descriptor.role == DirectExecutorRole::Contribution
+                && descriptor.direct_executor_id == DIRECT_NONE_U32
             {
                 continue;
             }
@@ -477,6 +482,7 @@ pub fn execute_direct_plan_unprofiled(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn execute_direct_plan_selected_profiled_with_traffic(
     plan: &DirectRecurrencePlan,
     row_groups: &[DirectRowGroupDescriptor],
@@ -524,6 +530,7 @@ pub(crate) fn execute_direct_plan_selected_unprofiled(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_direct_plan_impl<const PROFILE: bool>(
     plan: &DirectRecurrencePlan,
     row_groups: &[DirectRowGroupDescriptor],
@@ -563,7 +570,6 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             )?;
             initialized_contribution_stage = Some(descriptor.stage);
         }
-        let (arena, momenta, parameters, factors) = workspace.raw_views()?;
         let start = usize::try_from(descriptor.row_start).map_err(|_| {
             RusticolError::integrity("direct recurrence row-group start exceeds usize")
         })?;
@@ -573,6 +579,27 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
         let end = start.checked_add(count).ok_or_else(|| {
             RusticolError::integrity("direct recurrence row-group range overflows usize")
         })?;
+        if descriptor.role == DirectExecutorRole::Contribution
+            && descriptor.direct_executor_id == DIRECT_NONE_U32
+        {
+            let rows = plan.contributions().get(start..end).ok_or_else(|| {
+                RusticolError::integrity("certified-reuse contribution row group is out of bounds")
+            })?;
+            let started = PROFILE.then(Instant::now);
+            execute_certified_reuse_rows(rows, workspace, point_count)?;
+            if PROFILE {
+                counters.contribution_calls += 1;
+                counters.contribution_rows += u64::from(descriptor.row_count);
+                timings.contribution += started
+                    .expect("profiled certified-reuse group has a start time")
+                    .elapsed();
+                if let Some(traffic) = traffic.as_deref_mut() {
+                    traffic.record_call(descriptor.row_count, point_count);
+                }
+            }
+            continue;
+        }
+        let (arena, momenta, parameters, factors) = workspace.raw_views()?;
         let handle = executors.require(descriptor.direct_executor_id, descriptor.role)?;
         if PROFILE && let Some(traffic) = traffic.as_deref_mut() {
             traffic.record_call(descriptor.row_count, point_count);
@@ -678,6 +705,94 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             }
         }
         check_status(descriptor.role, descriptor.direct_executor_id, status)?;
+    }
+    Ok(())
+}
+
+fn execute_certified_reuse_rows(
+    rows: &[DirectContributionRow],
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+) -> RusticolResult<()> {
+    let stride = workspace.point_stride as usize;
+    let point_count = point_count as usize;
+    for (index, row) in rows.iter().enumerate() {
+        if row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE == 0
+            || row.parent1_component_base_or_sentinel != DIRECT_NONE_U32
+            || row.parent1_momentum_form_id_or_sentinel != DIRECT_NONE_U32
+        {
+            return Err(RusticolError::integrity(format!(
+                "certified-reuse row {index} has an invalid relation encoding"
+            )));
+        }
+        let component_count = row.parent0_momentum_form_id as usize;
+        if component_count == 0 {
+            return Err(RusticolError::integrity(format!(
+                "certified-reuse row {index} has zero components"
+            )));
+        }
+        let factor_index = row.exact_factor_id as usize;
+        let factor_re = *workspace
+            .factors_re
+            .get(factor_index)
+            .ok_or_else(|| RusticolError::integrity("certified-reuse factor is out of bounds"))?;
+        let factor_im = *workspace
+            .factors_im
+            .get(factor_index)
+            .ok_or_else(|| RusticolError::integrity("certified-reuse factor is out of bounds"))?;
+        for component in 0..component_count {
+            let source_plane = row.parent0_component_base as usize + component;
+            let destination_plane = row.destination_component_base as usize + component;
+            let source_start = source_plane.checked_mul(stride).ok_or_else(|| {
+                RusticolError::integrity("certified-reuse source range overflows usize")
+            })?;
+            let destination_start = destination_plane.checked_mul(stride).ok_or_else(|| {
+                RusticolError::integrity("certified-reuse destination range overflows usize")
+            })?;
+            let source_end = source_start.checked_add(point_count).ok_or_else(|| {
+                RusticolError::integrity("certified-reuse source range overflows usize")
+            })?;
+            let destination_end = destination_start.checked_add(point_count).ok_or_else(|| {
+                RusticolError::integrity("certified-reuse destination range overflows usize")
+            })?;
+            if source_end > workspace.current_re.len()
+                || source_end > workspace.current_im.len()
+                || destination_end > workspace.current_re.len()
+                || destination_end > workspace.current_im.len()
+            {
+                return Err(RusticolError::integrity(
+                    "certified-reuse source or destination range is out of bounds",
+                ));
+            }
+            for point in 0..point_count {
+                let source_index = source_start + point;
+                let destination_index = destination_start + point;
+                let source_re = *workspace.current_re.get(source_index).ok_or_else(|| {
+                    RusticolError::integrity("certified-reuse source real range is out of bounds")
+                })?;
+                let source_im = *workspace.current_im.get(source_index).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "certified-reuse source imaginary range is out of bounds",
+                    )
+                })?;
+                *workspace
+                    .current_re
+                    .get_mut(destination_index)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "certified-reuse destination real range is out of bounds",
+                        )
+                    })? = source_re * factor_re - source_im * factor_im;
+                *workspace
+                    .current_im
+                    .get_mut(destination_index)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "certified-reuse destination imaginary range is out of bounds",
+                        )
+                    })? = source_re * factor_im + source_im * factor_re;
+            }
+        }
     }
     Ok(())
 }

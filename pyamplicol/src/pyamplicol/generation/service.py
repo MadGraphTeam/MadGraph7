@@ -100,7 +100,6 @@ from .dag_compiler import _restrict_color_plan, compile_generic_dag
 from .dag_equivalence import (
     discover_recursive_evaluation_relations,
     project_rectangular_dynamic_color_classes,
-    recurrence_relation_discovery_diagnostic,
 )
 from .dag_types import GenericDAG
 from .eager_columnar import (
@@ -331,6 +330,11 @@ class _RustRecurrenceLoweringBinding(Protocol):
         native_build_inputs_sha256: str,
         point_tile_size: int,
         workspace_mib: int,
+        relation_discovery_mode: str,
+        relation_discovery_precision_digits: int,
+        relation_discovery_probe_count: int,
+        relation_discovery_seed: int,
+        color_accuracy: str,
         progress_callback: Callable[[Mapping[str, object]], None] | None,
     ) -> object: ...
 
@@ -422,6 +426,11 @@ def _invoke_rust_recurrence_lowering_v2(
     *,
     point_tile_size: int,
     workspace_mib: int,
+    relation_discovery_mode: str,
+    relation_discovery_precision_digits: int,
+    relation_discovery_probe_count: int,
+    relation_discovery_seed: int,
+    color_accuracy: str,
     progress_callback: Callable[[Mapping[str, object]], None] | None = None,
 ) -> _RustRecurrenceLoweringOutput:
     try:
@@ -470,6 +479,11 @@ def _invoke_rust_recurrence_lowering_v2(
             native_build_inputs_sha256=native_build_inputs_sha256,
             point_tile_size=point_tile_size,
             workspace_mib=workspace_mib,
+            relation_discovery_mode=relation_discovery_mode,
+            relation_discovery_precision_digits=(relation_discovery_precision_digits),
+            relation_discovery_probe_count=relation_discovery_probe_count,
+            relation_discovery_seed=relation_discovery_seed,
+            color_accuracy=color_accuracy,
             progress_callback=progress_callback,
         )
         result = _validate_rust_recurrence_lowering_result(
@@ -2438,14 +2452,29 @@ class GenerationBackend:
                 raise GenerationError(
                     "recurrence generation has no evaluator configuration"
                 )
+            recurrence_evaluator = run.evaluator.recurrence
+            relation_discovery = self._generation_config.relation_discovery
+            relation_discovery_mode = str(relation_discovery.mode)
+            relation_discovery_identity = (
+                None
+                if relation_discovery_mode == "off"
+                else {
+                    "mode": relation_discovery_mode,
+                    "precision_digits": relation_discovery.precision_digits,
+                    "probe_count": relation_discovery.probe_count,
+                    "seed": relation_discovery.seed,
+                    "color_accuracy": str(expanded.process_ir.color_accuracy),
+                }
+            )
             candidate_schedule_digest = recurrence_schedule_semantic_digest(
                 logical,
                 prepared_kernel_pack_digest=(model_inputs.prepared_kernel_pack_digest),
                 direct_template_catalog_digest=(
                     model_inputs.direct_template_catalog.catalog_digest
                 ),
-                point_tile_size=run.evaluator.recurrence.point_tile_size,
-                workspace_mib=run.evaluator.recurrence.workspace_mib,
+                point_tile_size=recurrence_evaluator.point_tile_size,
+                workspace_mib=recurrence_evaluator.workspace_mib,
+                relation_discovery=relation_discovery_identity,
             )
             task.update(
                 2,
@@ -2521,8 +2550,15 @@ class GenerationBackend:
                         / "recurrence-schedules"
                         / candidate_schedule_digest
                         / "recurrence-runtime.pacbin",
-                        point_tile_size=(run.evaluator.recurrence.point_tile_size),
-                        workspace_mib=run.evaluator.recurrence.workspace_mib,
+                        point_tile_size=recurrence_evaluator.point_tile_size,
+                        workspace_mib=recurrence_evaluator.workspace_mib,
+                        relation_discovery_mode=relation_discovery_mode,
+                        relation_discovery_precision_digits=(
+                            relation_discovery.precision_digits
+                        ),
+                        relation_discovery_probe_count=(relation_discovery.probe_count),
+                        relation_discovery_seed=relation_discovery.seed,
+                        color_accuracy=str(expanded.process_ir.color_accuracy),
                         progress_callback=(
                             report_native if native_task.sink is not None else None
                         ),
@@ -2720,22 +2756,19 @@ class GenerationBackend:
                 ),
             }
         relation_discovery_payload: dict[str, object] | None = None
-        relation_discovery = self._generation_config.relation_discovery
-        relation_discovery_mode = str(relation_discovery.mode)
+        native_relation_discovery = inspection_summary.get("relation_discovery")
         if relation_discovery_mode != "off":
-            relation_discovery_payload = recurrence_relation_discovery_diagnostic(
-                requested_mode=cast(
-                    Literal["diagnostic", "certified-reuse"],
-                    relation_discovery_mode,
-                ),
-                color_accuracy=cast(
-                    Literal["lc", "nlc", "full"],
-                    expanded.process_ir.color_accuracy,
-                ),
-                precision_digits=relation_discovery.precision_digits,
-                probe_count=relation_discovery.probe_count,
-                seed=relation_discovery.seed,
-            ).to_json_dict()
+            if not isinstance(native_relation_discovery, Mapping):
+                raise GenerationError(
+                    "opt-in recurrence relation discovery did not publish its "
+                    "native exact-replay report"
+                )
+            relation_discovery_payload = dict(native_relation_discovery)
+        elif native_relation_discovery is not None:
+            raise GenerationError(
+                "off-mode recurrence lowering unexpectedly published relation "
+                "discovery metadata"
+            )
         artifact = RecurrenceProcessArtifact(
             process_id=process_name,
             expression=expanded.process_ir.process,

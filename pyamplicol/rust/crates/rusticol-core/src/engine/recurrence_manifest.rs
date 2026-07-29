@@ -9,7 +9,7 @@ use crate::recurrence::{
     RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER, RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
     RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
     RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI, RECURRENCE_RUNTIME_CAPABILITY,
-    RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI, relation_certificate_algorithm,
 };
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
@@ -35,6 +35,7 @@ const MAX_SUMMARY_COUNT: u64 = 1 << 48;
 const MAX_METADATA_ROWS: usize = 1 << 20;
 const MAX_TEXT_BYTES: usize = 4096;
 const MAX_SOURCE_COMPONENTS: u64 = 1 << 20;
+const MAX_RELATION_DISCOVERY_SAMPLES: usize = 16;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -184,6 +185,8 @@ pub(super) struct RecurrenceInspectionSummary {
     pub(super) runtime_container_member: RecurrenceRuntimeContainerMember,
     #[serde(default)]
     pub(super) color_projection_certificate: Option<RecurrenceColorProjectionCertificate>,
+    #[serde(default)]
+    pub(super) relation_discovery: Option<RecurrenceRelationDiscoverySummary>,
     pub(super) generation_timings_seconds: RecurrenceGenerationTimings,
 }
 
@@ -284,6 +287,97 @@ pub(super) struct RecurrenceColorProjectionCertificate {
     pub(super) publishable: bool,
     pub(super) size_bytes: u64,
     pub(super) sha256: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum RecurrenceRelationDiscoveryMode {
+    Diagnostic,
+    CertifiedReuse,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceRelationDiscoverySummary {
+    pub(super) schema_version: u16,
+    pub(super) requested_mode: RecurrenceRelationDiscoveryMode,
+    pub(super) state: String,
+    pub(super) scope: RecurrenceRelationDiscoveryScope,
+    pub(super) probe: RecurrenceRelationDiscoveryProbe,
+    pub(super) certificate_replay: RecurrenceRelationCertificateReplay,
+    pub(super) numerical_candidate_count: u64,
+    pub(super) uncertified_candidate_count: u64,
+    pub(super) exact_certified_relation_count: u64,
+    pub(super) applied_relation_count: u64,
+    pub(super) interaction_evaluation_count_before: u64,
+    pub(super) interaction_evaluation_count_after: u64,
+    pub(super) interaction_evaluation_savings: u64,
+    pub(super) current_count_before: u64,
+    pub(super) current_count_after: u64,
+    pub(super) contribution_count_before: u64,
+    pub(super) contribution_count_after: u64,
+    pub(super) scale_copy_row_count: u64,
+    pub(super) certificates: Vec<RecurrenceRelationCertificateSample>,
+    pub(super) certificate_count: u64,
+    pub(super) certificates_truncated: bool,
+    pub(super) rejected_candidates: Vec<RecurrenceRelationRejectedCandidate>,
+    pub(super) follow_up_boundary: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceRelationDiscoveryScope {
+    pub(super) execution_mode: String,
+    pub(super) color_accuracy: String,
+    pub(super) representation: String,
+    pub(super) lc_flow_layout: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceRelationDiscoveryProbe {
+    pub(super) status: String,
+    pub(super) precision_digits: u32,
+    pub(super) probe_count: u32,
+    pub(super) effective_projection_count: u32,
+    pub(super) seed: u64,
+    pub(super) deterministic: bool,
+    pub(super) candidate_only: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceRelationCertificateReplay {
+    pub(super) algorithm: String,
+    pub(super) status: String,
+    pub(super) certificate_set_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceRelationCertificateSample {
+    pub(super) algorithm: String,
+    pub(super) current_id: u64,
+    pub(super) representative_id: u64,
+    pub(super) factor_exact_rational: RecurrenceRelationExactFactor,
+    pub(super) current_term_vector_sha256: String,
+    pub(super) representative_term_vector_sha256: String,
+    pub(super) proof_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceRelationExactFactor {
+    pub(super) real_numerator: String,
+    pub(super) real_denominator: String,
+    pub(super) imag_numerator: String,
+    pub(super) imag_denominator: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceRelationRejectedCandidate {
+    pub(super) reason: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -685,7 +779,8 @@ impl RecurrencePlanSummary {
         )?;
         self.runtime_schedule.validate()?;
         self.process_binding.validate(process_key)?;
-        self.inspection_summary.validate(process_key)?;
+        self.inspection_summary
+            .validate(process_key, color_accuracy)?;
         if self.process_binding.schedule_digest != self.inspection_summary.schedule_digest
             || self.process_binding.process_semantic_digest
                 != self.inspection_summary.semantic_digest
@@ -934,7 +1029,7 @@ fn validate_ragged_permutations(
 }
 
 impl RecurrenceInspectionSummary {
-    fn validate(&self, process_key: &str) -> RusticolResult<()> {
+    fn validate(&self, process_key: &str, color_accuracy: &str) -> RusticolResult<()> {
         if self.execution_mode != "recurrence"
             || self.recurrence_plan_abi != RECURRENCE_PLAN_ABI
             || self.runtime_layout_abi != RECURRENCE_RUNTIME_LAYOUT_ABI
@@ -985,6 +1080,9 @@ impl RecurrenceInspectionSummary {
         self.runtime_container_member.validate()?;
         if let Some(certificate) = self.color_projection_certificate.as_ref() {
             certificate.validate(self.lc_flow_layout)?;
+        }
+        if let Some(discovery) = self.relation_discovery.as_ref() {
+            discovery.validate(color_accuracy, self.lc_flow_layout, self.schedule)?;
         }
         self.generation_timings_seconds.validate()?;
         if self.schedule.source_row_count > self.schedule.current_count
@@ -1307,6 +1405,244 @@ impl RecurrenceColorProjectionCertificate {
             ));
         }
         parse_sha256(&self.sha256, "recurrence color-projection certificate")?;
+        Ok(())
+    }
+}
+
+impl RecurrenceRelationDiscoverySummary {
+    fn validate(
+        &self,
+        color_accuracy: &str,
+        layout: RecurrenceLcFlowLayout,
+        schedule: RecurrenceScheduleSummary,
+    ) -> RusticolResult<()> {
+        if self.schema_version != 1 {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence relation-discovery summary schema",
+            ));
+        }
+        let expected_layout = match layout {
+            RecurrenceLcFlowLayout::TopologyReplay => "topology-replay",
+            RecurrenceLcFlowLayout::AllFlowUnion => "all-flow-union",
+            RecurrenceLcFlowLayout::ContractedColorUnion => "contracted-color-union",
+        };
+        if self.scope.execution_mode != "recurrence"
+            || self.scope.representation != "recurrence-direct-plan-v2"
+            || self.scope.lc_flow_layout != expected_layout
+            || self.scope.color_accuracy != color_accuracy
+        {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence relation-discovery scope",
+            ));
+        }
+        for (value, context) in [
+            (&self.state, "recurrence relation-discovery state"),
+            (
+                &self.scope.color_accuracy,
+                "recurrence relation-discovery color accuracy",
+            ),
+            (
+                &self.follow_up_boundary,
+                "recurrence relation-discovery follow-up boundary",
+            ),
+        ] {
+            validate_text(value, context)?;
+        }
+        validate_counts(
+            "recurrence relation-discovery summary",
+            &[
+                self.numerical_candidate_count,
+                self.uncertified_candidate_count,
+                self.exact_certified_relation_count,
+                self.applied_relation_count,
+                self.interaction_evaluation_count_before,
+                self.interaction_evaluation_count_after,
+                self.interaction_evaluation_savings,
+                self.current_count_before,
+                self.current_count_after,
+                self.contribution_count_before,
+                self.contribution_count_after,
+                self.scale_copy_row_count,
+                self.certificate_count,
+            ],
+        )?;
+        // Every u64 seed is valid. It remains part of the strict manifest
+        // identity even though no runtime arithmetic depends on it.
+        let _probe_seed = self.probe.seed;
+        if self.probe.status != "completed"
+            || self.probe.precision_digits < 80
+            || self.probe.probe_count < 2
+            || self.probe.effective_projection_count < self.probe.probe_count
+            || !self.probe.deterministic
+            || !self.probe.candidate_only
+        {
+            return Err(RusticolError::integrity(
+                "recurrence relation-discovery probe contract is invalid",
+            ));
+        }
+        let certified = self.exact_certified_relation_count;
+        let applied = self.applied_relation_count;
+        let expected_state = match self.requested_mode {
+            RecurrenceRelationDiscoveryMode::Diagnostic => {
+                if applied != 0 || self.scale_copy_row_count != 0 {
+                    return Err(RusticolError::integrity(
+                        "diagnostic recurrence relation discovery altered the schedule",
+                    ));
+                }
+                "diagnostic-only"
+            }
+            RecurrenceRelationDiscoveryMode::CertifiedReuse => {
+                if applied != certified || self.scale_copy_row_count != applied {
+                    return Err(RusticolError::integrity(
+                        "certified recurrence relation-discovery counts disagree",
+                    ));
+                }
+                if applied == 0 {
+                    "diagnostic-only"
+                } else {
+                    "exact-certified-applied"
+                }
+            }
+        };
+        if self.state != expected_state
+            || self.current_count_before != schedule.current_count
+            || self.current_count_after != schedule.current_count
+            || self.interaction_evaluation_count_before != self.contribution_count_before
+            || self.interaction_evaluation_count_after > self.interaction_evaluation_count_before
+            || self.interaction_evaluation_savings
+                != self
+                    .interaction_evaluation_count_before
+                    .checked_sub(self.interaction_evaluation_count_after)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "recurrence relation-discovery interaction counts underflow",
+                        )
+                    })?
+            || self.contribution_count_after
+                != self
+                    .interaction_evaluation_count_after
+                    .checked_add(certified)
+                    .ok_or_else(|| {
+                        RusticolError::artifact(
+                            "recurrence relation-discovery contribution count overflows",
+                        )
+                    })?
+            || match self.requested_mode {
+                RecurrenceRelationDiscoveryMode::Diagnostic => {
+                    self.contribution_count_before != schedule.contribution_count
+                }
+                RecurrenceRelationDiscoveryMode::CertifiedReuse => {
+                    self.contribution_count_after != schedule.contribution_count
+                }
+            }
+        {
+            return Err(RusticolError::integrity(
+                "recurrence relation-discovery summary disagrees with the schedule",
+            ));
+        }
+        if self.certificate_count != certified
+            || self.certificates.len()
+                != usize::try_from(certified.min(MAX_RELATION_DISCOVERY_SAMPLES as u64)).map_err(
+                    |_| {
+                        RusticolError::artifact(
+                            "recurrence relation-discovery sample count exceeds usize",
+                        )
+                    },
+                )?
+            || self.certificates_truncated != (certified > MAX_RELATION_DISCOVERY_SAMPLES as u64)
+            || self.certificates.len() > MAX_RELATION_DISCOVERY_SAMPLES
+            || self.rejected_candidates.len() > MAX_RELATION_DISCOVERY_SAMPLES
+        {
+            return Err(RusticolError::integrity(
+                "recurrence relation-discovery bounded samples are inconsistent",
+            ));
+        }
+        let replay = &self.certificate_replay;
+        if replay.algorithm != relation_certificate_algorithm()
+            || replay.status
+                != if certified == 0 {
+                    "no-certified-relations"
+                } else {
+                    "verified"
+                }
+        {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence relation-certificate replay contract",
+            ));
+        }
+        parse_sha256(
+            &replay.certificate_set_sha256,
+            "recurrence relation certificate set",
+        )?;
+        for certificate in &self.certificates {
+            certificate.validate(self.current_count_before)?;
+        }
+        for rejected in &self.rejected_candidates {
+            validate_text(
+                &rejected.reason,
+                "recurrence relation-discovery rejection reason",
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceRelationCertificateSample {
+    fn validate(&self, current_count: u64) -> RusticolResult<()> {
+        if self.algorithm != relation_certificate_algorithm()
+            || self.current_id >= current_count
+            || self.representative_id >= current_count
+            || self.current_id == self.representative_id
+        {
+            return Err(RusticolError::integrity(
+                "recurrence relation-certificate sample is inconsistent",
+            ));
+        }
+        self.factor_exact_rational.validate()?;
+        for (digest, context) in [
+            (
+                &self.current_term_vector_sha256,
+                "recurrence current term vector",
+            ),
+            (
+                &self.representative_term_vector_sha256,
+                "recurrence representative term vector",
+            ),
+            (&self.proof_sha256, "recurrence relation proof"),
+        ] {
+            parse_sha256(digest, context)?;
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceRelationExactFactor {
+    fn validate(&self) -> RusticolResult<()> {
+        for (value, context) in [
+            (&self.real_numerator, "recurrence relation real numerator"),
+            (
+                &self.real_denominator,
+                "recurrence relation real denominator",
+            ),
+            (
+                &self.imag_numerator,
+                "recurrence relation imaginary numerator",
+            ),
+            (
+                &self.imag_denominator,
+                "recurrence relation imaginary denominator",
+            ),
+        ] {
+            validate_text(value, context)?;
+            value.parse::<i128>().map_err(|_| {
+                RusticolError::artifact(format!("{context} is not a bounded integer"))
+            })?;
+        }
+        if self.real_denominator == "0" || self.imag_denominator == "0" {
+            return Err(RusticolError::artifact(
+                "recurrence relation factor denominator is zero",
+            ));
+        }
         Ok(())
     }
 }
@@ -2516,6 +2852,51 @@ pub(super) mod tests {
         value["plan"]["runtime_schedule"]["unpacked_size_bytes"] = json!(640);
     }
 
+    fn add_python_relation_discovery(value: &mut Value, requested_mode: &str) {
+        value["plan"]["inspection_summary"]["relation_discovery"] = json!({
+            "schema_version": 1,
+            "requested_mode": requested_mode,
+            "state": "diagnostic-only",
+            "scope": {
+                "execution_mode": "recurrence",
+                "color_accuracy": "lc",
+                "representation": "recurrence-direct-plan-v2",
+                "lc_flow_layout": "topology-replay"
+            },
+            "probe": {
+                "status": "completed",
+                "precision_digits": 96,
+                "probe_count": 4,
+                "effective_projection_count": 7,
+                "seed": 17,
+                "deterministic": true,
+                "candidate_only": true
+            },
+            "certificate_replay": {
+                "algorithm": relation_certificate_algorithm(),
+                "status": "no-certified-relations",
+                "certificate_set_sha256": "dd".repeat(32)
+            },
+            "numerical_candidate_count": 0,
+            "uncertified_candidate_count": 0,
+            "exact_certified_relation_count": 0,
+            "applied_relation_count": 0,
+            "interaction_evaluation_count_before": 0,
+            "interaction_evaluation_count_after": 0,
+            "interaction_evaluation_savings": 0,
+            "current_count_before": 1,
+            "current_count_after": 1,
+            "contribution_count_before": 0,
+            "contribution_count_after": 0,
+            "scale_copy_row_count": 0,
+            "certificates": [],
+            "certificate_count": 0,
+            "certificates_truncated": false,
+            "rejected_candidates": [],
+            "follow_up_boundary": "exact relation discovery is opt-in"
+        });
+    }
+
     fn hzz_outer(color_accuracy: &str) -> ArtifactProcess {
         ArtifactProcess {
             id: "d_dbar_to_z_z_z".to_owned(),
@@ -2623,6 +3004,42 @@ pub(super) mod tests {
                 .unwrap()
                 .size_bytes,
             128
+        );
+    }
+
+    #[test]
+    fn accepts_python_emitted_relation_discovery_summaries() {
+        for mode in ["diagnostic", "certified-reuse"] {
+            let mut value = manifest();
+            add_python_relation_discovery(&mut value, mode);
+
+            let parsed = parse(&value).unwrap();
+
+            assert_eq!(
+                parsed
+                    .plan
+                    .inspection_summary
+                    .relation_discovery
+                    .as_ref()
+                    .unwrap()
+                    .certificate_count,
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_relation_discovery_that_mutates_diagnostic_mode() {
+        let mut value = manifest();
+        add_python_relation_discovery(&mut value, "diagnostic");
+        value["plan"]["inspection_summary"]["relation_discovery"]["applied_relation_count"] =
+            json!(1);
+
+        assert!(
+            parse(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("diagnostic recurrence relation discovery altered")
         );
     }
 
@@ -2737,7 +3154,7 @@ pub(super) mod tests {
             value["direct_arena"]["cache_footprint_policy"] = json!("persisted-arena-v1");
             let parsed = serde_json::from_value::<RecurrenceInspectionSummary>(value).unwrap();
 
-            parsed.validate("x_to_x").unwrap();
+            parsed.validate("x_to_x", "lc").unwrap();
         }
     }
 

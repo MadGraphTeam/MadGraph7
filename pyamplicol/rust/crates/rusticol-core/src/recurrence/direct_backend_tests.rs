@@ -2,10 +2,11 @@
 
 use super::direct_backend::*;
 use super::direct_plan::{
+    DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
     DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectFinalizationRow,
     DirectRecurrencePlan, DirectSourceRow,
 };
-use super::exact::ExactComplexRational;
+use super::exact::{ExactComplexRational, ExactRational};
 use std::ffi::c_void;
 
 const STATUS_BOUNDS: i32 = 2;
@@ -281,6 +282,90 @@ fn synthetic_program_reads_rows_and_accumulates_directly_into_arenas() {
             scatter_bytes: 0,
         }
     );
+}
+
+#[test]
+fn certified_reuse_row_scale_copies_without_calling_an_interaction_executor() {
+    let mut parts = super::direct_plan::tests::valid_parts();
+    parts.currents[0].component_count = 1;
+    parts.contributions[0] = DirectContributionRow {
+        parent0_component_base: 0,
+        parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+        // The certified-reuse encoding stores component count here.
+        parent0_momentum_form_id: 1,
+        parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+        destination_component_base: 2,
+        exact_factor_id: 0,
+        selector_domain_id: 0,
+        flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+            | DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE,
+    };
+    parts.row_groups[1].direct_executor_id = DIRECT_NONE_U32;
+    parts.finalizations[0].exact_factor_id = 1;
+    parts.closures[0].exact_factor_id = 1;
+    parts.closures[0].component_factor_start = 1;
+    parts.exact_factors = vec![
+        ExactComplexRational::new(
+            ExactRational::new(2, 1).unwrap(),
+            ExactRational::new(1, 1).unwrap(),
+        ),
+        ExactComplexRational::ONE,
+    ];
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        vec![
+            DirectExecutorHandle::Source {
+                call: fill_sources,
+                context: std::ptr::null(),
+            },
+            DirectExecutorHandle::Contribution {
+                call: accumulate_contributions,
+                context: std::ptr::null(),
+            },
+            DirectExecutorHandle::Finalization {
+                call: finalize_currents,
+                context: std::ptr::null(),
+            },
+            DirectExecutorHandle::Closure {
+                call: accumulate_closures,
+                context: std::ptr::null(),
+            },
+        ],
+    )
+    .unwrap();
+
+    let mut current_re = [0.0; 12];
+    let mut current_im = [0.0; 12];
+    let mut amplitude_re = [0.0; 4];
+    let mut amplitude_im = [0.0; 4];
+    let momenta = [1.0, 2.0, 3.0, 4.0];
+    let parameters_re = [1.0];
+    let parameters_im = [0.0];
+    let factors_re = [2.0, 1.0];
+    let factors_im = [1.0, 0.0];
+    let mut workspace = DirectWorkspace {
+        current_re: &mut current_re,
+        current_im: &mut current_im,
+        amplitude_re: &mut amplitude_re,
+        amplitude_im: &mut amplitude_im,
+        momenta: &momenta,
+        momentum_form_count: 1,
+        lorentz_component_count: 1,
+        parameters_re: &parameters_re,
+        parameters_im: &parameters_im,
+        factors_re: &factors_re,
+        factors_im: &factors_im,
+        point_stride: 4,
+    };
+    let mut counters = DirectExecutionCounters::default();
+    execute_direct_plan(&plan, &executors, &mut workspace, 4, &mut counters).unwrap();
+
+    assert_eq!(workspace.current_re[8..12], [2.0, 4.0, 6.0, 8.0]);
+    assert_eq!(workspace.current_im[8..12], [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(counters.contribution_calls, 1);
+    assert_eq!(counters.contribution_rows, 1);
 }
 
 #[test]
