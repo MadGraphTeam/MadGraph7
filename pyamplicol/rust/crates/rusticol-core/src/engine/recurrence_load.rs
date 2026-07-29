@@ -462,25 +462,52 @@ fn load_plan(
         ));
     }
     let member = reader.member(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
+    let plan_metadata = &manifest.plan.inspection_summary.runtime_container_member;
     if member.kind() != PacbinMemberKind::RecurrenceDirectPlan {
         return Err(RusticolError::compatibility(
             "recurrence runtime PACBIN contains an incompatible plan member",
         ));
     }
-    match index.members().len() {
-        1 => {}
-        2 => {
+    if member.length() != plan_metadata.size_bytes
+        || member.sha256().as_slice() != decode_sha256(&plan_metadata.sha256)?.as_slice()
+    {
+        return Err(RusticolError::integrity(
+            "recurrence DirectPlan member disagrees with execution.json",
+        ));
+    }
+    match (
+        manifest
+            .plan
+            .inspection_summary
+            .color_projection_certificate
+            .as_ref(),
+        index.members().len(),
+    ) {
+        (None, 1) => {}
+        (Some(metadata), 2) => {
             let certificate = reader.member(RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER)?;
             if certificate.kind() != PacbinMemberKind::RecurrenceColorProjectionCertificate {
                 return Err(RusticolError::compatibility(
                     "recurrence runtime PACBIN contains an incompatible projection certificate",
                 ));
             }
+            if certificate.length() != metadata.size_bytes
+                || certificate.sha256().as_slice() != decode_sha256(&metadata.sha256)?.as_slice()
+            {
+                return Err(RusticolError::integrity(
+                    "recurrence color-projection certificate disagrees with execution.json",
+                ));
+            }
             validate_recurrence_color_projection_certificate(
                 reader.member_bytes(RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER)?,
             )?;
         }
-        count => {
+        (None, 2) | (Some(_), 1) => {
+            return Err(RusticolError::integrity(
+                "recurrence runtime PACBIN projection certificate disagrees with execution.json",
+            ));
+        }
+        (_, count) => {
             return Err(RusticolError::compatibility(format!(
                 "recurrence runtime PACBIN contains {count} members; expected one plan and at most one projection certificate"
             )));

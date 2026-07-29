@@ -6,9 +6,10 @@ use crate::recurrence::direct_backend::RECURRENCE_DIRECT_BACKEND_ABI;
 use crate::recurrence::template::RECURRENCE_TEMPLATE_INPUT_ABI;
 use crate::recurrence::{
     RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
-    RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
-    RECURRENCE_DIRECT_TEMPLATE_ABI, RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI,
-    RECURRENCE_RUNTIME_CAPABILITY, RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER, RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
+    RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI, RECURRENCE_RUNTIME_CAPABILITY,
+    RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI,
 };
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
@@ -181,6 +182,8 @@ pub(super) struct RecurrenceInspectionSummary {
     pub(super) construction: RecurrenceConstructionSummary,
     pub(super) direct_arena: RecurrenceDirectArenaSummary,
     pub(super) runtime_container_member: RecurrenceRuntimeContainerMember,
+    #[serde(default)]
+    pub(super) color_projection_certificate: Option<RecurrenceColorProjectionCertificate>,
     pub(super) generation_timings_seconds: RecurrenceGenerationTimings,
 }
 
@@ -272,6 +275,17 @@ pub(super) struct RecurrenceRuntimeContainerMember {
     pub(super) container_size_bytes: u64,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceColorProjectionCertificate {
+    pub(super) path: String,
+    pub(super) schema_version: u16,
+    pub(super) proof_kind: String,
+    pub(super) publishable: bool,
+    pub(super) size_bytes: u64,
+    pub(super) sha256: String,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceGenerationTimings {
@@ -323,6 +337,8 @@ pub(super) struct RecurrenceColorContractionReference {
     pub(super) active_sector_count: u64,
     pub(super) component_count: u64,
     pub(super) destination_count: u64,
+    #[serde(default, deserialize_with = "deserialize_optional_u64_if_present")]
+    pub(super) materialized_destination_count: Option<u64>,
     pub(super) entry_count: u64,
     pub(super) logical_entry_count: u64,
     pub(super) semantic_digest: String,
@@ -689,9 +705,24 @@ impl RecurrencePlanSummary {
             ));
         }
         let member = &self.inspection_summary.runtime_container_member;
+        let certificate = self
+            .inspection_summary
+            .color_projection_certificate
+            .as_ref();
+        let expected_member_count = if certificate.is_some() { 2 } else { 1 };
+        let expected_unpacked_size_bytes =
+            certificate.map_or(Ok(member.size_bytes), |certificate| {
+                member
+                    .size_bytes
+                    .checked_add(certificate.size_bytes)
+                    .ok_or_else(|| {
+                        RusticolError::artifact("recurrence runtime member sizes overflow u64")
+                    })
+            })?;
         if member.path != self.runtime_schedule.plan_member_path
             || member.container_size_bytes != self.runtime_schedule.size_bytes
-            || member.size_bytes != self.runtime_schedule.unpacked_size_bytes
+            || self.runtime_schedule.member_count != expected_member_count
+            || self.runtime_schedule.unpacked_size_bytes != expected_unpacked_size_bytes
         {
             return Err(RusticolError::integrity(
                 "Direct-Arena v2 plan member metadata disagrees with its recurrence runtime container",
@@ -737,9 +768,9 @@ impl RecurrenceRuntimeContainer {
                 "Direct-Arena v2 schedule member path must be exactly {RECURRENCE_DIRECT_SCHEDULE_MEMBER:?}"
             )));
         }
-        if self.member_count != 1 {
+        if !(1..=2).contains(&self.member_count) {
             return Err(RusticolError::integrity(
-                "Direct-Arena v2 recurrence runtime container must declare exactly one member",
+                "Direct-Arena v2 recurrence runtime container must declare one or two members",
             ));
         }
         if self.size_bytes == 0 || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES {
@@ -952,6 +983,9 @@ impl RecurrenceInspectionSummary {
             )?;
         }
         self.runtime_container_member.validate()?;
+        if let Some(certificate) = self.color_projection_certificate.as_ref() {
+            certificate.validate(self.lc_flow_layout)?;
+        }
         self.generation_timings_seconds.validate()?;
         if self.schedule.source_row_count > self.schedule.current_count
             || self.schedule.finalization_count > self.schedule.current_count
@@ -1249,6 +1283,30 @@ impl RecurrenceRuntimeContainerMember {
             ));
         }
         parse_sha256(&self.sha256, "recurrence Direct-Arena plan member")?;
+        Ok(())
+    }
+}
+
+impl RecurrenceColorProjectionCertificate {
+    fn validate(&self, layout: RecurrenceLcFlowLayout) -> RusticolResult<()> {
+        if layout != RecurrenceLcFlowLayout::TopologyReplay
+            || self.path != RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER
+            || self.schema_version != 1
+            || self.proof_kind != "exact-rectangular-sum-projection"
+        {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence color-projection certificate contract",
+            ));
+        }
+        if !self.publishable
+            || self.size_bytes == 0
+            || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES
+        {
+            return Err(RusticolError::integrity(
+                "recurrence color-projection certificate metadata is not publishable",
+            ));
+        }
+        parse_sha256(&self.sha256, "recurrence color-projection certificate")?;
         Ok(())
     }
 }
@@ -1707,6 +1765,10 @@ impl RecurrenceColorContractionReference {
             || self.sector_count != inspection.sector_count
             || self.component_count != inspection.schedule.resolved_helicity_count
             || self.destination_count != expected_destination_count
+            || self.materialized_destination_count.is_some_and(|count| {
+                count != inspection.schedule.amplitude_destination_count
+                    || count > self.destination_count
+            })
             || self.active_sector_count == 0
             || self.active_sector_count > self.sector_count
             || self.group_count < self.active_sector_count
@@ -2441,6 +2503,71 @@ pub(super) mod tests {
             json!("selector-active-max-v1");
     }
 
+    fn add_python_color_projection_certificate(value: &mut Value) {
+        value["plan"]["inspection_summary"]["color_projection_certificate"] = json!({
+            "path": RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER,
+            "schema_version": 1,
+            "proof_kind": "exact-rectangular-sum-projection",
+            "publishable": true,
+            "size_bytes": 128,
+            "sha256": "cc".repeat(32)
+        });
+        value["plan"]["runtime_schedule"]["member_count"] = json!(2);
+        value["plan"]["runtime_schedule"]["unpacked_size_bytes"] = json!(640);
+    }
+
+    fn hzz_outer(color_accuracy: &str) -> ArtifactProcess {
+        ArtifactProcess {
+            id: "d_dbar_to_z_z_z".to_owned(),
+            expression: "d d~ > z z z".to_owned(),
+            color_accuracy: color_accuracy.to_owned(),
+            external_pdgs: vec![1, -1, 23, 23, 23],
+            physics_path: "processes/d_dbar_to_z_z_z/physics.json".to_owned(),
+            required_runtime_capabilities: vec![
+                if color_accuracy == "lc" {
+                    RECURRENCE_LC_COLOR_CAPABILITY
+                } else {
+                    RECURRENCE_CONTRACTED_COLOR_CAPABILITY
+                }
+                .to_owned(),
+                RECURRENCE_RUNTIME_CAPABILITY.to_owned(),
+            ],
+            aliases: Vec::new(),
+        }
+    }
+
+    fn parse_hzz_fixture(
+        bytes: &[u8],
+        color_accuracy: &str,
+    ) -> RusticolResult<RecurrenceExecutionManifest> {
+        parse_recurrence_execution_manifest(
+            bytes,
+            "processes/d_dbar_to_z_z_z/execution.json",
+            &hzz_outer(color_accuracy),
+        )
+    }
+
+    fn full_hzz_fixture_value() -> Value {
+        serde_json::from_slice(include_bytes!(
+            "../../tests/fixtures/recurrence_execution_hzz_full_v2.json"
+        ))
+        .unwrap()
+    }
+
+    fn nlc_hzz_fixture_value() -> Value {
+        serde_json::from_slice(include_bytes!(
+            "../../tests/fixtures/recurrence_execution_hzz_nlc.json"
+        ))
+        .unwrap()
+    }
+
+    fn lc_hzz_fixture_value() -> Value {
+        serde_json::from_slice(include_bytes!(
+            "../../tests/fixtures/recurrence_execution_hzz_lc.json"
+        ))
+        .unwrap()
+    }
+
     fn manifest_bytes_with_size(size: usize) -> Vec<u8> {
         let mut bytes = serde_json::to_vec(&manifest()).unwrap();
         assert!(bytes.len() <= size);
@@ -2474,6 +2601,117 @@ pub(super) mod tests {
                 .direct_arena
                 .cache_footprint_policy,
             Some(RecurrenceCacheFootprintPolicy::SelectorActiveMaxV1)
+        );
+    }
+
+    #[test]
+    fn accepts_python_emitted_color_projection_certificate() {
+        let mut value = manifest();
+        add_python_selector_work_certificate(&mut value);
+        add_python_color_projection_certificate(&mut value);
+
+        let parsed = parse(&value).unwrap();
+
+        assert_eq!(parsed.plan.runtime_schedule.member_count, 2);
+        assert_eq!(parsed.plan.runtime_schedule.unpacked_size_bytes, 640);
+        assert_eq!(
+            parsed
+                .plan
+                .inspection_summary
+                .color_projection_certificate
+                .as_ref()
+                .unwrap()
+                .size_bytes,
+            128
+        );
+    }
+
+    #[test]
+    fn accepts_actual_python_emitted_full_lc_and_nlc_manifests() {
+        let fixtures = [
+            (full_hzz_fixture_value(), "full", Some(54)),
+            (lc_hzz_fixture_value(), "lc", None),
+            (nlc_hzz_fixture_value(), "nlc", Some(54)),
+        ];
+
+        for (value, color_accuracy, expected_materialized_destinations) in fixtures {
+            let parsed =
+                parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), color_accuracy).unwrap();
+            assert_eq!(
+                parsed
+                    .runtime_metadata
+                    .color_contraction
+                    .as_ref()
+                    .and_then(|metadata| metadata.materialized_destination_count),
+                expected_materialized_destinations
+            );
+        }
+    }
+
+    #[test]
+    fn materialized_destination_count_is_backward_compatible_and_validated() {
+        let mut value = full_hzz_fixture_value();
+        value["runtime_metadata"]["color_contraction"]
+            .as_object_mut()
+            .unwrap()
+            .remove("materialized_destination_count");
+        parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), "full").unwrap();
+
+        value["runtime_metadata"]["color_contraction"]["materialized_destination_count"] =
+            json!(53);
+        assert!(
+            parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), "full")
+                .unwrap_err()
+                .to_string()
+                .contains("color-contraction summary is inconsistent")
+        );
+    }
+
+    #[test]
+    fn rejects_inconsistent_color_projection_certificate_metadata() {
+        let mut bad_members = manifest();
+        add_python_selector_work_certificate(&mut bad_members);
+        add_python_color_projection_certificate(&mut bad_members);
+        bad_members["plan"]["runtime_schedule"]["member_count"] = json!(1);
+        assert!(
+            parse(&bad_members)
+                .unwrap_err()
+                .to_string()
+                .contains("plan member metadata disagrees")
+        );
+
+        let mut bad_unpacked_size = manifest();
+        add_python_selector_work_certificate(&mut bad_unpacked_size);
+        add_python_color_projection_certificate(&mut bad_unpacked_size);
+        bad_unpacked_size["plan"]["runtime_schedule"]["unpacked_size_bytes"] = json!(639);
+        assert!(
+            parse(&bad_unpacked_size)
+                .unwrap_err()
+                .to_string()
+                .contains("plan member metadata disagrees")
+        );
+
+        let mut not_publishable = manifest();
+        add_python_selector_work_certificate(&mut not_publishable);
+        add_python_color_projection_certificate(&mut not_publishable);
+        not_publishable["plan"]["inspection_summary"]["color_projection_certificate"]["publishable"] =
+            json!(false);
+        assert!(
+            parse(&not_publishable)
+                .unwrap_err()
+                .to_string()
+                .contains("metadata is not publishable")
+        );
+
+        let mut wrong_layout = manifest();
+        add_python_color_projection_certificate(&mut wrong_layout);
+        wrong_layout["plan"]["inspection_summary"]["lc_flow_layout"] = json!("all-flow-union");
+        wrong_layout["recurrence_summary"]["lc_flow_layout"] = json!("all-flow-union");
+        assert!(
+            parse(&wrong_layout)
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported recurrence color-projection certificate contract")
         );
     }
 
