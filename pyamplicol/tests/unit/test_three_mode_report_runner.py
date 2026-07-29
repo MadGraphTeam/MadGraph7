@@ -42,6 +42,7 @@ from tools.performance_report.runner import (
     _regular_file_identity,
     _run_arena_benchmark,
     _run_report_benchmark,
+    _selector_kwargs,
     config_values,
     derive_selector_contract,
     generate_artifact,
@@ -1203,6 +1204,57 @@ def test_selector_contract_rejects_changed_point_or_axis() -> None:
     runtime.physics.color_flows = (Flow("different", (2, 1, 3)),)
     with pytest.raises(RunnerError, match="selected physical flow"):
         validate_selector_contract(runtime, contract, points)
+
+
+def test_selector_contract_maps_only_exact_signed_zero_runtime_alias() -> None:
+    runtime = FakeRuntime()
+    points = (((1.0, 0.0, 0.0, 1.0),),)
+    runtime.physics.external_particles = tuple(
+        Particle(label) for label in range(1, 7)
+    )
+    runtime.physics.helicities = (
+        Helicity(
+            "h:-1,+1,-1,+1,-1,+0",
+            (-1, 1, -1, 1, -1, 0),
+        ),
+    )
+    contract = SelectorContract(
+        selected_color_flow_ids=("flow:2,1,3",),
+        selected_color_words=((2, 1, 3),),
+        all_flow_helicity_ids=("h:-1,+1,-1,+1,-1,0",),
+        all_flow_source_helicities=(
+            (1, -1),
+            (2, 1),
+            (3, -1),
+            (4, 1),
+            (5, -1),
+            (6, 0),
+        ),
+        point_digest=point_digest(points),
+    )
+
+    assert contract.runtime_all_flow_helicity_ids == (
+        "h:-1,+1,-1,+1,-1,+0",
+    )
+    validate_selector_contract(runtime, contract, points)
+    assert _selector_kwargs(
+        _cell(ExecutionMode.RECURRENCE, Accuracy.LC, Workload.ALL_FLOW),
+        contract,
+    ) == {
+        "helicities": ("h:-1,+1,-1,+1,-1,+0",),
+        "color_flows": None,
+    }
+
+    changed = SelectorContract(
+        selected_color_flow_ids=contract.selected_color_flow_ids,
+        selected_color_words=contract.selected_color_words,
+        all_flow_helicity_ids=("h:+1,+1,-1,+1,-1,0",),
+        all_flow_source_helicities=contract.all_flow_source_helicities,
+        point_digest=contract.point_digest,
+    )
+    assert changed.runtime_all_flow_helicity_ids == changed.all_flow_helicity_ids
+    with pytest.raises(RunnerError, match="selected physical helicity"):
+        validate_selector_contract(runtime, changed, points)
 
 
 def test_runtime_contract_requires_both_lc_selector_axes() -> None:

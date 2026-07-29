@@ -129,6 +129,37 @@ class SelectorContract:
             "point_digest": self.point_digest,
         }
 
+    @property
+    def runtime_all_flow_helicity_ids(self) -> tuple[str, ...]:
+        """Return exact public runtime IDs for the stored physical states.
+
+        Historical original-AmpliCol contracts encoded a zero-helicity state as
+        ``0`` while generated runtime axes use the canonical signed spelling
+        ``+0``.  Treat only that textual alias as equivalent: the parsed ID must
+        reproduce every stored source state before it is canonicalized.
+        """
+
+        states = tuple(
+            state for _label, state in sorted(self.all_flow_source_helicities)
+        )
+        resolved: list[str] = []
+        for identifier in self.all_flow_helicity_ids:
+            if not identifier.startswith("h:"):
+                resolved.append(identifier)
+                continue
+            try:
+                encoded = tuple(
+                    int(token) for token in identifier.removeprefix("h:").split(",")
+                )
+            except ValueError:
+                resolved.append(identifier)
+                continue
+            if encoded != states:
+                resolved.append(identifier)
+                continue
+            resolved.append("h:" + ",".join(f"{state:+d}" for state in states))
+        return tuple(resolved)
+
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> SelectorContract:
         raw_ids = value.get("selected_color_flow_ids")
@@ -1481,7 +1512,7 @@ def _selector_kwargs(
         }
     if cell.workload is Workload.ALL_FLOW:
         return {
-            "helicities": contract.all_flow_helicity_ids,
+            "helicities": contract.runtime_all_flow_helicity_ids,
             "color_flows": None,
         }
     raise RunnerError("LC measurement has an invalid workload")
@@ -1561,8 +1592,12 @@ def validate_selector_contract(
     )
     expected_states = dict(contract.all_flow_source_helicities)
     expected = tuple(expected_states[label] for label in labels)
-    for identifier in contract.all_flow_helicity_ids:
-        if helicities.get(identifier) != expected:
+    for identifier, runtime_identifier in zip(
+        contract.all_flow_helicity_ids,
+        contract.runtime_all_flow_helicity_ids,
+        strict=True,
+    ):
+        if helicities.get(runtime_identifier) != expected:
             raise RunnerError(
                 f"artifact does not expose selected physical helicity {identifier!r}"
             )

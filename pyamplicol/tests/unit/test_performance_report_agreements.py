@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +17,7 @@ from tools.performance_report.agreements import (
     Z_RECURRENCE_CROSS_MODE,
     agreement_edges,
     attach_direct_agreements,
+    evaluate_lc_common_component,
     incoming_agreement_edges,
 )
 from tools.performance_report.artifacts import ArtifactStore
@@ -37,7 +39,10 @@ from tools.performance_report.models import (
     ResultStatus,
     Workload,
 )
-from tools.performance_report.runner import pointwise_validation
+from tools.performance_report.runner import (
+    SelectorContract,
+    pointwise_validation,
+)
 from tools.performance_report.scheduler import CampaignSettings, plan_campaign
 
 
@@ -88,6 +93,46 @@ def _cell(
         and cell.workload is workload
         and cell.variant == variant
     )
+
+
+def test_lc_common_component_uses_signed_zero_runtime_alias() -> None:
+    cell = _cell(
+        "matrix_recurrence_builtin_sm_lc",
+        workload=Workload.ALL_FLOW,
+    )
+    contract = SelectorContract(
+        selected_color_flow_ids=("flow:2,1",),
+        selected_color_words=((2, 1),),
+        all_flow_helicity_ids=("h:-1,+1,-1,+1,-1,0",),
+        all_flow_source_helicities=(
+            (1, -1),
+            (2, 1),
+            (3, -1),
+            (4, 1),
+            (5, -1),
+            (6, 0),
+        ),
+        point_digest="a" * 64,
+    )
+
+    class Runtime:
+        def evaluate_resolved(self, _points: object, **selectors: object) -> object:
+            assert selectors["helicities"] == ("h:-1,+1,-1,+1,-1,+0",)
+            return SimpleNamespace(
+                helicity_ids=("h:-1,+1,-1,+1,-1,+0",),
+                color_ids=("flow:2,1",),
+                values=(((1.0 + 0.0j,),),),
+            )
+
+    component = evaluate_lc_common_component(
+        Runtime(),
+        object(),
+        cell=cell,
+        contract=contract,
+    )
+
+    assert component["value"] == 1.0
+    assert component["helicity_ids"] == ["h:-1,+1,-1,+1,-1,0"]
 
 
 def test_canonical_n4_direct_agreement_graph_has_exact_locked_counts() -> None:

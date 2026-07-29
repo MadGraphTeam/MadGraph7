@@ -296,12 +296,12 @@ def evaluate_lc_common_component(
     resolved = runtime.evaluate_resolved(  # type: ignore[attr-defined]
         points,
         precision=16,
-        helicities=contract.all_flow_helicity_ids,
+        helicities=contract.runtime_all_flow_helicity_ids,
         color_flows=contract.selected_color_flow_ids,
     )
     helicity_ids = tuple(getattr(resolved, "helicity_ids", ()))
     color_ids = tuple(getattr(resolved, "color_ids", ()))
-    if helicity_ids != contract.all_flow_helicity_ids:
+    if helicity_ids != contract.runtime_all_flow_helicity_ids:
         raise AgreementError(
             f"{cell.cell_id} LC common component has a different helicity axis"
         )

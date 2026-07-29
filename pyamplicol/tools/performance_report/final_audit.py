@@ -3701,7 +3701,7 @@ def _selector_kwargs(
             "color_flows": contract.selected_color_flow_ids,
         }
     return {
-        "helicities": contract.all_flow_helicity_ids,
+        "helicities": contract.runtime_all_flow_helicity_ids,
         "color_flows": None,
     }
 
