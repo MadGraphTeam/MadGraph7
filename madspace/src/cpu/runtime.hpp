@@ -6,6 +6,7 @@
 #include "madspace/compgraphs/function.hpp"
 #include "madspace/driver/backend.hpp"
 #include "madspace/driver/context.hpp"
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/tensor.hpp"
 
 namespace madspace {
@@ -38,13 +39,9 @@ public:
 
     CpuRuntime(const Function& function, ContextPtr context, bool concurrent);
 
-    TensorVec
-    run(const TensorVec& inputs,
-        std::optional<std::uint64_t> seed = std::nullopt) override;
+    TensorVec run(const TensorVec& inputs) override;
     std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad(
-        const TensorVec& inputs,
-        const std::vector<bool>& input_requires_grad,
-        std::optional<std::uint64_t> seed = std::nullopt
+        const TensorVec& inputs, const std::vector<bool>& input_requires_grad
     ) override;
     std::pair<TensorVec, TensorVec> run_backward(
         const TensorVec& output_grads,
@@ -54,25 +51,13 @@ public:
     ) override;
 
     Context& context() { return *_context; }
-    // Fallback non-deterministic per-thread generator, used whenever no per-call
-    // seed is in play (see cpu::SeqCpuDevice).
-    std::mt19937& rand_gen();
+    MixMaxRandom& rand_gen() { return _rand_gens.get(); }
+    void set_seed(DerivedSeed seed) override { rand_gen().set_seed(seed); }
 
 private:
-    TensorVec
-    run_single(const TensorVec& inputs, std::optional<std::uint64_t> seed) const;
-    template <typename D>
-    TensorVec run_single_impl(const TensorVec& inputs, const D& device) const;
+    TensorVec run_single(const TensorVec& inputs) const;
     std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad_single(
-        const TensorVec& inputs,
-        const std::vector<bool>& input_requires_grad,
-        std::optional<std::uint64_t> seed
-    ) const;
-    template <typename D>
-    std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad_single_impl(
-        const TensorVec& inputs,
-        const std::vector<bool>& input_requires_grad,
-        const D& device
+        const TensorVec& inputs, const std::vector<bool>& input_requires_grad
     ) const;
     std::tuple<TensorVec, TensorVec, std::vector<bool>> run_concurrent(
         const TensorVec& inputs,
@@ -101,7 +86,7 @@ private:
     std::vector<Sizes> _grad_global_shapes;
     std::size_t _grad_global_total_size;
     ContextPtr _context;
-    ThreadResource<std::mt19937> _rand_gens;
+    ThreadResource<MixMaxRandom> _rand_gens;
     bool _concurrent;
     SizeVec _ready_instructions_init;
     SizeVec _ready_instructions_backward_init;

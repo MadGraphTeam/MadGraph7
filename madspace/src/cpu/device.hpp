@@ -17,11 +17,6 @@ class CpuDevice : public Device {
 public:
     static constexpr bool is_concurrent = false;
 
-    // RNG for op_random/op_random_int/op_unweight. Base implementation falls back
-    // to the runtime's non-deterministic per-thread stream; SeqCpuDevice overrides
-    // it with its own seeded generator.
-    std::mt19937& rand_gen(CpuRuntime& runtime) const;
-
     std::pair<void*, Tensor> allocate(std::size_t size, AllocHint hint) const override {
         std::pair<void*, Tensor> ret{new std::byte[size], Tensor()};
         if (needs_zero_init(hint)) {
@@ -76,16 +71,6 @@ public:
 
 protected:
     CpuDevice() = default;
-};
-
-class SeqCpuDevice : public CpuDevice {
-public:
-    explicit SeqCpuDevice(std::uint64_t seed) : _rand_gen(seeded_rng(seed)) {}
-
-    std::mt19937& rand_gen(CpuRuntime&) const { return _rand_gen; }
-
-private:
-    mutable std::mt19937 _rand_gen;
 };
 
 class AsyncCpuDevice : public CpuDevice {

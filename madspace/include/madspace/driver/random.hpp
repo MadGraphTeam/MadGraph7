@@ -42,17 +42,23 @@ struct DerivedSeed {
 
 class MixMaxRandom {
 public:
-    MixMaxRandom(DerivedSeed seed = DerivedSeed()) :
+    MixMaxRandom() : MixMaxRandom(DerivedSeed()) {}
+    MixMaxRandom(DerivedSeed seed) :
         _mixmax(
             seed.seed_parts[0],
             seed.seed_parts[1],
             seed.seed_parts[2],
             seed.seed_parts[3]
         ) {}
-    // Convenience constructor for callers (e.g. the Python binding) that only
-    // have a plain seed, not a DerivedSeed.
     explicit MixMaxRandom(std::uint64_t seed) : MixMaxRandom(DerivedSeed(seed)) {}
-
+    void set_seed(DerivedSeed seed) {
+        _mixmax.seed_uniquestream(
+            seed.seed_parts[0],
+            seed.seed_parts[1],
+            seed.seed_parts[2],
+            seed.seed_parts[3]
+        );
+    }
     double generate_double() { return _mixmax.flat(); }
     std::size_t generate_int(std::size_t max_int) { return _mixmax.flat() * max_int; }
 

@@ -60,40 +60,40 @@ using result_type = uint64_t;                                 // should it be do
     static constexpr uint64_t min() {return 0;}
     static constexpr uint64_t max() {return M61;}
 
-    _dev uint64_t get_next() ;
-    _dev double flat();
+    _dev inline uint64_t get_next() ;
+    _dev inline double flat();
 
 
-    _dev mixmax_engine(); // Constructor, no seeds
-    _dev mixmax_engine(uint32_t clusterID, uint32_t machineID, uint32_t runID, uint32_t  streamID );       // Constructor with four 32-bit seeds
-    _dev mixmax_engine(uint64_t seedval){seed_uniquestream( 0, 0, (uint32_t)(seedval>>32), (uint32_t)seedval );}; // Constructor with one 64bit seed
-    _dev void seed(uint64_t seedval){seed_uniquestream( 0, 0, (uint32_t)(seedval>>32), (uint32_t)seedval );} // seed with one 64-bit seed
-    _dev void seed_uniquestream( uint32_t clusterID, uint32_t machineID, uint32_t runID, uint32_t  streamID );
+    _dev inline mixmax_engine(); // Constructor, no seeds
+    _dev inline mixmax_engine(uint32_t clusterID, uint32_t machineID, uint32_t runID, uint32_t  streamID );       // Constructor with four 32-bit seeds
+    _dev inline mixmax_engine(uint64_t seedval){seed_uniquestream( 0, 0, (uint32_t)(seedval>>32), (uint32_t)seedval );}; // Constructor with one 64bit seed
+    _dev inline void seed(uint64_t seedval){seed_uniquestream( 0, 0, (uint32_t)(seedval>>32), (uint32_t)seedval );} // seed with one 64-bit seed
+    _dev inline void seed_uniquestream( uint32_t clusterID, uint32_t machineID, uint32_t runID, uint32_t  streamID );
 
-    _dev mixmax_engine Branch();
-    _dev void BranchInplace();
+    _dev inline mixmax_engine Branch();
+    _dev inline void BranchInplace();
 
 
-    _dev mixmax_engine& operator=(const mixmax_engine& other );
+    _dev inline mixmax_engine& operator=(const mixmax_engine& other );
     _dev inline operator double() { return flat(); }
     _dev inline operator float() { return float( flat() ); }
     _dev inline operator unsigned int() { return static_cast<unsigned int>(get_next()); }
 
-    _dev uint64_t operator()()
+    _dev inline uint64_t operator()()
     {
         return get_next();
     }
 
 private:
     _dev static inline uint64_t MOD_MULSPEC(uint64_t k);
-    _dev void seed_vielbein(); // seeds with the unit vector {1,0,0,...}
+    _dev inline void seed_vielbein(); // seeds with the unit vector {1,0,0,...}
     _dev static inline uint64_t iterate_raw_vec(uint64_t* Y, uint64_t sumtotOld);
-    _dev uint64_t apply_bigskip(uint32_t clusterID, uint32_t machineID, uint32_t runID, uint32_t  streamID );
+    _dev inline uint64_t apply_bigskip(uint32_t clusterID, uint32_t machineID, uint32_t runID, uint32_t  streamID );
     _dev static inline uint64_t modadd(uint64_t foo, uint64_t bar){return MOD_MERSENNE(foo+bar);};
     _dev static inline uint64_t fmodmulM61(uint64_t cum, uint64_t s, uint64_t a);
     _dev static inline uint64_t MOD_MERSENNE(uint64_t k) {return ((((k)) & MERSBASE) + (((k)) >> BITS) );}
     _dev static inline uint64_t MULWU(uint64_t k) {return (( (k)<<(SPECIALMUL) & M61) | ( (k) >> (BITS-SPECIALMUL))  );}
-    void print_state();
+    void inline print_state();
 
 public:
 
