@@ -5387,6 +5387,29 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 if leg.get('offshell'):
                     offshell_pdgs.add(abs(leg.get('id')))
         external_pdgs -= offshell_pdgs
+        # A would-be Goldstone boson is eaten by -- and shares the mass of -- its
+        # gauge boson (G+ <-> W+, G0 <-> Z). In Feynman/FD gauge the Goldstone
+        # propagates explicitly, so if the gauge boson is an external on-shell
+        # state the Goldstone's internal propagator must drop its width too:
+        # otherwise the vector propagator carries ZERO width while its Goldstone
+        # keeps i*M*Gamma, an inconsistency that breaks the gauge-boson/Goldstone
+        # Ward identity. Add the Goldstone PDGs whose (shared) mass matches an
+        # external massive gauge boson. No-op in unitary gauge (no Goldstones)
+        # and for processes without an external vector boson.
+        model = self.get('processes')[0].get('model') if self.get('processes') \
+            else None
+        if model is not None and external_pdgs:
+            ext_vector_masses = set()
+            for pdg in external_pdgs:
+                part = model.get_particle(pdg)
+                if part and part.get('spin') == 3 \
+                        and str(part.get('mass')).lower() != 'zero':
+                    ext_vector_masses.add(part.get('mass'))
+            if ext_vector_masses:
+                for part in model.get('particles'):
+                    if part.get('goldstone') \
+                            and part.get('mass') in ext_vector_masses:
+                        external_pdgs.add(abs(part.get('pdg_code')))
         dropped = False
         for wf in self.get_all_wavefunctions():
             # a wavefunction with no mothers is an external leg (no propagator,
