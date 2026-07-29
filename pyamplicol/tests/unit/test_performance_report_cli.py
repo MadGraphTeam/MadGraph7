@@ -463,6 +463,61 @@ def test_populate_dry_run_supports_exact_filters_and_dependencies(
     assert [cell["rank"] for cell in payload["cells"]] == [0, 1, 2]
 
 
+def test_epyc_workers25_dry_run_never_creates_an_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    repo = tmp_path / "repo"
+    _initialize_git_repo(repo)
+    monkeypatch.setattr(
+        "tools.performance_report.cli.load_profile_campaign_policy",
+        lambda *_args, **_kwargs: X86_EPYC_POLICY,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.cli.load_and_audit_measurement_lineage",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.artifacts.ArtifactStore.new_attempt",
+        lambda *_args, **_kwargs: pytest.fail("dry-run created an attempt"),
+    )
+    command = (
+        "--repo-root",
+        str(repo),
+        "--report-profile",
+        "x86_EPYC",
+        "populate",
+        "--dataset",
+        "matrix_compiled_builtin_sm_lc",
+        "--process-key",
+        "dd_z_jets",
+        "--n-final",
+        "1",
+        "--workload",
+        "selected-flow",
+        "--workers",
+        "25",
+        "--cell-cores",
+        "1",
+        "--target-runtime",
+        "5",
+        "--max-ram-gb",
+        "100",
+        "--allow-symbolica-parallel",
+        "--dry-run",
+    )
+
+    assert main(command) == 0
+    assert json.loads(capsys.readouterr().out)["scheduled"] == 3
+
+    stale = list(command)
+    stale[stale.index("25")] = "10"
+    with pytest.raises(SystemExit):
+        main(tuple(stale))
+    assert "workers=10, expected 25" in capsys.readouterr().err
+
+
 def test_profile_population_requires_the_active_authenticated_environment(
     tmp_path: Path,
     monkeypatch,

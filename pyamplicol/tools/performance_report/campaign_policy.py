@@ -31,7 +31,8 @@ MACBOOK_M3_WORKERS = 1
 MACBOOK_M3_CELL_CORES = 1
 MACBOOK_M3_TARGET_RUNTIME_SECONDS = 5.0
 MACBOOK_M3_MEMORY_LIMIT_BYTES = 30_000_000_000
-X86_EPYC_WORKERS = 10
+X86_EPYC_LEGACY_WORKERS = 10
+X86_EPYC_WORKERS = 25
 X86_EPYC_CELL_CORES = 1
 X86_EPYC_TARGET_RUNTIME_SECONDS = 5.0
 X86_EPYC_GENERATION_LIMIT_SECONDS = 2.0 * 60.0 * 60.0
@@ -228,7 +229,12 @@ def policy_from_manifest(value: object, *, profile: str) -> CampaignPolicy:
     if not isinstance(name, str):
         raise CampaignPolicyError("workspace campaign_policy has no name")
     policy = campaign_policy(name)
-    if dict(value) != policy.as_manifest():
+    accepted_manifests = [policy.as_manifest()]
+    if policy is X86_EPYC_POLICY:
+        legacy_manifest = policy.as_manifest()
+        legacy_manifest["workers"] = X86_EPYC_LEGACY_WORKERS
+        accepted_manifests.append(legacy_manifest)
+    if dict(value) not in accepted_manifests:
         raise CampaignPolicyError(
             "workspace campaign_policy differs from its canonical definition"
         )
@@ -1037,6 +1043,7 @@ __all__ = [
     "WORKER_PHASE_STATE_ABI",
     "X86_EPYC_CELL_CORES",
     "X86_EPYC_GENERATION_LIMIT_SECONDS",
+    "X86_EPYC_LEGACY_WORKERS",
     "X86_EPYC_MEMORY_LIMIT_BYTES",
     "X86_EPYC_POLICY",
     "X86_EPYC_POLICY_NAME",

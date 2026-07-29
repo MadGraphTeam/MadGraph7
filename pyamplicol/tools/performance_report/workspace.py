@@ -16,6 +16,7 @@ from pathlib import Path
 from .campaign_policy import (
     MACBOOK_M3_POLICY,
     X86_EPYC_POLICY,
+    X86_EPYC_WORKERS,
     CampaignPolicy,
     CampaignPolicyError,
     campaign_policy,
@@ -165,7 +166,8 @@ def _assert_portable_results(docs_dir: Path) -> None:
 def _campaign_commands(profile: str, policy: CampaignPolicy) -> str:
     if policy is X86_EPYC_POLICY:
         populate_options = (
-            "  --workers 10 --cell-cores 1 --target-runtime 5 \\\n"
+            f"  --workers {X86_EPYC_WORKERS} --cell-cores 1 "
+            "--target-runtime 5 \\\n"
             "  --max-ram-gb 100 --allow-symbolica-parallel --refresh-pdf end"
         )
     elif policy is MACBOOK_M3_POLICY:
@@ -239,7 +241,8 @@ logs, locks, coordination state, page images, or LaTeX auxiliary files.
 def _table_filling_runbook(profile: str, policy: CampaignPolicy) -> str:
     if policy is X86_EPYC_POLICY:
         resources = (
-            "Run up to ten independent workers, with one core and a decimal "
+            f"Run up to {X86_EPYC_WORKERS} independent workers, with one core "
+            "and a decimal "
             "100 GB hard RSS ceiling per worker. The authenticated generation "
             "phase is capped at two hours except for original AmpliCol and "
             "compiled/recurrence LC selected-flow cells, which must finish."

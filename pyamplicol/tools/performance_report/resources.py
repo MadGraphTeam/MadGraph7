@@ -447,6 +447,16 @@ def _default_popen(command: Sequence[str], **kwargs: object) -> WorkerProcess:
     return subprocess.Popen(tuple(command), **kwargs)
 
 
+def _worker_environment() -> dict[str, str]:
+    """Copy the controller environment explicitly for supervised workers."""
+
+    environment = os.environ.copy()
+    symbolica_license = os.environ.get("SYMBOLICA_LICENSE")
+    if symbolica_license is not None:
+        environment["SYMBOLICA_LICENSE"] = symbolica_license
+    return environment
+
+
 def _signal_process_tree(
     root_process_group: int,
     member_pids: Collection[int],
@@ -523,7 +533,11 @@ def supervise_worker(
         raise ValueError("phase_state_startup_grace_seconds must be non-negative")
 
     phase_monitor_started = clock()
-    process = popen_factory(tuple(command), start_new_session=True)
+    process = popen_factory(
+        tuple(command),
+        start_new_session=True,
+        env=_worker_environment(),
+    )
     monitor = ResourceMonitor(
         process.pid,
         interval_seconds=interval_seconds,

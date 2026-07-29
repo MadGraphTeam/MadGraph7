@@ -157,8 +157,12 @@ def test_initialize_x86_epyc_profile_binds_parallel_resource_policy(
     profile = initialize_profile(repo, "x86_EPYC", reset_measurements=True)
     manifest = json.loads((profile / WORKSPACE_MANIFEST).read_text())
     readme = (profile / "README.md").read_text(encoding="utf-8")
+    runbook = (profile / "TABLE_FILLING.md").read_text(encoding="utf-8")
 
     assert manifest["campaign_policy"] == X86_EPYC_POLICY.as_manifest()
+    assert manifest["campaign_policy"]["workers"] == 25
+    assert "--workers 25 --cell-cores 1" in runbook
+    assert "25 independent workers" in runbook
     assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (
         readme
     )

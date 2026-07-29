@@ -15,8 +15,10 @@ from tools.performance_report.campaign_policy import (
     MACBOOK_M3_POLICY,
     STRICT_POLICY,
     X86_EPYC_GENERATION_LIMIT_SECONDS,
+    X86_EPYC_LEGACY_WORKERS,
     X86_EPYC_MEMORY_LIMIT_BYTES,
     X86_EPYC_POLICY,
+    X86_EPYC_WORKERS,
     CampaignPolicyError,
     PolicyCensorKind,
     PolicyMeasurementState,
@@ -24,6 +26,7 @@ from tools.performance_report.campaign_policy import (
     dependency_reference,
     generation_limit_exempt,
     policy_censor_measurement,
+    policy_from_manifest,
     policy_status_label,
     resource_frontier_reference,
     resource_lane_identity,
@@ -74,7 +77,7 @@ def _resources(peak: int) -> dict[str, object]:
 
 def _x86_settings(**changes: object) -> CampaignSettings:
     values: dict[str, object] = {
-        "workers": 10,
+        "workers": X86_EPYC_WORKERS,
         "cell_cores": 1,
         "target_runtime_seconds": 5.0,
         "max_rss_bytes": X86_EPYC_MEMORY_LIMIT_BYTES,
@@ -137,12 +140,16 @@ def test_x86_policy_has_the_exact_canonical_n4_split() -> None:
 def test_x86_settings_are_exact_and_use_decimal_100_gb() -> None:
     settings = _x86_settings()
 
+    assert settings.workers == 25
+    assert settings.cell_cores == 1
     assert settings.max_rss_bytes == 100_000_000_000
     assert settings.timeout_seconds is None
     with pytest.raises(CampaignPolicyError, match="max_rss_bytes"):
         _x86_settings(max_rss_bytes=100 * 1024**3)
     with pytest.raises(CampaignPolicyError, match="workers"):
         _x86_settings(workers=9)
+    with pytest.raises(CampaignPolicyError, match="workers"):
+        _x86_settings(workers=X86_EPYC_LEGACY_WORKERS)
     assert CampaignSettings().campaign_policy is STRICT_POLICY
     assert _gb_bytes(100.0) == X86_EPYC_MEMORY_LIMIT_BYTES
     parsed = _parser().parse_args(
@@ -155,6 +162,19 @@ def test_x86_settings_are_exact_and_use_decimal_100_gb() -> None:
         )
     )
     assert parsed.max_ram_gb == 100.0
+
+
+def test_x86_policy_accepts_only_the_pinned_workers10_manifest_for_continuity() -> None:
+    legacy = X86_EPYC_POLICY.as_manifest()
+    legacy["workers"] = X86_EPYC_LEGACY_WORKERS
+
+    assert policy_from_manifest(legacy, profile="x86_EPYC") is X86_EPYC_POLICY
+    assert X86_EPYC_POLICY.as_manifest()["workers"] == X86_EPYC_WORKERS
+
+    unsupported = dict(legacy)
+    unsupported["workers"] = 24
+    with pytest.raises(CampaignPolicyError, match="canonical definition"):
+        policy_from_manifest(unsupported, profile="x86_EPYC")
 
 
 def test_macbook_policy_is_exact_memory_only_decimal_30_gb() -> None:
@@ -538,10 +558,12 @@ def test_workspace_policy_is_bound_to_the_exact_measured_commit(
     repo = tmp_path / "repo"
     profile = repo / "docs" / "performance_reports" / "x86_EPYC"
     profile.mkdir(parents=True)
+    legacy_policy = X86_EPYC_POLICY.as_manifest()
+    legacy_policy["workers"] = X86_EPYC_LEGACY_WORKERS
     manifest = {
         "schema": WORKSPACE_SCHEMA,
         "profile": "x86_EPYC",
-        "campaign_policy": X86_EPYC_POLICY.as_manifest(),
+        "campaign_policy": legacy_policy,
     }
     (profile / WORKSPACE_MANIFEST).write_text(
         json.dumps(manifest),

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import signal
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -183,7 +183,13 @@ def test_supervisor_enforces_timeout_on_worker_process_group() -> None:
     popen_calls: list[tuple[tuple[str, ...], bool]] = []
     signals: list[tuple[int, tuple[int, ...], int]] = []
 
-    def popen(command: Sequence[str], *, start_new_session: bool) -> FakeProcess:
+    def popen(
+        command: Sequence[str],
+        *,
+        start_new_session: bool,
+        env: Mapping[str, str],
+    ) -> FakeProcess:
+        assert env
         popen_calls.append((tuple(command), start_new_session))
         return process
 
@@ -211,6 +217,40 @@ def test_supervisor_enforces_timeout_on_worker_process_group() -> None:
     assert result.returncode == -signal.SIGTERM
     assert result.usage.wall_seconds == 2.0
     assert signals == [(100, (100, 101), signal.SIGTERM)]
+
+
+def test_supervisor_propagates_symbolica_license_to_worker_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    license_value = "ordinary-test-license"
+    monkeypatch.setenv("SYMBOLICA_LICENSE", license_value)
+    process = FakeProcess()
+    process.returncode = 0
+    observed: dict[str, object] = {}
+
+    def popen(
+        command: Sequence[str],
+        *,
+        start_new_session: bool,
+        env: Mapping[str, str],
+    ) -> FakeProcess:
+        observed["command"] = tuple(command)
+        observed["start_new_session"] = start_new_session
+        observed["license"] = env.get("SYMBOLICA_LICENSE")
+        return process
+
+    result = supervise_worker(
+        ("worker", "--cell", "one"),
+        snapshotter=lambda: {},
+        popen_factory=popen,
+    )
+
+    assert observed == {
+        "command": ("worker", "--cell", "one"),
+        "start_new_session": True,
+        "license": license_value,
+    }
+    assert result.returncode == 0
 
 
 def test_supervisor_enforces_memory_limit_and_fails_open_on_probe_error() -> None:
