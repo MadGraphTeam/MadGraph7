@@ -307,6 +307,41 @@
       //  printf( "sigmaKin: ievt=%%2d me=%%f\n", ievt, allMEs[ievt] );
       //}
     }
+
+    // INVP2_DUMP:
+    // momenta, invariants and |M|^2
+    // guard value max ev to write - intend for cppnone only
+#ifdef MGONGPU_INVP2_DUMP
+    {
+      static std::mutex invp2_dump_mtx;
+      static long invp2_dump_count = 0;
+      static std::ofstream invp2_dump_file( "invp2_dump.dat", std::ios::out | std::ios::trunc );
+      std::lock_guard<std::mutex> invp2_dump_lock( invp2_dump_mtx );
+      invp2_dump_file << std::setprecision( 17 );
+      for( int ievt = 0; ievt < nevt && invp2_dump_count < MGONGPU_INVP2_DUMP; ++ievt )
+      {
+        ++invp2_dump_count;
+        // EVENT <npar> <ninvar> <|M|^2>
+        invp2_dump_file << "EVENT " << CPPProcess::npar << " " << ninvar << " "
+                        << (double)( allMEs[ievt] ) << "\n";
+        // one line per particle: P <E> <px> <py> <pz>
+        for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+          invp2_dump_file << "P "
+            << (double)MemoryAccessMomenta::ieventAccessIp4IparConst( allmomenta, ievt, 0, ipar ) << " "
+            << (double)MemoryAccessMomenta::ieventAccessIp4IparConst( allmomenta, ievt, 1, ipar ) << " "
+            << (double)MemoryAccessMomenta::ieventAccessIp4IparConst( allmomenta, ievt, 2, ipar ) << " "
+            << (double)MemoryAccessMomenta::ieventAccessIp4IparConst( allmomenta, ievt, 3, ipar ) << "\n";
+        // one line per sampled invariant: I <leg-bitmask> <pid> <p^2>
+        for( int k = 0; k < ninvar; ++k )
+        {
+          const int word = ( allInvariantMasks != nullptr ) ? allInvariantMasks[ievt * ninvar + k] : 0;
+          const double p2 = ( allInvariantMasses != nullptr ) ? (double)allInvariantMasses[ievt * ninvar + k] : 0.;
+          invp2_dump_file << "I " << ( word & 0xFFFF ) << " " << ( word >> 16 ) << " " << p2 << "\n";
+        }
+      }
+      invp2_dump_file.flush();
+    }
+#endif
 #endif
     mgDebugFinalise();
   }

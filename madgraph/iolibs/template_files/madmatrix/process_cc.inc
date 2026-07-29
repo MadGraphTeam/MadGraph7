@@ -43,6 +43,11 @@
 #include <iostream>
 #include <memory>
 
+#ifdef MGONGPU_INVP2_DUMP
+#include <fstream>
+#include <mutex>
+#endif
+
 // Test ncu metrics for CUDA thread divergence
 #undef MGONGPU_TEST_DIVERGENCE
 //#define MGONGPU_TEST_DIVERGENCE 1
