@@ -484,7 +484,7 @@ void batch_reduce_sum_mean_backward_impl(
                     grad += output_grad_view[i];
                 }
             } else {
-                grad = output_grad_view[0] / batch_size;
+                grad = output_grad_view[0];
             }
             if (is_mean) {
                 grad /= batch_size;

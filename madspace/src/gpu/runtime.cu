@@ -546,11 +546,12 @@ __global__ void kernel_div_batch_size(
     }
 }
 
-void batch_reduce_mean_impl(
+void batch_reduce_sum_mean_impl(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
     const AsyncGpuDevice& device,
-    bool keepdim
+    bool keepdim,
+    bool is_mean
 ) {
     auto input = locals[instruction.input_indices[0]].contiguous(device);
     auto& output = locals[instruction.output_indices[0]];
@@ -580,14 +581,16 @@ void batch_reduce_mean_impl(
     );
     temp.reset(device);
     input.reset(device);
-    launch_kernel(
-        kernel_div_batch_size,
-        1,
-        device.stream(),
-        batch_size,
-        out.view<double, 1>(),
-        out.view<double, 1>()
-    );
+    if (is_mean) {
+        launch_kernel(
+            kernel_div_batch_size,
+            1,
+            device.stream(),
+            batch_size,
+            out.view<double, 1>(),
+            out.view<double, 1>()
+        );
+    }
     if (keepdim) {
         output = out.expand({batch_size});
     } else {
@@ -595,12 +598,13 @@ void batch_reduce_mean_impl(
     }
 }
 
-void batch_reduce_mean_backward_impl(
+void batch_reduce_sum_mean_backward_impl(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
     TensorVec& local_grads,
     const AsyncGpuDevice& device,
-    bool keepdim
+    bool keepdim,
+    bool is_mean
 ) {
     auto& input = locals[instruction.input_indices[0]];
     auto& input_grad = local_grads[instruction.input_indices[0]];
@@ -642,29 +646,54 @@ void batch_reduce_mean_backward_impl(
             batch_size,
             device.stream()
         );
-        launch_kernel(
-            kernel_div_batch_size,
-            1,
-            device.stream(),
-            output_grad.size(0),
-            grad.view<double, 1>(),
-            grad.view<double, 1>()
-        );
         temp.reset(device);
         output_grad.reset(device);
+        if (is_mean) {
+            launch_kernel(
+                kernel_div_batch_size,
+                1,
+                device.stream(),
+                batch_size,
+                grad.view<double, 1>(),
+                grad.view<double, 1>()
+            );
+        }
     } else {
         auto& output_grad = local_grads[instruction.output_indices[0]];
-        launch_kernel(
-            kernel_div_batch_size,
-            1,
-            device.stream(),
-            output_grad.size(0),
-            output_grad.view<double, 1>(),
-            grad.view<double, 1>()
-        );
+        if (is_mean) {
+            launch_kernel(
+                kernel_div_batch_size,
+                1,
+                device.stream(),
+                input.size(0),
+                output_grad.view<double, 1>(),
+                grad.view<double, 1>()
+            );
+        } else {
+            grad.copy_from(output_grad, device);
+        }
     }
     input_grad.add(grad, device);
     grad.reset(device);
+}
+
+void op_batch_reduce_sum(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    batch_reduce_sum_mean_impl(instruction, locals, device, false, false);
+}
+
+void backward_op_batch_reduce_sum(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    TensorVec& local_grads,
+    const AsyncGpuDevice& device
+) {
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, false, false
+    );
 }
 
 void op_batch_reduce_mean(
@@ -672,7 +701,7 @@ void op_batch_reduce_mean(
     TensorVec& locals,
     const AsyncGpuDevice& device
 ) {
-    batch_reduce_mean_impl(instruction, locals, device, false);
+    batch_reduce_sum_mean_impl(instruction, locals, device, false, true);
 }
 
 void backward_op_batch_reduce_mean(
@@ -681,7 +710,9 @@ void backward_op_batch_reduce_mean(
     TensorVec& local_grads,
     const AsyncGpuDevice& device
 ) {
-    batch_reduce_mean_backward_impl(instruction, locals, local_grads, device, false);
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, false, true
+    );
 }
 
 void op_batch_reduce_mean_keepdim(
@@ -689,7 +720,7 @@ void op_batch_reduce_mean_keepdim(
     TensorVec& locals,
     const AsyncGpuDevice& device
 ) {
-    batch_reduce_mean_impl(instruction, locals, device, true);
+    batch_reduce_sum_mean_impl(instruction, locals, device, true, true);
 }
 
 void backward_op_batch_reduce_mean_keepdim(
@@ -698,7 +729,9 @@ void backward_op_batch_reduce_mean_keepdim(
     TensorVec& local_grads,
     const AsyncGpuDevice& device
 ) {
-    batch_reduce_mean_backward_impl(instruction, locals, local_grads, device, true);
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, true, true
+    );
 }
 
 void op_offset_indices(
