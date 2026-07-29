@@ -2390,14 +2390,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             'csym_statics':
                 '#ifndef MGONGPUCPP_GPUIMPL\n'
                 '  static int cFlip[ncomb];      // C-parity partner: every helicity negated (an involution)\n'
-                '  static bool cCsymBad[ncomb];  // latched: |M(ihel)| != |M(cFlip)| at some scan point\n'
-                '  static bool cCsymPair[ncomb]; // good, distinct, C-symmetric pair member (reuse its partner)\n'
+                '  static bool cCsymBad;         // latched: ANY row unpaired or |M(ihel)| != |M(cFlip)| at a scan point\n'
+                '  static bool cCsymOk;          // all-or-nothing: every good hel sits in a distinct C-symmetric pair\n'
                 '#endif',
             'csym_gh_flip':
                 '    fptype me_scan[ncomb][neppV]; // per-hel |M|^2 of this scan page, for the C-parity test\n'
+                '    cCsymBad = false;\n'
                 '    for( int _h = 0; _h < ncomb; _h++ ) {\n'
                 '      cFlip[_h] = _h;\n'
-                '      cCsymBad[_h] = false;\n'
                 '      for( int _j = 0; _j < ncomb; _j++ ) {\n'
                 '        bool _same = true;\n'
                 '        for( int _k = 0; _k < npar; _k++ ) if( cHel[_j][_k] != -cHel[_h][_k] ) _same = false;\n'
@@ -2415,14 +2415,15 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '            fptype _d = _a - _b; if( _d < (fptype)0. ) _d = -_d;\n'
                 '            fptype _aa = _a < (fptype)0. ? -_a : _a;\n'
                 '            fptype _bb = _b < (fptype)0. ? -_b : _b;\n'
-                '            if( _d > (fptype)1e-6 * ( _aa + _bb ) ) { cCsymBad[_h] = true; cCsymBad[cFlip[_h]] = true; }\n'
+                '            if( _d > (fptype)1e-6 * ( _aa + _bb ) ) cCsymBad = true;\n'
                 '          }\n'
                 '        }\n'
                 '      }\n',
             'csym_pairbuild':
                 '#ifndef MGONGPUCPP_GPUIMPL\n'
+                '    cCsymOk = !cCsymBad;\n'
                 '    for( int _h = 0; _h < ncomb; _h++ )\n'
-                '      cCsymPair[_h] = ( !cCsymBad[_h] ) && ( cFlip[_h] != _h ) && isGoodHel[_h] && isGoodHel[cFlip[_h]];\n'
+                '      if( isGoodHel[_h] && ( cFlip[_h] == _h || !isGoodHel[cFlip[_h]] ) ) cCsymOk = false;\n'
                 '#endif\n',
             'csym_me_decl':
                 '      fptype_sv meOfIhel[ncomb] = {}; // per-good-hel |M|^2 (page 1), for C-parity reuse\n'
@@ -2430,7 +2431,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '      fptype_sv meOfIhel2[ncomb] = {};\n'
                 '#endif\n',
             'csym_skip':
-                '        if( cCsymPair[ihel] && ihel > cFlip[ihel] ) {\n'
+                '        if( cCsymOk && ihel > cFlip[ihel] ) {\n'
                 '          // C-parity partner: reuse the representative\'s |M|^2 (identical), skip calculate_jamps.\n'
                 '          fptype_sv& _me1 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
                 '          _me1 = _me1 + meOfIhel[cFlip[ihel]];\n'

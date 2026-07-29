@@ -94,19 +94,23 @@ C     FLAV_USE is the flavor part of FLAV_IDX.
       DATA NTRY/NNTRY_FLAV*0/
       DATA GOODHEL/NGOODHEL_FLAV*.FALSE./
 C     C-parity helicity de-duplication (see the SMATRIX loop): FLIP(IHEL) is the
-C     row with every helicity negated (built once, an involution); CSYM(IHEL,J)
-C     stays true while that flipped partner has an identical |M|^2 at every scan
-C     point (parity/C symmetry); TSTORE caches the per-row |M|^2 within a scan
-C     point; DEDUP turns the reuse on in the fast phase only.
+C     row with every helicity negated (built once, an involution); TSTORE caches
+C     the per-row |M|^2 within a scan point; DEDUP turns the reuse on in the fast
+C     phase only. The reuse is ALL-OR-NOTHING per flavor: CSYM(J) stays true only
+C     while EVERY row is in a genuine matched pair -- a self-paired row
+C     (FLIP(IHEL)=IHEL) or a single pair with |M(IHEL)|^2 != |M(FLIP)|^2 at any
+C     scan point clears it for good. Halving the whole loop (rather than an
+C     arbitrary subset of rows) is what keeps any per-row accumulation done
+C     inside MATRIX uniformly scaled, so the same rule is used by every backend.
 C     NTRY_CSYM counts only the uncrossed (cross 0) calls: CSYM is built and
 C     applied for the base process only, because a crossing permutes/sign-flips
 C     the helicities so FLIP (a base-row negation) is no longer the crossed
 C     C-parity partner. Crossed flavours therefore keep the full helicity sum.
       INTEGER FLIP(NCOMB), JHEL, KHEL, NTRY_CSYM(NFLAV)
-      LOGICAL CSYM(NCOMB,NFLAV), HELSAME, DEDUP
+      LOGICAL CSYM(NFLAV), HELSAME, DEDUP
       REAL*8 TSTORE(NCOMB)
       DATA FLIP/NCOMB*0/
-      DATA CSYM/NGOODHEL_FLAV*.TRUE./
+      DATA CSYM/NNTRY_FLAV*.TRUE./
       DATA NTRY_CSYM/NNTRY_FLAV*0/
 
 C
@@ -142,10 +146,12 @@ if (HELRESET) then
       NTRY(i) = 0
       NTRY_CSYM(i) = 0
    enddo
+   do j=1,NFLAV
+      CSYM(j) = .true.
+   enddo
    do i=1,NCOMB
       do j=1,NFLAV
          GOODHEL(I,j) = .false.
-         CSYM(I,j) = .true.
       enddo
    enddo
    HELRESET = .false.
@@ -209,7 +215,8 @@ C     For this reason, we simply remove the filterin when there is only three ex
 C     C-parity de-duplication is only safe for the plain unpolarized helicity
 C     sum of the uncrossed process (FLAV_IDX in [1,NFLAV]) and only once its own
 C     scan has settled (NTRY_CSYM>=20).
-      DEDUP = NTRY_CSYM(FLAV_USE).GE.20 .AND. USERHEL.EQ.-1
+      DEDUP = NTRY_CSYM(FLAV_USE).GE.20 .AND. CSYM(FLAV_USE)
+     &        .AND. USERHEL.EQ.-1
      &        .AND. POLARIZATIONS(0,0).EQ.-1 .AND. FLAV_IDX.LE.NFLAV
       ANS = 0D0
           DO IHEL=1,NCOMB
@@ -221,8 +228,7 @@ C     scan has settled (NTRY_CSYM>=20).
 C                   Fast phase: a row whose fully flipped C-parity partner has an
 C                   identical |M|^2 (CSYM) is computed once, at the lower index,
 C                   and counted twice -- skip the higher-index partner here.
-                    IF (DEDUP.AND.CSYM(IHEL,FLAV_USE).AND.
-     &                  IHEL.GT.FLIP(IHEL)) CYCLE
+                    IF (DEDUP.AND.IHEL.GT.FLIP(IHEL)) CYCLE
 C                   MATRIX/GET_AMP get already crossed arrays and the reduced
 C                   flavor index: the crossing was applied once, above.
 %(smatrix_matrix_call)s
@@ -232,8 +238,7 @@ C                   C-parity partner below.
      &                  TSTORE(IHEL)=T
 C                   Fast phase: the representative carries its skipped partner's
 C                   identical contribution.
-                    IF (DEDUP.AND.CSYM(IHEL,FLAV_USE).AND.IHEL.LT.FLIP(IHEL))
-     &                  T=T+T
+                    IF (DEDUP.AND.IHEL.LT.FLIP(IHEL)) T=T+T
                     IF(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL)) THEN
                         ANS=ANS+T
                     ENDIF
@@ -248,11 +253,14 @@ C     scan point permanently invalidates the pair (robust, like the zero-filter)
      &    .AND.NTRY_CSYM(FLAV_USE).LT.20
      &    .AND.POLARIZATIONS(0,0).EQ.-1) THEN
         DO IHEL=1,NCOMB
-          IF (FLIP(IHEL).GT.IHEL) THEN
+          IF (FLIP(IHEL).EQ.IHEL) THEN
+C           Self-paired row: no distinct partner, so the loop cannot be
+C           halved uniformly -- refuse the reuse for this flavor.
+            CSYM(FLAV_USE)=.FALSE.
+          ELSE IF (FLIP(IHEL).GT.IHEL) THEN
             IF (ABS(TSTORE(IHEL)-TSTORE(FLIP(IHEL))).GT.
      &          1D-6*(ABS(TSTORE(IHEL))+ABS(TSTORE(FLIP(IHEL))))) THEN
-              CSYM(IHEL,FLAV_USE)=.FALSE.
-              CSYM(FLIP(IHEL),FLAV_USE)=.FALSE.
+              CSYM(FLAV_USE)=.FALSE.
             ENDIF
           ENDIF
         ENDDO

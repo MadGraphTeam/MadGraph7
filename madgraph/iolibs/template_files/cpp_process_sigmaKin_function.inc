@@ -58,8 +58,13 @@ if (sum_hel[%(fidx)s] == 0 || ntry[%(fidx)s] < 10){
         // Drop the C-parity pairing of any row whose flipped partner gave a
         // different |M|^2 (parity/C violation). One mismatch at any scan point
         // permanently invalidates the pair (robust, like the zero-filter).
+        // All-or-nothing per flavor: a self-paired row (flip[ihel]==ihel) has no
+        // distinct partner, and one mismatching pair is enough to give up, so
+        // that when the reuse does run it halves the loop uniformly.
         for(int ihel = 0; ihel < ncomb; ihel++){
-            if (flip[ihel] > ihel){
+            if (flip[ihel] == ihel){
+                csym_bad[%(fidx)s] = true;
+            } else if (flip[ihel] > ihel){
                 double a = tstore[ihel];
                 double b = tstore[flip[ihel]];
                 double diff = a - b;
@@ -75,9 +80,17 @@ if (sum_hel[%(fidx)s] == 0 || ntry[%(fidx)s] < 10){
                     bb = -bb;
                 }
                 if (diff > 1e-6 * (aa + bb)){
-                    csym_bad[%(fidx)s][ihel] = true;
-                    csym_bad[%(fidx)s][flip[ihel]] = true;
+                    csym_bad[%(fidx)s] = true;
                 }
+            }
+        }
+        // The reuse skips a good helicity only if its representative is itself
+        // a good helicity: a pair split across the good/dropped boundary would
+        // lose the skipped row entirely. Fold that into the flavor verdict.
+        for(int g = 1; g <= ngood[%(fidx)s]; g++){
+            int ihel = igood[%(fidx)s][g];
+            if (flip[ihel] == ihel || !goodhel[%(fidx)s][flip[ihel]]){
+                csym_bad[%(fidx)s] = true;
             }
         }
         // Reduce the good helicities to the lower-index representative of every
@@ -86,7 +99,7 @@ if (sum_hel[%(fidx)s] == 0 || ntry[%(fidx)s] < 10){
         nrep[%(fidx)s] = 0;
         for(int g = 1; g <= ngood[%(fidx)s]; g++){
             int ihel = igood[%(fidx)s][g];
-            bool paired = !csym_bad[%(fidx)s][ihel] && flip[ihel] != ihel;
+            bool paired = !csym_bad[%(fidx)s];
             if (paired && ihel > flip[ihel]){
                 continue;
             }
