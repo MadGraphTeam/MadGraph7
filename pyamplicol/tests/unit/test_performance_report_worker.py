@@ -12,7 +12,11 @@ from tools.performance_report.phase_state import (
     WorkerPhaseReporter,
     read_worker_phase_state,
 )
-from tools.performance_report.worker import _atomic_json, write_cell_result
+from tools.performance_report.worker import (
+    _atomic_json,
+    measure_cell,
+    write_cell_result,
+)
 
 
 def test_atomic_worker_result_is_canonical_and_complete(tmp_path: Path) -> None:
@@ -29,6 +33,31 @@ def test_atomic_worker_result_is_canonical_and_complete(tmp_path: Path) -> None:
 def test_every_catalog_cell_has_unique_worker_identity() -> None:
     cells = REPORT_CATALOG.measurement_cells()
     assert len({cell.cell_id for cell in cells}) == len(cells)
+
+
+def test_worker_rejects_catalog_static_na_before_measurement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = REPORT_CATALOG.cell(
+        "reference-amplicol-full-n6-dd-4q-lines-contracted"
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.require_eligible_report_source",
+        lambda _root: pytest.fail(
+            "source authentication must not run for catalog static N/A"
+        ),
+    )
+
+    with pytest.raises(ValueError, match="catalog static N/A cell"):
+        measure_cell(
+            cell.cell_id,
+            repo_root=tmp_path,
+            attempt_root=tmp_path / "attempt",
+            target_runtime_seconds=1.0,
+            batch_size=1,
+            worker_cores=1,
+        )
 
 
 def test_worker_failure_is_structured_and_traceback_stays_in_log(

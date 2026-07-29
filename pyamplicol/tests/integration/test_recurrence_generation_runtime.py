@@ -26,6 +26,7 @@ from pyamplicol.config import (
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
     GenerationConfig,
+    GenerationRelationDiscoveryConfig,
     GenerationValidationConfig,
     JITConfig,
     RunConfig,
@@ -41,6 +42,7 @@ _SAME_FLAVOUR_PROCESS = "d d~ > d d~"
 _NEUTRAL_CURRENT_PROCESS = "d d~ > e+ e-"
 _CHARGED_CURRENT_PROCESS = "u d~ > e+ ve"
 _TWO_QUARK_LINE_PROCESS = "d d~ > t t~"
+_RELATION_REUSE_PROCESS = "d d~ > t t~ g g"
 # The immutable physics-v2 oracle was captured with the former rounded default.
 _HISTORICAL_REFERENCE_ALPHA_EW = 0.007546771114
 _CONTRACTED_COLOR_PROCESSES = (
@@ -109,6 +111,7 @@ def _generation_config(
     *,
     color_accuracy: str = "lc",
     lc_flow_layout: str = "topology-replay",
+    relation_discovery_mode: str = "off",
 ) -> RunConfig:
     return RunConfig(
         action="generate",
@@ -119,6 +122,12 @@ def _generation_config(
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=False,
+            relation_discovery=GenerationRelationDiscoveryConfig(
+                mode=relation_discovery_mode,
+                precision_digits=80,
+                probe_count=2,
+                seed=17,
+            ),
             validation=GenerationValidationConfig(
                 enabled=False,
                 post_build_validation=False,
@@ -151,6 +160,22 @@ def _validation_points(process_expression: str) -> _Points:
             tuple(float(component) for component in particle.momentum)
             for particle in generic_validation_point(process_expression)
         ),
+    )
+
+
+def _seeded_validation_points(
+    process_expression: str,
+    *seeds: int,
+) -> _Points:
+    return tuple(
+        tuple(
+            tuple(float(component) for component in particle.momentum)
+            for particle in generic_validation_point(
+                process_expression,
+                seed=seed,
+            )
+        )
+        for seed in seeds
     )
 
 
@@ -353,6 +378,90 @@ def _assert_decimal_values_match(
         assert abs(actual_value - expected_value) <= (
             absolute_tolerance + relative_tolerance * abs(expected_value)
         )
+
+
+def _single_recurrence_execution(artifact: Path) -> dict[str, Any]:
+    execution_paths = tuple((artifact / "processes").glob("*/execution.json"))
+    assert len(execution_paths) == 1
+    execution = json.loads(execution_paths[0].read_text(encoding="utf-8"))
+    assert execution["kind"] == _RECURRENCE_KIND
+    return execution
+
+
+def _manifest_relation_discovery(artifact: Path) -> object:
+    manifest = load_manifest(artifact)
+    generation = manifest.extensions["generation"]
+    assert isinstance(generation, dict)
+    concrete_processes = generation["concrete_processes"]
+    assert isinstance(concrete_processes, list)
+    assert len(concrete_processes) == 1
+    process = concrete_processes[0]
+    assert isinstance(process, dict)
+    filters = process["filters"]
+    assert isinstance(filters, dict)
+    return filters.get("relation_discovery")
+
+
+def _relation_discovery_evidence(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key
+        not in {
+            "requested_mode",
+            "state",
+            "applied_relation_count",
+            "scale_copy_row_count",
+        }
+    }
+
+
+def _assert_runtime_values_match(
+    actual: Runtime,
+    expected: Runtime,
+    points: _Points,
+) -> None:
+    actual_resolved = actual.evaluate_resolved(points)
+    expected_resolved = expected.evaluate_resolved(points)
+    assert actual_resolved.helicity_ids == expected_resolved.helicity_ids
+    assert actual_resolved.color_ids == expected_resolved.color_ids
+    assert actual_resolved.shape == expected_resolved.shape
+    assert _flatten(actual_resolved.values) == pytest.approx(
+        _flatten(expected_resolved.values),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+    assert actual_resolved.total() == pytest.approx(
+        actual.evaluate(points),
+        rel=1.0e-13,
+        abs=1.0e-15,
+    )
+    assert actual.evaluate(points) == pytest.approx(
+        expected.evaluate(points),
+        rel=1.0e-12,
+        abs=1.0e-15,
+    )
+
+    actual_exact = actual.evaluate_resolved(points, precision=50)
+    expected_exact = expected.evaluate_resolved(points, precision=50)
+    assert actual_exact.helicity_ids == expected_exact.helicity_ids
+    assert actual_exact.color_ids == expected_exact.color_ids
+    assert actual_exact.shape == expected_exact.shape
+    _assert_decimal_values_match(
+        actual_exact.values,
+        expected_exact.values,
+        50,
+    )
+    _assert_decimal_values_match(
+        actual_exact.total(),
+        actual.evaluate(points, precision=50),
+        50,
+    )
+    _assert_decimal_values_match(
+        actual.evaluate(points, precision=50),
+        expected.evaluate(points, precision=50),
+        50,
+    )
 
 
 def _assert_topology_replay_exact_matches_compiled(
@@ -726,6 +835,313 @@ def ufo_sm_recurrence_jit_o2_model(
     assert model.is_prepared
     assert model.prepared_backend == "jit"
     return model
+
+
+@pytest.mark.parametrize("model_source", ("builtin", "ufo"))
+@pytest.mark.parametrize("color_accuracy", ("lc", "nlc", "full"))
+def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
+    tmp_path: Path,
+    model_source: str,
+    color_accuracy: str,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Relation probes may optimize exact reuse but never alter amplitudes."""
+
+    _require_native_recurrence()
+    model = (
+        builtin_sm_recurrence_jit_o2_model
+        if model_source == "builtin"
+        else ufo_sm_recurrence_jit_o2_model
+    )
+    compiled_artifact = tmp_path / f"{model_source}-{color_accuracy}-compiled"
+    Generator(
+        _generation_config(
+            "compiled",
+            color_accuracy=color_accuracy,
+        )
+    ).generate(
+        _PROCESS,
+        compiled_artifact,
+        model=model,
+    )
+    compiled = Runtime.load(compiled_artifact)
+    points = _seeded_validation_points(_PROCESS, 101, 211)
+
+    executions: dict[str, dict[str, Any]] = {}
+    reports: dict[str, dict[str, Any]] = {}
+    runtimes: dict[str, Runtime] = {}
+    for mode in ("off", "diagnostic", "certified-reuse"):
+        artifact = tmp_path / f"{model_source}-{color_accuracy}-{mode}"
+        Generator(
+            _generation_config(
+                "recurrence",
+                color_accuracy=color_accuracy,
+                relation_discovery_mode=mode,
+            )
+        ).generate(
+            _PROCESS,
+            artifact,
+            model=model,
+        )
+        execution = _single_recurrence_execution(artifact)
+        executions[mode] = execution
+        runtime = Runtime.load(artifact)
+        runtimes[mode] = runtime
+        _assert_runtime_values_match(runtime, compiled, points)
+
+        report = execution["plan"]["inspection_summary"].get(
+            "relation_discovery"
+        )
+        manifest_report = _manifest_relation_discovery(artifact)
+        if mode == "off":
+            assert report is None
+            assert manifest_report is None
+            continue
+
+        assert isinstance(report, dict)
+        reports[mode] = report
+        assert manifest_report == report
+        assert report["requested_mode"] == mode
+        assert report["scope"] == {
+            "execution_mode": "recurrence",
+            "color_accuracy": color_accuracy,
+            "representation": "recurrence-direct-plan-v2",
+            "lc_flow_layout": (
+                "topology-replay"
+                if color_accuracy == "lc"
+                else "contracted-color-union"
+            ),
+        }
+        assert report["probe"] == {
+            "status": "completed",
+            "precision_digits": 80,
+            "probe_count": 2,
+            "effective_projection_count": report["probe"][
+                "effective_projection_count"
+            ],
+            "seed": 17,
+            "deterministic": True,
+            "candidate_only": True,
+        }
+        assert report["probe"]["effective_projection_count"] >= 2
+        assert report["certificate_count"] == report[
+            "exact_certified_relation_count"
+        ]
+        assert len(report["certificates"]) == min(
+            report["certificate_count"],
+            16,
+        )
+        assert report["certificates_truncated"] is (
+            report["certificate_count"] > 16
+        )
+        assert report["certificate_replay"]["status"] == (
+            "verified"
+            if report["exact_certified_relation_count"]
+            else "no-certified-relations"
+        )
+
+        schedule = execution["plan"]["inspection_summary"]["schedule"]
+        assert report["current_count_before"] == schedule["current_count"]
+        assert report["current_count_after"] == schedule["current_count"]
+        assert (
+            report["interaction_evaluation_count_before"]
+            == report["contribution_count_before"]
+        )
+        assert (
+            report["interaction_evaluation_count_after"]
+            <= report["interaction_evaluation_count_before"]
+        )
+        assert report["interaction_evaluation_savings"] == (
+            report["interaction_evaluation_count_before"]
+            - report["interaction_evaluation_count_after"]
+        )
+        assert report["contribution_count_after"] == (
+            report["interaction_evaluation_count_after"]
+            + report["exact_certified_relation_count"]
+        )
+
+        if mode == "diagnostic":
+            assert report["state"] == "diagnostic-only"
+            assert report["applied_relation_count"] == 0
+            assert report["scale_copy_row_count"] == 0
+            assert (
+                report["contribution_count_before"]
+                == schedule["contribution_count"]
+            )
+        else:
+            applied = report["applied_relation_count"]
+            assert applied == report["exact_certified_relation_count"]
+            assert report["scale_copy_row_count"] == applied
+            assert report["state"] == (
+                "exact-certified-applied" if applied else "diagnostic-only"
+            )
+            assert (
+                report["contribution_count_after"]
+                == schedule["contribution_count"]
+            )
+
+    _assert_runtime_values_match(runtimes["diagnostic"], runtimes["off"], points)
+    _assert_runtime_values_match(
+        runtimes["certified-reuse"],
+        runtimes["off"],
+        points,
+    )
+
+    off_inspection = executions["off"]["plan"]["inspection_summary"]
+    diagnostic_inspection = executions["diagnostic"]["plan"]["inspection_summary"]
+    assert (
+        executions["off"]["recurrence_summary"]
+        == executions["diagnostic"]["recurrence_summary"]
+    )
+    for key in (
+        "schedule",
+        "construction",
+        "selector_work_certificate",
+        "direct_arena",
+    ):
+        assert off_inspection.get(key) == diagnostic_inspection.get(key)
+    assert _relation_discovery_evidence(
+        reports["diagnostic"]
+    ) == _relation_discovery_evidence(reports["certified-reuse"])
+
+
+@pytest.mark.parametrize("model_source", ("builtin", "ufo"))
+def test_certified_recurrence_relation_reuse_applies_and_matches_exact_runtime(
+    tmp_path: Path,
+    model_source: str,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Exercise a real scale-copy schedule for both public SM frontends."""
+
+    _require_native_recurrence()
+    model = (
+        builtin_sm_recurrence_jit_o2_model
+        if model_source == "builtin"
+        else ufo_sm_recurrence_jit_o2_model
+    )
+    compiled_artifact = tmp_path / f"{model_source}-compiled"
+    Generator(
+        _generation_config(
+            "compiled",
+            lc_flow_layout="all-flow-union",
+        )
+    ).generate(
+        _RELATION_REUSE_PROCESS,
+        compiled_artifact,
+        model=model,
+    )
+    compiled = Runtime.load(compiled_artifact)
+    points = _seeded_validation_points(_RELATION_REUSE_PROCESS, 101, 211, 307)
+
+    executions: dict[str, dict[str, Any]] = {}
+    reports: dict[str, dict[str, Any]] = {}
+    runtimes: dict[str, Runtime] = {}
+    for mode in ("off", "diagnostic", "certified-reuse"):
+        artifact = tmp_path / f"{model_source}-{mode}"
+        Generator(
+            _generation_config(
+                "recurrence",
+                lc_flow_layout="all-flow-union",
+                relation_discovery_mode=mode,
+            )
+        ).generate(
+            _RELATION_REUSE_PROCESS,
+            artifact,
+            model=model,
+        )
+        execution = _single_recurrence_execution(artifact)
+        executions[mode] = execution
+        report = execution["plan"]["inspection_summary"].get(
+            "relation_discovery"
+        )
+        if mode == "off":
+            assert report is None
+            assert _manifest_relation_discovery(artifact) is None
+        else:
+            assert isinstance(report, dict)
+            assert _manifest_relation_discovery(artifact) == report
+            reports[mode] = report
+
+        runtime = Runtime.load(artifact)
+        runtimes[mode] = runtime
+        _assert_runtime_values_match(runtime, compiled, points)
+
+    diagnostic = reports["diagnostic"]
+    certified = reports["certified-reuse"]
+    assert _relation_discovery_evidence(
+        diagnostic
+    ) == _relation_discovery_evidence(certified)
+    assert diagnostic["state"] == "diagnostic-only"
+    assert diagnostic["exact_certified_relation_count"] == 2
+    assert diagnostic["applied_relation_count"] == 0
+    assert diagnostic["scale_copy_row_count"] == 0
+    assert diagnostic["interaction_evaluation_count_before"] == 138
+    assert diagnostic["interaction_evaluation_count_after"] == 136
+    assert diagnostic["interaction_evaluation_savings"] == 2
+    assert certified["state"] == "exact-certified-applied"
+    assert certified["exact_certified_relation_count"] == 2
+    assert certified["applied_relation_count"] == 2
+    assert certified["scale_copy_row_count"] == 2
+    assert certified["current_count_before"] == 72
+    assert certified["current_count_after"] == 72
+    assert certified["contribution_count_before"] == 138
+    assert certified["contribution_count_after"] == 138
+    assert certified["interaction_evaluation_count_before"] == 138
+    assert certified["interaction_evaluation_count_after"] == 136
+    assert certified["interaction_evaluation_savings"] == 2
+    assert certified["certificate_replay"]["status"] == "verified"
+    assert [
+        (
+            certificate["current_id"],
+            certificate["representative_id"],
+            certificate["factor_exact_rational"],
+        )
+        for certificate in certified["certificates"]
+    ] == [
+        (
+            36,
+            35,
+            {
+                "real_numerator": "-1",
+                "real_denominator": "1",
+                "imag_numerator": "0",
+                "imag_denominator": "1",
+            },
+        ),
+        (
+            39,
+            38,
+            {
+                "real_numerator": "-1",
+                "real_denominator": "1",
+                "imag_numerator": "0",
+                "imag_denominator": "1",
+            },
+        ),
+    ]
+    _assert_runtime_values_match(
+        runtimes["certified-reuse"],
+        runtimes["diagnostic"],
+        points,
+    )
+    _assert_runtime_values_match(runtimes["diagnostic"], runtimes["off"], points)
+    off_inspection = executions["off"]["plan"]["inspection_summary"]
+    diagnostic_inspection = executions["diagnostic"]["plan"][
+        "inspection_summary"
+    ]
+    assert (
+        executions["off"]["recurrence_summary"]
+        == executions["diagnostic"]["recurrence_summary"]
+    )
+    for key in (
+        "schedule",
+        "construction",
+        "selector_work_certificate",
+        "direct_arena",
+    ):
+        assert off_inspection.get(key) == diagnostic_inspection.get(key)
 
 
 @pytest.mark.parametrize("process_expression", _TOPOLOGY_REPLAY_PROCESSES)

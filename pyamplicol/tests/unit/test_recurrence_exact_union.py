@@ -12,6 +12,7 @@ from pyamplicol.api.errors import ArtifactError, EvaluationError
 from pyamplicol.runtime.recurrence_exact import _executor as executor_module
 from pyamplicol.runtime.recurrence_exact._execution import (
     _evaluate_union_point,
+    _execute_certified_reuse_row,
     _execute_union_source,
     _kernel_inputs,
 )
@@ -178,6 +179,78 @@ def test_union_schedule_returns_independent_flow_amplitudes() -> None:
         50,
     )
     assert amplitudes == ((Decimal(6), _ZERO), (Decimal(12), _ZERO))
+
+
+def test_union_schedule_executes_certified_reuse_as_exact_scale_copy() -> None:
+    plan = _scalar_union_plan()
+    sections = plan.sections
+    plan.sections = replace(
+        sections,
+        exact_factors=(*sections.exact_factors, _factor(3, 2)),
+        contributions=(
+            _Contribution(
+                0,
+                DIRECT_NONE_U32,
+                2,
+                DIRECT_NONE_U32,
+                2,
+                len(sections.exact_factors),
+                0,
+                3,
+            ),
+        ),
+        row_groups=(
+            sections.row_groups[0],
+            _RowGroup(1, 1, 1, DIRECT_NONE_U32, 0, 1),
+            sections.row_groups[1],
+        ),
+    )
+
+    amplitudes = _evaluate_union_point(
+        plan,
+        _point(),
+        plan.sections.resolved_helicities[0],
+        (),
+        50,
+    )
+
+    assert amplitudes == (
+        (Decimal(12), Decimal(8)),
+        (Decimal(24), Decimal(16)),
+    )
+
+
+def test_certified_reuse_rejects_noncanonical_encoding() -> None:
+    plan = _scalar_union_plan()
+    arena = [
+        (Decimal(2), Decimal(3)),
+        (Decimal(4), Decimal(5)),
+        (Decimal(99), Decimal(101)),
+        (Decimal(103), Decimal(107)),
+    ]
+
+    with pytest.raises(ArtifactError, match="invalid encoding"):
+        _execute_certified_reuse_row(
+            plan,
+            _Contribution(
+                0,
+                DIRECT_NONE_U32,
+                2,
+                DIRECT_NONE_U32,
+                2,
+                3,
+                0,
+                1,
+            ),
+            arena,
+        )
+
+    assert arena == [
+        (Decimal(2), Decimal(3)),
+        (Decimal(4), Decimal(5)),
+        (Decimal(99), Decimal(101)),
+        (Decimal(103), Decimal(107)),
+    ]
 
 
 def test_union_source_zeroes_inactive_weyl_embedding_components() -> None:

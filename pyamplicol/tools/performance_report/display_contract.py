@@ -14,7 +14,9 @@ class DisplayAccounting:
     """Counts that distinguish measured cells from intentional table markers."""
 
     maximum_n_final: int
+    declared_measurement_cell_count: int
     required_measurement_count: int
+    catalog_static_na_cell_count: int
     structurally_not_applicable_display_slot_count: int
     not_exposed_display_slot_count: int
 
@@ -26,16 +28,26 @@ def report_display_accounting(
 ) -> DisplayAccounting:
     """Return canonical logical-slot counts through ``max_n_final``.
 
-    A required measurement is one catalog ``CellSpec``. A structurally
-    inapplicable slot is one matrix process/multiplicity position for which no
-    process exists. A not-exposed slot is one original-AmpliCol execution
-    submetric in a dedicated Z-ladder row; those rows expose generation and wall
-    timing, but not a separately defined native-execution boundary.
+    A declared measurement is one catalog ``CellSpec``. Required measurements
+    exclude only catalog-authenticated static N/A cells that no supported
+    producer can evaluate. A structurally inapplicable slot is one matrix
+    process/multiplicity position for which no process exists. A not-exposed
+    slot is one original-AmpliCol execution submetric in a dedicated Z-ladder
+    row; those rows expose generation and wall timing, but not a separately
+    defined native-execution boundary.
     """
 
     if max_n_final < 1:
         raise ValueError("max_n_final must be positive")
-    required = sum(cell.n_final <= max_n_final for cell in catalog.measurement_cells())
+    declared_cells = tuple(
+        cell
+        for cell in catalog.measurement_cells()
+        if cell.n_final <= max_n_final
+    )
+    static_na = sum(
+        catalog.static_na_reason(cell) is not None for cell in declared_cells
+    )
+    required = len(declared_cells) - static_na
     matrix_datasets = getattr(catalog, "matrix_datasets", ())
     process_families = getattr(catalog, "process_families", ())
     structural = 0
@@ -66,7 +78,9 @@ def report_display_accounting(
     )
     return DisplayAccounting(
         maximum_n_final=max_n_final,
+        declared_measurement_cell_count=len(declared_cells),
         required_measurement_count=required,
+        catalog_static_na_cell_count=static_na,
         structurally_not_applicable_display_slot_count=structural,
         not_exposed_display_slot_count=not_exposed,
     )

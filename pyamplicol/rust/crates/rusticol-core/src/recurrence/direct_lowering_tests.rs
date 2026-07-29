@@ -1184,6 +1184,124 @@ fn topology_replay_persists_dependency_closed_selector_work() {
 }
 
 #[test]
+fn topology_replay_interns_only_referenced_canonical_selector_domains() {
+    let templates = validated_template();
+    let base = count_fixture_program(&templates, 5, 69, 126, 24, 130);
+    let replay_targets = base
+        .replay_targets()
+        .iter()
+        .map(|target| {
+            RecurrenceReplayTarget::new(
+                target.id(),
+                0,
+                target.target_sector_id(),
+                target.source_slot_permutation().to_vec(),
+                target.source_momentum_signs().to_vec(),
+                target.amplitude_factor(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let program = RecurrenceProgram::new(
+        base.strategy(),
+        base.physical_sector_count(),
+        base.retained_helicity_count(),
+        base.dynamic_color_states().to_vec(),
+        base.currents().to_vec(),
+        base.contributions().to_vec(),
+        base.finalizations().to_vec(),
+        replay_targets,
+        base.resolved_helicities().to_vec(),
+        base.amplitude_destinations().to_vec(),
+        base.closure_terms().to_vec(),
+    )
+    .unwrap();
+
+    let selectors = lower_selector_domains(&program).unwrap();
+    assert_eq!(
+        selectors
+            .sector_domain_ids
+            .iter()
+            .filter(|domain| domain.is_some())
+            .count(),
+        1
+    );
+    assert!(selectors.sector_domain_ids[0].is_some());
+    assert!(
+        selectors.sector_domain_ids[1..]
+            .iter()
+            .all(Option::is_none)
+    );
+    assert_eq!(selectors.words, [u64::MAX, 1]);
+    let encoded_domains = selectors
+        .descriptors
+        .iter()
+        .map(|descriptor| {
+            let start = descriptor.word_start as usize;
+            let end = start + descriptor.word_count as usize;
+            &selectors.words[start..end]
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        encoded_domains
+            .iter()
+            .filter(|domain| **domain == [u64::MAX])
+            .count(),
+        1
+    );
+    assert_eq!(
+        encoded_domains
+            .iter()
+            .filter(|domain| **domain == [1])
+            .count(),
+        1
+    );
+    assert_eq!(
+        encoded_domains
+            .iter()
+            .filter(|domain| domain.is_empty())
+            .count(),
+        1
+    );
+
+    let singleton_domain_id = selectors.sector_domain_ids[0].unwrap();
+    let plan = DirectRecurrencePlan::new(
+        lower(&program, &templates, digest(48)).unwrap(),
+    )
+    .unwrap();
+    let encoded = crate::recurrence::encode_recurrence_direct_plan_v2(&plan)
+        .unwrap();
+    let decoded =
+        crate::recurrence::decode_recurrence_direct_plan_v2(&encoded).unwrap();
+    assert!(
+        decoded
+            .selector_domain_contains(singleton_domain_id, 0)
+            .unwrap()
+    );
+    assert!(
+        !decoded
+            .selector_domain_contains(singleton_domain_id, 64)
+            .unwrap()
+    );
+    assert!(
+        !decoded
+            .selector_domain_contains(singleton_domain_id, 129)
+            .unwrap()
+    );
+}
+
+#[test]
+fn selector_domain_canonicalization_preserves_the_universal_sentinel() {
+    assert_eq!(canonical_selector_words(&[0, 0, 0]), []);
+    assert_eq!(canonical_selector_words(&[1, 0, 0]), [1]);
+    assert_eq!(canonical_selector_words(&[u64::MAX]), [u64::MAX]);
+    assert_eq!(
+        canonical_selector_words(&[u64::MAX, 0, 0]),
+        [u64::MAX, 0]
+    );
+}
+
+#[test]
 fn zgg_all_flow_union_lowers_runtime_sources_without_replay_expansion() {
     let templates = validated_union_template();
     let program = zgg_union_program(&templates, 0);

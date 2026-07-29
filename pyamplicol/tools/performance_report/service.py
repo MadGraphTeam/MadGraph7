@@ -26,6 +26,7 @@ from .measurement_lineage import (
     MeasurementLineage,
     load_and_audit_measurement_lineage,
 )
+from .models import CellSpec
 from .publication import portable_publication_value
 from .render import render_all_tables, summarize_visible_completeness
 from .report_policy import publication_measurement_policy_issues
@@ -251,8 +252,10 @@ class ReportService:
         caches: Mapping[str, Mapping[str, object]],
     ) -> None:
         cells_by_dataset: dict[str, list[object]] = {}
+        cells_by_id: dict[str, CellSpec] = {}
         for cell in self.catalog.measurement_cells():
             cells_by_dataset.setdefault(cell.dataset_id, []).append(cell)
+            cells_by_id[cell.cell_id] = cell
         expected_names = {f"{dataset_id}.json" for dataset_id in cells_by_dataset}
         if set(caches) != expected_names:
             raise ReportServiceError(
@@ -266,6 +269,20 @@ class ReportService:
                 payload,
                 expected_cells=cells_by_dataset[dataset_id],  # type: ignore[arg-type]
             )
+            entries = payload["entries"]
+            assert isinstance(entries, list)
+            for entry in entries:
+                assert isinstance(entry, Mapping)
+                cell = cells_by_id[str(entry["cell_id"])]
+                if (
+                    self.catalog.static_na_reason(cell) is not None
+                    and entry.get("measurement")
+                    != reset_entry(cell)["measurement"]
+                ):
+                    raise ReportServiceError(
+                        f"{cell.cell_id}: catalog static N/A cache entry "
+                        "differs from the canonical reset measurement"
+                    )
 
     def merge_current(
         self,
@@ -320,20 +337,22 @@ class ReportService:
             for entry in entries:
                 assert isinstance(entry, dict)
                 cell_id = str(entry["cell_id"])
+                cell = cells_by_id[cell_id]
+                if self.catalog.static_na_reason(cell) is not None:
+                    entry["measurement"] = reset_entry(cell)["measurement"]
+                    continue
                 if (
                     lineage is not None
                     and cell_id in lineage.required_descendant_cell_ids
                 ):
-                    entry["measurement"] = reset_entry(cells_by_id[cell_id])[
-                        "measurement"
-                    ]
-                record = by_cell.get(str(entry["cell_id"]))
+                    entry["measurement"] = reset_entry(cell)["measurement"]
+                record = by_cell.get(cell_id)
                 if record is None:
                     continue
                 measurement = record.result
                 validate_measurement(
                     measurement,
-                    expected_cell=cells_by_id[str(entry["cell_id"])],
+                    expected_cell=cell,
                 )
                 entry["measurement"] = dict(measurement)
                 merged += 1

@@ -447,13 +447,26 @@ def _default_popen(command: Sequence[str], **kwargs: object) -> WorkerProcess:
     return subprocess.Popen(tuple(command), **kwargs)
 
 
-def _worker_environment() -> dict[str, str]:
+def _worker_environment(
+    overrides: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Copy the controller environment explicitly for supervised workers."""
 
     environment = os.environ.copy()
     symbolica_license = os.environ.get("SYMBOLICA_LICENSE")
     if symbolica_license is not None:
         environment["SYMBOLICA_LICENSE"] = symbolica_license
+    for name, value in (overrides or {}).items():
+        if (
+            not isinstance(name, str)
+            or not name
+            or "=" in name
+            or "\x00" in name
+            or not isinstance(value, str)
+            or "\x00" in value
+        ):
+            raise ValueError("worker environment override is invalid")
+        environment[name] = value
     return environment
 
 
@@ -498,6 +511,7 @@ def supervise_worker(
     phase_state_startup_grace_seconds: float = (
         DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS
     ),
+    environment_overrides: Mapping[str, str] | None = None,
     snapshotter: Snapshotter = process_snapshot,
     popen_factory: PopenFactory = _default_popen,
     clock: Clock = time.monotonic,
@@ -536,7 +550,7 @@ def supervise_worker(
     process = popen_factory(
         tuple(command),
         start_new_session=True,
-        env=_worker_environment(),
+        env=_worker_environment(environment_overrides),
     )
     monitor = ResourceMonitor(
         process.pid,

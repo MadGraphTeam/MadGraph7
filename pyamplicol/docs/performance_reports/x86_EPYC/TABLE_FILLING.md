@@ -9,12 +9,12 @@ high final-state multiplicity; there is no hard \(n=4\) campaign ceiling.
 
 The bound `x86-epyc-v1` policy requires:
 
-- 10 concurrent workers, each restricted to one core;
+- 25 concurrent workers, each restricted to one core;
 - a five-second timing target and at least five completed samples;
-- a decimal 100 GB process-tree RSS ceiling for every cell, model, colour
+- a decimal 80 GB process-tree RSS ceiling for every cell, model, colour
   treatment, layout, generation step, validation step, and profiling step;
 - a two-hour process-generation ceiling except for mandatory-completion lanes;
-- exact authenticated table markers `>100GB` and `>2h`; and
+- exact authenticated table markers `>80GB` and `>2h`; and
 - no higher multiplicity in the same process lane after a lower multiplicity
   reaches a RAM or generation-time terminal. Higher entries receive an
   authenticated frontier marker rather than remaining `N/A`.
@@ -25,7 +25,7 @@ The two-hour generation ceiling does not apply to:
 2. compiled JIT O3 and recurrence JIT O2 LC selected-flow cells—the non-union
    layout with one runtime-selected colour flow and a helicity sum.
 
-Those lanes run to completion unless they cross the universal 100 GB ceiling
+Those lanes run to completion unless they cross the universal 80 GB ceiling
 or encounter a real defect. Model preparation, identity checks, numerical
 validation, and five-second profiling are outside the generation timer.
 
@@ -52,14 +52,24 @@ authenticated finalized measurement lineage.
   `--fast-lineage`. Route both `src/pyamplicol` and
   `dependencies/checkouts` from that controller to the live measured checkout;
   authenticate those two resolved paths before launch.
-- Use `--workers 10 --cell-cores 1 --refresh-pdf never`, bind campaign work to
-  the ten assigned CPUs, and continuously feed independent cells. Do not wait
+- Enter the measured checkout's pinned Nix developer environment for every
+  remote or background controller, for example with
+  `nix develop --command env ...`. Before the first real worker in an SSH
+  epoch, run that same wrapper with
+  `.venv/bin/python -c 'import numpy'`. A controller-only dry run does not
+  exercise the worker's native Python libraries and therefore cannot prove
+  that `libstdc++.so.6` is available.
+- Use `--workers 25 --cell-cores 1 --refresh-pdf never`, bind campaign work to
+  the 25 assigned CPUs, and continuously feed independent cells. Do not wait
   for routine user approval between cells, batches, multiplicities, or phases.
-- Establish the Symbolica concurrency ceiling with a non-report 2, then 5,
-  then 10 process canary using the campaign license. Use the highest all-green
-  level for Symbolica-bearing cells. This limit is independent of the
-  ten-worker CPU policy; Symbolica-free original-AmpliCol lanes should use all
-  ten workers whenever the dependency graph has ten ready cells.
+- Never request or escalate a privileged/approval-gated command. Treat a
+  sandbox denial as final for that route and continue through an ordinary
+  in-workspace, Nix, or campaign-owning SSH route instead.
+- Pass the campaign `SYMBOLICA_LICENSE` explicitly to every controller and
+  worker. There is no separate Symbolica-worker cap. Native C++ compilation is
+  independently limited by the checked-in four-slot cross-controller compiler
+  gate; gate wait is operational timing and begins before the compiler's
+  finite timeout. All other ready work may use the full 25-worker policy.
 - Per cell, retain only the immutable result/attempt, finite target-runtime
   evidence, numerical-agreement result, active source/runtime identity, and
   atomic `current.json` publication. Do not run `recover`, `audit`, `validate`,
@@ -165,13 +175,18 @@ authenticated finalized measurement lineage.
 - The HZZ orientation repair has 40 recurrence targets. Its scheduler closure
   also includes any missing original-AmpliCol baselines; those prerequisites
   are expected and are not bridge-scope expansion.
-- Original AmpliCol remains limited to three open quark lines. For a process
-  beyond that historical scope, preserve its report row as `unsupported`, but
-  do not make it a pyAmpliCol dependency. Recurrence validates against its
-  resolved sum, a precision-32 evaluation, and the applicable built-in/UFO and
-  LC-layout peers; compiled/eager modes continue to validate against
-  recurrence. Render valid candidate timing as an absolute compact `n.c.`
-  value rather than hiding it behind the unavailable legacy ratio.
+- Original AmpliCol remains limited to three open quark lines. Its declared
+  row beyond that historical scope stays at the canonical reset measurement
+  and renders as catalog-authenticated static N/A. Never schedule it, create a
+  measurement attempt/current for it, or make it a pyAmpliCol dependency.
+  Recurrence validates against its resolved sum, a precision-32 evaluation,
+  and the applicable built-in/UFO and LC-layout peers; compiled/eager modes
+  continue to validate against recurrence. Render valid candidate timing as
+  an absolute compact `n.c.` value rather than hiding it behind an unavailable
+  legacy ratio.
+- Static-N/A catalog semantics are bound by measurement-lineage schema v2.
+  A v1 bridge cannot authenticate this catalog and must be resealed or reset;
+  never rewrite a v1 envelope in place.
 
 The default CLI remains strict. `--fast-lineage` is an explicit campaign
 operation after full startup/bridge authentication; standalone final audit and
@@ -227,7 +242,7 @@ test -f docs/performance_reports/x86_EPYC/TABLE_FILLING.md
 test ! -e .artifacts/performance-report/x86_EPYC
 test ! -e .artifacts/performance-report-coordination/x86_EPYC
 test ! -e .venv
-python3 tools/ci/memory_watchdog.py --limit-gib 93.1 -- \
+python3 tools/ci/memory_watchdog.py --limit-gib 74.5 -- \
   python3 dependencies/install_dependencies.py --reset --dependencies-only
 python3 docs/performance_reports/x86_EPYC/result_tables.py validate
 python3 - <<'PY'
@@ -257,7 +272,7 @@ coordination state.
 
 ## 3. Build and authenticate that source
 
-The build guard uses 93.1 GiB, which is below 100 decimal GB:
+The build guard uses 74.5 GiB, which is below 80 decimal GB:
 
 ```bash
 set -euo pipefail
@@ -267,13 +282,13 @@ CANDIDATE_DIR=".artifacts/candidate-$MEASURED_SOURCE_REVISION"
 test ! -e "$CANDIDATE_DIR"
 mkdir -p "$CANDIDATE_DIR"
 env -u PYTHONPATH -u PYTHONHOME PYAMPLICOL_BUILD_MODE=candidate \
-  .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 93.1 -- \
+  .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 74.5 -- \
   .venv/bin/python -m build --wheel --outdir "$CANDIDATE_DIR"
 WHEEL_PATH="$(find "$CANDIDATE_DIR" -maxdepth 1 -type f -name '*.whl' -print)"
 test "$(printf '%s\n' "$WHEEL_PATH" | sed '/^$/d' | wc -l)" -eq 1
 .venv/bin/python -m pip install --force-reinstall --no-deps "$WHEEL_PATH"
 env -u PYTHONPATH -u PYTHONHOME PYAMPLICOL_BUILD_MODE=candidate \
-  .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 93.1 -- \
+  .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 74.5 -- \
   .venv/bin/python tools/developer/prepare_source_runtime.py \
     --candidate --wheel-directory "$CANDIDATE_DIR"
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
@@ -332,7 +347,7 @@ set -euo pipefail
 Resume only the scheduler-selected descendant closure: first the 20 built-in
 `dd_zzz_jets` recurrence cells at \(n\geq3\), then their 20 UFO-SM
 direct-agreement peers. Use
-`--missing-only --artifact-policy regenerate --workers 10 --cell-cores 1`
+`--missing-only --artifact-policy regenerate --workers 25 --cell-cores 1`
 under the normal CPU/RSS policy. A dry run over
 `--process-key dd_zzz_jets --mode recurrence --n-final 3 --n-final 4
 --n-final 5 --n-final 6 --n-final 7 --n-final 8 --n-final 9`
@@ -419,22 +434,22 @@ resource policy:
 
 ```bash
 set -euo pipefail
-RUNNER=(taskset -c 0-9 .venv/bin/python \
+RUNNER=(taskset -c 0-24 .venv/bin/python \
   docs/performance_reports/x86_EPYC/result_tables.py populate)
 COMMON=(--missing-only --artifact-policy regenerate --cell-cores 1 \
-  --target-runtime 5 --max-ram-gb 100 --allow-symbolica-parallel \
+  --target-runtime 5 --max-ram-gb 80 --allow-symbolica-parallel \
   --refresh-pdf end)
-"${RUNNER[@]}" "${COMMON[@]}" --workers 4 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --cell-id matrix-recurrence-builtin-sm-lc-n7-gg-gluons-selected-flow \
   --cell-id matrix-recurrence-builtin-sm-lc-n8-dd-tt-jets-selected-flow \
   --cell-id matrix-recurrence-builtin-sm-lc-n9-dd-z-jets-selected-flow \
   --cell-id matrix-recurrence-builtin-sm-lc-n9-ud-w-jets-selected-flow
-"${RUNNER[@]}" "${COMMON[@]}" --workers 4 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --cell-id matrix-recurrence-builtin-sm-lc-n7-gg-gluons-all-flow \
   --cell-id matrix-recurrence-builtin-sm-lc-n8-dd-tt-jets-all-flow \
   --cell-id matrix-recurrence-builtin-sm-lc-n9-dd-z-jets-all-flow \
   --cell-id matrix-recurrence-builtin-sm-lc-n9-ud-w-jets-all-flow
-"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --cell-id matrix-recurrence-ufo-sm-lc-n7-gg-gluons-selected-flow \
   --cell-id matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow \
   --cell-id matrix-recurrence-ufo-sm-lc-n8-dd-tt-jets-selected-flow \
@@ -453,40 +468,40 @@ exact and must each schedule 8, 8, 8, 8, 16, 8, and 8 cells respectively:
 
 ```bash
 set -euo pipefail
-RUNNER=(taskset -c 0-9 .venv/bin/python \
+RUNNER=(taskset -c 0-24 .venv/bin/python \
   docs/performance_reports/x86_EPYC/result_tables.py populate)
 COMMON=(--missing-only --artifact-policy regenerate --cell-cores 1 \
-  --target-runtime 5 --max-ram-gb 100 --allow-symbolica-parallel \
+  --target-runtime 5 --max-ram-gb 80 --allow-symbolica-parallel \
   --refresh-pdf end)
-"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --mode amplicol --accuracy lc \
   --workload selected-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
-"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --mode amplicol --accuracy lc \
   --workload all-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
-"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --mode recurrence --model builtin_sm --accuracy lc \
   --workload selected-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
-"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --mode recurrence --model builtin_sm --accuracy lc \
   --workload all-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
-"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --mode recurrence --model ufo_sm --accuracy lc --workload both \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
-"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --mode compiled --model builtin_sm --accuracy lc --workload all-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
-"${RUNNER[@]}" "${COMMON[@]}" --workers 8 \
+"${RUNNER[@]}" "${COMMON[@]}" --workers 25 \
   --mode eager --model builtin_sm --accuracy lc --workload all-flow \
   --process-key dd_epemzh_jets --process-key dd_ttzh_jets \
   --n-final 4 --n-final 5 --n-final 6 --n-final 7
@@ -604,12 +619,12 @@ order, issue this batch manually:
 
 ```bash
 set -euo pipefail
-taskset -c 0-9 .venv/bin/python \
+taskset -c 0-24 .venv/bin/python \
   docs/performance_reports/x86_EPYC/result_tables.py populate \
   --n-final N --mode amplicol --mode recurrence \
   --missing-only --artifact-policy reuse \
-  --workers 10 --cell-cores 1 --target-runtime 5 \
-  --max-ram-gb 100 --allow-symbolica-parallel --refresh-pdf end
+  --workers 25 --cell-cores 1 --target-runtime 5 \
+  --max-ram-gb 80 --allow-symbolica-parallel --refresh-pdf end
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py audit
 ```
 
@@ -620,7 +635,7 @@ timeout or a CLI generation limit.
 After each `N`, repeat the same `populate` command with `--dry-run`. Its
 `scheduled` count must be zero before moving to `N+1`. Inspect every
 AmpliCol/recurrence page through that multiplicity. Accept only numerical
-`ok`, authenticated `>2h`, authenticated `>100GB`, or authenticated
+`ok`, authenticated `>2h`, authenticated `>80GB`, or authenticated
 dependency/frontier status. An ordinary timeout, skip, error, unsupported
 result, mismatch, resource-probe gap, or unexplained `N/A` is a defect.
 
@@ -646,13 +661,13 @@ After approval A, fill only the remaining compiled/eager Z variants. For each
 
 ```bash
 set -euo pipefail
-taskset -c 0-9 .venv/bin/python \
+taskset -c 0-24 .venv/bin/python \
   docs/performance_reports/x86_EPYC/result_tables.py populate \
   --dataset z_builtin_sm --dataset z_external_sm \
   --n-final N --mode compiled --mode eager \
   --missing-only --artifact-policy reuse \
-  --workers 10 --cell-cores 1 --target-runtime 5 \
-  --max-ram-gb 100 --allow-symbolica-parallel --refresh-pdf end
+  --workers 25 --cell-cores 1 --target-runtime 5 \
+  --max-ram-gb 80 --allow-symbolica-parallel --refresh-pdf end
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py audit
 ```
 
@@ -674,12 +689,12 @@ multiplicity:
 
 ```bash
 set -euo pipefail
-taskset -c 0-9 .venv/bin/python \
+taskset -c 0-24 .venv/bin/python \
   docs/performance_reports/x86_EPYC/result_tables.py populate \
   --n-final N --mode compiled --mode eager \
   --missing-only --artifact-policy reuse \
-  --workers 10 --cell-cores 1 --target-runtime 5 \
-  --max-ram-gb 100 --allow-symbolica-parallel --refresh-pdf end
+  --workers 25 --cell-cores 1 --target-runtime 5 \
+  --max-ram-gb 80 --allow-symbolica-parallel --refresh-pdf end
 .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py audit
 ```
 
@@ -708,7 +723,7 @@ pdftoppm -png -r 144 "$PDF" "$QA_DIR/page"
 ```
 
 Inspect every page individually before publication. Check process coverage,
-`>2h`/`>100GB`/frontier spelling, A/B/C codes, units, ratios, summaries,
+`>2h`/`>80GB`/frontier spelling, A/B/C codes, units, ratios, summaries,
 legends, continuation pages, colour, spacing, page numbers, and the absence of
 clipping, overlap, unresolved references, and overfull boxes.
 
@@ -724,7 +739,7 @@ lanes at the frozen SHA. Send the support lane:
 - baseline/direct-peer IDs and current-manifest digests; and
 - a one-cell reproduction using a separate artifact root.
 
-Never convert a defect or mismatch into `>2h` or `>100GB`. Continue unaffected
+Never convert a defect or mismatch into `>2h` or `>80GB`. Continue unaffected
 discovery while fixes accumulate. The cluster branch does not push executable
 fixes. The support lane and main local filler test and land one batched fix
 series. Only an executable/report-schema/prose/runtime change creates a new
@@ -735,10 +750,12 @@ epoch instead of relabelling evidence.
 
 ## 10. Final audit and lightweight publication
 
-The full declared catalog contains 1666 cells and 1560 direct-agreement catalog
-edges. The audit must separate numerically verified, `>2h`, `>100GB`,
-dependency, and frontier counts; censored endpoints are never claimed as
-numerical evidence.
+The full declared catalog contains 1666 cells: 1658 measurable cells and eight
+catalog-authenticated static-N/A original-AmpliCol cells beyond its three-open-
+quark-line support boundary. The catalog also contains 1560 direct-agreement
+edges. The audit must separate static-N/A, numerically verified, `>2h`,
+`>80GB`, dependency, and frontier counts; unavailable or censored endpoints
+are never claimed as numerical evidence.
 
 ```bash
 set -euo pipefail
@@ -753,7 +770,7 @@ git diff --cached --check
 git commit -m "Publish x86_EPYC performance report"
 PUBLICATION_REVISION="$(git rev-parse HEAD)"
 env -u PYTHONPATH -u PYTHONHOME \
-  .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 93.1 -- \
+  .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 74.5 -- \
   .venv/bin/python docs/performance_reports/x86_EPYC/result_tables.py \
     final-audit \
     --expected-source-revision "$MEASURED_SOURCE_REVISION" \

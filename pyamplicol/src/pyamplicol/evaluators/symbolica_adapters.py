@@ -451,6 +451,13 @@ class _CompiledComplexEvaluatorAdapter:
         )
         self.native_direct_application = result
         self.build_timing["native_direct_cpp_compile_s"] = result.compile_seconds
+        self.build_timing["native_direct_cpp_gate_wait_s"] = (
+            result.compiler_gate_wait_seconds
+        )
+        if result.compiler_gate_slot_count is not None:
+            self.build_timing["native_direct_cpp_gate_slots"] = float(
+                result.compiler_gate_slot_count
+            )
         return result
 
     # Kept as a narrow source-level alias for existing producer tests.  Artifact

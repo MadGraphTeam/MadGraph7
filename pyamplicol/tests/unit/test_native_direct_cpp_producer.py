@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -13,7 +18,9 @@ from pyamplicol._internal.versions import (
 )
 from pyamplicol.evaluators.native_direct_cpp import (
     NativeDirectCppArtifact,
+    NativeDirectCppCompiler,
     NativeDirectCppSpec,
+    compile_native_direct_cpp,
     compiler_from_symbolica_settings,
     render_native_direct_cpp,
 )
@@ -146,6 +153,7 @@ def test_compiler_settings_retain_cpp_and_asm_direct_flags() -> None:
     assert compiler.optimization_level == 3
     assert compiler.native_arch is True
     assert compiler.extra_flags == ("-fno-math-errno",)
+    assert compiler.timeout_seconds == 1800.0
 
     asm_compiler = compiler_from_symbolica_settings(
         {
@@ -158,6 +166,328 @@ def test_compiler_settings_retain_cpp_and_asm_direct_flags() -> None:
     assert asm_compiler.optimization_level == 3
     assert asm_compiler.native_arch is False
     assert asm_compiler.extra_flags == ("-fno-math-errno",)
+    assert asm_compiler.timeout_seconds == 1800.0
+
+
+def test_native_direct_cpp_timeout_is_explicit_and_cleans_partial_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def timeout_run(
+        command: tuple[str, ...],
+        *,
+        timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[str]:
+        Path(command[command.index("-o") + 1]).write_bytes(b"partial-library")
+        raise subprocess.TimeoutExpired(command, timeout_seconds)
+
+    monkeypatch.setattr(
+        "pyamplicol.evaluators.native_direct_cpp._run_native_compiler",
+        timeout_run,
+    )
+    output_library = tmp_path / "libretained_leaf.direct"
+
+    with pytest.raises(
+        NativeEvaluationError,
+        match=r"compilation exceeded its finite 7s timeout",
+    ):
+        compile_native_direct_cpp(
+            _Evaluator(
+                [
+                    ("mul", ("out", 0), [("param", 0), ("param", 0)], 0),
+                ]
+            ),
+            spec=_spec(),
+            compiler=NativeDirectCppCompiler(timeout_seconds=7.0),
+            output_source_path=tmp_path / "retained_leaf.direct.cpp",
+            output_library_path=output_library,
+        )
+
+    assert not output_library.exists()
+    assert not tuple(tmp_path.glob(".libretained_leaf.direct.tmp-*"))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-group contract")
+def test_native_direct_cpp_failure_kills_descendants_before_releasing_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compiler_script = tmp_path / "fake-c++"
+    driver_pid_path = tmp_path / "driver.pid"
+    child_pid_path = tmp_path / "child.pid"
+    compiler_script.write_text(
+        """#!/usr/bin/env python3
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+output = Path(sys.argv[sys.argv.index("-o") + 1])
+output.write_bytes(b"partial-library")
+if os.environ.get("PYAMPLICOL_TEST_COMPILER_MODE") == "success":
+    raise SystemExit(0)
+Path(os.environ["PYAMPLICOL_TEST_DRIVER_PID"]).write_text(str(os.getpid()))
+child = subprocess.Popen(
+    [
+        sys.executable,
+        "-c",
+        (
+            "import signal,time;"
+            "signal.signal(signal.SIGTERM,signal.SIG_IGN);"
+            "time.sleep(60)"
+        ),
+    ]
+)
+Path(os.environ["PYAMPLICOL_TEST_CHILD_PID"]).write_text(str(child.pid))
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+time.sleep(60)
+""",
+        encoding="utf-8",
+    )
+    compiler_script.chmod(0o755)
+    monkeypatch.setenv(
+        "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR",
+        str(tmp_path / "compiler-gate"),
+    )
+    monkeypatch.setenv("PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT", "1")
+    monkeypatch.setenv("PYAMPLICOL_TEST_DRIVER_PID", str(driver_pid_path))
+    monkeypatch.setenv("PYAMPLICOL_TEST_CHILD_PID", str(child_pid_path))
+    output_library = tmp_path / "timed-out.so"
+    evaluator = _Evaluator(
+        [
+            ("mul", ("out", 0), [("param", 0), ("param", 0)], 0),
+        ]
+    )
+
+    with pytest.raises(
+        NativeEvaluationError,
+        match=r"compilation exceeded its finite 0.5s timeout",
+    ):
+        compile_native_direct_cpp(
+            evaluator,
+            spec=_spec(),
+            compiler=NativeDirectCppCompiler(
+                executable=str(compiler_script),
+                timeout_seconds=0.5,
+            ),
+            output_source_path=tmp_path / "timed-out.cpp",
+            output_library_path=output_library,
+        )
+
+    for pid_path in (driver_pid_path, child_pid_path):
+        pid = int(pid_path.read_text(encoding="ascii"))
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    assert not output_library.exists()
+    assert not tuple(tmp_path.glob(".timed-out.so.tmp-*"))
+
+    monkeypatch.setenv("PYAMPLICOL_TEST_COMPILER_MODE", "success")
+    succeeded = compile_native_direct_cpp(
+        evaluator,
+        spec=_spec(),
+        compiler=NativeDirectCppCompiler(
+            executable=str(compiler_script),
+            timeout_seconds=0.5,
+        ),
+        output_source_path=tmp_path / "succeeded.cpp",
+        output_library_path=tmp_path / "succeeded.so",
+    )
+    assert succeeded.library_path.read_bytes() == b"partial-library"
+    assert succeeded.compiler_gate_slot_count == 1
+
+    for pid_path in (driver_pid_path, child_pid_path):
+        pid_path.unlink()
+    monkeypatch.delenv("PYAMPLICOL_TEST_COMPILER_MODE")
+    original_communicate = subprocess.Popen.communicate
+    interrupt_pending = True
+
+    def interrupt_after_descendant_starts(
+        process: subprocess.Popen[str],
+        *args: object,
+        **kwargs: object,
+    ) -> tuple[str, str]:
+        nonlocal interrupt_pending
+        if interrupt_pending:
+            deadline = time.monotonic() + 5.0
+            while not child_pid_path.exists():
+                if time.monotonic() >= deadline:
+                    pytest.fail("fake compiler descendant did not start")
+                time.sleep(0.01)
+            interrupt_pending = False
+            raise KeyboardInterrupt
+        return original_communicate(process, *args, **kwargs)
+
+    monkeypatch.setattr(
+        subprocess.Popen,
+        "communicate",
+        interrupt_after_descendant_starts,
+    )
+    interrupted_output = tmp_path / "interrupted.so"
+    with pytest.raises(KeyboardInterrupt):
+        compile_native_direct_cpp(
+            evaluator,
+            spec=_spec(),
+            compiler=NativeDirectCppCompiler(
+                executable=str(compiler_script),
+                timeout_seconds=60.0,
+            ),
+            output_source_path=tmp_path / "interrupted.cpp",
+            output_library_path=interrupted_output,
+        )
+
+    for pid_path in (driver_pid_path, child_pid_path):
+        pid = int(pid_path.read_text(encoding="ascii"))
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    assert not interrupted_output.exists()
+    assert not tuple(tmp_path.glob(".interrupted.so.tmp-*"))
+
+    monkeypatch.setenv("PYAMPLICOL_TEST_COMPILER_MODE", "success")
+    succeeded_after_interrupt = compile_native_direct_cpp(
+        evaluator,
+        spec=_spec(),
+        compiler=NativeDirectCppCompiler(
+            executable=str(compiler_script),
+            timeout_seconds=0.5,
+        ),
+        output_source_path=tmp_path / "after-interrupt.cpp",
+        output_library_path=tmp_path / "after-interrupt.so",
+    )
+    assert succeeded_after_interrupt.library_path.read_bytes() == b"partial-library"
+    assert succeeded_after_interrupt.compiler_gate_slot_count == 1
+
+
+def test_native_compiler_gate_limits_four_parallel_compilers_and_reports_wait(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate_dir = tmp_path / "compiler-gate"
+    monkeypatch.setenv("PYAMPLICOL_NATIVE_COMPILER_GATE_DIR", str(gate_dir))
+    monkeypatch.setenv("PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT", "4")
+    four_entered = threading.Event()
+    release_first_four = threading.Event()
+    fifth_entered = threading.Event()
+    call_lock = threading.Lock()
+    call_count = 0
+    observed_timeouts: list[float] = []
+
+    def gated_run(
+        command: tuple[str, ...],
+        *,
+        timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal call_count
+        with call_lock:
+            call_index = call_count
+            call_count += 1
+            observed_timeouts.append(timeout_seconds)
+            if call_count == 4:
+                four_entered.set()
+        if call_index < 4:
+            assert release_first_four.wait(timeout=5.0)
+        else:
+            fifth_entered.set()
+        Path(command[command.index("-o") + 1]).write_bytes(b"native-library")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(
+        "pyamplicol.evaluators.native_direct_cpp._run_native_compiler",
+        gated_run,
+    )
+    evaluator = _Evaluator(
+        [
+            ("mul", ("out", 0), [("param", 0), ("param", 0)], 0),
+        ]
+    )
+
+    def compile_named(name: str) -> NativeDirectCppArtifact:
+        return compile_native_direct_cpp(
+            evaluator,
+            spec=_spec(),
+            compiler=NativeDirectCppCompiler(timeout_seconds=7.0),
+            output_source_path=tmp_path / f"{name}.cpp",
+            output_library_path=tmp_path / f"{name}.so",
+        )
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        first_four = [
+            executor.submit(compile_named, f"parallel-{index}")
+            for index in range(4)
+        ]
+        assert four_entered.wait(timeout=5.0)
+        fifth = executor.submit(compile_named, "waiting")
+        assert not fifth_entered.wait(timeout=0.1)
+        release_first_four.set()
+        artifacts = [
+            future.result(timeout=5.0)
+            for future in (*first_four, fifth)
+        ]
+
+    assert call_count == 5
+    assert all(artifact.compiler_gate_slot_count == 4 for artifact in artifacts)
+    assert artifacts[-1].compiler_gate_wait_seconds > 0.0
+    assert observed_timeouts == [7.0] * 5
+
+
+def test_native_compiler_gate_releases_after_compiler_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR",
+        str(tmp_path / "compiler-gate"),
+    )
+    monkeypatch.setenv("PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT", "1")
+    call_count = 0
+
+    def fail_then_succeed(
+        command: tuple[str, ...],
+        *,
+        timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal call_count
+        assert timeout_seconds == 7.0
+        call_count += 1
+        if call_count == 1:
+            raise OSError("compiler unavailable")
+        Path(command[command.index("-o") + 1]).write_bytes(b"native-library")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(
+        "pyamplicol.evaluators.native_direct_cpp._run_native_compiler",
+        fail_then_succeed,
+    )
+    evaluator = _Evaluator(
+        [
+            ("mul", ("out", 0), [("param", 0), ("param", 0)], 0),
+        ]
+    )
+    compiler = NativeDirectCppCompiler(timeout_seconds=7.0)
+    with pytest.raises(
+        NativeEvaluationError,
+        match="could not execute the native DirectApplication C\\+\\+ compiler",
+    ):
+        compile_native_direct_cpp(
+            evaluator,
+            spec=_spec(),
+            compiler=compiler,
+            output_source_path=tmp_path / "failed.cpp",
+            output_library_path=tmp_path / "failed.so",
+        )
+
+    artifact = compile_native_direct_cpp(
+        evaluator,
+        spec=_spec(),
+        compiler=compiler,
+        output_source_path=tmp_path / "succeeded.cpp",
+        output_library_path=tmp_path / "succeeded.so",
+    )
+
+    assert call_count == 2
+    assert artifact.library_path.read_bytes() == b"native-library"
+    assert artifact.compiler_gate_slot_count == 1
 
 
 def test_direct_only_companion_identity_survives_evaluator_manifest(
@@ -181,6 +511,8 @@ def test_direct_only_companion_identity_survives_evaluator_manifest(
         source=rendered,
         compiler_command=("c++",),
         compile_seconds=0.125,
+        compiler_gate_wait_seconds=3.5,
+        compiler_gate_slot_count=4,
     )
 
     identity = _native_direct_application_manifest(
@@ -209,6 +541,8 @@ def test_direct_only_companion_identity_survives_evaluator_manifest(
     }
     assert identity["source_path"] == "retained_leaf.direct.cpp"
     assert identity["library_path"] == "libretained_leaf.direct"
+    assert "compiler_gate_wait_seconds" not in identity
+    assert "compiler_gate_slot_count" not in identity
     assert evaluator["native_direct_application"] == identity
 
     asm_evaluator = _evaluator(

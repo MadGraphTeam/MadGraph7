@@ -503,7 +503,7 @@ def test_epyc_workers25_dry_run_never_creates_an_attempt(
         "--target-runtime",
         "5",
         "--max-ram-gb",
-        "100",
+        "80",
         "--allow-symbolica-parallel",
         "--dry-run",
     )
@@ -516,6 +516,15 @@ def test_epyc_workers25_dry_run_never_creates_an_attempt(
     with pytest.raises(SystemExit):
         main(tuple(stale))
     assert "workers=10, expected 25" in capsys.readouterr().err
+
+    stale = list(command)
+    stale[stale.index("80")] = "100"
+    with pytest.raises(SystemExit):
+        main(tuple(stale))
+    assert (
+        "max_rss_bytes=100000000000, expected 80000000000"
+        in capsys.readouterr().err
+    )
 
 
 def test_profile_population_requires_the_active_authenticated_environment(

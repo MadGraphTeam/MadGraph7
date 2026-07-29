@@ -45,8 +45,8 @@ class FakeApi:
         self.entry = FakeEntry(
             process_pdgs=pdgs,
             color_order=(
-                (2, 1, 3, 4, 5, 6)
-                if len(pdgs) == 6
+                (2, 1, *range(3, len(pdgs) + 1))
+                if len(pdgs) >= 6
                 else (2, 4, 1, 3)
             ),
         )
@@ -207,6 +207,7 @@ def _cell(
     workload: Workload,
     *,
     process_key: str = "dd_z_jets",
+    n_final: int | None = None,
 ):
     return next(
         cell
@@ -215,7 +216,14 @@ def _cell(
         and cell.measurement.accuracy is accuracy
         and cell.workload is workload
         and cell.process_key == process_key
-        and cell.n_final == (1 if process_key == "dd_z_jets" else cell.n_final)
+        and cell.n_final
+        == (
+            n_final
+            if n_final is not None
+            else 1
+            if process_key == "dd_z_jets"
+            else cell.n_final
+        )
     )
 
 
@@ -787,7 +795,7 @@ def test_three_quark_line_contracted_uses_exact_direct_probe(
     monkeypatch: pytest.MonkeyPatch,
     accuracy: Accuracy,
 ) -> None:
-    api = FakeApi((1, -1, 2, -2, 3, -3))
+    api = FakeApi((1, -1, 2, -2, 3, -3, 21, 21))
     adapter, _api, executor = _adapter(api)
     monkeypatch.setattr(
         "tools.performance_report.legacy._shared_point",
@@ -803,6 +811,7 @@ def test_three_quark_line_contracted_uses_exact_direct_probe(
             accuracy,
             Workload.CONTRACTED,
             process_key="dd_3q_lines",
+            n_final=6,
         ),
         artifact_path=tmp_path / accuracy.value,
         settings=_settings(tmp_path / "repository"),

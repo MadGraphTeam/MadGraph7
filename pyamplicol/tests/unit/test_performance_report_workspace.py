@@ -161,8 +161,11 @@ def test_initialize_x86_epyc_profile_binds_parallel_resource_policy(
 
     assert manifest["campaign_policy"] == X86_EPYC_POLICY.as_manifest()
     assert manifest["campaign_policy"]["workers"] == 25
+    assert manifest["campaign_policy"]["memory_limit_bytes"] == 80_000_000_000
     assert "--workers 25 --cell-cores 1" in runbook
+    assert "--max-ram-gb 80" in runbook
     assert "25 independent workers" in runbook
+    assert "80 GB hard RSS ceiling per worker" in runbook
     assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (
         readme
     )

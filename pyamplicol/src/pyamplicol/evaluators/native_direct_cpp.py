@@ -19,9 +19,11 @@ import hashlib
 import math
 import os
 import re
+import signal
 import subprocess
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -35,6 +37,12 @@ _DIRECT_MARKER = "// pyAmpliCol genuine native DirectApplication producer v1"
 _DIRECT_FLAGS = 0x3F
 _DEFAULT_STACK_LIMIT = 64 * 1024
 _SUPPORTED_LANE_WIDTHS = frozenset({2, 4})
+_COMPILER_GATE_DIR_ENV = "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR"
+_COMPILER_GATE_SLOT_COUNT_ENV = "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT"
+_COMPILER_GATE_POLL_SECONDS = 0.05
+_MAX_COMPILER_GATE_SLOTS = 64
+_COMPILER_TERMINATE_GRACE_SECONDS = 0.5
+_COMPILER_KILL_GRACE_SECONDS = 5.0
 
 
 class NativeDirectCppParameterKind(StrEnum):
@@ -117,7 +125,7 @@ class NativeDirectCppCompiler:
     optimization_level: int = 3
     native_arch: bool = False
     extra_flags: tuple[str, ...] = ()
-    timeout_seconds: float = 300.0
+    timeout_seconds: float = 1800.0
 
     def __post_init__(self) -> None:
         if not self.executable or "\x00" in self.executable:
@@ -145,6 +153,14 @@ class NativeDirectCppArtifact:
     source: NativeDirectCppSource
     compiler_command: tuple[str, ...]
     compile_seconds: float
+    compiler_gate_wait_seconds: float = 0.0
+    compiler_gate_slot_count: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeCompilerGateLease:
+    wait_seconds: float
+    slot_count: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,19 +292,35 @@ def compile_native_direct_cpp(
             str(temporary_library),
         ]
     )
-    started = time.perf_counter()
-    try:
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=compiler.timeout_seconds,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
-        raise NativeEvaluationError(
-            "could not execute the native DirectApplication C++ compiler"
-        ) from error
+    with _native_compiler_gate() as compiler_gate:
+        # Queueing behind another compiler is operational scheduling, not
+        # compilation time.  Start the finite subprocess timeout only after
+        # this worker owns one shared slot.
+        started = time.perf_counter()
+        try:
+            completed = _run_native_compiler(
+                command,
+                timeout_seconds=compiler.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as error:
+            temporary_library.unlink(missing_ok=True)
+            raise NativeEvaluationError(
+                "native DirectApplication C++ compilation exceeded its finite "
+                f"{compiler.timeout_seconds:g}s timeout"
+            ) from error
+        except NativeEvaluationError:
+            temporary_library.unlink(missing_ok=True)
+            raise
+        except (OSError, subprocess.SubprocessError) as error:
+            temporary_library.unlink(missing_ok=True)
+            raise NativeEvaluationError(
+                "could not execute the native DirectApplication C++ compiler"
+            ) from error
+        except BaseException:
+            # Interrupts must not publish a partial library or release the
+            # shared compiler slot before the detached compiler tree is gone.
+            temporary_library.unlink(missing_ok=True)
+            raise
     compile_seconds = time.perf_counter() - started
     if completed.returncode != 0:
         temporary_library.unlink(missing_ok=True)
@@ -310,7 +342,199 @@ def compile_native_direct_cpp(
         source=rendered,
         compiler_command=tuple(command),
         compile_seconds=compile_seconds,
+        compiler_gate_wait_seconds=compiler_gate.wait_seconds,
+        compiler_gate_slot_count=compiler_gate.slot_count,
     )
+
+
+def _run_native_compiler(
+    command: Sequence[str],
+    *,
+    timeout_seconds: float,
+) -> subprocess.CompletedProcess[str]:
+    """Run one compiler in a disposable process group with finite cleanup."""
+
+    process = subprocess.Popen(
+        tuple(command),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=os.name == "posix",
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except BaseException:
+        # The compiler owns a new session on POSIX, so caller interruption
+        # does not reach it automatically.  Reap the complete tree before
+        # propagating any timeout, cancellation, or unexpected failure.
+        _terminate_native_compiler_tree(process)
+        raise
+    return subprocess.CompletedProcess(
+        tuple(command),
+        process.returncode,
+        stdout,
+        stderr,
+    )
+
+
+def _terminate_native_compiler_tree(process: subprocess.Popen[str]) -> None:
+    """Terminate and reap a timed-out compiler and all of its descendants."""
+
+    if os.name != "posix":
+        process.kill()
+        try:
+            process.communicate(timeout=_COMPILER_KILL_GRACE_SECONDS)
+        except subprocess.TimeoutExpired as error:
+            raise NativeEvaluationError(
+                "native DirectApplication compiler timeout cleanup failed"
+            ) from error
+        return
+
+    process_group_id = process.pid
+    _signal_process_group(process_group_id, signal.SIGTERM)
+    try:
+        process.communicate(timeout=_COMPILER_TERMINATE_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        pass
+
+    if _process_group_exists(process_group_id):
+        _signal_process_group(process_group_id, signal.SIGKILL)
+    try:
+        process.communicate(timeout=_COMPILER_KILL_GRACE_SECONDS)
+    except subprocess.TimeoutExpired as error:
+        _signal_process_group(process_group_id, signal.SIGKILL)
+        raise NativeEvaluationError(
+            "native DirectApplication compiler timeout cleanup failed"
+        ) from error
+
+    deadline = time.monotonic() + _COMPILER_KILL_GRACE_SECONDS
+    while _process_group_exists(process_group_id):
+        if time.monotonic() >= deadline:
+            _signal_process_group(process_group_id, signal.SIGKILL)
+            raise NativeEvaluationError(
+                "native DirectApplication compiler timeout cleanup left a "
+                "live process group"
+            )
+        time.sleep(0.01)
+
+
+def _signal_process_group(process_group_id: int, signal_number: int) -> None:
+    try:
+        os.killpg(process_group_id, signal_number)
+    except ProcessLookupError:
+        return
+    except OSError as error:
+        raise NativeEvaluationError(
+            "native DirectApplication compiler process-group cleanup failed"
+        ) from error
+
+
+def _process_group_exists(process_group_id: int) -> bool:
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+@contextmanager
+def _native_compiler_gate() -> Iterator[_NativeCompilerGateLease]:
+    """Lease one optional cross-controller native-compiler slot.
+
+    The report scheduler injects the gate only for the EPYC campaign.  Other
+    callers retain the historical ungated behavior.  Slot paths and wait time
+    are deliberately operational metadata and never enter evaluator identity.
+    """
+
+    raw_directory = os.environ.get(_COMPILER_GATE_DIR_ENV)
+    raw_slot_count = os.environ.get(_COMPILER_GATE_SLOT_COUNT_ENV)
+    if raw_directory is None and raw_slot_count is None:
+        yield _NativeCompilerGateLease(0.0, None)
+        return
+    if raw_directory is None or raw_slot_count is None:
+        raise NativeEvaluationError(
+            "native DirectApplication compiler gate environment is incomplete"
+        )
+    if not raw_directory or "\x00" in raw_directory:
+        raise NativeEvaluationError(
+            "native DirectApplication compiler gate directory is invalid"
+        )
+    try:
+        slot_count = int(raw_slot_count)
+    except ValueError as error:
+        raise NativeEvaluationError(
+            "native DirectApplication compiler gate slot count is invalid"
+        ) from error
+    if not 1 <= slot_count <= _MAX_COMPILER_GATE_SLOTS:
+        raise NativeEvaluationError(
+            "native DirectApplication compiler gate slot count is invalid"
+        )
+    directory = Path(raw_directory)
+    if not directory.is_absolute():
+        raise NativeEvaluationError(
+            "native DirectApplication compiler gate directory must be absolute"
+        )
+
+    descriptors: list[int] = []
+    try:
+        import fcntl
+
+        directory.mkdir(parents=True, exist_ok=True)
+        for index in range(slot_count):
+            descriptors.append(
+                os.open(
+                    directory / f"slot-{index:02d}.lock",
+                    os.O_CREAT | os.O_RDWR,
+                    0o600,
+                )
+            )
+    except (ImportError, OSError) as error:
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        raise NativeEvaluationError(
+            "native DirectApplication compiler gate could not be initialized"
+        ) from error
+
+    acquired: int | None = None
+    wait_started = time.perf_counter()
+    try:
+        while acquired is None:
+            for descriptor in descriptors:
+                try:
+                    fcntl.flock(
+                        descriptor,
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                except BlockingIOError:
+                    continue
+                except OSError as error:
+                    raise NativeEvaluationError(
+                        "native DirectApplication compiler gate acquisition failed"
+                    ) from error
+                acquired = descriptor
+                break
+            if acquired is None:
+                time.sleep(_COMPILER_GATE_POLL_SECONDS)
+        yield _NativeCompilerGateLease(
+            time.perf_counter() - wait_started,
+            slot_count,
+        )
+    finally:
+        if acquired is not None:
+            try:
+                fcntl.flock(acquired, fcntl.LOCK_UN)
+            except OSError:
+                pass
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
 
 def compiler_from_symbolica_settings(

@@ -289,13 +289,18 @@ authenticated finalized measurement lineage.
 - The HZZ orientation repair has 40 recurrence targets. Its scheduler closure
   also includes any missing original-AmpliCol baselines; those prerequisites
   are expected and are not bridge-scope expansion.
-- Original AmpliCol remains limited to three open quark lines. For a process
-  beyond that historical scope, preserve its report row as `unsupported`, but
-  do not make it a pyAmpliCol dependency. Recurrence validates against its
-  resolved sum, a precision-32 evaluation, and the applicable built-in/UFO and
-  LC-layout peers; compiled/eager modes continue to validate against
-  recurrence. Render valid candidate timing as an absolute compact `n.c.`
-  value rather than hiding it behind the unavailable legacy ratio.
+- Original AmpliCol remains limited to three open quark lines. Its declared
+  row beyond that historical scope stays at the canonical reset measurement
+  and renders as catalog-authenticated static N/A. Never schedule it, create a
+  measurement attempt/current for it, or make it a pyAmpliCol dependency.
+  Recurrence validates against its resolved sum, a precision-32 evaluation,
+  and the applicable built-in/UFO and LC-layout peers; compiled/eager modes
+  continue to validate against recurrence. Render valid candidate timing as
+  an absolute compact `n.c.` value rather than hiding it behind an unavailable
+  legacy ratio.
+- Static-N/A catalog semantics are bound by measurement-lineage schema v2.
+  A v1 bridge cannot authenticate this catalog and must be resealed or reset;
+  never rewrite a v1 envelope in place.
 
 The default CLI remains strict. `--fast-lineage` is an explicit campaign
 operation after full startup/bridge authentication; standalone final audit and
@@ -704,9 +709,12 @@ one new exact-source final epoch instead of relabelling old evidence.
 
 ## 8. Final audit and lightweight publication
 
-The full declared catalog contains 1666 cells and 1560 direct-agreement catalog
-edges. Successful endpoints must replay; resource/frontier endpoints remain
-honestly unavailable and must not be counted as numerical evidence.
+The full declared catalog contains 1666 cells: 1658 measurable cells and eight
+catalog-authenticated static-N/A original-AmpliCol cells beyond its three-open-
+quark-line support boundary. The catalog also contains 1560 direct-agreement
+edges. Successful measurable endpoints must replay; static-N/A,
+resource/frontier, and other unavailable endpoints must not be counted as
+numerical evidence.
 
 ```bash
 set -euo pipefail

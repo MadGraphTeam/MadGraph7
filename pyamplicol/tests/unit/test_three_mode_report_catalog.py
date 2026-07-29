@@ -26,7 +26,10 @@ from tools.performance_report.cache import (
     validate_cache,
     validate_measurement,
 )
-from tools.performance_report.catalog import REPORT_CATALOG
+from tools.performance_report.catalog import (
+    REPORT_CATALOG,
+    STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
+)
 from tools.performance_report.models import (
     Accuracy,
     ExecutionMode,
@@ -196,11 +199,42 @@ def test_four_line_report_keeps_legacy_display_without_legacy_dependency() -> No
     assert display_baseline is not None
     assert display_baseline.measurement.execution_mode is ExecutionMode.AMPLICOL
     assert REPORT_CATALOG.legacy_reference_available(recurrence) is False
+    assert REPORT_CATALOG.static_na_reason(display_baseline) == (
+        "original-amplicol-open-quark-line-limit"
+    )
     assert REPORT_CATALOG.validation_baseline_cell(recurrence) is None
 
     compiled_baseline = REPORT_CATALOG.validation_baseline_cell(compiled)
     assert compiled_baseline is not None
     assert compiled_baseline.measurement.execution_mode is ExecutionMode.RECURRENCE
+
+    three_line_reference = REPORT_CATALOG.cell(
+        "reference-amplicol-full-n6-dd-3q-lines-contracted"
+    )
+    assert REPORT_CATALOG.legacy_reference_available(three_line_reference)
+    assert REPORT_CATALOG.static_na_reason(three_line_reference) is None
+
+
+def test_canonical_static_na_census_is_exact() -> None:
+    static_na = {
+        cell.cell_id: REPORT_CATALOG.static_na_reason(cell)
+        for cell in REPORT_CATALOG.measurement_cells()
+        if REPORT_CATALOG.static_na_reason(cell) is not None
+    }
+
+    assert static_na == {
+        cell_id: STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
+        for cell_id in {
+            "reference-amplicol-lc-n6-dd-4q-lines-selected-flow",
+            "reference-amplicol-lc-n6-dd-4q-lines-all-flow",
+            "reference-amplicol-lc-n7-dd-4q-lines-selected-flow",
+            "reference-amplicol-lc-n7-dd-4q-lines-all-flow",
+            "reference-amplicol-lc-n8-dd-4q-lines-selected-flow",
+            "reference-amplicol-lc-n8-dd-4q-lines-all-flow",
+            "reference-amplicol-nlc-n6-dd-4q-lines-contracted",
+            "reference-amplicol-full-n6-dd-4q-lines-contracted",
+        }
+    }
 
 
 def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:

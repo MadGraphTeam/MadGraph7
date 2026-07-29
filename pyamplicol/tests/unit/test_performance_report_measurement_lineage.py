@@ -12,7 +12,11 @@ from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement_lineage import (
     CLASS_C_HZZ_IMPACT,
     MEASUREMENT_LINEAGE_FILENAME,
+    MEASUREMENT_LINEAGE_SCHEMA,
     MeasurementLineageError,
+    _catalog_digest,
+    _digest,
+    _load_envelope,
     audit_measurement_lineage,
     class_c_pending_path,
     finalize_class_c_bridge,
@@ -178,6 +182,64 @@ def test_hzz_impact_and_direct_agreement_closure_are_exact() -> None:
     assert {cell.cell_id for cell in impacted}.isdisjoint(
         cell.cell_id for cell in closure
     )
+
+
+def test_lineage_v2_binds_static_na_catalog_semantics() -> None:
+    class CatalogWithoutStaticNa:
+        def __getattr__(self, name: str) -> object:
+            return getattr(REPORT_CATALOG, name)
+
+        def static_na_reason(self, _cell: object) -> None:
+            return None
+
+    assert MEASUREMENT_LINEAGE_SCHEMA == (
+        "pyamplicol-performance-measurement-lineage-v2"
+    )
+    assert _catalog_digest(
+        CatalogWithoutStaticNa(),  # type: ignore[arg-type]
+    ) != _catalog_digest(REPORT_CATALOG)
+
+
+def test_lineage_v1_envelope_is_rejected_and_requires_reseal(
+    tmp_path: Path,
+) -> None:
+    repo, profile, store, ancestor = _repository(tmp_path)
+    descendant = _git(repo, "rev-parse", "HEAD")
+    prepare_class_c_bridge(
+        repo,
+        profile,
+        store,
+        ancestor_revision=ancestor,
+        descendant_revision=descendant,
+        impact=CLASS_C_HZZ_IMPACT,
+    )
+    pending = class_c_pending_path(
+        store,
+        ancestor_revision=ancestor,
+        descendant_revision=descendant,
+    )
+    envelope = json.loads(pending.read_text(encoding="ascii"))
+    envelope["payload"]["schema"] = (
+        "pyamplicol-performance-measurement-lineage-v1"
+    )
+    envelope["payload_sha256"] = _digest(envelope["payload"])
+    pending.write_text(
+        json.dumps(
+            envelope,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="ascii",
+    )
+
+    with pytest.raises(
+        MeasurementLineageError,
+        match="schema is incompatible",
+    ):
+        _load_envelope(pending, expected_state="pending")
 
 
 def test_prepare_finalize_and_audit_class_c_bridge(

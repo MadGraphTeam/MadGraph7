@@ -302,6 +302,10 @@ Z_VARIANTS = (
     ),
 )
 
+STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT = (
+    "original-amplicol-open-quark-line-limit"
+)
+
 
 def z_dataset_id(model: ModelKey) -> str:
     if model is ModelKey.BUILTIN_SM:
@@ -530,6 +534,22 @@ class ReportCatalog:
             <= LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES
         )
 
+    def static_na_reason(self, cell: CellSpec) -> str | None:
+        """Return the catalog-authenticated reason ``cell`` is not measurable.
+
+        Static N/A cells remain declared catalog rows so publication layout and
+        descriptor identities stay stable.  They are excluded from campaign
+        planning and authenticated-current completeness because the historical
+        oracle cannot represent the concrete process at all.
+        """
+
+        if (
+            cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            and not self.legacy_reference_available(cell)
+        ):
+            return STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
+        return None
+
     def validation_baseline_cell(self, cell: CellSpec) -> CellSpec | None:
         """Return the executable numerical baseline for ``cell``.
 
@@ -564,6 +584,7 @@ __all__ = [
     "REPORT_CATALOG",
     "SCALAR_CONTACT",
     "SCALAR_DATASETS",
+    "STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT",
     "SCALAR_GRAVITY",
     "UFO_SM",
     "Z_VARIANTS",

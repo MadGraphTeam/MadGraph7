@@ -9,14 +9,16 @@ from typing import ClassVar
 import pytest
 
 from tools.performance_report.artifacts import ArtifactStore
-from tools.performance_report.cache import build_reset_caches
+from tools.performance_report.cache import build_reset_caches, empty_measurement
 from tools.performance_report.campaign_policy import (
     MACBOOK_M3_MEMORY_LIMIT_BYTES,
     MACBOOK_M3_POLICY,
     STRICT_POLICY,
     X86_EPYC_GENERATION_LIMIT_SECONDS,
+    X86_EPYC_LEGACY_MEMORY_LIMIT_BYTES,
     X86_EPYC_LEGACY_WORKERS,
     X86_EPYC_MEMORY_LIMIT_BYTES,
+    X86_EPYC_NATIVE_COMPILER_SLOTS,
     X86_EPYC_POLICY,
     X86_EPYC_WORKERS,
     CampaignPolicyError,
@@ -32,7 +34,10 @@ from tools.performance_report.campaign_policy import (
     resource_lane_identity,
     validate_policy_measurement,
 )
-from tools.performance_report.catalog import REPORT_CATALOG
+from tools.performance_report.catalog import (
+    REPORT_CATALOG,
+    STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
+)
 from tools.performance_report.cli import _gb_bytes, _parser
 from tools.performance_report.final_audit import FinalAuditError, audit_final_report
 from tools.performance_report.models import ArtifactPolicy, Workload
@@ -137,42 +142,49 @@ def test_x86_policy_has_the_exact_canonical_n4_split() -> None:
     assert sum(generation_limit_exempt(cell) for cell in full) == 669
 
 
-def test_x86_settings_are_exact_and_use_decimal_100_gb() -> None:
+def test_x86_settings_are_exact_and_use_decimal_80_gb() -> None:
     settings = _x86_settings()
 
     assert settings.workers == 25
     assert settings.cell_cores == 1
-    assert settings.max_rss_bytes == 100_000_000_000
+    assert settings.max_rss_bytes == 80_000_000_000
     assert settings.timeout_seconds is None
     with pytest.raises(CampaignPolicyError, match="max_rss_bytes"):
-        _x86_settings(max_rss_bytes=100 * 1024**3)
+        _x86_settings(max_rss_bytes=80 * 1024**3)
     with pytest.raises(CampaignPolicyError, match="workers"):
         _x86_settings(workers=9)
     with pytest.raises(CampaignPolicyError, match="workers"):
         _x86_settings(workers=X86_EPYC_LEGACY_WORKERS)
     assert CampaignSettings().campaign_policy is STRICT_POLICY
-    assert _gb_bytes(100.0) == X86_EPYC_MEMORY_LIMIT_BYTES
+    assert _gb_bytes(80.0) == X86_EPYC_MEMORY_LIMIT_BYTES
+    assert X86_EPYC_NATIVE_COMPILER_SLOTS == 4
     parsed = _parser().parse_args(
         (
             "--report-profile",
             "x86_EPYC",
             "populate",
             "--max-ram-gb",
-            "100",
+            "80",
         )
     )
-    assert parsed.max_ram_gb == 100.0
+    assert parsed.max_ram_gb == 80.0
 
 
 def test_x86_policy_accepts_only_the_pinned_workers10_manifest_for_continuity() -> None:
     legacy = X86_EPYC_POLICY.as_manifest()
     legacy["workers"] = X86_EPYC_LEGACY_WORKERS
+    legacy["memory_limit_bytes"] = X86_EPYC_LEGACY_MEMORY_LIMIT_BYTES
 
     assert policy_from_manifest(legacy, profile="x86_EPYC") is X86_EPYC_POLICY
     assert X86_EPYC_POLICY.as_manifest()["workers"] == X86_EPYC_WORKERS
 
     unsupported = dict(legacy)
     unsupported["workers"] = 24
+    with pytest.raises(CampaignPolicyError, match="canonical definition"):
+        policy_from_manifest(unsupported, profile="x86_EPYC")
+
+    unsupported = dict(legacy)
+    unsupported["memory_limit_bytes"] = X86_EPYC_MEMORY_LIMIT_BYTES
     with pytest.raises(CampaignPolicyError, match="canonical definition"):
         policy_from_manifest(unsupported, profile="x86_EPYC")
 
@@ -389,8 +401,8 @@ def test_rendered_policy_markers_are_explicit() -> None:
         peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
     )
 
-    assert policy_status_label(result) == ">100GB"
-    assert ">100GB" in _status(result)
+    assert policy_status_label(result) == ">80GB"
+    assert ">80GB" in _status(result)
 
 
 def test_resource_frontier_is_lane_bound_and_tamper_evident() -> None:
@@ -415,7 +427,7 @@ def test_resource_frontier_is_lane_bound_and_tamper_evident() -> None:
         frontier=frontier,
     )
 
-    assert policy_status_label(result) == "dependency >100GB"
+    assert policy_status_label(result) == "dependency >80GB"
     assert (
         validate_policy_measurement(
             X86_EPYC_POLICY,
@@ -560,6 +572,7 @@ def test_workspace_policy_is_bound_to_the_exact_measured_commit(
     profile.mkdir(parents=True)
     legacy_policy = X86_EPYC_POLICY.as_manifest()
     legacy_policy["workers"] = X86_EPYC_LEGACY_WORKERS
+    legacy_policy["memory_limit_bytes"] = X86_EPYC_LEGACY_MEMORY_LIMIT_BYTES
     manifest = {
         "schema": WORKSPACE_SCHEMA,
         "profile": "x86_EPYC",
@@ -920,7 +933,7 @@ def test_scheduler_never_launches_above_authenticated_resource_frontier(
     assert outcome.status == PolicyMeasurementState.RESOURCE_FRONTIER.value
     current = service.store.load_current(target.cell_id)
     assert current is not None
-    assert policy_status_label(current.result) == "dependency >100GB"
+    assert policy_status_label(current.result) == "dependency >80GB"
     assert (
         validate_policy_measurement(
             X86_EPYC_POLICY,
@@ -943,6 +956,9 @@ def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
         for cell in REPORT_CATALOG.measurement_cells()
         if cell.n_final == 1
     )
+    static_cell = REPORT_CATALOG.cell(
+        "reference-amplicol-full-n6-dd-4q-lines-contracted"
+    )
 
     class OneCellCatalog:
         matrix_datasets = ()
@@ -952,12 +968,17 @@ def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
         models: ClassVar[dict[object, object]] = {}
 
         def measurement_cells(self):
-            return (cell,)
+            return (cell, static_cell)
 
         def baseline_cell(self, _cell):
             return None
 
         def validation_baseline_cell(self, _cell):
+            return None
+
+        def static_na_reason(self, candidate):
+            if candidate == static_cell:
+                return STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
             return None
 
     catalog = OneCellCatalog()
@@ -977,8 +998,12 @@ def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
     ).publish(terminal)
     caches = build_reset_caches(catalog)  # type: ignore[arg-type]
     for payload in caches.values():
-        entry = payload["entries"][0]
-        entry["measurement"] = portable_publication_value(terminal, paths)
+        for entry in payload["entries"]:
+            if entry["cell_id"] == cell.cell_id:
+                entry["measurement"] = portable_publication_value(
+                    terminal,
+                    paths,
+                )
     paths.results_dir.mkdir(parents=True)
     for name, payload in caches.items():
         (paths.results_dir / name).write_text(
@@ -994,8 +1019,8 @@ def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
     result = audit_final_report(
         tmp_path,
         expected_source_revision=_REVISION,
-        max_n_final=1,
-        expected_cell_count=1,
+        max_n_final=6,
+        expected_cell_count=2,
         catalog=catalog,  # type: ignore[arg-type]
         service=service,
         source_auditor=lambda *_args: None,
@@ -1006,9 +1031,41 @@ def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
     assert result["policy_state_counts"] == {"memory_limit": 1}
     assert result["policy_complete_cell_count"] == 1
     assert result["numerically_evidenced_cell_count"] == 0
+    assert result["declared_cell_count"] == 2
+    assert result["measurable_cell_count"] == 1
+    assert result["catalog_static_na_cell_count"] == 1
+    assert result["catalog_static_na_reason_counts"] == {
+        STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT: 1,
+    }
+    assert result["authenticated_current_count"] == 1
     visible = result["visible_completeness"]
     assert isinstance(visible, dict)
     assert visible["status"] == "ok"
+    assert visible["declared_measurement_cell_count"] == 2
+    assert visible["required_measurement_count"] == 1
+    assert visible["rendered_required_measurement_count"] == 1
+    assert visible["catalog_static_na_cell_count"] == 1
+    assert visible["rendered_catalog_static_na_cell_count"] == 1
+
+    service.store.new_attempt(
+        static_cell.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(empty_measurement())
+    with pytest.raises(
+        FinalAuditError,
+        match="catalog static N/A cell has a published current",
+    ):
+        audit_final_report(
+            tmp_path,
+            expected_source_revision=_REVISION,
+            max_n_final=6,
+            expected_cell_count=2,
+            catalog=catalog,  # type: ignore[arg-type]
+            service=service,
+            source_auditor=lambda *_args: None,
+            verify_pdf=False,
+            campaign_policy=X86_EPYC_POLICY,
+        )
 
 
 def test_final_audit_requires_exact_monotone_resource_frontier(
@@ -1036,6 +1093,9 @@ def test_final_audit_requires_exact_monotone_resource_frontier(
             return None
 
         def validation_baseline_cell(self, _cell):
+            return None
+
+        def static_na_reason(self, _cell):
             return None
 
     catalog = TwoCellCatalog()

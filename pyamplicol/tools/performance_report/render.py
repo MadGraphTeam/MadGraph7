@@ -21,7 +21,6 @@ from .catalog import (
 )
 from .display_contract import report_display_accounting
 from .models import (
-    LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES,
     Accuracy,
     CellSpec,
     ExecutionMode,
@@ -32,7 +31,6 @@ from .models import (
     ScalarDataset,
     Workload,
     ZVariant,
-    open_quark_line_count,
 )
 from .timing import (
     evaluator_total_timing_record,
@@ -187,6 +185,9 @@ class VisibleCompleteness:
     applicable_na_display_slots: tuple[str, ...]
     missing_rendered_cell_ids: tuple[str, ...]
     contract_errors: tuple[str, ...]
+    declared_measurement_cell_count: int = 0
+    catalog_static_na_cell_count: int = 0
+    rendered_catalog_static_na_cell_count: int = 0
 
     @property
     def complete(self) -> bool:
@@ -194,6 +195,15 @@ class VisibleCompleteness:
             self.applicable_na_display_slots
             or self.missing_rendered_cell_ids
             or self.contract_errors
+            or self.declared_measurement_cell_count
+            != (
+                self.required_measurement_count
+                + self.catalog_static_na_cell_count
+            )
+            or self.rendered_required_measurement_count
+            != self.required_measurement_count
+            or self.rendered_catalog_static_na_cell_count
+            != self.catalog_static_na_cell_count
         )
 
     def as_dict(self) -> dict[str, object]:
@@ -202,9 +212,12 @@ class VisibleCompleteness:
         preview_limit = 50
         return {
             "kind": "pyamplicol-report-visible-completeness",
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "ok" if self.complete else "incomplete",
             "maximum_n_final": self.maximum_n_final,
+            "declared_measurement_cell_count": (
+                self.declared_measurement_cell_count
+            ),
             "required_measurement_count": self.required_measurement_count,
             "rendered_required_measurement_count": (
                 self.rendered_required_measurement_count
@@ -213,6 +226,10 @@ class VisibleCompleteness:
                 self.structurally_not_applicable_display_slot_count
             ),
             "not_exposed_display_slot_count": self.not_exposed_display_slot_count,
+            "catalog_static_na_cell_count": self.catalog_static_na_cell_count,
+            "rendered_catalog_static_na_cell_count": (
+                self.rendered_catalog_static_na_cell_count
+            ),
             "applicable_na_display_slot_count": len(self.applicable_na_display_slots),
             "applicable_na_display_slots": list(
                 self.applicable_na_display_slots[:preview_limit]
@@ -694,6 +711,10 @@ def _matrix_macros() -> list[str]:
             r"\textcolor{#1}{\textsc{not exposed}}}"
         ),
         (
+            r"\providecommand{\matrixstaticna}[1]{"
+            r"\textcolor{#1}{\textsc{static N/A}}}"
+        ),
+        (
             r"\providecommand{\matrixtotalevaluator}[1]{"
             r"\textcolor{ReportBlue}{\texttt{T }}#1}"
         ),
@@ -735,22 +756,69 @@ def _not_exposed() -> str:
     return r"\matrixnotexposed{ReportMuted}"
 
 
-def _legacy_baseline_unavailable(view: JoinedMatrixCell) -> bool:
-    process = view.process_family.process(view.n_final)
+def _static_na() -> str:
+    return r"\matrixstaticna{ReportMuted}"
+
+
+def _legacy_baseline_static_na(
+    *,
+    catalog: ReportCatalog,
+    accuracy: Accuracy,
+    process_key: str,
+    n_final: int,
+    workload: Workload,
+) -> bool:
+    baseline = next(
+        cell
+        for cell in catalog.measurement_cells()
+        if cell.dataset_id == f"reference_amplicol_{accuracy.value}"
+        and cell.process_key == process_key
+        and cell.n_final == n_final
+        and cell.workload is workload
+    )
+    return catalog.static_na_reason(baseline) is not None
+
+
+def _legacy_baseline_unavailable(
+    view: JoinedMatrixCell,
+    *,
+    catalog: ReportCatalog,
+) -> bool:
     return (
         view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
-        and process is not None
-        and open_quark_line_count(process)
-        > LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES
+        and _legacy_baseline_static_na(
+            catalog=catalog,
+            accuracy=view.dataset.baseline.accuracy,
+            process_key=view.process_family.key,
+            n_final=view.n_final,
+            workload=view.workloads[0].workload,
+        )
     )
 
 
-def _lc_cell(view: JoinedMatrixCell) -> str:
+def _lc_cell(
+    view: JoinedMatrixCell,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> str:
     selected, all_flow = view.workloads
-    legacy_baseline_unavailable = _legacy_baseline_unavailable(view)
+    legacy_baseline_unavailable = _legacy_baseline_unavailable(
+        view,
+        catalog=catalog,
+    )
+    selected_baseline_generation = (
+        _static_na()
+        if legacy_baseline_unavailable
+        else _metric(selected.baseline, 'generation_seconds')
+    )
+    all_flow_baseline_generation = (
+        _static_na()
+        if legacy_baseline_unavailable
+        else _metric(all_flow.baseline, 'generation_seconds')
+    )
     baseline_generation = (
-        rf"\matrixpair{{{_metric(selected.baseline, 'generation_seconds')}}}"
-        rf"{{{_metric(all_flow.baseline, 'generation_seconds')}}}"
+        rf"\matrixpair{{{selected_baseline_generation}}}"
+        rf"{{{all_flow_baseline_generation}}}"
     )
     selected_generation_ratio = _ratio_or_absolute(
         selected.candidate,
@@ -780,15 +848,23 @@ def _lc_cell(view: JoinedMatrixCell) -> str:
             absolute=legacy_baseline_unavailable,
         )
     )
-    selected_runtime = _metric(
-        selected.baseline,
-        "wall_seconds_per_point",
-        microseconds=True,
+    selected_runtime = (
+        _static_na()
+        if legacy_baseline_unavailable
+        else _metric(
+            selected.baseline,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
     )
-    all_flow_runtime = _metric(
-        all_flow.baseline,
-        "wall_seconds_per_point",
-        microseconds=True,
+    all_flow_runtime = (
+        _static_na()
+        if legacy_baseline_unavailable
+        else _metric(
+            all_flow.baseline,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
     )
     baseline_runtime = (
         rf"\matrixpair{{{selected_runtime}}}"
@@ -815,9 +891,16 @@ def _lc_cell(view: JoinedMatrixCell) -> str:
     )
 
 
-def _contracted_cell(view: JoinedMatrixCell) -> str:
+def _contracted_cell(
+    view: JoinedMatrixCell,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> str:
     joined = view.workloads[0]
-    legacy_baseline_unavailable = _legacy_baseline_unavailable(view)
+    legacy_baseline_unavailable = _legacy_baseline_unavailable(
+        view,
+        catalog=catalog,
+    )
     candidate_generation = _ratio_or_absolute(
         joined.candidate,
         joined.baseline,
@@ -829,11 +912,25 @@ def _contracted_cell(view: JoinedMatrixCell) -> str:
         joined.baseline,
         absolute=legacy_baseline_unavailable,
     )
+    baseline_generation = (
+        _static_na()
+        if legacy_baseline_unavailable
+        else _metric(joined.baseline, "generation_seconds")
+    )
+    baseline_runtime = (
+        _static_na()
+        if legacy_baseline_unavailable
+        else _metric(
+            joined.baseline,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
+    )
     return (
         r"\matrixcellcontracted"
-        f"{{{_metric(joined.baseline, 'generation_seconds')}}}"
+        f"{{{baseline_generation}}}"
         f"{{{candidate_generation}}}"
-        f"{{{_metric(joined.baseline, 'wall_seconds_per_point', microseconds=True)}}}"
+        f"{{{baseline_runtime}}}"
         f"{{{candidate_runtime}}}"
     )
 
@@ -961,9 +1058,9 @@ def _matrix_block(
             if not view.applicable:
                 row.append(_not_applicable())
             elif dataset.candidate.accuracy is Accuracy.LC:
-                row.append(_lc_cell(view))
+                row.append(_lc_cell(view, catalog=adapter.catalog))
             else:
-                row.append(_contracted_cell(view))
+                row.append(_contracted_cell(view, catalog=adapter.catalog))
         if row_index % 2 == 0:
             lines.append(r"\rowcolor{refblue}")
         lines.append(" & ".join(row) + r" \\")
@@ -1097,9 +1194,9 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         )
     legacy_scope_detail = (
         " Original AmpliCol supports at most three open quark lines; beyond "
-        "that scope its entry is unsupported and valid candidate generation "
-        "and runtime values are shown as absolute n.c. quantities. Here n.c. "
-        "means not comparable."
+        "that scope its declared catalog entry is marked static N/A, requires "
+        "no measurement, and valid candidate generation and runtime values are "
+        "shown as absolute n.c. quantities. Here n.c. means not comparable."
         if dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
         else ""
     )
@@ -1250,9 +1347,18 @@ def _best_mode_terminal_status(joined: BestModeWorkload) -> str:
 def _best_mode_ratio(
     joined: BestModeWorkload,
     field: str,
+    *,
+    baseline_static_na: bool = False,
 ) -> str:
     if joined.mode is None:
         return _best_mode_terminal_status(joined)
+    if baseline_static_na:
+        return _ratio_or_absolute(
+            joined.candidate,
+            joined.baseline,
+            field,
+            absolute=True,
+        ) + _best_mode_code(joined.mode)
     if not _ok(joined.baseline):
         return _status(joined.baseline)
     return _ratio(joined.candidate, joined.baseline, field) + _best_mode_code(
@@ -1260,9 +1366,21 @@ def _best_mode_ratio(
     )
 
 
-def _best_mode_runtime_ratio(joined: BestModeWorkload) -> str:
+def _best_mode_runtime_ratio(
+    joined: BestModeWorkload,
+    *,
+    baseline_static_na: bool = False,
+) -> str:
     if joined.mode is None:
         return _best_mode_terminal_status(joined)
+    if baseline_static_na:
+        return _ratio_or_absolute(
+            joined.candidate,
+            joined.baseline,
+            "wall_seconds_per_point",
+            absolute=True,
+            microseconds=True,
+        )
     if not _ok(joined.baseline):
         return _status(joined.baseline)
     return _ratio(
@@ -1284,38 +1402,99 @@ def _best_mode_summary_terminal_label(
     return None
 
 
-def _best_mode_lc_cell(view: BestModeMatrixCell) -> str:
+def _best_mode_lc_cell(
+    view: BestModeMatrixCell,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> str:
     selected, all_flow = view.workloads
+    baseline_static_na = _legacy_baseline_static_na(
+        catalog=catalog,
+        accuracy=view.accuracy,
+        process_key=view.process_family.key,
+        n_final=view.n_final,
+        workload=selected.workload,
+    )
+    selected_baseline_generation = (
+        _static_na()
+        if baseline_static_na
+        else _metric(selected.baseline, "generation_seconds")
+    )
+    all_flow_baseline_generation = (
+        _static_na()
+        if baseline_static_na
+        else _metric(all_flow.baseline, "generation_seconds")
+    )
     baseline_generation = (
-        rf"\matrixpair{{{_metric(selected.baseline, 'generation_seconds')}}}"
-        rf"{{{_metric(all_flow.baseline, 'generation_seconds')}}}"
+        rf"\matrixpair{{{selected_baseline_generation}}}"
+        rf"{{{all_flow_baseline_generation}}}"
+    )
+    selected_baseline_runtime = (
+        _static_na()
+        if baseline_static_na
+        else _metric(
+            selected.baseline,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
+    )
+    all_flow_baseline_runtime = (
+        _static_na()
+        if baseline_static_na
+        else _metric(
+            all_flow.baseline,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
     )
     baseline_runtime = (
-        rf"\matrixpair{{"
-        rf"{_metric(selected.baseline, 'wall_seconds_per_point', microseconds=True)}"
-        rf"}}{{"
-        rf"{_metric(all_flow.baseline, 'wall_seconds_per_point', microseconds=True)}"
-        rf"}}"
+        rf"\matrixpair{{{selected_baseline_runtime}}}"
+        rf"{{{all_flow_baseline_runtime}}}"
     )
     return (
         r"\matrixcelllc"
         f"{{{baseline_generation}}}"
-        f"{{{_best_mode_ratio(selected, 'generation_seconds')}}}"
-        f"{{{_best_mode_ratio(all_flow, 'generation_seconds')}}}"
+        f"{{{_best_mode_ratio(selected, 'generation_seconds', baseline_static_na=baseline_static_na)}}}"
+        f"{{{_best_mode_ratio(all_flow, 'generation_seconds', baseline_static_na=baseline_static_na)}}}"
         f"{{{baseline_runtime}}}"
-        f"{{{_best_mode_runtime_ratio(selected)}}}"
-        f"{{{_best_mode_runtime_ratio(all_flow)}}}"
+        f"{{{_best_mode_runtime_ratio(selected, baseline_static_na=baseline_static_na)}}}"
+        f"{{{_best_mode_runtime_ratio(all_flow, baseline_static_na=baseline_static_na)}}}"
     )
 
 
-def _best_mode_contracted_cell(view: BestModeMatrixCell) -> str:
+def _best_mode_contracted_cell(
+    view: BestModeMatrixCell,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> str:
     joined = view.workloads[0]
+    baseline_static_na = _legacy_baseline_static_na(
+        catalog=catalog,
+        accuracy=view.accuracy,
+        process_key=view.process_family.key,
+        n_final=view.n_final,
+        workload=joined.workload,
+    )
+    baseline_generation = (
+        _static_na()
+        if baseline_static_na
+        else _metric(joined.baseline, "generation_seconds")
+    )
+    baseline_runtime = (
+        _static_na()
+        if baseline_static_na
+        else _metric(
+            joined.baseline,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
+    )
     return (
         r"\matrixcellcontracted"
-        f"{{{_metric(joined.baseline, 'generation_seconds')}}}"
-        f"{{{_best_mode_ratio(joined, 'generation_seconds')}}}"
-        f"{{{_metric(joined.baseline, 'wall_seconds_per_point', microseconds=True)}}}"
-        f"{{{_best_mode_runtime_ratio(joined)}}}"
+        f"{{{baseline_generation}}}"
+        f"{{{_best_mode_ratio(joined, 'generation_seconds', baseline_static_na=baseline_static_na)}}}"
+        f"{{{baseline_runtime}}}"
+        f"{{{_best_mode_runtime_ratio(joined, baseline_static_na=baseline_static_na)}}}"
     )
 
 
@@ -1523,9 +1702,11 @@ def _best_mode_block(
             if not view.applicable:
                 row.append(_not_applicable())
             elif accuracy is Accuracy.LC:
-                row.append(_best_mode_lc_cell(view))
+                row.append(_best_mode_lc_cell(view, catalog=adapter.catalog))
             else:
-                row.append(_best_mode_contracted_cell(view))
+                row.append(
+                    _best_mode_contracted_cell(view, catalog=adapter.catalog)
+                )
         if row_index % 2 == 0:
             lines.append(r"\rowcolor{refblue}")
         lines.append(" & ".join(row) + r" \\")
@@ -1573,7 +1754,10 @@ def _best_mode_block(
                 r"Generation multipliers identify that runtime winner: "
                 r"\texttt{(A)} recurrence JIT O2, \texttt{(B)} compiled JIT O3, "
                 r"and \texttt{(C)} eager-DAG JIT O2. Runtime entries are "
-                r"winner/AmpliCol wall-time multipliers."
+                r"winner/AmpliCol wall-time multipliers. Original-AmpliCol "
+                r"rows beyond its three-open-quark-line scope are catalog "
+                r"static N/A entries; their candidate values are absolute "
+                r"n.c. quantities and are excluded from ratio summaries."
                 + boundary_note
                 + r" Summary mode counts use the order A/B/C.}"
             ),
@@ -2086,8 +2270,18 @@ def summarize_visible_completeness(
         raise ValueError("max_n_final must be positive")
     cache_source = caches if isinstance(caches, Mapping) else tuple(caches)
     measurements = _measurements_by_cell_id(cache_source)
-    required_cells = tuple(
+    declared_cells = tuple(
         cell for cell in catalog.measurement_cells() if cell.n_final <= max_n_final
+    )
+    static_na_cells = tuple(
+        cell
+        for cell in declared_cells
+        if catalog.static_na_reason(cell) is not None
+    )
+    required_cells = tuple(
+        cell
+        for cell in declared_cells
+        if catalog.static_na_reason(cell) is None
     )
     required_by_id = {cell.cell_id: cell for cell in required_cells}
     if len(required_by_id) != len(required_cells):
@@ -2103,6 +2297,7 @@ def summarize_visible_completeness(
         for cell in catalog.measurement_cells()
     }
     rendered_cell_ids: set[str] = set()
+    rendered_static_na_cell_ids: set[str] = set()
     na_slots: list[str] = []
     contract_errors: list[str] = []
     for cell in required_cells:
@@ -2116,6 +2311,13 @@ def summarize_visible_completeness(
             contract_errors.append(
                 f"{cell.cell_id}: required measurement status is "
                 f"{status!r}, expected {ResultStatus.OK.value!r}"
+            )
+    for cell in static_na_cells:
+        measurement = measurements.get(cell.cell_id)
+        if measurement != _NA:
+            contract_errors.append(
+                f"{cell.cell_id}: catalog static N/A measurement differs "
+                "from the canonical reset record"
             )
 
     def inspect(
@@ -2134,6 +2336,14 @@ def summarize_visible_completeness(
         if cell.n_final > max_n_final:
             return
         rendered_cell_ids.add(cell.cell_id)
+        if catalog.static_na_reason(cell) is not None:
+            rendered_static_na_cell_ids.add(cell.cell_id)
+            if any(fragment != _static_na() for fragment in fragments):
+                contract_errors.append(
+                    f"{location} ({cell.cell_id}): catalog static N/A slot "
+                    "does not use the dedicated marker"
+                )
+            return
         inspect(
             f"{location} ({cell.cell_id})",
             fragments,
@@ -2189,6 +2399,9 @@ def summarize_visible_completeness(
                             f"{candidate.cell_id}: matrix baseline is missing"
                         )
                         continue
+                    baseline_static_na = (
+                        catalog.static_na_reason(baseline) is not None
+                    )
                     record(
                         baseline,
                         (
@@ -2196,16 +2409,34 @@ def summarize_visible_completeness(
                             f"{joined.workload.value}/baseline"
                         ),
                         (
-                            _metric(joined.baseline, "generation_seconds"),
-                            _metric(
-                                joined.baseline,
-                                "wall_seconds_per_point",
-                                microseconds=True,
+                            (
+                                _static_na()
+                                if baseline_static_na
+                                else _metric(
+                                    joined.baseline,
+                                    "generation_seconds",
+                                )
+                            ),
+                            (
+                                _static_na()
+                                if baseline_static_na
+                                else _metric(
+                                    joined.baseline,
+                                    "wall_seconds_per_point",
+                                    microseconds=True,
+                                )
                             ),
                         ),
                     )
                     candidate_generation = (
-                        _metric(joined.candidate, "generation_seconds")
+                        _ratio_or_absolute(
+                            joined.candidate,
+                            joined.baseline,
+                            "generation_seconds",
+                            absolute=baseline_static_na,
+                        )
+                        if baseline_static_na
+                        else _metric(joined.candidate, "generation_seconds")
                         if (
                             joined.workload is Workload.ALL_FLOW
                             and dataset.candidate.execution_mode
@@ -2227,7 +2458,11 @@ def summarize_visible_completeness(
                         ),
                         (
                             candidate_generation,
-                            _ratio_pair(joined.candidate, joined.baseline),
+                            _ratio_pair_or_absolute(
+                                joined.candidate,
+                                joined.baseline,
+                                absolute=baseline_static_na,
+                            ),
                         ),
                     )
         for n_final, views in views_by_n.items():
@@ -2259,26 +2494,45 @@ def summarize_visible_completeness(
                 if not view.applicable:
                     continue
                 for joined in view.workloads:
+                    baseline_static_na = _legacy_baseline_static_na(
+                        catalog=catalog,
+                        accuracy=accuracy,
+                        process_key=family.key,
+                        n_final=n_final,
+                        workload=joined.workload,
+                    )
                     inspect(
                         (
                             f"{table_name}/n{n_final}/{family.key}/"
                             f"{joined.workload.value}"
                         ),
                         (
-                            _metric(
-                                joined.baseline,
-                                "generation_seconds",
+                            (
+                                _static_na()
+                                if baseline_static_na
+                                else _metric(
+                                    joined.baseline,
+                                    "generation_seconds",
+                                )
                             ),
                             _best_mode_ratio(
                                 joined,
                                 "generation_seconds",
+                                baseline_static_na=baseline_static_na,
                             ),
-                            _metric(
-                                joined.baseline,
-                                "wall_seconds_per_point",
-                                microseconds=True,
+                            (
+                                _static_na()
+                                if baseline_static_na
+                                else _metric(
+                                    joined.baseline,
+                                    "wall_seconds_per_point",
+                                    microseconds=True,
+                                )
                             ),
-                            _best_mode_runtime_ratio(joined),
+                            _best_mode_runtime_ratio(
+                                joined,
+                                baseline_static_na=baseline_static_na,
+                            ),
                         ),
                     )
         for n_final, views in views_by_n.items():
@@ -2426,6 +2680,12 @@ def summarize_visible_completeness(
                     )
                 )
             record(cell, f"injected-catalog/{cell.cell_id}", fragments)
+        for cell in static_na_cells:
+            record(
+                cell,
+                f"injected-catalog/{cell.cell_id}",
+                (_static_na(), _static_na()),
+            )
 
     accounting = report_display_accounting(
         catalog=catalog,
@@ -2444,8 +2704,20 @@ def summarize_visible_completeness(
         )
     required_ids = set(required_by_id)
     missing = tuple(sorted(required_ids - rendered_cell_ids))
+    static_na_ids = {cell.cell_id for cell in static_na_cells}
+    missing_static_na = tuple(
+        sorted(static_na_ids - rendered_static_na_cell_ids)
+    )
+    if missing_static_na:
+        contract_errors.append(
+            "catalog static N/A cells are not rendered: "
+            + ", ".join(missing_static_na)
+        )
     return VisibleCompleteness(
         maximum_n_final=max_n_final,
+        declared_measurement_cell_count=(
+            accounting.declared_measurement_cell_count
+        ),
         required_measurement_count=accounting.required_measurement_count,
         rendered_required_measurement_count=len(rendered_cell_ids & required_ids),
         structurally_not_applicable_display_slot_count=structural_seen,
@@ -2453,6 +2725,10 @@ def summarize_visible_completeness(
         applicable_na_display_slots=tuple(sorted(set(na_slots))),
         missing_rendered_cell_ids=missing,
         contract_errors=tuple(sorted(set(contract_errors))),
+        catalog_static_na_cell_count=accounting.catalog_static_na_cell_count,
+        rendered_catalog_static_na_cell_count=len(
+            rendered_static_na_cell_ids
+        ),
     )
 
 

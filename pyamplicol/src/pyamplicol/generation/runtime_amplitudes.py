@@ -402,7 +402,11 @@ def _append_color_replay_partition_routes(
             )
         target_word = tuple(target_sector.word_labels or target_sector.color_words[0])
         normalized_permutation = tuple(
-            sorted((int(left), int(right)) for left, right in permutation)
+            sorted(
+                (int(left), int(right))
+                for left, right in permutation
+                if int(left) != int(right)
+            )
         )
         for source in source_descriptors:
             pending_routes.append(

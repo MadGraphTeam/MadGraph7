@@ -56,7 +56,11 @@ from .campaign_policy import (
     resource_lane_identity,
     validate_policy_measurement,
 )
-from .catalog import REPORT_CATALOG, ReportCatalog
+from .catalog import (
+    REPORT_CATALOG,
+    STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
+    ReportCatalog,
+)
 from .measurement import shared_validation_points
 from .measurement_lineage import (
     MeasurementLineage,
@@ -112,6 +116,18 @@ _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FULL_CATALOG_MAX_N_FINAL = 9
 _EXPECTED_FULL_CATALOG_CELL_COUNT = 1666
+_EXPECTED_FULL_STATIC_NA_CELL_IDS = frozenset(
+    {
+        "reference-amplicol-lc-n6-dd-4q-lines-selected-flow",
+        "reference-amplicol-lc-n6-dd-4q-lines-all-flow",
+        "reference-amplicol-lc-n7-dd-4q-lines-selected-flow",
+        "reference-amplicol-lc-n7-dd-4q-lines-all-flow",
+        "reference-amplicol-lc-n8-dd-4q-lines-selected-flow",
+        "reference-amplicol-lc-n8-dd-4q-lines-all-flow",
+        "reference-amplicol-nlc-n6-dd-4q-lines-contracted",
+        "reference-amplicol-full-n6-dd-4q-lines-contracted",
+    }
+)
 _EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1560
 _EXPECTED_N4_CELL_COUNT = 742
 _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
@@ -3910,6 +3926,32 @@ def _entry_map(
     return result
 
 
+def _catalog_static_na_projection_errors(
+    cells: Sequence[CellSpec],
+    entries: Mapping[str, Mapping[str, object]],
+    *,
+    load_current: Callable[[str], object | None],
+) -> tuple[str, ...]:
+    """Audit the immutable no-measurement contract for static-N/A cells."""
+
+    errors: list[str] = []
+    for cell in cells:
+        entry = entries.get(cell.cell_id)
+        if entry is None:
+            errors.append(f"{cell.cell_id}: cache entry is missing")
+            continue
+        if entry != reset_entry(cell):
+            errors.append(
+                f"{cell.cell_id}: catalog static N/A cache entry differs "
+                "from the canonical reset entry"
+            )
+        if load_current(cell.cell_id) is not None:
+            errors.append(
+                f"{cell.cell_id}: catalog static N/A cell has a published current"
+            )
+    return tuple(errors)
+
+
 def _replayed_agreement_value(
     edge: AgreementEdge,
     cell: CellSpec,
@@ -4183,7 +4225,7 @@ def _audit_final_report_locked(
     )
     caches = report.load_caches()
     entries = _entry_map(caches)
-    cells = tuple(
+    declared_cells = tuple(
         sorted(
             (
                 cell
@@ -4193,15 +4235,66 @@ def _audit_final_report_locked(
             key=lambda item: item.cell_id,
         )
     )
-    if expected_cell_count is not None and len(cells) != expected_cell_count:
+    if (
+        expected_cell_count is not None
+        and len(declared_cells) != expected_cell_count
+    ):
         raise FinalAuditError(
-            f"catalog selected {len(cells)} cells, expected {expected_cell_count}"
+            "catalog selected "
+            f"{len(declared_cells)} declared cells, expected "
+            f"{expected_cell_count}"
         )
+    static_na_cells = tuple(
+        cell
+        for cell in declared_cells
+        if catalog.static_na_reason(cell) is not None
+    )
+    if catalog is REPORT_CATALOG and max_n_final == _FULL_CATALOG_MAX_N_FINAL:
+        observed_static_na_ids = {
+            cell.cell_id for cell in static_na_cells
+        }
+        if observed_static_na_ids != _EXPECTED_FULL_STATIC_NA_CELL_IDS:
+            missing_static_na_ids = sorted(
+                _EXPECTED_FULL_STATIC_NA_CELL_IDS - observed_static_na_ids
+            )
+            extra_static_na_ids = sorted(
+                observed_static_na_ids - _EXPECTED_FULL_STATIC_NA_CELL_IDS
+            )
+            raise FinalAuditError(
+                "canonical catalog static-N/A census differs: "
+                f"missing={missing_static_na_ids}, "
+                f"extra={extra_static_na_ids}"
+            )
+        unexpected_static_na_reasons = {
+            cell.cell_id: catalog.static_na_reason(cell)
+            for cell in static_na_cells
+            if catalog.static_na_reason(cell)
+            != STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
+        }
+        if unexpected_static_na_reasons:
+            raise FinalAuditError(
+                "canonical catalog static-N/A reasons differ: "
+                f"{dict(sorted(unexpected_static_na_reasons.items()))}"
+            )
+    cells = tuple(
+        cell
+        for cell in declared_cells
+        if catalog.static_na_reason(cell) is None
+    )
     published_measurements: dict[str, Mapping[str, object]] = {}
     measurements: dict[str, Mapping[str, object]] = {}
     measurement_sources: dict[str, tuple[str, str | None]] = {}
     measurement_states: dict[str, PolicyMeasurementState] = {}
-    errors: list[str] = []
+    errors = list(
+        _catalog_static_na_projection_errors(
+            static_na_cells,
+            entries,
+            load_current=lambda cell_id: report.store.load_current(
+                cell_id,
+                missing_ok=True,
+            ),
+        )
+    )
     for cell in cells:
         entry = entries.get(cell.cell_id)
         if entry is None:
@@ -4223,7 +4316,10 @@ def _audit_final_report_locked(
             entry.get("measurement"),
             f"{cell.cell_id}.published_measurement",
         )
-        current = report.store.load_current(cell.cell_id)
+        current = report.store.load_current(
+            cell.cell_id,
+            missing_ok=True,
+        )
         if current is None:
             errors.append(f"{cell.cell_id}: authenticated current result is missing")
             continue
@@ -4456,14 +4552,26 @@ def _audit_final_report_locked(
         policy=active_policy,
     )
     if (
-        visible_completeness.required_measurement_count != len(cells)
+        visible_completeness.declared_measurement_cell_count
+        != len(declared_cells)
+        or visible_completeness.required_measurement_count != len(cells)
+        or visible_completeness.rendered_required_measurement_count
+        != len(cells)
+        or visible_completeness.catalog_static_na_cell_count
+        != len(static_na_cells)
+        or visible_completeness.rendered_catalog_static_na_cell_count
+        != len(static_na_cells)
         or not visible_completeness.complete
     ):
         evidence = visible_completeness.as_dict()
         raise FinalAuditError(
             "final report visible-completeness audit failed: "
+            f"declared={evidence['declared_measurement_cell_count']}, "
             f"required={evidence['required_measurement_count']}, "
             f"rendered={evidence['rendered_required_measurement_count']}, "
+            f"static={evidence['catalog_static_na_cell_count']}, "
+            "rendered_static="
+            f"{evidence['rendered_catalog_static_na_cell_count']}, "
             f"applicable_NA={evidence['applicable_na_display_slot_count']}, "
             f"missing={evidence['missing_rendered_cell_count']}, "
             f"errors={evidence['contract_errors']}, "
@@ -4566,7 +4674,7 @@ def _audit_final_report_locked(
     if (
         catalog is REPORT_CATALOG
         and max_n_final == _FULL_CATALOG_MAX_N_FINAL
-        and len(cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
+        and len(declared_cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
         and active_policy is STRICT_POLICY
         and direct_agreement_counts != _EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS
     ):
@@ -4717,7 +4825,7 @@ def _audit_final_report_locked(
         if (
             catalog is REPORT_CATALOG
             and max_n_final == _FULL_CATALOG_MAX_N_FINAL
-            and len(cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
+            and len(declared_cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
             and active_policy is STRICT_POLICY
             and replayed_direct_agreement_counts
             != _EXPECTED_FULL_DIRECT_REPLAY_COUNTS
@@ -4781,13 +4889,13 @@ def _audit_final_report_locked(
         catalog is REPORT_CATALOG
         and max_n_final == _FULL_CATALOG_MAX_N_FINAL
         and expected_cell_count == _EXPECTED_FULL_CATALOG_CELL_COUNT
-        and len(cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
+        and len(declared_cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
     )
     final_gate_complete = (
         replay and verify_render and verify_pdf and canonical_publication_scope
     )
     state_counts = Counter(state.value for state in measurement_states.values())
-    selected_ids = {cell.cell_id for cell in cells}
+    selected_ids = {cell.cell_id for cell in declared_cells}
     catalog_direct_edges = tuple(
         edge
         for edge in agreement_edges(catalog=catalog)
@@ -4804,12 +4912,22 @@ def _audit_final_report_locked(
             f"expected={_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT}, "
             f"observed={len(catalog_direct_edges)}"
         )
-    modes: dict[str, int] = defaultdict(int)
-    for cell in cells:
-        modes[cell.measurement.execution_mode.value] += 1
+    declared_modes: dict[str, int] = defaultdict(int)
+    measurable_modes: dict[str, int] = defaultdict(int)
+    static_na_modes: dict[str, int] = defaultdict(int)
+    static_na_reasons: Counter[str] = Counter()
+    for cell in declared_cells:
+        mode = cell.measurement.execution_mode.value
+        declared_modes[mode] += 1
+        reason = catalog.static_na_reason(cell)
+        if reason is None:
+            measurable_modes[mode] += 1
+        else:
+            static_na_modes[mode] += 1
+            static_na_reasons[reason] += 1
     return {
         "kind": "pyamplicol-final-report-audit",
-        "schema_version": 4,
+        "schema_version": 5,
         "status": (ResultStatus.OK.value if final_gate_complete else "incomplete"),
         "expected_source_revision": expected_source_revision,
         "measurement_source_revision": expected_source_revision,
@@ -4844,8 +4962,17 @@ def _audit_final_report_locked(
         "report_profile": report_profile,
         "campaign_policy": active_policy.as_manifest(),
         "maximum_n_final": max_n_final,
-        "selected_cell_count": len(cells),
-        "mode_counts": dict(sorted(modes.items())),
+        "selected_cell_count": len(declared_cells),
+        "declared_cell_count": len(declared_cells),
+        "measurable_cell_count": len(cells),
+        "catalog_static_na_cell_count": len(static_na_cells),
+        "catalog_static_na_reason_counts": dict(
+            sorted(static_na_reasons.items())
+        ),
+        "mode_counts": dict(sorted(declared_modes.items())),
+        "declared_mode_counts": dict(sorted(declared_modes.items())),
+        "measurable_mode_counts": dict(sorted(measurable_modes.items())),
+        "catalog_static_na_mode_counts": dict(sorted(static_na_modes.items())),
         "authenticated_current_count": len(cells),
         "portable_publication_projection_count": len(published_measurements),
         "publication_cache_role": "portable-projection-of-current-result",

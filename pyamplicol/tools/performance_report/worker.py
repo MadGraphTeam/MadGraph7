@@ -67,8 +67,14 @@ def measure_cell(
     legacy_repository: Path | None = None,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
-    source_identity = require_eligible_report_source(repo_root)
     cell = catalog.cell(cell_id)
+    static_na_reason = catalog.static_na_reason(cell)
+    if static_na_reason is not None:
+        raise ValueError(
+            f"{cell_id}: catalog static N/A cell cannot be measured "
+            f"({static_na_reason})"
+        )
+    source_identity = require_eligible_report_source(repo_root)
     baseline = None if baseline_json is None else load_measurement(baseline_json)
     peers = {
         peer_cell_id: load_measurement(path)

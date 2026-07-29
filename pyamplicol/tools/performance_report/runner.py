@@ -1531,20 +1531,24 @@ def derive_selector_contract(
     if not color_flows or not helicities or not particles:
         raise RunnerError("LC selector derivation requires complete physical axes")
 
-    selected_flow = color_flows[0]
-    resolved = runtime.evaluate_resolved(points, color_flows=(str(selected_flow.id),))
-    values = getattr(resolved, "values", ())
+    selected_flow = None
     chosen_index: int | None = None
-    for helicity_index, _helicity in enumerate(helicities):
-        magnitude = sum(
-            abs(complex(point[helicity_index][color_index]))
-            for point in values
-            for color_index in range(len(point[helicity_index]))
-        )
-        if magnitude > ABSOLUTE_TOLERANCE:
-            chosen_index = helicity_index
+    for flow in color_flows:
+        resolved = runtime.evaluate_resolved(points, color_flows=(str(flow.id),))
+        values = getattr(resolved, "values", ())
+        for helicity_index, _helicity in enumerate(helicities):
+            magnitude = sum(
+                abs(complex(point[helicity_index][color_index]))
+                for point in values
+                for color_index in range(len(point[helicity_index]))
+            )
+            if magnitude > ABSOLUTE_TOLERANCE:
+                selected_flow = flow
+                chosen_index = helicity_index
+                break
+        if chosen_index is not None:
             break
-    if chosen_index is None:
+    if selected_flow is None or chosen_index is None:
         raise RunnerError("no nonzero fixed-helicity selector exists at report point")
     helicity = helicities[chosen_index]
     labels = tuple(int(particle.label) for particle in particles)

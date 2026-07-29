@@ -98,7 +98,9 @@ def _cell_measurements(
 class ValidationSummary:
     """Numerical evidence across the complete declared publication range."""
 
+    declared_by_n: tuple[tuple[int, int], ...]
     expected_by_n: tuple[tuple[int, int], ...]
+    static_na_by_n: tuple[tuple[int, int], ...]
     passed_by_n: tuple[tuple[int, int], ...]
     policy_terminal_by_n: tuple[tuple[int, int], ...]
     status_counts: tuple[tuple[str, int], ...]
@@ -115,8 +117,16 @@ class ValidationSummary:
     successful_source_identity_count: int
 
     @property
+    def declared_total(self) -> int:
+        return sum(count for _, count in self.declared_by_n)
+
+    @property
     def expected_total(self) -> int:
         return sum(count for _, count in self.expected_by_n)
+
+    @property
+    def static_na_total(self) -> int:
+        return sum(count for _, count in self.static_na_by_n)
 
     @property
     def passed_total(self) -> int:
@@ -160,7 +170,13 @@ def summarize_validation(
         for cell in catalog.measurement_cells()
         if cell.n_final <= MAX_PUBLICATION_MULTIPLICITY
     )
-    expected = Counter(cell.n_final for cell in cells)
+    declared = Counter(cell.n_final for cell in cells)
+    static_na = Counter(
+        cell.n_final
+        for cell in cells
+        if catalog.static_na_reason(cell) is not None
+    )
+    expected = declared - static_na
     passed: Counter[int] = Counter()
     policy_terminal: Counter[int] = Counter()
     statuses: Counter[str] = Counter()
@@ -172,6 +188,9 @@ def summarize_validation(
     revisions: list[str] = []
 
     for cell in cells:
+        if catalog.static_na_reason(cell) is not None:
+            statuses["static-na"] += 1
+            continue
         measurement = measurements.get(cell.cell_id, {})
         status = str(
             measurement.get("status", ResultStatus.NOT_AVAILABLE.value)
@@ -199,9 +218,15 @@ def summarize_validation(
         if (record := _validation_record(measurement, "high_precision")) is not None:
             high_precision.append(record)
 
-    multiplicities = tuple(sorted(expected))
+    multiplicities = tuple(sorted(declared))
     return ValidationSummary(
+        declared_by_n=tuple(
+            (n_final, declared[n_final]) for n_final in multiplicities
+        ),
         expected_by_n=tuple((n_final, expected[n_final]) for n_final in multiplicities),
+        static_na_by_n=tuple(
+            (n_final, static_na[n_final]) for n_final in multiplicities
+        ),
         passed_by_n=tuple((n_final, passed[n_final]) for n_final in multiplicities),
         policy_terminal_by_n=tuple(
             (n_final, policy_terminal[n_final])
@@ -280,6 +305,8 @@ def render_validation_summary(
         catalog=catalog,
         max_n_final=MAX_PUBLICATION_MULTIPLICITY,
     )
+    declared_by_n = dict(summary.declared_by_n)
+    static_na_by_n = dict(summary.static_na_by_n)
     passed_by_n = dict(summary.passed_by_n)
     terminal_by_n = dict(summary.policy_terminal_by_n)
     total_coverage = _coverage_status(
@@ -299,18 +326,20 @@ def render_validation_summary(
         ),
         r"\begin{center}",
         r"\small",
-        r"\begin{tabular}{@{}r r r L{2.35in}@{}}",
+        r"\begin{tabular}{@{}r r r r L{1.75in}@{}}",
         r"\toprule",
         (
-            r"\textbf{final-state multiplicity} & \textbf{required} & "
-            r"\textbf{verified} & \textbf{coverage} \\"
+            r"\textbf{final-state multiplicity} & \textbf{declared} & "
+            r"\textbf{static N/A} & \textbf{verified} & "
+            r"\textbf{measurable coverage} \\"
         ),
         r"\midrule",
     ]
     for n_final, expected in summary.expected_by_n:
         passed = passed_by_n[n_final]
         lines.append(
-            f"{n_final} & {expected} & {passed} & "
+            f"{n_final} & {declared_by_n[n_final]} & "
+            f"{static_na_by_n[n_final]} & {passed} & "
             f"{_coverage_status(passed, expected, terminal_by_n[n_final])}"
             r" \\"
         )
@@ -319,7 +348,8 @@ def render_validation_summary(
             r"\midrule",
             (
                 r"\textbf{total} & "
-                f"{summary.expected_total} & {summary.passed_total} & "
+                f"{summary.declared_total} & {summary.static_na_total} & "
+                f"{summary.passed_total} & "
                 f"{total_coverage}"
                 r" \\"
             ),
@@ -329,7 +359,10 @@ def render_validation_summary(
             r"\end{samepage}",
             (
                 r"\ReportTableNote{Full-catalog display accounting through \(n=9\): "
-                f"{display.required_measurement_count} required measured cells; "
+                f"{display.declared_measurement_cell_count} declared cells, comprising "
+                f"{display.required_measurement_count} measurable cells and "
+                f"{display.catalog_static_na_cell_count} catalog-authenticated "
+                r"static N/A original-\AC{} rows; "
                 f"{display.structurally_not_applicable_display_slot_count} "
                 r"matrix process/multiplicity positions marked "
                 r"\textsc{not applicable}; and "

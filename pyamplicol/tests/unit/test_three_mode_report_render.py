@@ -249,12 +249,19 @@ def _mark_evaluator_total(
     }
 
 
-def _fill_visible_n4_scope(caches: dict[str, dict[str, object]]) -> None:
+def _fill_visible_scope(
+    caches: dict[str, dict[str, object]],
+    *,
+    max_n_final: int = 4,
+) -> None:
     for payload in caches.values():
         entries = payload["entries"]
         assert isinstance(entries, list)
         for entry in entries:
-            if entry["n_final"] > 4:
+            if entry["n_final"] > max_n_final:
+                continue
+            cell = REPORT_CATALOG.cell(str(entry["cell_id"]))
+            if REPORT_CATALOG.static_na_reason(cell) is not None:
                 continue
             entry["measurement"] = {
                 "status": ResultStatus.OK.value,
@@ -278,6 +285,10 @@ def _fill_visible_n4_scope(caches: dict[str, dict[str, object]]) -> None:
                 "provenance": {"source": "test"},
                 "failure": None,
             }
+
+
+def _fill_visible_n4_scope(caches: dict[str, dict[str, object]]) -> None:
+    _fill_visible_scope(caches, max_n_final=4)
 
 
 _POLICY_IDENTITY = ReportSourceIdentity("1" * 40, "2" * 40, ())
@@ -774,6 +785,24 @@ def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
     assert evidence["missing_rendered_cell_count"] == 0
 
 
+def test_visible_completeness_authenticates_catalog_static_na_slots(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_scope(caches, max_n_final=9)
+
+    summary = summarize_visible_completeness(caches, max_n_final=9)
+    evidence = summary.as_dict()
+
+    assert summary.complete
+    assert evidence["declared_measurement_cell_count"] == 1666
+    assert evidence["required_measurement_count"] == 1658
+    assert evidence["catalog_static_na_cell_count"] == 8
+    assert evidence["rendered_catalog_static_na_cell_count"] == 8
+    assert evidence["applicable_na_display_slot_count"] == 0
+    assert evidence["missing_rendered_cell_count"] == 0
+
+
 def test_visible_completeness_rejects_na_in_applicable_slot(reset_caches) -> None:
     caches = copy.deepcopy(reset_caches)
     _fill_visible_n4_scope(caches)
@@ -1136,7 +1165,6 @@ def test_amplicol_all_flow_setup_generation_ratio_is_not_comparable(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
-    baseline = _cache_by_dataset(caches, "reference_amplicol_lc")
     candidate = _cache_by_dataset(
         caches,
         "matrix_recurrence_builtin_sm_lc",
@@ -1187,13 +1215,6 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
         (Workload.SELECTED_FLOW, 4.0),
         (Workload.ALL_FLOW, 10.0),
     ):
-        _set_status(
-            baseline,
-            process_key="dd_4q_lines",
-            n_final=6,
-            workload=workload,
-            status=ResultStatus.UNSUPPORTED,
-        )
         _set_ok(
             candidate,
             process_key="dd_4q_lines",
@@ -1212,7 +1233,7 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
     assert r"\matrixncabsolute{\texttt{4}}" in tex
     assert r"\matrixncabsolute{\texttt{10}}" in tex
     assert tex.count(r"\matrixncabsolute{\matrixpair{") >= 2
-    assert tex.count(r"\matrixstatus{ReportRed}{unsupported}") >= 2
+    assert tex.count(r"\matrixstaticna{ReportMuted}") >= 2
     assert "n.c. (not comparable)" in tex
 
 
@@ -1220,17 +1241,9 @@ def test_four_line_contracted_n6_renders_without_legacy_dependency(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
-    baseline = _cache_by_dataset(caches, "reference_amplicol_full")
     candidate = _cache_by_dataset(
         caches,
         "matrix_recurrence_builtin_sm_full",
-    )
-    _set_status(
-        baseline,
-        process_key="dd_4q_lines",
-        n_final=6,
-        workload=Workload.CONTRACTED,
-        status=ResultStatus.UNSUPPORTED,
     )
     _set_ok(
         candidate,
@@ -1249,7 +1262,7 @@ def test_four_line_contracted_n6_renders_without_legacy_dependency(
 
     assert r"\textbf{n=6}" in tex
     assert r"\matrixncabsolute{\texttt{12}}" in tex
-    assert r"\matrixstatus{ReportRed}{unsupported}" in tex
+    assert r"\matrixstaticna{ReportMuted}" in tex
     assert "n.c. means not comparable" in tex
 
 
@@ -1503,12 +1516,25 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (3, 206),
         (4, 286),
         (5, 285),
-        (6, 185),
-        (7, 165),
-        (8, 165),
+        (6, 181),
+        (7, 163),
+        (8, 163),
         (9, 124),
     )
-    assert summary.expected_total == 1666
+    assert summary.declared_total == 1666
+    assert summary.static_na_by_n == (
+        (1, 0),
+        (2, 0),
+        (3, 0),
+        (4, 0),
+        (5, 0),
+        (6, 4),
+        (7, 2),
+        (8, 2),
+        (9, 0),
+    )
+    assert summary.static_na_total == 8
+    assert summary.expected_total == 1658
     assert summary.passed_total == 4
     assert summary.oracle_count == 1
     assert summary.independent_count == 1
@@ -1520,8 +1546,10 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_count == 1
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "1666 & 4" in tex
-    assert "1666 required measured cells" in tex
+    assert "1666 & 8 & 4" in tex
+    assert "1666 declared cells" in tex
+    assert "1658 measurable cells" in tex
+    assert "8 catalog-authenticated static N/A" in tex
     assert "412 matrix process/multiplicity positions" in tex
     assert "36 reference execution fields" in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

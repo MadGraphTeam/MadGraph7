@@ -43,6 +43,12 @@ _ROLE_CONTRIBUTION = 1
 _ROLE_FINALIZATION = 2
 _ROLE_CLOSURE = 3
 _NODE_CURRENT = 1
+_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION = 1 << 0
+_CONTRIBUTION_FLAG_CERTIFIED_REUSE = 1 << 1
+_CERTIFIED_REUSE_FLAGS = (
+    _CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+    | _CONTRIBUTION_FLAG_CERTIFIED_REUSE
+)
 
 _Point = Sequence[tuple[Decimal, Decimal, Decimal, Decimal]]
 
@@ -231,15 +237,24 @@ def _execute_schedule(
                     )
             continue
 
+        if group.role == _ROLE_CONTRIBUTION:
+            if initialized_contribution_stage != group.stage:
+                _clear_stage(plan, arena, group.stage)
+                initialized_contribution_stage = group.stage
+            if group.executor_id == DIRECT_NONE_U32:
+                for contribution_row in sections.contributions[start:stop]:
+                    _execute_certified_reuse_row(
+                        plan,
+                        contribution_row,
+                        arena,
+                    )
+                continue
         executor = plan.executors.get(group.executor_id)
         if executor is None or _role_index(executor.role) != group.role:
             raise ArtifactError(
                 f"recurrence row group references invalid executor {group.executor_id}"
             )
         if group.role == _ROLE_CONTRIBUTION:
-            if initialized_contribution_stage != group.stage:
-                _clear_stage(plan, arena, group.stage)
-                initialized_contribution_stage = group.stage
             for contribution_row in sections.contributions[start:stop]:
                 _execute_prepared_row(
                     plan,
@@ -286,6 +301,35 @@ def _execute_schedule(
         else:  # pragma: no cover - native plan validation rejects this
             raise ArtifactError(f"unsupported recurrence row role {group.role}")
     return tuple(amplitudes)
+
+
+def _execute_certified_reuse_row(
+    plan: _RecurrenceExactPlan,
+    row: _Contribution,
+    arena: list[_ComplexDecimal],
+) -> None:
+    if (
+        row.flags != _CERTIFIED_REUSE_FLAGS
+        or row.parent1_base != DIRECT_NONE_U32
+        or row.parent1_momentum != DIRECT_NONE_U32
+        or row.parent0_momentum <= 0
+    ):
+        raise ArtifactError("certified-reuse contribution has an invalid encoding")
+    factor = _factor(plan, row.exact_factor_id)
+    component_count = row.parent0_momentum
+    values = tuple(
+        _complex_mul(
+            _arena_value(arena, row.parent0_base, component),
+            factor,
+        )
+        for component in range(component_count)
+    )
+    _write(
+        arena,
+        row.destination_base,
+        values,
+        replace=True,
+    )
 
 
 def _momentum_forms(

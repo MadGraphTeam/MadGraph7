@@ -10,12 +10,14 @@ building and reviewing the canonical report. The architecture-specific
 measurement workspaces and their authoritative campaign procedures live under
 [`../performance_reports/`](../performance_reports/README.md).
 
-The canonical document is intentionally a reset scaffold. Its 1,666 required
-measurement cells currently have status `not_available`. Structural
-process/multiplicity positions are shown as `not applicable`, and reference
-execution fields without a compatible public timing boundary are shown as
-`not exposed`. This keeps the complete declared coverage visible before
-architecture-specific measurements are incorporated.
+The canonical document is intentionally a reset scaffold. Its 1,666 declared
+cells comprise 1,658 measurable cells with status `not_available` and eight
+catalog-authenticated static-N/A original-AmpliCol cells beyond its
+three-open-quark-line support boundary. Structural process/multiplicity
+positions are shown as `not applicable`, and reference execution fields
+without a compatible public timing boundary are shown as `not exposed`. This
+keeps the complete declared coverage visible before architecture-specific
+measurements are incorporated.
 
 ## Canonical commands
 

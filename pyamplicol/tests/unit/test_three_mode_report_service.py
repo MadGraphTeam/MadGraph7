@@ -9,10 +9,13 @@ from pathlib import Path
 import pytest
 
 from tools.performance_report.agreements import DIRECT_AGREEMENT_FIELD
-from tools.performance_report.cache import empty_measurement
+from tools.performance_report.cache import empty_measurement, reset_entry
 from tools.performance_report.catalog import REPORT_CATALOG
-from tools.performance_report.measurement import source_revision
-from tools.performance_report.models import ArtifactPolicy
+from tools.performance_report.measurement import (
+    failure_measurement,
+    source_revision,
+)
+from tools.performance_report.models import ArtifactPolicy, ResultStatus
 from tools.performance_report.publication import publication_absolute_paths
 from tools.performance_report.render import render_all_tables
 from tools.performance_report.service import (
@@ -20,6 +23,7 @@ from tools.performance_report.service import (
     ReportService,
     ReportServiceError,
 )
+from tools.performance_report.source_identity import require_eligible_report_source
 
 
 def _service(tmp_path: Path) -> ReportService:
@@ -65,6 +69,63 @@ def test_reset_publishes_only_canonical_na_caches_and_seventeen_tables(
     }
     assert len([path for path in paths if path.suffix == ".tex"]) == 20
     assert (service.paths.results_dir / "report-cache.schema.json").is_file()
+
+
+def test_static_na_cache_rejects_terminal_measurement(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    caches = service.reset_payloads()
+    cell = service.catalog.cell(
+        "reference-amplicol-full-n6-dd-4q-lines-contracted"
+    )
+    payload = caches[f"{cell.dataset_id}.json"]
+    entry = next(
+        item for item in payload["entries"] if item["cell_id"] == cell.cell_id
+    )
+    entry["measurement"] = failure_measurement(
+        ResultStatus.UNSUPPORTED,
+        "historical oracle scope",
+    )
+
+    with pytest.raises(
+        ReportServiceError,
+        match="catalog static N/A cache entry",
+    ):
+        service.validate_payloads(caches)
+
+
+def test_static_na_current_never_merges_into_publication_cache(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    cell = service.catalog.cell(
+        "reference-amplicol-full-n6-dd-4q-lines-contracted"
+    )
+    source = require_eligible_report_source(service.paths.repo_root)
+    measurement = failure_measurement(
+        ResultStatus.UNSUPPORTED,
+        "historical oracle scope",
+    )
+    measurement["provenance"] = {
+        "report_source_revision": source.revision,
+        "report_source_tree": source.tree,
+    }
+    published = service.store.new_attempt(
+        cell.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(measurement)
+    caches = service.reset_payloads()
+    payload = caches[f"{cell.dataset_id}.json"]
+    entry = next(
+        item for item in payload["entries"] if item["cell_id"] == cell.cell_id
+    )
+    entry["measurement"] = failure_measurement(
+        ResultStatus.UNSUPPORTED,
+        "noncanonical cached terminal",
+    )
+
+    assert service.merge_current(caches) == 0
+    assert entry["measurement"] == reset_entry(cell)["measurement"]
+    assert service.store.load_current(cell.cell_id).attempt_id == published.attempt_id
 
 
 def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None:

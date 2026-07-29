@@ -36,7 +36,9 @@ X86_EPYC_WORKERS = 25
 X86_EPYC_CELL_CORES = 1
 X86_EPYC_TARGET_RUNTIME_SECONDS = 5.0
 X86_EPYC_GENERATION_LIMIT_SECONDS = 2.0 * 60.0 * 60.0
-X86_EPYC_MEMORY_LIMIT_BYTES = 100_000_000_000
+X86_EPYC_LEGACY_MEMORY_LIMIT_BYTES = 100_000_000_000
+X86_EPYC_MEMORY_LIMIT_BYTES = 80_000_000_000
+X86_EPYC_NATIVE_COMPILER_SLOTS = 4
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SOURCE_FIELDS = frozenset(
@@ -233,6 +235,9 @@ def policy_from_manifest(value: object, *, profile: str) -> CampaignPolicy:
     if policy is X86_EPYC_POLICY:
         legacy_manifest = policy.as_manifest()
         legacy_manifest["workers"] = X86_EPYC_LEGACY_WORKERS
+        legacy_manifest["memory_limit_bytes"] = (
+            X86_EPYC_LEGACY_MEMORY_LIMIT_BYTES
+        )
         accepted_manifests.append(legacy_manifest)
     if dict(value) not in accepted_manifests:
         raise CampaignPolicyError(
@@ -1043,8 +1048,10 @@ __all__ = [
     "WORKER_PHASE_STATE_ABI",
     "X86_EPYC_CELL_CORES",
     "X86_EPYC_GENERATION_LIMIT_SECONDS",
+    "X86_EPYC_LEGACY_MEMORY_LIMIT_BYTES",
     "X86_EPYC_LEGACY_WORKERS",
     "X86_EPYC_MEMORY_LIMIT_BYTES",
+    "X86_EPYC_NATIVE_COMPILER_SLOTS",
     "X86_EPYC_POLICY",
     "X86_EPYC_POLICY_NAME",
     "X86_EPYC_PROFILE",

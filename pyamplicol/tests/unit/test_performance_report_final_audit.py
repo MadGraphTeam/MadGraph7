@@ -33,6 +33,7 @@ from tools.performance_report.cache import (
     build_reset_caches,
     digest_json,
     empty_measurement,
+    reset_entry,
 )
 from tools.performance_report.final_audit import (
     ArtifactEvidence,
@@ -51,6 +52,7 @@ from tools.performance_report.final_audit import (
     _audit_tex_table_reachability,
     _audit_unavailable_execution_timing,
     _authenticated_effective_config,
+    _catalog_static_na_projection_errors,
     _ensure_exact_cli_python,
     _python_package_tree_identity,
     _real_nonnegative,
@@ -347,6 +349,52 @@ def _legacy_cell() -> CellSpec:
             None,
         ),
         workload=Workload.SELECTED_FLOW,
+    )
+
+
+def test_catalog_static_na_projection_requires_reset_cache_and_no_current() -> None:
+    cell = replace(
+        _legacy_cell(),
+        dataset_id="reference_amplicol_static_na",
+        process="d d~ > u u~ s s~ c c~",
+        n_final=6,
+        process_key="dd_4q_lines",
+    )
+    canonical = reset_entry(cell)
+
+    assert (
+        _catalog_static_na_projection_errors(
+            (cell,),
+            {cell.cell_id: canonical},
+            load_current=lambda _cell_id: None,
+        )
+        == ()
+    )
+
+    tampered = deepcopy(canonical)
+    tampered["measurement"] = {
+        **empty_measurement(),
+        "status": "unsupported",
+    }
+    assert _catalog_static_na_projection_errors(
+        (cell,),
+        {cell.cell_id: tampered},
+        load_current=lambda _cell_id: None,
+    ) == (
+        f"{cell.cell_id}: catalog static N/A cache entry differs "
+        "from the canonical reset entry",
+    )
+    assert _catalog_static_na_projection_errors(
+        (cell,),
+        {},
+        load_current=lambda _cell_id: None,
+    ) == (f"{cell.cell_id}: cache entry is missing",)
+    assert _catalog_static_na_projection_errors(
+        (cell,),
+        {cell.cell_id: canonical},
+        load_current=lambda _cell_id: object(),
+    ) == (
+        f"{cell.cell_id}: catalog static N/A cell has a published current",
     )
 
 
@@ -1263,6 +1311,9 @@ class _Catalog:
 
     def validation_baseline_cell(self, cell: CellSpec) -> CellSpec | None:
         return self.baseline_cell(cell)
+
+    def static_na_reason(self, _cell: CellSpec) -> None:
+        return None
 
 
 def _selector() -> dict[str, object]:
@@ -2521,11 +2572,15 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
 
     assert lock_state == {"held": False, "entries": 1}
     assert result["status"] == "incomplete"
-    assert result["schema_version"] == 4
+    assert result["schema_version"] == 5
     assert result["measurement_source_revision"] == _REVISION
     assert result["publication_revision"] == _REVISION
     assert result["publication_lineage"]["relationship"] == "same-commit"
     assert result["authenticated_current_count"] == 2
+    assert result["declared_cell_count"] == 2
+    assert result["measurable_cell_count"] == 2
+    assert result["catalog_static_na_cell_count"] == 0
+    assert result["catalog_static_na_reason_counts"] == {}
     assert result["portable_publication_projection_count"] == 2
     assert result["publication_cache_role"] == ("portable-projection-of-current-result")
     assert result["cryptographic_audit_source"] == "immutable-current-result"
@@ -2550,13 +2605,16 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     assert result["replayed_measurement_count"] == 1
     assert result["visible_completeness"] == {
         "kind": "pyamplicol-report-visible-completeness",
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "ok",
         "maximum_n_final": 1,
+        "declared_measurement_cell_count": 2,
         "required_measurement_count": 2,
         "rendered_required_measurement_count": 2,
         "structurally_not_applicable_display_slot_count": 0,
         "not_exposed_display_slot_count": 0,
+        "catalog_static_na_cell_count": 0,
+        "rendered_catalog_static_na_cell_count": 0,
         "applicable_na_display_slot_count": 0,
         "applicable_na_display_slots": [],
         "missing_rendered_cell_count": 0,

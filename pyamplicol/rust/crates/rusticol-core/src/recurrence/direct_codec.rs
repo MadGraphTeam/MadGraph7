@@ -659,7 +659,7 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
     let source_count = reader.count("sources", 28)?;
     let contribution_count = reader.count("contributions", 32)?;
     let finalization_count = reader.count("finalizations", 24)?;
-    let closure_count = reader.count("closures", 32)?;
+    let closure_count = reader.count("closures", 40)?;
     let row_group_count = reader.count("row groups", 28)?;
     let momentum_form_count = reader.count("momentum forms", 16)?;
     let momentum_term_count = reader.count("momentum terms", 8)?;

@@ -1189,6 +1189,46 @@ def test_selector_contract_uses_first_flow_and_first_nonzero_helicity() -> None:
     validate_selector_contract(runtime, contract, points)
 
 
+def test_selector_contract_scans_later_flow_when_first_flow_is_zero() -> None:
+    class LaterFlowRuntime(FakeRuntime):
+        def evaluate_resolved(
+            self,
+            _points: object,
+            **selectors: object,
+        ) -> Resolved:
+            selected_flows = selectors.get("color_flows")
+            if selected_flows == ("flow:2,1,3",):
+                return Resolved(
+                    (
+                        (
+                            (0.0 + 0.0j,),
+                            (0.0 + 0.0j,),
+                        ),
+                    ),
+                    self.resolved_total,
+                )
+            assert selected_flows == ("flow:1,2,3",)
+            return Resolved(
+                (
+                    (
+                        (0.0 + 0.0j,),
+                        (3.0 + 0.0j,),
+                    ),
+                ),
+                self.resolved_total,
+            )
+
+    runtime = LaterFlowRuntime()
+    points = (((1.0, 0.0, 0.0, 1.0),),)
+
+    contract = derive_selector_contract(runtime, points)
+
+    assert contract.selected_color_flow_ids == ("flow:1,2,3",)
+    assert contract.selected_color_words == ((1, 2, 3),)
+    assert contract.all_flow_helicity_ids == ("h:-1,+1,-1",)
+    validate_selector_contract(runtime, contract, points)
+
+
 def test_selector_contract_rejects_changed_point_or_axis() -> None:
     runtime = FakeRuntime()
     points = (((1.0, 0.0, 0.0, 1.0),),)

@@ -131,6 +131,60 @@ def test_n5_full_color_amplitude_gather_is_a_720_group_bijection() -> None:
     ) == list(range(720))
 
 
+@pytest.mark.parametrize("color_accuracy", ["nlc", "full"])
+def test_n3_amplitude_gather_order_matches_replay_proof(
+    color_accuracy: str,
+) -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir(
+        "g g > g g g",
+        color_accuracy=color_accuracy,
+    )
+    color_plan = build_color_plan(process, color_accuracy=color_accuracy)
+    certificate = build_color_topology_replay_certificate(color_plan, model)
+    assert certificate is not None
+    helicity_key = tuple((leg.label, 21, 0, 1, 1) for leg in process.legs)
+    descriptors = tuple(
+        ColorGroupDescriptor(
+            group_id=group_id,
+            helicity_key=helicity_key,
+            sector_id=sector_id,
+            word=tuple(
+                color_plan.sector(sector_id).word_labels  # type: ignore[union-attr]
+            ),
+            helicity_weight=1.0,
+        )
+        for group_id, sector_id in enumerate(certificate.materialized_sector_ids)
+    )
+    dag = SimpleNamespace(
+        color_topology_replay=certificate,
+        color_plan=color_plan,
+        process=process,
+    )
+
+    replay = _color_topology_replay_amplitudes(dag, descriptors)
+
+    assert replay is not None
+    proof_mappings = tuple(
+        sorted(
+            {
+                tuple(
+                    sorted(
+                        (int(left), int(right))
+                        for left, right in permutation
+                        if int(left) != int(right)
+                    )
+                )
+                for partition in certificate.partitions
+                for permutation in partition.label_permutations
+            }
+        )
+    )
+    assert tuple(
+        mapping.label_permutation for mapping in replay.mappings
+    ) == proof_mappings
+
+
 def test_color_accuracy_is_bound_into_generic_replay_proof() -> None:
     model = BuiltinSMModel()
     certificates = []

@@ -321,7 +321,22 @@ struct LoweredSelectorDomains {
     current_domain_ids: Vec<u32>,
     closure_domain_ids: Vec<u32>,
     destination_domain_ids: Vec<u32>,
-    sector_domain_ids: Vec<u32>,
+    sector_domain_ids: Vec<Option<u32>>,
+}
+
+fn canonical_selector_words(domain: &[u64]) -> &[u64] {
+    let mut retained = domain
+        .iter()
+        .rposition(|word| *word != 0)
+        .map_or(0, |index| index + 1);
+    // Direct-plan v2 reserves the one-word [u64::MAX] encoding for the
+    // universal selector.  For a wider physical-sector domain, a legitimate
+    // selector containing only sectors 0..63 must retain one trailing zero so
+    // it cannot alias that sentinel.
+    if retained == 1 && domain.len() > 1 && domain[0] == u64::MAX {
+        retained = 2;
+    }
+    &domain[..retained]
 }
 
 fn lower_selector_domains(program: &RecurrenceProgram) -> RusticolResult<LoweredSelectorDomains> {
@@ -344,7 +359,7 @@ fn lower_selector_domains(program: &RecurrenceProgram) -> RusticolResult<Lowered
                 program.amplitude_destinations().len()
             ],
             sector_domain_ids: vec![
-                UNIVERSAL_SELECTOR_DOMAIN_ID;
+                Some(UNIVERSAL_SELECTOR_DOMAIN_ID);
                 program.physical_sector_count() as usize
             ],
         });
@@ -414,6 +429,7 @@ fn lower_selector_domains(program: &RecurrenceProgram) -> RusticolResult<Lowered
     let mut interned = BTreeMap::<Vec<u64>, u32>::new();
     interned.insert(vec![u64::MAX], UNIVERSAL_SELECTOR_DOMAIN_ID);
     let mut intern = |domain: &[u64]| -> RusticolResult<u32> {
+        let domain = canonical_selector_words(domain);
         if let Some(id) = interned.get(domain) {
             return Ok(*id);
         }
@@ -432,11 +448,27 @@ fn lower_selector_domains(program: &RecurrenceProgram) -> RusticolResult<Lowered
         Ok(id)
     };
 
-    let mut sector_domain_ids = Vec::with_capacity(sector_count);
-    for sector_id in 0..sector_count {
+    let referenced_sector_ids = program
+        .amplitude_destinations()
+        .iter()
+        .map(|destination| destination.target_sector_id())
+        .chain(
+            program
+                .replay_targets()
+                .iter()
+                .map(|target| target.materialized_sector_id()),
+        )
+        .collect::<BTreeSet<_>>();
+    let mut sector_domain_ids = vec![None; sector_count];
+    for sector_id in referenced_sector_ids {
+        let sector_index = sector_id as usize;
+        if sector_index >= sector_count {
+            return Err(invalid("referenced selector sector is out of bounds"));
+        }
         let mut domain = vec![0_u64; word_count];
-        domain[sector_id / u64::BITS as usize] |= 1_u64 << (sector_id % u64::BITS as usize);
-        sector_domain_ids.push(intern(&domain)?);
+        domain[sector_index / u64::BITS as usize] |=
+            1_u64 << (sector_index % u64::BITS as usize);
+        sector_domain_ids[sector_index] = Some(intern(&domain)?);
     }
     let current_domain_ids = current_words
         .iter()
@@ -453,6 +485,7 @@ fn lower_selector_domains(program: &RecurrenceProgram) -> RusticolResult<Lowered
             sector_domain_ids
                 .get(destination.target_sector_id() as usize)
                 .copied()
+                .flatten()
                 .ok_or_else(|| invalid("amplitude selector sector is out of bounds"))
         })
         .collect::<RusticolResult<Vec<_>>>()?;
@@ -2573,7 +2606,7 @@ type DirectReplayTables = (
 fn lower_replay_targets(
     program: &RecurrenceProgram,
     exact_factor_ids: &BTreeMap<ExactComplexRational, u32>,
-    sector_domain_ids: &[u32],
+    sector_domain_ids: &[Option<u32>],
 ) -> RusticolResult<DirectReplayTables> {
     if !program.strategy().uses_topology_replay_targets() {
         if !program.replay_targets().is_empty() {
@@ -2729,6 +2762,7 @@ fn lower_replay_targets(
             multiplicity: 1,
             selector_domain_id: *sector_domain_ids
                 .get(target.materialized_sector_id() as usize)
+                .and_then(Option::as_ref)
                 .ok_or_else(|| invalid("replay representative selector domain is absent"))?,
         });
     }

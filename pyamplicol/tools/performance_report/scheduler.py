@@ -24,6 +24,8 @@ from .campaign_policy import (
     CampaignPolicyError,
     PolicyCensorKind,
     PolicyMeasurementState,
+    X86_EPYC_NATIVE_COMPILER_SLOTS,
+    X86_EPYC_PROFILE,
     dependency_reference,
     generation_limit_for_cell,
     policy_censor_measurement,
@@ -55,6 +57,9 @@ from .resources import (
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .service import CANONICAL_REPORT_ENTRYPOINT, ReportService
 from .source_identity import require_eligible_report_source
+
+_NATIVE_COMPILER_GATE_DIR_ENV = "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR"
+_NATIVE_COMPILER_GATE_SLOT_COUNT_ENV = "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +148,24 @@ class CellOutcome:
     cell_id: str
     status: str
     detail: str
+
+
+def _worker_environment_overrides(
+    settings: CampaignSettings,
+    coordination_root: Path,
+) -> dict[str, str]:
+    """Return identity-neutral cross-controller worker controls."""
+
+    if settings.report_profile != X86_EPYC_PROFILE:
+        return {}
+    return {
+        _NATIVE_COMPILER_GATE_DIR_ENV: os.fspath(
+            coordination_root.resolve() / "native-compiler-slots"
+        ),
+        _NATIVE_COMPILER_GATE_SLOT_COUNT_ENV: str(
+            X86_EPYC_NATIVE_COMPILER_SLOTS
+        ),
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -435,6 +458,8 @@ def plan_campaign(
         )
     if settings.campaign_policy.allow_terminal_censors:
         for catalog_cell in catalog.measurement_cells():
+            if catalog.static_na_reason(catalog_cell) is not None:
+                continue
             resource_lanes.setdefault(
                 _resource_lane_key(catalog_cell),
                 [],
@@ -492,6 +517,8 @@ def plan_campaign(
         return blocked
 
     def include(cell: CellSpec, *, explicitly_requested: bool) -> None:
+        if catalog.static_na_reason(cell) is not None:
+            return
         if blocked_by_exclusion(cell):
             return
         cell_dependencies = dependencies(cell)
@@ -617,6 +644,8 @@ def plan_campaign(
         scheduled = tuple(needed.values())
         for cell in requested:
             if cell.cell_id in needed:
+                continue
+            if catalog.static_na_reason(cell) is not None:
                 continue
             if blocked_by_exclusion(cell):
                 continue
@@ -766,6 +795,8 @@ class CampaignScheduler:
         if settings.campaign_policy.allow_terminal_censors:
             grouped: dict[tuple[object, ...], list[CellSpec]] = {}
             for cell in catalog.measurement_cells():
+                if catalog.static_na_reason(cell) is not None:
+                    continue
                 grouped.setdefault(_resource_lane_key(cell), []).append(cell)
             self._resource_lanes = {
                 lane: tuple(sorted(cells, key=lambda item: item.n_final))
@@ -889,6 +920,10 @@ class CampaignScheduler:
                 command,
                 timeout_seconds=self.settings.timeout_seconds,
                 max_rss_bytes=self._effective_cell_rss_limit(),
+                environment_overrides=_worker_environment_overrides(
+                    self.settings,
+                    self.service.paths.coordination_root,
+                ),
             )
             try:
                 if (
@@ -917,6 +952,20 @@ class CampaignScheduler:
 
     def run(self, planned: Sequence[PlannedCell]) -> CampaignResult:
         ordered = tuple(planned)
+        static_na = tuple(
+            (
+                item.cell.cell_id,
+                self.catalog.static_na_reason(item.cell),
+            )
+            for item in ordered
+            if self.catalog.static_na_reason(item.cell) is not None
+        )
+        if static_na:
+            cell_id, reason = static_na[0]
+            raise ValueError(
+                f"campaign plan contains catalog static N/A cell "
+                f"{cell_id!r}: {reason}"
+            )
         self._ensure_prepared_model(ordered)
         outcomes: list[CellOutcome] = []
         effective_workers = self.settings.workers
@@ -1180,6 +1229,10 @@ class CampaignScheduler:
                     generation_timeout_seconds=generation_timeout,
                     phase_channel=phase_channel,
                     max_rss_bytes=self._effective_cell_rss_limit(),
+                    environment_overrides=_worker_environment_overrides(
+                        self.settings,
+                        self.service.paths.coordination_root,
+                    ),
                 )
                 generation_phase = supervised.generation_phase
                 resources = _resource_payload(

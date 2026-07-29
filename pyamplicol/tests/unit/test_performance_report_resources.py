@@ -253,6 +253,44 @@ def test_supervisor_propagates_symbolica_license_to_worker_environment(
     assert result.returncode == 0
 
 
+def test_supervisor_merges_explicit_worker_environment_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SYMBOLICA_LICENSE", "ordinary-test-license")
+    process = FakeProcess()
+    process.returncode = 0
+    observed: dict[str, str | None] = {}
+
+    def popen(
+        _command: Sequence[str],
+        *,
+        start_new_session: bool,
+        env: Mapping[str, str],
+    ) -> FakeProcess:
+        assert start_new_session
+        observed["license"] = env.get("SYMBOLICA_LICENSE")
+        observed["gate"] = env.get("PYAMPLICOL_NATIVE_COMPILER_GATE_DIR")
+        observed["slots"] = env.get("PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT")
+        return process
+
+    result = supervise_worker(
+        ("worker",),
+        environment_overrides={
+            "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR": "/tmp/compiler-gate",
+            "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT": "4",
+        },
+        snapshotter=lambda: {},
+        popen_factory=popen,
+    )
+
+    assert observed == {
+        "license": "ordinary-test-license",
+        "gate": "/tmp/compiler-gate",
+        "slots": "4",
+    }
+    assert result.returncode == 0
+
+
 def test_supervisor_enforces_memory_limit_and_fails_open_on_probe_error() -> None:
     process = FakeProcess()
 
@@ -297,6 +335,11 @@ def test_defaults_and_invalid_limits() -> None:
         supervise_worker(("worker",), generation_timeout_seconds=0)
     with pytest.raises(ValueError, match="specified together"):
         supervise_worker(("worker",), generation_timeout_seconds=1)
+    with pytest.raises(ValueError, match="environment override"):
+        supervise_worker(
+            ("worker",),
+            environment_overrides={"INVALID=NAME": "value"},
+        )
 
 
 def test_generation_limit_excludes_preparation_and_post_generation(

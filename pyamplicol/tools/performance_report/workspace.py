@@ -168,7 +168,7 @@ def _campaign_commands(profile: str, policy: CampaignPolicy) -> str:
         populate_options = (
             f"  --workers {X86_EPYC_WORKERS} --cell-cores 1 "
             "--target-runtime 5 \\\n"
-            "  --max-ram-gb 100 --allow-symbolica-parallel --refresh-pdf end"
+            "  --max-ram-gb 80 --allow-symbolica-parallel --refresh-pdf end"
         )
     elif policy is MACBOOK_M3_POLICY:
         populate_options = (
@@ -243,7 +243,7 @@ def _table_filling_runbook(profile: str, policy: CampaignPolicy) -> str:
         resources = (
             f"Run up to {X86_EPYC_WORKERS} independent workers, with one core "
             "and a decimal "
-            "100 GB hard RSS ceiling per worker. The authenticated generation "
+            "80 GB hard RSS ceiling per worker. The authenticated generation "
             "phase is capped at two hours except for original AmpliCol and "
             "compiled/recurrence LC selected-flow cells, which must finish."
         )

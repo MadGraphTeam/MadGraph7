@@ -15,6 +15,13 @@ from tools.performance_report.agreements import (
 )
 from tools.performance_report.artifacts import ArtifactStore, CurrentRecord
 from tools.performance_report.cache import empty_measurement
+from tools.performance_report.campaign_policy import (
+    X86_EPYC_MEMORY_LIMIT_BYTES,
+    X86_EPYC_NATIVE_COMPILER_SLOTS,
+    X86_EPYC_POLICY,
+    X86_EPYC_PROFILE,
+    X86_EPYC_WORKERS,
+)
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import failure_measurement
 from tools.performance_report.models import (
@@ -35,6 +42,7 @@ from tools.performance_report.scheduler import (
     CellSelection,
     PlannedCell,
     _fresh_equivalent_current,
+    _worker_environment_overrides,
     plan_campaign,
     select_cells,
 )
@@ -45,6 +53,36 @@ def _store(tmp_path: Path) -> ArtifactStore:
     return ArtifactStore(
         artifact_root=tmp_path / "artifacts",
         lock_root=tmp_path / "locks",
+    )
+
+
+def test_epyc_worker_environment_injects_shared_native_compiler_gate(
+    tmp_path: Path,
+) -> None:
+    settings = CampaignSettings(
+        workers=X86_EPYC_WORKERS,
+        cell_cores=1,
+        target_runtime_seconds=5.0,
+        max_rss_bytes=X86_EPYC_MEMORY_LIMIT_BYTES,
+        allow_symbolica_parallel=True,
+        campaign_policy=X86_EPYC_POLICY,
+        report_profile=X86_EPYC_PROFILE,
+    )
+
+    assert _worker_environment_overrides(settings, tmp_path / "coordination") == {
+        "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR": str(
+            (tmp_path / "coordination" / "native-compiler-slots").resolve()
+        ),
+        "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT": str(
+            X86_EPYC_NATIVE_COMPILER_SLOTS
+        ),
+    }
+    assert (
+        _worker_environment_overrides(
+            CampaignSettings(),
+            tmp_path / "strict-coordination",
+        )
+        == {}
     )
 
 
@@ -288,21 +326,112 @@ def test_four_line_candidates_never_plan_unsupported_legacy_dependencies(
         for item in cross_mode
         if item.baseline_cell_id is not None
     )
-    legacy_all_flow = next(
+    unavailable_legacy = tuple(
         cell
         for cell in REPORT_CATALOG.measurement_cells()
-        if cell.dataset_id == "reference_amplicol_lc"
-        and cell.process_key == "dd_4q_lines"
-        and cell.n_final == 6
-        and cell.workload is Workload.ALL_FLOW
+        if REPORT_CATALOG.static_na_reason(cell) is not None
     )
     legacy_plan = plan_campaign(
-        (legacy_all_flow,),
+        unavailable_legacy,
         store=_store(tmp_path / "legacy"),
         settings=CampaignSettings(),
     )
-    assert len(legacy_plan) == 1
-    assert legacy_plan[0].comparison_peer_ids == ()
+    assert len(unavailable_legacy) == 8
+    assert legacy_plan == ()
+
+
+def test_terminal_censor_rescan_cannot_reinsert_static_na_cell(
+    tmp_path: Path,
+) -> None:
+    lower = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == "reference_amplicol_lc"
+        and cell.process_key == "dd_z_jets"
+        and cell.n_final == 1
+        and cell.workload is Workload.SELECTED_FLOW
+    )
+    higher = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == lower.dataset_id
+        and cell.process_key == lower.process_key
+        and cell.n_final == 2
+        and cell.workload is lower.workload
+    )
+
+    class StaticHigherCatalog:
+        def __getattr__(self, name: str) -> object:
+            return getattr(REPORT_CATALOG, name)
+
+        def static_na_reason(self, cell: CellSpec) -> str | None:
+            if cell == higher:
+                return "synthetic-static-na"
+            return REPORT_CATALOG.static_na_reason(cell)
+
+    settings = CampaignSettings(
+        workers=X86_EPYC_WORKERS,
+        cell_cores=1,
+        target_runtime_seconds=5.0,
+        max_rss_bytes=X86_EPYC_MEMORY_LIMIT_BYTES,
+        allow_symbolica_parallel=True,
+        campaign_policy=X86_EPYC_POLICY,
+        report_profile=X86_EPYC_PROFILE,
+    )
+    planned = plan_campaign(
+        (lower, higher),
+        store=_store(tmp_path),
+        settings=settings,
+        catalog=StaticHigherCatalog(),  # type: ignore[arg-type]
+    )
+
+    assert tuple(item.cell for item in planned) == (lower,)
+
+
+def test_campaign_run_rejects_forged_static_na_plan_before_worker_setup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    cell = REPORT_CATALOG.cell(
+        "reference-amplicol-full-n6-dd-4q-lines-contracted"
+    )
+    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+    monkeypatch.setattr(
+        scheduler,
+        "_ensure_prepared_model",
+        lambda _planned: pytest.fail(
+            "static N/A plan reached prepared-model setup"
+        ),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_run_cell",
+        lambda _planned: pytest.fail("static N/A plan reached a worker"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "reference-amplicol-full-n6-dd-4q-lines-contracted.*"
+            "original-amplicol-open-quark-line-limit"
+        ),
+    ):
+        scheduler.run(
+            (
+                PlannedCell(
+                    cell,
+                    dependency=False,
+                    baseline_cell_id=None,
+                    rank=0,
+                ),
+            )
+        )
+
+    assert service.store.load_current(cell.cell_id, missing_ok=True) is None
+    assert tuple(
+        service.paths.artifact_root.glob("cells/*/attempts/*")
+    ) == ()
 
 
 def test_contracted_n6_multi_quark_plans_separate_legacy_capability(

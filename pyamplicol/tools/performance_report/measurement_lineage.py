@@ -38,7 +38,7 @@ from .models import (
 )
 from .source_identity import require_eligible_report_source
 
-MEASUREMENT_LINEAGE_SCHEMA = "pyamplicol-performance-measurement-lineage-v1"
+MEASUREMENT_LINEAGE_SCHEMA = "pyamplicol-performance-measurement-lineage-v2"
 MEASUREMENT_LINEAGE_WRAPPER_SCHEMA = (
     "pyamplicol-performance-measurement-lineage-envelope-v1"
 )
@@ -1483,7 +1483,11 @@ def _diff_records(
     return tuple(records)
 
 
-def _cell_record(cell: CellSpec) -> dict[str, object]:
+def _cell_record(
+    cell: CellSpec,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> dict[str, object]:
     return {
         "cell_id": cell.cell_id,
         "dataset_id": cell.dataset_id,
@@ -1499,6 +1503,7 @@ def _cell_record(cell: CellSpec) -> dict[str, object]:
         "jit_optimization_level": cell.measurement.jit_optimization_level,
         "workload": cell.workload.value,
         "variant": cell.variant,
+        "static_na_reason": catalog.static_na_reason(cell),
     }
 
 
@@ -1784,7 +1789,12 @@ def _catalog_digest(catalog: ReportCatalog) -> str:
     global _CANONICAL_CATALOG_SHA256
     if catalog is REPORT_CATALOG and _CANONICAL_CATALOG_SHA256 is not None:
         return _CANONICAL_CATALOG_SHA256
-    result = _digest([_cell_record(cell) for cell in catalog.measurement_cells()])
+    result = _digest(
+        [
+            _cell_record(cell, catalog=catalog)
+            for cell in catalog.measurement_cells()
+        ]
+    )
     if catalog is REPORT_CATALOG:
         _CANONICAL_CATALOG_SHA256 = result
     return result
@@ -3541,8 +3551,12 @@ def _prepare_class_c_bridge_locked(
             else ()
         ),
     )
-    impacted = [_cell_record(cell) for cell in impacted_cells]
-    closure = [_cell_record(cell) for cell in agreement_cells]
+    impacted = [
+        _cell_record(cell, catalog=catalog) for cell in impacted_cells
+    ]
+    closure = [
+        _cell_record(cell, catalog=catalog) for cell in agreement_cells
+    ]
     payload: dict[str, object] = {
         "schema": MEASUREMENT_LINEAGE_SCHEMA,
         "state": "pending",
@@ -4309,8 +4323,12 @@ def load_measurement_lineage(
         reachability,
         catalog=catalog,
     )
-    impacted = [_cell_record(cell) for cell in impacted_cells]
-    closure = [_cell_record(cell) for cell in agreement_cells]
+    impacted = [
+        _cell_record(cell, catalog=catalog) for cell in impacted_cells
+    ]
+    closure = [
+        _cell_record(cell, catalog=catalog) for cell in agreement_cells
+    ]
     if (
         payload.get("impacted_cells") != impacted
         or payload.get("agreement_closure_cells") != closure
@@ -4454,8 +4472,12 @@ def audit_measurement_lineage(
         reachability,
         catalog=catalog,
     )
-    impacted = [_cell_record(cell) for cell in impacted_cells]
-    closure = [_cell_record(cell) for cell in agreement_cells]
+    impacted = [
+        _cell_record(cell, catalog=catalog) for cell in impacted_cells
+    ]
+    closure = [
+        _cell_record(cell, catalog=catalog) for cell in agreement_cells
+    ]
     workspace_manifest = _workspace_manifest_identity(
         root,
         docs_dir,
