@@ -1893,10 +1893,21 @@ class ReweightInterface(extended_cmd.Cmd):
         else:
             logger.info('generating the square matrix element for reweighting (second model and/or processes)')
         start = time.time()
+        # The reweight matches each event's flavor to a subprocess matrix
+        # element (id_to_path). With flavor grouping off / keep_ordering the
+        # crossed subprocesses must exist as separate entries, but crossing now
+        # FOLDS them by default (merge_crossing='record'). Append
+        # --use_crossing=False to each TREE process definition to restore the
+        # pre-crossing (main) subprocess layout. Perturbative (NLO / ewsudakov
+        # [...]) definitions are left untouched: they already skip crossing at
+        # generation, and the flag must not land inside their option-laden line.
+        xflag = ' --use_crossing=False' \
+            if (self.keep_ordering or not self._reweight_use_flavor_grouping()) \
+            else ''
         commandline=''
         for i,proc in enumerate(data['processes']):
             if '[' not in proc:
-                commandline += "add process %s ;" % proc
+                commandline += "add process %s%s ;" % (proc, xflag)
             else:
                 has_nlo = True
                 if self.banner.get('run_card','ickkw') == 3:
@@ -1907,19 +1918,6 @@ class ReweightInterface(extended_cmd.Cmd):
                                                     self.model, real_only=True, ewsudakov=self.inc_sudakov)
                 else:
                     commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
-        # The reweight matches each event's flavor to a subprocess matrix
-        # element (id_to_path). It relies on either the merged matrix element
-        # (flavor grouping on, which handles all crossed signs internally) or
-        # on the crossed subprocesses existing as separate entries (grouping
-        # off / keep_ordering, so an antiparticle event has its own dir to
-        # match against). With crossing now recording+folding crossed
-        # subprocesses by DEFAULT (merge_crossing='record'), the second case
-        # loses those separate dirs, so emit --use_crossing=False to restore
-        # them; the first case is left folded (the merged ME covers it). This
-        # reproduces the pre-crossing (main) subprocess layout exactly.
-        if self.keep_ordering or not self._reweight_use_flavor_grouping():
-            commandline = commandline.replace('add process',
-                                              'add process --use_crossing=False')
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
         try:
