@@ -257,6 +257,39 @@ def test_projection_is_idempotent_for_a_complete_legacy_locator_shape(
     ]
 
 
+def test_snapshot_projection_relocates_legacy_structural_proof(
+    tmp_path: Path,
+) -> None:
+    paths = _paths(tmp_path)
+    artifact = paths.artifact_root / "cells/example/attempts/one/artifact"
+    payload = {
+        "entries": [
+            {
+                "measurement": {
+                    "artifact": {
+                        "path": str(artifact),
+                        "legacy_structural_proof": str(
+                            artifact / "legacy-structural-proof.json"
+                        ),
+                    }
+                }
+            }
+        ]
+    }
+
+    portable = portable_publication_value(payload, paths)
+
+    proof = portable["entries"][0]["measurement"]["artifact"][  # type: ignore[index]
+        "legacy_structural_proof"
+    ]
+    assert proof == (
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/"
+        "cells/example/attempts/one/artifact/legacy-structural-proof.json"
+    )
+    assert publication_absolute_paths(portable) == ()
+    assert portable_publication_value(portable, paths) == portable
+
+
 def test_unknown_legacy_argument_position_fails_closed(tmp_path: Path) -> None:
     paths = _paths(tmp_path)
 

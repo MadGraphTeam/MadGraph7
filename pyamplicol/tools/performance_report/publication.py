@@ -31,6 +31,9 @@ _PORTABLE_ROOTS = (
 _LOCATOR_POINTERS = (
     ("artifact", "path"),
     ("artifact", "log_path"),
+    # Both supported and scope-unavailable original-AmpliCol measurements
+    # attach their authenticated structural proof at this artifact locator.
+    ("artifact", "legacy_structural_proof"),
     ("provenance", "worker_log"),
     ("provenance", "repository"),
     ("provenance", "requested_config", "model", "source"),
