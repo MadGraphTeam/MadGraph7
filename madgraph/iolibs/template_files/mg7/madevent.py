@@ -81,7 +81,16 @@ if _source_hash != ms.SOURCE_HASH:
     )
     print()
 
-logger = logging.getLogger("madevent7")
+logger = logging.getLogger("madgraph7")
+LOG_LEVEL_MAP = {
+    ms.Logger.LogLevel.level_debug: logging.DEBUG,
+    ms.Logger.LogLevel.level_info: logging.INFO,
+    ms.Logger.LogLevel.level_warning: logging.WARNING,
+    ms.Logger.LogLevel.level_error: logging.ERROR,
+}
+def ms_log_handler(level: ms.Logger.LogLevel, message: str):
+    logger.log(LOG_LEVEL_MAP[level], message)
+ms.Logger.set_log_handler(ms_log_handler)
 
 
 def get_start_time():
@@ -1807,7 +1816,7 @@ def _off(value) -> bool:
 _TOOL_LOGGING_READY = False
 
 
-def _setup_tool_logging():
+def _setup_logging():
     """Make the reused madevent tool drivers' progress visible on screen.
 
     The drivers already narrate what they do through logger.info /
@@ -1827,7 +1836,7 @@ def _setup_tool_logging():
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
     handler._mg7_tool_handler = True
-    for name in ("madgraph", "madevent", "cmdprint"):
+    for name in ("madgraph", "madevent", "cmdprint", "madgraph7"):
         lg = logging.getLogger(name)
         if not any(getattr(h, "_mg7_tool_handler", False) for h in lg.handlers):
             lg.addHandler(handler)
@@ -1860,9 +1869,6 @@ def run_selected_tools(switch, process) -> None:
         log.warning("No LHE event file in %s; cannot run %s.",
                     process.run_path, ", ".join(sorted(active)))
         return
-
-    # surface the reused madevent drivers' own progress messages on screen
-    _setup_tool_logging()
 
     run_name = os.path.basename(os.path.dirname(os.path.abspath(lhe_path)))
     run_dir = os.path.dirname(os.path.abspath(lhe_path))
@@ -2289,10 +2295,13 @@ def force_lhe_output_if_needed(switch) -> None:
 
 
 def main() -> None:
+    _setup_logging()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
     args = parser.parse_args()
     switch = {}
+
     if args.ask_edit_cards:
         switch = ask_edit_cards()
         force_lhe_output_if_needed(switch)
