@@ -1550,8 +1550,10 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
                 addon = ''
             else:
                 name = short_name
-    if unknown_tag:
+    if unknown_tag and outgoing:
         addon += '%(propa)s'
+    elif unknown_tag:
+        addon += '%(tags)s'
 
 #    if outgoing is not None:
 #        return '_'.join((name,) + tuple(other_names)) + addon + '_%s' % outgoing
