@@ -10103,7 +10103,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                             never fires); the beam-swap is folded back into
                             has_mirror_process here, exactly as
                             generate_matrix_elements would."""
-                            originals = [(amp, amp.get('crossed_processes'))
+                            originals = [(amp, amp.get('crossed_processes')
+                                          if 'crossed_processes' in amp else [])
                                          for amp in amps]
                             expanded = diagram_generation.AmplitudeList()
                             seen = {}   # fast_proc -> amplitude, for mirror fold
@@ -10129,8 +10130,14 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                                     seen[fp] = xamp
                             return expanded
 
+                        # DecayAmplitude / DecayChainAmplitude are Amplitude
+                        # subclasses that override default_setup with their own
+                        # key set and do NOT carry crossed_processes (e.g. the
+                        # compute_widths and MadSpin decay paths reach here), so
+                        # guard on the dict key rather than the amplitude type.
                         if any(amp.get('crossed_processes')
-                               for amp in non_dc_amps):
+                               for amp in non_dc_amps
+                               if 'crossed_processes' in amp):
                             non_dc_amps = _reconstruct_crossings(non_dc_amps)
 
                         # Decay chains: the crossing dedup (folding the crossed
@@ -10144,7 +10151,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                         # the pre-dedup output. cross_amplitude reuse still avoids
                         # regenerating the diagrams of the base subprocess.
                         if any(a.get('crossed_processes')
-                               for dc in dc_amps for a in dc.get('amplitudes')):
+                               for dc in dc_amps for a in dc.get('amplitudes')
+                               if 'crossed_processes' in a):
                             ign6 = self.options.get(
                                 'ignore_six_quark_processes', []) or []
                             regenerated = \
@@ -10786,7 +10794,16 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             decay_dir = pjoin(path,'temp_decay')
             logger_mg.info('More info in temporary files:\n    %s/index.html' % (decay_dir))
             with misc.MuteLogger(['madgraph','ALOHA','cmdprint','madevent'], [40,40,40,40]):
-                self.exec_cmd('output madevent %s -f' % decay_dir,child=False)
+                # These are pure 1 -> N decays (no initial-state partons to
+                # cross), but crossing is on by default and the ungrouped
+                # madevent exporter refuses a crossing-tagged process. Turn it
+                # off for this internal width export.
+                saved_use_crossing = self._use_crossing
+                self._use_crossing = False
+                try:
+                    self.exec_cmd('output madevent %s -f' % decay_dir,child=False)
+                finally:
+                    self._use_crossing = saved_use_crossing
                 
                 #modify some parameter of the default run_card
                 run_card = banner_module.RunCard(pjoin(decay_dir,'Cards','run_card.dat'))

@@ -4070,7 +4070,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 self.get('processes').append(amplitude.get('process'))
                 self.set('has_mirror_process',
                          amplitude.get('has_mirror_process'))
-                if amplitude.get('crossed_processes'):
+                if 'crossed_processes' in amplitude and \
+                        amplitude.get('crossed_processes'):
                     self.set('crossed_processes',
                              list(amplitude.get('crossed_processes')))
                 self.generate_helas_diagrams(amplitude, optimization, decay_ids)

@@ -2446,6 +2446,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         if process.get('required_s_channels') or \
            process.get('forbidden_s_channels'):
             return True
+        # Crossing is a tree-level construction; a perturbative (loop / loop-
+        # induced) process must not go through it. Its matrix element has no
+        # flavor/PDG crossing tables (compute_crossing_pdg_entries would index
+        # past the end), so treat it as crossing-breaking to keep every
+        # crossing gate -- and the crossed-group detection -- clear of it.
+        if process.get('perturbation_couplings'):
+            return True
         return any(ProcessExporterFortran.breaks_crossing_symmetry(decay)
                    for decay in process.get('decay_chains'))
 
@@ -3377,6 +3384,12 @@ C     crossing carried by FLAV_IDX moves across.
         flat = []                       # (group_enum_idx, me_idx, matrix_element)
         for gi, group in enumerate(subproc_groups):
             mes_g = group.get('matrix_elements')
+            # A group that breaks crossing (pinned s-channel, or a perturbative
+            # / loop-induced matrix element) has no crossing tables -- skip it
+            # before partition_crossing_classes, which would index past the end.
+            if any(self.breaks_crossing_symmetry(proc)
+                   for me in mes_g for proc in me.get('processes')):
+                continue
             g_bases, _ = self.partition_crossing_classes(mes_g)
             if len(g_bases) < len(mes_g):
                 continue                # within-group routing -> leave to Track A

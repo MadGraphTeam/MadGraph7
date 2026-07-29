@@ -1907,14 +1907,17 @@ class ReweightInterface(extended_cmd.Cmd):
                                                     self.model, real_only=True, ewsudakov=self.inc_sudakov)
                 else:
                     commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
-        # --use_crossing=False skips the generation of crossed subprocesses
-        # (e.g. u~ g > h u~ when u g > h u is already there). That's fine when
-        # flavor grouping is on, because the merged matrix element handles
-        # all signs internally. Without flavor grouping, however, the
-        # crossed subprocesses must be generated as separate entries --
-        # otherwise antiparticle events have nothing to match against in
-        # id_to_path. Only emit it when both conditions hold.
-        if not self.keep_ordering and self._reweight_use_flavor_grouping():
+        # The reweight matches each event's flavor to a subprocess matrix
+        # element (id_to_path). It relies on either the merged matrix element
+        # (flavor grouping on, which handles all crossed signs internally) or
+        # on the crossed subprocesses existing as separate entries (grouping
+        # off / keep_ordering, so an antiparticle event has its own dir to
+        # match against). With crossing now recording+folding crossed
+        # subprocesses by DEFAULT (merge_crossing='record'), the second case
+        # loses those separate dirs, so emit --use_crossing=False to restore
+        # them; the first case is left folded (the merged ME covers it). This
+        # reproduces the pre-crossing (main) subprocess layout exactly.
+        if self.keep_ordering or not self._reweight_use_flavor_grouping():
             commandline = commandline.replace('add process',
                                               'add process --use_crossing=False')
         commandline = commandline.replace('add process', 'generate',1)

@@ -1957,11 +1957,18 @@ class MultiProcess(base_objects.PhysicsObject):
                         continue
                         
                 # Check for successful crossings, unless we have specified
-                # properties that break crossing symmetry
+                # properties that break crossing symmetry. Crossing is a
+                # tree-level construction: a perturbative process (anything with
+                # the [...] syntax -- NLO, loop-induced, loop) must NOT be
+                # crossed, not even its tree-level Born/real sub-amplitudes, so
+                # its output stays byte-identical to a no-crossing build. (The
+                # 'loop_diagrams' guard below only catches an actual loop
+                # amplitude; the Born of an NLO process is an ordinary tree.)
                 if not process.get('required_s_channels') and \
                    not process.get('forbidden_onsh_s_channels') and \
                    not process.get('forbidden_s_channels') and \
-                   not process.get('is_decay_chain') and not diagram_filter:
+                   not process.get('is_decay_chain') and not diagram_filter and \
+                   not process.get('perturbation_couplings'):
                     try:
                         crossed_index = success_procs.index(sorted_legs)
                         # The relabeling of legs for loop amplitudes is cumbersome
