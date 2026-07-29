@@ -32,40 +32,40 @@
 & & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} \\
 \midrule
 \rowcolor{refblue}
-1 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
-1 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-1 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-1 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+1 & \AC{} reference & \texttt{31.9} & \texttt{0.0565} & \matrixnotexposed{ReportMuted} & \texttt{0.000361} & \texttt{0.125} & \matrixnotexposed{ReportMuted} \\
+1 & compiled JIT O1 & \texttt{6.25}\,\matrixratio{ReportGreen}{0.196} & \texttt{0.339}\,\matrixratio{ReportRed}{6} & \matrixtotalevaluator{\texttt{0.339}} & \matrixncabsolute{\texttt{1.67}} & \texttt{0.165}\,\matrixratio{ReportOrange}{1.32} & \matrixtotalevaluator{\texttt{0.165}} \\
+1 & compiled ASM O3 & \texttt{24.3}\,\matrixratio{ReportGreen}{0.76} & \texttt{0.379}\,\matrixratio{ReportRed}{6.71} & \matrixtotalevaluator{\texttt{0.379}} & \matrixncabsolute{\texttt{20.4}} & \texttt{0.179}\,\matrixratio{ReportOrange}{1.43} & \matrixtotalevaluator{\texttt{0.179}} \\
+1 & compiled C++ O3 & \texttt{24.3}\,\matrixratio{ReportGreen}{0.76} & \texttt{0.38}\,\matrixratio{ReportRed}{6.73} & \matrixtotalevaluator{\texttt{0.38}} & \matrixncabsolute{\texttt{16.5}} & \texttt{0.18}\,\matrixratio{ReportOrange}{1.45} & \matrixtotalevaluator{\texttt{0.18}} \\
 \rowcolor{ReportGreen!12}
-1 & compiled JIT O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+1 & compiled JIT O3 & \texttt{1.68}\,\matrixratio{ReportGreen}{0.0527} & \texttt{0.363}\,\matrixratio{ReportRed}{6.42} & \matrixtotalevaluator{\texttt{0.363}} & \matrixncabsolute{\texttt{1.48}} & \texttt{0.167}\,\matrixratio{ReportOrange}{1.34} & \matrixtotalevaluator{\texttt{0.167}} \\
 \rowcolor{ReportGreen!12}
-1 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+1 & eager-DAG JIT O2 & \texttt{5.95}\,\matrixratio{ReportGreen}{0.186} & \texttt{0.615}\,\matrixratio{ReportRed}{10.9} & \matrixtotalevaluator{\texttt{0.615}} & \matrixncabsolute{\texttt{6.44}} & \texttt{0.479}\,\matrixratio{ReportRed}{3.84} & \matrixtotalevaluator{\texttt{0.479}} \\
 \rowcolor{ReportGreen!12}
-1 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+1 & recurrence JIT O2 & \texttt{11.2}\,\matrixratio{ReportGreen}{0.351} & \texttt{1.09}\,\matrixratio{ReportRed}{19.4} & \texttt{1.07}\,\matrixratio{ReportRed}{19} & \matrixncabsolute{\texttt{11.4}} & \texttt{0.87}\,\matrixratio{ReportRed}{6.98} & \texttt{0.254}\,\matrixratio{ReportRed}{2.04} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-2 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
-2 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-2 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-2 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+2 & \AC{} reference & \texttt{25.6} & \texttt{0.366} & \matrixnotexposed{ReportMuted} & \texttt{0.000914} & \texttt{0.288} & \matrixnotexposed{ReportMuted} \\
+2 & compiled JIT O1 & \texttt{1.86}\,\matrixratio{ReportGreen}{0.0727} & \texttt{0.835}\,\matrixratio{ReportRed}{2.28} & \matrixtotalevaluator{\texttt{0.835}} & \matrixncabsolute{\texttt{1.58}} & \texttt{0.289}\,\matrixratio{ReportOrange}{1} & \matrixtotalevaluator{\texttt{0.289}} \\
+2 & compiled ASM O3 & \texttt{38.2}\,\matrixratio{ReportOrange}{1.49} & \texttt{0.889}\,\matrixratio{ReportRed}{2.43} & \matrixtotalevaluator{\texttt{0.889}} & \matrixncabsolute{\texttt{25.1}} & \texttt{0.289}\,\matrixratio{ReportOrange}{1} & \matrixtotalevaluator{\texttt{0.289}} \\
+2 & compiled C++ O3 & \texttt{35}\,\matrixratio{ReportOrange}{1.37} & \texttt{0.877}\,\matrixratio{ReportRed}{2.4} & \matrixtotalevaluator{\texttt{0.877}} & \matrixncabsolute{\texttt{21.4}} & \texttt{0.297}\,\matrixratio{ReportOrange}{1.03} & \matrixtotalevaluator{\texttt{0.297}} \\
 \rowcolor{ReportGreen!12}
-2 & compiled JIT O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+2 & compiled JIT O3 & \texttt{2.15}\,\matrixratio{ReportGreen}{0.0838} & \texttt{0.691}\,\matrixratio{ReportOrange}{1.89} & \matrixtotalevaluator{\texttt{0.691}} & \matrixncabsolute{\texttt{1.7}} & \texttt{0.279}\,\matrixratio{ReportGreen}{0.969} & \matrixtotalevaluator{\texttt{0.279}} \\
 \rowcolor{ReportGreen!12}
-2 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+2 & eager-DAG JIT O2 & \texttt{6.16}\,\matrixratio{ReportGreen}{0.24} & \texttt{1.25}\,\matrixratio{ReportRed}{3.41} & \matrixtotalevaluator{\texttt{1.25}} & \matrixncabsolute{\texttt{6.95}} & \texttt{0.699}\,\matrixratio{ReportRed}{2.42} & \matrixtotalevaluator{\texttt{0.699}} \\
 \rowcolor{ReportGreen!12}
-2 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+2 & recurrence JIT O2 & \texttt{11.3}\,\matrixratio{ReportGreen}{0.442} & \texttt{2.66}\,\matrixratio{ReportRed}{7.28} & \texttt{2.73}\,\matrixratio{ReportRed}{7.45} & \matrixncabsolute{\texttt{11.9}} & \texttt{1.59}\,\matrixratio{ReportRed}{5.51} & \texttt{0.853}\,\matrixratio{ReportRed}{2.96} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-3 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
-3 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-3 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-3 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+3 & \AC{} reference & \texttt{27.4} & \texttt{1.23} & \matrixnotexposed{ReportMuted} & \texttt{0.00149} & \texttt{0.834} & \matrixnotexposed{ReportMuted} \\
+3 & compiled JIT O1 & \texttt{2.78}\,\matrixratio{ReportGreen}{0.101} & \texttt{1.14}\,\matrixratio{ReportGreen}{0.927} & \matrixtotalevaluator{\texttt{1.14}} & \matrixncabsolute{\texttt{1.88}} & \texttt{0.495}\,\matrixratio{ReportGreen}{0.593} & \matrixtotalevaluator{\texttt{0.495}} \\
+3 & compiled ASM O3 & \texttt{83.2}\,\matrixratio{ReportRed}{3.03} & \texttt{2.26}\,\matrixratio{ReportOrange}{1.84} & \matrixtotalevaluator{\texttt{2.26}} & \matrixncabsolute{\texttt{45.6}} & \texttt{0.619}\,\matrixratio{ReportGreen}{0.742} & \matrixtotalevaluator{\texttt{0.619}} \\
+3 & compiled C++ O3 & \texttt{80}\,\matrixratio{ReportRed}{2.91} & \texttt{2.14}\,\matrixratio{ReportOrange}{1.75} & \matrixtotalevaluator{\texttt{2.14}} & \matrixncabsolute{\texttt{43}} & \texttt{0.579}\,\matrixratio{ReportGreen}{0.694} & \matrixtotalevaluator{\texttt{0.579}} \\
 \rowcolor{ReportGreen!12}
-3 & compiled JIT O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+3 & compiled JIT O3 & \texttt{2.77}\,\matrixratio{ReportGreen}{0.101} & \texttt{1.14}\,\matrixratio{ReportGreen}{0.931} & \matrixtotalevaluator{\texttt{1.14}} & \matrixncabsolute{\texttt{1.86}} & \texttt{0.464}\,\matrixratio{ReportGreen}{0.557} & \matrixtotalevaluator{\texttt{0.464}} \\
 \rowcolor{ReportGreen!12}
-3 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+3 & eager-DAG JIT O2 & \texttt{6.07}\,\matrixratio{ReportGreen}{0.221} & \texttt{2.04}\,\matrixratio{ReportOrange}{1.67} & \matrixtotalevaluator{\texttt{2.04}} & \matrixncabsolute{\texttt{6.75}} & \texttt{1.18}\,\matrixratio{ReportOrange}{1.41} & \matrixtotalevaluator{\texttt{1.18}} \\
 \rowcolor{ReportGreen!12}
-3 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+3 & recurrence JIT O2 & \texttt{11.6}\,\matrixratio{ReportGreen}{0.423} & \texttt{2.02}\,\matrixratio{ReportOrange}{1.65} & \texttt{2.08}\,\matrixratio{ReportOrange}{1.7} & \matrixncabsolute{\texttt{11.3}} & \texttt{0.658}\,\matrixratio{ReportGreen}{0.79} & \texttt{0.355}\,\matrixratio{ReportGreen}{0.426} \\
 \bottomrule
 \end{tabular}
 \endgroup
@@ -85,40 +85,40 @@
 & & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} \\
 \midrule
 \rowcolor{refblue}
-4 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
-4 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-4 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-4 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+4 & \AC{} reference & \texttt{64.7} & \texttt{4.16} & \matrixnotexposed{ReportMuted} & \texttt{0.00227} & \texttt{2.93} & \matrixnotexposed{ReportMuted} \\
+4 & compiled JIT O1 & \texttt{9.21}\,\matrixratio{ReportGreen}{0.142} & \texttt{3.05}\,\matrixratio{ReportGreen}{0.733} & \matrixtotalevaluator{\texttt{3.05}} & \matrixncabsolute{\texttt{6.97}} & \texttt{1.05}\,\matrixratio{ReportGreen}{0.358} & \matrixtotalevaluator{\texttt{1.05}} \\
+4 & compiled ASM O3 & \texttt{278}\,\matrixratio{ReportRed}{4.3} & \texttt{7.85}\,\matrixratio{ReportOrange}{1.89} & \matrixtotalevaluator{\texttt{7.85}} & \matrixncabsolute{\texttt{181}} & \texttt{2.07}\,\matrixratio{ReportGreen}{0.704} & \matrixtotalevaluator{\texttt{2.07}} \\
+4 & compiled C++ O3 & \texttt{280}\,\matrixratio{ReportRed}{4.33} & \texttt{7.35}\,\matrixratio{ReportOrange}{1.77} & \matrixtotalevaluator{\texttt{7.35}} & \matrixncabsolute{\texttt{178}} & \texttt{2.06}\,\matrixratio{ReportGreen}{0.702} & \matrixtotalevaluator{\texttt{2.06}} \\
 \rowcolor{ReportGreen!12}
-4 & compiled JIT O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+4 & compiled JIT O3 & \texttt{9.13}\,\matrixratio{ReportGreen}{0.141} & \texttt{2.99}\,\matrixratio{ReportGreen}{0.719} & \matrixtotalevaluator{\texttt{2.99}} & \matrixncabsolute{\texttt{6.95}} & \texttt{1.03}\,\matrixratio{ReportGreen}{0.352} & \matrixtotalevaluator{\texttt{1.03}} \\
 \rowcolor{ReportGreen!12}
-4 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+4 & eager-DAG JIT O2 & \texttt{6.29}\,\matrixratio{ReportGreen}{0.0971} & \texttt{4.66}\,\matrixratio{ReportOrange}{1.12} & \matrixtotalevaluator{\texttt{4.66}} & \matrixncabsolute{\texttt{6.48}} & \texttt{2.85}\,\matrixratio{ReportGreen}{0.971} & \matrixtotalevaluator{\texttt{2.85}} \\
 \rowcolor{ReportGreen!12}
-4 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+4 & recurrence JIT O2 & \texttt{11.3}\,\matrixratio{ReportGreen}{0.175} & \texttt{4.47}\,\matrixratio{ReportOrange}{1.08} & \texttt{4.03}\,\matrixratio{ReportGreen}{0.97} & \matrixncabsolute{\texttt{11.4}} & \texttt{2.58}\,\matrixratio{ReportGreen}{0.88} & \texttt{2.13}\,\matrixratio{ReportGreen}{0.727} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-5 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
-5 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-5 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-5 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+5 & \AC{} reference & \texttt{38.8} & \texttt{12.4} & \matrixnotexposed{ReportMuted} & \texttt{0.0149} & \texttt{15.2} & \matrixnotexposed{ReportMuted} \\
+5 & compiled JIT O1 & \texttt{23.2}\,\matrixratio{ReportGreen}{0.597} & \texttt{9.78}\,\matrixratio{ReportGreen}{0.786} & \matrixtotalevaluator{\texttt{9.78}} & \matrixncabsolute{\texttt{17.2}} & \texttt{4.73}\,\matrixratio{ReportGreen}{0.311} & \matrixtotalevaluator{\texttt{4.73}} \\
+5 & compiled ASM O3 & \texttt{1.2e+03}\,\matrixratio{ReportRed}{30.8} & \texttt{25.6}\,\matrixratio{ReportRed}{2.06} & \matrixtotalevaluator{\texttt{25.6}} & \matrixncabsolute{\texttt{1.56e+03}} & \texttt{17.8}\,\matrixratio{ReportOrange}{1.17} & \matrixtotalevaluator{\texttt{17.8}} \\
+5 & compiled C++ O3 & \texttt{1.2e+03}\,\matrixratio{ReportRed}{30.9} & \texttt{26.1}\,\matrixratio{ReportRed}{2.1} & \matrixtotalevaluator{\texttt{26.1}} & \matrixncabsolute{\texttt{1.57e+03}} & \texttt{18.6}\,\matrixratio{ReportOrange}{1.22} & \matrixtotalevaluator{\texttt{18.6}} \\
 \rowcolor{ReportGreen!12}
-5 & compiled JIT O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+5 & compiled JIT O3 & \texttt{23.5}\,\matrixratio{ReportGreen}{0.604} & \texttt{9.74}\,\matrixratio{ReportGreen}{0.783} & \matrixtotalevaluator{\texttt{9.74}} & \matrixncabsolute{\texttt{17.7}} & \texttt{4.55}\,\matrixratio{ReportGreen}{0.299} & \matrixtotalevaluator{\texttt{4.55}} \\
 \rowcolor{ReportGreen!12}
-5 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+5 & eager-DAG JIT O2 & \texttt{6.39}\,\matrixratio{ReportGreen}{0.165} & \texttt{12.3}\,\matrixratio{ReportGreen}{0.988} & \matrixtotalevaluator{\texttt{12.3}} & \matrixncabsolute{\texttt{11.7}} & \texttt{13.6}\,\matrixratio{ReportGreen}{0.892} & \matrixtotalevaluator{\texttt{13.6}} \\
 \rowcolor{ReportGreen!12}
-5 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+5 & recurrence JIT O2 & \texttt{11.6}\,\matrixratio{ReportGreen}{0.298} & \texttt{10.4}\,\matrixratio{ReportGreen}{0.839} & \texttt{9.45}\,\matrixratio{ReportGreen}{0.76} & \matrixncabsolute{\texttt{11.6}} & \texttt{8.65}\,\matrixratio{ReportGreen}{0.569} & \texttt{7.98}\,\matrixratio{ReportGreen}{0.525} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-6 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
-6 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-6 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
-6 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+6 & \AC{} reference & \texttt{151} & \texttt{157} & \matrixnotexposed{ReportMuted} & \texttt{0.229} & \texttt{97.2} & \matrixnotexposed{ReportMuted} \\
+6 & compiled JIT O1 & \texttt{145}\,\matrixratio{ReportGreen}{0.959} & \texttt{49.9}\,\matrixratio{ReportGreen}{0.319} & \matrixtotalevaluator{\texttt{49.9}} & \matrixncabsolute{\texttt{121}} & \texttt{38.2}\,\matrixratio{ReportGreen}{0.393} & \matrixtotalevaluator{\texttt{38.2}} \\
+6 & compiled ASM O3 & \texttt{6.35e+03}\,\matrixratio{ReportRed}{42} & \texttt{91.4}\,\matrixratio{ReportGreen}{0.584} & \matrixtotalevaluator{\texttt{91.4}} & \matrixncabsolute{\texttt{4.87e+03}} & \texttt{196}\,\matrixratio{ReportRed}{2.02} & \matrixtotalevaluator{\texttt{196}} \\
+6 & compiled C++ O3 & \texttt{6.35e+03}\,\matrixratio{ReportRed}{42} & \texttt{92.4}\,\matrixratio{ReportGreen}{0.59} & \matrixtotalevaluator{\texttt{92.4}} & \matrixncabsolute{\texttt{4.87e+03}} & \texttt{195}\,\matrixratio{ReportRed}{2} & \matrixtotalevaluator{\texttt{195}} \\
 \rowcolor{ReportGreen!12}
-6 & compiled JIT O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+6 & compiled JIT O3 & \texttt{143}\,\matrixratio{ReportGreen}{0.945} & \texttt{48.6}\,\matrixratio{ReportGreen}{0.31} & \matrixtotalevaluator{\texttt{48.6}} & \matrixncabsolute{\texttt{123}} & \texttt{40.3}\,\matrixratio{ReportGreen}{0.415} & \matrixtotalevaluator{\texttt{40.3}} \\
 \rowcolor{ReportGreen!12}
-6 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+6 & eager-DAG JIT O2 & \texttt{7.19}\,\matrixratio{ReportGreen}{0.0476} & \texttt{30.5}\,\matrixratio{ReportGreen}{0.195} & \matrixtotalevaluator{\texttt{30.5}} & \matrixncabsolute{\texttt{103}} & \texttt{136}\,\matrixratio{ReportOrange}{1.4} & \matrixtotalevaluator{\texttt{136}} \\
 \rowcolor{ReportGreen!12}
-6 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+6 & recurrence JIT O2 & \texttt{11.9}\,\matrixratio{ReportGreen}{0.0789} & \texttt{25.4}\,\matrixratio{ReportGreen}{0.162} & \texttt{24.1}\,\matrixratio{ReportGreen}{0.154} & \matrixncabsolute{\texttt{13.4}} & \texttt{50.4}\,\matrixratio{ReportGreen}{0.518} & \texttt{48.1}\,\matrixratio{ReportGreen}{0.495} \\
 \bottomrule
 \end{tabular}
 \endgroup
@@ -138,31 +138,31 @@
 & & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} & \textbf{gen [s]} & \textbf{wall [us/pt]} & \textbf{exec [us/pt]} \\
 \midrule
 \rowcolor{refblue}
-7 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
-7 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+7 & \AC{} reference & \texttt{29.2} & \texttt{91.9} & \matrixnotexposed{ReportMuted} & \texttt{1.45} & \texttt{853} & \matrixnotexposed{ReportMuted} \\
+7 & compiled JIT O1 & \texttt{35}\,\matrixratio{ReportOrange}{1.2} & \texttt{123}\,\matrixratio{ReportOrange}{1.34} & \matrixtotalevaluator{\texttt{123}} & \matrixncabsolute{\texttt{1.41e+03}} & \texttt{498}\,\matrixratio{ReportGreen}{0.584} & \matrixtotalevaluator{\texttt{498}} \\
 7 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 7 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
-7 & compiled JIT O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+7 & compiled JIT O3 & \texttt{34.9}\,\matrixratio{ReportOrange}{1.2} & \texttt{128}\,\matrixratio{ReportOrange}{1.4} & \matrixtotalevaluator{\texttt{128}} & \matrixncabsolute{\texttt{1.59e+03}} & \texttt{497}\,\matrixratio{ReportGreen}{0.583} & \matrixtotalevaluator{\texttt{497}} \\
 \rowcolor{ReportGreen!12}
-7 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+7 & eager-DAG JIT O2 & \texttt{8.23}\,\matrixratio{ReportGreen}{0.282} & \texttt{78.3}\,\matrixratio{ReportGreen}{0.852} & \matrixtotalevaluator{\texttt{78.3}} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
-7 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+7 & recurrence JIT O2 & \texttt{17.1}\,\matrixratio{ReportGreen}{0.585} & \texttt{71.8}\,\matrixratio{ReportGreen}{0.782} & \texttt{69.3}\,\matrixratio{ReportGreen}{0.754} & \matrixncabsolute{\texttt{44.7}} & \texttt{454}\,\matrixratio{ReportGreen}{0.533} & \texttt{447}\,\matrixratio{ReportGreen}{0.524} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-8 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
-8 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+8 & \AC{} reference & \texttt{63.5} & \texttt{234} & \matrixnotexposed{ReportMuted} & \texttt{19.4} & \texttt{2.01e+04} & \matrixnotexposed{ReportMuted} \\
+8 & compiled JIT O1 & \texttt{88.3}\,\matrixratio{ReportOrange}{1.39} & \texttt{359}\,\matrixratio{ReportOrange}{1.53} & \matrixtotalevaluator{\texttt{359}} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 8 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 8 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
-8 & compiled JIT O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+8 & compiled JIT O3 & \texttt{88.3}\,\matrixratio{ReportOrange}{1.39} & \texttt{367}\,\matrixratio{ReportOrange}{1.57} & \matrixtotalevaluator{\texttt{367}} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
-8 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+8 & eager-DAG JIT O2 & \texttt{15.5}\,\matrixratio{ReportGreen}{0.245} & \texttt{199}\,\matrixratio{ReportGreen}{0.852} & \matrixtotalevaluator{\texttt{199}} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
-8 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+8 & recurrence JIT O2 & \texttt{78.8}\,\matrixratio{ReportOrange}{1.24} & \texttt{161}\,\matrixratio{ReportGreen}{0.689} & \texttt{156}\,\matrixratio{ReportGreen}{0.668} & \matrixncabsolute{\texttt{1.71e+03}} & \texttt{1.53e+04}\,\matrixratio{ReportGreen}{0.762} & \texttt{1.53e+04}\,\matrixratio{ReportGreen}{0.764} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
-9 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
+9 & \AC{} reference & \texttt{62.5} & \texttt{568} & \matrixnotexposed{ReportMuted} & \texttt{511} & \texttt{2.7e+05} & \matrixnotexposed{ReportMuted} \\
 9 & compiled JIT O1 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 9 & compiled ASM O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 9 & compiled C++ O3 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
