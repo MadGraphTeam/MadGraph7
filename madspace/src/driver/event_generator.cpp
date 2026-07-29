@@ -21,7 +21,7 @@ EventGenerator::EventGenerator(
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
     const std::string& status_file,
     const GeneratorConfig& config,
-    std::uint64_t seed
+    std::optional<std::uint64_t> seed
 ) :
     _config(config),
     _status{
@@ -54,7 +54,7 @@ EventGenerator::EventGenerator(
     _channel_unweight_cursor(channels.size()),
     _context_unweight_queue(contexts.size()),
     _seed(seed),
-    _deterministic(seed != 0),
+    _deterministic(seed.has_value()),
     _status_file(status_file) {}
 
 void EventGenerator::survey(std::size_t survey_pass) {
@@ -690,7 +690,7 @@ void EventGenerator::update_counts() {
 
 void EventGenerator::combine_to_compact_npy(const std::string& file_name) {
     reset_start_time();
-    std::mt19937 select_rng = seeded_rng(_seed, {salt::combine_select});
+    MixMaxRandom select_rng(DerivedSeed(_seed, DerivedSeed::combine_select));
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout layout(
         EventRecord::layout(
@@ -727,9 +727,9 @@ void EventGenerator::combine_to_lhe_npy(
     const std::string& file_name, LHECompleter& lhe_completer
 ) {
     reset_start_time();
-    std::uint64_t seed = _seed;
-    std::mt19937 select_rng = seeded_rng(seed, {salt::combine_select});
-    std::mt19937 rand_gen = seeded_rng(seed, {salt::lhe_complete});
+    std::optional<std::uint64_t> seed = _seed;
+    MixMaxRandom select_rng(DerivedSeed(seed, DerivedSeed::combine_select));
+    MixMaxRandom rand_gen(DerivedSeed(seed, DerivedSeed::lhe_complete));
     auto [channel_data, particle_count, norm_factor] = init_combine();
     DataLayout in_layout(
         EventRecord::layout(
@@ -791,8 +791,8 @@ void EventGenerator::combine_to_lhe(
     const std::string& file_name, LHECompleter& lhe_completer, const LHEMeta& meta
 ) {
     reset_start_time();
-    std::uint64_t seed = _seed;
-    std::mt19937 select_rng = seeded_rng(seed, {salt::combine_select});
+    std::optional<std::uint64_t> seed = _seed;
+    MixMaxRandom select_rng(DerivedSeed(seed, DerivedSeed::combine_select));
     ThreadPool pool(_config.combine_thread_count);
     auto [channel_data, particle_count, norm_factor] = init_combine();
     std::vector<std::pair<EventBuffer, std::string>> buffers;
@@ -837,9 +837,8 @@ void EventGenerator::combine_to_lhe(
             slot_batch_seq.at(slot) = batch_seq;
             pool.submit(
                 [slot, batch_seq, seed, this, &in_buffer, &out_buffer, &lhe_completer] {
-                    std::mt19937 rand_gen = seeded_rng(
-                        seed,
-                        {salt::lhe_complete, static_cast<std::uint32_t>(batch_seq)}
+                    MixMaxRandom rand_gen(
+                        DerivedSeed(seed, DerivedSeed::lhe_complete, batch_seq)
                     );
                     LHEEvent lhe_event;
                     out_buffer.clear();
@@ -900,11 +899,8 @@ void EventGenerator::unweight_all() {
     bool done = true;
     double total_eff_count = 0.;
     for (std::size_t channel_index = 0; auto& channel : _channels) {
-        std::mt19937 rand_gen = seeded_rng(
-            _seed,
-            {salt::unweight_pass,
-             static_cast<std::uint32_t>(call_index),
-             static_cast<std::uint32_t>(channel_index)}
+        MixMaxRandom rand_gen(
+            DerivedSeed(_seed, DerivedSeed::unweight_pass, call_index, channel_index)
         );
         channel->unweight_file(rand_gen);
         ++channel_index;
@@ -993,7 +989,7 @@ void EventGenerator::read_and_combine(
     std::vector<EventGenerator::CombineChannelData>& channel_data,
     EventBuffer& buffer,
     double norm_factor,
-    std::mt19937& rand_gen
+    MixMaxRandom& rand_gen
 ) {
     std::size_t batch_size = 1000;
     std::size_t event_count = std::min(batch_size, channel_data.back().cum_count);
@@ -1005,8 +1001,7 @@ void EventGenerator::read_and_combine(
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
 
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
-        std::size_t random_index = std::uniform_int_distribution<
-            std::size_t>(0, channel_data.back().cum_count - 1)(rand_gen);
+        std::size_t random_index = rand_gen.generate_int(channel_data.back().cum_count);
         auto sampled_chan = std::lower_bound(
             channel_data.begin(),
             channel_data.end(),
@@ -1083,7 +1078,7 @@ void EventGenerator::fill_lhe_event(
     LHEEvent& lhe_event,
     EventBuffer& buffer,
     std::size_t event_index,
-    std::mt19937& rand_gen
+    MixMaxRandom& rand_gen
 ) {
     EventRecord event_in = buffer.event(event_index);
     lhe_event.weight = event_in.weight();
@@ -1134,7 +1129,7 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
     std::ofstream f(status_tmp_file);
     nlohmann::json j{
         {"status", status},
-        {"seed", _seed},
+        {"seed", _seed.value_or(0)},
         {"process", _status},
         {"channels", channel_status()},
         {"run_times", _timing_data},

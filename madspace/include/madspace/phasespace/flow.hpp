@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/mlp.hpp"
 
@@ -19,10 +21,14 @@ public:
     );
     std::size_t input_dim() const { return _input_dim; }
     std::size_t condition_dim() const { return _condition_dim; }
-    // seed == 0 (the default) initializes non-deterministically.
-    void initialize_globals(ContextPtr context, std::uint64_t seed = 0) const;
+    // nullopt (the default) initializes non-deterministically.
+    void initialize_globals(
+        ContextPtr context, std::optional<std::uint64_t> seed = std::nullopt
+    ) const;
     void initialize_from_vegas(
-        ContextPtr context, const std::string& grid_name, std::uint64_t seed = 0
+        ContextPtr context,
+        const std::string& grid_name,
+        std::optional<std::uint64_t> seed = std::nullopt
     ) const;
 
 private:

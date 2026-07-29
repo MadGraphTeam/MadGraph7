@@ -1,6 +1,6 @@
 #pragma once
 
-#include <random>
+#include <optional>
 #include <unordered_set>
 #include <vector>
 
@@ -13,6 +13,7 @@
 #include "madspace/driver/discrete_optimizer.hpp"
 #include "madspace/driver/generator_data.hpp"
 #include "madspace/driver/io.hpp"
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
 #include "madspace/phasespace.hpp"
 
@@ -59,14 +60,14 @@ public:
     int particle_layout_extra_flags() const { return _particle_layout_extra_flags; }
     const DataLayout& event_file_layout() const { return _event_file_layout; }
 
-    void unweight_file(std::mt19937& rand_gen);
+    void unweight_file(MixMaxRandom& rand_gen);
     void integrate(const GeneratorBatchJob& job);
     void optimize_vegas(const GeneratorBatchJob& job);
     double channel_weight_sum(std::size_t event_count);
     void start_job(
         GeneratorBatchJob& job,
         ResultQueue& result_queue,
-        std::uint64_t seed,
+        std::optional<std::uint64_t> seed,
         bool is_survey,
         std::size_t survey_pass
     );

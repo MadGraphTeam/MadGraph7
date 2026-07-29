@@ -11,14 +11,16 @@ MadnisTraining::MadnisTraining(
     const Config& config,
     const std::vector<std::shared_ptr<Integrand>>& integrands,
     const std::optional<ChannelWeightNetwork>& cwnet,
-    std::uint64_t seed
+    std::optional<std::uint64_t> seed,
+    std::size_t channel_index_offset
 ) :
     _generator_context(generator_context),
     _optimizer_context(optimizer_context),
     _config(config),
     _channels(integrands.size()),
     _cwnet(cwnet),
-    _seed(seed) {
+    _seed(seed),
+    _channel_index_offset(channel_index_offset) {
     for (std::size_t index = 0;
          auto [integrand, channel] : zip(integrands, _channels)) {
         channel.index = index;
@@ -420,28 +422,34 @@ void MadnisTraining::start_single_job(
     ++_job_id;
     auto& channel = _channels.at(channel_index);
     std::size_t channel_seq = channel.next_dispatch_seq++;
-    std::optional<std::uint64_t> seed = _seed == 0
-        ? std::nullopt
-        : std::optional<std::uint64_t>(
-              mix_seed(_seed, {salt::job_kind_madnis_train, channel_index, channel_seq})
-          );
+    std::size_t global_channel_index = _channel_index_offset + channel_index;
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
     job.dispatch_seq = channel_seq;
     _generator_context->thread_pool().submit(
-        [this, channel_index, batch_size, job_id, seed, &job]() {
+        [this, channel_index, global_channel_index, batch_size, job_id, &job]() {
             auto& channel = _channels.at(channel_index);
-            auto samples = channel.generator_runtime->run({Tensor({batch_size})}, seed);
+            if (_seed) {
+                channel.generator_runtime->set_seed(DerivedSeed(
+                    _seed,
+                    DerivedSeed::madnis_generate,
+                    job.dispatch_seq,
+                    global_channel_index
+                ));
+            }
+            auto samples = channel.generator_runtime->run({Tensor({batch_size})});
             job.samples.tensors = permute_tensors(samples);
             job.samples.size = samples.at(0).size(0);
             job.samples.channel_index = channel_index;
             if (channel.unweighter_runtime) {
-                std::optional<std::uint64_t> unweight_seed = seed
-                    ? std::optional<std::uint64_t>(
-                          mix_seed(*seed, {salt::madnis_train_unweight})
-                      )
-                    : std::nullopt;
-                auto unw_samples =
-                    channel.unweighter_runtime->run(samples, unweight_seed);
+                if (_seed) {
+                    channel.unweighter_runtime->set_seed(DerivedSeed(
+                        _seed,
+                        DerivedSeed::madnis_unweight,
+                        job.dispatch_seq,
+                        global_channel_index
+                    ));
+                }
+                auto unw_samples = channel.unweighter_runtime->run(samples);
                 job.unweighted_samples.tensors = permute_tensors(unw_samples);
                 job.unweighted_samples.size = unw_samples.at(0).size(0);
                 job.unweighted_samples.channel_index = channel_index;
@@ -456,24 +464,30 @@ void MadnisTraining::start_multi_job(const std::vector<std::size_t> batch_sizes)
     std::size_t job_id = _job_id;
     ++_job_id;
     std::size_t dispatch_seq = _multi_job_next_dispatch_seq++;
-    std::optional<std::uint64_t> seed = _seed == 0
-        ? std::nullopt
-        : std::optional<std::uint64_t>(
-              mix_seed(_seed, {salt::job_kind_madnis_train_multi, dispatch_seq})
-          );
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
     job.dispatch_seq = dispatch_seq;
-    _generator_context->thread_pool().submit([this, batch_sizes, job_id, seed, &job]() {
-        auto samples = _multi_channel_generator->run({Tensor(batch_sizes)}, seed);
+    _generator_context->thread_pool().submit([this, batch_sizes, job_id, &job]() {
+        if (_seed) {
+            _multi_channel_generator->set_seed(DerivedSeed(
+                _seed,
+                DerivedSeed::madnis_generate,
+                job.dispatch_seq,
+                _channel_index_offset
+            ));
+        }
+        auto samples = _multi_channel_generator->run({Tensor(batch_sizes)});
         job.samples.tensors = permute_tensors(samples);
         job.samples.channel_sizes = samples.back().batch_sizes();
         if (_multi_channel_unweighter) {
-            std::optional<std::uint64_t> unweight_seed = seed
-                ? std::optional<std::uint64_t>(
-                      mix_seed(*seed, {salt::madnis_train_unweight})
-                  )
-                : std::nullopt;
-            auto unw_samples = _multi_channel_unweighter->run(samples, unweight_seed);
+            if (_seed) {
+                _multi_channel_unweighter->set_seed(DerivedSeed(
+                    _seed,
+                    DerivedSeed::madnis_unweight,
+                    job.dispatch_seq,
+                    _channel_index_offset
+                ));
+            }
+            auto unw_samples = _multi_channel_unweighter->run(samples);
             job.unweighted_samples.tensors = permute_tensors(unw_samples);
             job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
         }
@@ -584,12 +598,13 @@ MadnisTraining::build_buffered_training_batch(const std::vector<size_t>& counts)
         }
     }
     args.emplace_back(counts);
-    std::optional<std::uint64_t> seed = _seed == 0
-        ? std::nullopt
-        : std::optional<std::uint64_t>(
-              mix_seed(_seed, {salt::buffered_batch_sample, _buffered_batch_seq++})
-          );
-    return _multi_channel_sampler->run(args, seed);
+    std::size_t batch_seq = _buffered_batch_seq++;
+    if (_seed) {
+        _multi_channel_sampler->set_seed(DerivedSeed(
+            _seed, DerivedSeed::madnis_sample_buffer, batch_seq, _channel_index_offset
+        ));
+    }
+    return _multi_channel_sampler->run(args);
 }
 
 void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids) {
@@ -841,21 +856,23 @@ MultiMadnisTraining::MultiMadnisTraining(
     const MadnisTraining::Config& config,
     const nested_vector2<std::shared_ptr<Integrand>>& integrands,
     const std::vector<std::optional<ChannelWeightNetwork>>& cwnets,
-    std::uint64_t seed
+    std::optional<std::uint64_t> seed
 ) :
     _config(config) {
     _subprocesses.reserve(integrands.size());
-    // each subprocess gets its own derived seed so their streams don't collide
-    for (std::size_t subproc_index = 0; auto [integ, cwnet] : zip(integrands, cwnets)) {
+    // each subprocess gets its own channel_index slice so their streams don't collide
+    std::size_t channel_index_offset = 0;
+    for (auto [integ, cwnet] : zip(integrands, cwnets)) {
         _subprocesses.emplace_back(
             generator_context,
             optimizer_context,
             config,
             integ,
             cwnet,
-            seed == 0 ? 0 : mix_seed(seed, {subproc_index})
+            seed,
+            channel_index_offset
         );
-        ++subproc_index;
+        channel_index_offset += integ.size();
     }
 }
 

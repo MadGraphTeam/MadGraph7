@@ -6,7 +6,7 @@
 namespace madspace {
 
 DerivedSeed::DerivedSeed(
-    std::optional<std::uint64_t> seed,
+    const std::optional<std::uint64_t>& seed,
     SeedType seed_type,
     std::size_t job_index,
     std::size_t channel_index,

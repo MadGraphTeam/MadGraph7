@@ -139,7 +139,9 @@ Mapping::Result DiscreteFlow::build_transform(
     };
 }
 
-void DiscreteFlow::initialize_globals(ContextPtr context, std::uint64_t seed) const {
+void DiscreteFlow::initialize_globals(
+    ContextPtr context, std::optional<std::uint64_t> seed
+) const {
     if (_first_prob_name) {
         initialize_uniform_probs(
             context, _first_prob_name.value(), _option_counts.at(0)

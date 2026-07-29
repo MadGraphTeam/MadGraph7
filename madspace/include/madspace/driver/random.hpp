@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 
 #include "madspace/mixmax/mixmax.hpp"
 
@@ -19,6 +20,9 @@ struct DerivedSeed {
         second_survey_unweight,
         generator_generate,
         generator_unweight,
+        combine_select,
+        lhe_complete,
+        unweight_pass,
         madnis_generate,
         madnis_unweight,
         madnis_sample_buffer,
@@ -28,7 +32,7 @@ struct DerivedSeed {
     std::array<std::uint32_t, 4> seed_parts;
 
     DerivedSeed(
-        std::optional<std::uint64_t> seed = std::nullopt,
+        const std::optional<std::uint64_t>& seed = std::nullopt,
         SeedType seed_type = none,
         std::size_t job_index = 0,
         std::size_t channel_index = 0,
@@ -38,13 +42,17 @@ struct DerivedSeed {
 
 class MixMaxRandom {
 public:
-    MixMaxRandom(DerivedSeed seed) :
+    MixMaxRandom(DerivedSeed seed = DerivedSeed()) :
         _mixmax(
             seed.seed_parts[0],
             seed.seed_parts[1],
             seed.seed_parts[2],
             seed.seed_parts[3]
         ) {}
+    // Convenience constructor for callers (e.g. the Python binding) that only
+    // have a plain seed, not a DerivedSeed.
+    explicit MixMaxRandom(std::uint64_t seed) : MixMaxRandom(DerivedSeed(seed)) {}
+
     double generate_double() { return _mixmax.flat(); }
     std::size_t generate_int(std::size_t max_int) { return _mixmax.flat() * max_int; }
 

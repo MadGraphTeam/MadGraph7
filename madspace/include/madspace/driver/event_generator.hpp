@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <optional>
-#include <random>
 #include <set>
 #include <vector>
 
@@ -33,7 +32,7 @@ public:
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
         const std::string& status_file = "",
         const GeneratorConfig& config = default_config,
-        std::uint64_t seed = 0
+        std::optional<std::uint64_t> seed = std::nullopt
     );
     // `survey_pass` salts job seeds so repeated survey() calls on the same
     // channel (e.g. re-survey after simplification) don't share a seed stream.
@@ -95,8 +94,8 @@ private:
     std::vector<std::vector<std::size_t>> _context_unweight_queue;
     ResultQueue _result_queue;
 
-    // Base seed for reproducible event generation; 0 means non-deterministic.
-    std::uint64_t _seed;
+    // Base seed for reproducible event generation; nullopt means non-deterministic.
+    std::optional<std::uint64_t> _seed;
 
     // unweight_all() may run more than once per generate() (a channel's target can
     // grow after it looked done, un-finishing it and triggering another round).
@@ -143,14 +142,14 @@ private:
         std::vector<CombineChannelData>& channel_data,
         EventBuffer& buffer,
         double norm_factor,
-        std::mt19937& rand_gen
+        MixMaxRandom& rand_gen
     );
     void fill_lhe_event(
         LHECompleter& lhe_completer,
         LHEEvent& lhe_event,
         EventBuffer& buffer,
         std::size_t event_index,
-        std::mt19937& rand_gen
+        MixMaxRandom& rand_gen
     );
 
     void init_status(const std::string& status);

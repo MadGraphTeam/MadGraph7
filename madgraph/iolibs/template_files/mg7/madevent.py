@@ -426,7 +426,9 @@ class MadgraphProcess:
             channels=channel_generators,
             status_file=os.path.join(self.run_path, "info.json"),
             config=self.event_generator_config,
-            seed=self.run_card["run"]["seed"],
+            # 0 conventionally means "no seed" in the run card; EventGenerator takes
+            # an actual seed or None (non-deterministic), not a 0 sentinel.
+            seed=self.run_card["run"]["seed"] or None,
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -567,12 +569,11 @@ class MadgraphProcess:
             config=config,
             integrands=integrands,
             cwnets=cwnets,
-            # Reuses the run_card's own seed (also used by build_event_generator());
-            # MultiMadnisTraining derives an independent, non-colliding stream from it
-            # (see salt::job_kind_madnis_train in random.hpp). Only the single-channel
-            # CPU sample-generation path is currently seeded -- buffered training and
-            # GPU multi-channel batches are still non-deterministic.
-            seed=run_args["seed"],
+            # Reuses the run_card's own seed (also used by build_event_generator()).
+            # Only the single-channel CPU sample-generation path is currently seeded
+            # -- buffered training and GPU multi-channel batches are still
+            # non-deterministic.
+            seed=run_args["seed"] or None,
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
@@ -1315,12 +1316,9 @@ class MadgraphSubprocess:
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
-        # Shared across all networks below: each one's global names are
-        # already unique (per-channel/per-component prefixes), so
-        # initialize_globals() derives an independent, non-colliding stream
-        # per tensor from this one base seed (see global_init_seed in
-        # random.hpp) -- no extra indices need to be threaded through here.
-        seed = self.process.run_card["run"]["seed"]
+        # Shared across all networks below: initialize_globals() derives an
+        # independent, non-colliding stream per tensor from this one base seed.
+        seed = self.process.run_card["run"]["seed"] or None
         channels = []
         for channel_id, channel in enumerate(phasespace.channels):
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -1442,7 +1440,7 @@ class MadgraphSubprocess:
             prefix=f"subproc{self.subproc_id}.cwnet",
         )
         cwnet.initialize_globals(
-            self.process.contexts[0], self.process.run_card["run"]["seed"]
+            self.process.contexts[0], self.process.run_card["run"]["seed"] or None
         )
         return cwnet
 

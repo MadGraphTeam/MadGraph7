@@ -1,7 +1,6 @@
 #include "madspace/phasespace/mlp.hpp"
 
 #include <format>
-#include <random>
 
 #include "madspace/driver/random.hpp"
 
@@ -53,7 +52,7 @@ void initialize_layer(
     std::size_t output_dim,
     const std::string& prefix,
     int layer_index,
-    std::uint64_t seed,
+    std::optional<std::uint64_t> seed,
     bool zeros
 ) {
     auto weight_name =
@@ -85,19 +84,24 @@ void initialize_layer(
         }
     } else {
         double bound = 1 / std::sqrt(input_dim);
-        std::uniform_real_distribution<double> rand_dist(-bound, bound);
-        // Independently seeded per tensor (keyed by its own global name), so
-        // e.g. reordering layers or adding new ones doesn't shift any other
-        // tensor's initialized values.
-        auto weight_rand_gen = seeded_rng(global_init_seed(seed, weight_name));
+        auto uniform = [&](MixMaxRandom& gen) {
+            return bound * (2. * gen.generate_double() - 1.);
+        };
+        // Independently seeded per tensor, via a fresh unique_seed_index() rather
+        // than a hash of the tensor's name.
+        MixMaxRandom weight_rand_gen(
+            DerivedSeed(seed, DerivedSeed::global_init, context->unique_seed_index())
+        );
         for (std::size_t i = 0; i < output_dim; ++i) {
             for (std::size_t j = 0; j < input_dim; ++j) {
-                weight_view[i][j] = rand_dist(weight_rand_gen);
+                weight_view[i][j] = uniform(weight_rand_gen);
             }
         }
-        auto bias_rand_gen = seeded_rng(global_init_seed(seed, bias_name));
+        MixMaxRandom bias_rand_gen(
+            DerivedSeed(seed, DerivedSeed::global_init, context->unique_seed_index())
+        );
         for (std::size_t i = 0; i < output_dim; ++i) {
-            bias_view[i] = rand_dist(bias_rand_gen);
+            bias_view[i] = uniform(bias_rand_gen);
         }
     }
 
@@ -149,7 +153,9 @@ MLP::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) co
     };
 }
 
-void MLP::initialize_globals(ContextPtr context, std::uint64_t seed) const {
+void MLP::initialize_globals(
+    ContextPtr context, std::optional<std::uint64_t> seed
+) const {
     std::size_t dim = _input_dim;
     for (std::size_t i = 1; i < _layers; ++i) {
         initialize_layer(context, dim, _hidden_dim, _prefix, i, seed, false);

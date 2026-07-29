@@ -846,7 +846,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initialize_globals",
             &MLP::initialize_globals,
             py::arg("context"),
-            py::arg("seed") = 0
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<Flow, Mapping>(m, "Flow")
@@ -875,14 +875,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initialize_globals",
             &Flow::initialize_globals,
             py::arg("context"),
-            py::arg("seed") = 0
+            py::arg("seed") = std::nullopt
         )
         .def(
             "initialize_from_vegas",
             &Flow::initialize_from_vegas,
             py::arg("context"),
             py::arg("grid_name"),
-            py::arg("seed") = 0
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<PropagatorChannelWeights, FunctionGenerator>(
@@ -939,7 +939,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initialize_globals",
             &ChannelWeightNetwork::initialize_globals,
             py::arg("context"),
-            py::arg("seed") = 0
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<DiscreteHistogram, FunctionGenerator>(m, "DiscreteHistogram")
@@ -987,7 +987,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initialize_globals",
             &DiscreteFlow::initialize_globals,
             py::arg("context"),
-            py::arg("seed") = 0
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
@@ -1389,13 +1389,13 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const MadnisTraining::Config&,
                 const std::vector<std::shared_ptr<Integrand>>&,
                 const std::optional<ChannelWeightNetwork>&,
-                std::uint64_t>(),
+                std::optional<std::uint64_t>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("config"),
             py::arg("integrands"),
             py::arg("cwnet"),
-            py::arg("seed") = 0
+            py::arg("seed") = std::nullopt
         )
         .def("train_step", &MadnisTraining::train_step, py::arg("batch_index"))
         .def("active_channels", &MadnisTraining::active_channels)
@@ -1409,13 +1409,13 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const MadnisTraining::Config&,
                 const nested_vector2<std::shared_ptr<Integrand>>&,
                 const std::vector<std::optional<ChannelWeightNetwork>>&,
-                std::uint64_t>(),
+                std::optional<std::uint64_t>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("config"),
             py::arg("integrands"),
             py::arg("cwnets"),
-            py::arg("seed") = 0
+            py::arg("seed") = std::nullopt
         )
         .def("train", &MultiMadnisTraining::train)
         .def("active_channels", &MultiMadnisTraining::active_channels);
@@ -1635,9 +1635,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("pdg_color_types", &LHECompleter::SubprocArgs::pdg_color_types)
         .def_readwrite("helicities", &LHECompleter::SubprocArgs::helicities)
         .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids);
-    py::classh<std::mt19937>(m, "RandGen")
+    py::classh<MixMaxRandom>(m, "MixMaxRandom")
         .def(py::init<>())
-        .def(py::init<std::mt19937::result_type>(), py::arg("seed"));
+        .def(py::init<std::uint64_t>(), py::arg("seed"));
     py::classh<LHECompleter>(m, "LHECompleter")
         .def(
             py::init<const std::vector<LHECompleter::SubprocArgs>&, double>(),
@@ -1737,7 +1737,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
                 const std::string&,
                 const GeneratorConfig&,
-                std::uint64_t>(),
+                std::optional<std::uint64_t>>(),
             py::arg("contexts"),
             py::arg("channels"),
             py::arg("status_file") = "",
@@ -1746,7 +1746,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
             ),
-            py::arg("seed") = 0
+            py::arg("seed") = std::nullopt
         )
         .def("survey", &EventGenerator::survey, py::arg("survey_pass") = 0)
         .def("generate", &EventGenerator::generate)

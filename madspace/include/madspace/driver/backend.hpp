@@ -5,6 +5,7 @@
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/context.hpp"
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/tensor.hpp"
 
 namespace madspace {
@@ -14,12 +15,9 @@ public:
     virtual ~Runtime() = default;
     // `seed`, when set, makes this call's random numbers a deterministic function of
     // `seed` alone. Backends that can't support this should reject it, not ignore it.
-    virtual TensorVec
-    run(const TensorVec& inputs, std::optional<std::uint64_t> seed = std::nullopt) = 0;
+    virtual TensorVec run(const TensorVec& inputs) = 0;
     virtual std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad(
-        const TensorVec& inputs,
-        const std::vector<bool>& input_requires_grad,
-        std::optional<std::uint64_t> seed = std::nullopt
+        const TensorVec& inputs, const std::vector<bool>& input_requires_grad
     ) = 0;
     virtual std::pair<TensorVec, TensorVec> run_backward(
         const TensorVec& output_grads,
@@ -27,6 +25,7 @@ public:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads = false
     ) = 0;
+    virtual void set_seed(DerivedSeed seed) = 0;
 
     friend std::unique_ptr<Runtime>
     build_runtime(const Function& function, ContextPtr context, bool concurrent);

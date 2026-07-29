@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/adam_optimizer.hpp"
@@ -53,7 +54,11 @@ public:
         const Config& config,
         const std::vector<std::shared_ptr<Integrand>>& integrands,
         const std::optional<ChannelWeightNetwork>& cwnet,
-        std::uint64_t seed = 0
+        std::optional<std::uint64_t> seed = std::nullopt,
+        // Offset added to this subprocess's local channel indices when deriving
+        // seeds, so MultiMadnisTraining's subprocesses (which all share the same
+        // top-level seed) get non-overlapping DerivedSeed channel_index ranges.
+        std::size_t channel_index_offset = 0
     );
     void train_step(std::size_t batch_index);
     std::vector<std::size_t> active_channels() const;
@@ -134,7 +139,8 @@ private:
     std::vector<std::size_t> _arg_permutation;
     bool _buffer_ready = false;
     std::vector<std::size_t> _active_flavors_count;
-    std::uint64_t _seed;
+    std::optional<std::uint64_t> _seed;
+    std::size_t _channel_index_offset;
     // sequence for seeding build_buffered_training_batch's BatchSampler::run() call
     std::size_t _buffered_batch_seq = 0;
     // commit-ordering state for multi-channel (GPU) generator jobs (see
@@ -152,7 +158,7 @@ public:
         const MadnisTraining::Config& config,
         const nested_vector2<std::shared_ptr<Integrand>>& integrands,
         const std::vector<std::optional<ChannelWeightNetwork>>& cwnets,
-        std::uint64_t seed = 0
+        std::optional<std::uint64_t> seed = std::nullopt
     );
     void train();
     nested_vector2<std::size_t> active_channels() const;

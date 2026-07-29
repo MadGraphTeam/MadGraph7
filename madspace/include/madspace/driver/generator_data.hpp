@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -108,8 +109,13 @@ struct GeneratorBatchJob {
     std::size_t context_index;
     std::size_t job_id;
     double max_weight;
-    // Base seed for this job's deterministic random stream; 0 means non-deterministic.
-    std::uint64_t rng_seed = 0;
+    // Top-level seed plus job identity, used to derive this job's DerivedSeed(s)
+    // independently for generate vs unweight (see start_job()/submit_unweight_job()).
+    std::optional<std::uint64_t> rng_seed;
+    // Per-channel dispatch sequence, assigned once at start_job() time.
+    std::size_t rng_job_index = 0;
+    bool rng_is_survey = false;
+    std::size_t rng_survey_pass = 0;
     // True for a VEGAS-grid-optimization batch, false for a steady-state generation
     // batch -- both use vegas_batch_size > 0 for atomic whole-batch dispatch.
     bool is_vegas_batch = false;

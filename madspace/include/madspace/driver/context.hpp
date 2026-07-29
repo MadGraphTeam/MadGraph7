@@ -178,6 +178,7 @@ public:
     void load_globals(const std::string& dir);
     DevicePtr device() { return _device; }
     ThreadPool& thread_pool() { return *_thread_pool; }
+    std::size_t unique_seed_index() { return _seed_index++; }
 
 private:
     DevicePtr _device;
@@ -185,6 +186,7 @@ private:
     std::unordered_map<std::string, std::pair<Tensor, bool>> _globals;
     std::vector<std::unique_ptr<MatrixElementApi>> _matrix_elements;
     std::vector<std::string> _param_card_paths;
+    std::size_t _seed_index = 0;
 };
 
 using ContextPtr = std::shared_ptr<Context>;

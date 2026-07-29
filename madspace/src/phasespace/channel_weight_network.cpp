@@ -68,7 +68,7 @@ NamedVector<Value> ChannelWeightNetwork::build_function_impl(
 }
 
 void ChannelWeightNetwork::initialize_globals(
-    ContextPtr context, std::uint64_t seed
+    ContextPtr context, std::optional<std::uint64_t> seed
 ) const {
     _mlp.initialize_globals(context, seed);
 

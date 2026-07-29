@@ -211,7 +211,9 @@ Flow::Flow(
     }
 }
 
-void Flow::initialize_globals(ContextPtr context, std::uint64_t seed) const {
+void Flow::initialize_globals(
+    ContextPtr context, std::optional<std::uint64_t> seed
+) const {
     for (auto& block : _coupling_blocks) {
         block.subnet1.initialize_globals(context, seed);
         block.subnet2.initialize_globals(context, seed);
@@ -219,7 +221,7 @@ void Flow::initialize_globals(ContextPtr context, std::uint64_t seed) const {
 }
 
 void Flow::initialize_from_vegas(
-    ContextPtr context, const std::string& grid_name, std::uint64_t seed
+    ContextPtr context, const std::string& grid_name, std::optional<std::uint64_t> seed
 ) const {
     initialize_globals(context, seed);
     auto& last_block = _coupling_blocks.at(_coupling_blocks.size() - 1);
