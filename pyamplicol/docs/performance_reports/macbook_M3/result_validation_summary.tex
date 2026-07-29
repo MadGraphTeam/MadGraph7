@@ -9,32 +9,32 @@ Only measurements whose numerical checks pass are counted below. The scope compr
 \toprule
 \textbf{final-state multiplicity} & \textbf{required} & \textbf{verified} & \textbf{coverage} \\
 \midrule
-1 & 64 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 64 open)} \\
-2 & 186 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 186 open)} \\
-3 & 206 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 206 open)} \\
-4 & 286 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 286 open)} \\
-5 & 285 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 285 open)} \\
-6 & 185 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 185 open)} \\
-7 & 165 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 165 open)} \\
-8 & 165 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 165 open)} \\
-9 & 124 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 124 open)} \\
+1 & 64 & 24 & \textcolor{ReportOrange}{incomplete (0 censored, 40 open)} \\
+2 & 186 & 90 & \textcolor{ReportOrange}{incomplete (0 censored, 96 open)} \\
+3 & 206 & 102 & \textcolor{ReportOrange}{incomplete (0 censored, 104 open)} \\
+4 & 286 & 132 & \textcolor{ReportOrange}{incomplete (0 censored, 154 open)} \\
+5 & 285 & 120 & \textcolor{ReportOrange}{incomplete (0 censored, 165 open)} \\
+6 & 165 & 68 & \textcolor{ReportOrange}{incomplete (0 censored, 97 open)} \\
+7 & 165 & 63 & \textcolor{ReportOrange}{incomplete (0 censored, 102 open)} \\
+8 & 165 & 26 & \textcolor{ReportOrange}{incomplete (0 censored, 139 open)} \\
+9 & 124 & 6 & \textcolor{ReportOrange}{incomplete (0 censored, 118 open)} \\
 \midrule
-\textbf{total} & 1666 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 1666 open)} \\
+\textbf{total} & 1646 & 631 & \textcolor{ReportOrange}{incomplete (0 censored, 1015 open)} \\
 \bottomrule
 \end{tabular}
 \end{center}
 \end{samepage}
-\ReportTableNote{Full-catalog display accounting through \(n=9\): 1666 required measured cells; 412 matrix process/multiplicity positions marked \textsc{not applicable}; and 36 reference execution fields marked \textsc{not exposed}. The latter two categories are intentional table structure, not unfilled measurements.}
+\ReportTableNote{Full-catalog display accounting through \(n=9\): 1646 required measured cells; 316 matrix process/multiplicity positions marked \textsc{not applicable}; and 36 reference execution fields marked \textsc{not exposed}. The latter two categories are intentional table structure, not unfilled measurements.}
 \begin{center}
 \small
 \begin{tabular}{@{}L{3.65in}r R{1.45in}@{}}
 \toprule
 \textbf{validation comparison} & \textbf{passed} & \textbf{largest relative difference} \\
 \midrule
-independent original-\AC{} reference records & 0 & \textcolor{ReportMuted}{reference} \\
-\PAC{} versus independent reference & 0 & \textcolor{ReportMuted}{---} \\
-compiled/eager versus recurrence & 0 & \textcolor{ReportMuted}{---} \\
-optimized result versus resolved sum & 0 & \textcolor{ReportMuted}{---} \\
+independent original-\AC{} reference records & 238 & \textcolor{ReportMuted}{reference} \\
+\PAC{} versus independent reference & 391 & \(\texttt{2.723}\times10^{-1}\) \\
+compiled/eager versus recurrence & 2 & \(\texttt{2.547}\times10^{-15}\) \\
+optimized result versus resolved sum & 393 & \(\texttt{3.254}\times10^{-13}\) \\
 scalar result versus higher precision & 0 & \textcolor{ReportMuted}{---} \\
 \bottomrule
 \end{tabular}
