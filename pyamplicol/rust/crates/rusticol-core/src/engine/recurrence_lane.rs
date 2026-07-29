@@ -1508,7 +1508,7 @@ impl RecurrenceNativeRuntime {
                 "contracted replay amplitude workspace is too small",
             ));
         }
-        let replay_started = Instant::now();
+        let mut replay_output_copy = Duration::ZERO;
         for route in replay_routes {
             let direct_output = if profiled {
                 scheduler.execute_replay_tile_from_external(
@@ -1523,6 +1523,11 @@ impl RecurrenceNativeRuntime {
                     input,
                 )?
             };
+            // The scheduler profiles momentum fill, schedule execution, and
+            // replay scaling independently.  Start this clock only after it
+            // returns: including the scheduler call here would attribute the
+            // complete recurrence execution a second time as reduction.
+            let replay_output_copy_started = Instant::now();
             for &(source_destination, physical_destination) in &route.destination_copies {
                 let source_re = direct_output
                     .destination_re(source_destination)
@@ -1542,8 +1547,8 @@ impl RecurrenceNativeRuntime {
                 contracted_replay_re[start..start + point_count].copy_from_slice(source_re);
                 contracted_replay_im[start..start + point_count].copy_from_slice(source_im);
             }
+            replay_output_copy += replay_output_copy_started.elapsed();
         }
-        let replay_mapping = replay_started.elapsed();
         let tile = ContractedReplayTile {
             values_re: contracted_replay_re,
             values_im: contracted_replay_im,
@@ -1563,7 +1568,7 @@ impl RecurrenceNativeRuntime {
             color_transform_im,
             accumulate,
         )?;
-        Ok(replay_mapping + reduction_started.elapsed())
+        Ok(replay_output_copy + reduction_started.elapsed())
     }
 
     fn validate_public_axis_lengths(&self, physics: &PhysicsRuntime) -> RusticolResult<()> {

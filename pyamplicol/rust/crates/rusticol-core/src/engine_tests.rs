@@ -4097,6 +4097,29 @@ fn recurrence_native_profile_accepts_nested_schedule_attribution() {
 }
 
 #[test]
+fn recurrence_native_profile_keeps_contracted_replay_schedule_out_of_reduction() {
+    // A contracted replay owns three distinct top-level intervals: momentum
+    // fill, schedule execution, and the post-schedule copy/contraction.  The
+    // latter must not start before the scheduler call or it counts the
+    // schedule twice and can exceed the enclosing wall clock.
+    let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
+    profile.total_s = 26.959e-6;
+    profile.recurrence_momentum_fill_s = 2.0e-6;
+    profile.recurrence_schedule_s = 20.459e-6;
+    profile.recurrence_replay_output_mapping_s = 0.5e-6;
+    profile.reduction_s = 2.0e-6;
+
+    profile.validate_recurrence_top_level_accounting().unwrap();
+
+    let mut double_counted = profile;
+    double_counted.reduction_s += double_counted.recurrence_schedule_s;
+    let error = double_counted
+        .validate_recurrence_top_level_accounting()
+        .unwrap_err();
+    assert!(error.to_string().contains("exclusive top-level phases"));
+}
+
+#[test]
 fn recurrence_native_profile_rejects_top_level_overlap() {
     let mut profile: NativeRuntimeProfile = RuntimeProfile::default().into();
     profile.total_s = 10.0e-3;
