@@ -40,6 +40,16 @@ BASELINE_GATE_SCHEMA = "pyamplicol-performance-baseline-gate-v1"
 EXPECTED_CATALOG_CELL_COUNT = 1666
 EXPECTED_AMPLICOL_CELL_COUNT = 288
 EXPECTED_NON_AMPLICOL_CELL_COUNT = 1378
+_SUPPORTED_SEED_CATALOG_CARDINALITIES = frozenset(
+    {
+        (1646, 284, 1362),
+        (
+            EXPECTED_CATALOG_CELL_COUNT,
+            EXPECTED_AMPLICOL_CELL_COUNT,
+            EXPECTED_NON_AMPLICOL_CELL_COUNT,
+        ),
+    }
+)
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -570,13 +580,29 @@ class OriginalAmplicolSeed:
             cell.measurement.execution_mode is ExecutionMode.AMPLICOL
             for cell in catalog_cells
         )
+        seed_catalog_count = raw.get("catalog_cell_count")
+        seed_amplicol_count = raw.get("amplicol_catalog_cell_count")
+        seed_non_amplicol_count = (
+            seed_catalog_count - seed_amplicol_count
+            if isinstance(seed_catalog_count, int)
+            and not isinstance(seed_catalog_count, bool)
+            and isinstance(seed_amplicol_count, int)
+            and not isinstance(seed_amplicol_count, bool)
+            else None
+        )
         if (
             len(catalog_cells) != EXPECTED_CATALOG_CELL_COUNT
             or expected_amplicol_count != EXPECTED_AMPLICOL_CELL_COUNT
             or len(catalog_cells) - expected_amplicol_count
             != EXPECTED_NON_AMPLICOL_CELL_COUNT
-            or raw.get("catalog_cell_count") != len(catalog_cells)
-            or raw.get("amplicol_catalog_cell_count") != expected_amplicol_count
+            or (
+                seed_catalog_count,
+                seed_amplicol_count,
+                seed_non_amplicol_count,
+            )
+            not in _SUPPORTED_SEED_CATALOG_CARDINALITIES
+            or seed_catalog_count > len(catalog_cells)
+            or seed_amplicol_count > expected_amplicol_count
         ):
             raise CampaignResetError(
                 "original AmpliCol seed catalog coverage differs"

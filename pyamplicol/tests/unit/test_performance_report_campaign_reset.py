@@ -429,6 +429,46 @@ def test_seed_rejects_changed_current_pointer(
         )
 
 
+def test_seed_load_accepts_only_the_pinned_pre_n6_catalog_cardinality(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    seed_path = store.artifact_root / "original_amplicol_seed.json"
+    seed_path.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, object] = {
+        "schema": "pyamplicol-original-amplicol-seed-v1",
+        "profile": "x86_EPYC",
+        "final_source_revision": _REVISION,
+        "final_source_tree": _TREE,
+        "expected_legacy_revision": "4" * 40,
+        "catalog_cell_count": 1646,
+        "amplicol_catalog_cell_count": 284,
+        "seed_count": 0,
+        "pins": [],
+        "rejected": [],
+    }
+    payload["seed_manifest_sha256"] = sha256_payload(payload)
+    seed_path.write_text(json.dumps(payload), encoding="ascii")
+
+    loaded = OriginalAmplicolSeed.load(
+        seed_path,
+        profile="x86_EPYC",
+        store=store,
+    )
+    assert loaded.pins_by_cell == {}
+
+    payload.pop("seed_manifest_sha256")
+    payload["catalog_cell_count"] = 1645
+    payload["seed_manifest_sha256"] = sha256_payload(payload)
+    seed_path.write_text(json.dumps(payload), encoding="ascii")
+    with pytest.raises(CampaignResetError, match="catalog coverage differs"):
+        OriginalAmplicolSeed.load(
+            seed_path,
+            profile="x86_EPYC",
+            store=store,
+        )
+
+
 def test_reset_transaction_moves_old_roots_and_is_idempotent(
     tmp_path: Path,
 ) -> None:
